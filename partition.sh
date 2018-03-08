@@ -40,7 +40,6 @@ fi
 
 #First, perform Louvain iterations on graphs
 function perform_iteration {
-
   local current_iteration=$1
   
   $louvain_executable ${tmp_dir}/tmp_${project}.bin -l -1 -w ${tmp_dir}/tmp_${project}.weights > ${tmp_dir}/tmp_${project}_${current_iteration}.tree
@@ -61,7 +60,7 @@ function resolve_partition {
 	paste $(printf "${partition_dir}/iteration/%s.community " $(seq 1 $repet)) > ${tmp_dir}/${project}_iterations_${repet}.txt
 
   #Identify bins and sort them
-	~/distance -m cores -i ${tmp_dir}/${project}_iterations_${repet}.txt | sort -nr -k1,1 --parallel=$threads | cat -n > ${partition_dir}/partition/core_size_indices_${repet}.txt
+	./distance -m cores -i ${tmp_dir}/${project}_iterations_${repet}.txt | sort -nr -k1,1 --parallel=$threads | cat -n > ${partition_dir}/partition/core_size_indices_${repet}.txt
 
   #We use this one-liner because awk can't process more than 32767 fields
 	perl -nae 'print join("\t", $_, $F[0], $F[1]), "\n" for @F[2..$#F];' ${partition_dir}/partition/core_size_indices_${repet}.txt | sort -n -k1,1 --parallel=$threads > ${partition_dir}/partition/chunkid_core_size_${repet}.txt
@@ -112,8 +111,9 @@ rm -f ${partition_dir}/partition/regression_louvain_1000.txt
 echo "Performing iterations..."
 
 for iteration in $( seq $iterations ); do
-  perform_iteration $iteration 
+  perform_iteration $iteration
 done
+wait
 
 echo "Resolving partitions..."
 #We resolve partitions at different points in order to get an idea of how stable cores can get.

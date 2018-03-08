@@ -104,7 +104,7 @@ def make_barplots(sizes_file, output, intervals=DEFAULT_INTERVALS):
         elif intervals[i] == 0:
             labels.append("1")
         else:
-            labels.append("{} to {}".format(intervals[i], intervals[i + 1]))
+            labels.append("{} - {}".format(intervals[i], intervals[i + 1]))
 
     if SEABORN:
         sns.barplot(labels, data_for_barplot)
@@ -122,7 +122,7 @@ def make_barplots(sizes_file, output, intervals=DEFAULT_INTERVALS):
 def draw_regression(sizes_file, output):
 
     try:
-        size_label = "> {}".format(sizes_file.split(".")[0].split("_")[-1])
+        size_label = "{}".format(sizes_file.split(".")[0].split("_")[-1])
     except ValueError:
         size_label = ""
 
@@ -138,7 +138,7 @@ def draw_regression(sizes_file, output):
     plt.xlabel("Number of iterations")
     plt.ylabel("Number of bins")
 
-    plt.title("Evolution of bins {}".format(size_label))
+    plt.title("Evolution of bins > {}".format(size_label))
     plt.savefig(output, bbox_inches='tight', pad_inches=0.0)
 
 
