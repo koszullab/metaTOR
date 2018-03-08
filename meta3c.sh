@@ -39,6 +39,7 @@ function display_help {
     echo "          -pipeline: check the environment is right, then run all four of the above sequentially."
     echo "                     This can take a while."
     echo "          -deploy: set up the environment on Ubuntu 14.04 and higher"
+    echo "          -dependencies: download some third party dependencies"
     echo "          -version: display current version number"
     echo "          -help: display this (hopefully useful) help message"
     echo ""
@@ -49,7 +50,7 @@ function display_help {
     exit 1
 }
 
-funcion fetch_dependencies {
+function fetch_dependencies {
 
     hmm_url="http://dl.pasteur.fr/fop/5eHgTGww/modele_HMM.tar.gz"
     louvain_url="https://sourceforge.net/projects/louvain/files/louvain-generic.tar.gz"
