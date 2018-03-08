@@ -45,6 +45,13 @@ printf "Checking hmmer is there..."
 check_for hmmsearch
 echo "OK."
 
+printf "Checking HMMs are there..."
+if [ ! -d $model_dir ]; then
+    echo "Error! HMM folder was not found."
+    exit 1
+fi
+echo "OK."
+
 printf "Checking prodigal is there..."
 locate_and_set_executable prodigal_executable prodigal
 echo "OK."

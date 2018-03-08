@@ -49,6 +49,28 @@ function display_help {
     exit 1
 }
 
+funcion fetch_dependencies {
+
+    hmm_url="http://dl.pasteur.fr/fop/5eHgTGww/modele_HMM.tar.gz"
+    louvain_url="https://sourceforge.net/projects/louvain/files/louvain-generic.tar.gz"
+
+    echo "Fetching Louvain software..."
+    wget $louvain_url
+    mv louvain-generic.tar.gz $tools_dir
+    cd $tools_dir
+    gunzip louvain-generic.tar.gz
+    tar -xvf louvain-generic.tar.gz
+    mv louvain-generic louvain
+    cd $current_dir
+    echo "OK."
+
+    echo "Fetching HMMs..."
+    wget $hmm_url
+    tar -xvf modele_HMM.tar.gz
+    mv modele_HMM $model_dir
+    echo "OK"
+}
+
 #Parse a bunch of arguments for the entirety of the pipeline.
 #The idea is that they can be set only once and remain unchanged
 #after other scripts are called, unless they get changed manually
@@ -331,6 +353,9 @@ case $mode in
         ;;
     D|deploy|deploy.sh)
         . $current_dir/deploy.sh
+        ;;
+    d|dependencies)
+        fetch_dependencies
         ;;
     h|help)
         display_help

@@ -13,6 +13,9 @@
 
 current_dir="$( cd "$( dirname "$0" )" && pwd )"
 
+hmm_url="http://dl.pasteur.fr/fop/5eHgTGww/modele_HMM.tar.gz"
+louvain_url="https://sourceforge.net/projects/louvain/files/louvain-generic.tar.gz"
+
 source $current_dir/config.sh
 source $current_dir/environment.sh
 
@@ -33,7 +36,7 @@ pip install -U numpy scipy pysam matplotlib seaborn biopython
 echo "OK."
 
 echo "Fetching Louvain software..."
-wget https://sourceforge.net/projects/louvain/files/louvain-generic.tar.gz
+wget $louvain_url
 mv louvain-generic.tar.gz $tools_dir
 cd $tools_dir
 gunzip louvain-generic.tar.gz
@@ -41,5 +44,11 @@ tar -xvf louvain-generic.tar.gz
 mv louvain-generic louvain
 cd $current_dir
 echo "OK."
+
+echo "Fetching HMMs..."
+wget $hmm_url
+tar -xvf modele_HMM.tar.gz
+mv modele_HMM $model_dir
+echo "OK"
 
 echo "You should be good to go! Run './meta3c.sh pipeline -1 reads_for.fastq -2 reads_rev.fastq -a assembly.fa' to proceed."
