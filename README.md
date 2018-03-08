@@ -34,6 +34,7 @@ In addition, there are a number of optional, miscellaneous actions:
     
 * pipeline: check the environment is right, then run all four of the above sequentially.
     This can take a while.
+* dependencies: download some third party dependencies
 * deploy: set up the environment on Ubuntu 14.04 and higher
 * version: display current version number
 * help: display this (hopefully useful) help message
