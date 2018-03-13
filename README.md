@@ -11,7 +11,7 @@ Version 0.1a [March 2018]
 ## Usage
 
 
-    ./meta3c.sh {align|partition|annotation|binning|pipeline} [parameters]
+    ./meta3c.sh {align|partition|annotation|binning} [parameters]
 
     
 A meta3Cbox command takes the form './meta3c.sh action --param1 arg1 --param2 arg2' etc.
@@ -34,12 +34,23 @@ In addition, there are a number of optional, miscellaneous actions:
     
 * pipeline: check the environment is right, then run all four of the above sequentially.
     This can take a while.
-* dependencies: download some third party dependencies
+* dependencies: download some third party dependencies (louvain and HMM databases)
 * deploy: set up the environment on Ubuntu 14.04 and higher
 * version: display current version number
 * help: display this (hopefully useful) help message
     
    Please refer to the meta3Cbox manual for detailed explanations on the parameters.
+   
+## Requirements
+
+* Python with numpy, scipy, matplotlib, biopython and pysam libraries
+* [bowtie2](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml)
+* [samtools](http://www.htslib.org/)
+* [hmmer](http://hmmer.org/) and some HMM databases (such as [these](http://dl.pasteur.fr/fop/5eHgTGww/modele_HMM.tar.gz))
+* [prodigal](https://github.com/hyattpd/Prodigal)
+* [louvain](https://sourceforge.net/projects/louvain/) (original implementation)
+
+Most of these can usually be installed with your OS's package manager.
     
 ## Contact
 
