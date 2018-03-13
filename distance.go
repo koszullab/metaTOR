@@ -32,7 +32,7 @@ func compute_distance(filename string, threshold int, n_columns int, separator s
 	}
 
 	for i, lineX := range lines {
-		for j, lineY := range lines[i+1:] {
+		for j, lineY := range lines {
 			matching_count := matching_distance(lineX, lineY, n_columns)
 			if matching_count >= threshold {
 				fmt.Println(i+1, j+1, matching_count)
@@ -97,7 +97,7 @@ func matching_distance(u []string, v []string, n_columns int) int {
 	}
 
 	matching_count := 0
-	for i := 0; i < n_columns_to_consider; i++ {
+	for i := 1; i < n_columns_to_consider; i++ {
 		if u[i] == v[i] {
 			matching_count += 1
 		}
