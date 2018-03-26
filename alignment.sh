@@ -39,8 +39,6 @@ function align {
   fi
 }
 
-locate_and_set_executable pigz_executable pigz
-
 mkdir -p $assembly_dir
 mkdir -p $alignment_dir
 mkdir -p $network_dir
