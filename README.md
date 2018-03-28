@@ -51,9 +51,14 @@ In addition, there are a number of optional, miscellaneous actions:
 * [louvain](https://sourceforge.net/projects/louvain/) (original implementation)
 
 Most of these can usually be installed with your OS's package manager.
+
+## References
+
+* [Metagenomic chromosome conformation capture (meta3C) unveils the diversity of chromosome organization in microorganisms](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4381813/), Martial Marbouty, Axel Cournac, Jean-François Flot, Hervé Marie-Nelly, Julien Mozziconacci, and Romain Koszul, eLife, 2014
+* [Scaffolding bacterial genomes and probing host-virus interactions in gut microbiome by proximity ligation (chromosome capture) assay](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5315449/), Martial Marbouty, Lyam Baudry, Axel Cournac, and Romain Koszul, Science Advances, 2017
     
 ## Contact
 
-lyam.baudry@pasteur.fr or romain.koszul@pasteur.fr
+lyam.baudry@pasteur.fr, martial.marbouty@pasteur.fr or romain.koszul@pasteur.fr
     
 
