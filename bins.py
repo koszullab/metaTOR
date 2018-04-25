@@ -170,9 +170,9 @@ def extract_fasta(partition_file, fasta_file, output_dir,
                 header_name = "_".join(fields[:-1])
                 chunk = int(fields[-1])
 
-                pos_start = chunk * chunk_size
-                pos_end = min((chunk + 1) * chunk_size,
-                              len(genome[header_name]))
+                pos_start = int(chunk * chunk_size)
+                pos_end = int(min((chunk + 1) * chunk_size,
+                                  len(genome[header_name])))
 
                 sequence = str(genome[header_name][pos_start:pos_end])
 
