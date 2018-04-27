@@ -40,8 +40,10 @@ wget $louvain_url
 mv louvain-generic.tar.gz $tools_dir
 cd $tools_dir
 gunzip louvain-generic.tar.gz
-tar -xvf louvain-generic.tar.gz
+tar -xzvf louvain-generic.tar.gz
 mv louvain-generic louvain
+cd louvain
+make -j $threads
 cd $current_dir
 echo "OK."
 

@@ -5,7 +5,7 @@
 # Lyam Baudry
 
 current_version=0.1a
-last_update_date="[February 2018]"
+last_update_date="[April 2018]"
 
 function display_help {
     echo ""
@@ -59,16 +59,20 @@ function fetch_dependencies {
     wget $louvain_url
     mv louvain-generic.tar.gz $tools_dir
     cd $tools_dir
-    gunzip louvain-generic.tar.gz
-    tar -xvf louvain-generic.tar.gz
+    tar -xzvf louvain-generic.tar.gz
     mv louvain-generic louvain
+    cd louvain
+    make -j $threads
+    cd ..
+    rm -f louvain-generic.tar.gz
     cd $current_dir
     echo "OK."
 
     echo "Fetching HMMs..."
     wget $hmm_url
-    tar -xvf modele_HMM.tar.gz
+    tar -xzvf modele_HMM.tar.gz
     mv modele_HMM $model_dir
+    rm -f modele_HMM.tar.gz
     echo "OK"
 }
 
@@ -215,7 +219,12 @@ while [[ $# -gt 0 ]]; do
             shift
         ;;
         -O|--overlapping-score)
-            evalue="$2"
+            overlapping_score="$2"
+            shift
+            shift
+        ;;
+        -H|--hmm-databases)
+            hmm_database="$2"
             shift
             shift
         ;;
@@ -295,6 +304,7 @@ BEGIN {
     parameters["mapping_quality_threshold"] = "'$mapping_quality_threshold'"
     parameters["evalue"] = "'$evalue'"
     parameters["overlapping_score"] = "'$overlapping_score'"
+    parameters["hmm_database"] = "'$hmm_database'"
     parameters["norm"] = "'$norm'"
     parameters["n_bins"] = "'$n_bins'"
     parameters["iterations"] = "'$iterations'"
