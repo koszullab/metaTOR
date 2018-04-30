@@ -9,18 +9,18 @@ last_update_date="[April 2018]"
 
 function display_help {
     echo ""
-    echo "   meta3Cbox - a set of scripts that streamlines the processing and binning of metagenomic 3C datasets."
+    echo "   metaTOR - a set of scripts that streamlines the processing and binning of metagenomic 3C datasets."
     echo ""
     echo "   Written by L. Baudry, T. Foutel-Rodier and M. Marbouty (with contributions from A. Cournac and V. Scolari)"
-    echo "   Spatial Genome Regulation laboratory (Institut Pasteur, Paris)"
+    echo "   Spatial Regulation of Genomes laboratory (Institut Pasteur, Paris)"
     echo ""
     echo "   Version $current_version $last_update_date"
     echo ""
     echo "      Usage: ./meta3c.sh {align|partition|annotation|binning|pipeline} [parameters]"
     echo ""
-    echo "      A meta3Cbox command takes the form './meta3c.sh action --param1 arg1 --param2 arg2' etc."
+    echo "      A metaTOR command takes the form './meta3c.sh action --param1 arg1 --param2 arg2' etc."
     echo ""
-    echo "      There are four actions or steps in the meta3c pipeline. They must be run in this order:"
+    echo "      There are four main actions or steps in the meta3c pipeline. They must be run in this order:"
     echo ""
     echo "          -align: map paired-end reads on a preliminary assembly, then generate a network from"
     echo "                  detected contacts between DNA chunks."
@@ -43,7 +43,8 @@ function display_help {
     echo "          -version: display current version number"
     echo "          -help: display this (hopefully useful) help message"
     echo ""
-    echo "      Please refer to the meta3Cbox manual for detailed explanations on the parameters."
+    echo "      Please refer to the metaTOR manual for detailed explanations on the parameters."
+    echo "      Make sure you download the latest version at https://github.com/koszullab/metaTOR"
     echo ""
     echo "   Contact: lyam.baudry@pasteur.fr or romain.koszul@pasteur.fr"
     echo ""
@@ -365,7 +366,7 @@ case $mode in
     D|deploy|deploy.sh)
         . $current_dir/deploy.sh
         ;;
-    d|dependencies)
+    d|depend|dependencies)
         fetch_dependencies
         ;;
     h|help)
