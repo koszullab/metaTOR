@@ -1,12 +1,12 @@
-# meta3Cbox 
+# metaTOR
 
-A set of scripts that streamlines the processing and binning of metagenomic 3C datasets.
+Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that streamlines the processing and binning of metagenomic 3C datasets.
     
 Written by L. Baudry, T. Foutel-Rodier and M. Marbouty (with contributions from A. Cournac and V. Scolari)
 
 *Spatial Regulation of Genomes* (Institut Pasteur, Paris)
     
-Version 0.1a [March 2018]
+Version 0.1a [April 2018]
     
 ## Usage
 
@@ -14,7 +14,7 @@ Version 0.1a [March 2018]
     ./meta3c.sh {align|partition|annotation|binning} [parameters]
 
     
-A meta3Cbox command takes the form './meta3c.sh action --param1 arg1 --param2 arg2' etc.
+A metaTOR command takes the form './meta3c.sh action --param1 arg1 --param2 arg2' etc.
     
 There are four actions or steps in the meta3c pipeline. They must be run in this order:
     
@@ -39,7 +39,7 @@ In addition, there are a number of optional, miscellaneous actions:
 * version: display current version number
 * help: display this (hopefully useful) help message
     
-   Please refer to the meta3Cbox manual for detailed explanations on the parameters.
+   Please refer to the metaTOR manual for detailed explanations on the parameters.
    
 ## Requirements
 
