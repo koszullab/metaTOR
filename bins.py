@@ -270,7 +270,7 @@ if __name__ == "__main__":
     parser.add_argument('-n', '--network',
                         help='Reference network file for extracting subnets')
 
-    parser.add_argument('-c', '--chunk-size',
+    parser.add_argument('-c', '--chunk-size', type=int,
                         help='Chunk size for bin reconstruction',
                         default=DEFAULT_CHUNK_SIZE)
 
