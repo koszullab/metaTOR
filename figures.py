@@ -6,7 +6,8 @@ Quickly draw figures from meta3Cbox calls.
 """
 
 import matplotlib
-matplotlib.use('Agg')
+
+matplotlib.use("Agg")
 
 import argparse
 import itertools
@@ -14,15 +15,17 @@ import itertools
 import numpy as np
 
 import matplotlib.backends.backend_pdf
+import hicstuff as hcs
 from matplotlib import pyplot as plt
 from scipy import sparse
-import hicstuff as hcs
+
 
 # Use seaborn if available, matplotlib as fallback
 SEABORN = False
 
 try:
     import seaborn as sns
+
     SEABORN = True
 except ImportError:
     pass
@@ -48,22 +51,25 @@ def spaceless_pdf_plot_maker(array, filename, vmax=None, dpi=DEFAULT_DPI):
     plt.gca().yaxis.set_major_locator(plt.NullLocator())
     plt.figure()
     if SEABORN:
-        sns.heatmap(array, vmax=vmax, cmap='Reds')
+        sns.heatmap(array, vmax=vmax, cmap="Reds")
     else:
-        plt.imshow(array, vmax=vmax, cmap='Reds', interpolation='none')
+        plt.imshow(array, vmax=vmax, cmap="Reds", interpolation="none")
         plt.colorbar()
-    plt.savefig(filename, bbox_inches='tight', pad_inches=0.0, dpi=dpi)
+    plt.savefig(filename, bbox_inches="tight", pad_inches=0.0, dpi=dpi)
     plt.close()
 
 
-def draw_sparse_matrix(array_filename, output_image,
-                       vmax=DEFAULT_SATURATION_THRESHOLD,
-                       max_size_matrix=DEFAULT_MAX_SIZE_MATRIX):
+def draw_sparse_matrix(
+    array_filename,
+    output_image,
+    vmax=DEFAULT_SATURATION_THRESHOLD,
+    max_size_matrix=DEFAULT_MAX_SIZE_MATRIX,
+):
     """Draw a quick preview of a sparse matrix with automated
     binning and normalization.
     """
 
-    matrix = np.loadtxt(array_filename, dtype=np.int32)
+    matrix = np.loadtxt(array_filename, dtype=np.int32, skiprows=1)
     try:
         row, col, data = matrix.T
     except ValueError:
@@ -110,13 +116,13 @@ def make_barplots(sizes_file, output, intervals=DEFAULT_INTERVALS):
         sns.barplot(labels, data_for_barplot)
     else:
         y = np.arange(n + 1)
-        plt.bar(y, data_for_barplot, align='center', alpha=0.5)
+        plt.bar(y, data_for_barplot, align="center", alpha=0.5)
         plt.xticks(y, labels)
 
     plt.xlabel("Size of parent core (in chunks)")
     plt.ylabel("Number of chunks")
     plt.title("Distribution of chunks by size of parent core")
-    plt.savefig(output, bbox_inches='tight', pad_inches=0.0)
+    plt.savefig(output, bbox_inches="tight", pad_inches=0.0)
 
 
 def draw_regression(sizes_file, output):
@@ -139,7 +145,7 @@ def draw_regression(sizes_file, output):
     plt.ylabel("Number of bins")
 
     plt.title("Evolution of bins > {}".format(size_label))
-    plt.savefig(output, bbox_inches='tight', pad_inches=0.0)
+    plt.savefig(output, bbox_inches="tight", pad_inches=0.0)
 
 
 def draw_enrichments(output, *files):
@@ -153,7 +159,7 @@ def draw_enrichments(output, *files):
 
     for enrichment_file in all_files:
         data_enrichments = np.loadtxt(enrichment_file, usecols=(1, 2))
-        label = enrichment_file.split('/')[-1].split('_')[0]
+        label = enrichment_file.split("/")[-1].split("_")[0]
 
         my_size = data_enrichments[:, 0]
         my_hits = data_enrichments[:, 1]
@@ -165,7 +171,7 @@ def draw_enrichments(output, *files):
         cursor = 0
         for u, v in itertools.izip(my_size, my_hits):
             slice_size = np.int32(v)
-            unweighted_sizes[cursor:cursor + slice_size] = u
+            unweighted_sizes[cursor : cursor + slice_size] = u
             cursor += slice_size
 
         sizes.append(np.log10(unweighted_sizes[unweighted_sizes > 1]))
@@ -173,12 +179,25 @@ def draw_enrichments(output, *files):
 
     if SEABORN:
         sizes = [size.tolist() for size in sizes]
-        sns.violinplot(data=sizes, width=1, inner='box',
-                       cut=0, linewidth=.3, bw=.18, color='grey')
+        sns.violinplot(
+            data=sizes,
+            width=1,
+            inner="box",
+            cut=0,
+            linewidth=.3,
+            bw=.18,
+            color="grey",
+        )
     else:
-        labels = [''] + labels
-        plt.violinplot(sizes, showmeans=False, showmedians=False,
-                       showextrema=False, widths=1, bw_method=.18)
+        labels = [""] + labels
+        plt.violinplot(
+            sizes,
+            showmeans=False,
+            showmedians=False,
+            showextrema=False,
+            widths=1,
+            bw_method=.18,
+        )
 
     y = np.arange(n)
 
@@ -188,7 +207,7 @@ def draw_enrichments(output, *files):
     plt.ylabel("log(Sizes)")
 
     plt.title("Distribution of hits vs bin sizes")
-    plt.savefig(output, bbox_inches='tight', pad_inches=0.0)
+    plt.savefig(output, bbox_inches="tight", pad_inches=0.0)
 
 
 def draw_logplots(enrichment_files, output):
@@ -213,34 +232,52 @@ def draw_logplots(enrichment_files, output):
     else:
         plt.loglog()
         plt.title("Bin size vs hits")
-    plt.savefig("{}_nhit.pdf".format(output),
-                bbox_inches='tight', pad_inches=0.0)
+    plt.savefig(
+        "{}_nhit.pdf".format(output), bbox_inches="tight", pad_inches=0.0
+    )
     plt.close()
 
 
-if __name__ == "__main__":
+def main():
 
-    parser = argparse.ArgumentParser(description='Draw and save matrices,'
-                                     'barplots, boxplots and so on.')
+    parser = argparse.ArgumentParser(
+        description="Draw and save matrices," "barplots, boxplots and so on."
+    )
 
-    parser.add_argument('-p', '--plots',
-                        help='Draw scatterplots for core size evolution')
+    parser.add_argument(
+        "-p", "--plots", help="Draw scatterplots for core size evolution"
+    )
 
-    parser.add_argument('-m', '--matrices', help='Draw contact maps')
+    parser.add_argument("-m", "--matrices", help="Draw contact maps")
 
-    parser.add_argument('-b', '--barplots', help='Draw barplots for'
-                        'parent core size distribution')
+    parser.add_argument(
+        "-b",
+        "--barplots",
+        help="Draw barplots for" "parent core size distribution",
+    )
 
-    parser.add_argument('-v', '--violins', help='Draw violin plots to view'
-                        'hits vs. size distribution', nargs='*')
+    parser.add_argument(
+        "-v",
+        "--violins",
+        help="Draw violin plots to view" "hits vs. size distribution",
+        nargs="*",
+    )
 
-    parser.add_argument('-l', '--logplots', help='Draw log plots to view'
-                        'bin size distribution for different hits')
+    parser.add_argument(
+        "-l",
+        "--logplots",
+        help="Draw log plots to view"
+        "bin size distribution for different hits",
+    )
 
-    parser.add_argument('-s', '--sparse', help='Draw sparse matrix')
+    parser.add_argument("-s", "--sparse", help="Draw sparse matrix")
 
-    parser.add_argument('-o', '--output', required=True,
-                        help='Output image file to draw in any extension')
+    parser.add_argument(
+        "-o",
+        "--output",
+        required=True,
+        help="Output image file to draw in any extension",
+    )
 
     args = parser.parse_args()
 
@@ -275,3 +312,8 @@ if __name__ == "__main__":
     if sparse_matrix:
         input_file = sparse_matrix
         draw_sparse_matrix(input_file, output_file)
+
+
+if __name__ == "__main__":
+
+    main()

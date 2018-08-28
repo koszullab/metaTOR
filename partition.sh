@@ -3,20 +3,29 @@
 # Martial Marbouty
 # Lyam Baudry
 
-#This script runs the Louvain software many times to partition the network, then 
+#This script runs the Louvain software many times to partition the network, then
 #looks for 'cores' that are easily found by identifying identical lines on the
 #global Louvain output.
 #The script also draws some figures to get an idea of how cores and their size
 #distribution evolve with the number of Louvain iterations.
 
-#Note that the Louvain software is not, in the strictest sense, necessary: 
-#any program that assigns a node to a community, does so non-deterministically 
+#Note that the Louvain software is not, in the strictest sense, necessary:
+#any program that assigns a node to a community, does so non-deterministically
 #and solely outputs a list in the form: 'node_id community_id' could be plugged
-#instead. 
+#instead.
 
-current_dir="$( cd "$( dirname "$0" )" && pwd )"
-source $current_dir/config.sh
-source $current_dir/environment.sh
+current_dir="$(cd "$(dirname "$0")" && pwd)"
+
+# shellcheck source=config.sh
+. "$current_dir"/config.sh
+
+# shellcheck source=environment.sh
+. "$current_dir"/environment.sh
+
+#Default locations
+louvain_executable="$tools_dir"/louvain/louvain
+convert_executable="$tools_dir"/louvain/convert
+hierarchy_executable="$tools_dir"/louvain/hierarchy
 
 locate_and_set_executable louvain_executable louvain
 locate_and_set_executable convert_executable convert louvain
@@ -28,43 +37,46 @@ if [ ! -f $network_file ]; then
   exit 1
 fi
 
-mkdir -p $partition_dir
-mkdir -p $partition_dir/iteration
-mkdir -p $partition_dir/partition
-mkdir -p $tmp_dir
+mkdir -p "$partition_dir"
+mkdir -p "$partition_dir"/iteration
+mkdir -p "$partition_dir"/partition
+mkdir -p "$tmp_dir"
 
 #Convert network into binary files for Louvain to work on
-if [ ! -f ${tmp_dir}/tmp_${project}.bin -a ! -f ${tmp_dir}/tmp_${project}.weights ]; then
-  $convert_executable -i $network_file -o ${tmp_dir}/tmp_${project}.bin -w ${tmp_dir}/tmp_${project}.weights 
+if [ ! -f "${tmp_dir}"/tmp_"${project}".bin ] && [ ! -f "${tmp_dir}"/tmp_"${project}".weights ]; then
+  "$convert_executable" -i $network_file -o "${tmp_dir}"/tmp_"${project}".bin -w "${tmp_dir}"/tmp_"${project}".weights
 fi
 
 #First, perform Louvain iterations on graphs
-function perform_iteration {
+function perform_iteration() {
   local current_iteration=$1
-  
-  $louvain_executable ${tmp_dir}/tmp_${project}.bin -l -1 -w ${tmp_dir}/tmp_${project}.weights > ${tmp_dir}/tmp_${project}_${current_iteration}.tree
 
-  $hierarchy_executable ${tmp_dir}/tmp_${project}_${current_iteration}.tree > ${tmp_dir}/output_louvain_${project}_${current_iteration}.txt 
+  "$louvain_executable" "${tmp_dir}"/tmp_"${project}".bin -l -1 -w "${tmp_dir}"/tmp_"${project}".weights >"${tmp_dir}"/tmp_"${project}"_"${current_iteration}".tree
 
-  level=$( tail -1 ${tmp_dir}/output_louvain_${project}_${current_iteration}.txt | awk '{print $2}' | sed 's/://g' ) 
+  "$hierarchy_executable" "${tmp_dir}"/tmp_"${project}"_"${current_iteration}".tree >"${tmp_dir}"/output_louvain_"${project}"_"${current_iteration}".txt
 
-  $hierarchy_executable ${tmp_dir}/tmp_${project}_${current_iteration}.tree -l ${level} | cut -f 2 -d ' ' > ${partition_dir}/iteration/${current_iteration}.community
+  level="$(tail -1 "${tmp_dir}"/output_louvain_"${project}"_"${current_iteration}".txt | awk '{print $2}' | sed 's/://g')"
+
+  "$hierarchy_executable" "${tmp_dir}"/tmp_"${project}"_"${current_iteration}".tree -l "${level}" | cut -f 2 -d ' ' >"${partition_dir}"/iteration/"${current_iteration}".community
 }
 
 #Then, collect all the results to try and identify bins (identified by identical lines in the pasted community file)
-function resolve_partition {
+function resolve_partition() {
 
-	local repet=$1
+  local repet=$1
 
   #Merge all Louvain outputs
-	paste $(printf "${partition_dir}/iteration/%s.community " $(seq 1 $repet)) > ${tmp_dir}/${project}_iterations_${repet}.txt
+  paste "$(printf "${partition_dir}/iteration/%s.community " $(seq 1 "$repet"))" >"${tmp_dir}"/"${project}"_iterations_"${repet}".txt
 
   #Identify bins and sort them
-        chmod +x ${current_dir}/distance
-	${current_dir}/distance -m cores -i ${tmp_dir}/${project}_iterations_${repet}.txt | sort -nr -k1,1 --parallel=$threads | cat -n > ${partition_dir}/partition/core_size_indices_${repet}.txt
+  ./distance -m cores -i "${tmp_dir}"/"${project}"_iterations_"${repet}".txt |
+    sort -nr -k1,1 --parallel="$threads" |
+    cat -n \
+      >"${partition_dir}"/partition/core_size_indices_"${repet}".txt
 
   #We use this one-liner because awk can't process more than 32767 fields
-	perl -nae 'print join("\t", $_, $F[0], $F[1]), "\n" for @F[2..$#F];' ${partition_dir}/partition/core_size_indices_${repet}.txt | sort -n -k1,1 --parallel=$threads > ${partition_dir}/partition/chunkid_core_size_${repet}.txt
+  perl -nae 'print join("\t", $_, $F[0], $F[1]), "\n" for @F[2..$#F];' "${partition_dir}"/partition/core_size_indices_"${repet}".txt |
+    sort -n -k1,1 --parallel="$threads" >"${partition_dir}"/partition/chunkid_core_size_"${repet}".txt
 
   #Slower but more reliable than paste: sometimes it's handy to have chunks listed by ids or by names, so we generate both
   awk '
@@ -78,12 +90,13 @@ function resolve_partition {
       $1 = ""
       print name,$0
     }
-  ' ${network_dir}/idx_contig_hit_size_cov.txt ${partition_dir}/partition/chunkid_core_size_${repet}.txt > ${partition_dir}/partition/chunkname_core_size_${repet}.txt
+  ' "${network_dir}"/idx_contig_hit_size_cov.txt "${partition_dir}"/partition/chunkid_core_size_"${repet}".txt \
+    >"${partition_dir}"/partition/chunkname_core_size_"${repet}".txt
 
-  awk '{ print $2 }' ${partition_dir}/partition/core_size_indices_${repet}.txt > ${tmp_dir}/${project}_sizes_${repet}.txt
+  awk '{ print $2 }' "${partition_dir}"/partition/core_size_indices_"${repet}".txt >"${tmp_dir}"/"${project}"_sizes_"${repet}".txt
 
   #Draw some figures to have an idea of how bin sizes evolve as more Louvain iterations are computed
-  awk -v repet=$repet '
+  awk -v repet="$repet" '
     BEGIN {
       count_100 = 0
       count_500 = 0
@@ -95,24 +108,24 @@ function resolve_partition {
     $1 >= 1000 {count_1000 += 1}
 
     END {
-      print repet,count_100 >> "'${partition_dir}/partition/regression_louvain_100.txt'"
-      print repet,count_500 >> "'${partition_dir}/partition/regression_louvain_500.txt'"
-      print repet,count_1000 >> "'${partition_dir}/partition/regression_louvain_1000.txt'"
+      print repet,count_100 >> "'"${partition_dir}"/partition/regression_louvain_100.txt'"
+      print repet,count_500 >> "'"${partition_dir}"/partition/regression_louvain_500.txt'"
+      print repet,count_1000 >> "'"${partition_dir}"/partition/regression_louvain_1000.txt'"
     }
-  ' ${tmp_dir}/${project}_sizes_${repet}.txt
+  ' "${tmp_dir}"/"${project}"_sizes_"${repet}".txt
 
-  python figures.py --barplots ${tmp_dir}/${project}_sizes_${repet}.txt -o ${partition_dir}/partition/repartition_${repet}.pdf
+  python figures.py --barplots "${tmp_dir}"/"${project}"_sizes_"${repet}".txt -o "${partition_dir}"/partition/repartition_"${repet}".pdf
 
 }
 
-rm -f ${partition_dir}/partition/regression_louvain_100.txt
-rm -f ${partition_dir}/partition/regression_louvain_500.txt
-rm -f ${partition_dir}/partition/regression_louvain_1000.txt
+rm -f "${partition_dir}"/partition/regression_louvain_100.txt
+rm -f "${partition_dir}"/partition/regression_louvain_500.txt
+rm -f "${partition_dir}"/partition/regression_louvain_1000.txt
 
 echo "Performing iterations..."
 
-for iteration in $( seq $iterations ); do
-  perform_iteration $iteration
+for iteration in $(seq $iterations); do
+  perform_iteration "$iteration"
 done
 wait
 
@@ -128,8 +141,8 @@ wait
 
 echo "Drawing some figures..."
 
-for u in 100 500 1000; do 
-  python $current_dir/figures.py --plots ${partition_dir}/partition/regression_louvain_${u}.txt -o ${partition_dir}/partition/regression_${u}.pdf &
+for u in 100 500 1000; do
+  python "$current_dir"/figures.py --plots "${partition_dir}"/partition/regression_louvain_"${u}".txt -o "${partition_dir}"/partition/regression_"${u}".pdf &
 done
 
 wait
@@ -137,9 +150,9 @@ wait
 echo "Cleaning up..."
 
 if [ $clean_up -eq 1 ]; then
-  rm ${tmp_dir}/tmp_${project}.weights
-  rm ${tmp_dir}/tmp_${project}_*.tree
-  rm ${tmp_dir}/output_louvain_${project}_*.txt
-  rm ${tmp_dir}/${project}_iterations_*.txt
-  rm ${tmp_dir}/${project}_sizes_*.txt
+  rm "${tmp_dir}"/tmp_"${project}".weights
+  rm "${tmp_dir}"/tmp_"${project}"_*.tree
+  rm "${tmp_dir}"/output_louvain_"${project}"_*.txt
+  rm "${tmp_dir}"/"${project}"_iterations_*.txt
+  rm "${tmp_dir}"/"${project}"_sizes_*.txt
 fi

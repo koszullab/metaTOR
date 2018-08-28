@@ -7,22 +7,25 @@
 #Install all dependencies on Ubuntu. Should be run as root.
 #This script caters to users who just want to run things quickly
 #and sets up the appropriate environment for them.
-#If you don't like the automated steps it takes, it is assumed 
-#that you know what you are doing and can setup the environment 
+#If you don't like the automated steps it takes, it is assumed
+#that you know what you are doing and can setup the environment
 #yourself.
 
-current_dir="$( cd "$( dirname "$0" )" && pwd )"
+current_dir="$(cd "$(dirname "$0")" && pwd)"
 
 hmm_url="http://dl.pasteur.fr/fop/5eHgTGww/modele_HMM.tar.gz"
 louvain_url="https://sourceforge.net/projects/louvain/files/louvain-generic.tar.gz"
 
-source $current_dir/config.sh
-source $current_dir/environment.sh
+# shellcheck source=config.sh
+. "$current_dir"/config.sh
+
+# shellcheck source=environment.sh
+. "$current_dir"/environment.sh
 
 set -o pipefail
 set -e
 
-if [ "$EUID" -ne 0 ]; then 
+if [ "$EUID" -ne 0 ]; then
   echo "Please run this script as root."
   exit 1
 fi
@@ -44,13 +47,13 @@ tar -xzvf louvain-generic.tar.gz
 mv louvain-generic louvain
 cd louvain
 make -j $threads
-cd $current_dir
+cd "$current_dir"
 echo "OK."
 
 echo "Fetching HMMs..."
 wget $hmm_url
 tar -xvf modele_HMM.tar.gz
-mv modele_HMM $model_dir
+mv modele_HMM "$model_dir"
 echo "OK"
 
 echo "You should be good to go! Run './meta3c.sh pipeline -1 reads_for.fastq -2 reads_rev.fastq -a assembly.fa' to proceed."

@@ -28,18 +28,24 @@ DEFAULT_READ_SIZE = 65
 DEFAULT_NETWORK_FILE_NAME = "network.txt"
 DEFAULT_CHUNK_DATA_FILE_NAME = "idx_contig_hit_size_cov.txt"
 
-DEFAULT_PARAMETERS = {'size_chunk_threshold': DEFAULT_SIZE_CHUNK_THRESHOLD,
-                      'mapq_threshold': DEFAULT_MAPQ_THRESHOLD,
-                      'chunk_size': DEFAULT_CHUNK_SIZE,
-                      'read_size': DEFAULT_READ_SIZE,
-                      'self_contacts': DEFAULT_SELF_CONTACTS,
-                      'normalized': DEFAULT_NORMALIZED}
+DEFAULT_PARAMETERS = {
+    "size_chunk_threshold": DEFAULT_SIZE_CHUNK_THRESHOLD,
+    "mapq_threshold": DEFAULT_MAPQ_THRESHOLD,
+    "chunk_size": DEFAULT_CHUNK_SIZE,
+    "read_size": DEFAULT_READ_SIZE,
+    "self_contacts": DEFAULT_SELF_CONTACTS,
+    "normalized": DEFAULT_NORMALIZED,
+}
 
 
-def alignment_to_contacts(sam_merged, assembly, output_dir,
-                          output_file_network=DEFAULT_NETWORK_FILE_NAME,
-                          output_file_chunk_data=DEFAULT_CHUNK_DATA_FILE_NAME,
-                          parameters=DEFAULT_PARAMETERS):
+def alignment_to_contacts(
+    sam_merged,
+    assembly,
+    output_dir,
+    output_file_network=DEFAULT_NETWORK_FILE_NAME,
+    output_file_chunk_data=DEFAULT_CHUNK_DATA_FILE_NAME,
+    parameters=DEFAULT_PARAMETERS,
+):
     """Generates a network file (in edgelist form) from an
     alignment in sam or bam format. Contigs are virtually split into
     'chunks' of nearly fixed size (by default between 500 and 1000 bp)
@@ -55,25 +61,25 @@ def alignment_to_contacts(sam_merged, assembly, output_dir,
     all_contacts = collections.Counter()
     all_chunks = collections.Counter()
 
-#   Initialize parameters
-    chunk_size = int(parameters['chunk_size'])
-    mapq_threshold = int(parameters['mapq_threshold'])
-    size_chunk_threshold = int(parameters['size_chunk_threshold'])
-    read_size = int(parameters['read_size'])
-    self_contacts = parameters['self_contacts']
-    normalized = parameters['normalized']
+    #   Initialize parameters
+    chunk_size = int(parameters["chunk_size"])
+    mapq_threshold = int(parameters["mapq_threshold"])
+    size_chunk_threshold = int(parameters["size_chunk_threshold"])
+    read_size = int(parameters["read_size"])
+    self_contacts = parameters["self_contacts"]
+    normalized = parameters["normalized"]
 
     print("Establishing chunk list...")
     chunk_complete_data = dict()
 
-#   Get all information about all chunks from all contigs
-#   (this gets updated at the end)
+    #   Get all information about all chunks from all contigs
+    #   (this gets updated at the end)
     global_id = 1
     for record in SeqIO.parse(assembly, "fasta"):
         length = len(record.seq)
 
-        n_chunks = (length // chunk_size)
-        n_chunks += ((length % chunk_size) >= size_chunk_threshold)
+        n_chunks = length // chunk_size
+        n_chunks += (length % chunk_size) >= size_chunk_threshold
 
         for i in range(n_chunks):
 
@@ -83,34 +89,36 @@ def alignment_to_contacts(sam_merged, assembly, output_dir,
                 size = length % chunk_size
 
             chunk_name = "{}_{}".format(record.id, i)
-            chunk_complete_data[chunk_name] = {'id': global_id,
-                                               'hit': 0,
-                                               'size': size,
-                                               'coverage': 0}
+            chunk_complete_data[chunk_name] = {
+                "id": global_id,
+                "hit": 0,
+                "size": size,
+                "coverage": 0,
+            }
             global_id += 1
 
     print("Opening alignment files...")
 
     current_read = None
 
-#   Read the BAM file to detect contacts.
+    # Read the BAM file to detect contacts.
     with pysam.AlignmentFile(sam_merged, "rb") as alignment_merged_handle:
 
         names = alignment_merged_handle.references
         lengths = alignment_merged_handle.lengths
-        names_and_lengths = {name: length
-                             for name, length in itertools.izip(names,
-                                                                lengths)}
+        names_and_lengths = {
+            name: length for name, length in itertools.izip(names, lengths)
+        }
 
         print("Reading contacts...")
 
-#       Since the BAM file is supposed to be sorted and interleaved,
-#       pairs should be always grouped with one below the other (the exact
-#       order doesn't matter since the network is symmetric, so we simply
-#       treat the first one as 'forward' and the second one as 'reverse')
+        # Since the BAM file is supposed to be sorted and interleaved,
+        # pairs should be always grouped with one below the other (the exact
+        # order doesn't matter since the network is symmetric, so we simply
+        # treat the first one as 'forward' and the second one as 'reverse')
 
-#       We keep iterating until two consecutive reads have the same name,
-#       discarding ones that don't.
+        # We keep iterating until two consecutive reads have the same name,
+        # discarding ones that don't.
 
         while "Reading forward and reverse alignments alternatively":
             try:
@@ -131,7 +139,7 @@ def alignment_to_contacts(sam_merged, assembly, output_dir,
             except StopIteration:
                 break
 
-#           Get a bunch of info about the alignments to pass the tests below
+            # Get a bunch of info about the alignments to pass the tests below
             read_name_forward = read_forward.query_name
             read_name_reverse = read_reverse.query_name
 
@@ -140,15 +148,17 @@ def alignment_to_contacts(sam_merged, assembly, output_dir,
             try:
                 assert read_name_forward == read_name_reverse
             except AssertionError:
-                print("Reads don't have the same name: "
-                      "{} and {}".format(read_name_forward, read_name_reverse))
+                print(
+                    "Reads don't have the same name: "
+                    "{} and {}".format(read_name_forward, read_name_reverse)
+                )
                 raise
 
-#           To check if a flag contains 4
-#           (digit on the third position from the right in base 2),
-#           4 = unmapped in SAM spec
+            # To check if a flag contains 4
+            # (digit on the third position from the right in base 2),
+            # 4 = unmapped in SAM spec
             def is_unmapped(flag):
-                return np.base_repr(flag, padding=3)[-3] == '1'
+                return np.base_repr(flag, padding=3)[-3] == "1"
 
             if is_unmapped(flag_forward) or is_unmapped(flag_reverse):
                 # print("Detected unmapped read on one end, skipping")
@@ -166,24 +176,24 @@ def alignment_to_contacts(sam_merged, assembly, output_dir,
             mapq_forward = read_forward.mapping_quality
             mapq_reverse = read_reverse.mapping_quality
 
-#           Some more tests: checking for size, map quality, map status etc.
+            # Some more tests: checking for size, map quality, map status etc.
             mapq_test = min(mapq_forward, mapq_reverse) > mapq_threshold
 
             min_length = min(len_contig_for, len_contig_rev)
             length_test = min_length > size_chunk_threshold
 
-#           Trickest test:
-#
-#
-#                          contig
-#              pos1                          pos2
-#               ^                             ^
-#           |-------|-------|-------|-------|---|
-#           <-------><------><------><------><-->            <->
-#             chunk   chunk                  tail   size_chunk_threshold
-#
-#           Test is passed if tail >= size_chunk_threshold (pos2)
-#           or if the position is a non-tail chunk (pos1)
+            # Trickest test:
+            #
+            #
+            #                contig
+            #    pos1                          pos2
+            #     ^                             ^
+            # |-------|-------|-------|-------|---|
+            # <-------><------><------><------><-->            <->
+            #   chunk   chunk                  tail   size_chunk_threshold
+            #
+            # Test is passed if tail >= size_chunk_threshold (pos2)
+            # or if the position is a non-tail chunk (pos1)
 
             if position_forward < chunk_size * (len_contig_for // chunk_size):
                 current_chunk_forward_size = chunk_size
@@ -195,8 +205,9 @@ def alignment_to_contacts(sam_merged, assembly, output_dir,
             else:
                 current_chunk_reverse_size = len_contig_rev % chunk_size
 
-            min_chunk_size = min(current_chunk_forward_size,
-                                 current_chunk_reverse_size)
+            min_chunk_size = min(
+                current_chunk_forward_size, current_chunk_reverse_size
+            )
 
             chunk_test = min_chunk_size >= size_chunk_threshold
 
@@ -205,10 +216,12 @@ def alignment_to_contacts(sam_merged, assembly, output_dir,
                 chunk_forward = position_forward // chunk_size
                 chunk_reverse = position_reverse // chunk_size
 
-                chunk_name_forward = "{}_{}".format(contig_name_forward,
-                                                    chunk_forward)
-                chunk_name_reverse = "{}_{}".format(contig_name_reverse,
-                                                    chunk_reverse)
+                chunk_name_forward = "{}_{}".format(
+                    contig_name_forward, chunk_forward
+                )
+                chunk_name_reverse = "{}_{}".format(
+                    contig_name_reverse, chunk_reverse
+                )
 
                 # print("Detected contact between "
                 #       "{} and {}".format(chunk_name_forward,
@@ -216,31 +229,38 @@ def alignment_to_contacts(sam_merged, assembly, output_dir,
 
                 if self_contacts or chunk_name_forward != chunk_name_reverse:
 
-                    contact = tuple(sorted((chunk_name_forward,
-                                            chunk_name_reverse)))
+                    contact = tuple(
+                        sorted((chunk_name_forward, chunk_name_reverse))
+                    )
 
                     all_contacts[contact] += 1
 
-#                    print("I add {} of"
-#                          " size {} to"
-#                          " my chunk "
-#                          "dictionary".format(chunk_name_forward,
-#                                              current_chunk_forward_size))
-                    all_chunks[(chunk_name_forward,
-                                current_chunk_forward_size)] += 1
+                    # print("I add {} of"
+                    #       " size {} to"
+                    #       " my chunk "
+                    #       "dictionary".format(chunk_name_forward,
+                    #                           current_chunk_forward_size))
+                    chunk_key_forward = (
+                        chunk_name_forward,
+                        current_chunk_forward_size,
+                    )
+                    all_chunks[chunk_key_forward] += 1
 
-#                    print("I add {} of"
-#                          " size {} to"
-#                          " my chunk "
-#                          "dictionary".format(chunk_name_reverse,
-#                                              current_chunk_reverse_size))
-                    all_chunks[(chunk_name_reverse,
-                                current_chunk_reverse_size)] += 1
+                    # print("I add {} of"
+                    #       " size {} to"
+                    #       " my chunk "
+                    #       "dictionary".format(chunk_name_reverse,
+                    #                           current_chunk_reverse_size))
+                    chunk_key_reverse = (
+                        chunk_name_reverse,
+                        current_chunk_reverse_size,
+                    )
+                    all_chunks[chunk_key_reverse] += 1
 
     print("Writing chunk data...")
 
-#   Now we can update the chunk dictionary
-#   with the info we gathered from the BAM file
+    # Now we can update the chunk dictionary
+    # with the info we gathered from the BAM file
 
     output_chunk_data_path = os.path.join(output_dir, output_file_chunk_data)
 
@@ -249,28 +269,28 @@ def alignment_to_contacts(sam_merged, assembly, output_dir,
         for name in sorted(chunk_complete_data.keys()):
 
             chunk_data = chunk_complete_data[name]
-            size = chunk_data['size']
-            chunk = (name, chunk_data['size'])
+            size = chunk_data["size"]
+            chunk = (name, chunk_data["size"])
             hit = all_chunks[chunk]
             coverage = hit * read_size * 1.0 / size
             try:
-                chunk_complete_data[name]['hit'] = hit
-                chunk_complete_data[name]['coverage'] = coverage
+                chunk_complete_data[name]["hit"] = hit
+                chunk_complete_data[name]["coverage"] = coverage
             except KeyError:
-                print("A mismatch was detected between the reference "
-                      "genome and the genome used for the alignment "
-                      "file, some sequence names were not found")
+                print(
+                    "A mismatch was detected between the reference "
+                    "genome and the genome used for the alignment "
+                    "file, some sequence names were not found"
+                )
                 raise
 
-            idx = chunk_complete_data[name]['id']
-            line = '{}\t{}\t{}\t{}\t{}\n'.format(idx,
-                                                 name,
-                                                 hit,
-                                                 size,
-                                                 coverage)
+            idx = chunk_complete_data[name]["id"]
+            line = "{}\t{}\t{}\t{}\t{}\n".format(
+                idx, name, hit, size, coverage
+            )
             chunk_data_file_handle.write(line)
 
-#   Lastly, generate the network proper
+    # Lastly, generate the network proper
 
     print("Writing network...")
 
@@ -284,17 +304,17 @@ def alignment_to_contacts(sam_merged, assembly, output_dir,
             contact_count = all_contacts[chunks]
 
             if normalized:
-                coverage1 = chunk_complete_data[chunk_name1]['coverage']
-                coverage2 = chunk_complete_data[chunk_name2]['coverage']
+                coverage1 = chunk_complete_data[chunk_name1]["coverage"]
+                coverage2 = chunk_complete_data[chunk_name2]["coverage"]
                 mean_coverage = np.sqrt(coverage1 * coverage2)
                 effective_count = contact_count * 1.0 / mean_coverage
             else:
                 effective_count = contact_count
 
             try:
-                idx1 = chunk_complete_data[chunk_name1]['id']
-                idx2 = chunk_complete_data[chunk_name2]['id']
-                line = '{}\t{}\t{}\n'.format(idx1, idx2, effective_count)
+                idx1 = chunk_complete_data[chunk_name1]["id"]
+                idx2 = chunk_complete_data[chunk_name2]["id"]
+                line = "{}\t{}\t{}\n".format(idx1, idx2, effective_count)
                 network_file_handle.write(line)
             except KeyError as e:
                 print("Mismatch detected: {}".format(e))
@@ -302,7 +322,7 @@ def alignment_to_contacts(sam_merged, assembly, output_dir,
     return chunk_complete_data, all_contacts
 
 
-def merge_networks(output_file='merged_network.txt', *files):
+def merge_networks(output_file="merged_network.txt", *files):
     """A naive implementation for merging two edgelists.
 
     :note: The partitioning step doesn't mind redundant
@@ -315,7 +335,7 @@ def merge_networks(output_file='merged_network.txt', *files):
     for network_file in files:
         with open(network_file) as network_file_handle:
             for line in network_file_handle:
-                id_a, id_b, n_contacts = line.split('\t')
+                id_a, id_b, n_contacts = line.split("\t")
                 pair = sorted((id_a, id_b))
                 try:
                     contacts[pair] += n_contacts
@@ -330,7 +350,7 @@ def merge_networks(output_file='merged_network.txt', *files):
             output_handle.write("{}\t{}\t{}\n".format(id_a, id_b, n_contacts))
 
 
-def merge_chunk_data(output_file='merged_idx_contig_hit_size_cov.txt', *files):
+def merge_chunk_data(output_file="merged_idx_contig_hit_size_cov.txt", *files):
     """Merge any number of chunk data files.
     """
 
@@ -338,37 +358,42 @@ def merge_chunk_data(output_file='merged_idx_contig_hit_size_cov.txt', *files):
     for chunk_file in files:
         with open(chunk_file) as chunk_file_handle:
             for line in chunk_file_handle:
-                chunk_id, chunk_name, hit, size, cov = line.split('\t')
+                chunk_id, chunk_name, hit, size, cov = line.split("\t")
                 try:
-                    chunks[chunk_id]['hit'] += hit
-                    chunks[chunk_id]['cov'] += cov
+                    chunks[chunk_id]["hit"] += hit
+                    chunks[chunk_id]["cov"] += cov
                 except KeyError:
-                    chunks[chunk_id] = {'name': chunk_name,
-                                        'hit': hit,
-                                        'size': size,
-                                        'cov': cov}
+                    chunks[chunk_id] = {
+                        "name": chunk_name,
+                        "hit": hit,
+                        "size": size,
+                        "cov": cov,
+                    }
 
     sorted_chunks = sorted(chunks)
     with open(output_file, "w") as output_handle:
         for chunk_id in sorted_chunks:
             my_chunk = chunks[chunk_id]
-            name, hit, size, cov = (my_chunk['name'],
-                                    my_chunk['hit'],
-                                    my_chunk['size'],
-                                    my_chunk['cov'])
+            name, hit, size, cov = (
+                my_chunk["name"],
+                my_chunk["hit"],
+                my_chunk["size"],
+                my_chunk["cov"],
+            )
 
-            my_line = '{}\t{}\t{}\t{}\t{}'.format(chunk_id,
-                                                  name,
-                                                  hit,
-                                                  size,
-                                                  cov)
+            my_line = "{}\t{}\t{}\t{}\t{}".format(
+                chunk_id, name, hit, size, cov
+            )
             output_handle.write(my_line)
 
 
-def alignment_to_reads(sam_merged, output_dir,
-                       parameters=DEFAULT_PARAMETERS,
-                       save_memory=True,
-                       *bin_fasta):
+def alignment_to_reads(
+    sam_merged,
+    output_dir,
+    parameters=DEFAULT_PARAMETERS,
+    save_memory=True,
+    *bin_fasta
+):
     """Extract reads found to be mapping an input FASTA bin.
     If one read maps, the whole pair is extracted and written
     to the output paired-end FASTQ files. Reads that mapped
@@ -382,7 +407,7 @@ def alignment_to_reads(sam_merged, output_dir,
     so consider upgrading that if it comes up in a pipeline.
     """
 
-#   Just in case file objects are sent as input
+    #   Just in case file objects are sent as input
     def get_file_string(file_thing):
         try:
             file_string = file_thing.name
@@ -390,35 +415,36 @@ def alignment_to_reads(sam_merged, output_dir,
             file_string = str(file_thing)
         return file_string
 
-#   Global set of chunks against which reads are required to
-#   map - we store them in a tuple that keeps track of the
-#   original bin each chunk came from so we can reattribute the reads later
+    #   Global set of chunks against which reads are required to
+    #   map - we store them in a tuple that keeps track of the
+    #   original bin each chunk came from so we can reattribute the reads later
 
     bin_chunks = set()
     for bin_file in bin_fasta:
         for record in SeqIO.parse(bin_file, "fasta"):
             bin_chunks.add((get_file_string(bin_file), record.id))
 
-    chunk_size = int(parameters['chunk_size'])
+    chunk_size = int(parameters["chunk_size"])
 
-    mapq_threshold = int(parameters['mapq_threshold'])
+    mapq_threshold = int(parameters["mapq_threshold"])
 
     def read_name(read):
         return read.query_name.split()[0]
 
-#   Since reading a huge BAM file can take up a
-#   lot of time and resources, we only do it once
-#   but that requires opening fastq files for writing
-#   as matching reads get detected along the
-#   bam and keeping track of which ones are
-#   currently open.
+    #   Since reading a huge BAM file can take up a
+    #   lot of time and resources, we only do it once
+    #   but that requires opening fastq files for writing
+    #   as matching reads get detected along the
+    #   bam and keeping track of which ones are
+    #   currently open.
 
     def get_base_name(bin_file):
 
-        base_name = '.'.join(os.path.basename(bin_file).split('.')[:-1])
+        base_name = ".".join(os.path.basename(bin_file).split(".")[:-1])
 
-        output_path = os.path.join(output_dir,
-                                   "{}.readnames".format(base_name))
+        output_path = os.path.join(
+            output_dir, "{}.readnames".format(base_name)
+        )
 
         return output_path
 
@@ -429,9 +455,9 @@ def alignment_to_reads(sam_merged, output_dir,
 
     with pysam.AlignmentFile(sam_merged, "rb") as alignment_merged_handle:
 
-        for (my_read_name,
-             alignment_pool) in itertools.groupby(alignment_merged_handle,
-                                                  read_name):
+        for (my_read_name, alignment_pool) in itertools.groupby(
+            alignment_merged_handle, read_name
+        ):
 
             for my_alignment in alignment_pool:
 
@@ -440,10 +466,10 @@ def alignment_to_reads(sam_merged, output_dir,
 
                 chunk_position = relative_position // chunk_size
 
-#               The 'chunk name' is used to detect macthing positions
+                # The 'chunk name' is used to detect macthing positions
                 chunk_name = "{}_{}".format(contig_name, chunk_position)
 
-#               But such matching positions have to map acceptably
+                # But such matching positions have to map acceptably
                 quality_test = my_alignment.mapping_quality > mapq_threshold
 
                 for bin_file in bin_fasta:
@@ -467,15 +493,16 @@ def alignment_to_reads(sam_merged, output_dir,
 
     for file_handle in opened_files.values():
         file_handle.close()
-#   Return unpaired file names for pair_unpaired_reads() to process
+    #   Return unpaired file names for pair_unpaired_reads() to process
     if save_memory:
         return opened_files.keys()
     else:
         return read_names
 
 
-def retrieve_reads_from_fastq(fastq_forward, fastq_reverse,
-                              read_names, output_dir):
+def retrieve_reads_from_fastq(
+    fastq_forward, fastq_reverse, read_names, output_dir
+):
 
     opened_files = dict()
 
@@ -483,12 +510,14 @@ def retrieve_reads_from_fastq(fastq_forward, fastq_reverse,
 
     def get_base_names(bin_file):
 
-        base_name = '.'.join(os.path.basename(bin_file).split('.')[:-1])
+        base_name = ".".join(os.path.basename(bin_file).split(".")[:-1])
 
-        for_fastq_path = os.path.join(output_dir,
-                                      "{}_for.fastq".format(base_name))
-        rev_fastq_path = os.path.join(output_dir,
-                                      "{}_rev.fastq".format(base_name))
+        for_fastq_path = os.path.join(
+            output_dir, "{}_for.fastq".format(base_name)
+        )
+        rev_fastq_path = os.path.join(
+            output_dir, "{}_rev.fastq".format(base_name)
+        )
 
         return for_fastq_path, rev_fastq_path
 
@@ -505,8 +534,9 @@ def retrieve_reads_from_fastq(fastq_forward, fastq_reverse,
             forward_fastq_iterator = FastqGeneralIterator(forward_handle)
             reverse_fastq_iterator = FastqGeneralIterator(reverse_handle)
 
-            for read_for, read_rev in itertools.izip(forward_fastq_iterator,
-                                                     reverse_fastq_iterator):
+            for read_for, read_rev in itertools.izip(
+                forward_fastq_iterator, reverse_fastq_iterator
+            ):
 
                 name_for, sequence_for, quality_for = read_for
                 name_rev, sequence_rev, quality_rev = read_rev
@@ -520,20 +550,21 @@ def retrieve_reads_from_fastq(fastq_forward, fastq_reverse,
                         bin_files = read_names[short_name_rev]
 
                     for bin_file in bin_files:
-                        (for_fastq_path,
-                         rev_fastq_path) = get_base_names(bin_file)
+                        (for_fastq_path, rev_fastq_path) = get_base_names(
+                            bin_file
+                        )
 
-    #                   Files are opened 'lazily' so as to not end up
-    #                   with a bunch of empty FASTQ files
+                        # Files are opened 'lazily' so as to not end up
+                        # with a bunch of empty FASTQ files
                         try:
                             output_for_handle = opened_files[for_fastq_path]
                         except KeyError:
                             output_for_handle = open(for_fastq_path, "w")
                             opened_files[for_fastq_path] = output_for_handle
 
-                        line_for = "@{}\n{}\n+\n{}\n".format(name_for,
-                                                             sequence_for,
-                                                             quality_for)
+                        line_for = "@{}\n{}\n+\n{}\n".format(
+                            name_for, sequence_for, quality_for
+                        )
                         output_for_handle.write(line_for)
 
                         try:
@@ -542,12 +573,12 @@ def retrieve_reads_from_fastq(fastq_forward, fastq_reverse,
                             output_rev_handle = open(rev_fastq_path, "w")
                             opened_files[rev_fastq_path] = output_rev_handle
 
-                        line_rev = "@{}\n{}\n+\n{}\n".format(name_rev,
-                                                             sequence_rev,
-                                                             quality_rev)
+                        line_rev = "@{}\n{}\n+\n{}\n".format(
+                            name_rev, sequence_rev, quality_rev
+                        )
                         output_rev_handle.write(line_rev)
 
-#   Close all the files we've opened for writing
+    #   Close all the files we've opened for writing
     for file_handle in opened_files.values():
         file_handle.close()
 
@@ -568,11 +599,12 @@ def retrieve_reads_contig_wise(sam_merged, contig_data, output_dir):
             core = fields[-3]
             contig_dict[node] = core
 
-    query_getter = operator.attrgetter('query_name')
+    query_getter = operator.attrgetter("query_name")
 
-    with pysam.AlignmentFile(sam_merged, 'rb') as sam_handle:
-        for (my_read_name, alignment_pool) in itertools.groupby(sam_handle,
-                                                                query_getter):
+    with pysam.AlignmentFile(sam_merged, "rb") as sam_handle:
+        for (my_read_name, alignment_pool) in itertools.groupby(
+            sam_handle, query_getter
+        ):
             my_read_set = dict()
             my_core_set = set()
             while "Reading alignments from alignment pool":
@@ -599,27 +631,25 @@ def retrieve_reads_contig_wise(sam_merged, contig_data, output_dir):
                         print("We've got a serious problem")
                         print(my_read_set)
                     elif len(my_read_set) == 0:
-                        my_read_set[my_seq_tuple] = 'forward'
+                        my_read_set[my_seq_tuple] = "forward"
                     elif my_seq_tuple not in my_read_set.keys():
-                        my_read_set[my_seq_tuple] = 'reverse'
+                        my_read_set[my_seq_tuple] = "reverse"
                     try:
                         ref = contig_dict[my_alignment.reference_name]
                         my_core_set.add(ref)
                     except KeyError:
-                        my_core_set.add('unknown')
+                        my_core_set.add("unknown")
                 except StopIteration:
                     if len(my_read_set) == 2:
                         for core_name in my_core_set:
                             for my_tuple, file_id in my_read_set.iteritems():
-                                if file_id == 'forward':
-                                    file_end = '.end1'
-                                elif file_id == 'reverse':
-                                    file_end = '.end2'
+                                if file_id == "forward":
+                                    file_end = ".end1"
+                                elif file_id == "reverse":
+                                    file_end = ".end2"
 
-                                basename = "{}{}".format(core_name,
-                                                         file_end)
-                                filename = os.path.join(output_dir,
-                                                        basename)
+                                basename = "{}{}".format(core_name, file_end)
+                                filename = os.path.join(output_dir, basename)
                                 try:
                                     file_to_write = opened_files[filename]
                                 except KeyError:
@@ -630,16 +660,15 @@ def retrieve_reads_contig_wise(sam_merged, contig_data, output_dir):
                                     raise
 
                                 seq, qual = my_tuple
-                                line = "@{}\n{}\n+\n{}\n".format(my_read_name,
-                                                                 seq,
-                                                                 qual)
+                                line = "@{}\n{}\n+\n{}\n".format(
+                                    my_read_name, seq, qual
+                                )
                                 file_to_write.write(line)
                     elif len(my_read_set) == 1:
                         for core_name in my_core_set:
-                            file_end = '.end'
+                            file_end = ".end"
                             basename = "{}{}".format(core_name, file_end)
-                            filename = os.path.join(output_dir,
-                                                    basename)
+                            filename = os.path.join(output_dir, basename)
                             try:
                                 file_to_write = opened_files[filename]
                             except KeyError:
@@ -649,9 +678,9 @@ def retrieve_reads_contig_wise(sam_merged, contig_data, output_dir):
                                 print(len(opened_files))
                                 raise
                             seq, qual = my_read_set.keys()[0]
-                            line = "@{}\n{}\n+\n{}\n".format(my_read_name,
-                                                             seq,
-                                                             qual)
+                            line = "@{}\n{}\n+\n{}\n".format(
+                                my_read_name, seq, qual
+                            )
                             file_to_write.write(line)
                     else:
                         print("We've got a very serious problem")
@@ -660,53 +689,97 @@ def retrieve_reads_contig_wise(sam_merged, contig_data, output_dir):
     close_all_files()
 
 
-if __name__ == "__main__":
+def main():
 
-    parser = argparse.ArgumentParser(description='Process alignment files.')
+    parser = argparse.ArgumentParser(description="Process alignment files.")
 
-    parser.add_argument('-i', '--input', type=argparse.FileType('r'),
-                        help='Merged (interlaced) alignment file',
-                        required=True)
+    parser.add_argument(
+        "-i",
+        "--input",
+        type=argparse.FileType("r"),
+        help="Merged (interlaced) alignment file",
+        required=True,
+    )
 
-    parser.add_argument('-f', '--reference', help='Reference fasta file',
-                        nargs='+')
+    parser.add_argument(
+        "-f", "--reference", help="Reference fasta file", nargs="+"
+    )
 
-    parser.add_argument('-o', '--output', help='Output directory',
-                        required=True)
+    parser.add_argument(
+        "-o", "--output", help="Output directory", required=True
+    )
 
-    parser.add_argument('-q', '--map-quality', type=int,
-                        help='Minimum mapping quality threshold',
-                        default=DEFAULT_PARAMETERS['mapq_threshold'])
+    parser.add_argument(
+        "-q",
+        "--map-quality",
+        type=int,
+        help="Minimum mapping quality threshold",
+        default=DEFAULT_PARAMETERS["mapq_threshold"],
+    )
 
-    parser.add_argument('-c', '--chunk-size', type=int,
-                        help='Standard chunk size for nodes in the network',
-                        default=DEFAULT_PARAMETERS['chunk_size'])
+    parser.add_argument(
+        "-c",
+        "--chunk-size",
+        type=int,
+        help="Standard chunk size for nodes in the network",
+        default=DEFAULT_PARAMETERS["chunk_size"],
+    )
 
-    parser.add_argument('-s', '--size-chunk-threshold', type=int,
-                        help='Minimum size for tail ends to be integrated'
-                              ' as chunks in the network',
-                        default=DEFAULT_PARAMETERS['size_chunk_threshold'])
+    parser.add_argument(
+        "-s",
+        "--size-chunk-threshold",
+        type=int,
+        help="Minimum size for tail ends to be integrated"
+        " as chunks in the network",
+        default=DEFAULT_PARAMETERS["size_chunk_threshold"],
+    )
 
-    parser.add_argument('-a', '--self-contacts', action='store_true',
-                        help='Do not discard self contacts',
-                        default=DEFAULT_PARAMETERS['self_contacts'])
+    parser.add_argument(
+        "-a",
+        "--self-contacts",
+        action="store_true",
+        help="Do not discard self contacts",
+        default=DEFAULT_PARAMETERS["self_contacts"],
+    )
 
-    parser.add_argument('-n', '--normalize', action='store_true',
-                        help='Normalize contacts by the geometric mean'
-                        ' of both coverages of the chunks',
-                        default=DEFAULT_PARAMETERS['normalized'])
+    parser.add_argument(
+        "-n",
+        "--normalize",
+        action="store_true",
+        help="Normalize contacts by the geometric mean"
+        " of both coverages of the chunks",
+        default=DEFAULT_PARAMETERS["normalized"],
+    )
 
-    parser.add_argument('-r', '--read-size', help='Read size',
-                        default=DEFAULT_PARAMETERS['read_size'])
+    parser.add_argument(
+        "-r",
+        "--read-size",
+        help="Read size",
+        default=DEFAULT_PARAMETERS["read_size"],
+    )
 
-    parser.add_argument('-F', '--fastq', help='Reconstruct FASTQ from '
-                        'reference and interleaved alignment file', nargs=2)
+    parser.add_argument(
+        "-F",
+        "--fastq",
+        help="Reconstruct FASTQ from "
+        "reference and interleaved alignment file",
+        nargs=2,
+    )
 
-    parser.add_argument('-D', '--fastq-contig', help='Reconstruct FASTQ from '
-                        'contig data and interleaved alignment file', nargs=1)
+    parser.add_argument(
+        "-D",
+        "--fastq-contig",
+        help="Reconstruct FASTQ from "
+        "contig data and interleaved alignment file",
+        nargs=1,
+    )
 
-    parser.add_argument('-m', '--mem', help='Save memory by only writing '
-                        ' read names in FASTQ mode', action='store_true')
+    parser.add_argument(
+        "-m",
+        "--mem",
+        help="Save memory by only writing " " read names in FASTQ mode",
+        action="store_true",
+    )
 
     args = parser.parse_args()
 
@@ -719,23 +792,24 @@ if __name__ == "__main__":
 
     parameters = copy.deepcopy(DEFAULT_PARAMETERS)
 
-    parameters['mapq_threshold'] = args.map_quality
-    parameters['chunk_size'] = args.chunk_size
-    parameters['read_size'] = args.read_size
-    parameters['size_chunk_threshold'] = args.size_chunk_threshold
-    parameters['self_contacts'] = args.self_contacts
-    parameters['normalized'] = args.normalize
+    parameters["mapq_threshold"] = args.map_quality
+    parameters["chunk_size"] = args.chunk_size
+    parameters["read_size"] = args.read_size
+    parameters["size_chunk_threshold"] = args.size_chunk_threshold
+    parameters["self_contacts"] = args.self_contacts
+    parameters["normalized"] = args.normalize
 
     if fastq_files:
 
         fastq_forward, fastq_reverse = fastq_files
-        read_names = alignment_to_reads(merged_file, output_dir,
-                                        parameters, save_memory,
-                                        *reference_file)
+        read_names = alignment_to_reads(
+            merged_file, output_dir, parameters, save_memory, *reference_file
+        )
 
         if save_memory:
-            retrieve_reads_from_fastq(fastq_forward, fastq_reverse,
-                                      read_names, output_dir)
+            retrieve_reads_from_fastq(
+                fastq_forward, fastq_reverse, read_names, output_dir
+            )
 
     elif contig_data:
         retrieve_reads_contig_wise(merged_file, contig_data, output_dir)
@@ -743,7 +817,14 @@ if __name__ == "__main__":
     else:
 
         my_assembly, = reference_file
-        alignment_to_contacts(sam_merged=merged_file,
-                              assembly=my_assembly,
-                              output_dir=output_dir,
-                              parameters=parameters)
+        alignment_to_contacts(
+            sam_merged=merged_file,
+            assembly=my_assembly,
+            output_dir=output_dir,
+            parameters=parameters,
+        )
+
+
+if __name__ == "__main__":
+
+    main()
