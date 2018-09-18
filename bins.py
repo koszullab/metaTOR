@@ -17,6 +17,9 @@ import argparse
 import itertools
 import operator
 import hicstuff as hcs
+
+from log import logger
+
 from figures import spaceless_pdf_plot_maker
 
 from network import DEFAULT_CHUNK_SIZE
@@ -38,10 +41,10 @@ def extract_subnetworks(
     saves it all in a specified output directory.
     """
 
-    print("Loading partition...")
+    logger.info("Loading partition...")
     data_chunks = np.loadtxt(partition_file, usecols=(1,), dtype=np.int32)
 
-    print("Loading network...")
+    logger.info("Loading network...")
     network = np.loadtxt(network_file, dtype=np.int32)
     cores = data_chunks
 
@@ -113,7 +116,9 @@ def extract_subnetworks(
             spaceless_pdf_plot_maker(normed_subnet, filename, vmax=vmax)
 
         except MemoryError:
-            print("Warning, couldn't save matrix due to memory issues")
+            logger.warning(
+                "Warning, couldn't save matrix due to memory issues"
+            )
 
     def extract_and_draw(network_to_keep, filename_text, filename_image):
 
