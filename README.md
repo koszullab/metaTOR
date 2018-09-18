@@ -6,7 +6,7 @@ Written by L. Baudry, T. Foutel-Rodier and M. Marbouty (with contributions from 
 
 *[Spatial Regulation of Genomes](https://research.pasteur.fr/en/team/spatial-regulation-of-genomes/)* (Institut Pasteur, Paris)
 
-Version 0.1b [August 2018]
+Version 0.1c [September 2018]
 
 ## Usage
 
@@ -50,7 +50,9 @@ In addition, there are a number of optional, miscellaneous actions:
 * [prodigal](https://github.com/hyattpd/Prodigal)
 * [louvain](https://sourceforge.net/projects/louvain/) (original implementation)
 
-Most of these can usually be installed with your OS's package manager.
+Most of these can usually be installed with your OS's package manager. The Python libraries can be installed with the ```requirements.txt``` file:
+
+    pip install -Ur requirements.txt
 
 ## References
 
