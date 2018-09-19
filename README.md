@@ -39,7 +39,7 @@ In addition, there are a number of optional, miscellaneous actions:
 * ```version``` : display current version number
 * ```help``` : display this (hopefully useful) help message
 
-   Please refer to the [metaTOR manual](https://github.com/koszullab/metaTOR/meta3c_manual.pdf) for detailed explanations on the parameters.
+Please refer to the [metaTOR manual](https://github.com/koszullab/metaTOR/meta3c_manual.pdf) for detailed explanations on the parameters.
 
 ## Requirements
 
@@ -53,6 +53,8 @@ In addition, there are a number of optional, miscellaneous actions:
 Most of these can usually be installed with your OS's package manager. The Python libraries can be installed with the ```requirements.txt``` file:
 
     pip install -Ur requirements.txt
+
+A dockerfile is also available if you are into that sort of thing.
 
 ## References
 
