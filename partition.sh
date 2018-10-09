@@ -32,7 +32,7 @@ locate_and_set_executable convert_executable convert louvain
 locate_and_set_executable hierarchy_executable hierarchy louvain
 
 #Sanity check: input network file. Takes the form $network_dir/network.txt if generated from alignment.sh
-if [ ! -f $network_file ]; then
+if [ ! -f "$network_file" ]; then
   echo >&2 "Network file not found. Aborting."
   exit 1
 fi
@@ -44,7 +44,7 @@ mkdir -p "$tmp_dir"
 
 #Convert network into binary files for Louvain to work on
 if [ ! -f "${tmp_dir}"/tmp_"${project}".bin ] && [ ! -f "${tmp_dir}"/tmp_"${project}".weights ]; then
-  "$convert_executable" -i $network_file -o "${tmp_dir}"/tmp_"${project}".bin -w "${tmp_dir}"/tmp_"${project}".weights
+  "$convert_executable" -i "$network_file" -o "${tmp_dir}"/tmp_"${project}".bin -w "${tmp_dir}"/tmp_"${project}".weights
 fi
 
 #First, perform Louvain iterations on graphs
@@ -124,7 +124,7 @@ rm -f "${partition_dir}"/partition/regression_louvain_1000.txt
 
 echo "Performing iterations..."
 
-for iteration in $(seq $iterations); do
+for iteration in $(seq "$iterations"); do
   perform_iteration "$iteration"
 done
 wait
@@ -132,8 +132,8 @@ wait
 echo "Resolving partitions..."
 #We resolve partitions at different points in order to get an idea of how stable cores can get.
 for column in 1 5 10 20 30 40 50 60 70 80 90 100 150 200 500 1000 $iterations; do
-  if [ $iterations -ge $column ]; then
-    resolve_partition $column
+  if [ "$iterations" -ge "$column" ]; then
+    resolve_partition "$column"
   fi
 done
 
@@ -149,7 +149,7 @@ wait
 
 echo "Cleaning up..."
 
-if [ $clean_up -eq 1 ]; then
+if [ "$clean_up" -eq 1 ]; then
   rm "${tmp_dir}"/tmp_"${project}".weights
   rm "${tmp_dir}"/tmp_"${project}"_*.tree
   rm "${tmp_dir}"/output_louvain_"${project}"_*.txt

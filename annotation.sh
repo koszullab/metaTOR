@@ -31,7 +31,7 @@ mkdir -p "${assembly_dir}"
 
 new_assembly_name=${project}_${size_contig_threshold}.fa
 
-if [ ! -f $new_assembly_name ]; then
+if [ ! -f "$new_assembly_name" ]; then
   python "$current_dir"/fasta_utils.py --input "$assembly" --output "${assembly_dir}"/"${new_assembly_name}" --threshold "${size_contig_threshold}"
 fi
 
@@ -50,7 +50,7 @@ function annotate() {
   "$hmmsearch_executable" "${model_dir}"/"${modele}".hmm "${annotation_dir}"/"${project}"_prot_renamed.fa >"${annotation_dir}"/HMM/"${modele}".out
 
   grep "__gene" "${annotation_dir}"/HMM/"${modele}".out |
-    awk -v evalue=$evalue 'NF > 7 && $1 < evalue { print $9 }' |
+    awk -v evalue="$evalue" 'NF > 7 && $1 < evalue { print $9 }' |
     sed 's/\(__gene.*\)$//' |
     sort -d >"${annotation_dir}"/HMM/"${modele}"_hit_sorted.txt
 

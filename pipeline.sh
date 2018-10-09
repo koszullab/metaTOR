@@ -37,7 +37,7 @@ python -c "import Bio" >/dev/null 2>&1 || {
 }
 echo "OK."
 
-if [ $minimap2 -eq 1 ]; then
+if [ "$minimap2" -eq 1 ]; then
   aligner="minimap2"
 else
   aligner="bowtie2"

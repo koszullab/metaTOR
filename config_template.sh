@@ -33,7 +33,7 @@ export working_dir
 
 ## Third-party folders
 
-#Third-party tools folder. Normally contains louvain, pplacer and skewer. The pipeline will also look there for any tools that it can't find by other methods.
+#Third-party tools folder. Normally contains louvain. The pipeline will also look there for any tools that it can't find by other methods.
 tools_dir=${working_dir}/tools
 export tools_dir
 

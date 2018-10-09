@@ -1,5 +1,5 @@
-#!/usr/bin/env python
-# coding:utf-8
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
 """
 Extract bin data and figures from partitions, namely:
@@ -65,7 +65,7 @@ def extract_subnetworks(
 
         return subnetwork
 
-    def draw(subnetwork, filename, norm="frag"):
+    def draw(subnetwork, filename):
 
         try:
             # Numpy array format
@@ -142,11 +142,9 @@ def extract_subnetworks(
         nonzero_indices, = np.nonzero(network_to_keep)
         global_network_indices_list += nonzero_indices.tolist()
 
-        subnetwork_file = os.path.join(
-            output_dir, "subnetwork_core_{}.dat".format(i)
-        )
+        subnetwork_file = os.path.join(output_dir, f"subnetwork_core_{i}.dat")
 
-        image_name = os.path.join(output_dir, "core_{}.eps".format(i))
+        image_name = os.path.join(output_dir, f"core_{i}.eps")
 
         extract_and_draw(
             network_to_keep=network_to_keep,
@@ -171,8 +169,8 @@ def extract_fasta(
         record.id: record.seq for record in SeqIO.parse(fasta_file, "fasta")
     }
 
-    data_chunks = zip(
-        *np.genfromtxt(partition_file, usecols=(0, 1), dtype=None)
+    data_chunks = list(
+        zip(*np.genfromtxt(partition_file, usecols=(0, 1), dtype=None))
     )
 
     chunk_names = np.array(data_chunks[0], dtype=object)
@@ -181,7 +179,7 @@ def extract_fasta(
         if core > max_cores:
             continue
         chunks_to_keep = chunk_names[cores == core]
-        core_name = "core_{}.fa".format(core)
+        core_name = f"core_{core}.fa"
 
         core_file = os.path.join(output_dir, core_name)
 
@@ -198,8 +196,8 @@ def extract_fasta(
 
                 sequence = str(genome[header_name][pos_start:pos_end])
 
-                core_handle.write(">{}\n".format(name))
-                core_handle.write("{}\n".format(sequence))
+                core_handle.write(f">{name}\n")
+                core_handle.write(f"{sequence}\n")
 
 
 def merge_fasta(fasta_file, output_dir):
@@ -244,7 +242,7 @@ def merge_fasta(fasta_file, output_dir):
     #   Identify consecutive ranges and merge them
     new_genome = dict()
     for _, g in itertools.groupby(enumerate(sorted_ids), consecutiveness):
-        chunk_range = itertools.imap(operator.itemgetter(1), g)
+        chunk_range = map(operator.itemgetter(1), g)
         first_chunk = next(chunk_range)
         my_sequence = genome[first_chunk]
         my_chunk = None
@@ -261,19 +259,19 @@ def merge_fasta(fasta_file, output_dir):
             last_chunk_id = ""
 
         if last_chunk_id:
-            new_chunk_id = "{}_{}".format(first_chunk, last_chunk_id)
+            new_chunk_id = f"{first_chunk}_{last_chunk_id}"
         else:
             new_chunk_id = first_chunk
         new_genome[new_chunk_id] = my_sequence
 
     #   Write the result
     base_name = ".".join(os.path.basename(fasta_file).split(".")[:-1])
-    output_name = "{}_merged.fa".format(base_name)
+    output_name = f"{base_name}_merged.fa"
     merged_core_file = os.path.join(output_dir, output_name)
     with open(merged_core_file, "w") as output_handle:
         for my_id in sorted(new_genome, key=chunk_lexicographic_order):
-            output_handle.write(">{}\n".format(my_id))
-            output_handle.write("{}\n".format(new_genome[my_id]))
+            output_handle.write(f">{my_id}\n")
+            output_handle.write(f"{new_genome[my_id]}\n")
 
 
 def main():

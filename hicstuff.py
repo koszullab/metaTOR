@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 """
@@ -352,7 +352,7 @@ def normalize_dense(M, norm="frag", order=1, iterations=3):
     floatorder = np.float64(order)
 
     if norm == "SCN":
-        for iteration in range(0, iterations):
+        for _ in range(0, iterations):
 
             sumrows = s.sum(axis=1)
             maskrows = (sumrows != 0)[:, None] * (sumrows != 0)[None, :]
@@ -377,7 +377,7 @@ def normalize_dense(M, norm="frag", order=1, iterations=3):
             return normalize_dense(M, order=order, iterations=iterations)
 
     elif norm == "frag":
-        for iteration in range(1, iterations):
+        for _ in range(1, iterations):
             s_norm_x = np.linalg.norm(s, ord=floatorder, axis=0)
             s_norm_y = np.linalg.norm(s, ord=floatorder, axis=1)
             s_norm = np.tensordot(s_norm_x, s_norm_y, axes=0)
@@ -408,7 +408,7 @@ def normalize_sparse(M, norm="frag", order=1, iterations=3):
         return normalize_dense(M.todense())
     r = csr_matrix(M)
     if norm == "SCN":
-        for iteration in range(1, iterations):
+        for _ in range(1, iterations):
             row_sums = np.array(r.sum(axis=1)).flatten()
             col_sums = np.array(r.sum(axis=0)).flatten()
             row_indices, col_indices = r.nonzero()
@@ -667,7 +667,7 @@ def from_structure(structure):
             p = PDB.PDBParser()
             structure = p.get_structure('S', structure)
         if isinstance(structure, PDB.Structure.Structure):
-            for chain in structure.get_chains():
+            for _ in structure.get_chains():
                 atoms = [np.array(atom.get_coord())
                          for atom in structure.get_atoms()]
     except ImportError:
@@ -701,7 +701,7 @@ def largest_connected_component(matrix):
         print("I found " + str(n) + " connected components.")
         component_dist = collections.Counter(components)
         print("Distribution of components: " + str(component_dist))
-        most_common, n_most_common = component_dist.most_common(1)[0]
+        most_common, _ = component_dist.most_common(1)[0]
         ilcc = (components == most_common)
         return matrix[:, ilcc][ilcc]
 
@@ -944,7 +944,7 @@ def pdb_to_structure(filename):
         raise
     p = PDB.PDBParser()
     structure = p.get_structure('S', filename)
-    for chain in structure.get_chains():
+    for _ in structure.get_chains():
         atoms = [np.array(atom.get_coord()) for atom in structure.get_atoms()]
     return atoms
 
@@ -1026,7 +1026,7 @@ def rippe_parameters(matrix, positions, lengths=None, init=None, circ=False):
     """Estimate parameters from the model described in Rippe et al., 2001.
     """
 
-    n, m = matrix.shape
+    n, _ = matrix.shape
 
     if lengths is None:
         lengths = np.abs(np.diff(positions))

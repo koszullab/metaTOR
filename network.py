@@ -1,5 +1,5 @@
-#!/usr/bin/env python
-# coding:utf-8
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
 """
 General utility functions for handling BAM files and generating 3C networks.
@@ -89,7 +89,7 @@ def alignment_to_contacts(
             else:
                 size = length % chunk_size
 
-            chunk_name = "{}_{}".format(record.id, i)
+            chunk_name = f"{record.id}_{i}"
             chunk_complete_data[chunk_name] = {
                 "id": global_id,
                 "hit": 0,
@@ -108,7 +108,7 @@ def alignment_to_contacts(
         names = alignment_merged_handle.references
         lengths = alignment_merged_handle.lengths
         names_and_lengths = {
-            name: length for name, length in itertools.izip(names, lengths)
+            name: length for name, length in zip(names, lengths)
         }
 
         logger.info("Reading contacts...")
@@ -150,8 +150,9 @@ def alignment_to_contacts(
                 assert read_name_forward == read_name_reverse
             except AssertionError:
                 logger.error(
-                    "Reads don't have the same name: "
-                    "{} and {}".format(read_name_forward, read_name_reverse)
+                    "Reads don't have the same name: " "%s and %s",
+                    read_name_forward,
+                    read_name_reverse,
                 )
                 raise
 
@@ -217,16 +218,8 @@ def alignment_to_contacts(
                 chunk_forward = position_forward // chunk_size
                 chunk_reverse = position_reverse // chunk_size
 
-                chunk_name_forward = "{}_{}".format(
-                    contig_name_forward, chunk_forward
-                )
-                chunk_name_reverse = "{}_{}".format(
-                    contig_name_reverse, chunk_reverse
-                )
-
-                # print("Detected contact between "
-                #       "{} and {}".format(chunk_name_forward,
-                #                          chunk_name_reverse))
+                chunk_name_forward = f"{contig_name_forward}_{chunk_forward}"
+                chunk_name_reverse = f"{contig_name_reverse}_{chunk_reverse}"
 
                 if self_contacts or chunk_name_forward != chunk_name_reverse:
 
@@ -236,22 +229,12 @@ def alignment_to_contacts(
 
                     all_contacts[contact] += 1
 
-                    # print("I add {} of"
-                    #       " size {} to"
-                    #       " my chunk "
-                    #       "dictionary".format(chunk_name_forward,
-                    #                           current_chunk_forward_size))
                     chunk_key_forward = (
                         chunk_name_forward,
                         current_chunk_forward_size,
                     )
                     all_chunks[chunk_key_forward] += 1
 
-                    # print("I add {} of"
-                    #       " size {} to"
-                    #       " my chunk "
-                    #       "dictionary".format(chunk_name_reverse,
-                    #                           current_chunk_reverse_size))
                     chunk_key_reverse = (
                         chunk_name_reverse,
                         current_chunk_reverse_size,
@@ -286,9 +269,7 @@ def alignment_to_contacts(
                 raise
 
             idx = chunk_complete_data[name]["id"]
-            line = "{}\t{}\t{}\t{}\t{}\n".format(
-                idx, name, hit, size, coverage
-            )
+            line = f"{idx}\t{name}\t{hit}\t{size}\t{coverage}\n"
             chunk_data_file_handle.write(line)
 
     # Lastly, generate the network proper
@@ -315,10 +296,10 @@ def alignment_to_contacts(
             try:
                 idx1 = chunk_complete_data[chunk_name1]["id"]
                 idx2 = chunk_complete_data[chunk_name2]["id"]
-                line = "{}\t{}\t{}\n".format(idx1, idx2, effective_count)
+                line = f"{idx1}\t{idx2}\t{effective_count}\n"
                 network_file_handle.write(line)
             except KeyError as e:
-                logger.warning("Mismatch detected: {}".format(e))
+                logger.warning("Mismatch detected: %s", e)
 
     return chunk_complete_data, all_contacts
 
@@ -348,7 +329,7 @@ def merge_networks(output_file="merged_network.txt", *files):
         for index_pair in sorted_contacts:
             id_a, id_b = index_pair
             n_contacts = contacts[index_pair]
-            output_handle.write("{}\t{}\t{}\n".format(id_a, id_b, n_contacts))
+            output_handle.write(f"{id_a}\t{id_b}\t{n_contacts}\n")
 
 
 def merge_chunk_data(output_file="merged_idx_contig_hit_size_cov.txt", *files):
@@ -382,9 +363,7 @@ def merge_chunk_data(output_file="merged_idx_contig_hit_size_cov.txt", *files):
                 my_chunk["cov"],
             )
 
-            my_line = "{}\t{}\t{}\t{}\t{}".format(
-                chunk_id, name, hit, size, cov
-            )
+            my_line = f"{chunk_id}\t{name}\t{hit}\t{size}\t{cov}"
             output_handle.write(my_line)
 
 
@@ -393,7 +372,7 @@ def alignment_to_reads(
     output_dir,
     parameters=DEFAULT_PARAMETERS,
     save_memory=True,
-    *bin_fasta
+    *bin_fasta,
 ):
     """Extract reads found to be mapping an input FASTA bin.
     If one read maps, the whole pair is extracted and written
@@ -443,9 +422,7 @@ def alignment_to_reads(
 
         base_name = ".".join(os.path.basename(bin_file).split(".")[:-1])
 
-        output_path = os.path.join(
-            output_dir, "{}.readnames".format(base_name)
-        )
+        output_path = os.path.join(output_dir, f"{base_name}.readnames")
 
         return output_path
 
@@ -468,7 +445,7 @@ def alignment_to_reads(
                 chunk_position = relative_position // chunk_size
 
                 # The 'chunk name' is used to detect macthing positions
-                chunk_name = "{}_{}".format(contig_name, chunk_position)
+                chunk_name = f"{contig_name}_{chunk_position}"
 
                 # But such matching positions have to map acceptably
                 quality_test = my_alignment.mapping_quality > mapq_threshold
@@ -484,7 +461,7 @@ def alignment_to_reads(
                                 output_handle = open(output_path, "w")
                                 opened_files[bin_file] = output_handle
 
-                            output_handle.write("@{}\n".format(my_read_name))
+                            output_handle.write(f"@{my_read_name}\n")
 
                         else:
                             try:
@@ -513,12 +490,8 @@ def retrieve_reads_from_fastq(
 
         base_name = ".".join(os.path.basename(bin_file).split(".")[:-1])
 
-        for_fastq_path = os.path.join(
-            output_dir, "{}_for.fastq".format(base_name)
-        )
-        rev_fastq_path = os.path.join(
-            output_dir, "{}_rev.fastq".format(base_name)
-        )
+        for_fastq_path = os.path.join(output_dir, f"{base_name}_for.fastq")
+        rev_fastq_path = os.path.join(output_dir, f"{base_name}_rev.fastq")
 
         return for_fastq_path, rev_fastq_path
 
@@ -535,7 +508,7 @@ def retrieve_reads_from_fastq(
             forward_fastq_iterator = FastqGeneralIterator(forward_handle)
             reverse_fastq_iterator = FastqGeneralIterator(reverse_handle)
 
-            for read_for, read_rev in itertools.izip(
+            for read_for, read_rev in zip(
                 forward_fastq_iterator, reverse_fastq_iterator
             ):
 
@@ -563,8 +536,8 @@ def retrieve_reads_from_fastq(
                             output_for_handle = open(for_fastq_path, "w")
                             opened_files[for_fastq_path] = output_for_handle
 
-                        line_for = "@{}\n{}\n+\n{}\n".format(
-                            name_for, sequence_for, quality_for
+                        line_for = (
+                            f"@{name_for}\n{sequence_for}\n+\n{quality_for}\n"
                         )
                         output_for_handle.write(line_for)
 
@@ -574,8 +547,8 @@ def retrieve_reads_from_fastq(
                             output_rev_handle = open(rev_fastq_path, "w")
                             opened_files[rev_fastq_path] = output_rev_handle
 
-                        line_rev = "@{}\n{}\n+\n{}\n".format(
-                            name_rev, sequence_rev, quality_rev
+                        line_rev = (
+                            f"@{name_rev}\n{sequence_rev}\n+\n{quality_rev}\n"
                         )
                         output_rev_handle.write(line_rev)
 
@@ -630,10 +603,10 @@ def retrieve_reads_contig_wise(sam_merged, contig_data, output_dir):
 
                     if len(my_read_set) > 2:
                         logger.warning(
-                            "Something's gone wrong with read set {}, as "
-                            "there are {} of them".format(
-                                my_read_name, len(my_read_set)
-                            )
+                            "Something's gone wrong with read set %s, as "
+                            "there are %s of them",
+                            my_read_name,
+                            len(my_read_set),
                         )
                     elif len(my_read_set) == 0:
                         my_read_set[my_seq_tuple] = "forward"
@@ -647,13 +620,13 @@ def retrieve_reads_contig_wise(sam_merged, contig_data, output_dir):
                 except StopIteration:
                     if len(my_read_set) == 2:
                         for core_name in my_core_set:
-                            for my_tuple, file_id in my_read_set.iteritems():
+                            for my_tuple, file_id in my_read_set.items():
                                 if file_id == "forward":
                                     file_end = ".end1"
                                 elif file_id == "reverse":
                                     file_end = ".end2"
 
-                                basename = "{}{}".format(core_name, file_end)
+                                basename = f"{core_name}{file_end}"
                                 filename = os.path.join(output_dir, basename)
                                 try:
                                     file_to_write = opened_files[filename]
@@ -663,22 +636,20 @@ def retrieve_reads_contig_wise(sam_merged, contig_data, output_dir):
                                 except IOError:
                                     logger.error(
                                         "Error when trying to handle"
-                                        "{}. Maybe there are too many opened"
-                                        "files at once: {}".format(
-                                            filename, len(opened_files)
-                                        )
+                                        "%s. Maybe there are too many opened"
+                                        "files at once: %s",
+                                        filename,
+                                        len(opened_files),
                                     )
                                     raise
 
                                 seq, qual = my_tuple
-                                line = "@{}\n{}\n+\n{}\n".format(
-                                    my_read_name, seq, qual
-                                )
+                                line = f"@{my_read_name}\n{seq}\n+\n{qual}\n"
                                 file_to_write.write(line)
                     elif len(my_read_set) == 1:
                         for core_name in my_core_set:
                             file_end = ".end"
-                            basename = "{}{}".format(core_name, file_end)
+                            basename = f"{core_name}{file_end}"
                             filename = os.path.join(output_dir, basename)
                             try:
                                 file_to_write = opened_files[filename]
@@ -688,23 +659,21 @@ def retrieve_reads_contig_wise(sam_merged, contig_data, output_dir):
                             except IOError:
                                 logger.error(
                                     "Error when trying to handle"
-                                    "{}. Maybe there are too many opened"
-                                    "files at once: {}".format(
-                                        filename, len(opened_files)
-                                    )
+                                    "%s. Maybe there are too many opened"
+                                    "files at once: %s",
+                                    filename,
+                                    len(opened_files),
                                 )
                                 raise
                             seq, qual = my_read_set.keys()[0]
-                            line = "@{}\n{}\n+\n{}\n".format(
-                                my_read_name, seq, qual
-                            )
+                            line = f"@{my_read_name}\n{seq}\n+\n{qual}\n"
                             file_to_write.write(line)
                     else:
                         logger.warning(
-                            "Something's gone wrong with read set {}, as "
-                            "there are {} of them".format(
-                                my_read_name, len(my_read_set)
-                            )
+                            "Something's gone wrong with read set %s, as "
+                            "there are %s of them",
+                            my_read_name,
+                            len(my_read_set),
                         )
                     break
 

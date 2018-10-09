@@ -1,8 +1,8 @@
-#!/usr/bin/env python
-# coding: utf-8
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
 """
-Quickly draw figures from meta3Cbox calls.
+Quickly draw figures from metaTOR calls.
 """
 
 import matplotlib
@@ -10,7 +10,6 @@ import matplotlib
 matplotlib.use("Agg")
 
 import argparse
-import itertools
 
 import numpy as np
 
@@ -20,7 +19,7 @@ from matplotlib import pyplot as plt
 from scipy import sparse
 
 
-# Use seaborn if available, matplotlib as fallback
+# Use (prettier) seaborn if available
 SEABORN = False
 
 try:
@@ -73,10 +72,7 @@ def draw_sparse_matrix(
     try:
         row, col, data = matrix.T
     except ValueError:
-        try:
-            row, col, data = matrix
-        except ValueError:
-            raise
+        row, col, data = matrix
     size = max(np.amax(row), np.amax(col)) + 1
     S = sparse.coo_matrix((data, (row, col)), shape=(size, size))
     if max_size_matrix <= 0:
@@ -106,11 +102,11 @@ def make_barplots(sizes_file, output, intervals=DEFAULT_INTERVALS):
 
     for i in range(n):
         if intervals[i + 1] == np.inf:
-            labels.append("> {}".format(intervals[i]))
+            labels.append(f"> {intervals[i]}")
         elif intervals[i] == 0:
             labels.append("1")
         else:
-            labels.append("{} - {}".format(intervals[i], intervals[i + 1]))
+            labels.append(f"{intervals[i]} - {intervals[i + 1]}")
 
     if SEABORN:
         sns.barplot(labels, data_for_barplot)
@@ -128,7 +124,7 @@ def make_barplots(sizes_file, output, intervals=DEFAULT_INTERVALS):
 def draw_regression(sizes_file, output):
 
     try:
-        size_label = "{}".format(sizes_file.split(".")[0].split("_")[-1])
+        size_label = f"{sizes_file.split('.')[0].split('_')[-1]}"
     except ValueError:
         size_label = ""
 
@@ -144,7 +140,7 @@ def draw_regression(sizes_file, output):
     plt.xlabel("Number of iterations")
     plt.ylabel("Number of bins")
 
-    plt.title("Evolution of bins > {}".format(size_label))
+    plt.title(f"Evolution of bins > {size_label}")
     plt.savefig(output, bbox_inches="tight", pad_inches=0.0)
 
 
@@ -169,7 +165,7 @@ def draw_enrichments(output, *files):
         unweighted_sizes = np.zeros(my_total_hits)
 
         cursor = 0
-        for u, v in itertools.izip(my_size, my_hits):
+        for u, v in zip(my_size, my_hits):
             slice_size = np.int32(v)
             unweighted_sizes[cursor : cursor + slice_size] = u
             cursor += slice_size
@@ -232,9 +228,7 @@ def draw_logplots(enrichment_files, output):
     else:
         plt.loglog()
         plt.title("Bin size vs hits")
-    plt.savefig(
-        "{}_nhit.pdf".format(output), bbox_inches="tight", pad_inches=0.0
-    )
+    plt.savefig(f"{output}_nhit.pdf", bbox_inches="tight", pad_inches=0.0)
     plt.close()
 
 

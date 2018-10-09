@@ -121,7 +121,7 @@ python "$current_dir"/network.py --input "$alignment_dir"/"${project}"_merge.bam
 
 echo "Done."
 
-if [ $clean_up -eq 1 ]; then
+if [ "$clean_up" -eq 1 ]; then
   echo "Cleaning up..."
   rm "${tmp_dir}"/"${project}"_forward_raw.sam
   rm "${tmp_dir}"/"${project}"_reverse_raw.sam
