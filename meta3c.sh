@@ -292,7 +292,7 @@ BEGIN {
 
     FS = "="
 
-    parameters["project"] = ""'"$project"'"
+    parameters["project"] = "'"$project"'"
     parameters["assembly"] = "'"$assembly"'"
     parameters["fastq_for"] = "'"$fastq_for"'"
     parameters["fastq_rev"] = "'"$fastq_rev"'"
