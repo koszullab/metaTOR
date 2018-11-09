@@ -12,9 +12,10 @@
 # *viral orthologous groups (VOGs)
 
 current_dir="$(cd "$(dirname "$0")" && pwd)"
+scripts_dir="$current_dir"/../scripts
 
 # shellcheck source=config.sh
-. "$current_dir"/config.sh
+# . "$current_dir"/config.sh
 
 # shellcheck source=environment.sh
 . "$current_dir"/environment.sh
@@ -32,7 +33,7 @@ mkdir -p "${assembly_dir}"
 new_assembly_name=${project}_${size_contig_threshold}.fa
 
 if [ ! -f "$new_assembly_name" ]; then
-  python "$current_dir"/fasta_utils.py --input "$assembly" --output "${assembly_dir}"/"${new_assembly_name}" --threshold "${size_contig_threshold}"
+  python3 "$scripts_dir"/fasta_utils.py --input "$assembly" --output "${assembly_dir}"/"${new_assembly_name}" --threshold "${size_contig_threshold}"
 fi
 
 if [ ! -f "${annotation_dir}"/"${project}"_prot.fa ]; then
@@ -40,7 +41,7 @@ if [ ! -f "${annotation_dir}"/"${project}"_prot.fa ]; then
     >"${annotation_dir}"/"${project}"_prodigal.log
 fi
 
-python "$current_dir"/fasta_utils.py --proteins -i "${annotation_dir}"/"${project}"_prot.fa -o "${annotation_dir}"/"${project}"_prot_renamed.fa
+python3 "$scripts_dir"/fasta_utils.py --proteins -i "${annotation_dir}"/"${project}"_prot.fa -o "${annotation_dir}"/"${project}"_prot_renamed.fa
 grep ">" "${annotation_dir}"/"${project}"_prot_renamed.fa >"${annotation_dir}"/prot_header_renamed.fa
 
 function annotate() {
@@ -59,7 +60,9 @@ function annotate() {
 }
 
 for modele in $hmm_databases; do
-  annotate "$modele" &
+  echo $hmm_databases
+  echo $modele
+  annotate "$(basename "${modele%.hmm}")" &
 done
 
 wait

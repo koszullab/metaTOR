@@ -10,7 +10,7 @@ import argparse
 import re
 
 try:
-    from network import DEFAULT_CHUNK_SIZE
+    from metator.scripts.network import DEFAULT_CHUNK_SIZE
 except ImportError:
     DEFAULT_CHUNK_SIZE = 1000
 

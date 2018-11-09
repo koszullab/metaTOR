@@ -21,10 +21,6 @@ export fastq_for
 fastq_rev=""
 export fastq_rev
 
-#Initial preliminary assembly
-assembly=${assembly_dir}/${project}.fa
-export assembly
-
 #### Directories
 
 #Base folder for everything.
@@ -38,11 +34,12 @@ tools_dir=${working_dir}/tools
 export tools_dir
 
 #Folder containing model files used for gene prediction
-model_dir=${working_dir}/modele_HMM
+model_dir=${working_dir}/HMM_databases
 export model_dir
 
 #Folder containing general outputs. By default all outputs will be contained in that folder.
-output_dir=${working_dir}/output
+output_dir=$(pwd)
+echo "output_dir = $output_dir"
 export output_dir
 
 #Folder containing outputs related to the alignment
@@ -68,6 +65,10 @@ export annotation_dir
 #Folder containing assemblies
 assembly_dir=${output_dir}/${project}/assembly
 export assembly_dir
+
+#Initial preliminary assembly
+assembly=${assembly_dir}/${project}.fa
+export assembly
 
 #### Meta3C parameters
 
@@ -145,9 +146,9 @@ minimap2=0
 export minimap2
 
 #Basename for bowtie2 index structures
-index_name="${working_dir}"/"$(basename "${assembly%.*}")"
+index_name="$(basename "${assembly%.*}")"
 export index_name
 
 #HMM databases
-hmm_databases="conj essential VOG SGC"
+hmm_databases=$model_dir/*.hmm
 export hmm_databases

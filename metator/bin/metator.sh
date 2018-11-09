@@ -4,21 +4,21 @@
 # Théo Foutel-Rodier
 # Lyam Baudry
 
-current_version=0.1a
+current_version="0.1.1"
 last_update_date="[April 2018]"
 
 function display_help() {
   echo ""
-  echo "   metaTOR- a set of scripts that streamlines the processing and binning of metagenomic 3C datasets."
+  echo "   metaTOR - a pipeline for binning metagenomic datasets from 3C data."
   echo ""
   echo "   Written by L. Baudry, T. Foutel-Rodier and M. Marbouty (with contributions from A. Cournac and V. Scolari)"
   echo "   Spatial Genome Regulation laboratory (Institut Pasteur, Paris)"
   echo ""
   echo "   Version $current_version $last_update_date"
   echo ""
-  echo "      Usage: ./meta3c.sh {align|partition|annotation|binning|pipeline} [parameters]"
+  echo "      Usage: metator {align|partition|annotation|binning|pipeline} [parameters]"
   echo ""
-  echo "      A metaTOR command takes the form './meta3c.sh action --param1 arg1 --param2 arg2' etc."
+  echo "      A metaTOR command takes the form 'metator action --param1 arg1 --param2 arg2' etc."
   echo ""
   echo "      There are four actions or steps in the meta3c pipeline. They must be run in this order:"
   echo ""
@@ -43,7 +43,7 @@ function display_help() {
   echo "          -version: display current version number"
   echo "          -help: display this (hopefully useful) help message"
   echo ""
-  echo "      Please refer to the meta3Cbox manual for detailed explanations on the parameters."
+  echo "      Please refer to the metaTOR manual for detailed explanations on the parameters."
   echo ""
   echo "   Contact: lyam.baudry@pasteur.fr or romain.koszul@pasteur.fr"
   echo ""
@@ -52,39 +52,52 @@ function display_help() {
 
 function fetch_dependencies() {
 
-  hmm_url="http://dl.pasteur.fr/fop/5eHgTGww/modele_HMM.tar.gz"
-  louvain_url="https://sourceforge.net/projects/louvain/files/louvain-generic.tar.gz"
-
-  echo "Fetching Louvain software..."
-  wget $louvain_url
-  mv louvain-generic.tar.gz "$tools_dir"
+  set -e
+  hmm_url="http://dl.pasteur.fr/fop/LItxiFe9/hmm_databases.tgz"
+  prodigal_base="https://github.com/hyattpd/Prodigal/releases/download/v2.6.3/prodigal"
 
   cd "$tools_dir" || {
     echo "Could not access ${tools_dir}. Aborting."
     exit 1
   }
 
-  tar -xzvf louvain-generic.tar.gz
-  mv louvain-generic louvain
-  cd louvain || {
-    echo "Could not access louvain directory. Aborting."
+  if [[ "$OSTYPE" == "linux"* ]]; then
+    prodigal_url="$prodigal_base.linux"
+    louvain_url="https://lip6.github.io/Louvain-BinaryBuild/louvain_linux.tar.gz"
+  elif [[ "$OSTYPE" == "darwin"* ]]; then
+    louvain_url="https://github.com/lip6/Louvain-BinaryBuilds/raw/osx/louvain_osx.tar.gz"
+    prodigal_url="$prodigal_base.osx.10.9.5"
+  elif [[ "$OSTYPE" == "cygwin" || "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+    louvain_url="https://ci.appveyor.com/api/projects/yanntm/Louvain-BinaryBuild/artifacts/website/louvain_windows.tar.gz"
+    prodigal_url="$prodigal_base.windows.exe"
+  else
+    echo "Your OS is not supported."
+    echo "Please download Louvain and prodigal at the following urls:"
+    echo "   -https://sourceforge.net/projects/louvain/files/louvain-generic.tar.gz"
+    echo "   -https://github.com/hyattpd/Prodigal"
+    echo "and compile them before moving them into your $tools_dir directory."
     exit 1
-  }
-  make -j "$threads"
-  cd ..
-  rm -f louvain-generic.tar.gz
-  cd "$current_dir" || {
-    echo "Could not access ${current_dir}. Aborting."
-    exit 1
-  }
-  echo "OK."
+  fi
+
+  echo "Fetching prodigal..."
+  wget -q $prodigal_url -O "$tools_dir/prodigal"
+  chmod +x "$tools_dir/prodigal"
+
+  echo "Fetching louvain..."
+  mkdir -p "$tools_dir/louvain"
+  wget -q $louvain_url -O "$tools_dir/louvain/louvain.tar.gz"
+  tar -xzf "$tools_dir/louvain/louvain.tar.gz" -C "$tools_dir/louvain"
+  chmod +x $tools_dir/louvain/*
+  rm -f "$tools_dir/louvain/louvain.tar.gz"
 
   echo "Fetching HMMs..."
-  wget $hmm_url
-  tar -xzvf modele_HMM.tar.gz
-  mv modele_HMM "$model_dir"
-  rm -f modele_HMM.tar.gz
-  echo "OK"
+  mkdir -p "$model_dir"
+  wget -q $hmm_url -O "$model_dir"/hmm_databases.tgz
+  tar -xzf "$model_dir"/hmm_databases.tgz -C "$model_dir"
+  rm -f "$model_dir"/hmm_databases.tar.gz
+
+  echo "All dependencies successfully installed in $tools_dir."
+  set +e
 }
 
 #Parse a bunch of arguments for the entirety of the pipeline.
@@ -235,7 +248,7 @@ while [[ $# -gt 0 ]]; do
     shift
     ;;
   -H | --hmm-databases)
-    hmm_database="$2"
+    hmm_databases="$2"
     shift
     shift
     ;;
@@ -274,14 +287,14 @@ current_dir="$(cd "$(dirname "$0")" && pwd)"
 #This sets the appropriate script to launch with all these parameters, e.g. ./meta3c.sh action --blabla 4 --blibli 6 --etc
 mode=$1
 
-if [ ! -f "$current_dir"/config.sh ]; then
+if [ ! -f config.sh ]; then
   echo "Config file not detected, generating one from template."
-  cp "$current_dir"/config_template.sh "$current_dir"/config_current.sh
+  cp "$current_dir"/config_template.sh config_current.sh
 elif [ "$reset" -eq 1 ]; then
   echo "Resetting config file from template."
-  cp "$current_dir"/config_template.sh "$current_dir"/config_current.sh
+  cp "$current_dir"/config_template.sh config_current.sh
 else
-  cp "$current_dir"/config.sh "$current_dir"/config_current.sh
+  cp config.sh config_current.sh
 fi
 
 #We write all these custom parameters into a config file that's called at the beginning of every script you run. This is because some parameters are dependent on others (e.g. if you specify output_dir you probably want network_dir, partition_dir etc. to all depend on output_dir unless explicited otherwise). Parameters that aren't specified are left alone and untouched from config_template.sh (which contains the defaults). It's a bit dirty but it works.
@@ -315,7 +328,7 @@ BEGIN {
     parameters["mapping_quality_threshold"] = "'"$mapping_quality_threshold"'"
     parameters["evalue"] = "'"$evalue"'"
     parameters["overlapping_score"] = "'"$overlapping_score"'"
-    parameters["hmm_database"] = "'"$hmm_database"'"
+    parameters["hmm_databases"] = "'"$hmm_databases"'"
     parameters["norm"] = "'"$norm"'"
     parameters["n_bins"] = "'"$n_bins"'"
     parameters["iterations"] = "'"$iterations"'"
@@ -354,7 +367,9 @@ END {
 
 }
 
-' "$current_dir"/config_current.sh | sed 's/\/$//g' >"$current_dir"/config.sh
+' config_current.sh | sed 's/\/$//g' >config.sh
+
+. config.sh
 
 #A mode (or action) is usually just a specific script to run with the above config file.
 case $mode in

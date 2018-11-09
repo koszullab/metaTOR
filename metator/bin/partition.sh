@@ -15,12 +15,26 @@
 #instead.
 
 current_dir="$(cd "$(dirname "$0")" && pwd)"
+scripts_dir="$current_dir"/../scripts
 
 # shellcheck source=config.sh
-. "$current_dir"/config.sh
+# . "$current_dir"/config.sh
 
 # shellcheck source=environment.sh
 . "$current_dir"/environment.sh
+
+# OS detection to choose 'distance' executable
+if [[ "$OSTYPE" == "linux"* ]]; then
+  distance="distance"
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+  distance="distance_OSX"
+elif [[ "$OSTYPE" == "cygwin" || "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+  distance="distance_win"
+else
+  echo "Warning, your OS is not supported. This means the prebuilt distance binary will likely fail to run."
+  echo "The original source file is found at $current_dir/distance.go, please build it yourself at the same location."
+  distance="distance"
+fi
 
 #Default locations
 louvain_executable="$tools_dir"/louvain/louvain
@@ -66,10 +80,10 @@ function resolve_partition() {
   local repet=$1
 
   #Merge all Louvain outputs
-  paste "$(printf "${partition_dir}/iteration/%s.community " $(seq 1 "$repet"))" >"${tmp_dir}"/"${project}"_iterations_"${repet}".txt
+  paste $(printf "${partition_dir}/iteration/%s.community " $(seq 1 "$repet")) >"${tmp_dir}"/"${project}"_iterations_"${repet}".txt
 
   #Identify bins and sort them
-  ./distance -m cores -i "${tmp_dir}"/"${project}"_iterations_"${repet}".txt |
+  "$working_dir"/$distance -m cores -i "${tmp_dir}"/"${project}"_iterations_"${repet}".txt |
     sort -nr -k1,1 --parallel="$threads" |
     cat -n \
       >"${partition_dir}"/partition/core_size_indices_"${repet}".txt
@@ -114,7 +128,7 @@ function resolve_partition() {
     }
   ' "${tmp_dir}"/"${project}"_sizes_"${repet}".txt
 
-  python figures.py --barplots "${tmp_dir}"/"${project}"_sizes_"${repet}".txt -o "${partition_dir}"/partition/repartition_"${repet}".pdf
+  python3 "$scripts_dir"/figures.py --barplots "${tmp_dir}"/"${project}"_sizes_"${repet}".txt -o "${partition_dir}"/partition/repartition_"${repet}".pdf
 
 }
 
@@ -142,7 +156,7 @@ wait
 echo "Drawing some figures..."
 
 for u in 100 500 1000; do
-  python "$current_dir"/figures.py --plots "${partition_dir}"/partition/regression_louvain_"${u}".txt -o "${partition_dir}"/partition/regression_"${u}".pdf &
+  python3 "$scripts_dir"/figures.py --plots "${partition_dir}"/partition/regression_louvain_"${u}".txt -o "${partition_dir}"/partition/regression_"${u}".pdf &
 done
 
 wait

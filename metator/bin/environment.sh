@@ -66,7 +66,7 @@ function locate_and_set_executable() {
     fi
 
   else
-    echo "I couldn't locate $_exec in any way."
+    echo "Error! I couldn't locate $_exec in any way. Please verify that it is in your \$PATH or specify a folder with the --tools-dir option."
     exit 1
   fi
 }

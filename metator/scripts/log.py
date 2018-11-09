@@ -13,7 +13,7 @@ from logging import FileHandler
 
 # Log level is modified by other modules according to the entry (user set)
 # value
-CURRENT_LOG_LEVEL = logging.DEBUG
+CURRENT_LOG_LEVEL = logging.INFO
 
 logging.captureWarnings(True)
 
@@ -37,6 +37,6 @@ errorfile_handler.setFormatter(logfile_formatter)
 logger.addHandler(errorfile_handler)
 
 stream_handler = logging.StreamHandler()
-stream_handler.setLevel(logging.DEBUG)
+stream_handler.setLevel(CURRENT_LOG_LEVEL)
 stream_handler.setFormatter(stdout_formatter)
 logger.addHandler(stream_handler)

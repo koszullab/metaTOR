@@ -1,18 +1,15 @@
 # metaTOR
 
+[![License: Artistic-2.0](https://img.shields.io/badge/License-GPL%203-0298c3.svg)](https://opensource.org/licenses/GPL-3.0)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black)
+
 Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that streamlines the processing and binning of metagenomic 3C datasets.
-
-Written by L. Baudry, T. Foutel-Rodier and M. Marbouty (with contributions from A. Cournac and V. Scolari)
-
-*[Spatial Regulation of Genomes](https://research.pasteur.fr/en/team/spatial-regulation-of-genomes/)* (Institut Pasteur, Paris)
-
-Version 0.1c [September 2018]
 
 ## Usage
 
-    ./meta3c.sh {align|partition|annotation|binning} [parameters]
+    metator {align|partition|annotation|binning} [parameters]
 
-A metaTOR command takes the form ```./meta3c.sh action --param1 arg1 --param2
+A metaTOR command takes the form ```metator action --param1 arg1 --param2
 arg2 #etc.```
 
 There are four actions or steps in the meta3c pipeline. They must be run in this order:
@@ -41,6 +38,12 @@ In addition, there are a number of optional, miscellaneous actions:
 
 Please refer to the [metaTOR manual](https://github.com/koszullab/metaTOR/meta3c_manual.pdf) for detailed explanations on the parameters.
 
+## Installation
+
+```sh
+   sudo pip3 install -e git+https://github.com/koszullab/metator.git@master#egg=metator
+```
+
 ## Requirements
 
 * Python with ```numpy```, ```scipy```, ```matplotlib```, ```biopython``` and ```pysam``` libraries
@@ -52,7 +55,9 @@ Please refer to the [metaTOR manual](https://github.com/koszullab/metaTOR/meta3c
 
 Most of these can usually be installed with your OS's package manager. The Python libraries can be installed with the ```requirements.txt``` file:
 
+```sh
     pip install -Ur requirements.txt
+```
 
 A dockerfile is also available if you are into that sort of thing.
 
@@ -63,7 +68,13 @@ A dockerfile is also available if you are into that sort of thing.
 
 ## Contact
 
+### Authors
+
 * lyam.baudry@pasteur.fr
 * thfoutel@pasteur.fr
 * martial.marbouty@pasteur.fr
 * romain.koszul@pasteur.fr
+
+### Research lab
+
+[Spatial Regulation of Genomes](https://research.pasteur.fr/en/team/spatial-regulation-of-genomes/) (Institut Pasteur, Paris)

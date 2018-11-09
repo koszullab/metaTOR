@@ -11,6 +11,6 @@ ADD *.* /data/
 
 RUN pip3 install -Ur requirements.txt
 
-RUN ./meta3c.sh dependencies
+RUN metator dependencies
 
 ENTRYPOINT ["./meta3c.sh"]

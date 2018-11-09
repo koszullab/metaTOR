@@ -8,6 +8,8 @@ Extract bin data and figures from partitions, namely:
 Also draws the subnetwork in adjacency matrix form
 """
 
+from __future__ import absolute_import
+
 import numpy as np
 from scipy import sparse
 from scipy import stats
@@ -16,15 +18,15 @@ import os
 import argparse
 import itertools
 import operator
-import hicstuff as hcs
+from metator.scripts import hicstuff as hcs
 
-from log import logger
+from metator.scripts.log import logger
 
-from figures import spaceless_pdf_plot_maker
+from metator.scripts.figures import spaceless_pdf_plot_maker
 
-from network import DEFAULT_CHUNK_SIZE
-from figures import DEFAULT_MAX_SIZE_MATRIX
-from figures import DEFAULT_SATURATION_THRESHOLD
+from metator.scripts.network import DEFAULT_CHUNK_SIZE
+from metator.scripts.figures import DEFAULT_MAX_SIZE_MATRIX
+from metator.scripts.figures import DEFAULT_SATURATION_THRESHOLD
 
 DEFAULT_MAX_CORES = 100
 

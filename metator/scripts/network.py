@@ -18,7 +18,7 @@ import operator
 from Bio import SeqIO
 from Bio.SeqIO.QualityIO import FastqGeneralIterator
 from Bio.Seq import Seq
-from log import logger
+from metator.scripts.log import logger
 
 DEFAULT_SIZE_CHUNK_THRESHOLD = 500
 DEFAULT_MAPQ_THRESHOLD = 10
@@ -807,7 +807,8 @@ def main():
 
     else:
 
-        my_assembly, = reference_file
+        my_assembly, _ = reference_file
+
         alignment_to_contacts(
             sam_merged=merged_file,
             assembly=my_assembly,

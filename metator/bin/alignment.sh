@@ -14,9 +14,10 @@
 #can be compressed.
 
 current_dir="$(cd "$(dirname "$0")" && pwd)"
+scripts_dir="$current_dir"/../scripts
 
 # shellcheck source=config.sh
-. "$current_dir"/config.sh
+# . "$current_dir"/config.sh
 
 # shellcheck source=environment.sh
 . "$current_dir"/environment.sh
@@ -117,7 +118,7 @@ if [ "$norm" -eq 1 ]; then
   normalize='--normalize'
 fi
 
-python "$current_dir"/network.py --input "$alignment_dir"/"${project}"_merge.bam --output "${network_dir}" --map-quality "$mapping_quality_threshold" --chunk-size "$chunk_size" --read-size $((read_size / 2)) --size-chunk-threshold "$size_chunk_threshold" --reference "$assembly_dir"/"${project}"_assembly_raw.fa "$normalize"
+python3 "$scripts_dir"/network.py --input "$alignment_dir"/"${project}"_merge.bam --output "${network_dir}" --map-quality "$mapping_quality_threshold" --chunk-size "$chunk_size" --read-size $((read_size / 2)) --size-chunk-threshold "$size_chunk_threshold" --reference "$assembly_dir"/"${project}"_assembly_raw.fa "$normalize"
 
 echo "Done."
 

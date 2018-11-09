@@ -14,7 +14,7 @@ import argparse
 import numpy as np
 
 import matplotlib.backends.backend_pdf
-import hicstuff as hcs
+from metator.scripts import hicstuff as hcs
 from matplotlib import pyplot as plt
 from scipy import sparse
 

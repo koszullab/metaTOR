@@ -17,26 +17,6 @@ current_dir="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=environment.sh
 . "$current_dir"/environment.sh
 
-printf "Checking python is there..."
-there_is python
-echo "OK."
-
-for lib in numpy scipy pysam matplotlib; do
-  printf "Checking %s is there..." "$lib"
-  python -c "import $lib" >/dev/null 2>&1 || {
-    echo "Error! $lib is missing from your python libraries. Please install it (using either your package manager or pip)"
-    exit 1
-  }
-  echo "OK."
-done
-
-printf "Checking biopython is there..."
-python -c "import Bio" >/dev/null 2>&1 || {
-  echo "Error! Biopython is missing from your python libraries. Please install it (using either your package manager or pip)"
-  exit 1
-}
-echo "OK."
-
 if [ "$minimap2" -eq 1 ]; then
   aligner="minimap2"
 else

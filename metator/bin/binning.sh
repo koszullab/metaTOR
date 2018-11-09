@@ -8,9 +8,10 @@
 #and FASTA files.
 
 current_dir="$(cd "$(dirname "$0")" && pwd)"
+scripts_dir="$current_dir"/../scripts
 
 # shellcheck source=config.sh
-. "$current_dir"/config.sh
+# . "$current_dir"/config.sh
 
 # shellcheck source=environment.sh
 . "$current_dir"/environment.sh
@@ -46,8 +47,8 @@ function annotation_distribution() {
     }
     ' "${partition_dir}"/figures/iteration"$iter"/data/total_core_size_hit.txt "${partition_dir}"/figures/iteration"$iter"/data/"$modele"_core_size_hit.txt >"${partition_dir}"/figures/iteration"$iter"/data/"$modele"_core_size_proportional_hit.txt
 
-  python "$current_dir"/figures.py --logplots "${partition_dir}"/figures/iteration"$iter"/data/"$modele"_core_size_proportional_hit.txt --output "${partition_dir}"/figures/iteration"$iter"/"$modele"_proportional
-  python "$current_dir"/figures.py --logplots "${partition_dir}"/figures/iteration"$iter"/data/"$modele"_core_size_hit.txt --output "${partition_dir}"/figures/iteration"$iter"/"$modele"
+  python3 "$scripts_dir"/figures.py --logplots "${partition_dir}"/figures/iteration"$iter"/data/"$modele"_core_size_proportional_hit.txt --output "${partition_dir}"/figures/iteration"$iter"/"$modele"_proportional
+  python3 "$scripts_dir"/figures.py --logplots "${partition_dir}"/figures/iteration"$iter"/data/"$modele"_core_size_hit.txt --output "${partition_dir}"/figures/iteration"$iter"/"$modele"
 
 }
 
@@ -68,23 +69,27 @@ sed 's/\(__gene.*\)$//' "${annotation_dir}"/prot_header_renamed.fa | cut -c2- |
 ' "${partition_dir}"/partition/chunkname_core_size_"${iter}".txt - | sort -k1,1n >"${partition_dir}"/figures/iteration"$iter"/data/total_core_size_hit.txt
 
 echo "Drawing enrichment vs. size plots..."
-for modele in $hmm_databases; do
-  annotation_distribution "$modele" "$iter"
+
+model_list=""
+for model in $hmm_databases; do
+  model_basename="$(basename "${model%.hmm}")"
+  annotation_distribution "$model_basename" "$iter"
+  model_list="$model_list $model_basename"
 done
 
 echo "Drawing distribution violinplot..."
-python "$current_dir"/figures.py --violin "${partition_dir}"/figures/iteration"$iter"/data/total_core_size_hit.txt "$(printf "${partition_dir}/figures/iteration${iter}/data/%s_core_size_hit.txt " $hmm_databases)" --output "${partition_dir}"/figures/iteration"$iter"/distrib_annot_violinplot.pdf
+python3 "$scripts_dir"/figures.py --violin "${partition_dir}"/figures/iteration"$iter"/data/total_core_size_hit.txt $(printf "${partition_dir}/figures/iteration${iter}/data/%s_core_size_hit.txt " $model_list) --output "${partition_dir}"/figures/iteration"$iter"/distrib_annot_violinplot.pdf
 
 echo "Extracting bin subnetworks and matrices..."
-python "$current_dir"/bins.py --input "${partition_dir}"/partition/chunkid_core_size_"${iter}".txt --network "${network_dir}"/network.txt --output "${partition_dir}"/subnetworks/iteration"$iter" --chunk-size "$chunk_size" --n-bins "$n_bins"
+python3 "$scripts_dir"/bins.py --input "${partition_dir}"/partition/chunkid_core_size_"${iter}".txt --network "${network_dir}"/network.txt --output "${partition_dir}"/subnetworks/iteration"$iter" --chunk-size "$chunk_size" --n-bins "$n_bins"
 
 echo "Extracting bin FASTA files..."
-python "$current_dir"/bins.py --input "${partition_dir}"/partition/chunkname_core_size_"${iter}".txt --fasta "$assembly" --output "${partition_dir}"/fasta/iteration"$iter" --n-bins "$n_bins" --chunk-size "$chunk_size"
+python3 "$scripts_dir"/bins.py --input "${partition_dir}"/partition/chunkname_core_size_"${iter}".txt --fasta "$assembly" --output "${partition_dir}"/fasta/iteration"$iter" --n-bins "$n_bins" --chunk-size "$chunk_size"
 
 echo "Merging bin chunks..."
 for f in $(seq 1 "$n_bins"); do
   if [ -f "${partition_dir}"/fasta/iteration"$iter"/core_"$f".fa ]; then
-    python "$current_dir"/bins.py --merge "${partition_dir}"/fasta/iteration"$iter"/core_"$f".fa --output "${partition_dir}"/fasta_merged/iteration"$iter"
+    python3 "$scripts_dir"/bins.py --merge "${partition_dir}"/fasta/iteration"$iter"/core_"$f".fa --output "${partition_dir}"/fasta_merged/iteration"$iter"
   fi
 done
 
@@ -101,7 +106,7 @@ awk 'NR==FNR && $3 < '"$n_bins"' {
     }
     ' "${partition_dir}"/partition/matid_chunkid_core_size_"${iter}".txt "${network_dir}"/network.txt >"${partition_dir}"/partition/sparse_mat_"${iter}".txt
 
-python "$current_dir"/figures.py --sparse "${partition_dir}"/partition/sparse_mat_"${iter}".txt --output "${partition_dir}"/bin_matrices/iteration"$iter"/sparse_mat_"${iter}".eps
+python3 "$scripts_dir"/figures.py --sparse "${partition_dir}"/partition/sparse_mat_"${iter}".txt --output "${partition_dir}"/bin_matrices/iteration"$iter"/sparse_mat_"${iter}".eps
 
 echo "Drawing core matrix..."
 awk '$3 > 4 && NR == FNR {
@@ -125,6 +130,6 @@ awk '$3 > 4 && NR == FNR {
     }
 ' "${partition_dir}"/partition/chunkid_core_size_"${iter}".txt "${network_dir}"/network.txt >"${partition_dir}"/partition/core_network_"${iter}".txt
 
-python "$current_dir"/figures.py --sparse "${partition_dir}"/partition/core_network_"${iter}".txt --output "${partition_dir}"/bin_matrices/iteration"$iter"/core_matrix_"${iter}".eps
+python3 "$scripts_dir"/figures.py --sparse "${partition_dir}"/partition/core_network_"${iter}".txt --output "${partition_dir}"/bin_matrices/iteration"$iter"/core_matrix_"${iter}".eps
 
 echo "Done."
