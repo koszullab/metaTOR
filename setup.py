@@ -28,7 +28,7 @@ name = "metator"
 MAJOR = 0
 MINOR = 1
 MAINTENANCE = 0
-VERSION = f"{MAJOR}.{MINOR}.{MAINTENANCE}"
+VERSION = "{}.{}.{}".format(MAJOR, MINOR, MAINTENANCE)
 
 LICENSE = "GPLv3"
 URL = "https://github.com/koszullab/metator"
