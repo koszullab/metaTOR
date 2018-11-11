@@ -1,0 +1,5 @@
+name: metator
+dependencies:
+  - notebook
+  - sphinx
+  - nbsphinx

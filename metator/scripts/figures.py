@@ -36,9 +36,27 @@ DEFAULT_DPI = 200
 
 
 def spaceless_pdf_plot_maker(array, filename, vmax=None, dpi=DEFAULT_DPI):
-    """A function that performs all the tedious matplotlib
+    """Draw a pretty plot from an array
+    
+    A function that performs all the tedious matplotlib
     magic to draw a 2D array with as few parameters and
     as little whitespace as possible.
+
+    Parameters
+    ----------
+    array : array_like
+        The input array to draw.
+    filename : file, str or pathlib.Path
+        The output image to save the array into.
+    vmax : float, optional
+        The default saturation threshold for the array. If set to None, the
+        80th percentile value of the array is chosen. Default is None.
+    dpi : int, optional
+        Dots per inch (DPI) of the output image. Default is 200.
+    
+    Returns
+    -------
+    None
     """
 
     if vmax is None:

@@ -1,11 +1,19 @@
 # metaTOR
 
+[![PyPI version](https://badge.fury.io/py/metator.svg)](https://badge.fury.io/py/metator)
+[![Read the docs](https://readthedocs.org/projects/metator/badge)](https://metator.readthedocs.io)
 [![License: Artistic-2.0](https://img.shields.io/badge/License-GPL%203-0298c3.svg)](https://opensource.org/licenses/GPL-3.0)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black)
 
 Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that streamlines the processing and binning of metagenomic 3C datasets.
 
 ## Installation
+
+```sh
+   pip3 install metator
+```
+
+or, if you want to use the latest version:
 
 ```sh
    pip3 install -e git+https://github.com/koszullab/metator.git@master#egg=metator
@@ -24,7 +32,7 @@ in mind that development will mainly focus on this current branch.
 A metaTOR command takes the form ```metator action --param1 arg1 --param2
 arg2 #etc.```
 
-There are four actions or steps in the meta3c pipeline. They must be run in this order:
+There are four actions or steps in the metaTOR pipeline. They must be run in this order:
 
 * ```align``` : map paired-end reads on a preliminary assembly, then generate a network from
  detected contacts between DNA chunks.
@@ -53,8 +61,7 @@ Please refer to the [metaTOR manual](https://github.com/koszullab/metaTOR/meta3c
 
 ## Requirements
 
-* Python 3 with ```numpy```, ```scipy```, ```matplotlib```, ```biopython``` and
-  ```pysam``` libraries.
+* Python 3 with ```numpy```, ```scipy```, ```matplotlib```, ```biopython``` and ```pysam``` libraries.
 * [bowtie2](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml)
 * [samtools](http://www.htslib.org/)
 * [hmmer](http://hmmer.org/) and some HMM databases (such as [these](http://dl.pasteur.fr/fop/LItxiFe9/hmm_databases.tgz))

@@ -16,8 +16,22 @@ except ImportError:
 
 
 def rename_genome(genome_in, genome_out=None):
-    """Rename genomes according to a simple naming scheme; this
-    is mainly done to avoid special character weirdness
+    """Rename genome and slugify headers
+
+    Rename genomes according to a simple naming scheme; this
+    is mainly done to avoid special character weirdness.
+
+    Parameters
+    ----------
+    genome_in : file, str or pathlib.Path
+        The input genome to be renamed and slugify.
+    genome_out : file, str or pathlib.Path
+        The output genome to be written into. Defaults is <base>_renamed.fa,
+        where <base> is genome_in without its extension.
+
+    Returns
+    -------
+    None
     """
 
     if genome_out is None:
@@ -42,6 +56,26 @@ def rename_genome(genome_in, genome_out=None):
 
 def filter_genome(genome_in, threshold=500, list_records=None):
     """Filter fasta file according to various parameters.
+
+    Filter a fasta file according to size and/or an explicit list of records
+    to keep.
+
+    Parameters
+    ----------
+    genome_in: file, str or pathlib.Path
+        The input genome in FASTA format.
+    threshold: int, optional
+        The size below which genome records are discarded. Default is the
+        default minimum chunk size, i.e. 500.
+    list_records: array_like, optional
+        A list of record ids to keep. If not None, records that don't belong
+        to that list are discarded. Default is None, i.e. all records are
+        kept.
+
+    Returns
+    -------
+    records_to_write: generator
+        Filtered records that were kept.
     """
 
     if list_records is None:
@@ -75,6 +109,24 @@ def filter_genome(genome_in, threshold=500, list_records=None):
 
 def rename_proteins(prot_in, prot_out=None, chunk_size=DEFAULT_CHUNK_SIZE):
     """Rename prodigal output files
+
+    Rename output files from prodigal according to the following naming
+    scheme: >contigX_chunkY__geneZ
+
+    Chunk numbering starts at 0 and gene identification is taken from prodigal.
+
+    Parameters
+    ----------
+    prot_in : file, str or pathlib.Path
+        The input protein file in FASTA format to be renamed.
+    prot_out : file, str or pathlib.Path
+        The output protein file to be renamed into.
+    chunk_size : int, optional
+        The size of the chunks (in bp) used in the pipeline. Default is 1000.
+
+    Returns
+    -------
+    None
     """
 
     if prot_out is None:
@@ -101,6 +153,25 @@ def rename_proteins(prot_in, prot_out=None, chunk_size=DEFAULT_CHUNK_SIZE):
 
 
 def write_records(records, output_file, split=False):
+
+    """Write FASTA records
+    
+    Write a FASTA file from an iterable of records.
+    
+    Parameters
+    ----------
+    records : iterable
+        Input records to write.
+    output_file : file, str or pathlib.Path
+        Output FASTA file to be written into.
+    split : bool, optional
+        If True, each record is written into its own separate file. Default is
+        False.
+
+    Returns
+    -------
+    None
+    """
 
     if split:
         for record in records:
