@@ -43,7 +43,7 @@ echo "output_dir = $output_dir"
 export output_dir
 
 #Folder containing outputs related to the alignment
-alignment_dir=${output_dir}/${project}/alignement
+alignment_dir=${output_dir}/${project}/alignment
 export alignment_dir
 
 #Temporary folder containing all intermediary files (labeled after $project so they don't erase each other)
