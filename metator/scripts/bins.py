@@ -144,9 +144,11 @@ def extract_subnetworks(
         nonzero_indices, = np.nonzero(network_to_keep)
         global_network_indices_list += nonzero_indices.tolist()
 
-        subnetwork_file = os.path.join(output_dir, f"subnetwork_core_{i}.dat")
+        subnetwork_file = os.path.join(
+            output_dir, "subnetwork_core_{}.dat".format(i)
+        )
 
-        image_name = os.path.join(output_dir, f"core_{i}.eps")
+        image_name = os.path.join(output_dir, "core_{}.eps".format(i))
 
         extract_and_draw(
             network_to_keep=network_to_keep,
@@ -181,7 +183,7 @@ def extract_fasta(
         if core > max_cores:
             continue
         chunks_to_keep = chunk_names[cores == core]
-        core_name = f"core_{core}.fa"
+        core_name = "core_{}.fa".format(core)
 
         core_file = os.path.join(output_dir, core_name)
 
@@ -198,8 +200,8 @@ def extract_fasta(
 
                 sequence = str(genome[header_name][pos_start:pos_end])
 
-                core_handle.write(f">{name}\n")
-                core_handle.write(f"{sequence}\n")
+                core_handle.write(">{}\n".format(name))
+                core_handle.write("{}\n".format(sequence))
 
 
 def merge_fasta(fasta_file, output_dir):
@@ -261,19 +263,19 @@ def merge_fasta(fasta_file, output_dir):
             last_chunk_id = ""
 
         if last_chunk_id:
-            new_chunk_id = f"{first_chunk}_{last_chunk_id}"
+            new_chunk_id = "{}_{}".format(first_chunk, last_chunk_id)
         else:
             new_chunk_id = first_chunk
         new_genome[new_chunk_id] = my_sequence
 
     #   Write the result
     base_name = ".".join(os.path.basename(fasta_file).split(".")[:-1])
-    output_name = f"{base_name}_merged.fa"
+    output_name = "{}_merged.fa".format(base_name)
     merged_core_file = os.path.join(output_dir, output_name)
     with open(merged_core_file, "w") as output_handle:
         for my_id in sorted(new_genome, key=chunk_lexicographic_order):
-            output_handle.write(f">{my_id}\n")
-            output_handle.write(f"{new_genome[my_id]}\n")
+            output_handle.write(">{}\n".format(my_id))
+            output_handle.write("{}\n".format(new_genome[my_id]))
 
 
 def main():

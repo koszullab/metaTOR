@@ -21,7 +21,7 @@ def rename_genome(genome_in, genome_out=None):
     """
 
     if genome_out is None:
-        genome_out = f"{genome_in.split('.')[0]}_renamed.fa"
+        genome_out = "{}_renamed.fa".format(genome_in.split(".")[0])
 
     with open(genome_out, "w") as output_handle:
         for record in SeqIO.parse(genome_in, "fasta"):
@@ -34,10 +34,10 @@ def rename_genome(genome_in, genome_out=None):
             # Remove anything that's weird, i.e. not alphanumeric
             # or an underscore
             new_record_id = re.sub("[^_A-Za-z0-9]+", "", new_record_id)
-            header = f">{new_record_id}\n"
+            header = ">{}\n".format(new_record_id)
 
             output_handle.write(header)
-            output_handle.write(f"{str(record.seq)}\n")
+            output_handle.write("{}\n".format(str(record.seq)))
 
 
 def filter_genome(genome_in, threshold=500, list_records=None):
@@ -78,7 +78,7 @@ def rename_proteins(prot_in, prot_out=None, chunk_size=DEFAULT_CHUNK_SIZE):
     """
 
     if prot_out is None:
-        prot_out = f"{prot_in.split('.')[0]}_renamed.fa"
+        prot_out = "{}_renamed.fa".format(prot_in.split(".")[0])
 
     with open(prot_out, "w") as prot_out_handle:
 
@@ -92,17 +92,21 @@ def rename_proteins(prot_in, prot_out=None, chunk_size=DEFAULT_CHUNK_SIZE):
             contig_name = "_".join(name_split[:-1])
             gene_id = name_split[-1]
 
-            new_record_id = f"{contig_name}_{chunk_start}__gene{gene_id}"
+            new_record_id = "{}_{}__gene{}".format(
+                contig_name, chunk_start, gene_id
+            )
 
-            prot_out_handle.write(f">{new_record_id}\n")
-            prot_out_handle.write(f"{str(record.seq)}\n")
+            prot_out_handle.write(">{}\n".format(new_record_id))
+            prot_out_handle.write("{}\n".format(str(record.seq)))
 
 
 def write_records(records, output_file, split=False):
 
     if split:
         for record in records:
-            with open(f"{output_file}{record.id}.fa", "w") as record_handle:
+            with open(
+                "{}{}.fa".format(output_file, record.id), "w"
+            ) as record_handle:
                 SeqIO.write(record, record_handle, "fasta")
     else:
         SeqIO.write(records, output_file, "fasta")
