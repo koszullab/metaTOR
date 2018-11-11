@@ -350,7 +350,7 @@ def alignment_to_contacts(
 
 def merge_networks(output_file="merged_network.txt", *files):
     """Merge networks into a larger network.
-    
+
     A naive implementation for merging two networks in edgelist format.
 
     Parameters
@@ -394,13 +394,13 @@ def merge_networks(output_file="merged_network.txt", *files):
 
 def merge_chunk_data(output_file="merged_idx_contig_hit_size_cov.txt", *files):
     """Merge chunk data from different networks
-    
+
     Similarly to merge_network, this merges any number of chunk data files.
 
     Parameters
     ---------
     output_file : file, str, or pathlib.Path, optional
-        The output file to write the merged chunk data files into. Default is 
+        The output file to write the merged chunk data files into. Default is
         merged_idx_contig_hit_size_cov.txt
     `*files` : file, str or pathlib.Path
         The chunk data files to merge.

@@ -155,9 +155,9 @@ def rename_proteins(prot_in, prot_out=None, chunk_size=DEFAULT_CHUNK_SIZE):
 def write_records(records, output_file, split=False):
 
     """Write FASTA records
-    
+
     Write a FASTA file from an iterable of records.
-    
+
     Parameters
     ----------
     records : iterable
