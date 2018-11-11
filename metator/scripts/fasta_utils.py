@@ -157,7 +157,7 @@ def write_records(records, output_file, split=False):
     """Write FASTA records
 
     Write a FASTA file from an iterable of records.
-
+     
     Parameters
     ----------
     records : iterable

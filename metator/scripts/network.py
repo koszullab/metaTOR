@@ -350,7 +350,11 @@ def alignment_to_contacts(
 
 def merge_networks(output_file="merged_network.txt", *files):
     """Merge networks into a larger network.
+<<<<<<< HEAD
 
+=======
+    
+>>>>>>> 0d031f0dec2c95485c4f98064dde463666c44f37
     A naive implementation for merging two networks in edgelist format.
 
     Parameters
