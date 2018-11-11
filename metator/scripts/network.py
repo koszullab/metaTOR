@@ -57,6 +57,44 @@ def alignment_to_contacts(
     imported quickly into other applications etc. Verbose information about
     every single node in the network is written on a 'chunk data' file,
     by default called 'idx_contig_hit_size_cov.txt'
+
+    Parameters
+    ----------
+    sam_merged : file, str or pathlib.Path
+        The alignment file in SAM/BAM format to be processed.
+    assembly : file, str or pathlib.Path
+        The initial assembly acting as the alignment file's reference genome.
+    output_dir : str or pathlib.Path
+        The output directory to write the network and chunk data into.
+    output_dir_file_network : str or pathlib.Path, optional
+        The specific file name for the output network file. Default is
+        network.txt
+    output_file_chunk_data : str or pathlib.Path, optional
+        The specific file name for the output chunk data file. Default is
+        idx_contig_hit_size_cov.txt
+    parameters : dict, optional
+        A dictionary of parameters for converting the alignment file into a
+        network. These are:
+        -size_chunk_threshold: the size (in bp) under which chunks are
+        discarded. Default is 500.
+        -mapq_threshold: the mapping quality under which alignments are
+        discarded. Default is 10.
+        -chunk_size: the default chunk size (in bp) when applicable, save
+        smaller contigs or tail-ends. Default is 1000.
+        -read_size: the size of reads used for mapping. Default is 65.
+        -self_contacts: whether to count alignments between a chunk and
+        itself. Default is False.
+        -normalized: whether to normalize contacts by their coverage.
+        Default is False.
+
+    Returns
+    -------
+    chunk_complete_data : dict
+        A dictionary where the keys are chunks in (contig, position) form and
+        the values are their id, name, total contact count, size and coverage.
+    all_contacts : dict
+        A counter dictionary where the keys are chunk pairs and the values are
+        their contact count.
     """
 
     all_contacts = collections.Counter()
@@ -311,9 +349,25 @@ def alignment_to_contacts(
 
 
 def merge_networks(output_file="merged_network.txt", *files):
-    """A naive implementation for merging two edgelists.
+    """Merge networks into a larger network.
+    
+    A naive implementation for merging two networks in edgelist format.
 
-    :note: The partitioning step doesn't mind redundant
+    Parameters
+    ---------
+    output_file : file, str, or pathlib.Path, optional
+        The output file to write the merged network into. Default is
+        merged_network.txt
+    `*files` : file, str or pathlib.Path
+        The network files to merge.
+
+    Returns
+    -------
+    None
+
+    Note
+    ----
+    The partitioning step doesn't mind redundant
     edges and handles them pretty well, so if you are not
     using the merged edgelist for anything else you can just
     concatenate the edgelists without using this function.
@@ -339,7 +393,21 @@ def merge_networks(output_file="merged_network.txt", *files):
 
 
 def merge_chunk_data(output_file="merged_idx_contig_hit_size_cov.txt", *files):
-    """Merge any number of chunk data files.
+    """Merge chunk data from different networks
+    
+    Similarly to merge_network, this merges any number of chunk data files.
+
+    Parameters
+    ---------
+    output_file : file, str, or pathlib.Path, optional
+        The output file to write the merged chunk data files into. Default is 
+        merged_idx_contig_hit_size_cov.txt
+    `*files` : file, str or pathlib.Path
+        The chunk data files to merge.
+
+    Returns
+    -------
+    None
     """
 
     chunks = dict()
@@ -382,17 +450,43 @@ def alignment_to_reads(
     save_memory=True,
     *bin_fasta,
 ):
-    """Extract reads found to be mapping an input FASTA bin.
+    """Generate reads from ambiguous alignment file
+
+    Extract reads found to be mapping an input FASTA bin.
     If one read maps, the whole pair is extracted and written
     to the output paired-end FASTQ files. Reads that mapped
     and weren't part of a pair are kept in a third 'single'
     file for people who need it (e.g. to get extra paired reads
     by fetching the opposite one from the original FASTQ library).
 
-    :note: will throw an IOError ('close failed in file
-    object destructor') on exit with older versions
-    of pysam for some reason. It's harmless but annoying
-    so consider upgrading that if it comes up in a pipeline.
+    Parameters
+    ----------
+    sam_merged : file, str or pathlib.Path
+        The input alignment file in SAM/BAM format to be processed.
+    output_dir : str or pathlib.Path
+        The output directory to write the network and chunk data into.
+    parameters : dict, optional
+        Parameters for the network to read conversion, similar to
+        alignment_to_network.
+    save_memory : bool, optional
+        Whether to keep the read names into memory or write them in different
+        files, which takes longer but may prevent out-of-memory crashes.
+        Default is True.
+    `*bin_fasta` : file, str or pathlib.Path
+        The bin FASTA files with appropriately named records.
+
+    Returns
+    -------
+    A dictionary of files with read names for each bin if save_memory is True,
+    and a dictionary of the read names lists themselves otherwise.
+
+
+    Note
+    ----
+    This will throw an IOError ('close failed in file object destructor') on
+    exit with older versions of pysam for some reason. It's harmless but
+    you may consider upgrading to a later version of pysam if it comes up in
+    a pipeline.
     """
 
     #   Just in case file objects are sent as input

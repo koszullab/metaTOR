@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""
-Extract bin data and figures from partitions, namely:
-    -bin subnetworks (notably for recursion purposes)
-    -bin fasta files
-Also draws the subnetwork in adjacency matrix form
+"""Process metagenomic bins and their networks
+
+Extract bin data and figures from partitions, namely bin subnetworks
+(notably for recursion purposes) and bin fasta files. Also draws the subnetwork
+in adjacency matrix form.
+
 """
 
 from __future__ import absolute_import
@@ -39,8 +40,32 @@ def extract_subnetworks(
     max_size_matrix=DEFAULT_MAX_SIZE_MATRIX,
     saturation_threshold=DEFAULT_SATURATION_THRESHOLD,
 ):
-    """Identify bins, extract subnets, draws the adjacency matrices,
+    """Extract bin subnetworks from the main network
+
+    Identify bins, extract subnets, draws the adjacency matrices,
     saves it all in a specified output directory.
+
+    Parameters
+    ----------
+    partition_file : file, str or pathlib.Path
+        The file containing, for each chunk, the communities it was
+        assigned to at each iteration.
+    network_file : file, str or pathlib.Path
+        The file containing the network in sparse (edge list) format
+    output_dir : str or pathlib.Path
+        The output directory to write the subnetworks into.
+    max_cores : int, optional
+        The maximum number of bins to extract. Default is 100.
+    max_size_matrix : int, optional
+        When rendering contact maps for each bin, the maximum size for the
+        matrix. Default is 2000.
+    saturation_threshold : float, optional
+        When rendering contact maps for each bin, the percentile value over
+        which the color map should be saturated. Default is 80.
+
+    Returns
+    -------
+    None
     """
 
     logger.info("Loading partition...")
@@ -165,8 +190,28 @@ def extract_fasta(
     max_cores=DEFAULT_MAX_CORES,
 ):
 
-    """Identify bins, extract chunks belonging to each bins and gather them
+    """Extract sequences from bins
+
+    Identify bins, extract chunks belonging to each bins and gather them
     in a single FASTA file.
+
+    Parameters
+    ----------
+    partition_file : file, str or pathlib.Path
+        The file containing, for each chunk, the communities it was
+        assigned to at each iteration.
+    fasta_file : file, str or pathlib.Path
+        The initial assembly from which chunks were initialized.
+    output_dir : str or pathlib.Path
+        The output directory to write the FASTA chunks into.
+    chunk_size : int, optional
+        The size of the chunks (in bp) used in the pipeline. Default is 1000.
+    max_cores : int, optional
+        How many bins to extract FASTA sequences from. Default is 100.
+
+    Returns
+    -------
+    None
     """
 
     genome = {
@@ -205,7 +250,21 @@ def extract_fasta(
 
 
 def merge_fasta(fasta_file, output_dir):
-    """Merge bin chunks by appending consecutive chunks to one another.
+
+    """Merge chunks into complete FASTA bins
+
+    Merge bin chunks by appending consecutive chunks to one another.
+
+    Parameters
+    ----------
+    fasta_file : file, str or pathlib.Path
+        The FASTA file containing the chunks to merge.
+    output_dir : str or pathlib.Path
+        The output directory to write the merged FASTA bin into.
+
+    Returns
+    -------
+    None
     """
 
     #   First, define some functions for ordering chunks and detecting

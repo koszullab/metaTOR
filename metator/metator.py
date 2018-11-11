@@ -68,19 +68,6 @@ def download_and_install_dependencies():
     except FileExistsError:
         print("Using cached dependencies...")
 
-    # Directory structure should go like this:
-    # .
-    # ./share
-    # ./share/hmm_databases
-    # ./share/hmm_databases/*.hmm -> text files
-    # ./share/tools
-    # ./share/tools/prodigal -> binary executable
-    # ./share/tools/louvain
-    # ./share/tools/louvain/louvain -> all binary executables
-    # ./share/tools/louvain/hierarchy
-    # ./share/tools/louvain/convert
-    # ./share/tools/louvain/matrix
-
     share_dir = pathlib.Path.cwd()
     tools_dir = share_dir / "tools"
     louvain_dir = tools_dir / "louvain"
