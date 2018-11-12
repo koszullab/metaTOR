@@ -27,11 +27,16 @@ name = "metator"
 
 MAJOR = 0
 MINOR = 1
-MAINTENANCE = 2
+MAINTENANCE = "2a"
 VERSION = "{}.{}.{}".format(MAJOR, MINOR, MAINTENANCE)
 
 LICENSE = "GPLv3"
 URL = "https://github.com/koszullab/metator"
+
+DESCRIPTION = __doc__.strip("\n")
+
+with open("README.md") as f:
+    LONG_DESCRIPTION = f.read()
 
 with open("requirements.txt", "r") as f:
     REQUIREMENTS = f.read().splitlines()
@@ -43,7 +48,8 @@ with open("metator/version.py", "w") as f:
 setup(
     name=name,
     author="lyam.baudry@pasteur.fr",
-    description=__doc__,
+    description=DESCRIPTION,
+    long_description=LONG_DESCRIPTION,
     version=VERSION,
     license=LICENSE,
     classifiers=CLASSIFIERS,
