@@ -1,1 +1,3 @@
 include metator/bin/*
+include requirements.txt
+include README.md

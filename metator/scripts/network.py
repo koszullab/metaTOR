@@ -448,7 +448,7 @@ def alignment_to_reads(
     output_dir,
     parameters=DEFAULT_PARAMETERS,
     save_memory=True,
-    *bin_fasta,
+    *bin_fasta
 ):
     """Generate reads from ambiguous alignment file
 

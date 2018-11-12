@@ -11,16 +11,16 @@ Subpackages
 Submodules
 ----------
 
-metator\.metator module
------------------------
+metator.metator module
+----------------------
 
 .. automodule:: metator.metator
     :members:
     :undoc-members:
     :show-inheritance:
 
-metator\.version module
------------------------
+metator.version module
+----------------------
 
 .. automodule:: metator.version
     :members:
