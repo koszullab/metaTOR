@@ -97,8 +97,8 @@ and used this way:
 
 ```bash
 # Default directory if you've run the pipeline with the examples above
-fasta_dir="output/example_project/partition/iteration300/fasta_merged"
-checkm_dir="checkm_validation"
+export fasta_dir="output/example_project/partition/iteration300/fasta_merged"
+export checkm_dir="checkm_validation"
 
 mkdir -p $checkm_dir
 
@@ -116,7 +116,7 @@ This step is not included in the pipeline because it is so memory-hungry and not
 If you have very contaminated bins that also happen to be very complete, this indicates that there are probably several genomes interleaved in the same bins. This can be simply solved by running the partition step again on the subnetworks of the bins:
 
 ```bash
-subnetwork_dir="output/example_project/partition/iteration300/subnetworks"
-./meta3c.sh partition --network-file $subnetwork_dir/contaminated_bin_subnetwork.dat --partition-dir subnetwork_partition_folder
-./meta3c.sh binning
+export subnetwork_dir="output/example_project/partition/iteration300/subnetworks"
+metator partition --network-file $subnetwork_dir/contaminated_bin_subnetwork.dat --partition-dir subnetwork_partition_folder
+metator binning
 ```

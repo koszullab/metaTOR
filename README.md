@@ -59,7 +59,10 @@ available in most package managers.
 * ```version``` : display current version number.
 * ```help``` : display this help message.
 
-Please refer to the [metaTOR manual](https://github.com/koszullab/metaTOR/meta3c_manual.pdf) for detailed explanations on the parameters.
+Please refer to the
+[tutorial](https://github.com/koszullab/metaTOR/blob/master/doc/TUTORIAL.md) in
+order to quickly get the pipeline up and running on example data (or your own), and the [metaTOR manual](https://github.com/koszullab/metaTOR/blob/master/metator_manual.pdf)
+for detailed explanations on the parameters.
 
 ## Requirements
 

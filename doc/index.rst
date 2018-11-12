@@ -1,5 +1,5 @@
 .. metator documentation master file, created by
-   sphinx-quickstart on Sun Nov 11 23:23:52 2018.
+   sphinx-quickstart on Mon Nov 12 17:49:34 2018.
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
@@ -23,8 +23,15 @@ the handling of meta3C data. The library is used by the above pipeline, and the
 present documentation exposes its API for advanced usage.
 
 .. toctree::
-   :maxdepth: 3
+   :maxdepth: 2
    :caption: Contents:
+
+Tutorial
+========
+.. toctree::
+    :maxdepth: 3
+
+    TUTORIAL
 
 
 Reference API
@@ -41,3 +48,4 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
+

@@ -5,15 +5,15 @@
 A bunch of handy functions for processing Hi-C data
 (mainly in the form of matrices):
 
-    -Normalizations
-    -Interpolations
-    -Filters
-    -Removing artifacts
-    -Quick sum-pooling (aka 'binning') in sparse and dense form
-    -Simple models with parameter estimation
-    -Computing best-matching 3D structures
-    -Various metrics in use among Hi-C people for eyecandy purposes
-     (directional index, domainograms, etc.)
+-Normalizations
+-Interpolations
+-Filters
+-Removing artifacts
+-Quick sum-pooling (aka 'binning') in sparse and dense form
+-Simple models with parameter estimation
+-Computing best-matching 3D structures
+-Various metrics in use among Hi-C people for eyecandy purposes (directional
+index, domainograms, etc.)
 
 These functions are meant to be simple and relatively quick
 as-is implementations of procedures described in Hi-C papers.
@@ -602,17 +602,17 @@ def domainogram(M, window=None, circ=False, extrapolate=True):
 def from_dade_matrix(filename, header=False):
     """ Loads a numpy array from a Dade matrix instance,
     e.g.: A matrix containing the following (or equivalent in numpy)
-        [['RST','chr1~0','chr1~10','chr2~0','chr2~30'],
-        ['chr1~0','5', '10', '11', '2'],
-        ['chr1~10',   '8', '3', '5'],
-        ['chr2~0',         '3', '5'],
-        ['chr2~30',             '5']]
 
-    will return:
-       [['5', '10', '11', '2'],
-        ['10', '8', '3', '5'],
-        [11', '3', '3', '5'],
-        ['2', '5', '5', '5']], [chr1~0','chr1~10','chr2~0','chr2~30']
+    [['RST','chr1~0','chr1~10','chr2~0','chr2~30'],
+    ['chr1~0','5', '10', '11', '2'],
+    ['chr1~10',   '8', '3', '5'],
+    ['chr2~0',         '3', '5'],
+    ['chr2~30',             '5']]
+
+    [['5', '10', '11', '2'],
+    ['10', '8', '3', '5'],
+    [11', '3', '3', '5'],
+    ['2', '5', '5', '5']], [chr1~0','chr1~10','chr2~0','chr2~30']
 
     Header data processing is delegated downstream.
 

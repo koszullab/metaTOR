@@ -3,3 +3,4 @@ dependencies:
   - notebook
   - sphinx
   - nbsphinx
+  - recommonmark
