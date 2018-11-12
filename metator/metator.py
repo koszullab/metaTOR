@@ -98,7 +98,12 @@ def main():
     metator_args = sys.argv[1:]
     entry_point = pkg_resources.resource_filename("metator", "bin/metator.sh")
 
-    metator_process = subprocess.Popen((entry_point, *metator_args))
+    try:
+        metator_process = subprocess.Popen((entry_point, *metator_args))
+    except PermissionError:  # some issues occured for non-bash users
+        metator_process = subprocess.Popen(
+            (entry_point, *metator_args), shell=True
+        )
     metator_process.wait()
 
 

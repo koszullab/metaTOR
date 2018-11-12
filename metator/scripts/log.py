@@ -27,12 +27,12 @@ stdout_formatter = logging.Formatter("%(levelname)s :: %(message)s")
 
 file_handler = FileHandler("metator.log", "a")
 
-file_handler.setLevel(logging.INFO)
+file_handler.setLevel(logging.FATAL)
 file_handler.setFormatter(logfile_formatter)
 logger.addHandler(file_handler)
 
 errorfile_handler = FileHandler("metator.err", "a")
-errorfile_handler.setLevel(logging.ERROR)
+errorfile_handler.setLevel(logging.FATAL)
 errorfile_handler.setFormatter(logfile_formatter)
 logger.addHandler(errorfile_handler)
 

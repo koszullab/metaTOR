@@ -23,7 +23,7 @@ the handling of meta3C data. The library is used by the above pipeline, and the
 present documentation exposes its API for advanced usage.
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
    :caption: Contents:
 
 
@@ -31,7 +31,7 @@ Reference API
 =============
 
 .. toctree::
-    :maxdepth: 2
+    :maxdepth: 3
 
     api/modules
 
