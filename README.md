@@ -5,7 +5,7 @@
 [![License: Artistic-2.0](https://img.shields.io/badge/License-GPL%203-0298c3.svg)](https://opensource.org/licenses/GPL-3.0)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black)
 
-Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that streamlines the processing and binning of metagenomic 3C datasets.
+Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that streamline the processing and binning of metagenomic 3C datasets.
 
 ## Installation
 
@@ -13,17 +13,17 @@ Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that
    pip3 install metator
 ```
 
-or, if you want to use the latest version:
+or, to use the latest version:
 
 ```sh
    pip3 install -e git+https://github.com/koszullab/metator.git@master#egg=metator
 ```
 
-Python 3.4 or newer is required. A [standalone
+Python 3.4 or later is required. A [standalone
 version](https://github.com/koszullab/metaTOR/tree/python3-standalone) (no
 installation, just download/unzip/run) is also available, as well as a [Python
-2 version](https://github.com/koszullab/metaTOR/tree/python2), but please keep
-in mind that development will mainly focus on this current branch.
+2 version](https://github.com/koszullab/metaTOR/tree/python2), but keep
+in mind that development will focus on the current branch.
 
 ## Usage
 
@@ -32,30 +32,30 @@ in mind that development will mainly focus on this current branch.
 A metaTOR command takes the form ```metator action --param1 arg1 --param2
 arg2 #etc.```
 
-There are four actions or steps in the metaTOR pipeline. They must be run in this order:
+There are four actions/steps in the metaTOR pipeline, which must be run in the following order:
 
 * ```align``` : map paired-end reads on a preliminary assembly, then generate a network from
  detected contacts between DNA chunks.
 * ```partition``` : perform the Louvain community detection algorithm many times to isolate
      chunks that consistently cluster together for binning purposes.
 * ```annotation``` : run standard annotation software on the assembly (namely gene prediction
-      and database comparison) to match with the bins
+      and database comparison) to match with the bins.
 * ```binning``` : match annotations to bins, extract bin genomes and subnetworks, build bin-local
-   and global contact maps
+   and global contact maps.
 
-After the last step is completed, you should have at your disposal a set of bins, their relative
-enrichments in various gene categories as well as the contact map of each bin.
+After the last step is completed there should be a set of bins, their relative
+enrichments in various gene categories, and the contact map of each bin.
 
-In addition, there are a number of optional, miscellaneous actions:
+There are a number of other, optional, miscellaneous actions:
 
-* ```pipeline``` : check the environment is right, then run all four of the above sequentially.
+* ```pipeline``` : check the environment is right, then run all four of the above actioins sequentially.
     This can take a while.
-* ```dependencies``` : download third party dependencies that aren't usually
-  available in most package managers
+* ```dependencies``` : download third party dependencies that are not
+available in most package managers.
 * ```deploy``` : set up the environment and all dependencies for Ubuntu 14.04
   and higher (run as root).
-* ```version``` : display current version number
-* ```help``` : display this (hopefully useful) help message
+* ```version``` : display current version number.
+* ```help``` : display this help message.
 
 Please refer to the [metaTOR manual](https://github.com/koszullab/metaTOR/meta3c_manual.pdf) for detailed explanations on the parameters.
 
@@ -69,16 +69,16 @@ Please refer to the [metaTOR manual](https://github.com/koszullab/metaTOR/meta3c
 * [louvain](https://sourceforge.net/projects/louvain/) (original
     implementation)
 
-Most of these can usually be installed with your OS's package manager. The ones
-that can't (namely ```prodigal```, ```louvain``` and HMM databases) can be
-  fetched with the following (depending on where you installed the package you
-  may need to run it as root):
+Requirements can usually be installed with an OS's package manager. The requirements
+that can not (namely ```prodigal```, ```louvain``` and HMM databases) can be
+  fetched with the following (The package may need to be run as a root 
+  depending on where the package is installed):
 
 ```sh
     metator dependencies
 ```
 
-A dockerfile is also available if you are into that sort of thing.
+A dockerfile is also available if that is of interest.
 
 ## References
 
