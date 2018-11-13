@@ -62,10 +62,6 @@ def extract_subnetworks(
     saturation_threshold : float, optional
         When rendering contact maps for each bin, the percentile value over
         which the color map should be saturated. Default is 80.
-
-    Returns
-    -------
-    None
     """
 
     logger.info("Loading partition...")
@@ -208,10 +204,6 @@ def extract_fasta(
         The size of the chunks (in bp) used in the pipeline. Default is 1000.
     max_cores : int, optional
         How many bins to extract FASTA sequences from. Default is 100.
-
-    Returns
-    -------
-    None
     """
 
     genome = {
@@ -261,10 +253,6 @@ def merge_fasta(fasta_file, output_dir):
         The FASTA file containing the chunks to merge.
     output_dir : str or pathlib.Path
         The output directory to write the merged FASTA bin into.
-
-    Returns
-    -------
-    None
     """
 
     #   First, define some functions for ordering chunks and detecting

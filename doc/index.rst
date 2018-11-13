@@ -15,7 +15,7 @@ decomposed into four steps:
 - Binning
 
 See the `user manual
-<https://github.com/koszullab/metaTOR/blob/master/meta3c_manual.pdf>`_ for
+<https://github.com/koszullab/metaTOR/blob/master/metator_manual.pdf>`_ for
 detailed instruction on how to run the pipelines and the parameters to use.
 
 MetaTOR is also a Python library with various modules and functions devoted to

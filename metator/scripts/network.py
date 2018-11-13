@@ -361,10 +361,6 @@ def merge_networks(output_file="merged_network.txt", *files):
     `*files` : file, str or pathlib.Path
         The network files to merge.
 
-    Returns
-    -------
-    None
-
     Note
     ----
     The partitioning step doesn't mind redundant
@@ -404,10 +400,6 @@ def merge_chunk_data(output_file="merged_idx_contig_hit_size_cov.txt", *files):
         merged_idx_contig_hit_size_cov.txt
     `*files` : file, str or pathlib.Path
         The chunk data files to merge.
-
-    Returns
-    -------
-    None
     """
 
     chunks = dict()

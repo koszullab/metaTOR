@@ -53,10 +53,6 @@ def spaceless_pdf_plot_maker(array, filename, vmax=None, dpi=DEFAULT_DPI):
         80th percentile value of the array is chosen. Default is None.
     dpi : int, optional
         Dots per inch (DPI) of the output image. Default is 200.
-
-    Returns
-    -------
-    None
     """
 
     if vmax is None:

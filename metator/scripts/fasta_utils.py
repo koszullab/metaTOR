@@ -28,10 +28,6 @@ def rename_genome(genome_in, genome_out=None):
     genome_out : file, str or pathlib.Path
         The output genome to be written into. Defaults is <base>_renamed.fa,
         where <base> is genome_in without its extension.
-
-    Returns
-    -------
-    None
     """
 
     if genome_out is None:
@@ -123,10 +119,6 @@ def rename_proteins(prot_in, prot_out=None, chunk_size=DEFAULT_CHUNK_SIZE):
         The output protein file to be renamed into.
     chunk_size : int, optional
         The size of the chunks (in bp) used in the pipeline. Default is 1000.
-
-    Returns
-    -------
-    None
     """
 
     if prot_out is None:
@@ -167,10 +159,6 @@ def write_records(records, output_file, split=False):
     split : bool, optional
         If True, each record is written into its own separate file. Default is
         False.
-
-    Returns
-    -------
-    None
     """
 
     if split:
