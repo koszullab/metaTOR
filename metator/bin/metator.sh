@@ -4,8 +4,8 @@
 # Théo Foutel-Rodier
 # Lyam Baudry
 
-current_version="0.1.1"
-last_update_date="[April 2018]"
+current_version="0.1.6"
+last_update_date="[November 2018]"
 
 function display_help() {
   echo ""
@@ -202,6 +202,11 @@ while [[ $# -gt 0 ]]; do
     shift
     shift
     ;;
+  -V | --validation-dir)
+    validation_dir="$2"
+    shift
+    shift
+    ;;
   -R | --read-size)
     read_size="$2"
     shift
@@ -321,6 +326,7 @@ BEGIN {
     parameters["network_file"] = "'"$network_file"'"
     parameters["partition_dir"] = "'"$partition_dir"'"
     parameters["annotation_dir"] = "'"$annotation_dir"'"
+    parameters["validation_dir"] = "'"$validation_dir"'"
     parameters["read_size"] = "'"$read_size"'"
     parameters["size_contig_threshold"] = "'"$size_contig_threshold"'"
     parameters["chunk_size"] = "'"$chunk_size"'"
@@ -388,6 +394,10 @@ a | annotation | annotation.sh)
 b | binning | binning.sh)
   # shellcheck source=binning.sh
   . "$current_dir"/binning.sh
+  ;;
+V | validation | validataion.sh)
+  # shellcheck source=validation.sh
+  . "$current_dir"/validation.sh
   ;;
 A | pipeline | pipeline.sh)
   # shellcheck source=pipeline.sh

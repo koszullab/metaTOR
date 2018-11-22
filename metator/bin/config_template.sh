@@ -62,6 +62,10 @@ export partition_dir
 annotation_dir=${output_dir}/${project}/annotation
 export annotation_dir
 
+#Folder containing outputs related to the bins' validation
+validation_dir=${output}/${project}/validation
+export validation_dir
+
 #Folder containing assemblies
 assembly_dir=${output_dir}/${project}/assembly
 export assembly_dir

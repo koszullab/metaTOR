@@ -30,6 +30,8 @@ from metator.scripts.figures import DEFAULT_MAX_SIZE_MATRIX
 from metator.scripts.figures import DEFAULT_SATURATION_THRESHOLD
 
 DEFAULT_MAX_CORES = 100
+DEFAULT_MAX_CONTAMINATION = 50
+DEFAULT_MIN_COMPLETENESS = 80
 
 
 def extract_subnetworks(
@@ -323,6 +325,45 @@ def merge_fasta(fasta_file, output_dir):
         for my_id in sorted(new_genome, key=chunk_lexicographic_order):
             output_handle.write(">{}\n".format(my_id))
             output_handle.write("{}\n".format(new_genome[my_id]))
+
+
+def pick_contaminated_bins(
+    checkm_file,
+    fasta_dir,
+    output_dir,
+    min_completeness=DEFAULT_MIN_COMPLETENESS,
+    max_contamination=DEFAULT_MAX_CONTAMINATION,
+    verbose=True,
+):
+    contaminated_and_complete_bins = set()
+
+    with open(checkm_file) as checkm_handle:
+        first_line = checkm_handle.readline()
+        second_line = checkm_handle.readline()
+        third_line = checkm_handle.readline()
+        assert all(
+            first_line.startswith("----"),
+            "Completeness" in second_line,
+            third_line.startswith("----"),
+        ), "{} does not look like a proper checkM output file.".format(
+            checkm_file
+        )
+        for line in checkm_handle:
+            bin_name, *_, completeness, contamination, _ = line.split()
+
+            if int(min_completeness) > completeness:
+                break
+
+            if contamination < max_contamination:
+                continue
+
+            contaminated_and_complete_bins.add(bin_name)
+
+    if verbose:
+        for my_bin in contaminated_and_complete_bins:
+            print(my_bin)
+
+    return contaminated_and_complete_bins
 
 
 def main():

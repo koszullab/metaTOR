@@ -5,7 +5,6 @@
 """
 
 from setuptools import setup, find_packages
-import setuptools.command.install as install
 
 CLASSIFIERS = [
     "Development Status :: 3 - Alpha",
@@ -13,6 +12,7 @@ CLASSIFIERS = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.4",
     "Programming Language :: Python :: 3.5",
@@ -31,7 +31,7 @@ name = "metator"
 
 MAJOR = 0
 MINOR = 1
-MAINTENANCE = 5
+MAINTENANCE = 6
 VERSION = "{}.{}.{}".format(MAJOR, MINOR, MAINTENANCE)
 
 LICENSE = "GPLv3"
