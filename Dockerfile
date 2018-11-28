@@ -2,14 +2,17 @@ FROM ubuntu:18.04
 
 RUN \
     apt-get update && \
-    apt-get install -y --no-install-recommends python python-pip python-setuptools python3 python3-dev python3-pip python3-virtualenv bowtie2 samtools hmmer prodigal libfreetype6-dev libpng-dev pkg-config wget && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends git python python-pip python3-setuptools python3 python3-dev python3-pip python3-virtualenv bowtie2 samtools hmmer prodigal libfreetype6-dev libpng-dev pkg-config wget && \
+    rm -rf /var/lib/apt/lists
 
-WORKDIR /data
+COPY metator /app/metator
 
-ADD *.* /data/
+COPY *.* /app/
 
-RUN pip3 install metator
+WORKDIR /app
+
+RUN cd /app && \
+    pip3 install .
 
 RUN metator dependencies
 

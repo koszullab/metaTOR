@@ -9,7 +9,6 @@ import subprocess
 import sys
 import pkg_resources
 import pathlib
-import requests
 import tarfile
 
 BASE_PRODIGAL = (
@@ -19,8 +18,13 @@ HMM_URL = "http://dl.pasteur.fr/fop/LItxiFe9/hmm_databases.tgz"
 
 
 def download_and_install_dependencies():
-    """Setup URLS and download dependencies.
+    """Setup URLS and download dependencies for Python 3.6+
     """
+
+    try:
+        import requests
+    except ImportError:
+        raise ValueError("Python 3.6+ is required.")
 
     dependencies = {"hmm_databases": HMM_URL}
 
