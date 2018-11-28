@@ -11,8 +11,6 @@ ADD *.* /data/
 
 RUN pip3 install metator
 
-RUN pip install checkm-genome
-
 RUN metator dependencies
 
 ENTRYPOINT ["metator"]
