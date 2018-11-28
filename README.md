@@ -22,11 +22,7 @@ or, to use the latest version:
    pip3 install -e git+https://github.com/koszullab/metator.git@master#egg=metator
 ```
 
-Python 3.4 or later is required. A [standalone
-version](https://github.com/koszullab/metaTOR/tree/python3-standalone) (no
-installation, just download/unzip/run) is also available, as well as a [Python
-2 version](https://github.com/koszullab/metaTOR/tree/python2), but keep
-in mind that development will focus on the current branch.
+Python 3.4 or later is required. A [standalone version](https://github.com/koszullab/metaTOR/tree/python3-standalone) (no installation, just download/unzip/run) is also available, as well as a [Python 2 version](https://github.com/koszullab/metaTOR/tree/python2), but keep in mind that development will focus on the current branch.
 
 ## Usage
 
@@ -49,27 +45,22 @@ There are four actions/steps in the metaTOR pipeline, which must be run in the f
 * ```binning``` : match annotations to bins, extract bin genomes and subnetworks, build bin-local
    and global contact maps.
 
-After the last step is completed there should be a set of bins, their relative
-enrichments in various gene categories, and the contact map of each bin.
+After the last step is completed there should be a set of bins, their relative enrichments in various gene categories, and the contact map of each bin.
 
 There are a number of other, optional, miscellaneous actions:
 
-* ```pipeline``` : check the environment is right, then run all four of the above actioins sequentially.
+* ```pipeline``` : check the environment is right, then run all four of the above actions sequentially.
     This can take a while.
 
 * ```dependencies``` : download third party dependencies that are not available in most package managers.
 
-* ```deploy``` : set up the environment and all dependencies for Ubuntu 14.04
-  and higher (run as root).
+* ```deploy``` : set up the environment and all dependencies for Ubuntu 14.04 and higher (run as root).
 
 * ```version``` : display current version number.
 
 * ```help``` : display this help message.
 
-Please refer to the
-[tutorial](https://github.com/koszullab/metaTOR/blob/master/doc/TUTORIAL.md) in
-order to quickly get the pipeline up and running on example data (or your own), and the [metaTOR manual](https://github.com/koszullab/metaTOR/blob/master/metator_manual.pdf)
-for detailed explanations on the parameters.
+Please refer to the [tutorial](https://github.com/koszullab/metaTOR/blob/master/doc/TUTORIAL.md) in order to quickly get the pipeline up and running on example data (or your own), and the [metaTOR manual](https://github.com/koszullab/metaTOR/blob/master/metator_manual.pdf) for detailed explanations on the parameters.
 
 ## Requirements
 
@@ -81,14 +72,17 @@ for detailed explanations on the parameters.
 * [louvain](https://sourceforge.net/projects/louvain/) (original
     implementation)
 
-Requirements can usually be installed with an OS's package manager. The requirements
-that can not (namely ```prodigal```, ```louvain``` and HMM databases) can be fetched with the following (The package may need to be run as a root depending on where the package is installed):
+Requirements can usually be installed with an OS's package manager. The requirements that cannot (namely ```prodigal```, ```louvain``` and HMM databases) can be fetched with the following (The package may need to be run as a root depending on where the package is installed):
 
 ```sh
     metator dependencies
 ```
 
-A dockerfile is also available if that is of interest.
+A dockerfile is also available if that is of interest. You may fetch the image by running the following:
+
+```sh
+    docker pull koszullab/metator
+```
 
 ## References
 

@@ -14,6 +14,10 @@ WORKDIR /app
 RUN cd /app && \
     pip3 install .
 
+USER root
+
+RUN chmod 777 -R /usr/local/lib/python3.6/dist-packages/metator/bin/
+
 RUN metator dependencies
 
 ENTRYPOINT ["metator"]
