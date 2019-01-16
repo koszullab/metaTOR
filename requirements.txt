@@ -5,3 +5,4 @@ biopython
 pysam
 seaborn
 setuptools
+git+git://github.com/Ecogenomics/CheckM.git@python3_dev#egg=checkm
