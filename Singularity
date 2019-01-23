@@ -7,7 +7,7 @@ From: ubuntu:18.04
 %post
   # Get dependencies
   apt-get update
-  apt-get install -y --no-install-recommends \ 
+  apt-get install -y --no-install-recommends \
   git \
   python \
   python-pip \
