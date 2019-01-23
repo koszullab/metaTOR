@@ -29,10 +29,6 @@ From: ubuntu:18.04
   mkdir -p /tools
   cd /tools
   
-  # Fetching prodigal
-  wget -q https://github.com/hyattpd/Prodigal/releases/download/v2.6.3/prodigal.linux -O /tools/prodigal
-  chmod +x /tools/prodigal
-  
   # Fetching louvain
   mkdir -p /tools/louvain
   wget -q https://lip6.github.io/Louvain-BinaryBuild/louvain_linux.tar.gz -O /tools/louvain/louvain.tar.gz
