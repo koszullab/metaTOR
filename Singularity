@@ -25,13 +25,30 @@ From: ubuntu:18.04
   pkg-config \
   wget
   
-  pip3 install requests
+  mkdir -p /tools
+  cd /tools
   
-  # Install metator
-  pip3 install metator
-
-  # Install louvain
-  metator dependencies
+  # Fetching prodigal
+  wget -q https://github.com/hyattpd/Prodigal/releases/download/v2.6.3/prodigal.linux -O /tools/prodigal
+  chmod +x /tools/prodigal
+  
+  # Fetching louvain
+  mkdir -p /tools/louvain
+  wget -q https://lip6.github.io/Louvain-BinaryBuild/louvain_linux.tar.gz -O /tools/louvain/louvain.tar.gz
+  cd /tools/louvain
+  tar -xzf louvain.tar.gz
+  chmod +x /tools/louvain/*
+  rm -f /tools/louvain/louvain.tar.gz
+  
+  # Fetching HMMs
+  mkdir -p /HMM_databases
+  cd /HMM_databases
+  # Original database link was dead let's use something else for now
+  wget -q https://raw.githubusercontent.com/MadsAlbertsen/multi-metagenome/master/R.data.generation/essential.hmm
+  cd /
+  
+  # Install metator and requests
+  pip3 install requests metator
 
   # Clean up
   rm -rf /var/lib/apt/lists/*
