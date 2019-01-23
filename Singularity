@@ -25,12 +25,8 @@ From: ubuntu:18.04
   pkg-config \
   wget
   
-  # Clone 
-  git clone https://github.com/koszullab/metaTOR.git /app
-  
   # Install
-  cd /app
-  pip3 install .
+  pip3 install metator
 
   # Install louvain
   metator dependencies
