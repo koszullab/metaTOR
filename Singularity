@@ -23,7 +23,8 @@ From: ubuntu:18.04
   libfreetype6-dev \
   libpng-dev \
   pkg-config \
-  wget
+  wget \
+  pigz
   
   mkdir -p /tools
   cd /tools
