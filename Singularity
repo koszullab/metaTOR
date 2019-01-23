@@ -35,7 +35,8 @@ From: ubuntu:18.04
   # Fetching louvain
   mkdir -p /tools/louvain
   wget -q https://lip6.github.io/Louvain-BinaryBuild/louvain_linux.tar.gz -O /tools/louvain/louvain.tar.gz
-  tar -xzf /tools/louvain/louvain.tar.gz
+  cd /tools/louvain
+  tar -xzf louvain.tar.gz
   chmod +x /tools/louvain/*
   rm -f /tools/louvain/louvain.tar.gz
   
