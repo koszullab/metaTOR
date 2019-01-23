@@ -25,7 +25,9 @@ From: ubuntu:18.04
   pkg-config \
   wget
   
-  # Install
+  pip3 install requests
+  
+  # Install metator
   pip3 install metator
 
   # Install louvain
