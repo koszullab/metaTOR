@@ -78,10 +78,18 @@ Requirements can usually be installed with an OS's package manager. The requirem
     metator dependencies
 ```
 
+## Containers
+
 A dockerfile is also available if that is of interest. You may fetch the image by running the following:
 
 ```sh
     docker pull koszullab/metator
+```
+
+Additionally, a [Singularity](https://www.sylabs.io/) file is also available, courtesy of [avilab](https://github.com/avilab/metator). You may fetch the container this way:
+
+```sh
+    singularity pull shub://kosullab/metator
 ```
 
 ## References
