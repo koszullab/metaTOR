@@ -48,6 +48,9 @@ From: ubuntu:18.04
   wget -q https://raw.githubusercontent.com/MadsAlbertsen/multi-metagenome/master/R.data.generation/essential.hmm
   cd /
   
+  # Add tools to path during runtime
+  echo 'export PATH=$PATH:/tools:/tools/louvain:/HMM_databases' >>$SINGULARITY_ENVIRONMENT
+  
   # Install metator and requests
   pip3 install requests metator
 
