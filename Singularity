@@ -30,7 +30,6 @@ From: ubuntu:18.04
   
   # Fetching prodigal
   wget -q https://github.com/hyattpd/Prodigal/releases/download/v2.6.3/prodigal.linux -O /tools/prodigal
-  mv prodigal.linux prodigal
   chmod +x /tools/prodigal
   
   # Fetching louvain
