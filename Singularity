@@ -43,9 +43,8 @@ From: ubuntu:18.04
   # Fetching HMMs
   mkdir -p /HMM_databases
   cd /HMM_databases
-  wget -q http://dl.pasteur.fr/fop/LItxiFe9/hmm_databases.tgz
-  tar -xzf /HMM_databases/hmm_databases.tgz
-  rm -f /HMM_databases/hmm_databases.tar.gz
+  # Original database link was dead let's use something else for now
+  wget -q https://raw.githubusercontent.com/MadsAlbertsen/multi-metagenome/master/R.data.generation/essential.hmm
   cd /
   
   # Install metator and requests
