@@ -4,17 +4,12 @@
 # Théo Foutel-Rodier
 # Lyam Baudry
 
-current_version="0.1.6"
-last_update_date="[November 2018]"
-
 function display_help() {
   echo ""
   echo "   metaTOR - a pipeline for binning metagenomic datasets from 3C data."
   echo ""
   echo "   Written by L. Baudry, T. Foutel-Rodier and M. Marbouty (with contributions from A. Cournac and V. Scolari)"
   echo "   Spatial Genome Regulation laboratory (Institut Pasteur, Paris)"
-  echo ""
-  echo "   Version $current_version $last_update_date"
   echo ""
   echo "      Usage: metator {align|partition|annotation|binning|pipeline} [parameters]"
   echo ""
