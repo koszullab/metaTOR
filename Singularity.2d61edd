@@ -50,7 +50,7 @@ From: ubuntu:18.04
   
   # Install metator and requests
   pip3 install requests
-  pip3 install -e git+https://github.com/koszullab/metator.git@2d61edd2f75a4a9115c4b227f201781aa85c9d0b
+  pip3 install -e git+https://github.com/koszullab/metator.git#egg=2d61edd2f75a4a9115c4b227f201781aa85c9d0b
 
   # Clean up
   rm -rf /var/lib/apt/lists/*
