@@ -49,7 +49,9 @@ From: ubuntu:18.04
   echo 'export PATH=$PATH:/tools:/tools/louvain:/HMM_databases' >>$SINGULARITY_ENVIRONMENT
   
   # Install metator and requests
-  pip3 install requests metator
+  pip3 install requests
+  pip3 install git+https://github.com/koszullab/metator.git
+  chmod 777 -R /usr/local/lib/python3.6/dist-packages/metator/bin/
 
   # Clean up
   rm -rf /var/lib/apt/lists/*
