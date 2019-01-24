@@ -23,29 +23,29 @@ From: ubuntu:18.04
   libfreetype6-dev \
   libpng-dev \
   pkg-config \
-  wget
+  wget \
+  pigz
   
   mkdir -p /tools
   cd /tools
   
-  # Fetching prodigal
-  wget -q https://github.com/hyattpd/Prodigal/releases/download/v2.6.3/prodigal.linux -O /tools/prodigal
-  chmod +x /tools/prodigal
-  
   # Fetching louvain
   mkdir -p /tools/louvain
-  wget -q https://lip6.github.io/Louvain-BinaryBuild/louvain_linux.tar.gz
-  tar -xzf /tools/louvain/louvain_linux.tar.gz
+  wget -q https://lip6.github.io/Louvain-BinaryBuild/louvain_linux.tar.gz -O /tools/louvain/louvain.tar.gz
+  cd /tools/louvain
+  tar -xzf louvain.tar.gz
   chmod +x /tools/louvain/*
-  rm -f /tools/louvain/louvain_linux.tar.gz
+  rm -f /tools/louvain/louvain.tar.gz
   
   # Fetching HMMs
   mkdir -p /HMM_databases
   cd /HMM_databases
-  wget -q http://dl.pasteur.fr/fop/LItxiFe9/hmm_databases.tgz
-  tar -xzf /HMM_databases/hmm_databases.tgz
-  rm -f /HMM_databases/hmm_databases.tar.gz
+  # Original database link was dead let's use something else for now
+  wget -q https://raw.githubusercontent.com/MadsAlbertsen/multi-metagenome/master/R.data.generation/essential.hmm
   cd /
+  
+  # Add tools to path during runtime
+  echo 'export PATH=$PATH:/tools:/tools/louvain:/HMM_databases' >>$SINGULARITY_ENVIRONMENT
   
   # Install metator and requests
   pip3 install requests metator
