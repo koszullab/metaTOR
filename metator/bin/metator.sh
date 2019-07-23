@@ -48,7 +48,7 @@ function display_help() {
 function fetch_dependencies() {
 
   set -e
-  hmm_url="http://dl.pasteur.fr/fop/LItxiFe9/hmm_databases.tgz"
+  hmm_url="http://dl.pasteur.fr/fop/gzLz1lG8/hmm_databases.tgz"
   prodigal_base="https://github.com/hyattpd/Prodigal/releases/download/v2.6.3/prodigal"
   mkdir -p $tools_dir
   cd "$tools_dir" || {
