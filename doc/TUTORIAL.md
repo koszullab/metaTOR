@@ -1,8 +1,8 @@
 # metaTOR tutorial
 
-This tutorial aims at providing users with quick commands to get the hang of the metaTOR pipeline, whether they want to reproduce steps described in [our papers and preprints](https://github.com/koszullab/metaTOR/blob/master/README.md#references) or adapt the commands to their own data.
+This tutorial aims at providing users with quick commands to get the hang of the metaTOR pipeline, whether they want to reproduce steps described in [our showcase paper](https://www.frontiersin.org/articles/10.3389/fgene.2019.00753/full) or adapt the commands to their own data.
 
-This is *not* meant to provide a comprehensive explanation of all parameters and possible configurations to run the pipeline - please refer to the [metaTOR manual](https://github.com/koszullab/metaTOR/blob/master/meta3c_manual.pdf) if you want to delve into details. Rather, it is meant to be a step-by-step explanation of what you should be expected to run, tweak and visualize for the most common use cases.
+This is *not* meant to provide a comprehensive explanation of all parameters and possible configurations to run the pipeline - please refer to the [metaTOR manual](https://github.com/koszullab/metaTOR/blob/master/metator_manual.pdf) if you want to delve into details. Rather, it is meant to be a step-by-step explanation of what you should be expected to run, tweak and visualize for the most common use cases.
 
 ## Getting the pipeline
 
