@@ -87,7 +87,7 @@ function fetch_dependencies() {
 
   echo "Fetching HMMs..."
   mkdir -p "$model_dir"
-  wget -q $hmm_url -O "$model_dir"/hmm_databases
+  wget -q $hmm_url -O "$model_dir"/hmm_databases.hmm
 
   echo "All dependencies successfully installed in $tools_dir."
   set +e
