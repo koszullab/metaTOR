@@ -48,7 +48,7 @@ function display_help() {
 function fetch_dependencies() {
 
   set -e
-  hmm_url="https://github.com/koszullab/metaTOR/blob/master/metator/data/hmm_databases.tgz?raw=true"
+  hmm_url="https://github.com/MadsAlbertsen/multi-metagenome/raw/master/R.data.generation/essential.hmm"
   prodigal_base="https://github.com/hyattpd/Prodigal/releases/download/v2.6.3/prodigal"
   mkdir -p $tools_dir
   cd "$tools_dir" || {
@@ -87,9 +87,7 @@ function fetch_dependencies() {
 
   echo "Fetching HMMs..."
   mkdir -p "$model_dir"
-  wget -q $hmm_url -O "$model_dir"/hmm_databases.tgz
-  tar -xzf "$model_dir"/hmm_databases.tgz -C "$model_dir"
-  rm -f "$model_dir"/hmm_databases.tar.gz
+  wget -q $hmm_url -O "$model_dir"/hmm_databases
 
   echo "All dependencies successfully installed in $tools_dir."
   set +e
