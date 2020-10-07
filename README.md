@@ -71,6 +71,7 @@ Please refer to the [tutorial](https://github.com/koszullab/metaTOR/blob/master/
 * [prodigal](https://github.com/hyattpd/Prodigal)
 * [louvain](https://sourceforge.net/projects/louvain/) (original
     implementation)
+* pigz
 
 Requirements can usually be installed with an OS's package manager. The requirements that cannot (namely ```prodigal```, ```louvain``` and HMM databases) can be fetched with the following (The package may need to be run as a root depending on where the package is installed):
 
