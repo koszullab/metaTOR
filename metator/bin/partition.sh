@@ -137,14 +137,13 @@ rm -f "${partition_dir}"/partition/regression_louvain_500.txt
 rm -f "${partition_dir}"/partition/regression_louvain_1000.txt
 
 echo "Performing iterations..."
-
 for iteration in $(seq "$iterations"); do
   perform_iteration "$iteration"
 done
 wait
 
-echo "Resolving partitions..."
 #We resolve partitions at different points in order to get an idea of how stable cores can get.
+echo "Resolving partitions..."
 for column in 1 5 10 20 30 40 50 60 70 80 90 100 150 200 500 1000 $iterations; do
   if [ "$iterations" -ge "$column" ]; then
     resolve_partition "$column"
@@ -153,13 +152,16 @@ done
 
 wait
 
-echo "Drawing some figures..."
-
-for u in 100 500 1000; do
-  python3 "$scripts_dir"/figures.py --plots "${partition_dir}"/partition/regression_louvain_"${u}".txt -o "${partition_dir}"/partition/regression_"${u}".pdf &
-done
 
 wait
+
+# echo "Drawing some figures..."
+# 
+# for u in 100 500 1000; do
+#   python3 "$scripts_dir"/figures.py --plots "${partition_dir}"/partition/regression_louvain_"${u}".txt -o "${partition_dir}"/partition/regression_"${u}".pdf &
+# done
+# 
+# wait
 
 echo "Cleaning up..."
 
