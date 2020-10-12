@@ -1,4 +1,16 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+Function to compute matrix of core communities Hamming distances in parallel. 
+For a sample with ~300K core communities (with ~250K single contig communities),
+it takes ~ 10-20 min to run.
+Internally, for each core community, the function takes its array of 
+N iterative Louvain communities and compares it to the arrays of N iterative 
+Louvain communities for each other core community. Thus, for each pair of 
+core community, it calculates a pairwise Hamming distance. The resulting 
+matrix (N_cores x N_cores) is saved as a sparse matrix (COO). 
+"""
 
 import numpy as np
 import pandas as pd
@@ -7,6 +19,7 @@ from scipy import stats
 from scipy import sparse
 import multiprocessing
 import argparse
+import glob
 from functools import partial
 
 def get_distances_splitmat (comm, core_communities_contigs):
@@ -33,10 +46,15 @@ def main():
     parser.add_argument(
         "-o", "--output", help="Output file to store matrix of Hamming distances"
     )
+    parser.add_argument(
+        "-@", "--cores", help="Number of cores to parallelize computation", 
+        default=5
+    )
     args = parser.parse_args()
     communities = args.communities
     indices = args.indices
     output = args.output
+    cores = args.cores
     
     # ------- Import iterative clustering matrix ------- #
     communities = pd.read_csv(communities, sep='\t', header = None)
@@ -46,7 +64,7 @@ def main():
     iter_names = ["iter_" + str(x+1) for x in range(0, n_iter)]
     communities.index = contig_names
     communities.columns = iter_names
-    
+
     # ------- Import core communities ------- #
     core_communities = pd.read_csv(indices, sep='\t', header = None)
     core_communities = core_communities.apply(lambda x: [int(y) for y in x[0].split(' ')], axis = 1)
@@ -59,18 +77,26 @@ def main():
     step = 1000
     steps = np.arange(step, len(core_communities_contigs.index)+step, step)
     split_core_communities = [core_communities_contigs[(k-step):k] for k in steps]
-    cores = 5
     pool = multiprocessing.Pool(processes = cores)
     res = pool.map(partial(get_distances_splitmat, core_communities_contigs=core_communities_contigs), split_core_communities)
+    
+    # ------- Save temporary matrices ------- #
+    # for k in np.arange(len(res)):
+    #     mat = res[k]
+    #     file = os.path.dirname(output) + "/." + re.sub(".npz", "_" + str(k) + ".npz", os.path.basename(output))
+    #     sparse.save_npz(file, mat)
+    
+    # ------- hStacking resulting list of arrays ------- #
+    print('Merging sub-matrices...')
     res = sparse.hstack(res)
-    res_dense = res.todense()
+    # res_dense = res.todense()
     pool.close()
     # df = pd.DataFrame(res_dense)
     # df.index = [str(x) for x in range(1, len(df)+1)]
     # df.columns = [str(x) for x in range(1, len(df)+1)]
     
     # ------- Exporting matrix of Hamming distances ------- #
-    print('Exporting matrix of Hamming distances...')
+    print('Exporting full matrix of Hamming distances...')
     # df.to_csv(output, header=[str(x) for x in range(1, len(df)+1)], index=[str(x) for x in range(1, len(df)+1)], sep='\t', mode='a')
     # sparse_matrix = scipy.sparse.load_npz(output)
     sparse.save_npz(output, res)

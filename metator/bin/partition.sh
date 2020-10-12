@@ -153,16 +153,17 @@ done
 wait
 
 # Compute the matrix of pairwise Hamming distances between all pairs of core communities
-echo "Computing matrix of Hamming distances..."
+echo "Computing matrix of Hamming distances for ${iterations} interations..."
 input="${partition_dir}"/partition/core_size_indices_"${iterations}".txt
 communities="${tmp_dir}"/"${project}"_iterations_"${iterations}".txt
 indices="${tmp_dir}"/"${project}"_indices_"${iterations}".txt
-output="${partition_dir}"/partition/hamming_distance_"${iterations}".npz
 sed 's,^[ ]*,,' "${input}" | sed 's, ,\t,' | cut -f3 > "${indices}"
+output="${partition_dir}"/partition/hamming_distance_"${iterations}".npz
 python3 "${scripts_dir}"/hamming.py \
   --communities "${communities}" \
   --indices "${indices}" \
-  --output "${output}"
+  --output "${output}" \
+  --cores "${threads}"
 
 wait
 
