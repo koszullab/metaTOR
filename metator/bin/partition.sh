@@ -69,7 +69,7 @@ function perform_iteration() {
 
   "$hierarchy_executable" "${tmp_dir}"/tmp_"${project}"_"${current_iteration}".tree >"${tmp_dir}"/output_louvain_"${project}"_"${current_iteration}".txt
 
-  level="$(tail -1 "${tmp_dir}"/output_louvain_"${project}"_"${current_iteration}".txt | awk '{print $2}' | sed 's/://g')"
+  level="$(tail -1 "${tmp_dir}"/output_louvain_"${project}"_"${current_iteration}".txt | gawk '{print $2}' | sed 's/://g')"
 
   "$hierarchy_executable" "${tmp_dir}"/tmp_"${project}"_"${current_iteration}".tree -l "${level}" | cut -f 2 -d ' ' >"${partition_dir}"/iteration/"${current_iteration}".community
 }
@@ -93,7 +93,7 @@ function resolve_partition() {
     sort -n -k1,1 --parallel="$threads" >"${partition_dir}"/partition/chunkid_core_size_"${repet}".txt
 
   #Slower but more reliable than paste: sometimes it's handy to have chunks listed by ids or by names, so we generate both
-  awk '
+  gawk '
     NR == FNR {
       names[$1] = $2
       next
@@ -107,10 +107,10 @@ function resolve_partition() {
   ' "${network_dir}"/idx_contig_hit_size_cov.txt "${partition_dir}"/partition/chunkid_core_size_"${repet}".txt \
     >"${partition_dir}"/partition/chunkname_core_size_"${repet}".txt
 
-  awk '{ print $2 }' "${partition_dir}"/partition/core_size_indices_"${repet}".txt >"${tmp_dir}"/"${project}"_sizes_"${repet}".txt
+  gawk '{ print $2 }' "${partition_dir}"/partition/core_size_indices_"${repet}".txt >"${tmp_dir}"/"${project}"_sizes_"${repet}".txt
 
   #Draw some figures to have an idea of how bin sizes evolve as more Louvain iterations are computed
-  awk -v repet="$repet" '
+  gawk -v repet="$repet" '
     BEGIN {
       count_100 = 0
       count_500 = 0
