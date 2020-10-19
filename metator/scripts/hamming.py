@@ -54,7 +54,11 @@ def main():
     communities = args.communities
     indices = args.indices
     output = args.output
-    cores = args.cores
+    cores = int(args.cores)
+    # communities = "/pasteur/homes/jaseriza/scratch/Projects/test/after0h/temp/after0h_iterations_100.txt"
+    # indices = "/pasteur/homes/jaseriza/scratch/Projects/test/after0h/temp/after0h_indices_100.txt"
+    # output = "/pasteur/homes/jaseriza/scratch/Projects/test/after0h/partition/partition/hamming_distance_100.npz"
+    # cores = 1
     
     # ------- Import iterative clustering matrix ------- #
     communities = pd.read_csv(communities, sep='\t', header = None)
