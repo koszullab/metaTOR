@@ -29,7 +29,7 @@ contigs="${partition_dir}"/network_matrices/"${project}"_"${iter}"-iters_contigI
 contigs_info="${partition_dir}"/partition/chunkid_core_size_"${iter}".txt
 paste \
   <(cat ${contigs_info} | cut -f1,2) \
-  <(cat "${assembly_dir}"/"${project}"_500.fa | awk '$0 ~ ">" {if (NR > 1) {print c;} c=0;printf substr($0,2,100) "\t"; } $0 !~ ">" {c+=length($0);} END { print c; }' | cut -f2) \
+  <(cat "${assembly_dir}"/"${project}"_"${size_contig_threshold}".fa | awk '$0 ~ ">" {if (NR > 1) {print c;} c=0;printf substr($0,2,100) "\t"; } $0 !~ ">" {c+=length($0);} END { print c; }' | cut -f2) \
   > "${contigs}"
 
 # Compute the matrix of pairwise Hamming distances between all pairs of core communities and CC infos
