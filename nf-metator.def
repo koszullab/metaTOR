@@ -41,7 +41,9 @@ From: ubuntu:16.04
     /opt/conda/bin/conda install -c conda-forge pytz=2019.3 pandas=1.0.1 seaborn=0.10.0 louvain=0.6.1 pigz=2.3.4 -y
     /opt/conda/bin/conda install -c bioconda megahit bowtie2 samtools hmmer prodigal pysam checkm-genome fastqc cutadapt -y
     pip install multiqc
-    
+    pip install metaphlan
+    metaphlan --install
+
     # Install metator
     pip install git+https://github.com/js2264/metaTOR.git#egg=metator
     export PATH=:/root/.local/bin:$PATH
