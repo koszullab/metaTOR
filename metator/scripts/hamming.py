@@ -44,6 +44,9 @@ def main():
         "-i", "--indices", help="Contig ids of core communities (last column of partition/core_size_indices_*.txt)"
     )
     parser.add_argument(
+        "-C", "--contigs", help="<PARTITION_DIR>/network_matrices/<PROJECT>_<ITER>-iters_contigID-coreID-contigSize.txt"
+    )
+    parser.add_argument(
         "-o", "--output", help="Output file to store matrix of Hamming distances"
     )
     parser.add_argument(
@@ -53,8 +56,14 @@ def main():
     args = parser.parse_args()
     communities = args.communities
     indices = args.indices
+    contigs = args.contigs
     output = args.output
-    cores = args.cores
+    cores = int(args.cores)
+    # communities = "/pasteur/homes/jaseriza/scratch/Projects/20201016_metator_Helaine-project/results/after0h/temp/after0h_iterations_100.txt"
+    # indices = "/pasteur/homes/jaseriza/scratch/Projects/20201016_metator_Helaine-project/results/after0h/temp/after0h_indices_100.txt"
+    # contigs = "/pasteur/homes/jaseriza/scratch/Projects/20201016_metator_Helaine-project/results/after0h/partition/network_matrices/after0h_100-iters_contigID-coreID-contigSize.txt"
+    # output = "/pasteur/homes/jaseriza/scratch/Projects/20201016_metator_Helaine-project/results/after0h/partition/network_matrices/after0h_100-iters_hamming_distance.npz"
+    # cores = 1
     
     # ------- Import iterative clustering matrix ------- #
     communities = pd.read_csv(communities, sep='\t', header = None)
@@ -68,8 +77,9 @@ def main():
     # ------- Import core communities ------- #
     core_communities = pd.read_csv(indices, sep='\t', header = None)
     core_communities = core_communities.apply(lambda x: [int(y) for y in x[0].split(' ')], axis = 1)
-    
-    # ------- Create core-community-level iterative clustering matrix ------- #
+    core_communities.index = ["cc_" + str(x+1) for x in range(0, len(core_communities))]
+
+   # ------- Create core-community-level iterative clustering matrix ------- #
     core_communities_contigs = communities.loc[np.array(core_communities.apply(lambda x: "contig_" + str(x[0]))), ]
     core_communities_contigs.index = core_communities
     
@@ -100,6 +110,16 @@ def main():
     # df.to_csv(output, header=[str(x) for x in range(1, len(df)+1)], index=[str(x) for x in range(1, len(df)+1)], sep='\t', mode='a')
     # sparse_matrix = scipy.sparse.load_npz(output)
     sparse.save_npz(output, res)
+    
+    # ------- Export CC sizes ------- #
+    contigs = pd.read_csv(contigs, sep='\t', header = None)
+    cc_sizes = [sum(contigs.iloc[np.array(cc)-1, 2]) for cc in core_communities]
+    core_communities = pd.DataFrame(core_communities)
+    core_communities['idx'] = np.arange(1, (core_communities.shape[0]+1))
+    core_communities['size'] = cc_sizes
+    core_communities['NbContigs'] = [len(x) for x in core_communities[0]]
+    output2 = output.replace('_hamming_distance.npz', '_ccID_ccSize_ccNbContigs.txt')
+    np.savetxt(output2, core_communities[['idx', 'size', 'NbContigs']].values, fmt='%d', delimiter='\t')
 
 if __name__ == "__main__":
     main()

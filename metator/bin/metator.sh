@@ -280,6 +280,7 @@ done
 
 set -- "${arguments[@]}" #Positional parameters (i.e. actions)
 
+#current_dir=/opt/conda/lib/python3.7/site-packages/metator/bin
 current_dir="$(cd "$(dirname "$0")" && pwd)"
 
 #This sets the appropriate script to launch with all these parameters, e.g. ./meta3c.sh action --blabla 4 --blibli 6 --etc
@@ -379,6 +380,10 @@ m | align | align.sh)
 p | partition | partition.sh)
   # shellcheck source=partition.sh
   . "$current_dir"/partition.sh
+  ;;
+m | matrix | matrix.sh)
+  # shellcheck source=partition.sh
+  . "$current_dir"/matrix.sh
   ;;
 a | annotation | annotation.sh)
   # shellcheck source=annotation.sh
