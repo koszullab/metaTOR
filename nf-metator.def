@@ -42,7 +42,7 @@ From: ubuntu:16.04
     /opt/conda/bin/conda install -c bioconda megahit bowtie2 samtools hmmer prodigal pysam checkm-genome fastqc cutadapt -y
     pip install multiqc
     pip install metaphlan
-    metaphlan --install
+    # metaphlan --install
 
     # Install metator
     pip install git+https://github.com/js2264/metaTOR.git#egg=metator
