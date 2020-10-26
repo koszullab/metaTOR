@@ -28,7 +28,7 @@ fi
 echo "Computing matrix of Hamming distances for ${iter} interations..."
 #
 communities="${tmp_dir}"/"${project}"_iterations_"${iter}".txt
-paste $(printf "${partition_dir}"/iteration/%s.community $(seq 1 "${iter}")) > "${communities}"
+paste $(printf "${partition_dir}/iteration/%s.community " $(seq 1 "${iter}")) > "${communities}"
 #
 indices="${tmp_dir}"/"${project}"_indices_"${iter}".txt
 input="${partition_dir}"/partition/core_size_indices_"${iter}".txt
