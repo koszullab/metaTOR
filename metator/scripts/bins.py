@@ -228,7 +228,8 @@ def extract_fasta(
 
         with open(core_file, "w") as core_handle:
             for name in chunks_to_keep:
-                fields = name.split("_")
+                fields = name.split(b"_")
+                fields = list(map(lambda x: x.decode('UTF8'), fields))
                 header_name = "_".join(fields[:-1])
                 chunk = int(fields[-1])
 
@@ -239,6 +240,7 @@ def extract_fasta(
 
                 sequence = str(genome[header_name][pos_start:pos_end])
 
+                name = "_".join(fields)
                 core_handle.write(">{}\n".format(name))
                 core_handle.write("{}\n".format(sequence))
 
