@@ -93,43 +93,43 @@ for f in $(seq 1 "$n_bins"); do
   fi
 done
 
-echo "Drawing global matrix..."
-sort -k2,2n -k1,1n "${partition_dir}"/partition/chunkid_core_size_"${iter}".txt | cat -n | unexpand -a >"${partition_dir}"/partition/matid_chunkid_core_size_"${iter}".txt
-
-awk 'NR==FNR && $3 < '"$n_bins"' {    
-        idx[$2] = $1
-        next
-    }
-
-    NR > FNR && $1 in idx && $2 in idx {
-        print idx[$1], idx[$2], $3
-    }
-    ' "${partition_dir}"/partition/matid_chunkid_core_size_"${iter}".txt "${network_dir}"/network.txt >"${partition_dir}"/partition/sparse_mat_"${iter}".txt
-
-python3 "$scripts_dir"/figures.py --sparse "${partition_dir}"/partition/sparse_mat_"${iter}".txt --output "${partition_dir}"/bin_matrices/iteration"$iter"/sparse_mat_"${iter}".eps
-
-echo "Drawing core matrix..."
-awk '$3 > 4 && NR == FNR {
-        core[$1] = $2
-        next
-    }
-    $1 in core && $2 in core {
-        core1 = core[$1]
-        core2 = core[$2]
-        if (core1 < core2) {
-            contacts[core1"\t"core2] += $3
-        }
-        else {
-            contacts[core2"\t"core2] += $3
-        }
-    }
-    END {
-        for (edge in contacts) {
-            print edge, contacts[edge]
-        }
-    }
-' "${partition_dir}"/partition/chunkid_core_size_"${iter}".txt "${network_dir}"/network.txt >"${partition_dir}"/partition/core_network_"${iter}".txt
-
-python3 "$scripts_dir"/figures.py --sparse "${partition_dir}"/partition/core_network_"${iter}".txt --output "${partition_dir}"/bin_matrices/iteration"$iter"/core_matrix_"${iter}".eps
+# echo "Drawing global matrix..."
+# sort -k2,2n -k1,1n "${partition_dir}"/partition/chunkid_core_size_"${iter}".txt | cat -n | unexpand -a >"${partition_dir}"/partition/matid_chunkid_core_size_"${iter}".txt
+# 
+# awk 'NR==FNR && $3 < '"$n_bins"' {    
+#         idx[$2] = $1
+#         next
+#     }
+# 
+#     NR > FNR && $1 in idx && $2 in idx {
+#         print idx[$1], idx[$2], $3
+#     }
+#     ' "${partition_dir}"/partition/matid_chunkid_core_size_"${iter}".txt "${network_dir}"/network.txt >"${partition_dir}"/partition/sparse_mat_"${iter}".txt
+# 
+# python3 "$scripts_dir"/figures.py --sparse "${partition_dir}"/partition/sparse_mat_"${iter}".txt --output "${partition_dir}"/bin_matrices/iteration"$iter"/sparse_mat_"${iter}".eps
+# 
+# echo "Drawing core matrix..."
+# awk '$3 > 4 && NR == FNR {
+#         core[$1] = $2
+#         next
+#     }
+#     $1 in core && $2 in core {
+#         core1 = core[$1]
+#         core2 = core[$2]
+#         if (core1 < core2) {
+#             contacts[core1"\t"core2] += $3
+#         }
+#         else {
+#             contacts[core2"\t"core2] += $3
+#         }
+#     }
+#     END {
+#         for (edge in contacts) {
+#             print edge, contacts[edge]
+#         }
+#     }
+# ' "${partition_dir}"/partition/chunkid_core_size_"${iter}".txt "${network_dir}"/network.txt >"${partition_dir}"/partition/core_network_"${iter}".txt
+# 
+# python3 "$scripts_dir"/figures.py --sparse "${partition_dir}"/partition/core_network_"${iter}".txt --output "${partition_dir}"/bin_matrices/iteration"$iter"/core_matrix_"${iter}".eps
 
 echo "Done."

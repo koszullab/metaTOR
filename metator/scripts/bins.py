@@ -213,7 +213,7 @@ def extract_fasta(
     }
 
     data_chunks = list(
-        zip(*np.genfromtxt(partition_file, usecols=(0, 1), dtype=None))
+        zip(*np.genfromtxt(partition_file, usecols=(0, 1), dtype=None, encoding=None))
     )
 
     chunk_names = np.array(data_chunks[0], dtype=object)

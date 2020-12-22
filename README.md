@@ -71,6 +71,8 @@ Please refer to the [tutorial](https://github.com/koszullab/metaTOR/blob/master/
 * [prodigal](https://github.com/hyattpd/Prodigal)
 * [louvain](https://sourceforge.net/projects/louvain/) (original
     implementation)
+* pigz
+* metaphlan
 
 Requirements can usually be installed with an OS's package manager. The requirements that cannot (namely ```prodigal```, ```louvain``` and HMM databases) can be fetched with the following (The package may need to be run as a root depending on where the package is installed):
 
@@ -91,6 +93,13 @@ Additionally, a [Singularity](https://www.sylabs.io/) file is also available, co
 ```sh
     singularity pull shub://kosullab/metator
 ```
+
+Alternatively, the Singularity image can be build locally by running: 
+
+```sh 
+    sudo singularity build nf-metator.sif nf-metator.def
+```
+
 
 ## References
 
