@@ -109,7 +109,6 @@ class Align(AbstractCommand):
 
         # Transform integer variables as integer.
         min_qual = int(self.args["--min-quality"])
-        print(self.args["--threads"])
 
         # Align pair-end reads with bowtie2
         mta.pairs_alignment(
@@ -141,7 +140,7 @@ class Network(AbstractCommand):
     usage:
         network --genome=FILE --outdir=DIR --input=FILE [--normalized]
         [--output-file-contig-data=STR] [--output-file-network=STR]
-        [--read-size=INT] [--self-contacts] [--tempdir=DIR] [--threads=INT]
+        [--read-size=150] [--self-contacts] [--tempdir=DIR] [--threads=1]
 
     options:
         -g, --genome=FILE               The initial assembly path acting as the
@@ -154,25 +153,25 @@ class Network(AbstractCommand):
                                         network and contig data into. Default:
                                         current directory.
         --output-file-contig-data=STR   The specific file name for the output
-                                        chunk data file. Default is
-                                        'idx_contig_length_GC_hit_cov.txt'
+                                        chunk data file. [Default:
+                                        'idx_contig_length_GC_hit_cov.txt']
         --output-file-network=STR       The specific file name for the output
                                         network file. Default is network.txt
-        -r, --read-size=INT             Size of reads used for mapping. Default
-                                        is 35.
+        -r, --read-size=INT             Size of reads used for mapping.
+                                        [Default: 150]
         -s, --self-contacts             If enabled, count alignments between a
                                         contig and itself.
         -t, --threads=INT               Number of parallel threads allocated for
-                                        the alignement. Default: 1.
-        -T, --tempdir=DIR               Temporary directory. Default: to current
-                                        directory.
+                                        the alignement. [Default: 1]
+        -T, --tempdir=DIR               Temporary directory. Default to current
+                                        directory. [Default: ./tmp]
     """
 
     def execute(self):
 
         # Defined the temporary directory.
         if not self.args["--tempdir"]:
-            self.args["--tempdir"] = "."
+            self.args["--tempdir"] = "./tmp"
         temp_directory = mio.generate_temp_dir(self.args["--tempdir"])
 
         # Defined the output directory and names.
@@ -187,16 +186,8 @@ class Network(AbstractCommand):
         if not self.args["--output-file-network"]:
             self.args["--output-file-network"] = "network.txt"
 
-        # Transform integer variables as integer if one is given
-        if not self.args["--read-size"]:
-            read_size = 35
-        else:
-            read_size = int(self.args["--read-size"])
-
-        if not self.args["--threads"]:
-            threads = 1
-        else:
-            threads = int(self.args["--threads"])
+        # Transform integer variables as integer
+        read_size = int(self.args["--read-size"])
 
         # Defined boolean variables
         normalized = self.args["--normalized"]
@@ -210,7 +201,7 @@ class Network(AbstractCommand):
             output_file_contig_data=self.args["--output-file-contig-data"],
             tmpdir=temp_directory,
             read_size=read_size,
-            n_cpus=threads,
+            n_cpus=self.args["--threads"],
             normalized=normalized,
             self_contacts=self_contacts,
         )
@@ -219,6 +210,7 @@ class Network(AbstractCommand):
         shutil.rmtree(temp_directory)
 
 
+# TODO: Check if the Louvain algorithm is available in Python.
 class Partition(AbstractCommand):
     """"""
 
