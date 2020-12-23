@@ -1,4 +1,5 @@
 biopython
+docopt
 matplotlib
 numpy
 pysam
