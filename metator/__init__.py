@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 
 from .version import __version__ as version
-from .scripts import bins, fasta_utils, figures, hicstuff, log, network, hamming
+from .scripts import bins, fasta_utils, figures, hicstuff, network, hamming
+from . import *
 
-__author__ = "Lyam Baudry, Théo Foutel-Rodier, Martial Marbouty"
+__author__ = "Amaury Bignaud, Jacques Serizay, Lyam Baudry, Théo Foutel-Rodier,\
+    Martial Marbouty"
 __copyright__ = "Copyright © 2017-2018, Institut Pasteur, Paris, France"
 __credits__ = [
+    "Amaury Bignaud",
+    "Jacques Serizay",
     "Lyam Baudry",
     "Théo Foutel-Rodier",
     "Martial Marbouty",
@@ -14,7 +18,7 @@ __credits__ = [
     "Romain Koszul",
 ]
 __license__ = "GPLv3"
-__maintainer__ = "Lyam Baudry"
-__email__ = "lyam.baudry@pasteur.fr"
+__maintainer__ = "Amaury Bignaud"
+__email__ = "amaury.bignaud@pasteur.fr"
 __status__ = "Alpha"
 __version__ = version

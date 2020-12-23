@@ -65,5 +65,5 @@ setup(
     include_package_data=True,
     long_description_content_type="text/markdown",
     install_requires=REQUIREMENTS,
-    entry_points={"console_scripts": ["metator=metator.metator:main"]},
+    entry_points={"console_scripts": ["metator=metator.main:main"]},
 )
