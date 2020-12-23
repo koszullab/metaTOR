@@ -39,7 +39,7 @@ from metator.log import logger
 # TODO: Check description of the function
 
 
-def align(fq_in, index, n_cpu, bam_out):
+def align(fq_in, index, bam_out, n_cpu):
     """Alignment
     Aligns reads of fq_in with bowtie2. Parameters of bowtie2 are set as
     --very-sensitive-local
@@ -51,10 +51,10 @@ def align(fq_in, index, n_cpu, bam_out):
         path separated by a comma.
     index : str
         Path to the bowtie2 index genome.
-    n_cpu : int
-        The number of CPUs to use for the alignment.
     bam_out : str
         Path where the alignment should be written in BAM format.
+    n_cpu : int
+        The number of CPUs to use for the alignment.
     """
 
     # Align the reads on the reference genome
@@ -111,7 +111,7 @@ def alignment(fq_in, fastq, min_qual, tmp_dir, index, ligation_sites, n_cpu):
     filtered_out = join(tmp_dir, fastq + "_temp_alignment.bed")
 
     # Align the reads
-    align(fq_in, index, n_cpu, temp_alignment_raw)
+    align(fq_in, index, temp_alignment_raw, n_cpu)
 
     # Filters the aligned and non aligned reads
     unaligned = process_bamfile(temp_alignment_raw, min_qual, filtered_out)
@@ -126,7 +126,7 @@ def alignment(fq_in, fastq, min_qual, tmp_dir, index, ligation_sites, n_cpu):
         temp_alignment_trimmed = join(tmp_dir, "temp_alignment_trimmed.bam")
 
         # Align the trimmed reads
-        align(fq_trimmed, index, temp_alignement_trimmed)
+        align(fq_trimmed, index, temp_alignement_trimmed, n_cpu)
 
         # Filter the aligned reads
         unaligned_trimmed = process_bamfile(

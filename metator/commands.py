@@ -69,8 +69,8 @@ class Align(AbstractCommand):
     sites to optimize the proportion of uniquely mapped reads.
 
     usage:
-        align [--ligation-sites=STR] [--tempdir=DIR] [--threads=INT]
-        [--min-quality=INT] --genome=FILE --out=FILE --forward
+        align [--ligation-sites=STR] [--tempdir=DIR] [--threads=1]
+        [--min-quality=30] --genome=FILE --out=FILE --forward
         reads_for.fastq[,reads_for2.fastq...] --reverse
         reads_rev.fastq[,reads_rev2.fastq...]
 
@@ -89,28 +89,27 @@ class Align(AbstractCommand):
                                     enzyme(s). For example
                                     GATCGATC,GANTGATC,GANTANTC,GATCANTC
                                     for DpnII and HinfI. If no option given, it
-                                    will align only once the reads. Default:
-                                    None.
+                                    will align only once the reads. [Default:
+                                    None]
         -o, --out=FILE              Path where the alignment will be written in
                                     bed2D format.
         -q, --min-quality=INT       Threshold of quality necessary to considered
-                                    a read properly aligned. Default 30.
+                                    a read properly aligned. [Default: 30]
         -t, --threads=INT           Number of parallel threads allocated for the
-                                    alignement. Default: 1.
-        -T, --tempdir=DIR           Temporary directory. Default: to current
-                                    directory.
+                                    alignement. [Default: 1]
+        -T, --tempdir=DIR           Temporary directory. [Default: ./tmp]
     """
 
     def execute(self):
 
         # Defined the temporary directory.
         if not self.args["--tempdir"]:
-            self.args["--tempdir"] = "."
+            self.args["--tempdir"] = "./tmp"
         temp_directory = mio.generate_temp_dir(self.args["--tempdir"])
 
-        # Transform integer variables as integer
+        # Transform integer variables as integer.
         min_qual = int(self.args["--min-quality"])
-        threads = int(self.args["--threads"])
+        print(self.args["--threads"])
 
         # Align pair-end reads with bowtie2
         mta.pairs_alignment(
@@ -121,7 +120,7 @@ class Align(AbstractCommand):
             self.args["--genome"],
             self.args["--ligation-sites"],
             self.args["--out"],
-            threads,
+            self.args["--threads"],
         )
 
         # Delete the temporary folder
