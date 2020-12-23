@@ -4,12 +4,11 @@
 # Lyam Baudry
 # Théo Foutel-Rodier
 
-#Install all dependencies on Ubuntu. Should be run as root.
-#This script caters to users who just want to run things quickly
-#and sets up the appropriate environment for them.
-#If you don't like the automated steps it takes, it is assumed
-#that you know what you are doing and can setup the environment
-#yourself.
+# Install all dependencies on Ubuntu. Should be run as root. This script caters
+# to users who just want to run things quickly and sets up the appropriate
+# environment for them. If you don't like the automated steps it takes, it is
+# assumed that you know what you are doing and can setup the environment
+# yourself.
 
 current_dir="$(cd "$(dirname "$0")" && pwd)"
 
@@ -32,7 +31,7 @@ apt install python3-pip bowtie2 samtools hmmer prodigal
 echo "OK."
 
 echo "Installing python dependencies..."
-pip3 install -U numpy scipy pysam matplotlib seaborn biopython
+pip3 install -U numpy scipy pysam matplotlib seaborn biopython sklearn
 echo "OK."
 
 ./metator.sh dependencies

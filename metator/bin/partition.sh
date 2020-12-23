@@ -36,7 +36,7 @@ else
   distance="distance"
 fi
 
-#Default locations
+# Default locations
 louvain_executable="$tools_dir"/louvain/louvain
 convert_executable="$tools_dir"/louvain/convert
 hierarchy_executable="$tools_dir"/louvain/hierarchy
@@ -45,7 +45,8 @@ locate_and_set_executable louvain_executable louvain
 locate_and_set_executable convert_executable convert louvain
 locate_and_set_executable hierarchy_executable hierarchy louvain
 
-#Sanity check: input network file. Takes the form $network_dir/network.txt if generated from alignment.sh
+# Sanity check: input network file. Takes the form $network_dir/network.txt if
+# generated from alignment.sh
 if [ ! -f "$network_file" ]; then
   echo >&2 "Network file not found. Aborting."
   exit 1
@@ -56,12 +57,12 @@ mkdir -p "$partition_dir"/iteration
 mkdir -p "$partition_dir"/partition
 mkdir -p "$tmp_dir"
 
-#Convert network into binary files for Louvain to work on
+# Convert network into binary files for Louvain to work on
 if [ ! -f "${tmp_dir}"/tmp_"${project}".bin ] && [ ! -f "${tmp_dir}"/tmp_"${project}".weights ]; then
   "$convert_executable" -i "$network_file" -o "${tmp_dir}"/tmp_"${project}".bin -w "${tmp_dir}"/tmp_"${project}".weights
 fi
 
-#First, perform Louvain iterations on graphs
+# First, perform Louvain iterations on graphs
 function perform_iteration() {
   local current_iteration=$1
 
@@ -74,25 +75,27 @@ function perform_iteration() {
   "$hierarchy_executable" "${tmp_dir}"/tmp_"${project}"_"${current_iteration}".tree -l "${level}" | cut -f 2 -d ' ' >"${partition_dir}"/iteration/"${current_iteration}".community
 }
 
-#Then, collect all the results to try and identify bins (identified by identical lines in the pasted community file)
+# Then, collect all the results to try and identify bins (identified by
+# identical lines in the pasted community file)
 function resolve_partition() {
 
   local repet=$1
 
-  #Merge all Louvain outputs
+  # Merge all Louvain outputs
   paste $(printf "${partition_dir}/iteration/%s.community " $(seq 1 "$repet")) >"${tmp_dir}"/"${project}"_iterations_"${repet}".txt
 
-  #Identify bins and sort them
+  # Identify bins and sort them
   "$working_dir"/$distance -m cores -i "${tmp_dir}"/"${project}"_iterations_"${repet}".txt |
     sort -nr -k1,1 --parallel="$threads" |
     cat -n \
       >"${partition_dir}"/partition/core_size_indices_"${repet}".txt
 
-  #We use this one-liner because awk can't process more than 32767 fields
+  # We use this one-liner because awk can't process more than 32767 fields
   perl -nae 'print join("\t", $_, $F[0], $F[1]), "\n" for @F[2..$#F];' "${partition_dir}"/partition/core_size_indices_"${repet}".txt |
     sort -n -k1,1 --parallel="$threads" >"${partition_dir}"/partition/chunkid_core_size_"${repet}".txt
 
-  #Slower but more reliable than paste: sometimes it's handy to have chunks listed by ids or by names, so we generate both
+  # Slower but more reliable than paste: sometimes it's handy to have chunks
+  # listed by ids or by names, so we generate both
   gawk '
     NR == FNR {
       names[$1] = $2
@@ -109,7 +112,8 @@ function resolve_partition() {
 
   gawk '{ print $2 }' "${partition_dir}"/partition/core_size_indices_"${repet}".txt >"${tmp_dir}"/"${project}"_sizes_"${repet}".txt
 
-  #Draw some figures to have an idea of how bin sizes evolve as more Louvain iterations are computed
+  # Draw some figures to have an idea of how bin sizes evolve as more Louvain
+  # iterations are computed
   gawk -v repet="$repet" '
     BEGIN {
       count_100 = 0
@@ -142,7 +146,8 @@ for iteration in $(seq "$iterations"); do
 done
 wait
 
-#We resolve partitions at different points in order to get an idea of how stable cores can get.
+# We resolve partitions at different points in order to get an idea of how
+# stable cores can get.
 echo "Resolving partitions..."
 for column in 1 5 10 20 30 40 50 60 70 80 90 100 150 200 500 1000 $iterations; do
   if [ "$iterations" -ge "$column" ]; then

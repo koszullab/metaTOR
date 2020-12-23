@@ -311,9 +311,7 @@ def alignment_to_contacts(
                 raise
 
             idx = chunk_complete_data[name]["id"]
-            line = "{}\t{}\t{}\t{}\t{}\n".format(
-                idx, name, hit, size, coverage
-            )
+            line = "{}\t{}\t{}\t{}\t{}\n".format(idx, name, hit, size, coverage)
             chunk_data_file_handle.write(line)
 
     # Lastly, generate the network proper
@@ -516,9 +514,7 @@ def alignment_to_reads(
 
         base_name = ".".join(os.path.basename(bin_file).split(".")[:-1])
 
-        output_path = os.path.join(
-            output_dir, "{}.readnames".format(base_name)
-        )
+        output_path = os.path.join(output_dir, "{}.readnames".format(base_name))
 
         return output_path
 

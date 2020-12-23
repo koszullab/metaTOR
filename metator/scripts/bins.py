@@ -103,12 +103,8 @@ def extract_subnetworks(
             col = subnetwork.col
             data = subnetwork.data
 
-        row_indices = stats.rankdata(
-            np.concatenate((row, col)), method="dense"
-        )
-        col_indices = stats.rankdata(
-            np.concatenate((col, row)), method="dense"
-        )
+        row_indices = stats.rankdata(np.concatenate((row, col)), method="dense")
+        col_indices = stats.rankdata(np.concatenate((col, row)), method="dense")
         data = np.concatenate((data, data))
 
         # print("Row length: {}, col length: {}, data length: {}"
@@ -141,9 +137,7 @@ def extract_subnetworks(
             spaceless_pdf_plot_maker(normed_subnet, filename, vmax=vmax)
 
         except MemoryError:
-            logger.warning(
-                "Warning, couldn't save matrix due to memory issues"
-            )
+            logger.warning("Warning, couldn't save matrix due to memory issues")
 
     def extract_and_draw(network_to_keep, filename_text, filename_image):
 
@@ -164,7 +158,7 @@ def extract_subnetworks(
 
         network_to_keep = network_to_keep_1 * network_to_keep_2
 
-        nonzero_indices, = np.nonzero(network_to_keep)
+        (nonzero_indices,) = np.nonzero(network_to_keep)
         global_network_indices_list += nonzero_indices.tolist()
 
         subnetwork_file = os.path.join(
@@ -213,7 +207,11 @@ def extract_fasta(
     }
 
     data_chunks = list(
-        zip(*np.genfromtxt(partition_file, usecols=(0, 1), dtype=None, encoding=None))
+        zip(
+            *np.genfromtxt(
+                partition_file, usecols=(0, 1), dtype=None, encoding=None
+            )
+        )
     )
 
     chunk_names = np.array(data_chunks[0], dtype=object)
@@ -228,8 +226,7 @@ def extract_fasta(
 
         with open(core_file, "w") as core_handle:
             for name in chunks_to_keep:
-                fields = name.split(b"_")
-                fields = list(map(lambda x: x.decode('UTF8'), fields))
+                fields = name.split("_")
                 header_name = "_".join(fields[:-1])
                 chunk = int(fields[-1])
 
@@ -240,7 +237,6 @@ def extract_fasta(
 
                 sequence = str(genome[header_name][pos_start:pos_end])
 
-                name = "_".join(fields)
                 core_handle.write(">{}\n".format(name))
                 core_handle.write("{}\n".format(sequence))
 
@@ -281,8 +277,7 @@ def merge_fasta(fasta_file, output_dir):
             return (ord1[0] == ord2[0]) and (ord1[1] == ord2[1] + 1)
 
     def consecutiveness(key_chunk_pair):
-        """A callback for the groupby magic below
-        """
+        """A callback for the groupby magic below"""
         key, chunk = key_chunk_pair
         chunk_name, chunk_id = chunk_lexicographic_order(chunk)
         return (chunk_name, chunk_id - key)

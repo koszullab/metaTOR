@@ -4,14 +4,14 @@
 # Lyam Baudry
 # Théo Foutel-Rodier
 
-#Maps read files onto the assembly and converts the alignments into a network.
-#Reads are mapped separately, sorted by names, then interleaved (rather than
-#mapped in paired-end mode). This is because bowtie2 has a tendency to leave
-#out far-off matches when mapping in paired-end mode.
+# Maps read files onto the assembly and converts the alignments into a network.
+# Reads are mapped separately, sorted by names, then interleaved (rather than
+# mapped in paired-end mode). This is because bowtie2 has a tendency to leave
+# out far-off matches when mapping in paired-end mode.
 
-#An interleaved, sorted alignment file can be directly supplied to
-#the network.py script if needed. Both sam and bam are accepted, and the input
-#can be compressed.
+# An interleaved, sorted alignment file can be directly supplied to the
+# network.py script if needed. Both sam and bam are accepted, and the input can
+# be compressed.
 
 current_dir="$(cd "$(dirname "$0")" && pwd)"
 scripts_dir="$current_dir"/../scripts
@@ -78,7 +78,8 @@ if [ "$minimap2" -eq 0 ]; then
   fi
 fi
 
-# We don't pipe bam files to samtools' sort because it was found to be a huge time bottleneck
+# We don't pipe bam files to samtools' sort because it was found to be a huge
+# time bottleneck
 echo "Mapping reads..." &
 
 if [ ! -f "$alignment_dir"/"${project}"_forward.bam ]; then

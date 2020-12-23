@@ -178,9 +178,7 @@ def main():
         " to manipulate "
         "and filter fasta files."
     )
-    parser.add_argument(
-        "-i", "--input", help="Input fasta file", required=True
-    )
+    parser.add_argument("-i", "--input", help="Input fasta file", required=True)
     parser.add_argument("-o", "--output", help="Output file", required=True)
 
     parser.add_argument(

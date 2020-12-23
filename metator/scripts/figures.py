@@ -38,9 +38,8 @@ DEFAULT_DPI = 200
 def spaceless_pdf_plot_maker(array, filename, vmax=None, dpi=DEFAULT_DPI):
     """Draw a pretty plot from an array
 
-    A function that performs all the tedious matplotlib
-    magic to draw a 2D array with as few parameters and
-    as little whitespace as possible.
+    A function that performs all the tedious matplotlib magic to draw a 2D array
+    with as few parameters and as little whitespace as possible.
 
     Parameters
     ----------
@@ -49,8 +48,8 @@ def spaceless_pdf_plot_maker(array, filename, vmax=None, dpi=DEFAULT_DPI):
     filename : file, str or pathlib.Path
         The output image to save the array into.
     vmax : float, optional
-        The default saturation threshold for the array. If set to None, the
-        80th percentile value of the array is chosen. Default is None.
+        The default saturation threshold for the array. If set to None, the 80th
+        percentile value of the array is chosen. Default is None.
     dpi : int, optional
         Dots per inch (DPI) of the output image. Default is 200.
     """
@@ -78,8 +77,9 @@ def draw_sparse_matrix(
     vmax=DEFAULT_SATURATION_THRESHOLD,
     max_size_matrix=DEFAULT_MAX_SIZE_MATRIX,
 ):
-    """Draw a quick preview of a sparse matrix with automated
-    binning and normalization.
+    """
+    Draw a quick preview of a sparse matrix with automated binning and
+    normalization.
     """
 
     matrix = np.loadtxt(array_filename, dtype=np.int32, skiprows=1)
@@ -194,8 +194,8 @@ def draw_enrichments(output, *files):
             width=1,
             inner="box",
             cut=0,
-            linewidth=.3,
-            bw=.18,
+            linewidth=0.3,
+            bw=0.18,
             color="grey",
         )
     else:
@@ -206,7 +206,7 @@ def draw_enrichments(output, *files):
             showmedians=False,
             showextrema=False,
             widths=1,
-            bw_method=.18,
+            bw_method=0.18,
         )
 
     y = np.arange(n)
