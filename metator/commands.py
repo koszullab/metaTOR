@@ -5,11 +5,11 @@
 
 This module contains all classes related to metaTOR commands:
 
-    -alignment
-    -binning
+    -align
     -network 
     -partition
     -pipeline
+    -validation
 
 Note
 ----
@@ -30,6 +30,9 @@ import shutil
 import metator.align as mta
 import metator.io as mio
 import metator.network as mtn
+import metator.partition as mtp
+
+# import metator.validation as mtv
 
 
 class AbstractCommand:
@@ -174,7 +177,7 @@ class Network(AbstractCommand):
             self.args["--tempdir"] = "./tmp"
         temp_directory = mio.generate_temp_dir(self.args["--tempdir"])
 
-        # Defined the output directory and names.
+        # Defined the output directory and output file names.
         if not self.args["--outdir"]:
             self.args["--outdir"] = "."
 
@@ -210,18 +213,179 @@ class Network(AbstractCommand):
         shutil.rmtree(temp_directory)
 
 
-# TODO: Check if the Louvain algorithm is available in Python.
+# TODO: Check if the Louvain algorithm is available in Python. Else keep
+# something as the tools of Lyam to execute Louvain.
 class Partition(AbstractCommand):
-    """"""
+    """Partition the network using Louvain algorithm
 
+    Partition the network file using iteratively the Louvain algorithm. Then
+    looks for 'cores' that are easily found by identifying identical lines on
+    the global Louvain output. Using hamming distance from these core
+    communities, group the communities with more than the percentage given as
+    the overlap value.
 
-class Binning(AbstractCommand):
-    """"""
+    If the contigs data information is given, it will also update the file to
+    integrate the communities information of the contigs.
+    If the version of Louvain is not found, the python version of Louvain will
+    be used.
+
+    Note that the Louvain software is not, in the strictest sense, necessary.
+    Any program that assigns a node to a community, does so non
+    deterministically and solely outputs a list in the form: 'node_id
+    community_id' could be plugged instead.
+
+    usage:
+        partition  --outdir=DIR --network-file=FILE --assembly=FILE
+        [--iterations=100] [--louvain=STR] [--overlap=90] [--threads=1]
+        [--tempdir=DIR] [--contigs-data=STR]
+
+    options:
+        -a, --assembly=FILE         The path to the assembly fasta file used to
+                                    do the alignment.
+        -c, --contigs-data=FILE     The path to the file containing the data of
+                                    the contigs (ID, Name, Length, GC content,
+                                    Hit, Coverage).
+        -i, --iterations=INT        Number of iterartion of Louvain.
+                                    [Default: 100]
+        -l, --louvain=STR           Informatic language used for louvain
+                                    algorithm. Two values are possible: "py" or
+                                    "cpp". [Default: py]
+        -n, --network-file=FILE     Path to the file containing the network
+                                    information from the meta HiC experiment
+                                    compute in network function previously.
+        -o, --outdir=DIR            Path to the directory to write the output.
+                                    Default to current directory. [Default: ./]
+        -O, --overlap=INT           Percentage of the identity necessary to be
+                                    considered as a part of the core community.
+                                    [Default: 90]
+        -t, --threads=INT           Number of parallel threads allocated for the
+                                    partition. [Default: 1]
+        -T, --tempdir=DIR           Temporary directory. Default to current
+                                    directory. [Default: ./tmp]
+    """
+
+    def execute(self):
+
+        # Defined the temporary directory.
+        if not self.args["--tempdir"]:
+            self.args["--tempdir"] = "./tmp"
+        temp_directory = mio.generate_temp_dir(self.args["--tempdir"])
+
+        # Defined the output directory.
+        if not self.args["--outdir"]:
+            self.args["--outdir"] = "."
+
+        # Transform numeric variable as numeric
+        if self.args["--iterations"]:
+            iterations = int(self.args["--iterations"])
+        if self.args["--overlap"]:
+            overlap = float(self.args["--overlap"])
+        if self.args["--threads"]:
+            threads = int(self.args["--threads"])
+
+        # TODO: Test which function is necessary --> C or Python and call it
+
+        # Perform the iterations of Louvain to partition the network.
+        if self.args["--louvain"] == "cpp":
+            louvain_iterations_cpp()
+        else:
+            output_louvain = mtp.louvain_iterations_py(
+                self.args["--network-file"],
+                iterations,
+                self.args["--outdir"],
+            )
+        # Detect core communities
+        (
+            core_communities,
+            core_communities_iterations,
+        ) = mtp.detect_core_communities(output_louvain, iterations)
+
+        # Compute the Hamming distance between core communities.
+        hamming_distance = mtp.hamming_distance(
+            core_communities_iterations,
+            "hamming_output.txt",
+            iterations,
+            threads,
+        )
+
+        # Defined overlapping communities according to the threshold
+        overlapping_communities = mtp.defined_overlapping_communities(
+            overlap,
+            hamming_distance,
+            core_communities,
+            core_communities_iterations,
+        )
+
+        # Generate Fasta file
+        mtp.generate_fasta(
+            self.args["--assembly"],
+            overlapping_communities,
+            self.args["--contigs-data"],
+            self.args["--outdir"],
+        )
 
 
 class Validation(AbstractCommand):
-    """"""
+    """Use CheckM to validate the communities.
+
+    Use checkM to validate bacterial and archae communities. The script returns
+    the output of CheckM is an output directory.
+
+    It is possible to also partition again the contaminated communities to
+    improve them. The new communities contamination and completion will be
+    compute again. If there is a loss of the completion from the original
+    communities, i.e. the new iterations may split the organism in multiple
+    communities, go back to the original communities.
+
+    usage: validation
+
+    options:
+
+    """
+
+    # Launch checkM to evaluate the completion and the contamination. If asked
+    # rerun Louvain to try to reduce the contamination, rerun checkM if the
+    # contamination decrease without a huge decrease of the completion keep the
+    # new communities. Otherwise go back to the old state.
+    def execute(self):
+
+        # Defined the temporary directory.
+        if not self.args["--tempdir"]:
+            self.args["--tempdir"] = "./tmp"
+        temp_directory = mio.generate_temp_dir(self.args["--tempdir"])
+
+        # Defined the output directory and output file names.
+        if not self.args["--outdir"]:
+            self.args["--outdir"] = "."
 
 
 class Pipeline(AbstractCommand):
-    """"""
+    """Launch the full metator pipeline
+
+    Partition the assembly in communities from the HiC reads of the
+    metapopulation.
+
+    It's possible to start from the fastq, the bam, the bed2D, or the network
+    files. It's also possible to ask or not to run the validation step which is
+    the critical step for memory usage.
+
+    usage: pipeline
+
+    options:
+
+    """
+
+    def execute(self):
+
+        # Defined the temporary directory.
+        if not self.args["--tempdir"]:
+            self.args["--tempdir"] = "./tmp"
+        temp_directory = mio.generate_temp_dir(self.args["--tempdir"])
+
+        # Defined the output directory and output file names.
+        if not self.args["--outdir"]:
+            self.args["--outdir"] = "."
+        # Launch alignment
+        # Launch network
+        # Launch binning
+        # Launch validation if necessary

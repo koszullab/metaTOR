@@ -14,8 +14,7 @@ options:
     -v, --version           shows the version
 
 The subcommands are:
-    alignment
-    binning
+    align
     network
     partition
     pipeline

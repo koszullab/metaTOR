@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 from .version import __version__ as version
-from .scripts import bins, fasta_utils, figures, hicstuff, network, hamming
 from . import *
 
 __author__ = "Amaury Bignaud, Jacques Serizay, Lyam Baudry, Théo Foutel-Rodier,\

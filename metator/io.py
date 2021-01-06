@@ -5,6 +5,7 @@
 
 This mdoule contains all core I/O functions:
     -check_fasta_index
+    -check_louvain_function
     -generate_temp_dir
     -read_compressed
     -sort_pairs
@@ -15,10 +16,10 @@ import gzip
 import io
 import os
 import pathlib
+import subprocess as sp
 import zipfile
 from os.path import join, exists
 from random import getrandbits
-import subprocess as sp
 
 
 def check_fasta_index(ref, mode="bowtie2"):
@@ -61,6 +62,11 @@ def check_fasta_index(ref, mode="bowtie2"):
         # prefix to obtain index basename (without the dot)
         index = os.path.commonprefix(list(map(str, index))).strip(".")
     return index
+
+
+# TODO:
+def check_louvain_function():
+    return louvain
 
 
 def generate_temp_dir(path):
