@@ -292,7 +292,6 @@ class Partition(AbstractCommand):
             output_louvain = mtp.louvain_iterations_py(
                 self.args["--network-file"],
                 iterations,
-                self.args["--outdir"],
             )
         # Detect core communities
         (
@@ -303,7 +302,6 @@ class Partition(AbstractCommand):
         # Compute the Hamming distance between core communities.
         hamming_distance = mtp.hamming_distance(
             core_communities_iterations,
-            "hamming_output.txt",
             iterations,
             threads,
         )
