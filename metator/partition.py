@@ -82,7 +82,9 @@ def defined_overlapping_communities(
         # Extract contig ID from the core community.
         core_community = core_communities_iterations.iloc[cc_id]
         core_community = map(str, list(core_community))
-        core_community_contigs = core_communities[";".join(core_community)]
+        core_community_contigs = core_communities[
+            ";".join(core_community)
+        ].copy()
         # Add the contig ID on the overlapping community.
         if oc_id + 1 not in overlapping_communities:
             overlapping_communities[oc_id + 1] = core_community_contigs
@@ -110,7 +112,7 @@ def detect_core_communities(output_louvain, iterations):
     Returns
     -------
     dict:
-        Dictionaary which has as keys the values of the iterations from Louvain
+        Dictionnary which has as keys the values of the iterations from Louvain
         separated by a semicolon and as value the id of the contigs of the core
         community.
     pandas.core.frame.DataFrame:
@@ -165,7 +167,7 @@ def extract_contigs(assembly, list_contigs, output_file):
     return 0
 
 
-def generate_fasta(assembly, communities, contigs_data, output_dir):
+def generate_fasta(assembly, communities, contigs_data, size, output_dir):
     """Generate the fasta files of each communities from the assembly.
 
     Parameters:
@@ -175,25 +177,29 @@ def generate_fasta(assembly, communities, contigs_data, output_dir):
     communities : dict
         A dictionnary with the id of the overlapping communities as keys and
         the list of id of their contigs as values.
-    contigs_data : str
-        Path to the file where the contigs data are stored.
+    contigs_data : pandas.core.frame.DataFrame
+        Table with all the information on the contigs included their
+        appartenance to the communities.
+    size :  int
+        Thrshold size chosen to write the communities.
     output_dir : str
         Path to the output directory where the fasta of all the community will
         be written.
     """
-    contigs_data = pd.read_csv(contigs_data, sep="\t", header=None)
     # For each community create a list of the contigs and extract them from the
     # assembly to create a new fasta file with only the community.
     for community in communities:
         # Extract the list of the contigs from the contigs data file.
         list_contigs_id = communities[community]
         list_contigs = list_contigs_id
-        for indice, value in enumerate(list_contigs_id):
-            list_contigs[indice] = contigs_data.iloc[value - 1, 1]
-        # Define the output file.
-        output_file = join(output_dir, "MetaTOR_{0}_0.fa".format(community))
-        # Create the fasta file.
-        extract_contigs(assembly, list_contigs, output_file)
+        # Test if the community is bigger than the size threshold given.
+        if contigs_data.iloc[list_contigs[0] - 1, 11] >= size:
+            for indice, value in enumerate(list_contigs_id):
+                list_contigs[indice] = contigs_data.iloc[value - 1, 1]
+            # Define the output file.
+            output_file = join(output_dir, "MetaTOR_{0}_0.fa".format(community))
+            # Create the fasta file.
+            extract_contigs(assembly, list_contigs, output_file)
     return 0
 
 
@@ -374,6 +380,91 @@ def louvain_iterations_py(network_file, iterations):
     return output_louvain
 
 
-def update_contigs_data(contid_data_file, partition):
-    """Add community information in the contigs data file."""
-    return 0
+def update_contigs_data(
+    contig_data_file, core_communities, overlapping_communities
+):
+    """Add community information in the contigs data file.
+
+    This function allow to update the contigs data file which were created
+    previously in the network functions with the columns: contig id, contig
+    name, contig length, GC content, hit, coverage. The function will add six
+    columns: core community id, core community number of contigs, core community
+    length, overlapping community id, overlapping community number of contigs,
+    overlapping community length.
+
+    The previous file will be overwritten.
+
+    Parameters:
+    -----------
+    contig_data_file : str
+        Path to the contigs data file.
+    core_communities : dict
+        Dictionnary which has as keys the values of the iterations from Louvain
+        separated by a semicolon and as values the list of the id of the
+        contigs.
+    overlapping_communities : dict
+        A dictionnary with the id of the overlapping communities as keys and
+        the list of id of their contigs as values.
+
+    Returns:
+    --------
+    pandas.core.frame.DataFrame:
+        Table with all the information on the contigs included their
+        appartenance to the communities.
+    """
+
+    # Read the table
+    contigs_data = pd.read_csv(
+        contig_data_file, sep="\t", header=None, index_col=False
+    )
+    contigs_data.columns = [
+        "id",
+        "name",
+        "length",
+        "GC_content",
+        "hit",
+        "coverage",
+    ]
+
+    # Add new empty columns
+    contigs_data["cc_id"] = "-"
+    contigs_data["cc_nb"] = "-"
+    contigs_data["cc_length"] = "-"
+    contigs_data["oc_id"] = "-"
+    contigs_data["oc_nb"] = "-"
+    contigs_data["oc_length"] = "-"
+
+    # Add core community information
+    n = 1
+    for i in core_communities:
+        # Extract contigs of the community
+        core_community = [id - 1 for id in core_communities[i]]
+        core_community_data = contigs_data.iloc[core_community]
+        core_community_contigs_number = len(core_community)
+        core_community_length = sum(core_community_data.length)
+        # Write the new information
+        contigs_data.iloc[core_community, 6] = n
+        contigs_data.iloc[core_community, 7] = core_community_contigs_number
+        contigs_data.iloc[core_community, 8] = core_community_length
+        n += 1
+
+    # Add overlapping information
+    for i in overlapping_communities:
+        # Extract contigs of the community
+        overlapping_community = [id - 1 for id in overlapping_communities[i]]
+        overlapping_community_data = contigs_data.iloc[overlapping_community]
+        overlapping_community_contigs_number = len(overlapping_community)
+        overlapping_community_length = sum(overlapping_community_data.length)
+        # Write the new information
+        contigs_data.iloc[overlapping_community, 9] = i
+        contigs_data.iloc[
+            overlapping_community, 10
+        ] = overlapping_community_contigs_number
+        contigs_data.iloc[
+            overlapping_community, 11
+        ] = overlapping_community_length
+
+    # Write the new file
+    contigs_data.to_csv(contig_data_file, sep="\t", header=None, index=False)
+
+    return contigs_data

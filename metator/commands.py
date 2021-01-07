@@ -24,15 +24,14 @@ NotImplementedError
     of its children.
 """
 
-from docopt import docopt
 import os
 import shutil
 import metator.align as mta
 import metator.io as mio
 import metator.network as mtn
 import metator.partition as mtp
-
-# import metator.validation as mtv
+from docopt import docopt
+from os.path import exists
 
 
 class AbstractCommand:
@@ -236,8 +235,8 @@ class Partition(AbstractCommand):
 
     usage:
         partition  --outdir=DIR --network-file=FILE --assembly=FILE
-        [--iterations=100] [--louvain=STR] [--overlap=90] [--threads=1]
-        [--tempdir=DIR] [--contigs-data=STR]
+        [--iterations=100] [--louvain=STR] [--overlap=90] [--size=300000]
+        [--threads=1] [--tempdir=DIR] [--contigs-data=STR]
 
     options:
         -a, --assembly=FILE         The path to the assembly fasta file used to
@@ -258,6 +257,8 @@ class Partition(AbstractCommand):
         -O, --overlap=INT           Percentage of the identity necessary to be
                                     considered as a part of the core community.
                                     [Default: 90]
+        -s, --size=INT              Threshold size to keep communities in base
+                                    pair. [Default: 300000]
         -t, --threads=INT           Number of parallel threads allocated for the
                                     partition. [Default: 1]
         -T, --tempdir=DIR           Temporary directory. Default to current
@@ -274,12 +275,16 @@ class Partition(AbstractCommand):
         # Defined the output directory.
         if not self.args["--outdir"]:
             self.args["--outdir"] = "."
+        if not exists(self.args["--outdir"]):
+            os.makedirs(self.args["--outdir"])
 
         # Transform numeric variable as numeric
         if self.args["--iterations"]:
             iterations = int(self.args["--iterations"])
         if self.args["--overlap"]:
             overlap = float(self.args["--overlap"])
+        if self.args["--size"]:
+            size = int(self.args["--size"])
         if self.args["--threads"]:
             threads = int(self.args["--threads"])
 
@@ -314,11 +319,19 @@ class Partition(AbstractCommand):
             core_communities_iterations,
         )
 
+        # Update the contigs_data_file.
+        contigs_data = mtp.update_contigs_data(
+            self.args["--contigs-data"],
+            core_communities,
+            overlapping_communities,
+        )
+
         # Generate Fasta file
         mtp.generate_fasta(
             self.args["--assembly"],
             overlapping_communities,
-            self.args["--contigs-data"],
+            contigs_data,
+            size,
             self.args["--outdir"],
         )
 
