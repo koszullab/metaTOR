@@ -4,11 +4,12 @@
 """Core tools to build I/O for metaTOR
 
 This mdoule contains all core I/O functions:
-    -check_fasta_index
-    -check_louvain_function
-    -generate_temp_dir
-    -read_compressed
-    -sort_pairs
+    - check_fasta_index
+    - check_louvain_function
+    - generate_temp_dir
+    - process_ligation_sites
+    - read_compressed
+    - sort_pairs
 """
 
 import bz2
@@ -100,6 +101,48 @@ def generate_temp_dir(path):
             "Make sure you have write permission.".format(path)
         )
     return full_path
+
+
+# TODO
+def process_ligation_sites(ligation_sites):
+    """Process the ligation sites to have a usable list to digest.
+
+    Function to transform the 'N' given by the user to all the possibilty: 'A',
+    'T', 'C', 'G', i.e. four sites replaced one with one 'N' given by the user.
+
+    Parameters
+    ----------
+    ligation_sites : str
+
+    Returns
+    -------
+    list of str:
+        The list of string corresponding to all the ligations sites possible
+        with no 'N' but only 'ATCG'
+    """
+    # Split the str on the comma
+    ligation_sites = ",".split(ligation_sites)
+
+    ligation_sites_final = []
+    for site in ligation_sites:
+        # If no 'N' add the sites.
+        if "N" not in site:
+            ligation_sites_final.append(site)
+        else:
+            indice = site.find("N")
+            ligation_sites_final.append(
+                site[:indice] + "A" + site[indice + 1 :]
+            )
+            ligation_sites_final.append(
+                site[:indice] + "T" + site[indice + 1 :]
+            )
+            ligation_sites_final.append(
+                site[:indice] + "C" + site[indice + 1 :]
+            )
+            ligation_sites_final.append(
+                site[:indice] + "G" + site[indice + 1 :]
+            )
+    return ligation_sites_final
 
 
 def read_compressed(filename):

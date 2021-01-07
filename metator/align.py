@@ -23,14 +23,16 @@ This module contains all these alignment functions:
 """
 
 import csv
+import gzip
 import os
-from os.path import join
+import sys
+import metator.io as mio
 import pandas as pd
 import pysam as ps
 import subprocess as sp
-import sys
-import metator.io as mio
+from Bio import SeqIO
 from metator.log import logger
+from os.path import join
 
 
 # TODO: Modify the cutsite trimming to try to map both part of the cut read.
@@ -72,91 +74,6 @@ def align(fq_in, index, bam_out, n_cpu):
     out, err = sort_process.communicate()
 
     return 0
-
-
-def alignment(fq_in, fastq, min_qual, tmp_dir, index, ligation_sites, n_cpu):
-    """General function to manage to do the whole alignement with or without
-    trimming at the ligation sites. Returns a file with five columns ReadID,
-    ContigID, Start, End, Strand.
-
-    Parameters:
-    -----------
-    fq_in : str
-        Path to input fastq file to align. If multiple files are given, list of
-        path separated by a comma.
-    fastq : str
-        "for" or "rev" to precise the fastq file used for the alignement.
-    min_qual : int
-        Minimum mapping quality required to keep Hi-C pairs.
-    tmp_dir : str
-        Path where temporary files should be written.
-    ref : str
-        Path to the index genome.
-    ligation_sites : str
-        The list of ligations site possible depending on the restriction enzymes
-        used separated by a comma. Exemple of the ARIMA kit:
-        GATCGATC,GANTGATC,GANTANTC,GATCANTC
-    n_cpu : int
-        The number of CPUs to use for the alignment.
-
-    Return
-    ------
-    pandas.core.frame.DataFrame:
-        The file will have five columns: ReadID, ContigID, Position_start,
-        Position_end, Strand.
-    """
-
-    # Create a temporary file to save the alignment.
-    temp_alignment_raw = join(tmp_dir, "temp_alignment_raw.bam")
-    filtered_out = join(tmp_dir, fastq + "_temp_alignment.bed")
-
-    # Align the reads
-    align(fq_in, index, temp_alignment_raw, n_cpu)
-
-    # Filters the aligned and non aligned reads
-    unaligned = process_bamfile(temp_alignment_raw, min_qual, filtered_out)
-
-    # Iteration if some ligation sites are given
-    if isinstance(ligation_sites, str):
-
-        # Create a temporary fastq with the trimmed reads at the ligation sites.
-        fq_trimmed = trimmed_reads(tmp_dir, fq_in, unaligned, ligation_sites)
-
-        # Create a temporary file to save the alignment.
-        temp_alignment_trimmed = join(tmp_dir, "temp_alignment_trimmed.bam")
-
-        # Align the trimmed reads
-        align(fq_trimmed, index, temp_alignement_trimmed, n_cpu)
-
-        # Filter the aligned reads
-        unaligned_trimmed = process_bamfile(
-            temp_alignment_trimmed, min_qual, filtered_out
-        )
-
-    aligned = pd.DataFrame(csv.reader(open(filtered_out), delimiter="\t"))
-
-    return aligned
-
-
-# def cutsite_trimming(
-#     read,
-#     ligation_site
-# ):
-#     """Cut a read at the ligation site if there is one
-
-#     Parameters
-#     ----------
-#     read : str
-#         Sequence of the read to trimmed.
-#     ligation sites: str
-#         Sequence of the ligation site to use for the trimming.
-
-#     Return
-#     ------
-#     str :
-#         Trimmed reaads at the ligation site if there is one, else return 0.
-#     """
-#     return
 
 
 def merge_alignment(forward_aligned, reverse_aligned, out_file):
@@ -269,13 +186,46 @@ def pairs_alignment(
         )
         sys.exit(1)
 
-    # Align forward and reverse reads
-    forward_aligned = alignment(
-        for_fq_in, "for", min_qual, tmp_dir, index, ligation_sites, n_cpu
+    # Create a temporary file to save the alignment.
+    temp_alignment_for = join(tmp_dir, "temp_alignment_for.bam")
+    temp_alignment_rev = join(tmp_dir, "temp_alignment_rev.bam")
+    filtered_out_for = join(tmp_dir, "for_temp_alignment.bed")
+    filtered_out_rev = join(tmp_dir, "rev_temp_alignment.bed")
+
+    # If asked will digest the reads with the ligtion sites before
+    # alignment.
+    if isinstance(ligation_sites, str):
+
+        # Create temporary file for the digested reads.
+        temp_fq = join(tmp_dir, "digested_reads")
+
+        # Create a temporary fastq with the trimmed reads at the ligation
+        # sites.
+        (for_fq_in, rev_fq_in,) = digest_ligation_sites(
+            for_fq_in,
+            rev_fq_in,
+            ligation_sites,
+            temp_fq,
+        )
+
+    # Align the forward reads
+    align(for_fq_in, index, temp_alignment_for, n_cpu)
+
+    # Filters the aligned and non aligned reads
+    unaligned = process_bamfile(temp_alignment_for, min_qual, filtered_out_for)
+
+    forward_aligned = pd.DataFrame(
+        csv.reader(open(filtered_out_for), delimiter="\t")
     )
 
-    reverse_aligned = alignment(
-        rev_fq_in, "rev", min_qual, tmp_dir, index, ligation_sites, n_cpu
+    # Align the reverse reads
+    align(rev_fq_in, index, temp_alignment_rev, n_cpu)
+
+    # Filters the aligned and non aligned reads
+    unaligned = process_bamfile(temp_alignment_rev, min_qual, filtered_out_rev)
+
+    reverse_aligned = pd.DataFrame(
+        csv.reader(open(filtered_out_rev), delimiter="\t")
     )
 
     # Merge alignement to create a pairs file
@@ -289,11 +239,10 @@ def pairs_alignment(
 def process_bamfile(alignment, min_qual, filtered_out):
     """Filter alignment BAM files
 
-    Reads all the reads in the input BAM alignment file.
-    Keep reads in the output if they are aligned with a good
-    quality saving their uniquely ReadID, Contig, Position_start, Position_end,
-    strand to save memory. Otherwise add their name in a set to stage them in
-    order to trim them.
+    Reads all the reads in the input BAM alignment file. Keep reads in the
+    output if they are aligned with a good quality saving their uniquely ReadID,
+    Contig, Position_start, Position_end, strand to save memory. Otherwise add
+    their name in a set to stage them in order to recuperate them if necessary.
 
     Parameters
     ----------
@@ -365,48 +314,230 @@ def process_bamfile(alignment, min_qual, filtered_out):
     return unaligned
 
 
-# def trim_reads(
-#         tmp_dir,
-#         infile,
-#         unaligned_set,
-#         ligation_sites
-#     ):
-#     """Trim read ends
-#     Trim the fastq sequences in infile to an auxiliary file in the temporary
-#     folder using the ligation site sequence provided.
-#     Parameters
-#     ----------
-#     tmp_dir : str
-#         Path to the temporary folder.
-#     infile : str
-#         Path to the fastq file to truncate.
-#     unaligned_set : set
-#         Contains the names of all reads that did not map unambiguously in
-#         previous rounds.
-#     ligation_sites : str
-#         The list of ligations site possible depending on the restriction
-#         enzymes used separated by a comma. Exemple of the ARIMA kit:
-#         GATCGATC,GANTGATC,GANTANTC,GATCANTC
+def digest_ligation_sites(fq_for, fq_rev, ligation_sites, output):
+    """Create new reads to manage pairs with a digestion and create multiple
+    pairs to take into account all the contact present.
 
-#     Returns
-#     -------
-#     str :
-#         Path to the output fastq file containing trimmed reads.
-#     """
-#     outfile_tmp = "{0}/unmapped.fastq".format(tmp_dir)
-#     outfile = "{0}/trimmed.fastq".format(tmp_dir)
-#     with ps.FastxFile(infile, "r") as inf, open(outfile_tmp, "w") as outf:
-#         for entry in inf:
-#             # If the read did not align in previous round or this is the first round
-#             if (entry.name in unaligned_set):
-#                 entry.sequence = entry.sequence
-#                 entry.quality = entry.quality
-#                 outf.write(str(entry) + "\n")
-#     map_args = {
-#         "fq": outfile_tmp,
-#         "out": outfile,
-#         "cutsite": ligation_sites,
-#     }
-#     cmd = "cutsite_trimming --fastq {fq} --out {out} --cutsite {cutsite}".format(**map_args)
-#     trim_process = sp.Popen(cmd, shell=True)
-#     return outfile
+    The function write two files for both the forward and reverse fastq with the
+    new reads. The new reads have at the end of the ID ":1" added to
+    differentiate the different pairs created from one read.
+
+    To make the function faster, for each reads only the first site of ligation
+    is kept and the algorithm stop to search for others sites as the probability
+    is very low. We already have very few pairs with ligation sites in both
+    reads.
+
+    Parameters
+    ----------
+    fq_for : str
+        Path to the forward fastq file to digest.
+    fq_rev : str
+        Path to the reverse fatsq file to digest.
+    ligation_sites : str
+        The list of ligations site possible depending on the restriction
+        enzymes used separated by a comma. Exemple of the ARIMA kit:
+        GATCGATC,GANTGATC,GANTANTC,GATCANTC
+    output : str
+        Path for the ouput file. The forward will have a suffix "_for.fq" and
+        the reverse "_rev.fq".
+    """
+
+    # Process the ligation sites given
+    ligation_sites = mio.process_ligation_sites(ligation_sites)
+
+    # Create the two output file
+    output_for = "{0}_for.fq".format(output)
+    output_rev = "{0}_rev.fq".format(output)
+
+    pair_reads = dict()
+    # Read the forward file and detect the ligation sites.
+    for read in SeqIO.parse(mio.read_compressed(fq_for), "fastq"):
+        pair_reads[read.name] = {
+            "for_seq": read.seq,
+            "rev_seq": None,
+            "for_qual": read.format("fastq").split("\n")[3],
+            "rev_qual": None,
+            "for_ls": None,
+            "rev_ls": None,
+        }
+        for ls in ligation_sites:
+            if ls in read.seq:
+                pair_reads[read.name]["for_ls"] = read.seq.find(ls)
+                break
+
+    # Read the reverse file and detect the ligation sites.
+    for read in SeqIO.parse(mio.read_compressed(fq_rev), "fastq"):
+        # Sanity check if some reads are not present in the forward file
+        if read.name in pair_reads:
+            pair_reads[read.name]["rev_seq"] = read.seq
+            pair_reads[read.name]["rev_qual"] = read.format("fastq").split(
+                "\n"
+            )[3]
+            for ls in ligation_sites:
+                if ls in read.seq:
+                    pair_reads[read.name]["for_ls"] = read.seq.find(ls)
+                    break
+
+    # Cut and create new pairs.
+    original_number_of_pairs = 0
+    zero_site_pairs = 0
+    one_site_pairs = 0
+    two_site_pairs = 0
+    for_fq = open(output_for, "w")
+    rev_fq = open(output_rev, "w")
+    for read in pair_reads:
+        # Sanity check if there are no reverse read for the forward read.
+        if pair_reads[read]["rev_seq"] != None:
+            original_number_of_pairs += 1
+            # Save the sequence and quality of the original pair.
+            for_seq_0 = pair_reads[read]["for_seq"]
+            for_qual_0 = pair_reads[read]["for_qual"]
+            rev_seq_0 = pair_reads[read]["rev_seq"]
+            rev_qual_0 = pair_reads[read]["rev_qual"]
+            if pair_reads[read]["for_ls"] != None:
+                # Truncate the forward pair. For the truncation as the enzymes
+                # used in HiC have usually 8 base pairs long we choose these
+                # size to truncate them.
+                for_seq_1 = for_seq_0[: pair_reads[read]["for_ls"]]
+                for_seq_2 = for_seq_0[pair_reads[read]["for_ls"] + 8 :]
+                for_qual_1 = for_qual_0[: pair_reads[read]["for_ls"]]
+                for_qual_2 = for_qual_0[pair_reads[read]["for_ls"] + 8 :]
+                if pair_reads[read]["rev_ls"] != None:
+                    # Truncate the reverse pair.
+                    two_site_pairs += 1
+                    rev_seq_1 = rev_seq_0[: pair_reads[read]["rev_ls"]]
+                    rev_seq_2 = rev_seq_0[pair_reads[read]["rev_ls"] + 8 :]
+                    rev_qual_1 = rev_qual_0[: pair_reads[read]["rev_ls"]]
+                    rev_qual_2 = rev_qual_0[pair_reads[read]["rev_ls"] + 8 :]
+                    # Write the 6 new pairs in case there are two ligation
+                    # sites.
+                    for_fq.write(
+                        "@%s\n%s\n+\n%s\n"
+                        % (read + ":1", for_seq_1, for_qual_1)
+                    )
+                    for_fq.write(
+                        "@%s\n%s\n+\n%s\n"
+                        % (read + ":2", for_seq_1, for_qual_1)
+                    )
+                    for_fq.write(
+                        "@%s\n%s\n+\n%s\n"
+                        % (read + ":3", for_seq_1, for_qual_1)
+                    )
+                    for_fq.write(
+                        "@%s\n%s\n+\n%s\n"
+                        % (read + ":4", for_seq_2, for_qual_2)
+                    )
+                    for_fq.write(
+                        "@%s\n%s\n+\n%s\n"
+                        % (read + ":5", for_seq_2, for_qual_2)
+                    )
+                    for_fq.write(
+                        "@%s\n%s\n+\n%s\n"
+                        % (read + ":6", rev_seq_1, rev_qual_1)
+                    )
+                    rev_fq.write(
+                        "@%s\n%s\n+\n%s\n"
+                        % (read + ":1", for_seq_2, for_qual_2)
+                    )
+                    rev_fq.write(
+                        "@%s\n%s\n+\n%s\n"
+                        % (read + ":2", rev_seq_1, rev_qual_1)
+                    )
+                    rev_fq.write(
+                        "@%s\n%s\n+\n%s\n"
+                        % (read + ":3", rev_seq_2, rev_qual_2)
+                    )
+                    rev_fq.write(
+                        "@%s\n%s\n+\n%s\n"
+                        % (read + ":4", rev_seq_1, rev_qual_1)
+                    )
+                    rev_fq.write(
+                        "@%s\n%s\n+\n%s\n"
+                        % (read + ":5", rev_seq_2, rev_qual_2)
+                    )
+                    rev_fq.write(
+                        "@%s\n%s\n+\n%s\n"
+                        % (read + ":6", rev_seq_2, rev_qual_2)
+                    )
+                else:
+                    # Write the 3 new pairs in case there is one ligation site.
+                    one_site_pairs += 1
+                    for_fq.write(
+                        "@%s\n%s\n+\n%s\n"
+                        % (read + ":1", for_seq_1, for_qual_1)
+                    )
+                    for_fq.write(
+                        "@%s\n%s\n+\n%s\n"
+                        % (read + ":2", for_seq_1, for_qual_1)
+                    )
+                    for_fq.write(
+                        "@%s\n%s\n+\n%s\n"
+                        % (read + ":3", for_seq_2, for_qual_2)
+                    )
+                    rev_fq.write(
+                        "@%s\n%s\n+\n%s\n"
+                        % (read + ":1", rev_seq_0, rev_qual_0)
+                    )
+                    rev_fq.write(
+                        "@%s\n%s\n+\n%s\n"
+                        % (read + ":2", for_seq_2, for_qual_2)
+                    )
+                    rev_fq.write(
+                        "@%s\n%s\n+\n%s\n"
+                        % (read + ":3", rev_seq_0, rev_qual_0)
+                    )
+            else:
+                if pair_reads[read]["rev_ls"] != None:
+                    # Truncate the reverse pair.
+                    one_site_pairs += 1
+                    rev_seq_1 = rev_seq_0[: pair_reads[read]["rev_ls"]]
+                    rev_seq_2 = rev_seq_0[pair_reads[read]["rev_ls"] + 8 :]
+                    rev_qual_1 = rev_qual_0[: pair_reads[read]["rev_ls"]]
+                    rev_qual_2 = rev_qual_0[pair_reads[read]["rev_ls"] + 8 :]
+                    # Write the 3 new pairs in case there is one ligation site.
+                    for_fq.write(
+                        "@%s\n%s\n+\n%s\n"
+                        % (read + ":1", for_seq_0, for_qual_0)
+                    )
+                    for_fq.write(
+                        "@%s\n%s\n+\n%s\n"
+                        % (read + ":2", for_seq_0, for_qual_0)
+                    )
+                    for_fq.write(
+                        "@%s\n%s\n+\n%s\n"
+                        % (read + ":3", rev_seq_1, rev_qual_1)
+                    )
+                    rev_fq.write(
+                        "@%s\n%s\n+\n%s\n"
+                        % (read + ":1", rev_seq_1, rev_qual_1)
+                    )
+                    rev_fq.write(
+                        "@%s\n%s\n+\n%s\n"
+                        % (read + ":2", rev_seq_2, rev_qual_2)
+                    )
+                    rev_fq.write(
+                        "@%s\n%s\n+\n%s\n"
+                        % (read + ":3", rev_seq_2, rev_qual_2)
+                    )
+                else:
+                    # Write the original pair if there is no ligation site.
+                    zero_site_pairs += 1
+                    for_fq.write(
+                        "@%s\n%s\n+\n%s\n" % (read, for_seq_0, for_qual_0)
+                    )
+                    rev_fq.write(
+                        "@%s\n%s\n+\n%s\n" % (read, rev_seq_0, rev_qual_0)
+                    )
+    rev_fq.close()
+    for_fq.close()
+    logger.info("Number of pairs: {0}".format(original_number_of_pairs))
+    logger.info(
+        "Number of pairs with no ligation site: {0}".format(zero_site_pairs)
+    )
+    logger.info(
+        "Number of pairs with no ligation site: {0}".format(one_site_pairs)
+    )
+    logger.info(
+        "Number of pairs with no ligation site: {0}".format(two_site_pairs)
+    )
+    return output_for, output_rev
