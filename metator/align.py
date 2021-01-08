@@ -330,9 +330,9 @@ def digest_ligation_sites(fq_for, fq_rev, ligation_sites, output):
     Parameters
     ----------
     fq_for : str
-        Path to the forward fastq file to digest.
+        Path to all the forward fastq file to digest separated by a comma.
     fq_rev : str
-        Path to the reverse fatsq file to digest.
+        Path to all the reverse fatsq file to digest separated by a comma..
     ligation_sites : str
         The list of ligations site possible depending on the restriction
         enzymes used separated by a comma. Exemple of the ARIMA kit:
@@ -345,173 +345,203 @@ def digest_ligation_sites(fq_for, fq_rev, ligation_sites, output):
     # Process the ligation sites given
     ligation_sites = mio.process_ligation_sites(ligation_sites)
 
-    # Create the two output file
-    output_for = "{0}_for.fq".format(output)
-    output_rev = "{0}_rev.fq".format(output)
+    # Manage multiple fatsq
+    list_fq_for = fq_for.split(",")
+    list_fq_rev = fq_rev.split(",")
 
-    pair_reads = dict()
-    # Read the forward file and detect the ligation sites.
-    for read in SeqIO.parse(mio.read_compressed(fq_for), "fastq"):
-        pair_reads[read.name] = {
-            "for_seq": read.seq,
-            "rev_seq": None,
-            "for_qual": read.format("fastq").split("\n")[3],
-            "rev_qual": None,
-            "for_ls": None,
-            "rev_ls": None,
-        }
-        for ls in ligation_sites:
-            if ls in read.seq:
-                pair_reads[read.name]["for_ls"] = read.seq.find(ls)
-                break
+    output_list_for = []
+    output_list_rev = []
 
-    # Read the reverse file and detect the ligation sites.
-    for read in SeqIO.parse(mio.read_compressed(fq_rev), "fastq"):
-        # Sanity check if some reads are not present in the forward file
-        if read.name in pair_reads:
-            pair_reads[read.name]["rev_seq"] = read.seq
-            pair_reads[read.name]["rev_qual"] = read.format("fastq").split(
-                "\n"
-            )[3]
+    # Sanity check
+    if len(list_fq_for) != len(list_fq_rev):
+        logger.error("Number of forward and reverse files are different")
+        sys.exit(1)
+
+    for i in range(len(list_fq_for)):
+
+        fq_for = list_fq_for[i]
+        fq_rev = list_fq_rev[i]
+
+        # Create the two output file and add them to the list
+        output_for = "{0}_{1}_digested._for.fq".format(output, i)
+        output_rev = "{0}_{1}_digested_rev.fq".format(output, i)
+        output_list_for.append(output_for)
+        output_list_rev.append(output_rev)
+
+        pair_reads = dict()
+        # Read the forward file and detect the ligation sites.
+        for read in SeqIO.parse(mio.read_compressed(fq_for), "fastq"):
+            pair_reads[read.name] = {
+                "for_seq": read.seq,
+                "rev_seq": None,
+                "for_qual": read.format("fastq").split("\n")[3],
+                "rev_qual": None,
+                "for_ls": None,
+                "rev_ls": None,
+            }
             for ls in ligation_sites:
                 if ls in read.seq:
-                    pair_reads[read.name]["rev_ls"] = read.seq.find(ls)
+                    pair_reads[read.name]["for_ls"] = read.seq.find(ls)
                     break
 
-    # Cut and create new pairs.
-    original_number_of_pairs = 0
-    zero_site_pairs = 0
-    one_site_pairs = 0
-    two_site_pairs = 0
+        # Read the reverse file and detect the ligation sites.
+        for read in SeqIO.parse(mio.read_compressed(fq_rev), "fastq"):
+            # Sanity check if some reads are not present in the forward file
+            if read.name in pair_reads:
+                pair_reads[read.name]["rev_seq"] = read.seq
+                pair_reads[read.name]["rev_qual"] = read.format("fastq").split(
+                    "\n"
+                )[3]
+                for ls in ligation_sites:
+                    if ls in read.seq:
+                        pair_reads[read.name]["rev_ls"] = read.seq.find(ls)
+                        break
 
-    def write_pair(name, seq_for, qual_for, seq_rev, qual_rev):
-        """Write the pair in the new fasta file."""
-        for_fq.write("@%s\n%s\n+\n%s\n" % (name, seq_for, qual_for))
-        rev_fq.write("@%s\n%s\n+\n%s\n" % (name, seq_rev, qual_rev))
+        # Cut and create new pairs.
+        original_number_of_pairs = 0
+        zero_site_pairs = 0
+        one_site_pairs = 0
+        two_site_pairs = 0
 
-    for_fq = open(output_for, "w")
-    rev_fq = open(output_rev, "w")
-    for read in pair_reads:
-        # Sanity check if there are no reverse read for the forward read.
-        if pair_reads[read]["rev_seq"] != None:
-            original_number_of_pairs += 1
-            # Save the sequence and quality of the original pair.
-            for_seq_0 = pair_reads[read]["for_seq"]
-            for_qual_0 = pair_reads[read]["for_qual"]
-            rev_seq_0 = pair_reads[read]["rev_seq"]
-            rev_qual_0 = pair_reads[read]["rev_qual"]
-            if pair_reads[read]["for_ls"] != None:
-                # Truncate the forward pair. For the truncation as the enzymes
-                # used in HiC have usually 8 base pairs long we choose these
-                # size to truncate them.
-                for_seq_1 = for_seq_0[: pair_reads[read]["for_ls"]]
-                for_seq_2 = for_seq_0[pair_reads[read]["for_ls"] + 8 :]
-                for_qual_1 = for_qual_0[: pair_reads[read]["for_ls"]]
-                for_qual_2 = for_qual_0[pair_reads[read]["for_ls"] + 8 :]
-                if pair_reads[read]["rev_ls"] != None:
-                    # Truncate the reverse pair.
-                    two_site_pairs += 1
-                    rev_seq_1 = rev_seq_0[: pair_reads[read]["rev_ls"]]
-                    rev_seq_2 = rev_seq_0[pair_reads[read]["rev_ls"] + 8 :]
-                    rev_qual_1 = rev_qual_0[: pair_reads[read]["rev_ls"]]
-                    rev_qual_2 = rev_qual_0[pair_reads[read]["rev_ls"] + 8 :]
-                    # Write the 4 new pairs in case there are two ligation
-                    # sites.
-                    write_pair(
-                        read + ":1",
-                        for_seq_1,
-                        for_qual_1,
-                        rev_seq_1,
-                        rev_qual_1,
-                    )
-                    write_pair(
-                        read + ":2",
-                        for_seq_1,
-                        for_qual_1,
-                        rev_seq_2,
-                        rev_qual_2,
-                    )
-                    write_pair(
-                        read + ":3",
-                        for_seq_2,
-                        for_qual_2,
-                        rev_seq_1,
-                        rev_qual_1,
-                    )
-                    write_pair(
-                        read + ":4",
-                        for_seq_2,
-                        for_qual_2,
-                        rev_seq_2,
-                        rev_qual_2,
-                    )
+        def write_pair(name, seq_for, qual_for, seq_rev, qual_rev):
+            """Write the pair in the new fasta file."""
+            for_fq.write("@%s\n%s\n+\n%s\n" % (name, seq_for, qual_for))
+            rev_fq.write("@%s\n%s\n+\n%s\n" % (name, seq_rev, qual_rev))
 
+        for_fq = open(output_for, "w")
+        rev_fq = open(output_rev, "w")
+        for read in pair_reads:
+            # Sanity check if there are no reverse read for the forward read.
+            if pair_reads[read]["rev_seq"] != None:
+                original_number_of_pairs += 1
+                # Save the sequence and quality of the original pair.
+                for_seq_0 = pair_reads[read]["for_seq"]
+                for_qual_0 = pair_reads[read]["for_qual"]
+                rev_seq_0 = pair_reads[read]["rev_seq"]
+                rev_qual_0 = pair_reads[read]["rev_qual"]
+                if pair_reads[read]["for_ls"] != None:
+                    # Truncate the forward pair. For the truncation as the enzymes
+                    # used in HiC have usually 8 base pairs long we choose these
+                    # size to truncate them.
+                    for_seq_1 = for_seq_0[: pair_reads[read]["for_ls"]]
+                    for_seq_2 = for_seq_0[pair_reads[read]["for_ls"] + 8 :]
+                    for_qual_1 = for_qual_0[: pair_reads[read]["for_ls"]]
+                    for_qual_2 = for_qual_0[pair_reads[read]["for_ls"] + 8 :]
+                    if pair_reads[read]["rev_ls"] != None:
+                        # Truncate the reverse pair.
+                        two_site_pairs += 1
+                        rev_seq_1 = rev_seq_0[: pair_reads[read]["rev_ls"]]
+                        rev_seq_2 = rev_seq_0[pair_reads[read]["rev_ls"] + 8 :]
+                        rev_qual_1 = rev_qual_0[: pair_reads[read]["rev_ls"]]
+                        rev_qual_2 = rev_qual_0[
+                            pair_reads[read]["rev_ls"] + 8 :
+                        ]
+                        # Write the 4 new pairs in case there are two ligation
+                        # sites.
+                        write_pair(
+                            read + ":1",
+                            for_seq_1,
+                            for_qual_1,
+                            rev_seq_1,
+                            rev_qual_1,
+                        )
+                        write_pair(
+                            read + ":2",
+                            for_seq_1,
+                            for_qual_1,
+                            rev_seq_2,
+                            rev_qual_2,
+                        )
+                        write_pair(
+                            read + ":3",
+                            for_seq_2,
+                            for_qual_2,
+                            rev_seq_1,
+                            rev_qual_1,
+                        )
+                        write_pair(
+                            read + ":4",
+                            for_seq_2,
+                            for_qual_2,
+                            rev_seq_2,
+                            rev_qual_2,
+                        )
+
+                    else:
+                        # Write the 2 new pairs in case there is one ligation site.
+                        one_site_pairs += 1
+                        write_pair(
+                            read + ":1",
+                            for_seq_1,
+                            for_qual_1,
+                            rev_seq_0,
+                            rev_qual_0,
+                        )
+                        write_pair(
+                            read + ":2",
+                            for_seq_1,
+                            for_qual_1,
+                            rev_seq_0,
+                            rev_qual_0,
+                        )
                 else:
-                    # Write the 2 new pairs in case there is one ligation site.
-                    one_site_pairs += 1
-                    write_pair(
-                        read + ":1",
-                        for_seq_1,
-                        for_qual_1,
-                        rev_seq_0,
-                        rev_qual_0,
-                    )
-                    write_pair(
-                        read + ":2",
-                        for_seq_1,
-                        for_qual_1,
-                        rev_seq_0,
-                        rev_qual_0,
-                    )
-            else:
-                if pair_reads[read]["rev_ls"] != None:
-                    # Truncate the reverse pair.
-                    one_site_pairs += 1
-                    rev_seq_1 = rev_seq_0[: pair_reads[read]["rev_ls"]]
-                    rev_seq_2 = rev_seq_0[pair_reads[read]["rev_ls"] + 8 :]
-                    rev_qual_1 = rev_qual_0[: pair_reads[read]["rev_ls"]]
-                    rev_qual_2 = rev_qual_0[pair_reads[read]["rev_ls"] + 8 :]
-                    # Write the 2 new pairs in case there is one ligation site.
-                    write_pair(
-                        read + ":1",
-                        for_seq_0,
-                        for_qual_0,
-                        rev_seq_1,
-                        rev_qual_1,
-                    )
-                    write_pair(
-                        read + ":2",
-                        for_seq_0,
-                        for_qual_0,
-                        rev_seq_2,
-                        rev_qual_2,
-                    )
-                else:
-                    # Write the original pair if there is no ligation site.
-                    zero_site_pairs += 1
-                    write_pair(
-                        read,
-                        for_seq_0,
-                        for_qual_0,
-                        rev_seq_0,
-                        rev_qual_0,
-                    )
-    rev_fq.close()
-    for_fq.close()
+                    if pair_reads[read]["rev_ls"] != None:
+                        # Truncate the reverse pair.
+                        one_site_pairs += 1
+                        rev_seq_1 = rev_seq_0[: pair_reads[read]["rev_ls"]]
+                        rev_seq_2 = rev_seq_0[pair_reads[read]["rev_ls"] + 8 :]
+                        rev_qual_1 = rev_qual_0[: pair_reads[read]["rev_ls"]]
+                        rev_qual_2 = rev_qual_0[
+                            pair_reads[read]["rev_ls"] + 8 :
+                        ]
+                        # Write the 2 new pairs in case there is one ligation site.
+                        write_pair(
+                            read + ":1",
+                            for_seq_0,
+                            for_qual_0,
+                            rev_seq_1,
+                            rev_qual_1,
+                        )
+                        write_pair(
+                            read + ":2",
+                            for_seq_0,
+                            for_qual_0,
+                            rev_seq_2,
+                            rev_qual_2,
+                        )
+                    else:
+                        # Write the original pair if there is no ligation site.
+                        zero_site_pairs += 1
+                        write_pair(
+                            read,
+                            for_seq_0,
+                            for_qual_0,
+                            rev_seq_0,
+                            rev_qual_0,
+                        )
+        rev_fq.close()
+        for_fq.close()
 
-    # Return information on the different pairs created
-    total_pairs = zero_site_pairs + 2 * one_site_pairs + 4 * two_site_pairs
-    logger.info(
-        "Number of pairs before digestion: {0}".format(original_number_of_pairs)
-    )
-    logger.info(
-        "Number of pairs with no ligation site: {0}".format(zero_site_pairs)
-    )
-    logger.info(
-        "Number of pairs with one ligation site: {0}".format(one_site_pairs)
-    )
-    logger.info(
-        "Number of pairs with two ligation sites: {0}".format(two_site_pairs)
-    )
-    logger.info("Number of pairs after digestion: {0}".format(total_pairs))
+        # Return information on the different pairs created
+        total_pairs = zero_site_pairs + 2 * one_site_pairs + 4 * two_site_pairs
+        logger.info("FastQ: {0}".format(for_fq))
+        logger.info(
+            "Number of pairs before digestion: {0}".format(
+                original_number_of_pairs
+            )
+        )
+        logger.info(
+            "Number of pairs with no ligation site: {0}".format(zero_site_pairs)
+        )
+        logger.info(
+            "Number of pairs with one ligation site: {0}".format(one_site_pairs)
+        )
+        logger.info(
+            "Number of pairs with two ligation sites: {0}".format(
+                two_site_pairs
+            )
+        )
+        logger.info("Number of pairs after digestion: {0}".format(total_pairs))
+    output_for = ",".join(output_list_for)
+    output_rev = ",".join(output_list_rev)
     return output_for, output_rev
