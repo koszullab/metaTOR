@@ -135,7 +135,6 @@ def compute_contig_coverage(contig_data):
         contig_data[name]["coverage"] = (
             contig_data[name]["hit"] * 1.0 / contig_data[name]["length"]
         )
-
     return contig_data
 
 
