@@ -375,7 +375,7 @@ def digest_ligation_sites(fq_for, fq_rev, ligation_sites, output):
             )[3]
             for ls in ligation_sites:
                 if ls in read.seq:
-                    pair_reads[read.name]["for_ls"] = read.seq.find(ls)
+                    pair_reads[read.name]["rev_ls"] = read.seq.find(ls)
                     break
 
     # Cut and create new pairs.
@@ -383,6 +383,12 @@ def digest_ligation_sites(fq_for, fq_rev, ligation_sites, output):
     zero_site_pairs = 0
     one_site_pairs = 0
     two_site_pairs = 0
+
+    def write_pair(name, seq_for, qual_for, seq_rev, qual_rev):
+        """Write the pair in the new fasta file."""
+        for_fq.write("@%s\n%s\n+\n%s\n" % (name, seq_for, qual_for))
+        rev_fq.write("@%s\n%s\n+\n%s\n" % (name, seq_rev, qual_rev))
+
     for_fq = open(output_for, "w")
     rev_fq = open(output_rev, "w")
     for read in pair_reads:
@@ -409,82 +415,53 @@ def digest_ligation_sites(fq_for, fq_rev, ligation_sites, output):
                     rev_seq_2 = rev_seq_0[pair_reads[read]["rev_ls"] + 8 :]
                     rev_qual_1 = rev_qual_0[: pair_reads[read]["rev_ls"]]
                     rev_qual_2 = rev_qual_0[pair_reads[read]["rev_ls"] + 8 :]
-                    # Write the 6 new pairs in case there are two ligation
+                    # Write the 4 new pairs in case there are two ligation
                     # sites.
-                    for_fq.write(
-                        "@%s\n%s\n+\n%s\n"
-                        % (read + ":1", for_seq_1, for_qual_1)
+                    write_pair(
+                        read + ":1",
+                        for_seq_1,
+                        for_qual_1,
+                        rev_seq_1,
+                        rev_qual_1,
                     )
-                    for_fq.write(
-                        "@%s\n%s\n+\n%s\n"
-                        % (read + ":2", for_seq_1, for_qual_1)
+                    write_pair(
+                        read + ":2",
+                        for_seq_1,
+                        for_qual_1,
+                        rev_seq_2,
+                        rev_qual_2,
                     )
-                    for_fq.write(
-                        "@%s\n%s\n+\n%s\n"
-                        % (read + ":3", for_seq_1, for_qual_1)
+                    write_pair(
+                        read + ":3",
+                        for_seq_2,
+                        for_qual_2,
+                        rev_seq_1,
+                        rev_qual_1,
                     )
-                    for_fq.write(
-                        "@%s\n%s\n+\n%s\n"
-                        % (read + ":4", for_seq_2, for_qual_2)
+                    write_pair(
+                        read + ":4",
+                        for_seq_2,
+                        for_qual_2,
+                        rev_seq_2,
+                        rev_qual_2,
                     )
-                    for_fq.write(
-                        "@%s\n%s\n+\n%s\n"
-                        % (read + ":5", for_seq_2, for_qual_2)
-                    )
-                    for_fq.write(
-                        "@%s\n%s\n+\n%s\n"
-                        % (read + ":6", rev_seq_1, rev_qual_1)
-                    )
-                    rev_fq.write(
-                        "@%s\n%s\n+\n%s\n"
-                        % (read + ":1", for_seq_2, for_qual_2)
-                    )
-                    rev_fq.write(
-                        "@%s\n%s\n+\n%s\n"
-                        % (read + ":2", rev_seq_1, rev_qual_1)
-                    )
-                    rev_fq.write(
-                        "@%s\n%s\n+\n%s\n"
-                        % (read + ":3", rev_seq_2, rev_qual_2)
-                    )
-                    rev_fq.write(
-                        "@%s\n%s\n+\n%s\n"
-                        % (read + ":4", rev_seq_1, rev_qual_1)
-                    )
-                    rev_fq.write(
-                        "@%s\n%s\n+\n%s\n"
-                        % (read + ":5", rev_seq_2, rev_qual_2)
-                    )
-                    rev_fq.write(
-                        "@%s\n%s\n+\n%s\n"
-                        % (read + ":6", rev_seq_2, rev_qual_2)
-                    )
+
                 else:
-                    # Write the 3 new pairs in case there is one ligation site.
+                    # Write the 2 new pairs in case there is one ligation site.
                     one_site_pairs += 1
-                    for_fq.write(
-                        "@%s\n%s\n+\n%s\n"
-                        % (read + ":1", for_seq_1, for_qual_1)
+                    write_pair(
+                        read + ":1",
+                        for_seq_1,
+                        for_qual_1,
+                        rev_seq_0,
+                        rev_qual_0,
                     )
-                    for_fq.write(
-                        "@%s\n%s\n+\n%s\n"
-                        % (read + ":2", for_seq_1, for_qual_1)
-                    )
-                    for_fq.write(
-                        "@%s\n%s\n+\n%s\n"
-                        % (read + ":3", for_seq_2, for_qual_2)
-                    )
-                    rev_fq.write(
-                        "@%s\n%s\n+\n%s\n"
-                        % (read + ":1", rev_seq_0, rev_qual_0)
-                    )
-                    rev_fq.write(
-                        "@%s\n%s\n+\n%s\n"
-                        % (read + ":2", for_seq_2, for_qual_2)
-                    )
-                    rev_fq.write(
-                        "@%s\n%s\n+\n%s\n"
-                        % (read + ":3", rev_seq_0, rev_qual_0)
+                    write_pair(
+                        read + ":2",
+                        for_seq_1,
+                        for_qual_1,
+                        rev_seq_0,
+                        rev_qual_0,
                     )
             else:
                 if pair_reads[read]["rev_ls"] != None:
@@ -494,50 +471,47 @@ def digest_ligation_sites(fq_for, fq_rev, ligation_sites, output):
                     rev_seq_2 = rev_seq_0[pair_reads[read]["rev_ls"] + 8 :]
                     rev_qual_1 = rev_qual_0[: pair_reads[read]["rev_ls"]]
                     rev_qual_2 = rev_qual_0[pair_reads[read]["rev_ls"] + 8 :]
-                    # Write the 3 new pairs in case there is one ligation site.
-                    for_fq.write(
-                        "@%s\n%s\n+\n%s\n"
-                        % (read + ":1", for_seq_0, for_qual_0)
+                    # Write the 2 new pairs in case there is one ligation site.
+                    write_pair(
+                        read + ":1",
+                        for_seq_0,
+                        for_qual_0,
+                        rev_seq_1,
+                        rev_qual_1,
                     )
-                    for_fq.write(
-                        "@%s\n%s\n+\n%s\n"
-                        % (read + ":2", for_seq_0, for_qual_0)
-                    )
-                    for_fq.write(
-                        "@%s\n%s\n+\n%s\n"
-                        % (read + ":3", rev_seq_1, rev_qual_1)
-                    )
-                    rev_fq.write(
-                        "@%s\n%s\n+\n%s\n"
-                        % (read + ":1", rev_seq_1, rev_qual_1)
-                    )
-                    rev_fq.write(
-                        "@%s\n%s\n+\n%s\n"
-                        % (read + ":2", rev_seq_2, rev_qual_2)
-                    )
-                    rev_fq.write(
-                        "@%s\n%s\n+\n%s\n"
-                        % (read + ":3", rev_seq_2, rev_qual_2)
+                    write_pair(
+                        read + ":2",
+                        for_seq_0,
+                        for_qual_0,
+                        rev_seq_2,
+                        rev_qual_2,
                     )
                 else:
                     # Write the original pair if there is no ligation site.
                     zero_site_pairs += 1
-                    for_fq.write(
-                        "@%s\n%s\n+\n%s\n" % (read, for_seq_0, for_qual_0)
-                    )
-                    rev_fq.write(
-                        "@%s\n%s\n+\n%s\n" % (read, rev_seq_0, rev_qual_0)
+                    write_pair(
+                        read,
+                        for_seq_0,
+                        for_qual_0,
+                        rev_seq_0,
+                        rev_qual_0,
                     )
     rev_fq.close()
     for_fq.close()
-    logger.info("Number of pairs: {0}".format(original_number_of_pairs))
+
+    # Return information on the different pairs created
+    total_pairs = zero_site_pairs + 2 * one_site_pairs + 4 * two_site_pairs
+    logger.info(
+        "Number of pairs before digestion: {0}".format(original_number_of_pairs)
+    )
     logger.info(
         "Number of pairs with no ligation site: {0}".format(zero_site_pairs)
     )
     logger.info(
-        "Number of pairs with no ligation site: {0}".format(one_site_pairs)
+        "Number of pairs with one ligation site: {0}".format(one_site_pairs)
     )
     logger.info(
-        "Number of pairs with no ligation site: {0}".format(two_site_pairs)
+        "Number of pairs with two ligation sites: {0}".format(two_site_pairs)
     )
+    logger.info("Number of pairs after digestion: {0}".format(total_pairs))
     return output_for, output_rev

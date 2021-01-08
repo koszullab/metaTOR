@@ -103,12 +103,14 @@ def generate_temp_dir(path):
     return full_path
 
 
-# TODO
 def process_ligation_sites(ligation_sites):
     """Process the ligation sites to have a usable list to digest.
 
     Function to transform the 'N' given by the user to all the possibilty: 'A',
     'T', 'C', 'G', i.e. four sites replaced one with one 'N' given by the user.
+
+    WARNING: This function cannot manage site with more than one 'N' (recursive
+    loop should be add).
 
     Parameters
     ----------
@@ -121,7 +123,7 @@ def process_ligation_sites(ligation_sites):
         with no 'N' but only 'ATCG'
     """
     # Split the str on the comma
-    ligation_sites = ",".split(ligation_sites)
+    ligation_sites = ligation_sites.split(",")
 
     ligation_sites_final = []
     for site in ligation_sites:
