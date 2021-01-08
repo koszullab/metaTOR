@@ -159,8 +159,6 @@ class Network(AbstractCommand):
                                         'idx_contig_length_GC_hit_cov.txt']
         --output-file-network=STR       The specific file name for the output
                                         network file. Default is network.txt
-        -r, --read-size=INT             Size of reads used for mapping.
-                                        [Default: 150]
         -s, --self-contacts             If enabled, count alignments between a
                                         contig and itself.
         -t, --threads=INT               Number of parallel threads allocated for
@@ -179,6 +177,8 @@ class Network(AbstractCommand):
         # Defined the output directory and output file names.
         if not self.args["--outdir"]:
             self.args["--outdir"] = "."
+        if not exists(self.args["--outdir"]):
+            os.makedirs(self.args["--outdir"])
 
         if not self.args["--output-file-contig-data"]:
             self.args[
@@ -187,9 +187,6 @@ class Network(AbstractCommand):
 
         if not self.args["--output-file-network"]:
             self.args["--output-file-network"] = "network.txt"
-
-        # Transform integer variables as integer
-        read_size = int(self.args["--read-size"])
 
         # Defined boolean variables
         normalized = self.args["--normalized"]
@@ -202,7 +199,6 @@ class Network(AbstractCommand):
             output_file_network=self.args["--output-file-network"],
             output_file_contig_data=self.args["--output-file-contig-data"],
             tmpdir=temp_directory,
-            read_size=read_size,
             n_cpus=self.args["--threads"],
             normalized=normalized,
             self_contacts=self_contacts,

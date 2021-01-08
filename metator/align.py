@@ -156,27 +156,27 @@ def pairs_alignment(
     """
 
     # Counting reads forward and reverse reads
-    total_reads_forward = 0
-    with mio.read_compressed(for_fq_in) as inf:
-        for _ in inf:
-            total_reads_forward += 1
-    total_reads_forward /= 4
-    total_reads_reverse = 0
-    with mio.read_compressed(rev_fq_in) as inf:
-        for _ in inf:
-            total_reads_reverse += 1
-    total_reads_reverse /= 4
+    # total_reads_forward = 0
+    # with mio.read_compressed(for_fq_in) as inf:
+    #     for _ in inf:
+    #         total_reads_forward += 1
+    # total_reads_forward /= 4
+    # total_reads_reverse = 0
+    # with mio.read_compressed(rev_fq_in) as inf:
+    #     for _ in inf:
+    #         total_reads_reverse += 1
+    # total_reads_reverse /= 4
 
-    # Safety check: Same numbers of reads in the forward and reverse fastq file.
-    if total_reads_forward != total_reads_reverse:
-        logger.warning(
-            "Different numbers of forward and reverse reads. Please check if \
-                your files are not corrupted"
-        )
+    # # Safety check: Same numbers of reads in the forward and reverse fastq file.
+    # if total_reads_forward != total_reads_reverse:
+    #     logger.warning(
+    #         "Different numbers of forward and reverse reads. Please check if \
+    #             your files are not corrupted"
+    #     )
 
-    logger.info(
-        "{0} paired-end reads in the library.".format(total_reads_reverse)
-    )
+    # logger.info(
+    #     "{0} paired-end reads in the library.".format(total_reads_reverse)
+    # )
 
     # Throw error if index does not exist
     index = mio.check_fasta_index(ref, mode="bowtie2")

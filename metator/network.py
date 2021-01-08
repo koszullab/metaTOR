@@ -36,7 +36,6 @@ def alignment_to_contacts(
     output_file_network="network.txt",
     output_file_contig_data="idx_contig_length_GC_hit_cov.txt",
     tmpdir=".",
-    read_size=65,
     n_cpus=1,
     normalized=True,
     self_contacts=False,
@@ -66,8 +65,6 @@ def alignment_to_contacts(
         'idx_contig_length_GC_hit_cov.txt'
     tmpdir : str
         Path to th temporary directory. Default in the working directory
-    read_size : int
-        Size of reads used for mapping. Default is 35.
     self_contacts : bool
         Whether to count alignments between a contig and
         itself. Default is False.
@@ -96,9 +93,7 @@ def alignment_to_contacts(
     )
 
     # Compute the coverage of the contigs
-    contig_data = compute_contig_coverage(
-        contig_data=contig_data, read_size=read_size
-    )
+    contig_data = compute_contig_coverage(contig_data=contig_data)
 
     # Compute network
     compute_network(
@@ -116,7 +111,7 @@ def alignment_to_contacts(
     return contig_data
 
 
-def compute_contig_coverage(contig_data, read_size):
+def compute_contig_coverage(contig_data):
     """Compute the coverage of the contigs from the hit information compute
     previously
 
@@ -126,8 +121,6 @@ def compute_contig_coverage(contig_data, read_size):
         Dictionnary of the all the contigs from the assembly, the contigs names
         are the keys to the data of the contig available with the following
         keys: "id", "length", "GC", "hit", "coverage".
-    read_size : int
-        Length of the read.
 
     Return
     ------
@@ -140,10 +133,7 @@ def compute_contig_coverage(contig_data, read_size):
     # Loop on the dictionnary and compute the coverage
     for name in contig_data:
         contig_data[name]["coverage"] = (
-            contig_data[name]["hit"]
-            * read_size
-            * 1.0
-            / contig_data[name]["length"]
+            contig_data[name]["hit"] * 1.0 / contig_data[name]["length"]
         )
 
     return contig_data
