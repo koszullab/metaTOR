@@ -32,6 +32,7 @@ import subprocess as sp
 from Bio import SeqIO
 from metator.log import logger
 from os.path import join, basename
+from pkg_resources import parse_version
 
 
 def align(fq_in, index, bam_out, n_cpu):
@@ -323,29 +324,78 @@ def merge_alignment(forward_aligned, reverse_aligned, out_file):
 
     Parameters
     ----------
-    forward_alignement : pandas.core.frame.DataFrame
-        Table containing the data of the forward reads kept after the alignment.
-        With five columns: ReadID, Contig, Position_start, Position_end, strand.
-    reverse_alignement : pandas.core.frame.DataFrame
-        Table containing the data of the forward reads kept after the alignment.
-        With five columns: ReadID, Contig, Position_start, Position_end, strand.
+    forward_alignement : str
+        File with the table containing the data of the forward reads kept after
+        the alignment. With five columns: ReadID, Contig, Position_start,
+        Position_end, strand.
+    reverse_alignement : str
+        File with the table containing the data of the forward reads kept after
+        the alignment. With five columns: ReadID, Contig, Position_start,
+        Position_end, strand.
     out_file : str
         Path to write the output file.
 
-    Return
-    ------
-    pandas.core.frame.DataFrame:
-        Table conatining the alignement data of the pairs: ReadID, ContigA,
-        Position_startA, Position_endA, StrandA, ContigB, Position_startB,
-        Position_endB, StrandB
+    Returns
+    -------
+    str:
+        File with the Table containing the alignement data of the pairs: ReadID,
+        ContigA, Position_startA, Position_endA, StrandA, ContigB,
+        Position_startB, Position_endB, StrandB
     """
 
-    # Merge the two dataframe on the readID column
-    pairs = pd.merge(forward_aligned, reverse_aligned, on=0, how="inner")
+    # Open files for reading and writing.
+    with open(forward_aligned, "r") as for_file, open(
+        reverse_aligned, "r"
+    ) as rev_file, open(out_file, "w") as merge_bed:
+        for_bed = csv.reader(for_file, delimiter="\t")
+        rev_bed = csv.reader(rev_file, delimiter="\t")
 
-    logger.info("{0} pairs aligned.".format(len(pairs)))
+        # Initialization.
+        n_pairs = 0
+        for_read = next(for_bed)
+        rev_read = next(rev_bed)
 
-    return pairs
+        # print(for_read[0] == rev_read[0])
+        # Loop while at least one end of one fild is reached. It's possible to
+        # advance like that as the two bed files are sorted on the id of the reads.
+        for i in range(10 ** 12):
+            # print(i, for_read[0], rev_read[0])
+            # Case of both reads of the pair map.
+            if for_read[0] == rev_read[0]:
+                merge_bed.write("\t".join(for_read + rev_read[1:]) + "\n")
+                n_pairs += 1
+                # print("w")
+                try:
+                    for_read = next(for_bed)
+                except StopIteration:
+                    break
+                try:
+                    rev_read = next(rev_bed)
+                except StopIteration:
+                    break
+            # As the file is version sorted we have to do compare the two names
+            # according to the version order.
+            else:
+                names = [for_read[0], rev_read[0]]
+                names_sorted = sorted(names, key=parse_version)
+                # Case of the forward read mapped but not the reverse. Indeed, no line
+                # would have been added previously if the read didn't map.
+                if names == names_sorted:
+                    # print("a")
+                    try:
+                        for_read = next(for_bed)
+                    except StopIteration:
+                        break
+                # Same but with no mapped forward reads.
+                else:
+                    try:
+                        rev_read = next(rev_bed)
+                    except StopIteration:
+                        break
+
+    logger.info("{0} pairs aligned.".format(n_pairs))
+
+    return out_file
 
 
 def pairs_alignment(
@@ -397,12 +447,12 @@ def pairs_alignment(
     n_cpu : int
         The number of CPUs to use for the alignment.
 
-    Return
-    ------
-    pandas.core.frame.DataFrame:
-        Table conatining the alignment data of the pairs: ReadID, ContigA,
-        Position_startA, Position_endA, StrandA, ContigB, Position_startB,
-        Position_endB, StrandB
+    Returns
+    -------
+    str:
+        File with the Table containing the alignement data of the pairs: ReadID,
+        ContigA, Position_startA, Position_endA, StrandA, ContigB,
+        Position_startB, Position_endB, StrandB
     """
 
     # Throw error if index does not exist
@@ -444,9 +494,9 @@ def pairs_alignment(
     # Filters the aligned and non aligned reads
     unaligned = process_bamfile(temp_alignment_for, min_qual, filtered_out_for)
 
-    forward_aligned = pd.DataFrame(
-        csv.reader(open(filtered_out_for), delimiter="\t")
-    )
+    # forward_aligned = pd.DataFrame(
+    #     csv.reader(open(filtered_out_for), delimiter="\t")
+    # )
 
     # Align the reverse reads
     logger.info("Alignement of the reverse reads:")
@@ -455,17 +505,16 @@ def pairs_alignment(
     # Filters the aligned and non aligned reads
     unaligned = process_bamfile(temp_alignment_rev, min_qual, filtered_out_rev)
 
-    reverse_aligned = pd.DataFrame(
-        csv.reader(open(filtered_out_rev), delimiter="\t")
-    )
+    # reverse_aligned = pd.DataFrame(
+    #     csv.reader(open(filtered_out_rev), delimiter="\t")
+    # )
 
     # Merge alignement to create a pairs file
     logger.info("Merging the pairs:")
-    pairs = merge_alignment(forward_aligned, reverse_aligned, out_file)
+    merge_alignment(filtered_out_for, filtered_out_rev, out_file)
 
-    pairs.to_csv(out_file, sep="\t", index=False, header=False)
-
-    return pairs
+    # pairs.to_csv(out_file, sep="\t", index=False, header=False)
+    return out_file
 
 
 def process_bamfile(alignment, min_qual, filtered_out):
