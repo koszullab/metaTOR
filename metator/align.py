@@ -7,14 +7,14 @@ readIDA, contigA, posA, strandA, readIDB, contigB, posB, strandB. Reads are
 mapped separately, sorted by names, then interleaved (rather than mapped in
 paired-end mode) to capture the pairs mapping on two different contigs.
 
-If the ligation sites are given, it will make an iteration on the unmapped, or
-multi-mapped, cut them at the ligation site and try to align them again to
-improve the numbers of reads uniquely mapped. However it's time consumming and
-doesn"t improve a lot with short reads (35bp). 
+If the ligation sites are given, it will make an digestion at the ligation site
+before teh alignement and create new pairs of reads according to the new fragments.
+For example if the forward read have a ligation site, it will cut the read in two
+and create two reads the first one with the first part of the forward read and 
+the reverse read and the second one with one. 
 
 This module contains all these alignment functions:
     - align
-    - alignement
     - digest_liagtion_sites
     - merge_alignement
     - pairs_alignement
@@ -22,7 +22,6 @@ This module contains all these alignment functions:
 """
 
 import csv
-import gzip
 import os
 import sys
 import metator.io as mio
@@ -32,12 +31,6 @@ import subprocess as sp
 from Bio import SeqIO
 from metator.log import logger
 from os.path import join
-
-
-# TODO: Modify the cutsite trimming to try to map both part of the cut read.
-# TODO: cutsite trimming in python language
-# TODO: adpat trimmed reads
-# TODO: Check description of the function
 
 
 def align(fq_in, index, bam_out, n_cpu):
@@ -416,6 +409,8 @@ def pairs_alignment(
     # alignment.
     if isinstance(ligation_sites, str):
 
+        logger.info("Digestion of the reads:")
+
         # Create temporary file for the digested reads.
         temp_fq = join(".", "digested_reads")
 
@@ -429,6 +424,7 @@ def pairs_alignment(
         )
 
     # Align the forward reads
+    logger.info("Alignement of the forward reads:")
     align(for_fq_in, index, temp_alignment_for, n_cpu)
 
     # Filters the aligned and non aligned reads
@@ -439,6 +435,7 @@ def pairs_alignment(
     )
 
     # Align the reverse reads
+    logger.info("Alignement of the reverse reads:")
     align(rev_fq_in, index, temp_alignment_rev, n_cpu)
 
     # Filters the aligned and non aligned reads
@@ -449,6 +446,7 @@ def pairs_alignment(
     )
 
     # Merge alignement to create a pairs file
+    logger.info("Merging the pairs:")
     pairs = merge_alignment(forward_aligned, reverse_aligned, out_file)
 
     pairs.to_csv(out_file, sep="\t", index=False, header=False)

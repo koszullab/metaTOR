@@ -330,7 +330,7 @@ class Partition(AbstractCommand):
             size,
             self.args["--outdir"],
         )
-        
+
         # Delete the temporary folder
         shutil.rmtree(temp_directory)
 
@@ -397,7 +397,7 @@ class Pipeline(AbstractCommand):
                                     be the path to the bowtie2/bwa index.
         -i, --iterations=INT        Number of iterartion of Louvain.
                                     [Default: 100]
-        -n, --normalized            If enabled,  normalize contacts between 
+        -n, --normalized            If enabled,  normalize contacts between
                                     contigs by their geometric mean coverage.
         -N, --no-clean-up           Do not remove temporary files.
         -o, --out=DIR               Path where the alignment will be written in
@@ -409,7 +409,7 @@ class Pipeline(AbstractCommand):
                                     a read properly aligned. [Default: 30]
         -s, --size=INT              Threshold size to keep communities in base
                                     pair. [Default: 300000]
-        -S, --self-contacts         If enabled, count alignments between a 
+        -S, --self-contacts         If enabled, count alignments between a
                                     contig and itself.
         -t, --threads=INT           Number of parallel threads allocated for the
                                     alignement. [Default: 1]
@@ -440,17 +440,17 @@ class Pipeline(AbstractCommand):
             size = int(self.args["--size"])
         if self.args["--threads"]:
             threads = int(self.args["--threads"])
-        
+
         # Defined boolean variables.
         normalized = self.args["--normalized"]
         self_contacts = self.args["--self-contacts"]
         no_cleanup = self.args["--no-clean-up"]
-        
+
         # Create two path for the fasta index or the fasta assembly.
         assembly, assembly_index = mio.check_fasta_index(
             self.args["--assembly"]
         )
-        
+
         # Align pair-end reads with bowtie2.
         pairs = mta.pairs_alignment(
             self.args["--forward"],
@@ -468,20 +468,20 @@ class Pipeline(AbstractCommand):
             bed2D_file=pairs,
             genome=self.args["--genome"],
             output_dir=self.args["--outdir"],
-            "network.txt",
-            "idx_contig_length_GC_hit_cov.txt",
+            output_file_network="network.txt",
+            output_file_contig_data="idx_contig_length_GC_hit_cov.txt",
             tmpdir=temp_directory,
             n_cpus=self.args["--threads"],
             normalized=normalized,
             self_contacts=self_contacts,
-        ) 
+        )
 
         # Perform iterations of Louvain.
         output_louvain = mtp.louvain_iterations_py(
             network,
             iterations,
         )
-        
+
         # Detect core communities
         (
             core_communities,
@@ -518,9 +518,9 @@ class Pipeline(AbstractCommand):
             size,
             self.args["--outdir"],
         )
-        
+
         # TODO: Launch validation if necessary.
-        
+
         # Delete the temporary folder.
         if not no_cleanup:
             shutil.rmtree(temp_directory)
