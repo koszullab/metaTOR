@@ -72,7 +72,7 @@ class Align(AbstractCommand):
 
     usage:
         align [--ligation-sites=STR] [--tempdir=DIR] [--threads=1]
-        [--min-quality=30] --genome=FILE --out=FILE --forward
+        [--min-quality=30] [--no-clean-up] --genome=FILE --out=FILE --forward
         reads_for.fastq[,reads_for2.fastq...] --reverse
         reads_rev.fastq[,reads_rev2.fastq...]
 
@@ -93,6 +93,7 @@ class Align(AbstractCommand):
                                     for DpnII and HinfI. If no option given, it
                                     will align only once the reads. [Default:
                                     None]
+        -N, --no-clean-up           Do not remove temporary files.
         -o, --out=FILE              Path where the alignment will be written in
                                     bed2D format.
         -q, --min-quality=INT       Threshold of quality necessary to considered
@@ -108,6 +109,7 @@ class Align(AbstractCommand):
         if not self.args["--tempdir"]:
             self.args["--tempdir"] = "./tmp"
         temp_directory = mio.generate_temp_dir(self.args["--tempdir"])
+        no_cleanup = self.args["--no-clean-up"]
 
         # Transform integer variables as integer.
         min_qual = int(self.args["--min-quality"])
@@ -125,7 +127,8 @@ class Align(AbstractCommand):
         )
 
         # Delete the temporary folder
-        shutil.rmtree(temp_directory)
+        if not no_cleanup:
+            shutil.rmtree(temp_directory)
 
 
 class Network(AbstractCommand):
@@ -142,7 +145,7 @@ class Network(AbstractCommand):
     usage:
         network --genome=FILE --outdir=DIR --input=FILE [--normalized]
         [--output-file-contig-data=STR] [--output-file-network=STR]
-        [--self-contacts] [--tempdir=DIR] [--threads=1]
+        [--self-contacts] [--tempdir=DIR] [--threads=1] [--no-clean-up]
 
     options:
         -g, --genome=FILE               The initial assembly path acting as the
@@ -151,6 +154,7 @@ class Network(AbstractCommand):
         -n, --normalized                If enabled,  normalize contacts between
                                         contigs by their geometric mean
                                         coverage.
+        -N, --no-clean-up               Do not remove temporary files.
         -o, --outdir=DIR                The output directory to write the
                                         network and contig data into. Default:
                                         current directory.
@@ -191,6 +195,7 @@ class Network(AbstractCommand):
         # Defined boolean variables
         normalized = self.args["--normalized"]
         self_contacts = self.args["--self-contacts"]
+        no_cleanup = self.args["--no-clean-up"]
 
         mtn.alignment_to_contacts(
             bed2D_file=self.args["--input"],
@@ -205,7 +210,8 @@ class Network(AbstractCommand):
         )
 
         # Delete the temporary folder
-        shutil.rmtree(temp_directory)
+        if not no_cleanup:
+            shutil.rmtree(temp_directory)
 
 
 # TODO: Check if the Louvain algorithm is available in Python. Else keep
@@ -232,7 +238,7 @@ class Partition(AbstractCommand):
     usage:
         partition  --outdir=DIR --network-file=FILE --assembly=FILE
         [--iterations=100] [--louvain=STR] [--overlap=90] [--size=300000]
-        [--threads=1] [--tempdir=DIR] [--contigs-data=STR]
+        [--threads=1] [--tempdir=DIR] [--contigs-data=STR] [--no-clean-up]
 
     options:
         -a, --assembly=FILE         The path to the assembly fasta file used to
@@ -248,6 +254,7 @@ class Partition(AbstractCommand):
         -n, --network-file=FILE     Path to the file containing the network
                                     information from the meta HiC experiment
                                     compute in network function previously.
+        -N, --no-clean-up           Do not remove temporary files.
         -o, --outdir=DIR            Path to the directory to write the output.
                                     Default to current directory. [Default: ./]
         -O, --overlap=INT           Percentage of the identity necessary to be
@@ -267,6 +274,7 @@ class Partition(AbstractCommand):
         if not self.args["--tempdir"]:
             self.args["--tempdir"] = "./tmp"
         temp_directory = mio.generate_temp_dir(self.args["--tempdir"])
+        no_cleanup = self.args["--no-clean-up"]
 
         # Defined the output directory.
         if not self.args["--outdir"]:
@@ -332,7 +340,8 @@ class Partition(AbstractCommand):
         )
 
         # Delete the temporary folder
-        shutil.rmtree(temp_directory)
+        if not no_cleanup:
+            shutil.rmtree(temp_directory)
 
 
 class Validation(AbstractCommand):
