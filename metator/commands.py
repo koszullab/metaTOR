@@ -142,7 +142,7 @@ class Network(AbstractCommand):
     usage:
         network --genome=FILE --outdir=DIR --input=FILE [--normalized]
         [--output-file-contig-data=STR] [--output-file-network=STR]
-        [--read-size=150] [--self-contacts] [--tempdir=DIR] [--threads=1]
+        [--self-contacts] [--tempdir=DIR] [--threads=1]
 
     options:
         -g, --genome=FILE               The initial assembly path acting as the
@@ -330,6 +330,9 @@ class Partition(AbstractCommand):
             size,
             self.args["--outdir"],
         )
+        
+        # Delete the temporary folder
+        shutil.rmtree(temp_directory)
 
 
 class Validation(AbstractCommand):
@@ -376,10 +379,41 @@ class Pipeline(AbstractCommand):
     files. It's also possible to ask or not to run the validation step which is
     the critical step for memory usage.
 
-    usage: pipeline
+    usage: pipeline [--tempdir=DIR] [--threads=1] [--normalized] [--no-clean-up]
+        [--overlap=90] [--iterations=100] [--size=100] [--self-contacts]
+        [--min-quality=30] --genome=FILE --out=DIR --forward
+        reads_for.fastq[,reads_for2.fastq...] --reverse
+        reads_rev.fastq[,reads_rev2.fastq...]
 
     options:
-
+        -1, --forward=STR           Fastq file or list of Fastq separated by a
+                                    comma containing the forward reads to be
+                                    aligned.
+        -2, --reverse=STR           Fastq file or list of Fastq separated by a
+                                    comma containing the reverse reads to be
+                                    aligned. Forward and reverse reads need to
+                                    have the same identifier.
+        -g, --genome=FILE           The genome on which to map the reads. Must
+                                    be the path to the bowtie2/bwa index.
+        -i, --iterations=INT        Number of iterartion of Louvain.
+                                    [Default: 100]
+        -n, --normalized            If enabled,  normalize contacts between 
+                                    contigs by their geometric mean coverage.
+        -N, --no-clean-up           Do not remove temporary files.
+        -o, --out=DIR               Path where the alignment will be written in
+                                    bed2D format.
+        -O, --overlap=INT           Percentage of the identity necessary to be
+                                    considered as a part of the core community.
+                                    [Default: 90]
+        -q, --min-quality=INT       Threshold of quality necessary to considered
+                                    a read properly aligned. [Default: 30]
+        -s, --size=INT              Threshold size to keep communities in base
+                                    pair. [Default: 300000]
+        -S, --self-contacts         If enabled, count alignments between a 
+                                    contig and itself.
+        -t, --threads=INT           Number of parallel threads allocated for the
+                                    alignement. [Default: 1]
+        -T, --tempdir=DIR           Temporary directory. [Default: ./tmp]
     """
 
     def execute(self):
@@ -392,7 +426,101 @@ class Pipeline(AbstractCommand):
         # Defined the output directory and output file names.
         if not self.args["--outdir"]:
             self.args["--outdir"] = "."
-        # Launch alignment
-        # Launch network
-        # Launch binning
-        # Launch validation if necessary
+        if not exists(self.args["--outdir"]):
+            os.makedirs(self.args["--outdir"])
+
+        # Transform integer variables as integer.
+        if self.args["--min-quality"]:
+            min_qual = int(self.args["--min-quality"])
+        if self.args["--iterations"]:
+            iterations = int(self.args["--iterations"])
+        if self.args["--overlap"]:
+            overlap = float(self.args["--overlap"])
+        if self.args["--size"]:
+            size = int(self.args["--size"])
+        if self.args["--threads"]:
+            threads = int(self.args["--threads"])
+        
+        # Defined boolean variables.
+        normalized = self.args["--normalized"]
+        self_contacts = self.args["--self-contacts"]
+        no_cleanup = self.args["--no-clean-up"]
+        
+        # Create two path for the fasta index or the fasta assembly.
+        assembly, assembly_index = mio.check_fasta_index(
+            self.args["--assembly"]
+        )
+        
+        # Align pair-end reads with bowtie2.
+        pairs = mta.pairs_alignment(
+            self.args["--forward"],
+            self.args["--reverse"],
+            min_qual,
+            temp_directory,
+            self.args["--genome"],
+            None,
+            self.args["--out"],
+            self.args["--threads"],
+        )
+
+        # Generate the network.
+        network, contigs_data = mtn.alignment_to_contacts(
+            bed2D_file=pairs,
+            genome=self.args["--genome"],
+            output_dir=self.args["--outdir"],
+            "network.txt",
+            "idx_contig_length_GC_hit_cov.txt",
+            tmpdir=temp_directory,
+            n_cpus=self.args["--threads"],
+            normalized=normalized,
+            self_contacts=self_contacts,
+        ) 
+
+        # Perform iterations of Louvain.
+        output_louvain = mtp.louvain_iterations_py(
+            network,
+            iterations,
+        )
+        
+        # Detect core communities
+        (
+            core_communities,
+            core_communities_iterations,
+        ) = mtp.detect_core_communities(output_louvain, iterations)
+
+        # Compute the Hamming distance between core communities.
+        hamming_distance = mtp.hamming_distance(
+            core_communities_iterations,
+            iterations,
+            threads,
+        )
+
+        # Defined overlapping communities according to the threshold
+        overlapping_communities = mtp.defined_overlapping_communities(
+            overlap,
+            hamming_distance,
+            core_communities,
+            core_communities_iterations,
+        )
+
+        # Update the contigs_data_file.
+        contigs_data = mtp.update_contigs_data(
+            contigs_data,
+            core_communities,
+            overlapping_communities,
+        )
+
+        # Generate Fasta file
+        mtp.generate_fasta(
+            assembly,
+            overlapping_communities,
+            contigs_data,
+            size,
+            self.args["--outdir"],
+        )
+        
+        # TODO: Launch validation if necessary.
+        
+        # Delete the temporary folder.
+        if not no_cleanup:
+            shutil.rmtree(temp_directory)

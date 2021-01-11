@@ -129,7 +129,7 @@ def digest_ligation_sites(fq_for, fq_rev, ligation_sites, output):
         fq_rev = list_fq_rev[i]
 
         # Create the two output file and add them to the list
-        output_for = "{0}_{1}_digested._for.fq".format(output, i)
+        output_for = "{0}_{1}_digested_for.fq".format(output, i)
         output_rev = "{0}_{1}_digested_rev.fq".format(output, i)
         output_list_for.append(output_for)
         output_list_rev.append(output_rev)
