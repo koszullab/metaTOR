@@ -22,6 +22,7 @@ This module contains all these alignment functions:
 """
 
 import csv
+import gzip
 import os
 import sys
 import metator.io as mio
@@ -30,7 +31,7 @@ import pysam as ps
 import subprocess as sp
 from Bio import SeqIO
 from metator.log import logger
-from os.path import join
+from os.path import join, basename
 
 
 def align(fq_in, index, bam_out, n_cpu):
@@ -68,7 +69,7 @@ def align(fq_in, index, bam_out, n_cpu):
     return 0
 
 
-def digest_ligation_sites(fq_for, fq_rev, ligation_sites, output):
+def digest_ligation_sites(fq_for, fq_rev, ligation_sites, outdir):
     """Create new reads to manage pairs with a digestion and create multiple
     pairs to take into account all the contact present.
 
@@ -91,16 +92,16 @@ def digest_ligation_sites(fq_for, fq_rev, ligation_sites, output):
         The list of ligations site possible depending on the restriction
         enzymes used separated by a comma. Exemple of the ARIMA kit:
         GATCGATC,GANTGATC,GANTANTC,GATCANTC
-    output : str
-        Path for the ouput file. The forward will have a suffix "_for.fq" and
-        the reverse "_rev.fq".
+    outpdir : str
+        Path for the ouput directory. The fastq will have their initial names
+        with a suffix added "_digested".
     """
 
     # small function to write the pairs
     def write_pair(name, seq_for, qual_for, seq_rev, qual_rev):
         """Write the pair in the new fasta file."""
-        for_fq.write("@%s\n%s\n+\n%s\n" % (name, seq_for, qual_for))
-        rev_fq.write("@%s\n%s\n+\n%s\n" % (name, seq_rev, qual_rev))
+        for_fq.write(("@%s\n%s\n+\n%s\n" % (name, seq_for, qual_for)).encode())
+        rev_fq.write(("@%s\n%s\n+\n%s\n" % (name, seq_rev, qual_rev)).encode())
 
     # Process the ligation sites given
     ligation_sites = mio.process_ligation_sites(ligation_sites)
@@ -121,9 +122,13 @@ def digest_ligation_sites(fq_for, fq_rev, ligation_sites, output):
         fq_for = list_fq_for[i]
         fq_rev = list_fq_rev[i]
 
+        logger.info("Reads in progress:\n{0}\n{1}".format(fq_for, fq_rev))
+
         # Create the two output file and add them to the list
-        output_for = "{0}_{1}_digested_for.fq".format(output, i)
-        output_rev = "{0}_{1}_digested_rev.fq".format(output, i)
+        name_for = basename(fq_for).split(".")[0]
+        name_rev = basename(fq_rev).split(".")[0]
+        output_for = join(outdir, "{0}_digested.fq.gz".format(name_for))
+        output_rev = join(outdir, "{0}_digested.fq.gz".format(name_rev))
         output_list_for.append(output_for)
         output_list_rev.append(output_rev)
 
@@ -134,8 +139,8 @@ def digest_ligation_sites(fq_for, fq_rev, ligation_sites, output):
         two_site_pairs = 0
 
         # Open the output file.
-        for_fq = open(output_for, "w")
-        rev_fq = open(output_rev, "w")
+        for_fq = gzip.open(output_for, "wb")
+        rev_fq = gzip.open(output_rev, "wb")
 
         # Read the forward file and detect the ligation sites.
         record_for = SeqIO.parse(mio.read_compressed(fq_for), "fastq")
@@ -244,8 +249,8 @@ def digest_ligation_sites(fq_for, fq_rev, ligation_sites, output):
                     )
                     write_pair(
                         read + ":2",
-                        for_seq_1,
-                        for_qual_1,
+                        for_seq_2,
+                        for_qual_2,
                         rev_seq_0,
                         rev_qual_0,
                     )
@@ -289,7 +294,6 @@ def digest_ligation_sites(fq_for, fq_rev, ligation_sites, output):
 
         # Return information on the different pairs created
         total_pairs = zero_site_pairs + 2 * one_site_pairs + 4 * two_site_pairs
-        logger.info("FastQ: {0}".format(for_fq))
         logger.info(
             "Number of pairs before digestion: {0}".format(
                 original_number_of_pairs
@@ -350,18 +354,28 @@ def pairs_alignment(
     min_qual,
     tmp_dir,
     ref,
+    digestion_only,
     ligation_sites,
-    out_file,
+    out_dir,
     n_cpu,
 ):
-    """General function to do the whole alignement of both fastq.
-    The Function write at the output file location given as an argument and
+    """General function to do the whole alignment of both fastq.
+
+    The Function write at the output directory location given as an argument and
     return a 2D bed file of the aligned reads with 9 columns: ReadID, ContigA,
     Position_startA, Position_endA, StrandA, ContigB, Position_startB,
-    Position_endB, StrandB
+    Position_endB, StrandB. The name of the file will be alignment.bed.
+
+    The function will also digest the Fastq files on the sequences of the
+    ligation sites if there are given and write the new fastq in the output
+    directory. The name of the fastq will be the same as the previous ones with
+    a "_digested" added in their names.
 
     Parameters
     ----------
+    digestion_only : bool
+        If True, will only make the digestion with the ligation sites and then
+        stop.
     for_fq_in : str
         Path to input forward fastq file to align. If multiple files are given,
         list of path separated by a comma.
@@ -379,14 +393,14 @@ def pairs_alignment(
         used separated by a comma. Exemple of the ARIMA kit:
         GATCGATC,GANTGATC,GANTANTC,GATCANTC
     out_file : str
-        Path to write the output file.
+        Path to directory where to write the output file.
     n_cpu : int
         The number of CPUs to use for the alignment.
 
     Return
     ------
     pandas.core.frame.DataFrame:
-        Table conatining the alignement data of the pairs: ReadID, ContigA,
+        Table conatining the alignment data of the pairs: ReadID, ContigA,
         Position_startA, Position_endA, StrandA, ContigB, Position_startB,
         Position_endB, StrandB
     """
@@ -399,29 +413,29 @@ def pairs_alignment(
         )
         sys.exit(1)
 
-    # Create a temporary file to save the alignment.
-    temp_alignment_for = join(tmp_dir, "temp_alignment_for.bam")
-    temp_alignment_rev = join(tmp_dir, "temp_alignment_rev.bam")
-    filtered_out_for = join(tmp_dir, "for_temp_alignment.bed")
-    filtered_out_rev = join(tmp_dir, "rev_temp_alignment.bed")
-
     # If asked will digest the reads with the ligtion sites before
     # alignment.
     if isinstance(ligation_sites, str):
 
         logger.info("Digestion of the reads:")
-
-        # Create temporary file for the digested reads.
-        temp_fq = join(".", "digested_reads")
-
         # Create a temporary fastq with the trimmed reads at the ligation
         # sites.
         (for_fq_in, rev_fq_in,) = digest_ligation_sites(
             for_fq_in,
             rev_fq_in,
             ligation_sites,
-            temp_fq,
+            out_dir,
         )
+
+        if digestion_only:
+            return 0
+
+    # Create a temporary file to save the alignment.
+    temp_alignment_for = join(tmp_dir, "temp_alignment_for.bam")
+    temp_alignment_rev = join(tmp_dir, "temp_alignment_rev.bam")
+    filtered_out_for = join(tmp_dir, "for_temp_alignment.bed")
+    filtered_out_rev = join(tmp_dir, "rev_temp_alignment.bed")
+    out_file = join(out_dir, "alignment.bed")
 
     # Align the forward reads
     logger.info("Alignement of the forward reads:")

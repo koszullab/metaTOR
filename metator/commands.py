@@ -5,11 +5,12 @@
 
 This module contains all classes related to metaTOR commands:
 
-    -align
-    -network 
-    -partition
-    -pipeline
-    -validation
+    - digestion
+    - align
+    - network 
+    - partition
+    - pipeline
+    - validation
 
 Note
 ----
@@ -72,9 +73,8 @@ class Align(AbstractCommand):
 
     usage:
         align [--ligation-sites=STR] [--tempdir=DIR] [--threads=1]
-        [--min-quality=30] [--no-clean-up] --genome=FILE --out=FILE --forward
-        reads_for.fastq[,reads_for2.fastq...] --reverse
-        reads_rev.fastq[,reads_rev2.fastq...]
+        [--min-quality=30] [--no-clean-up] [--digestion-only] [--genome=FILE]
+        [--outdir=DIR] --forward=STR --reverse=STR
 
     options:
         -1, --forward=STR           Fastq file or list of Fastq separated by a
@@ -84,8 +84,11 @@ class Align(AbstractCommand):
                                     comma containing the reverse reads to be
                                     aligned. Forward and reverse reads need to
                                     have the same identifier.
+        -d, --digestion-only        If enable, it will only make the digestion
+                                    without the alignement.
         -g, --genome=FILE           The genome on which to map the reads. Must
                                     be the path to the bowtie2/bwa index.
+                                    Mandatory if not digestion only enabled.
         -l, --ligation-sites=STR    Ligation site or list of ligation sites
                                     separated by a comma of the restriction
                                     enzyme(s). For example
@@ -94,8 +97,10 @@ class Align(AbstractCommand):
                                     will align only once the reads. [Default:
                                     None]
         -N, --no-clean-up           Do not remove temporary files.
-        -o, --out=FILE              Path where the alignment will be written in
-                                    bed2D format.
+        -o, --outdir=DIR            Path of the directory where the alignment
+                                    will be written in bed2D format and the
+                                    digested fastq. Default to current
+                                    directory. [Default: .]
         -q, --min-quality=INT       Threshold of quality necessary to considered
                                     a read properly aligned. [Default: 30]
         -t, --threads=INT           Number of parallel threads allocated for the
@@ -105,11 +110,22 @@ class Align(AbstractCommand):
 
     def execute(self):
 
+        # Sanity check: Ligation sites available if only digestion
+        if self.args["--digestion-only"]:
+            if not isinstance(self.args["--ligation-sites"], str):
+                logger.error("Ligation site is missing, no digestion possible.")
+                sys.exit(1)
+
         # Defined the temporary directory.
         if not self.args["--tempdir"]:
             self.args["--tempdir"] = "./tmp"
         temp_directory = mio.generate_temp_dir(self.args["--tempdir"])
-        no_cleanup = self.args["--no-clean-up"]
+
+        # Defined the output directory and output file names.
+        if not self.args["--outdir"]:
+            self.args["--outdir"] = "."
+        if not exists(self.args["--outdir"]):
+            os.makedirs(self.args["--outdir"])
 
         # Transform integer variables as integer.
         min_qual = int(self.args["--min-quality"])
@@ -121,13 +137,14 @@ class Align(AbstractCommand):
             min_qual,
             temp_directory,
             self.args["--genome"],
+            self.args["--digestion-only"],
             self.args["--ligation-sites"],
-            self.args["--out"],
+            self.args["--outdir"],
             self.args["--threads"],
         )
 
         # Delete the temporary folder
-        if not no_cleanup:
+        if not self.args["--no-clean-up"]:
             shutil.rmtree(temp_directory)
 
 
@@ -195,7 +212,6 @@ class Network(AbstractCommand):
         # Defined boolean variables
         normalized = self.args["--normalized"]
         self_contacts = self.args["--self-contacts"]
-        no_cleanup = self.args["--no-clean-up"]
 
         mtn.alignment_to_contacts(
             bed2D_file=self.args["--input"],
@@ -210,7 +226,7 @@ class Network(AbstractCommand):
         )
 
         # Delete the temporary folder
-        if not no_cleanup:
+        if not self.args["--no-clean-up"]:
             shutil.rmtree(temp_directory)
 
 
@@ -274,7 +290,6 @@ class Partition(AbstractCommand):
         if not self.args["--tempdir"]:
             self.args["--tempdir"] = "./tmp"
         temp_directory = mio.generate_temp_dir(self.args["--tempdir"])
-        no_cleanup = self.args["--no-clean-up"]
 
         # Defined the output directory.
         if not self.args["--outdir"]:
@@ -340,7 +355,7 @@ class Partition(AbstractCommand):
         )
 
         # Delete the temporary folder
-        if not no_cleanup:
+        if not self.args["--no-clean-up"]:
             shutil.rmtree(temp_directory)
 
 
@@ -453,7 +468,6 @@ class Pipeline(AbstractCommand):
         # Defined boolean variables.
         normalized = self.args["--normalized"]
         self_contacts = self.args["--self-contacts"]
-        no_cleanup = self.args["--no-clean-up"]
 
         # Create two path for the fasta index or the fasta assembly.
         assembly, assembly_index = mio.check_fasta_index(
@@ -531,5 +545,5 @@ class Pipeline(AbstractCommand):
         # TODO: Launch validation if necessary.
 
         # Delete the temporary folder.
-        if not no_cleanup:
+        if not self.args["--no-clean-up"]:
             shutil.rmtree(temp_directory)
