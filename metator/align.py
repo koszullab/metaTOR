@@ -355,11 +355,10 @@ def merge_alignment(forward_aligned, reverse_aligned, out_file):
         for_read = next(for_bed)
         rev_read = next(rev_bed)
 
-        # print(for_read[0] == rev_read[0])
         # Loop while at least one end of one fild is reached. It's possible to
-        # advance like that as the two bed files are sorted on the id of the reads.
+        # advance like that as the two bed files are sorted on the id of the
+        # reads.
         for i in range(10 ** 12):
-            # print(i, for_read[0], rev_read[0])
             # Case of both reads of the pair map.
             if for_read[0] == rev_read[0]:
                 merge_bed.write("\t".join(for_read + rev_read[1:]) + "\n")
@@ -378,10 +377,10 @@ def merge_alignment(forward_aligned, reverse_aligned, out_file):
             else:
                 names = [for_read[0], rev_read[0]]
                 names_sorted = sorted(names, key=parse_version)
-                # Case of the forward read mapped but not the reverse. Indeed, no line
-                # would have been added previously if the read didn't map.
+                # Case of the forward read mapped but not the reverse. Indeed,
+                # no line would have been added previously if the read didn't
+                # map.
                 if names == names_sorted:
-                    # print("a")
                     try:
                         for_read = next(for_bed)
                     except StopIteration:
@@ -492,7 +491,7 @@ def pairs_alignment(
     align(for_fq_in, index, temp_alignment_for, n_cpu)
 
     # Filters the aligned and non aligned reads
-    unaligned = process_bamfile(temp_alignment_for, min_qual, filtered_out_for)
+    process_bamfile(temp_alignment_for, min_qual, filtered_out_for)
 
     # forward_aligned = pd.DataFrame(
     #     csv.reader(open(filtered_out_for), delimiter="\t")
@@ -503,7 +502,7 @@ def pairs_alignment(
     align(rev_fq_in, index, temp_alignment_rev, n_cpu)
 
     # Filters the aligned and non aligned reads
-    unaligned = process_bamfile(temp_alignment_rev, min_qual, filtered_out_rev)
+    process_bamfile(temp_alignment_rev, min_qual, filtered_out_rev)
 
     # reverse_aligned = pd.DataFrame(
     #     csv.reader(open(filtered_out_rev), delimiter="\t")
@@ -522,12 +521,11 @@ def process_bamfile(alignment, min_qual, filtered_out):
 
     Reads all the reads in the input BAM alignment file. Keep reads in the
     output if they are aligned with a good quality saving their uniquely ReadID,
-    Contig, Position_start, Position_end, strand to save memory. Otherwise add
-    their name in a set to stage them in order to recuperate them if necessary.
-
+    Contig, Position_start, Position_end, strand to save memory. 
+    
     Parameters
     ----------
-    temp_alignment : str
+    alignment : str
         Path to the input temporary alignment.
     min_qual : int
         Minimum mapping quality required to keep a Hi-C pair.
@@ -536,55 +534,48 @@ def process_bamfile(alignment, min_qual, filtered_out):
 
     Returns
     -------
-    pandas..core.frame.DataFrame:
-        Table containing the data of the reads mapping unambiguously and with a
-        mapping quality superior to the threshold given. Five columns: ReadID,
-        Contig, Position_start, Position_end, strand
-    set:
-        Contains the names reads that did not align.
+    str:
+        Path to the table containing the data of the reads mapping unambiguously
+        and with a mapping quality superior to the threshold given. Five
+        columns: ReadID, Contig, Position_start, Position_end, strand
     """
     # Check the quality and status of each aligned fragment.
     # Write the ones with good quality in the aligned dataframe.
     # Keep ID of those that do not map unambiguously to be trimmed.
 
     aligned_reads = 0
-    unaligned = set()
     temp_bam = ps.AlignmentFile(alignment, "rb", check_sq=False)
-    f = open(filtered_out, "a")
-    for r in temp_bam:
-        if r.mapping_quality >= min_qual:
-            if r.flag == 0:
-                aligned_reads += 1
-                read = str(
-                    r.query_name
-                    + "\t"
-                    + r.reference_name
-                    + "\t"
-                    + str(r.reference_start)
-                    + "\t"
-                    + str(r.reference_end)
-                    + "\t"
-                    + "+\n"
-                )
-                f.write(read)
-            elif r.flag == 16:
-                aligned_reads += 1
-                read = str(
-                    r.query_name
-                    + "\t"
-                    + r.reference_name
-                    + "\t"
-                    + str(r.reference_start)
-                    + "\t"
-                    + str(r.reference_end)
-                    + "\t"
-                    + "-\n"
-                )
-                f.write(read)
-            else:
-                unaligned.add(r.query_name)
-        else:
-            unaligned.add(r.query_name)
+    with open(filtered_out, "a") as f:
+        for r in temp_bam:
+            if r.mapping_quality >= min_qual:
+                if r.flag == 0:
+                    aligned_reads += 1
+                    read = str(
+                        r.query_name
+                        + "\t"
+                        + r.reference_name
+                        + "\t"
+                        + str(r.reference_start)
+                        + "\t"
+                        + str(r.reference_end)
+                        + "\t"
+                        + "+\n"
+                    )
+                    f.write(read)
+                elif r.flag == 16:
+                    aligned_reads += 1
+                    read = str(
+                        r.query_name
+                        + "\t"
+                        + r.reference_name
+                        ls + "\t"
+                        + str(r.reference_start)
+                        + "\t"
+                        + str(r.reference_end)
+                        + "\t"
+                        + "-\n"
+                    )
+                    f.write(read)
 
     f.close()
     temp_bam.close()
@@ -592,4 +583,4 @@ def process_bamfile(alignment, min_qual, filtered_out):
     # Display alignement informations
     logger.info("{0} reads aligned.".format(aligned_reads))
 
-    return unaligned
+    return 0
