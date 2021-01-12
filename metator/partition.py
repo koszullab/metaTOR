@@ -28,7 +28,7 @@ import sys
 from Bio import SeqIO
 from functools import partial
 from metator.log import logger
-from os.path import join
+from os.path import join, dirname
 from scipy import sparse
 from sklearn import metrics
 
@@ -91,6 +91,9 @@ def defined_overlapping_communities(
         else:
             overlapping_communities[oc_id + 1] += core_community_contigs
         cc_id += 1
+
+    logger.info("{0} overlapping communities were found.".format(len(overlapping_communities)))
+
     return overlapping_communities
 
 
@@ -140,6 +143,9 @@ def detect_core_communities(output_louvain, iterations):
 
     # Transform the array in a dataframe
     core_communities_iterations = pd.DataFrame(core_communities_iterations)
+
+    logger.info("{0} core communities were found.".format(len(core_communities)))
+
     return core_communities, core_communities_iterations
 
 
@@ -186,6 +192,9 @@ def generate_fasta(assembly, communities, contigs_data, size, output_dir):
         Path to the output directory where the fasta of all the community will
         be written.
     """
+    
+    nb_communities = 0
+    length_communities = 0
     # For each community create a list of the contigs and extract them from the
     # assembly to create a new fasta file with only the community.
     for community in communities:
@@ -193,13 +202,18 @@ def generate_fasta(assembly, communities, contigs_data, size, output_dir):
         list_contigs_id = communities[community]
         list_contigs = list_contigs_id
         # Test if the community is bigger than the size threshold given.
-        if contigs_data.iloc[list_contigs[0] - 1, 11] >= size:
+        length_community = contigs_data.iloc[list_contigs[0] - 1, 11]
+        if length_community >= size:
+            nb_communities += 1
+            length_communities += length_community
             for indice, value in enumerate(list_contigs_id):
                 list_contigs[indice] = contigs_data.iloc[value - 1, 1]
             # Define the output file.
             output_file = join(output_dir, "MetaTOR_{0}_0.fa".format(community))
             # Create the fasta file.
             extract_contigs(assembly, list_contigs, output_file)
+    logger.info("{0} communities have been extracted".format(nb_communities))
+    logger.info("Total size of the extracted communities: {0}Mb".format(round(length_communities/10**6, 3)))
     return 0
 
 
@@ -465,6 +479,7 @@ def update_contigs_data(
         ] = overlapping_community_length
 
     # Write the new file
-    contigs_data.to_csv(contig_data_file, sep="\t", header=None, index=False)
+    contig_data_file_2 = join(dirname(contig_data_file),"contig_data_partition.txt")
+    contigs_data.to_csv(contig_data_file_2, sep="\t", header=None, index=False)
 
     return contigs_data

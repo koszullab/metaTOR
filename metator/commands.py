@@ -32,6 +32,7 @@ import metator.io as mio
 import metator.network as mtn
 import metator.partition as mtp
 from docopt import docopt
+from metator.log import logger
 from os.path import exists
 
 
@@ -253,7 +254,7 @@ class Partition(AbstractCommand):
 
     usage:
         partition  --outdir=DIR --network-file=FILE --assembly=FILE
-        [--iterations=100] [--louvain=STR] [--overlap=90] [--size=300000]
+        [--iterations=100] [--louvain=STR] [--overlap=INT] [--size=300000]
         [--threads=1] [--tempdir=DIR] [--contigs-data=STR] [--no-clean-up]
 
     options:
@@ -273,7 +274,7 @@ class Partition(AbstractCommand):
         -N, --no-clean-up           Do not remove temporary files.
         -o, --outdir=DIR            Path to the directory to write the output.
                                     Default to current directory. [Default: ./]
-        -O, --overlap=INT           Percentage of the identity necessary to be
+        -O, --overlap=INT         Percentage of the identity necessary to be
                                     considered as a part of the core community.
                                     [Default: 90]
         -s, --size=INT              Threshold size to keep communities in base
@@ -301,7 +302,7 @@ class Partition(AbstractCommand):
         if self.args["--iterations"]:
             iterations = int(self.args["--iterations"])
         if self.args["--overlap"]:
-            overlap = float(self.args["--overlap"])
+            overlap = int(self.args["--overlap"])/100
         if self.args["--size"]:
             size = int(self.args["--size"])
         if self.args["--threads"]:
@@ -310,6 +311,7 @@ class Partition(AbstractCommand):
         # TODO: Test which function is necessary --> C or Python and call it
 
         # Perform the iterations of Louvain to partition the network.
+        logger.info("Start iterations of Louvain:")
         if self.args["--louvain"] == "cpp":
             louvain_iterations_cpp()
         else:
@@ -318,12 +320,14 @@ class Partition(AbstractCommand):
                 iterations,
             )
         # Detect core communities
+        logger.info("Detect core communities:")
         (
             core_communities,
             core_communities_iterations,
         ) = mtp.detect_core_communities(output_louvain, iterations)
 
         # Compute the Hamming distance between core communities.
+        logger.info("Detect overlapping communities:")
         hamming_distance = mtp.hamming_distance(
             core_communities_iterations,
             iterations,
@@ -339,6 +343,7 @@ class Partition(AbstractCommand):
         )
 
         # Update the contigs_data_file.
+        logger.info("Extract communities:")
         contigs_data = mtp.update_contigs_data(
             self.args["--contigs-data"],
             core_communities,

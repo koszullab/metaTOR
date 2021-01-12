@@ -568,7 +568,7 @@ def process_bamfile(alignment, min_qual, filtered_out):
                         r.query_name
                         + "\t"
                         + r.reference_name
-                        ls + "\t"
+                        + "\t"
                         + str(r.reference_start)
                         + "\t"
                         + str(r.reference_end)
