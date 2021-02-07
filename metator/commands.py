@@ -5,8 +5,8 @@
 
 This module contains all classes related to metaTOR commands:
 
-    - digestion
     - align
+    - cutsite
     - network 
     - partition
     - pipeline
@@ -28,6 +28,7 @@ NotImplementedError
 import os
 import shutil
 import metator.align as mta
+import metator.cutsite as mtc
 import metator.io as mio
 import metator.network as mtn
 import metator.partition as mtp
@@ -73,9 +74,8 @@ class Align(AbstractCommand):
     sites to optimize the number of mapped reads.
 
     usage:
-        align --forward=STR --reverse=STR [--enzyme=STR] [--tempdir=DIR]
-        [--threads=1] [--min-quality=30] [--no-clean-up] [--digestion-only]
-        [--genome=FILE] [--outdir=DIR] [--mode=for_vs_rev]
+        align --forward=STR --reverse=STR --genome=FILE [--tempdir=DIR]
+        [--threads=1] [--min-quality=30] [--no-clean-up] [--outdir=DIR]
 
     options:
         -1, --forward=STR       Fastq file or list of Fastq separated by a comma
@@ -84,25 +84,9 @@ class Align(AbstractCommand):
                                 containing the reverse reads to be aligned.
                                 Forward and reverse reads need to have the same
                                 identifier.
-        -d, --digestion-only    If enable, it will only make the digestion
-                                without the alignement.
-        -e, --enzyme=STR        The list of restriction enzyme used to digest
-                                the genome separated by a comma. Example:
-                                DpnII,HinfI. If no option given, it will align
-                                only once the reads. [Default: None]
         -g, --genome=FILE       The genome on which to map the reads. Must be
                                 the path to the bowtie2/bwa index. Mandatory if
                                 not digestion only enabled.
-        -m, --mode=STR          Digestion mode. There are three possibilities:
-                                "for_vs_rev", "all" and "pile".
-                                The first one "for_vs_rev" makes all possible
-                                contact between fragments from forward read
-                                versus the fragments of the reverse reads.
-                                The second one "all" consist two make all pairs
-                                of fragments possible.
-                                The third one "pile" will make the contacts only
-                                with the adjacent fragments.
-                                [Default: for_vs_rev]
         -N, --no-clean-up       Do not remove temporary files.
         -o, --outdir=DIR        Path of the directory where the alignment will
                                 be written in bed2D format and the digested
@@ -116,12 +100,6 @@ class Align(AbstractCommand):
     """
 
     def execute(self):
-
-        # Sanity check: Ligation sites available if only digestion
-        if self.args["--digestion-only"]:
-            if not isinstance(self.args["--enzyme"], str):
-                logger.error("Enzymes are missing, no digestion possible.")
-                sys.exit(1)
 
         # Defined the temporary directory.
         if not self.args["--tempdir"]:
@@ -144,9 +122,6 @@ class Align(AbstractCommand):
             min_qual,
             temp_directory,
             self.args["--genome"],
-            self.args["--digestion-only"],
-            self.args["--enzyme"],
-            self.args["--mode"],
             self.args["--outdir"],
             self.args["--threads"],
         )
@@ -154,6 +129,76 @@ class Align(AbstractCommand):
         # Delete the temporary folder
         if not self.args["--no-clean-up"]:
             shutil.rmtree(temp_directory)
+
+
+class Cutsite(AbstractCommand):
+    """Cutsite command
+
+    Generates new gzipped fastq files from original fastq. The function will cut
+    the reads at their ligation sites and creates new pairs of reads with the
+    different fragments obtained after cutting at the digestion sites.
+
+    There are three choices to how combine the fragments. 1. "for_vs_rev": All
+    the combinations are made between one forward fragment and one reverse
+    fragment. 2. "all": All 2-combinations are made. 3. "pile": Only
+    combinations between adjacent fragments in the initial reads are made.
+
+    usage:
+        cutsite --forward=STR --reverse=STR --enzyme=STR [--threads=1]
+        [--outdir=DIR] [--mode=for_vs_rev]
+
+    options:
+        -1, --forward=STR       Fastq file or list of Fastq separated by a comma
+                                containing the forward reads to be aligned.
+        -2, --reverse=STR       Fastq file or list of Fastq separated by a comma
+                                containing the reverse reads to be aligned.
+                                Forward and reverse reads need to have the same
+                                identifier.
+        -e, --enzyme=STR        The list of restriction enzyme used to digest
+                                the genome separated by a comma. Example:
+                                DpnII,HinfI. If no option given, it will align
+                                only once the reads. [Default: None]
+        -m, --mode=STR          Digestion mode. There are three possibilities:
+                                "for_vs_rev", "all" and "pile".
+                                The first one "for_vs_rev" makes all possible
+                                contact between fragments from forward read
+                                versus the fragments of the reverse reads.
+                                The second one "all" consist two make all pairs
+                                of fragments possible.
+                                The third one "pile" will make the contacts only
+                                with the adjacent fragments.
+                                [Default: for_vs_rev]
+        -o, --outdir=DIR        Path of the directory where the alignment will
+                                be written in bed2D format and the digested
+                                fastq. Default to current directory.
+                                [Default: .]
+        -t, --threads=INT       Number of parallel threads allocated for the
+                                alignement. [Default: 1]
+    """
+
+    def execute(self):
+
+        # Defined the output directory and output file names.
+        if not self.args["--outdir"]:
+            self.args["--outdir"] = "."
+        if not exists(self.args["--outdir"]):
+            os.makedirs(self.args["--outdir"])
+
+        # Digestion of the reads.
+        logger.info("Digestion of the reads:")
+        logger.info("Enzyme used: {0}".format(self.args["--enzyme"]))
+        logger.info(
+            "Mode used to cut the reads: {0}".format(self.args["--mode"])
+        )
+
+        mtc.cut_ligation_sites(
+            self.args["--forward"],
+            self.args["--reverse"],
+            self.args["--enzyme"],
+            self.args["--mode"],
+            self.args["--outdir"],
+            int(self.args["--threads"]),
+        )
 
 
 class Network(AbstractCommand):
