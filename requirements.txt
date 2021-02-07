@@ -2,6 +2,7 @@ biopython
 docopt
 matplotlib
 numpy
+pyfastx
 pysam
 scipy
 seaborn

@@ -8,10 +8,10 @@ mapped separately, sorted by names, then interleaved (rather than mapped in
 paired-end mode) to capture the pairs mapping on two different contigs.
 
 If the ligation sites are given, it will make an digestion at the ligation site
-before teh alignement and create new pairs of reads according to the new fragments.
-For example if the forward read have a ligation site, it will cut the read in two
-and create two reads the first one with the first part of the forward read and 
-the reverse read and the second one with one. 
+before teh alignement and create new pairs of reads according to the new 
+fragments. For example if the forward read have a ligation site, it will cut the
+read in two and create two reads the first one with the first part of the
+forward read and the reverse read and the second one with one. 
 
 This module contains all these alignment functions:
     - align
@@ -25,14 +25,15 @@ This module contains all these alignment functions:
 
 import csv
 import gzip
-import multiprocessing 
+import multiprocessing
+import pyfastx
 import os
+import re
 import sys
 import metator.io as mio
 import pandas as pd
 import pysam as ps
 import subprocess as sp
-from Bio import SeqIO
 from metator.log import logger
 from os.path import join, basename
 from pkg_resources import parse_version
@@ -72,7 +73,8 @@ def align(fq_in, index, bam_out, n_cpu):
 
     return 0
 
-def digest_ligation_sites(fq_for, fq_rev, ligation_sites, outdir, n_cpu):
+
+def digest_ligation_sites(fq_for, fq_rev, enzyme, mode, outdir, n_cpu):
     """Create new reads to manage pairs with a digestion and create multiple
     pairs to take into account all the contact present.
 
@@ -91,10 +93,12 @@ def digest_ligation_sites(fq_for, fq_rev, ligation_sites, outdir, n_cpu):
         Path to all the forward fastq file to digest separated by a comma.
     fq_rev : str
         Path to all the reverse fatsq file to digest separated by a comma..
-    ligation_sites : str
-        The list of ligations site possible depending on the restriction
-        enzymes used separated by a comma. Exemple of the ARIMA kit:
-        GATCGATC,GANTGATC,GANTANTC,GATCANTC
+    enzyme : str
+        The list of restriction enzyme used to digest the genome separated by a
+        comma. Example: DpnII,HinfI
+    mode : str
+        Mode to use to make the digestion. Three values possible: "all",
+        "for_vs_rev", "pile".
     outpdir : str
         Path for the ouput directory. The fastq will have their initial names
         with a suffix added "_digested".
@@ -103,10 +107,11 @@ def digest_ligation_sites(fq_for, fq_rev, ligation_sites, outdir, n_cpu):
     """
 
     # Process the ligation sites given
-    ligation_sites = mio.process_ligation_sites(ligation_sites)
+    ligation_sites = mio.process_enzyme(enzyme)
 
-    # Defined stop_token
+    # Defined stop_token and stack_size for processing
     stop_token = "STOP"
+    stack_size = 1000
 
     # Manage multiple fastq
     list_fq_for = fq_for.split(",")
@@ -136,26 +141,37 @@ def digest_ligation_sites(fq_for, fq_rev, ligation_sites, outdir, n_cpu):
 
         # Create count to have an idea of the digested pairs repartition.
         original_number_of_pairs = 0
-        zero_site_pairs = 0
-        one_site_pairs = 0
-        two_site_pairs = 0
+        final_number_of_pairs = 0
+        new_reads_for = ""
+        new_reads_rev = ""
+        n = 0
 
-        # Read the forward file and detect the ligation sites.
-        record_for = SeqIO.parse(mio.read_compressed(fq_for), "fastq")
-        record_rev = SeqIO.parse(mio.read_compressed(fq_rev), "fastq")
-
-        # Start parrallel threading to compute the 
-        ctx = multiprocessing.get_context('spawn')
-        queue = multiprocessing.Queue(n_cpu -1)
-        writer_process = multiprocessing.Process(target=Writer, args=(output_for, output_rev, queue, stop_token))
+        # Start parrallel threading to compute the
+        ctx = multiprocessing.get_context("spawn")
+        queue = multiprocessing.Queue(n_cpu - 1)
+        writer_process = multiprocessing.Process(
+            target=Writer, args=(output_for, output_rev, queue, stop_token)
+        )
         writer_process.start()
 
         # Iterate on all pairs
-        for read_for in record_for:
-            read_rev = next(record_rev)
+        for read_for, read_rev in zip(
+            pyfastx.Fastq(fq_for, build_index=False),
+            pyfastx.Fastq(fq_rev, build_index=False),
+        ):
+
+            # Count the numbers of original reads processed.
+            original_number_of_pairs += 1
+
+            # Count for stack size.
+            n += 1
+
+            # Extract components of the reads.
+            for_name, for_seq, for_qual = read_for
+            rev_name, rev_seq, rev_qual = read_rev
 
             # Sanity check to be sure all reads are with their mate.
-            if read_for.id != read_rev.id:
+            if for_name != rev_name:
                 logger.error(
                     "The fastq files contains reads not sorted :\n{0}\n{1}".format(
                         read_for.id, read_rev.id
@@ -163,50 +179,52 @@ def digest_ligation_sites(fq_for, fq_rev, ligation_sites, outdir, n_cpu):
                 )
                 sys.exit(1)
 
-            # Save data of the pair
-            pair_read = {
-                "name": read_for.id,
-                "for_seq": read_for.seq,
-                "rev_seq": read_rev.seq,
-                "for_qual": read_for.format("fastq").split("\n")[3],
-                "rev_qual": read_rev.format("fastq").split("\n")[3],
-                "for_ls": None,
-                "rev_ls": None,
-            }
-
-            original_number_of_pairs, zero_site_pairs, one_site_pairs, two_site_pairs = digest_pair(
-                pair_read, 
-                ligation_sites,
-                queue,
-                original_number_of_pairs,
-                zero_site_pairs,
-                one_site_pairs,
-                two_site_pairs
+            # Cut the forward and reverse reads at the ligation sites.
+            for_seq_list, for_qual_list = cutsite_read(
+                ligation_sites, for_seq, for_qual
+            )
+            rev_seq_list, rev_qual_list = cutsite_read(
+                ligation_sites, rev_seq, rev_qual
             )
 
-        # End the parallel processing.    
+            # Write the new combinations of fragments.
+            new_reads_for, new_reads_rev, final_number_of_pairs = write_pair(
+                new_reads_for,
+                new_reads_rev,
+                for_name,
+                for_seq_list,
+                for_qual_list,
+                rev_seq_list,
+                rev_qual_list,
+                mode,
+                final_number_of_pairs,
+            )
+
+            # If stack full, add it in the queue.
+            if n == stack_size:
+
+                # Add the pair in the queue.
+                pairs = (new_reads_for.encode(), new_reads_rev.encode())
+                queue.put(pairs)
+
+                # Empty the stack
+                n = 0
+                new_reads_for = ""
+                new_reads_rev = ""
+
+        # End the parallel processing.
         queue.put(stop_token)
         writer_process.join()
 
         # Return information on the different pairs created
-        total_pairs = zero_site_pairs + 2 * one_site_pairs + 4 * two_site_pairs
         logger.info(
             "Number of pairs before digestion: {0}".format(
                 original_number_of_pairs
             )
         )
         logger.info(
-            "Number of pairs with no ligation site: {0}".format(zero_site_pairs)
+            "Number of pairs after digestion: {0}".format(final_number_of_pairs)
         )
-        logger.info(
-            "Number of pairs with one ligation site: {0}".format(one_site_pairs)
-        )
-        logger.info(
-            "Number of pairs with two ligation sites: {0}".format(
-                two_site_pairs
-            )
-        )
-        logger.info("Number of pairs after digestion: {0}".format(total_pairs))
 
     # Create list of the new localization of the FastQ.
     output_for = ",".join(output_list_for)
@@ -214,179 +232,151 @@ def digest_ligation_sites(fq_for, fq_rev, ligation_sites, outdir, n_cpu):
     return output_for, output_rev
 
 
-def digest_pair(pair_read,
-                ligation_sites,
-                queue,
-                original_number_of_pairs, 
-                zero_site_pairs, 
-                one_site_pairs, 
-                two_site_pairs):
-    """Function to digest one pair
+def cutsite_read(ligation_sites, seq, qual):
+    """Find ligation sites in a given sequence.
 
-    Paramters:
-    ----------
+    Parameters:
+    -----------
+    ligation_sites : str
+        Regex of all possible ligations according to the given enzymes.
+    seq : str
+        Sequence where to search for ligation_sites.
+    qual : str
+        Quality values of the sequence given.
 
-    pair_read : dict
-        Dictionnary containing the name, the forward and reverse sequence and quality of the pair and two empty field for potential start of a ligation site.
-    ligation_sites : list of str
-        List of str of the ligation sites with only ATCG.
-    queue : multiprocessing.queues.Queue
-        Queue for the multiprocesing of the whole file.
-    original_number_of_pairs : int
-        Count of the iterations.
-    zero_site_pairs : int
-        Count of pairs without site of ligation.
-    one_site_pairs : int
-        Count of pairs with one site of ligation.
-    two_site_pairs : int
-        Count of pairs with two sites of ligation.
+    Returns:
+    --------
+    list of str
+        List of string of the sequences. The split is made at the start of the
+        ligation sites.
+    list of str
+        List of string of the qualities.
 
-    Return
-    int
-        Count of the iterations.
-    int
-        Count of pairs without site of ligation.
-    int
-        Count of pairs with one site of ligation.
-    int
-        Count of pairs with two sites of ligation.
-    ------
+    Examples:
+    ---------
+    >>> find_ligation_site("GA.TA.TC", "AAGAGTATTC", "FFF--FAFAF")
+    (['AA', 'GAGTATTC'], ['FF', 'F--FAFAF'])
     """
 
-    # small function to write the process pair in the queue
-    def write_pair(name, seq_for, qual_for, seq_rev, qual_rev, queue):
-        pair = (("@%s\n%s\n+\n%s\n" % (name, seq_for, qual_for)).encode(),
-                ("@%s\n%s\n+\n%s\n" % (name, seq_rev, qual_rev)).encode())
-        queue.put(pair)
-        
-    # Check for ligation site. It only takes into the first site found
-    # in each read.
-    for ls in ligation_sites:
-        if ls in pair_read["for_seq"]:
-            pair_read["for_ls"] = pair_read["for_seq"].find(ls)
-            break
-    for ls in ligation_sites:
-        if ls in pair_read["rev_seq"]:
-            pair_read["rev_ls"] = pair_read["rev_seq"].find(ls)
-            break
+    # Find the ligation sites.
+    ligation_sites_list = []
+    if re.search(ligation_sites, seq):
+        ligation_sites_list = [
+            site.start() for site in re.finditer(ligation_sites, seq)
+        ]
+    ligation_sites_list.append(len(seq))
 
-    # Add one pair.
-    original_number_of_pairs += 1
+    # Split the sequences on the ligation sites.
+    seq_list = []
+    qual_list = []
+    left_site = 0
+    for right_site in ligation_sites_list:
+        seq_list.append(seq[left_site:right_site])
+        qual_list.append(qual[left_site:right_site])
+        left_site = right_site
 
-    # Cut and create new pairs.
-    # Save the sequence and quality of the original pair.
-    read = pair_read["name"]
-    for_seq_0 = pair_read["for_seq"]
-    for_qual_0 = pair_read["for_qual"]
-    rev_seq_0 = pair_read["rev_seq"]
-    rev_qual_0 = pair_read["rev_qual"]
-    if pair_read["for_ls"] != None:
-        # Truncate the forward pair. For the truncation as the enzymes
-        # used in HiC have usually 8 base pairs long we choose these
-        # size to truncate them.
-        for_seq_1 = for_seq_0[: pair_read["for_ls"]]
-        for_seq_2 = for_seq_0[pair_read["for_ls"] + 8 :]
-        for_qual_1 = for_qual_0[: pair_read["for_ls"]]
-        for_qual_2 = for_qual_0[pair_read["for_ls"] + 8 :]
-        if pair_read["rev_ls"] != None:
-            # Truncate the reverse pair.
-            two_site_pairs += 1
-            rev_seq_1 = rev_seq_0[: pair_read["rev_ls"]]
-            rev_seq_2 = rev_seq_0[pair_read["rev_ls"] + 8 :]
-            rev_qual_1 = rev_qual_0[: pair_read["rev_ls"]]
-            rev_qual_2 = rev_qual_0[pair_read["rev_ls"] + 8 :]
-            # Write the 4 new pairs in case there are two ligation
-            # sites.
-            write_pair(
-                read + ":1",
-                for_seq_1,
-                for_qual_1,
-                rev_seq_1,
-                rev_qual_1,
-                queue,
-            )
-            write_pair(
-                read + ":2",
-                for_seq_1,
-                for_qual_1,
-                rev_seq_2,
-                rev_qual_2,
-                queue,
-            )
-            write_pair(
-                read + ":3",
-                for_seq_2,
-                for_qual_2,
-                rev_seq_1,
-                rev_qual_1,
-                queue,
-            )
-            write_pair(
-                read + ":4",
-                for_seq_2,
-                for_qual_2,
-                rev_seq_2,
-                rev_qual_2,
-                queue,
-            )
+    return seq_list, qual_list
 
-        else:
-            # Write the 2 new pairs in case there is one ligation site.
-            one_site_pairs += 1
-            write_pair(
-                read + ":1",
-                for_seq_1,
-                for_qual_1,
-                rev_seq_0,
-                rev_qual_0,
-                queue,
+
+def write_pair(
+    new_reads_for,
+    new_reads_rev,
+    name,
+    for_seq_list,
+    for_qual_list,
+    rev_seq_list,
+    rev_qual_list,
+    mode,
+    final_number_of_pairs,
+):
+    """Function to write one pair with the combinations of fragment depending on
+    the chosen mode.
+
+    Parameters:
+    -----------
+    new_reads_for : str
+        Stack of the new forward reads ready to be written.
+    new_reads_rev : str
+        Stack of the new reverse reads ready to be written.
+    name : str
+        Name of the fastq read.
+    for_seq : str
+        Forward sequence of the fastq read.
+    for_qual : str
+        Forward quality of the fastq read.
+    rev_seq : str
+        Reverse sequence of the fastq read.
+    rev_qual : str
+        Reverse quality of the fastq read.
+    mode : str
+        Mode to use to make the digestion. Three values possible: "all",
+        "for_vs_rev", "pile".
+    final_numbers_of_pairs : int
+        Count of pairs after cutting.
+
+    Returns:
+    --------
+    str
+        Stack of forward reads ready to be written with the last pairs added.
+    str
+        Stack of reverse reads ready to be written with the last pairs added.
+    int
+        Count of pairs after cutting.
+    """
+
+    # Mode "for_vs_rev": Make contacts only between fragments from different
+    # reads (one fragment from forward and one from reverse).
+    if mode == "for_vs_rev":
+        for i in range(len(for_seq_list)):
+            for j in range(len(rev_seq_list)):
+                final_number_of_pairs += 1
+                new_reads_for += "@%s\n%s\n+\n%s\n" % (
+                    name + ":" + str(i) + str(j),
+                    for_seq_list[i],
+                    for_qual_list[i],
+                )
+                new_reads_rev += "@%s\n%s\n+\n%s\n" % (
+                    name + ":" + str(i) + str(j),
+                    rev_seq_list[j],
+                    rev_qual_list[j],
+                )
+
+    #  Mode "all": Make all the possible contacts between the fragments.
+    elif mode == "all":
+        seq_list = for_seq_list + rev_seq_list
+        qual_list = for_qual_list + rev_qual_list
+        for i in range(len(seq_list)):
+            for j in range(i + 1, len(seq_list)):
+                final_number_of_pairs += 1
+                new_reads_for += "@%s\n%s\n+\n%s\n" % (
+                    name + ":" + str(i) + str(j),
+                    seq_list[i],
+                    qual_list[i],
+                )
+                new_reads_rev += "@%s\n%s\n+\n%s\n" % (
+                    name + ":" + str(i) + str(j),
+                    seq_list[j],
+                    qual_list[j],
+                )
+
+    # Mode "pile": Only make contacts bewteen two adjacent fragments.
+    elif mode == "pile":
+        seq_list = for_seq_list + rev_seq_list
+        qual_list = for_qual_list + rev_qual_list
+        for i in range(len(seq_list) - 1):
+            final_number_of_pairs += 1
+            new_reads_for += "@%s\n%s\n+\n%s\n" % (
+                name + ":" + str(i) + str(i + 1),
+                seq_list[i],
+                qual_list[i],
             )
-            write_pair(
-                read + ":2",
-                for_seq_2,
-                for_qual_2,
-                rev_seq_0,
-                rev_qual_0,
-                queue,
-            )
-    else:
-        if pair_read["rev_ls"] != None:
-            # Truncate the reverse pair.
-            one_site_pairs += 1
-            rev_seq_1 = rev_seq_0[: pair_read["rev_ls"]]
-            rev_seq_2 = rev_seq_0[pair_read["rev_ls"] + 8 :]
-            rev_qual_1 = rev_qual_0[: pair_read["rev_ls"]]
-            rev_qual_2 = rev_qual_0[pair_read["rev_ls"] + 8 :]
-            # Write the 2 new pairs in case there is one ligation site.
-            write_pair(
-                read + ":1",
-                for_seq_0,
-                for_qual_0,
-                rev_seq_1,
-                rev_qual_1,
-                queue,
-            )
-            write_pair(
-                read + ":2",
-                for_seq_0,
-                for_qual_0,
-                rev_seq_2,
-                rev_qual_2,
-                queue,
-            )
-        else:
-            # Write the original pair if there is no ligation site.
-            zero_site_pairs += 1
-            write_pair(
-                read,
-                for_seq_0,
-                for_qual_0,
-                rev_seq_0,
-                rev_qual_0,
-                queue,
+            new_reads_rev += "@%s\n%s\n+\n%s\n" % (
+                name + ":" + str(i) + str(i + 1),
+                seq_list[i + 1],
+                qual_list[i + 1],
             )
 
-    return original_number_of_pairs, zero_site_pairs, one_site_pairs, two_site_pairs
+    return new_reads_for, new_reads_rev, final_number_of_pairs
 
 
 def merge_alignment(forward_aligned, reverse_aligned, out_file):
@@ -476,7 +466,8 @@ def pairs_alignment(
     tmp_dir,
     ref,
     digestion_only,
-    ligation_sites,
+    enzyme,
+    mode,
     out_dir,
     n_cpu,
 ):
@@ -509,10 +500,12 @@ def pairs_alignment(
         Path where temporary files should be written.
     ref : str
         Path to the index genome.
-    ligation_sites : str
-        The list of ligations site possible depending on the restriction enzymes
-        used separated by a comma. Exemple of the ARIMA kit:
-        GATCGATC,GANTGATC,GANTANTC,GATCANTC
+    enzyme : str
+        The list of enzymes used to digested separated by a comma. Example:
+        DpnII,HinfI.
+    mode : str
+        Mode to use to make the digestion. Three values possible: "all",
+        "for_vs_rev", "pile".
     out_file : str
         Path to directory where to write the output file.
     n_cpu : int
@@ -537,15 +530,18 @@ def pairs_alignment(
 
     # If asked will digest the reads with the ligtion sites before
     # alignment.
-    if isinstance(ligation_sites, str):
+    if isinstance(enzyme, str):
 
         logger.info("Digestion of the reads:")
+        logger.info("Enzyme used: {0}".format(enzyme))
+        logger.info("Mode used to cut the reads: {0}".format(mode))
         # Create a temporary fastq with the trimmed reads at the ligation
         # sites.
         (for_fq_in, rev_fq_in,) = digest_ligation_sites(
             for_fq_in,
             rev_fq_in,
-            ligation_sites,
+            enzyme,
+            mode,
             out_dir,
             int(n_cpu),
         )
@@ -576,7 +572,7 @@ def pairs_alignment(
     align(rev_fq_in, index, temp_alignment_rev, n_cpu)
 
     # Filters the aligned and non aligned reads
-    process_bamfile(temp_alignment_rev, min_qual, filtered_out_rev)
+    process_bamfile()
 
     # reverse_aligned = pd.DataFrame(
     #     csv.reader(open(filtered_out_rev), delimiter="\t")
@@ -595,8 +591,8 @@ def process_bamfile(alignment, min_qual, filtered_out):
 
     Reads all the reads in the input BAM alignment file. Keep reads in the
     output if they are aligned with a good quality saving their uniquely ReadID,
-    Contig, Position_start, Position_end, strand to save memory. 
-    
+    Contig, Position_start, Position_end, strand to save memory.
+
     Parameters
     ----------
     alignment : str
@@ -659,6 +655,7 @@ def process_bamfile(alignment, min_qual, filtered_out):
 
     return 0
 
+
 def Writer(output_for, output_rev, queue, stop_token):
     """Function to write the pair throw parallel processing.
 
@@ -673,7 +670,9 @@ def Writer(output_for, output_rev, queue, stop_token):
     stop_token : str
         Token to signal that the end of the file have been reached.
     """
-    with gzip.open(output_for, 'wb') as for_fq, gzip.open(output_rev, 'wb') as rev_fq:
+    with gzip.open(output_for, "wb") as for_fq, gzip.open(
+        output_rev, "wb"
+    ) as rev_fq:
         while True:
             line = queue.get()
             if line == stop_token:

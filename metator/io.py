@@ -19,6 +19,8 @@ import os
 import pathlib
 import subprocess as sp
 import zipfile
+from Bio.Restriction import RestrictionBatch
+from Bio.Seq import Seq
 from os.path import join, exists
 from random import getrandbits
 
@@ -103,48 +105,74 @@ def generate_temp_dir(path):
     return full_path
 
 
-def process_ligation_sites(ligation_sites):
-    """Process the ligation sites to have a usable list to digest.
+def process_enzyme(enzyme):
+    """Function to return a regex which corresponds to all possible ligation
+    sites given a set of enzyme.
 
-    Function to transform the 'N' given by the user to all the possibilty: 'A',
-    'T', 'C', 'G', i.e. four sites replaced one with one 'N' given by the user.
+    Parameters:
+    -----------
+    enzyme : str
+        String that contains the names of the enzyme separated by a comma.
 
-    WARNING: This function cannot manage site with more than one 'N' (recursive
-    loop should be add).
+    Returns:
+    --------
+    str :
+        Regex that corresponds to all possible ligation sites given a set of
+        enzyme.
 
-    Parameters
-    ----------
-    ligation_sites : str
-
-    Returns
-    -------
-    list of str:
-        The list of string corresponding to all the ligations sites possible
-        with no 'N' but only 'ATCG'
+    Examples:
+    ---------
+    >>> process_enzyme('DpnII')
+    'GATCGATC'
+    >>> process_enzyme('DpnII,HinfI')
+    'GA.TGATC|GATCA.TC|GA.TA.TC|GATCGATC'
     """
-    # Split the str on the comma
-    ligation_sites = ligation_sites.split(",")
 
-    ligation_sites_final = []
-    for site in ligation_sites:
-        # If no 'N' add the sites.
-        if "N" not in site:
-            ligation_sites_final.append(site)
-        else:
-            indice = site.find("N")
-            ligation_sites_final.append(
-                site[:indice] + "A" + site[indice + 1 :]
+    # Split the str on the comma to separate the different enzymes.
+    enzyme = enzyme.split(",")
+
+    # Check on Biopython dictionnary the enzyme.
+    rb = RestrictionBatch(enzyme)
+
+    # Initiation:
+    give_list = []
+    accept_list = []
+    ligation_list = []
+
+    # Iterates on the enzymes.
+    for enz in rb:
+
+        # Extract restriction sites and look for cut sites.
+        site = enz.elucidate()
+        fw_cut = site.find("^")
+        rev_cut = site.find("_")
+
+        # Process "give" site. Remove N on the left (useless).
+        give_site = site[:rev_cut].replace("^", "")
+        while give_site[0] == "N":
+            give_site = give_site[1:]
+        give_list.append(give_site)
+
+        # Process "accept" site. Remove N on the rigth (useless).
+        accept_site = site[fw_cut + 1 :].replace("_", "")
+        while accept_site[-1] == "N":
+            accept_site = accept_site[:-1]
+        accept_list.append(accept_site)
+
+    # Iterates on the two list to build all the possible HiC ligation sites.
+    for give_site in give_list:
+        for accept_site in accept_list:
+            # Replace "N" by "." for regex searching of the sites
+            ligation_list.append((give_site + accept_site).replace("N", "."))
+            ligation_list.append(
+                str(Seq(give_site + accept_site).reverse_complement()).replace(
+                    "N", "."
+                )
             )
-            ligation_sites_final.append(
-                site[:indice] + "T" + site[indice + 1 :]
-            )
-            ligation_sites_final.append(
-                site[:indice] + "C" + site[indice + 1 :]
-            )
-            ligation_sites_final.append(
-                site[:indice] + "G" + site[indice + 1 :]
-            )
-    return ligation_sites_final
+
+    # Build the regex for any ligation sites.
+    pattern = "|".join(list(set(ligation_list)))
+    return pattern
 
 
 def read_compressed(filename):

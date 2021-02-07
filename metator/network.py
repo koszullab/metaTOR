@@ -34,7 +34,7 @@ def alignment_to_contacts(
     genome,
     output_dir,
     output_file_network="network.txt",
-    output_file_contig_data="idx_contig_length_GC_hit_cov.txt",
+    output_file_contig_data="contig_data_network.txt",
     tmpdir=".",
     n_cpus=1,
     normalized=True,
@@ -59,7 +59,7 @@ def alignment_to_contacts(
         The output directory to write the network and chunk data into.
     output_file_network : str, optional
         The specific file name for the output network file. Default is
-        network.txt
+        'network.txt'
     output_file_contig_data : str, optional
         The specific file name for the output chunk data file. Default is
         'idx_contig_length_GC_hit_cov.txt'

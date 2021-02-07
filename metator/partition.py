@@ -92,7 +92,11 @@ def defined_overlapping_communities(
             overlapping_communities[oc_id + 1] += core_community_contigs
         cc_id += 1
 
-    logger.info("{0} overlapping communities were found.".format(len(overlapping_communities)))
+    logger.info(
+        "{0} overlapping communities were found.".format(
+            len(overlapping_communities)
+        )
+    )
 
     return overlapping_communities
 
@@ -144,7 +148,9 @@ def detect_core_communities(output_louvain, iterations):
     # Transform the array in a dataframe
     core_communities_iterations = pd.DataFrame(core_communities_iterations)
 
-    logger.info("{0} core communities were found.".format(len(core_communities)))
+    logger.info(
+        "{0} core communities were found.".format(len(core_communities))
+    )
 
     return core_communities, core_communities_iterations
 
@@ -192,7 +198,7 @@ def generate_fasta(assembly, communities, contigs_data, size, output_dir):
         Path to the output directory where the fasta of all the community will
         be written.
     """
-    
+
     nb_communities = 0
     length_communities = 0
     # For each community create a list of the contigs and extract them from the
@@ -213,7 +219,11 @@ def generate_fasta(assembly, communities, contigs_data, size, output_dir):
             # Create the fasta file.
             extract_contigs(assembly, list_contigs, output_file)
     logger.info("{0} communities have been extracted".format(nb_communities))
-    logger.info("Total size of the extracted communities: {0}Mb".format(round(length_communities/10**6, 3)))
+    logger.info(
+        "Total size of the extracted communities: {0}Mb".format(
+            round(length_communities / 10 ** 6, 3)
+        )
+    )
     return 0
 
 
@@ -479,7 +489,9 @@ def update_contigs_data(
         ] = overlapping_community_length
 
     # Write the new file
-    contig_data_file_2 = join(dirname(contig_data_file),"contig_data_partition.txt")
+    contig_data_file_2 = join(
+        dirname(contig_data_file), "contig_data_partition.txt"
+    )
     contigs_data.to_csv(contig_data_file_2, sep="\t", header=None, index=False)
 
     return contigs_data

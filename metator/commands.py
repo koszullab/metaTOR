@@ -69,52 +69,58 @@ class Align(AbstractCommand):
     """Alignment command
 
     Align reads from froward and reverse fastq files. Multiple fastq could be
-    given separated by commas. Re-aligned the unmapped reads using ligation
-    sites to optimize the proportion of uniquely mapped reads.
+    given separated by commas. Option to digest the reads using ligation
+    sites to optimize the number of mapped reads.
 
     usage:
-        align [--ligation-sites=STR] [--tempdir=DIR] [--threads=1]
-        [--min-quality=30] [--no-clean-up] [--digestion-only] [--genome=FILE]
-        [--outdir=DIR] --forward=STR --reverse=STR
+        align --forward=STR --reverse=STR [--enzyme=STR] [--tempdir=DIR]
+        [--threads=1] [--min-quality=30] [--no-clean-up] [--digestion-only]
+        [--genome=FILE] [--outdir=DIR] [--mode=for_vs_rev]
 
     options:
-        -1, --forward=STR           Fastq file or list of Fastq separated by a
-                                    comma containing the forward reads to be
-                                    aligned.
-        -2, --reverse=STR           Fastq file or list of Fastq separated by a
-                                    comma containing the reverse reads to be
-                                    aligned. Forward and reverse reads need to
-                                    have the same identifier.
-        -d, --digestion-only        If enable, it will only make the digestion
-                                    without the alignement.
-        -g, --genome=FILE           The genome on which to map the reads. Must
-                                    be the path to the bowtie2/bwa index.
-                                    Mandatory if not digestion only enabled.
-        -l, --ligation-sites=STR    Ligation site or list of ligation sites
-                                    separated by a comma of the restriction
-                                    enzyme(s). For example
-                                    GATCGATC,GANTGATC,GANTANTC,GATCANTC
-                                    for DpnII and HinfI. If no option given, it
-                                    will align only once the reads. [Default:
-                                    None]
-        -N, --no-clean-up           Do not remove temporary files.
-        -o, --outdir=DIR            Path of the directory where the alignment
-                                    will be written in bed2D format and the
-                                    digested fastq. Default to current
-                                    directory. [Default: .]
-        -q, --min-quality=INT       Threshold of quality necessary to considered
-                                    a read properly aligned. [Default: 30]
-        -t, --threads=INT           Number of parallel threads allocated for the
-                                    alignement. [Default: 1]
-        -T, --tempdir=DIR           Temporary directory. [Default: ./tmp]
+        -1, --forward=STR       Fastq file or list of Fastq separated by a comma
+                                containing the forward reads to be aligned.
+        -2, --reverse=STR       Fastq file or list of Fastq separated by a comma
+                                containing the reverse reads to be aligned.
+                                Forward and reverse reads need to have the same
+                                identifier.
+        -d, --digestion-only    If enable, it will only make the digestion
+                                without the alignement.
+        -e, --enzyme=STR        The list of restriction enzyme used to digest
+                                the genome separated by a comma. Example:
+                                DpnII,HinfI. If no option given, it will align
+                                only once the reads. [Default: None]
+        -g, --genome=FILE       The genome on which to map the reads. Must be
+                                the path to the bowtie2/bwa index. Mandatory if
+                                not digestion only enabled.
+        -m, --mode=STR          Digestion mode. There are three possibilities:
+                                "for_vs_rev", "all" and "pile".
+                                The first one "for_vs_rev" makes all possible
+                                contact between fragments from forward read
+                                versus the fragments of the reverse reads.
+                                The second one "all" consist two make all pairs
+                                of fragments possible.
+                                The third one "pile" will make the contacts only
+                                with the adjacent fragments.
+                                [Default: for_vs_rev]
+        -N, --no-clean-up       Do not remove temporary files.
+        -o, --outdir=DIR        Path of the directory where the alignment will
+                                be written in bed2D format and the digested
+                                fastq. Default to current directory.
+                                [Default: .]
+        -q, --min-quality=INT   Threshold of quality necessary to considered a
+                                read properly aligned. [Default: 30]
+        -t, --threads=INT       Number of parallel threads allocated for the
+                                alignement. [Default: 1]
+        -T, --tempdir=DIR       Temporary directory. [Default: ./tmp]
     """
 
     def execute(self):
 
         # Sanity check: Ligation sites available if only digestion
         if self.args["--digestion-only"]:
-            if not isinstance(self.args["--ligation-sites"], str):
-                logger.error("Ligation site is missing, no digestion possible.")
+            if not isinstance(self.args["--enzyme"], str):
+                logger.error("Enzymes are missing, no digestion possible.")
                 sys.exit(1)
 
         # Defined the temporary directory.
@@ -139,7 +145,8 @@ class Align(AbstractCommand):
             temp_directory,
             self.args["--genome"],
             self.args["--digestion-only"],
-            self.args["--ligation-sites"],
+            self.args["--enzyme"],
+            self.args["--mode"],
             self.args["--outdir"],
             self.args["--threads"],
         )
@@ -178,9 +185,9 @@ class Network(AbstractCommand):
                                         current directory.
         --output-file-contig-data=STR   The specific file name for the output
                                         chunk data file. [Default:
-                                        'idx_contig_length_GC_hit_cov.txt']
+                                        contig_data_network.txt]
         --output-file-network=STR       The specific file name for the output
-                                        network file. Default is network.txt
+                                        network file. [Default: network.txt]
         -s, --self-contacts             If enabled, count alignments between a
                                         contig and itself.
         -t, --threads=INT               Number of parallel threads allocated for
@@ -203,9 +210,7 @@ class Network(AbstractCommand):
             os.makedirs(self.args["--outdir"])
 
         if not self.args["--output-file-contig-data"]:
-            self.args[
-                "--output-file-contig-data"
-            ] = "idx_contig_length_GC_hit_cov.txt"
+            self.args["--output-file-contig-data"] = "contig_data_network.txt"
 
         if not self.args["--output-file-network"]:
             self.args["--output-file-network"] = "network.txt"
@@ -302,7 +307,7 @@ class Partition(AbstractCommand):
         if self.args["--iterations"]:
             iterations = int(self.args["--iterations"])
         if self.args["--overlap"]:
-            overlap = int(self.args["--overlap"])/100
+            overlap = int(self.args["--overlap"]) / 100
         if self.args["--size"]:
             size = int(self.args["--size"])
         if self.args["--threads"]:
