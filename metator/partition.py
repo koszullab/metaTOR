@@ -2,11 +2,15 @@
 # -*- coding: utf-8 -*-
 
 """Partition HiC network using Louvain function.
-General utility function for generating communities from the network file.
+
+General utility function for generating bins from the network file using Louvain
+algorithm. If an overlapping threshold is given, it will use the Hamming 
+distance to group together bins relatively closed (to avaoid to split genomes in
+two or more bins).
 
 Core functions to partition the network are:
-    - defined_overlapping_communities
-    - detect_core_communities
+    - defined_overlapping_bins
+    - detect_core_bins
     - extract_contigs
     - generate_fasta
     - get_distances_splitmat
@@ -33,80 +37,79 @@ from scipy import sparse
 from sklearn import metrics
 
 
-def defined_overlapping_communities(
-    overlap, hamming_distance, core_communities, core_communities_iterations
+def defined_overlapping_bins(
+    overlap, hamming_distance, core_bins, core_bins_iterations
 ):
-    """This function extract the overlapped communities
+    """This function extract the overlapped bins
 
-    From the hamming distances between the core communities, the function
-    identifies the overlapping communities and create a dictionnary with the
-    list of the contigs ID for each core community.
+    From the hamming distances between the core bins, the function identifies
+    the overlapping bins and create a dictionnary with the list of the contigs
+    ID for each core bin.
 
-    Two core communities are considered overlapping if there have a percentage
-    of identity superior or equal to the threshold given.
+    Two core bins are considered overlapping if there have a percentage of
+    identity superior or equal to the threshold given.
 
     Parameters:
     -----------
     overlap : float
-        Threshold use to consider that two communities are overlapping.
+        Threshold use to consider that two bins are overlapping.
     hamming_distance : scipy.sparse.csr.csr_matrix
         Matrix with all the previously computed hamming distance between two
-        core communities
-    core_communities : dict
+        core bins
+    core_bins : dict
         Dictionaary which has as keys the values of the iterations from Louvain
         separated by a semicolon and as value the id of the contigs of the core
-        community.
-    core_communities_iteration : pandas.core.frame.DataFrame
-        Table with the id of the core community and their values for each
-        iterations.
+        bin.
+    core_bins_iteration : pandas.core.frame.DataFrame
+        Table with the id of the core bin and their values for each iterations.
 
     Returns:
     --------
     dict:
-        A dictionnary with the id of the overlapping communities as keys and
-        the list of id of their contigs as values.
+        A dictionnary with the id of the overlapping bins as keys and the list
+        of id of their contigs as values.
     """
-    # Extract communities which are connected, i.e. communities with an hamming
-    # distance superior than the threshold given.
+    # Extract bins which are connected, i.e. bins with an hamming distance
+    # superior than the threshold given.
     connections = hamming_distance >= overlap
-    overlapping_communities_id = sparse.csgraph.connected_components(
+    overlapping_bins_id = sparse.csgraph.connected_components(
         connections, directed=False
     )[1]
 
-    # Create a dictionnary of the overlapped communities (ID from the previous
-    # file) with the ID of their contigs as value
-    overlapping_communities = {}
+    # Create a dictionnary of the overlapped bins (ID from the previous file)
+    # with the ID of their contigs as value
+    overlapping_bins = {}
     cc_id = 0
-    # Iterate on each core communities.
-    for oc_id in overlapping_communities_id:
-        # Extract contig ID from the core community.
-        core_community = core_communities_iterations.iloc[cc_id]
-        core_community = map(str, list(core_community))
-        core_community_contigs = core_communities[
-            ";".join(core_community)
+    # Iterate on each core bins.
+    for oc_id in overlapping_bins_id:
+        # Extract contig ID from the core bin.
+        core_bin = core_bins_iterations.iloc[cc_id]
+        core_bin = map(str, list(core_bin))
+        core_bin_contigs = core_bins[
+            ";".join(core_bin)
         ].copy()
-        # Add the contig ID on the overlapping community.
-        if oc_id + 1 not in overlapping_communities:
-            overlapping_communities[oc_id + 1] = core_community_contigs
+        # Add the contig ID on the overlapping bin.
+        if oc_id + 1 not in overlapping_bins:
+            overlapping_bins[oc_id + 1] = core_bin_contigs
         else:
-            overlapping_communities[oc_id + 1] += core_community_contigs
+            overlapping_bins[oc_id + 1] += core_bin_contigs
         cc_id += 1
 
     logger.info(
-        "{0} overlapping communities were found.".format(
-            len(overlapping_communities)
+        "{0} overlapping bins were found.".format(
+            len(overlapping_bins)
         )
     )
 
-    return overlapping_communities
+    return overlapping_bins
 
 
-def detect_core_communities(output_louvain, iterations):
-    """Detect core commmunities from the output of louvain
+def detect_core_bins(output_louvain, iterations):
+    """Detect core bins from the output of louvain
 
     The function search for duplicated values in the output of Louvain algorithm
-    in order to find contigs which are always in the same community. The
-    communities find with this method are called the core communities.
+    in order to find contigs which are always in the same bin. The bins find
+    with this method are called the core bins.
 
     Parameters
     ----------
@@ -121,38 +124,37 @@ def detect_core_communities(output_louvain, iterations):
     dict:
         Dictionnary which has as keys the values of the iterations from Louvain
         separated by a semicolon and as value the id of the contigs of the core
-        community.
+        bin.
     pandas.core.frame.DataFrame:
-        Table with the id of the core community and their values for each
-        iterations.
+        Table with the id of the core bin and their values for each iterations.
     """
     # finding duplicate values in the output of louvain using a flipped
     # dictionary.
 
-    # Create dictionnary for core communities
-    core_communities = {}
-    core_communities_iterations = np.empty((0, iterations), int)
+    # Create dictionnary for core bins
+    core_bins = {}
+    core_bins_iterations = np.empty((0, iterations), int)
     for key, value in output_louvain.items():
-        if value not in core_communities:
-            core_communities[value] = [key]
+        if value not in core_bins:
+            core_bins[value] = [key]
             # Add a line to compute the array used to compute the distance
-            # between two core communities
-            core_communities_iterations = np.append(
-                core_communities_iterations,
+            # between two core bins
+            core_bins_iterations = np.append(
+                core_bins_iterations,
                 np.array([list(map(int, value.split(";")))]),
                 axis=0,
             )
         else:
-            core_communities[value].append(key)
+            core_bins[value].append(key)
 
     # Transform the array in a dataframe
-    core_communities_iterations = pd.DataFrame(core_communities_iterations)
+    core_bins_iterations = pd.DataFrame(core_bins_iterations)
 
     logger.info(
-        "{0} core communities were found.".format(len(core_communities))
+        "{0} core bins were found.".format(len(core_bins))
     )
 
-    return core_communities, core_communities_iterations
+    return core_bins, core_bins_iterations
 
 
 def extract_contigs(assembly, list_contigs, output_file):
@@ -179,67 +181,66 @@ def extract_contigs(assembly, list_contigs, output_file):
     return 0
 
 
-def generate_fasta(assembly, communities, contigs_data, size, output_dir):
-    """Generate the fasta files of each communities from the assembly.
+def generate_fasta(assembly, bins, contigs_data, size, output_dir):
+    """Generate the fasta files of each bins from the assembly.
 
     Parameters:
     -----------
     assembly : str
         Path to the fasta file of the original assembly.
-    communities : dict
-        A dictionnary with the id of the overlapping communities as keys and
-        the list of id of their contigs as values.
+    bins : dict
+        A dictionnary with the id of the overlapping bins as keys and the list
+        of id of their contigs as values.
     contigs_data : pandas.core.frame.DataFrame
         Table with all the information on the contigs included their
-        appartenance to the communities.
+        appartenance to the bins.
     size :  int
-        Thrshold size chosen to write the communities.
+        Thrshold size chosen to write the bins.
     output_dir : str
-        Path to the output directory where the fasta of all the community will
-        be written.
+        Path to the output directory where the fasta of all the bin will be
+        written.
     """
 
-    nb_communities = 0
-    length_communities = 0
-    # For each community create a list of the contigs and extract them from the
-    # assembly to create a new fasta file with only the community.
-    for community in communities:
+    nb_bins = 0
+    length_bins = 0
+    # For each bin create a list of the contigs and extract them from the
+    # assembly to create a new fasta file with only the bin.
+    for bin in bins:
         # Extract the list of the contigs from the contigs data file.
-        list_contigs_id = communities[community]
+        list_contigs_id = bins[bin]
         list_contigs = list_contigs_id
-        # Test if the community is bigger than the size threshold given.
-        length_community = contigs_data.iloc[list_contigs[0] - 1, 11]
-        if length_community >= size:
-            nb_communities += 1
-            length_communities += length_community
+        # Test if the bin is bigger than the size threshold given.
+        length_bin = contigs_data.iloc[list_contigs[0] - 1, 11]
+        if length_bin >= size:
+            nb_bins += 1
+            length_bins += length_bin
             for indice, value in enumerate(list_contigs_id):
                 list_contigs[indice] = contigs_data.iloc[value - 1, 1]
             # Define the output file.
-            output_file = join(output_dir, "MetaTOR_{0}_0.fa".format(community))
+            output_file = join(output_dir, "MetaTOR_{0}_0.fa".format(bin))
             # Create the fasta file.
             extract_contigs(assembly, list_contigs, output_file)
-    logger.info("{0} communities have been extracted".format(nb_communities))
+    logger.info("{0} bins have been extracted".format(nb_bins))
     logger.info(
-        "Total size of the extracted communities: {0}Mb".format(
-            round(length_communities / 10 ** 6, 3)
+        "Total size of the extracted bins: {0}Mb".format(
+            round(length_bins / 10 ** 6, 3)
         )
     )
     return 0
 
 
-def get_distances_splitmat(comm, core_communities_iterations):
-    """This function takes a segment of the full iterative clustering matrix
-    and computes, for each index (i.e. contig), the hamming distance to each
-    of the other indices.
+def get_distances_splitmat(bins, core_bins_iterations):
+    """This function takes a segment of the full iterative clustering matrix and
+    computes, for each index (i.e. contig), the hamming distance to each of the
+    other indices.
 
     Parameters:
     -----------
-    comm : pandas.core.frame.DataFrame
-        Slice of the table with the id of the core community and their values
-        for each iterations.
-    core_communities_iterations : pandas.core.frame.DataFrame
-        Table with the id of the core community and their values for each
+    bins : pandas.core.frame.DataFrame
+        Slice of the table with the id of the core bin and their values for each
         iterations.
+    core_bins_iterations : pandas.core.frame.DataFrame
+        Table with the id of the core bin and their values for each iterations.
 
     Returns:
     --------
@@ -250,25 +251,23 @@ def get_distances_splitmat(comm, core_communities_iterations):
     x = sparse.csr_matrix(
         1
         - metrics.pairwise_distances(
-            core_communities_iterations, comm.values, metric="hamming"
+            core_bins_iterations, bins.values, metric="hamming"
         )
     )
     return x
 
 
-def hamming_distance(core_communities_iterations, n_iter, threads):
-    """Generate matrix of Hamming distances between all pairs of core
-    communities
+def hamming_distance(core_bins_iterations, n_iter, threads):
+    """Generate matrix of Hamming distances between all pairs of core bins
 
     Parameters
     ----------
-    core_communities_iterations : pandas.core.frame.DataFrame
-        Table with the id of the core community and their values for each
-        iterations.
-    core_communities : dict
+    core_bins_iterations : pandas.core.frame.DataFrame
+        Table with the id of the core bin and their values for each iterations.
+    core_bins : dict
         Dictionaary which has as keys the values of the iterations from Louvain
         separated by a semicolon and as value the id of the contigs of the core
-        community.
+        bin.
     n_iter : int
         Number of iterations of Louvain made previously.
     threads : int
@@ -278,29 +277,29 @@ def hamming_distance(core_communities_iterations, n_iter, threads):
     -------
     scipy.sparse.csr.csr_matrix:
         Matrix with all the previously computed hamming distance between two
-        core communities
+        core bins
     """
 
-    # Compute Hamming distances in the core-community-level iterative clustering
+    # Compute Hamming distances in the core-bin-level iterative clustering
     # matrix, in parallel
     step = 1000
-    steps = np.arange(step, len(core_communities_iterations.index) + step, step)
-    split_core_communities = [
-        core_communities_iterations[(k - step) : k] for k in steps
+    steps = np.arange(step, len(core_bins_iterations.index) + step, step)
+    split_core_bins = [
+        core_bins_iterations[(k - step) : k] for k in steps
     ]
     pool = multiprocessing.Pool(processes=threads)
     res = pool.map(
         partial(
             get_distances_splitmat,
-            core_communities_iterations=core_communities_iterations,
+            core_bins_iterations=core_bins_iterations,
         ),
-        split_core_communities,
+        split_core_bins,
     )
     res = sparse.hstack(res)
     pool.close()
     return res
 
-
+# TODO 
 # def louvain_iterations_cpp(network_file, iterations, output_dir):
 #     """Use the cpp original Louvain to partition the network."""
 #     # Check if louvain cpp is available in the computer. If it's not available
@@ -332,7 +331,7 @@ def hamming_distance(core_communities_iterations, n_iter, threads):
 #     # Run the iterations of Louvain
 #     for i in range(iterations):
 #         logger.info("Iteration in progress: {0}".format(i))
-#         # Partiotining with weights using louvain and compute the community
+#         # Partiotining with weights using louvain and compute the bin
 #         # tree.
 #         # louvain
 #         #     "$projects"/binning/"$library"_net.bin
@@ -405,16 +404,16 @@ def louvain_iterations_py(network_file, iterations):
 
 
 def update_contigs_data(
-    contig_data_file, core_communities, overlapping_communities
+    contig_data_file, core_bins, overlapping_bins
 ):
-    """Add community information in the contigs data file.
+    """Add bin information in the contigs data file.
 
     This function allow to update the contigs data file which were created
     previously in the network functions with the columns: contig id, contig
     name, contig length, GC content, hit, coverage. The function will add six
-    columns: core community id, core community number of contigs, core community
-    length, overlapping community id, overlapping community number of contigs,
-    overlapping community length.
+    columns: core bin id, core bin number of contigs, core bin length,
+    overlapping bin id, overlapping bin number of contigs, overlapping bin
+    length.
 
     The previous file will be overwritten.
 
@@ -422,19 +421,19 @@ def update_contigs_data(
     -----------
     contig_data_file : str
         Path to the contigs data file.
-    core_communities : dict
+    core_bins : dict
         Dictionnary which has as keys the values of the iterations from Louvain
         separated by a semicolon and as values the list of the id of the
         contigs.
-    overlapping_communities : dict
-        A dictionnary with the id of the overlapping communities as keys and
-        the list of id of their contigs as values.
+    overlapping_bins : dict
+        A dictionnary with the id of the overlapping bins as keys and the list
+        of id of their contigs as values.
 
     Returns:
     --------
     pandas.core.frame.DataFrame:
         Table with all the information on the contigs included their
-        appartenance to the communities.
+        appartenance to the bins.
     """
 
     # Read the table
@@ -458,35 +457,35 @@ def update_contigs_data(
     contigs_data["oc_nb"] = "-"
     contigs_data["oc_length"] = "-"
 
-    # Add core community information
+    # Add core bin information
     n = 1
-    for i in core_communities:
-        # Extract contigs of the community
-        core_community = [id - 1 for id in core_communities[i]]
-        core_community_data = contigs_data.iloc[core_community]
-        core_community_contigs_number = len(core_community)
-        core_community_length = sum(core_community_data.length)
+    for i in core_bins:
+        # Extract contigs of the bin
+        core_bin = [id - 1 for id in core_bins[i]]
+        core_bin_data = contigs_data.iloc[core_bin]
+        core_bin_contigs_number = len(core_bin)
+        core_bin_length = sum(core_bin_data.length)
         # Write the new information
-        contigs_data.iloc[core_community, 6] = n
-        contigs_data.iloc[core_community, 7] = core_community_contigs_number
-        contigs_data.iloc[core_community, 8] = core_community_length
+        contigs_data.iloc[core_bin, 6] = n
+        contigs_data.iloc[core_bin, 7] = core_bin_contigs_number
+        contigs_data.iloc[core_bin, 8] = core_bin_length
         n += 1
 
     # Add overlapping information
-    for i in overlapping_communities:
-        # Extract contigs of the community
-        overlapping_community = [id - 1 for id in overlapping_communities[i]]
-        overlapping_community_data = contigs_data.iloc[overlapping_community]
-        overlapping_community_contigs_number = len(overlapping_community)
-        overlapping_community_length = sum(overlapping_community_data.length)
+    for i in overlapping_bins:
+        # Extract contigs of the bin
+        overlapping_bin = [id - 1 for id in overlapping_bins[i]]
+        overlapping_bin_data = contigs_data.iloc[overlapping_bin]
+        overlapping_bin_contigs_number = len(overlapping_bin)
+        overlapping_bin_length = sum(overlapping_bin_data.length)
         # Write the new information
-        contigs_data.iloc[overlapping_community, 9] = i
+        contigs_data.iloc[overlapping_bin, 9] = i
         contigs_data.iloc[
-            overlapping_community, 10
-        ] = overlapping_community_contigs_number
+            overlapping_bin, 10
+        ] = overlapping_bin_contigs_number
         contigs_data.iloc[
-            overlapping_community, 11
-        ] = overlapping_community_length
+            overlapping_bin, 11
+        ] = overlapping_bin_length
 
     # Write the new file
     contig_data_file_2 = join(

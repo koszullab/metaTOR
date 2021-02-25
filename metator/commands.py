@@ -288,19 +288,17 @@ class Partition(AbstractCommand):
 
     Partition the network file using iteratively the Louvain algorithm. Then
     looks for 'cores' that are easily found by identifying identical lines on
-    the global Louvain output. Using hamming distance from these core
-    communities, group the communities with more than the percentage given as
-    the overlap value.
+    the global Louvain output. Using hamming distance from these core bins,
+    group the bins with more than the percentage given as the overlap value.
 
     If the contigs data information is given, it will also update the file to
-    integrate the communities information of the contigs.
-    If the version of Louvain is not found, the python version of Louvain will
-    be used.
+    integrate the bins information of the contigs. If the version of Louvain is
+    not found, the python version of Louvain will be used.
 
     Note that the Louvain software is not, in the strictest sense, necessary.
-    Any program that assigns a node to a community, does so non
-    deterministically and solely outputs a list in the form: 'node_id
-    community_id' could be plugged instead.
+    Any program that assigns a node to a bin, does so non deterministically and
+    solely outputs a list in the form: 'node_id bin_id' could be plugged
+    instead.
 
     usage:
         partition  --outdir=DIR --network-file=FILE --assembly=FILE
@@ -324,11 +322,11 @@ class Partition(AbstractCommand):
         -N, --no-clean-up           Do not remove temporary files.
         -o, --outdir=DIR            Path to the directory to write the output.
                                     Default to current directory. [Default: ./]
-        -O, --overlap=INT         Percentage of the identity necessary to be
-                                    considered as a part of the core community.
+        -O, --overlap=INT           Percentage of the identity necessary to be
+                                    considered as a part of the core bin.
                                     [Default: 90]
-        -s, --size=INT              Threshold size to keep communities in base
-                                    pair. [Default: 300000]
+        -s, --size=INT              Threshold size to keep bins in base pair.
+                                    [Default: 300000]
         -t, --threads=INT           Number of parallel threads allocated for the
                                     partition. [Default: 1]
         -T, --tempdir=DIR           Temporary directory. Default to current
@@ -369,41 +367,41 @@ class Partition(AbstractCommand):
                 self.args["--network-file"],
                 iterations,
             )
-        # Detect core communities
-        logger.info("Detect core communities:")
+        # Detect core bins
+        logger.info("Detect core bins:")
         (
-            core_communities,
-            core_communities_iterations,
-        ) = mtp.detect_core_communities(output_louvain, iterations)
+            core_bins,
+            core_bins_iterations,
+        ) = mtp.detect_core_bins(output_louvain, iterations)
 
-        # Compute the Hamming distance between core communities.
-        logger.info("Detect overlapping communities:")
+        # Compute the Hamming distance between core bins.
+        logger.info("Detect overlapping bins:")
         hamming_distance = mtp.hamming_distance(
-            core_communities_iterations,
+            core_bins_iterations,
             iterations,
             threads,
         )
 
-        # Defined overlapping communities according to the threshold
-        overlapping_communities = mtp.defined_overlapping_communities(
+        # Defined overlapping bins according to the threshold
+        overlapping_bins = mtp.defined_overlapping_bins(
             overlap,
             hamming_distance,
-            core_communities,
-            core_communities_iterations,
+            core_bins,
+            core_bins_iterations,
         )
 
         # Update the contigs_data_file.
-        logger.info("Extract communities:")
+        logger.info("Extract bins:")
         contigs_data = mtp.update_contigs_data(
             self.args["--contigs-data"],
-            core_communities,
-            overlapping_communities,
+            core_bins,
+            overlapping_bins,
         )
 
         # Generate Fasta file
         mtp.generate_fasta(
             self.args["--assembly"],
-            overlapping_communities,
+            overlapping_bins,
             contigs_data,
             size,
             self.args["--outdir"],
@@ -415,16 +413,16 @@ class Partition(AbstractCommand):
 
 
 class Validation(AbstractCommand):
-    """Use CheckM to validate the communities.
+    """Use CheckM to validate the bins.
 
-    Use checkM to validate bacterial and archae communities. The script returns
-    the output of CheckM is an output directory.
+    Use checkM to validate bacterial and archae bins. The script returns the
+    output of CheckM is an output directory.
 
-    It is possible to also partition again the contaminated communities to
-    improve them. The new communities contamination and completion will be
-    compute again. If there is a loss of the completion from the original
-    communities, i.e. the new iterations may split the organism in multiple
-    communities, go back to the original communities.
+    It is possible to also partition again the contaminated bins to improve
+    them. The new bins contamination and completion will be compute again. If
+    there is a loss of the completion from the original bins, i.e. the new
+    iterations may split the organism in multiple bins, go back to the original
+    bins.
 
     usage: validation
 
@@ -435,7 +433,7 @@ class Validation(AbstractCommand):
     # Launch checkM to evaluate the completion and the contamination. If asked
     # rerun Louvain to try to reduce the contamination, rerun checkM if the
     # contamination decrease without a huge decrease of the completion keep the
-    # new communities. Otherwise go back to the old state.
+    # new bins. Otherwise go back to the old state.
     def execute(self):
 
         # Defined the temporary directory.
@@ -451,8 +449,7 @@ class Validation(AbstractCommand):
 class Pipeline(AbstractCommand):
     """Launch the full metator pipeline
 
-    Partition the assembly in communities from the HiC reads of the
-    metapopulation.
+    Partition the assembly in bins from the HiC reads of the metapopulation.
 
     It's possible to start from the fastq, the bam, the bed2D, or the network
     files. It's also possible to ask or not to run the validation step which is
@@ -482,12 +479,12 @@ class Pipeline(AbstractCommand):
         -o, --out=DIR               Path where the alignment will be written in
                                     bed2D format.
         -O, --overlap=INT           Percentage of the identity necessary to be
-                                    considered as a part of the core community.
+                                    considered as a part of the core bin.
                                     [Default: 90]
         -q, --min-quality=INT       Threshold of quality necessary to considered
                                     a read properly aligned. [Default: 30]
-        -s, --size=INT              Threshold size to keep communities in base
-                                    pair. [Default: 300000]
+        -s, --size=INT              Threshold size to keep bins in base pair.
+                                    [Default: 300000]
         -S, --self-contacts         If enabled, count alignments between a
                                     contig and itself.
         -t, --threads=INT           Number of parallel threads allocated for the
@@ -560,38 +557,38 @@ class Pipeline(AbstractCommand):
             iterations,
         )
 
-        # Detect core communities
+        # Detect core bins
         (
-            core_communities,
-            core_communities_iterations,
-        ) = mtp.detect_core_communities(output_louvain, iterations)
+            core_bins,
+            core_bins_iterations,
+        ) = mtp.detect_core_bins(output_louvain, iterations)
 
-        # Compute the Hamming distance between core communities.
+        # Compute the Hamming distance between core bins.
         hamming_distance = mtp.hamming_distance(
-            core_communities_iterations,
+            core_bins_iterations,
             iterations,
             threads,
         )
 
-        # Defined overlapping communities according to the threshold
-        overlapping_communities = mtp.defined_overlapping_communities(
+        # Defined overlapping bins according to the threshold
+        overlapping_bins = mtp.defined_overlapping_bins(
             overlap,
             hamming_distance,
-            core_communities,
-            core_communities_iterations,
+            core_bins,
+            core_bins_iterations,
         )
 
         # Update the contigs_data_file.
         contigs_data = mtp.update_contigs_data(
             contigs_data,
-            core_communities,
-            overlapping_communities,
+            core_bins,
+            overlapping_bins,
         )
 
         # Generate Fasta file
         mtp.generate_fasta(
             assembly,
-            overlapping_communities,
+            overlapping_bins,
             contigs_data,
             size,
             self.args["--outdir"],
