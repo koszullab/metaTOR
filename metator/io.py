@@ -68,8 +68,8 @@ def check_fasta_index(ref, mode="bowtie2"):
 
 
 # TODO:
-def check_louvain_function():
-    return louvain
+def check_louvain_cpp():
+    return True
 
 
 def generate_temp_dir(path):

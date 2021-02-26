@@ -313,9 +313,9 @@ class Partition(AbstractCommand):
                                     Hit, Coverage).
         -i, --iterations=INT        Number of iterartion of Louvain.
                                     [Default: 100]
-        -l, --louvain=STR           Informatic language used for louvain
-                                    algorithm. Two values are possible: "py" or
-                                    "cpp". [Default: py]
+        -l, --louvain=STR           Path to louvain cpp (faster than python
+                                    implementation). If None given, use python 
+                                    implementation instead. [Default: None]
         -n, --network-file=FILE     Path to the file containing the network
                                     information from the meta HiC experiment
                                     compute in network function previously.
@@ -360,13 +360,20 @@ class Partition(AbstractCommand):
 
         # Perform the iterations of Louvain to partition the network.
         logger.info("Start iterations of Louvain:")
-        if self.args["--louvain"] == "cpp":
-            louvain_iterations_cpp()
-        else:
+       
+        if self.args["--louvain"] == "None":
             output_louvain = mtp.louvain_iterations_py(
                 self.args["--network-file"],
                 iterations,
             )
+        else:
+            output_louvain =  mtp.louvain_iterations_cpp(
+                self.args["--network-file"],
+                iterations,
+                temp_directory,
+                self.args["--louvain"]
+            )
+
         # Detect core bins
         logger.info("Detect core bins:")
         (
@@ -457,7 +464,7 @@ class Pipeline(AbstractCommand):
 
     usage: pipeline [--tempdir=DIR] [--threads=1] [--normalized] [--no-clean-up]
         [--overlap=90] [--iterations=100] [--size=100] [--self-contacts]
-        [--min-quality=30] --genome=FILE --out=DIR --forward
+        [--min-quality=30] [--louvain=STR] --genome=FILE --out=DIR --forward
         reads_for.fastq[,reads_for2.fastq...] --reverse
         reads_rev.fastq[,reads_rev2.fastq...]
 
@@ -473,6 +480,9 @@ class Pipeline(AbstractCommand):
                                     be the path to the bowtie2/bwa index.
         -i, --iterations=INT        Number of iterartion of Louvain.
                                     [Default: 100]
+        -l, --louvain=STR           Path to louvain cpp (faster than python
+                                    implementation). If None given, use python 
+                                    implementation instead. [Default: None]
         -n, --normalized            If enabled,  normalize contacts between
                                     contigs by their geometric mean coverage.
         -N, --no-clean-up           Do not remove temporary files.
@@ -552,10 +562,18 @@ class Pipeline(AbstractCommand):
         )
 
         # Perform iterations of Louvain.
-        output_louvain = mtp.louvain_iterations_py(
-            network,
-            iterations,
-        )
+        if self.args["--louvain"] == "None":
+            output_louvain = mtp.louvain_iterations_py(
+                self.args["--network-file"],
+                iterations,
+            )
+        else:
+            output_louvain =  mtp.louvain_iterations_cpp(
+                self.args["--network-file"],
+                iterations,
+                temp_directory,
+                self.args["--louvain"]
+            )
 
         # Detect core bins
         (

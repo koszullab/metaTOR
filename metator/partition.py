@@ -300,61 +300,114 @@ def hamming_distance(core_bins_iterations, n_iter, threads):
     return res
 
 # TODO 
-# def louvain_iterations_cpp(network_file, iterations, output_dir):
-#     """Use the cpp original Louvain to partition the network."""
-#     # Check if louvain cpp is available in the computer. If it's not available
-#     # launch python_louvain instead.
-#     if not mio.check_louvain_cpp():
-#         logger.warning(
-#             "Louvain cpp was not found. Louvain from python is used instead"
-#         )
-#         return louvain_partition_python
+def louvain_iterations_cpp(network_file, iterations, tmp_dir, louvain_path):
+    """Use the cpp original Louvain to partition the network.
+    
+    Parameters:
+    -----------
+    network_file : str
+        Path to the network computed previously. The file is 3 columns table
+        separated by a tabulation with the id of the first contigs the id of the
+        second one and the weights of the edge normalized or not.
+    iterations : int
+        Number of iterations of the algorithm of Louvain.
 
-#     # Convert the file in binary file for Louvain partitionning.
-#     convert_args = {
-#         "net_txt": network_file,
-#         "net_bin": network_bin,
-#         "net_weights": network_weights,
-#     }
+    Returns:
+    --------
+    dict:
+        Dictionnary with the id of the contig as key and the list of the results
+        of each iterations separated by a semicolon as values.
+    """
 
-#     cmd = ("convert_net -i {net_txt} -o {net_bin} -w {net_weight}").format(
-#         **convert.args
-#     )
-#     sp.Popen(cmd, shell=True)
-#     out, err = process.communicate()
+    # Check if louvain cpp is available in the computer. If it's not available
+    # launch python_louvain instead.
+    if not mio.check_louvain_cpp():
+        logger.warning(
+            "Louvain cpp was not found. Louvain from python is used instead"
+        )
+        return louvain_iterations_py(network_file, iterations)
 
-#     # convert_net
-#     #     -i "$projects"/network/"$library"_network_norm.txt
-#     #     -o "$projects"/binning/"$library"_net.bin
-#     #     -w "$projects"/binning/"$library"_net.weights
+    # Defined temporary files and args for louvain fonction calling and path to
+    # the variables to call.
+    network_bin = join(tmp_dir, "net_bin")
+    network_weight = join(tmp_dir, "net_weight")
+    network_tree = join(tmp_dir, "net_tree")
+    level_louvain = join(tmp_dir, "level.txt")
+    output = join(tmp_dir, "output_louvain_")
+    louvain = join(louvain_path, "louvain")
+    convert_net = join(louvain_path, "convert_net")
+    hierarchy = join(louvain_path, "hierarchy")
+    output_louvain = dict()
 
-#     # Run the iterations of Louvain
-#     for i in range(iterations):
-#         logger.info("Iteration in progress: {0}".format(i))
-#         # Partiotining with weights using louvain and compute the bin
-#         # tree.
-#         # louvain
-#         #     "$projects"/binning/"$library"_net.bin
-#         #     -l
-#         #     -1
-#         #     -w "$projects"/binning/"$library"_net.weights
-#         #     > "$projects"/binning/"$library"_net.tree
-#         # hierarchy
-#         #     "$projects"/binning/"$library"_net.tree
-#         #     > "$projects"/binning/"$library"_level_louvain.txt
-#         # level=$(tail -1 "$projects"/binning/"$library"_level_louvain.txt
-#         #         | awk '{print $2}')
-#         # hierarchy
-#         #     "$projects"/binning/"$library"_net.tree
-#         #     -l "$level"
-#         #     > "$projects"/tmp/"$library"_output_louvain_"$iteration".txt
-#         # # Save in a temporary file the bin id for each contig at each iterations
-#         # # (ordered by the contig id).
-#         # cat
-#         #     "$projects"/tmp/"$library"_output_louvain_"$iteration".txt
-#         #     | awk '{print $2";"}'
-#         #     > "$projects"/tmp/"$library"_bin_idx_"$iteration".txt
-#     return 0
+    # Create dictionnary of all arguments
+    louvain_args = {
+        "net_txt": network_file,
+        "net_bin": network_bin,
+        "net_weight": network_weight,
+        "net_tree": network_tree,
+        "level_file": level_louvain,
+        "output": output,
+        "level": 0,
+        "iteration": 0,
+        "convert_net": convert_net,
+        "louvain": louvain,
+        "hierarchy": hierarchy,
+    }
+
+    # Convert the file in binary file for Louvain partitionning.
+    cmd = ("{convert_net} -i {net_txt} -o {net_bin} -w {net_weight}").format(
+        **louvain_args
+    )
+    process = sp.Popen(cmd, shell=True)
+    out, err = process.communicate()
+
+    # Run the iterations of Louvain
+    for i in range(iterations):
+        logger.info("Iteration in progress: {0}".format(i))
+        
+        louvain_args["iteration"] = i
+
+        # Partiotining with weights using louvain and compute the bin tree.
+        cmd = ("{louvain} {net_bin} -l -1 -w {net_weight} > {net_tree}").format(
+            **louvain_args
+        )
+        process = sp.Popen(cmd, shell=True)
+        out, err = process.communicate()
+
+        cmd = ("{hierarchy} {net_tree} > {level_file}").format(
+            **louvain_args
+        )
+        process = sp.Popen(cmd, shell=True)
+        out, err = process.communicate()
+     
+        level_file = open(level_louvain, "r")
+        louvain_args["level"] = level_file.readlines()[-1][6]
+        level_file.close()
+       
+        cmd = ("{hierarchy} {net_tree} -l {level} > {output}{iteration}.txt").format(
+            **louvain_args
+        )
+        process = sp.Popen(cmd, shell=True)
+        out, err = process.communicate()
+
+        # Save the results in a dictionnary
+        if i == 0:
+            with open(output + str(i) + ".txt", "r") as out:
+                for line in out:
+                    result = line.split(" ")
+                    output_louvain[int(result[0])+1] = result[1][:-1] + ";"
+        elif i == iterations - 1:
+            with open(output + str(i) + ".txt", "r") as out:
+                for line in out:
+                    result = line.split(" ")
+                    output_louvain[int(result[0])+1] += result[1][:-1]
+        else: 
+            with open(output + str(i) + ".txt", "r") as out:
+                for line in out:
+                    result = line.split(" ")
+                    output_louvain[int(result[0])+1] += result[1][:-1] + ";"
+
+    return output_louvain
 
 
 def louvain_iterations_py(network_file, iterations):
@@ -379,6 +432,7 @@ def louvain_iterations_py(network_file, iterations):
         Dictionnary with the id of the contig as key and the list of the results
         of each iterations separated by a semicolon as values.
     """
+
     # Convert the file in a networkx graph for Louvain partitionning.
     network = nx.read_edgelist(
         network_file, nodetype=int, data=(("weight", float),)

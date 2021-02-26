@@ -501,12 +501,12 @@ def contigs_bin_network(
     for contig_id in contigs_data["id"]:
         if contig_id not in contigs_of_interest:
             try:
-                oc_id = int(contigs_data["oc_id"][contig_id - 1])
+                oc_id = contigs_data["oc_id"][contig_id - 1]
                 if int(contigs_data["oc_length"][contig_id - 1]) > bin_size:
                     try:
-                        bin_list[int(oc_id)].append(contig_id)
+                        bin_list[oc_id].append(contig_id)
                     except KeyError:
-                        bin_list[int(oc_id)] = [contig_id]
+                        bin_list[oc_id] = [contig_id]
             except ValueError:
                 oc_id = 0
 
