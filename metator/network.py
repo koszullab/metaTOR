@@ -2,26 +2,27 @@
 # -*- coding: utf-8 -*-
 
 """Generate 3C networks of teh contig.
-General utility functions for handling BAM files and generating 3C networks.
+General utility functions for handling BAM files and generating 3C networks and 
+some functions to work on the network once the bins are made to study some 
+more specific contacts.
 
 Core function to build the network are:
-    -alignement_to_contacts
-    -compute_contig_coverage
-    -compute_network
-    -create_contig_data
-    -precompute_network
-    -write_contig_data
+    - alignement_to_contacts
+    - compute_contig_coverage
+    - compute_network
+    - create_contig_data
+    - precompute_network
+    - write_contig_data
 
-Some old functions have been kept but won't work with the new files:
-    -merge_networks
-    -merge_chunk_data
-    -alignment_to_reads
-    -retrieve_reads_from_fastq
-    -retrieve_reads_contig_wise
+Some others functions to work on the network after the bins are made:
+    - contigs_bin_network
+    - merge_nodes
 """
 
 import csv
+import networkx as nx
 import numpy as np
+import pandas as pd
 from Bio import SeqIO
 from Bio import SeqUtils
 from os.path import join
@@ -115,15 +116,15 @@ def compute_contig_coverage(contig_data):
     """Compute the coverage of the contigs from the hit information compute
     previously
 
-    Parameters
-    ----------
+    Parameters:
+    -----------
     contig_data : dict
         Dictionnary of the all the contigs from the assembly, the contigs names
         are the keys to the data of the contig available with the following
         keys: "id", "length", "GC", "hit", "coverage".
 
-    Return
-    ------
+    Returns
+    -------
     dict:
         Dictionnary of the all the contigs from the assembly, the contigs names
         are the keys to the data of the contig available with the following
@@ -148,8 +149,8 @@ def compute_network(
 ):
     """Generate the network file from the prenetwork file.
 
-    Parameters
-    ----------
+    Parameters:
+    -----------
     pre_network_file  : str
         Path of the input file (prenetwork file, output from teh precompute
         network function)
@@ -420,431 +421,161 @@ def write_contig_data(contig_data, output_path):
             contig_data_file_handle.write(line)
 
 
-# TO REMOVE ?:
-
-
-def merge_networks(output_file="merged_network.txt", *files):
-    """Merge networks into a larger network.
-
-    A naive implementation for merging two networks in edgelist format.
-
-    Parameters
-    ---------
-    output_file : file, str, or pathlib.Path, optional
-        The output file to write the merged network into. Default is
-        merged_network.txt
-    `*files` : file, str or pathlib.Path
-        The network files to merge.
-
-    Note
-    ----
-    The partitioning step doesn't mind redundant edges and handles them pretty
-    well, so if you are not using the merged edgelist for anything else you can
-    just concatenate the edgelists without using this function.
-    """
-
-    contacts = dict()
-    for network_file in files:
-        with open(network_file) as network_file_handle:
-            for line in network_file_handle:
-                id_a, id_b, n_contacts = line.split("\t")
-                pair = sorted((id_a, id_b))
-                try:
-                    contacts[pair] += n_contacts
-                except KeyError:
-                    contacts[pair] = n_contacts
-
-    sorted_contacts = sorted(contacts)
-    with open(output_file, "w") as output_handle:
-        for index_pair in sorted_contacts:
-            id_a, id_b = index_pair
-            n_contacts = contacts[index_pair]
-            output_handle.write("{}\t{}\t{}\n".format(id_a, id_b, n_contacts))
-
-
-def merge_chunk_data(output_file="merged_idx_contig_hit_size_cov.txt", *files):
-    """Merge chunk data from different networks
-
-    Similarly to merge_network, this merges any number of chunk data files.
-
-    Parameters
-    ---------
-    output_file : file, str, or pathlib.Path, optional
-        The output file to write the merged chunk data files into. Default is
-        merged_idx_contig_hit_size_cov.txt
-    `*files` : file, str or pathlib.Path
-        The chunk data files to merge.
-    """
-
-    chunks = dict()
-    for chunk_file in files:
-        with open(chunk_file) as chunk_file_handle:
-            for line in chunk_file_handle:
-                chunk_id, chunk_name, hit, size, cov = line.split("\t")
-                try:
-                    chunks[chunk_id]["hit"] += hit
-                    chunks[chunk_id]["cov"] += cov
-                except KeyError:
-                    chunks[chunk_id] = {
-                        "name": chunk_name,
-                        "hit": hit,
-                        "size": size,
-                        "cov": cov,
-                    }
-
-    sorted_chunks = sorted(chunks)
-    with open(output_file, "w") as output_handle:
-        for chunk_id in sorted_chunks:
-            my_chunk = chunks[chunk_id]
-            name, hit, size, cov = (
-                my_chunk["name"],
-                my_chunk["hit"],
-                my_chunk["size"],
-                my_chunk["cov"],
-            )
-
-            my_line = "{}\t{}\t{}\t{}\t{}".format(
-                chunk_id, name, hit, size, cov
-            )
-            output_handle.write(my_line)
-
-
-def alignment_to_reads(
-    sam_merged, output_dir, parameters, save_memory=True, *bin_fasta
+def contigs_bin_network(
+    contigs_network_file,
+    contigs_data_file,
+    contigs_of_interest,
+    bins_network_file,
+    bin_size,
 ):
-    """Generate reads from ambiguous alignment file
+    """Build a network of the bins and contigs of interest from contigs network.
 
-    Extract reads found to be mapping an input FASTA bin. If one read maps, the
-    whole pair is extracted and written to the output paired-end FASTQ files.
-    Reads that mapped and weren't part of a pair are kept in a third 'single'
-    file for people who need it (e.g. to get extra paired reads by fetching the
-    opposite one from the original FASTQ library).
+    Here group the contigs together from the bin information and build a new
+    network of contact between the bins. If some contigs of interest are given
+    such as contigs annotated as virus it will keep them independantly in the
+    network.
 
     Parameters
     ----------
-    sam_merged : file, str or pathlib.Path
-        The input alignment file in SAM/BAM format to be processed.
-    output_dir : str or pathlib.Path
-        The output directory to write the network and chunk data into.
-    parameters : dict, optional
-        Parameters for the network to read conversion, similar to
-        alignment_to_network.
-    save_memory : bool, optional
-        Whether to keep the read names into memory or write them in different
-        files, which takes longer but may prevent out-of-memory crashes. Default
-        is True.
-    `*bin_fasta` : file, str or pathlib.Path
-        The bin FASTA files with appropriately named records.
+    contigs_network_file : str
+        Path to the normalized contigs network file.
+    contigs_data_file : str
+        Path to the contig data file with all the attribution of each contigs to
+        a bin.
+    contigs_of_interest : str or None
+        Path to a file containing contigs of interest. If set to None, the
+        function will only generate the network of bins
+    bins_network_file : str
+        Path of the output file to write the output file containing the networks
+        of the bins.
+    bin_size : int
+        Size of the bins in base pair to considered for the new networks.
 
     Returns
     -------
-    A dictionary of files with read names for each bin if save_memory is True,
-    and a dictionary of the read names lists themselves otherwise.
-
-
-    Note
-    ----
-    This will throw an IOError ('close failed in file object destructor') on
-    exit with older versions of pysam for some reason. It's harmless but you may
-    consider upgrading to a later version of pysam if it comes up in a pipeline.
+    networkx.classes.graph.Graph:
+        The network of the bins of interest
     """
 
-    #   Just in case file objects are sent as input
-    def get_file_string(file_thing):
-        try:
-            file_string = file_thing.name
-        except AttributeError:
-            file_string = str(file_thing)
-        return file_string
+    # Import contigs data.
+    contigs_data = pd.read_csv(
+        contigs_data_file, sep="\t", header=None, index_col=False
+    )
+    contigs_data.columns = [
+        "id",
+        "name",
+        "length",
+        "GC_content",
+        "hit",
+        "coverage",
+        "cc_id",
+        "cc_nb",
+        "cc_length",
+        "oc_id",
+        "oc_nb",
+        "oc_length",
+    ]
 
-    #   Global set of chunks against which reads are required to map - we store
-    #   them in a tuple that keeps track of the original bin each chunk came
-    #   from so we can reattribute the reads later
+    # Import network of contigs.
+    contigs_network = nx.read_edgelist(
+        contigs_network_file, nodetype=int, data=(("weight", float),)
+    )
 
-    bin_chunks = set()
-    for bin_file in bin_fasta:
-        for record in SeqIO.parse(bin_file, "fasta"):
-            bin_chunks.add((get_file_string(bin_file), record.id))
-
-    chunk_size = int(parameters["chunk_size"])
-
-    mapq_threshold = int(parameters["mapq_threshold"])
-
-    def read_name(read):
-        return read.query_name.split()[0]
-
-    #   Since reading a huge BAM file can take up a lot of time and resources,
-    #   we only do it once but that requires opening fastq files for writing as
-    #   matching reads get detected along the bam and keeping track of which
-    #   ones are currently open.
-
-    def get_base_name(bin_file):
-
-        base_name = ".".join(os.path.basename(bin_file).split(".")[:-1])
-
-        output_path = os.path.join(output_dir, "{}.readnames".format(base_name))
-
-        return output_path
-
-    if save_memory:
-        opened_files = dict()
+    # Look for contigs of interest is some given
+    if contigs_of_interest == None:
+        contigs_of_interest = []
     else:
-        read_names = dict()
-
-    with pysam.AlignmentFile(sam_merged, "rb") as alignment_merged_handle:
-
-        for (my_read_name, alignment_pool) in itertools.groupby(
-            alignment_merged_handle, read_name
-        ):
-
-            for my_alignment in alignment_pool:
-
-                relative_position = my_alignment.reference_start
-                contig_name = my_alignment.reference_name
-
-                chunk_position = relative_position // chunk_size
-
-                # The 'chunk name' is used to detect macthing positions
-                chunk_name = "{}_{}".format(contig_name, chunk_position)
-
-                # But such matching positions have to map acceptably
-                quality_test = my_alignment.mapping_quality > mapq_threshold
-
-                for bin_file in bin_fasta:
-                    chunk_tuple = (bin_file, chunk_name)
-                    if chunk_tuple in bin_chunks and quality_test:
-                        if save_memory:
-                            output_path = get_base_name(bin_file)
-                            try:
-                                output_handle = opened_files[bin_file]
-                            except KeyError:
-                                output_handle = open(output_path, "w")
-                                opened_files[bin_file] = output_handle
-
-                            output_handle.write("@{}\n".format(my_read_name))
-
-                        else:
-                            try:
-                                read_names[my_read_name].append(bin_file)
-                            except KeyError:
-                                read_names[my_read_name] = [bin_file]
-
-    for file_handle in opened_files.values():
-        file_handle.close()
-    #   Return unpaired file names for pair_unpaired_reads() to process
-    if save_memory:
-        return opened_files.keys()
-    else:
-        return read_names
-
-
-def retrieve_reads_from_fastq(
-    fastq_forward, fastq_reverse, read_names, output_dir
-):
-
-    opened_files = dict()
-
-    read_set = set(read_names.keys())
-
-    def get_base_names(bin_file):
-
-        base_name = ".".join(os.path.basename(bin_file).split(".")[:-1])
-
-        for_fastq_path = os.path.join(
-            output_dir, "{}_for.fastq".format(base_name)
+        contigs_of_interest = pd.read_csv(
+            contigs_of_interest, header=None, index_col=False
         )
-        rev_fastq_path = os.path.join(
-            output_dir, "{}_rev.fastq".format(base_name)
+        contigs_of_interest.columns = ["name"]
+        contigs_of_interest = list(
+            contigs_of_interest.merge(contigs_data, on="name", how="inner")[
+                "id"
+            ]
         )
 
-        return for_fastq_path, rev_fastq_path
-
-    def seamless_open(my_file):
-
-        try:
-            return gzip.open(my_file)
-        except IOError:
-            return open(my_file)
-
-    with seamless_open(fastq_forward) as forward_handle:
-        with seamless_open(fastq_reverse) as reverse_handle:
-
-            forward_fastq_iterator = FastqGeneralIterator(forward_handle)
-            reverse_fastq_iterator = FastqGeneralIterator(reverse_handle)
-
-            for read_for, read_rev in zip(
-                forward_fastq_iterator, reverse_fastq_iterator
-            ):
-
-                name_for, sequence_for, quality_for = read_for
-                name_rev, sequence_rev, quality_rev = read_rev
-                short_name_for = name_for.split()[0]
-                short_name_rev = name_rev.split()[0]
-
-                if short_name_for in read_set or short_name_rev in read_set:
+    # Look for the contigs list of each overlapping bin. The overlapping bin "0"
+    # corresponds to the contigs alone after the binning.
+    bin_list = dict()
+    for contig_id in contigs_data["id"]:
+        if contig_id not in contigs_of_interest:
+            try:
+                oc_id = int(contigs_data["oc_id"][contig_id - 1])
+                if int(contigs_data["oc_length"][contig_id - 1]) > bin_size:
                     try:
-                        bin_files = read_names[short_name_for]
+                        bin_list[int(oc_id)].append(contig_id)
                     except KeyError:
-                        bin_files = read_names[short_name_rev]
+                        bin_list[int(oc_id)] = [contig_id]
+            except ValueError:
+                oc_id = 0
 
-                    for bin_file in bin_files:
-                        (for_fastq_path, rev_fastq_path) = get_base_names(
-                            bin_file
-                        )
+    # Group network in overlapping communities.
+    # Create a list of the nodes ID of the bin to keep at the end.
+    to_keep = contigs_of_interest
+    for bin_id in bin_list.keys():
+        bin_node = "bin_" + str(bin_id)
+        to_keep.append(bin_node)
+        contigs_network = merge_nodes(
+            contigs_network, bin_list[bin_id], bin_node
+        )
 
-                        # Files are opened 'lazily' so as to not end up
-                        # with a bunch of empty FASTQ files
-                        try:
-                            output_for_handle = opened_files[for_fastq_path]
-                        except KeyError:
-                            output_for_handle = open(for_fastq_path, "w")
-                            opened_files[for_fastq_path] = output_for_handle
+    # Keep only bin nodes and remove all the contigs nodes not used.
+    bins_network = contigs_network.subgraph(to_keep)
 
-                        line_for = "@{}\n{}\n+\n{}\n".format(
-                            name_for, sequence_for, quality_for
-                        )
-                        output_for_handle.write(line_for)
+    # Write the new network file.
+    nx.write_edgelist(
+        bins_network, bins_network_file, delimiter="\t", data=["weight"]
+    )
 
-                        try:
-                            output_rev_handle = opened_files[rev_fastq_path]
-                        except KeyError:
-                            output_rev_handle = open(rev_fastq_path, "w")
-                            opened_files[rev_fastq_path] = output_rev_handle
-
-                        line_rev = "@{}\n{}\n+\n{}\n".format(
-                            name_rev, sequence_rev, quality_rev
-                        )
-                        output_rev_handle.write(line_rev)
-
-    #   Close all the files we've opened for writing
-    for file_handle in opened_files.values():
-        file_handle.close()
+    return bins_network
 
 
-def retrieve_reads_contig_wise(sam_merged, contig_data, output_dir):
+def merge_nodes(G1, nodes, new_node):
+    """Merges the selected `nodes` of the graph G into one `new_node`, meaning
+    that all the edges that pointed to or from one of these `nodes` will point
+    to or from the `new_node`. It will add the weigth of the edges if two edges
+    become the same at the end of the merging.
 
-    contig_dict = dict()
-    opened_files = dict()
+    Parameters:
+    -----------
+    G1 : networkx.classes.graph.Graph
+        Network where there are the nodes to merge.
+    nodes : list
+        List of the ids of the nodes to merge.
+    new_node : str
+        ID of the new node to create.
 
-    def close_all_files():
-        for my_file in opened_files.values():
-            my_file.close()
+    Returns:
+    --------
+    networkx.classes.graph.Graph:
+        Network with the nodes merged.
+    """
 
-    with open("contig_data.txt") as contig_data:
-        for line in contig_data:
-            fields = line.split()
-            node = fields[0]
-            core = fields[-3]
-            contig_dict[node] = core
+    # Create a copy to avoid issues of creating new nodes and edges during the
+    # loop.
+    G2 = G1.copy()
 
-    query_getter = operator.attrgetter("query_name")
+    # Add the 'merged' node
+    G2.add_node(new_node)
 
-    with pysam.AlignmentFile(sam_merged, "rb") as sam_handle:
-        for (my_read_name, alignment_pool) in itertools.groupby(
-            sam_handle, query_getter
-        ):
-            my_read_set = dict()
-            my_core_set = set()
-            while "Reading alignments from alignment pool":
-                try:
-                    my_alignment = next(alignment_pool)
-                    # print(contig_dict[my_alignment.reference_name])
+    for n1, n2, data in G1.edges(data=True):
+        # For all edges related to one of the nodes to merge, make an edge going
+        # to or coming from the `new node`. If the edge already exists make the
+        # sum of the weigths
+        if n1 in nodes:
+            if G2.has_edge(n2, new_node):
+                G2.edges[n2, new_node]["weight"] += data["weight"]
+            else:
+                G2.add_edge(n2, new_node, weight=data["weight"])
+        elif n2 in nodes:
+            if G2.has_edge(n1, new_node):
+                G2.edges[n1, new_node]["weight"] += data["weight"]
+            else:
+                G2.add_edge(n1, new_node, weight=data["weight"])
 
-                    is_reverse = my_alignment.is_reverse
+    # remove the merged nodes
+    for n in nodes:
+        G2.remove_node(n)
 
-                    my_seq = my_alignment.query_sequence
-
-                    my_qual = my_alignment.query_qualities
-                    my_qual_string = pysam.array_to_qualitystring(my_qual)
-
-                    if is_reverse:
-                        my_seq_string = str(Seq(my_seq).reverse_complement())
-                        my_qual_string = my_qual_string[::-1]
-                    else:
-                        my_seq_string = my_seq
-
-                    my_seq_tuple = (my_seq_string, my_qual_string)
-
-                    if len(my_read_set) > 2:
-                        logger.warning(
-                            "Something's gone wrong with read set %s, as "
-                            "there are %s of them",
-                            my_read_name,
-                            len(my_read_set),
-                        )
-                    elif len(my_read_set) == 0:
-                        my_read_set[my_seq_tuple] = "forward"
-                    elif my_seq_tuple not in my_read_set.keys():
-                        my_read_set[my_seq_tuple] = "reverse"
-                    try:
-                        ref = contig_dict[my_alignment.reference_name]
-                        my_core_set.add(ref)
-                    except KeyError:
-                        my_core_set.add("unknown")
-                except StopIteration:
-                    if len(my_read_set) == 2:
-                        for core_name in my_core_set:
-                            for my_tuple, file_id in my_read_set.items():
-                                if file_id == "forward":
-                                    file_end = ".end1"
-                                elif file_id == "reverse":
-                                    file_end = ".end2"
-
-                                basename = "{core_name}{file_end}".format(
-                                    core_name, file_end
-                                )
-                                filename = os.path.join(output_dir, basename)
-                                try:
-                                    file_to_write = opened_files[filename]
-                                except KeyError:
-                                    file_to_write = open(filename, "w")
-                                    opened_files[filename] = file_to_write
-                                except IOError:
-                                    logger.error(
-                                        "Error when trying to handle"
-                                        "%s. Maybe there are too many opened"
-                                        "files at once: %s",
-                                        filename,
-                                        len(opened_files),
-                                    )
-                                    raise
-
-                                seq, qual = my_tuple
-                                line = "@{}\n{}\n+\n{}\n".format(
-                                    my_read_name, seq, qual
-                                )
-                                file_to_write.write(line)
-                    elif len(my_read_set) == 1:
-                        for core_name in my_core_set:
-                            file_end = ".end"
-                            basename = "{}{}".format(core_name, file_end)
-                            filename = os.path.join(output_dir, basename)
-                            try:
-                                file_to_write = opened_files[filename]
-                            except KeyError:
-                                file_to_write = open(filename, "w")
-                                opened_files[filename] = file_to_write
-                            except IOError:
-                                logger.error(
-                                    "Error when trying to handle"
-                                    "%s. Maybe there are too many opened"
-                                    "files at once: %s",
-                                    filename,
-                                    len(opened_files),
-                                )
-                                raise
-                            seq, qual = my_read_set.keys()[0]
-                            line = "@{}\n{}\n+\n{}\n".format(
-                                my_read_name, seq, qual
-                            )
-                            file_to_write.write(line)
-                    else:
-                        logger.warning(
-                            "Something's gone wrong with read set %s, as "
-                            "there are %s of them",
-                            my_read_name,
-                            len(my_read_set),
-                        )
-                    break
-
-    close_all_files()
+    return G2
