@@ -321,7 +321,7 @@ def louvain_iterations_cpp(network_file, iterations, tmp_dir, louvain_path):
 
     # Check if louvain cpp is available in the computer. If it's not available
     # launch python_louvain instead.
-    if not mio.check_louvain_cpp():
+    if not mio.check_louvain_cpp(louvain_path):
         logger.warning(
             "Louvain cpp was not found. Louvain from python is used instead"
         )
@@ -395,17 +395,20 @@ def louvain_iterations_cpp(network_file, iterations, tmp_dir, louvain_path):
             with open(output + str(i) + ".txt", "r") as out:
                 for line in out:
                     result = line.split(" ")
-                    output_louvain[int(result[0])+1] = result[1][:-1] + ";"
+                    output_louvain[int(result[0])] = result[1][:-1] + ";"
         elif i == iterations - 1:
             with open(output + str(i) + ".txt", "r") as out:
                 for line in out:
                     result = line.split(" ")
-                    output_louvain[int(result[0])+1] += result[1][:-1]
+                    output_louvain[int(result[0])] += result[1][:-1]
         else: 
             with open(output + str(i) + ".txt", "r") as out:
                 for line in out:
                     result = line.split(" ")
-                    output_louvain[int(result[0])+1] += result[1][:-1] + ";"
+                    output_louvain[int(result[0])] += result[1][:-1] + ";"
+
+    # As louvain creates a factice contig with id 0 bin with itself, remove it.
+    output_louvain.pop(0)
 
     return output_louvain
 

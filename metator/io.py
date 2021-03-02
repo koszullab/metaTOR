@@ -21,6 +21,7 @@ import subprocess as sp
 import zipfile
 from Bio.Restriction import RestrictionBatch
 from Bio.Seq import Seq
+from metator.log import logger
 from os.path import join, exists
 from random import getrandbits
 
@@ -31,16 +32,16 @@ def check_fasta_index(ref, mode="bowtie2"):
     Checks for the existence of a bowtie2 or bwa index based on the reference
     file name.
 
-    Parameters
-    ----------
+    Parameters:
+    -----------
     ref : str
         Path to the reference genome.
     mode : str
         The alignment software used to build the index. bowtie2 or bwa. If any
         other value is given, the function returns the reference path.
 
-    Returns
-    -------
+    Returns:
+    --------
     index : str
         The bowtie2 or bwa index basename. None if no index was found
     """
@@ -67,8 +68,53 @@ def check_fasta_index(ref, mode="bowtie2"):
     return index
 
 
-# TODO:
-def check_louvain_cpp():
+def check_louvain_cpp(louvain_path):
+    """Function to check is the Louvain functions are callable.
+
+    Parameters:
+    -----------
+    louvain_path : str
+        Path of the directory where the Louvain functions are.
+
+    Returns:
+    --------
+    bool:
+        Boolean value describing either the Louvain functions are callable or
+        not.
+    """
+
+    # Look for the path to call the functions:
+    louvain = join(louvain_path, "louvain")
+    convert_net = join(louvain_path, "convert_net")
+    hierarchy = join(louvain_path, "hierarchy")
+
+    # Check convert:
+    try:
+        convert_net = sp.check_output(
+            "{0} --help".format(convert_net), stderr=sp.STDOUT, shell=True
+        )
+    except sp.CalledProcessError:
+        logger.warning("Cannot find the 'convert_net' function from Louvain path.")
+        return False
+
+    # Check louvain:
+    try:
+        louvain = sp.check_output(
+            "{0} --help".format(louvain), stderr=sp.STDOUT, shell=True
+        )
+    except sp.CalledProcessError:
+        logger.warning("Cannot find the 'louvain' function from Louvain path.")
+        return False
+
+    # Check hierarchy:
+    try:
+        hierarchy = sp.check_output(
+            "{0} --help".format(hierarchy), stderr=sp.STDOUT, shell=True
+        )
+    except sp.CalledProcessError:
+        logger.warning("Cannot find the convert_net function from Louvain path.")
+        return False
+
     return True
 
 
@@ -78,13 +124,13 @@ def generate_temp_dir(path):
     Function from hicstuff.io (https://github.com/koszullab/hicstuff/)
     Generates a temporary file with a random name at the input path.
 
-    Parameters
-    ----------
+    Parameters:
+    -----------
     path : str
         The path at which the temporary directory will be created.
 
-    Returns
-    -------
+    Returns:
+    --------
     str
         The path of the newly created temporary directory.
     """
@@ -181,13 +227,13 @@ def read_compressed(filename):
     Function from hicstuff.io (https://github.com/koszullab/hicstuff/)
     Opens the file in read mode with appropriate decompression algorithm.
 
-    Parameters
-    ----------
+    Parameters:
+    -----------
     filename : str
         The path to the input file
 
-    Returns
-    -------
+    Returns:
+    --------
     file-like object
         The handle to access the input file's content
 
@@ -239,8 +285,8 @@ def sort_pairs(in_file, out_file, tmp_dir=None, threads=1, buffer="2G"):
     Adapted function from hicstuff.io (https://github.com/koszullab/hicstuff/)
     Sort a pairs file in batches using UNIX sort.
 
-    Parameters
-    ----------
+    Parameters:
+    -----------
     in_file : str
         Path to the unsorted input file
     out_file : str
