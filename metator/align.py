@@ -21,7 +21,7 @@ This module contains all these alignment functions:
 import csv
 import sys
 import metator.io as mio
-import pysam as ps
+import pysam
 import subprocess as sp
 from metator.log import logger
 from os.path import join
@@ -235,8 +235,8 @@ def process_bamfile(alignment, min_qual, filtered_out):
     output if they are aligned with a good quality saving their uniquely ReadID,
     Contig, Position_start, Position_end, strand to save memory.
 
-    Parameters
-    ----------
+    Parameters:
+    -----------
     alignment : str
         Path to the input temporary alignment.
     min_qual : int
@@ -244,8 +244,8 @@ def process_bamfile(alignment, min_qual, filtered_out):
     filtered_out : str
         Path to the output temporary bed alignement.
 
-    Returns
-    -------
+    Returns:
+    --------
     str:
         Path to the table containing the data of the reads mapping unambiguously
         and with a mapping quality superior to the threshold given. Five
@@ -254,9 +254,9 @@ def process_bamfile(alignment, min_qual, filtered_out):
     # Check the quality and status of each aligned fragment.
     # Write the ones with good quality in the aligned dataframe.
     # Keep ID of those that do not map unambiguously to be trimmed.
-
+    
     aligned_reads = 0
-    temp_bam = ps.AlignmentFile(alignment, "rb", check_sq=False)
+    temp_bam = pysam.AlignmentFile(alignment, "rb", check_sq=False)
     with open(filtered_out, "a") as f:
         for r in temp_bam:
             if r.mapping_quality >= min_qual:

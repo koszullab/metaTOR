@@ -34,7 +34,7 @@ import metator.network as mtn
 import metator.partition as mtp
 from docopt import docopt
 from metator.log import logger
-from os.path import exists
+from os.path import exists, dirname
 
 from pyinstrument import Profiler
 from pyinstrument.renderers import ConsoleRenderer
@@ -580,7 +580,6 @@ class Pipeline(AbstractCommand):
             min_qual,
             temp_directory,
             self.args["--genome"],
-            None,
             self.args["--out"],
             self.args["--threads"],
         )
@@ -638,6 +637,7 @@ class Pipeline(AbstractCommand):
             contigs_data,
             core_bins,
             overlapping_bins,
+            self.args["--outdir"],
         )
 
         # Generate Fasta file

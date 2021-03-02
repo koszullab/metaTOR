@@ -17,6 +17,7 @@ import gzip
 import io
 import os
 import pathlib
+import re
 import subprocess as sp
 import zipfile
 from Bio.Restriction import RestrictionBatch
@@ -171,7 +172,7 @@ def process_enzyme(enzyme):
     >>> process_enzyme('DpnII')
     'GATCGATC'
     >>> process_enzyme('DpnII,HinfI')
-    'GA.TGATC|GATCA.TC|GA.TA.TC|GATCGATC'
+    'GA.TA.TC|GA.TGATC|GATCA.TC|GATCGATC'
     """
 
     # Split the str on the comma to separate the different enzymes.
@@ -217,7 +218,7 @@ def process_enzyme(enzyme):
             )
 
     # Build the regex for any ligation sites.
-    pattern = "|".join(list(set(ligation_list)))
+    pattern = "|".join(sorted(list(set(ligation_list))))
     return pattern
 
 
@@ -236,7 +237,6 @@ def read_compressed(filename):
     --------
     file-like object
         The handle to access the input file's content
-
     """
 
     # Standard header bytes for diff compression formats
