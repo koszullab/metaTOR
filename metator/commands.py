@@ -36,6 +36,8 @@ from docopt import docopt
 from metator.log import logger
 from os.path import exists
 
+from pyinstrument import Profiler
+from pyinstrument.renderers import ConsoleRenderer
 
 class AbstractCommand:
     """Abstract base command class
@@ -101,6 +103,10 @@ class Align(AbstractCommand):
 
     def execute(self):
 
+        # Start Profiler
+        profiler = Profiler()
+        profiler.start()
+
         # Defined the temporary directory.
         if not self.args["--tempdir"]:
             self.args["--tempdir"] = "./tmp"
@@ -129,6 +135,10 @@ class Align(AbstractCommand):
         # Delete the temporary folder
         if not self.args["--no-clean-up"]:
             shutil.rmtree(temp_directory)
+
+        session = profiler.stop()
+        profile_renderer = ConsoleRenderer(unicode=True, color=True, show_all=True)
+        print(profile_renderer.render(session))
 
 
 class Cutsite(AbstractCommand):
@@ -178,6 +188,10 @@ class Cutsite(AbstractCommand):
 
     def execute(self):
 
+        # Start Profiler
+        profiler = Profiler()
+        profiler.start()
+
         # Defined the output directory and output file names.
         if not self.args["--outdir"]:
             self.args["--outdir"] = "."
@@ -199,6 +213,10 @@ class Cutsite(AbstractCommand):
             self.args["--outdir"],
             int(self.args["--threads"]),
         )
+
+        session = profiler.stop()
+        profile_renderer = ConsoleRenderer(unicode=True, color=True, show_all=True)
+        print(profile_renderer.render(session))
 
 
 class Network(AbstractCommand):
@@ -243,6 +261,10 @@ class Network(AbstractCommand):
 
     def execute(self):
 
+        # Start Profiler
+        profiler = Profiler()
+        profiler.start()
+
         # Defined the temporary directory.
         if not self.args["--tempdir"]:
             self.args["--tempdir"] = "./tmp"
@@ -280,9 +302,11 @@ class Network(AbstractCommand):
         if not self.args["--no-clean-up"]:
             shutil.rmtree(temp_directory)
 
+        session = profiler.stop()
+        profile_renderer = ConsoleRenderer(unicode=True, color=True, show_all=True)
+        print(profile_renderer.render(session))
 
-# TODO: Check if the Louvain algorithm is available in Python. Else keep
-# something as the tools of Lyam to execute Louvain.
+
 class Partition(AbstractCommand):
     """Partition the network using Louvain algorithm
 
@@ -334,6 +358,10 @@ class Partition(AbstractCommand):
     """
 
     def execute(self):
+        
+        # Start Profiler
+        profiler = Profiler()
+        profiler.start()
 
         # Defined the temporary directory.
         if not self.args["--tempdir"]:
@@ -403,6 +431,7 @@ class Partition(AbstractCommand):
             self.args["--contigs-data"],
             core_bins,
             overlapping_bins,
+            self.args["--outdir"],
         )
 
         # Generate Fasta file
@@ -417,6 +446,10 @@ class Partition(AbstractCommand):
         # Delete the temporary folder
         if not self.args["--no-clean-up"]:
             shutil.rmtree(temp_directory)
+
+        session = profiler.stop()
+        profile_renderer = ConsoleRenderer(unicode=True, color=True, show_all=True)
+        print(profile_renderer.render(session))
 
 
 class Validation(AbstractCommand):
@@ -503,6 +536,10 @@ class Pipeline(AbstractCommand):
     """
 
     def execute(self):
+
+        # Start Profiler
+        profiler = Profiler()
+        profiler.start()
 
         # Defined the temporary directory.
         if not self.args["--tempdir"]:
@@ -617,3 +654,7 @@ class Pipeline(AbstractCommand):
         # Delete the temporary folder.
         if not self.args["--no-clean-up"]:
             shutil.rmtree(temp_directory)
+
+        session = profiler.stop()
+        profile_renderer = ConsoleRenderer(unicode=True, color=True, show_all=True)
+        print(profile_renderer.render(session))

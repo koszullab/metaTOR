@@ -32,7 +32,7 @@ import sys
 from Bio import SeqIO
 from functools import partial
 from metator.log import logger
-from os.path import join, dirname
+from os.path import join
 from scipy import sparse
 from sklearn import metrics
 
@@ -461,7 +461,7 @@ def louvain_iterations_py(network_file, iterations):
 
 
 def update_contigs_data(
-    contig_data_file, core_bins, overlapping_bins
+    contig_data_file, core_bins, overlapping_bins, outdir
 ):
     """Add bin information in the contigs data file.
 
@@ -485,6 +485,8 @@ def update_contigs_data(
     overlapping_bins : dict
         A dictionnary with the id of the overlapping bins as keys and the list
         of id of their contigs as values.
+    outdir : str
+        Path of the output directory to write the update contigs data file
 
     Returns:
     --------
@@ -546,7 +548,7 @@ def update_contigs_data(
 
     # Write the new file
     contig_data_file_2 = join(
-        dirname(contig_data_file), "contig_data_partition.txt"
+        outdir, "contig_data_partition.txt"
     )
     contigs_data.to_csv(contig_data_file_2, sep="\t", header=None, index=False)
 

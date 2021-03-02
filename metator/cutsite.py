@@ -213,7 +213,7 @@ def cutsite_read(ligation_sites, seq, qual):
 
     Examples:
     ---------
-    >>> find_ligation_site("GA.TA.TC", "AAGAGTATTC", "FFF--FAFAF")
+    >>> cutsite_read("GA.TA.TC", "AAGAGTATTC", "FFF--FAFAF")
     (['AA', 'GAGTATTC'], ['FF', 'F--FAFAF'])
     """
 
