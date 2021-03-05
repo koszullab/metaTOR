@@ -254,7 +254,7 @@ def get_distances_splitmat(bins, core_bins_iterations):
             core_bins_iterations, bins.values, metric="hamming"
         )
     )
-    return x
+    return x 
 
 
 def hamming_distance(core_bins_iterations, n_iter, threads):

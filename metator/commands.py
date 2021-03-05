@@ -495,11 +495,12 @@ class Pipeline(AbstractCommand):
     files. It's also possible to ask or not to run the validation step which is
     the critical step for memory usage.
 
-    usage: pipeline [--tempdir=DIR] [--threads=1] [--normalized] [--no-clean-up]
-        [--overlap=90] [--iterations=100] [--size=100] [--self-contacts]
-        [--min-quality=30] [--louvain=STR] --genome=FILE --out=DIR --forward
+    usage: pipeline  --genome=FILE --forward 
         reads_for.fastq[,reads_for2.fastq...] --reverse
-        reads_rev.fastq[,reads_rev2.fastq...]
+        reads_rev.fastq[,reads_rev2.fastq...] [--assembly=FILE] [--tempdir=DIR]
+        [--threads=1] [--normalized] [--no-clean-up] [--overlap=90] 
+        [--iterations=100] [--size=100] [--self-contacts] [--min-quality=30]
+        [louvain=STR] [--outdir=DIR]
 
     options:
         -1, --forward=STR           Fastq file or list of Fastq separated by a
@@ -509,6 +510,7 @@ class Pipeline(AbstractCommand):
                                     comma containing the reverse reads to be
                                     aligned. Forward and reverse reads need to
                                     have the same identifier.
+        -a, --assembly=FILE         Path to the fasta assembly file.
         -g, --genome=FILE           The genome on which to map the reads. Must
                                     be the path to the bowtie2/bwa index.
         -i, --iterations=INT        Number of iterartion of Louvain.
@@ -519,7 +521,7 @@ class Pipeline(AbstractCommand):
         -n, --normalized            If enabled,  normalize contacts between
                                     contigs by their geometric mean coverage.
         -N, --no-clean-up           Do not remove temporary files.
-        -o, --out=DIR               Path where the alignment will be written in
+        -o, --outdir=DIR               Path where the alignment will be written in
                                     bed2D format.
         -O, --overlap=INT           Percentage of the identity necessary to be
                                     considered as a part of the core bin.
@@ -580,14 +582,14 @@ class Pipeline(AbstractCommand):
             min_qual,
             temp_directory,
             self.args["--genome"],
-            self.args["--out"],
+            self.args["--outdir"],
             self.args["--threads"],
         )
 
         # Generate the network.
         network, contigs_data = mtn.alignment_to_contacts(
             bed2D_file=pairs,
-            genome=self.args["--genome"],
+            genome=self.args["--assembly"],
             output_dir=self.args["--outdir"],
             output_file_network="network.txt",
             output_file_contig_data="idx_contig_length_GC_hit_cov.txt",
@@ -642,7 +644,7 @@ class Pipeline(AbstractCommand):
 
         # Generate Fasta file
         mtp.generate_fasta(
-            assembly,
+            self.args["--assembly"],
             overlapping_bins,
             contigs_data,
             size,

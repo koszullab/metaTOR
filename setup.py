@@ -60,7 +60,6 @@ setup(
     classifiers=CLASSIFIERS,
     url=URL,
     packages=find_packages(),
-    package_data={"metator": ("bin/*.sh", "share/*")},
     python_requires=">=3.4",
     include_package_data=True,
     long_description_content_type="text/markdown",
