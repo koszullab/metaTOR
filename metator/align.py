@@ -254,7 +254,7 @@ def process_bamfile(alignment, min_qual, filtered_out):
     # Check the quality and status of each aligned fragment.
     # Write the ones with good quality in the aligned dataframe.
     # Keep ID of those that do not map unambiguously to be trimmed.
-    
+
     aligned_reads = 0
     temp_bam = pysam.AlignmentFile(alignment, "rb", check_sq=False)
     with open(filtered_out, "a") as f:

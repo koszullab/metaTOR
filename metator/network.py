@@ -128,9 +128,9 @@ def compute_contig_coverage(contig_data):
     dict:
         Dictionnary of the all the contigs from the assembly, the contigs names
         are the keys to the data of the contig available with the following
-        keys: "id", "length", "GC", "hit", "coverage" with the coverage 
+        keys: "id", "length", "GC", "hit", "coverage" with the coverage
         computed.
-    
+
     Examples:
     ---------
     >>> compute_contig_coverage({"NODE_1" : {"id" : 1, "length" : 500, "GC" : 45.07, "hit" : 25, "coverage" : 0}, "NODE_2" : {"id" : 2, "length" : 100, "GC" : 45.07, "hit" : 200, "coverage" : 0}})

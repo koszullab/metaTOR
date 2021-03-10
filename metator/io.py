@@ -4,11 +4,13 @@
 """Core tools to build I/O for metaTOR
 
 This mdoule contains all core I/O functions:
+    - check_checkm
     - check_fasta_index
     - check_louvain_function
     - generate_temp_dir
     - process_ligation_sites
     - read_compressed
+    - read_results_checkm
     - sort_pairs
 """
 
@@ -27,6 +29,25 @@ from os.path import join, exists
 from random import getrandbits
 
 
+def check_checkm():
+    """
+    Function to test if CheckM is in the path.
+
+    Returns:
+    --------
+    bool:
+        True if checkM found in the path, False otherwise.
+    """
+    try:
+        checkm = sp.check_output("checkm", stderr=sp.STDOUT, shell=True)
+    except sp.CalledProcessError:
+        logger.warning(
+            "Cannot find 'checkm' in your path please install it or add it in your path."
+        )
+        return False
+    return True
+
+
 def check_fasta_index(ref, mode="bowtie2"):
     """
     Function from hicstuff.io (https://github.com/koszullab/hicstuff/)
@@ -43,7 +64,7 @@ def check_fasta_index(ref, mode="bowtie2"):
 
     Returns:
     --------
-    index : str
+    str
         The bowtie2 or bwa index basename. None if no index was found
     """
     ref = pathlib.Path(ref)
@@ -95,7 +116,9 @@ def check_louvain_cpp(louvain_path):
             "{0} --help".format(convert_net), stderr=sp.STDOUT, shell=True
         )
     except sp.CalledProcessError:
-        logger.warning("Cannot find the 'convert_net' function from Louvain path.")
+        logger.warning(
+            "Cannot find the 'convert_net' function from Louvain path."
+        )
         return False
 
     # Check louvain:
@@ -113,7 +136,9 @@ def check_louvain_cpp(louvain_path):
             "{0} --help".format(hierarchy), stderr=sp.STDOUT, shell=True
         )
     except sp.CalledProcessError:
-        logger.warning("Cannot find the convert_net function from Louvain path.")
+        logger.warning(
+            "Cannot find the convert_net function from Louvain path."
+        )
         return False
 
     return True
@@ -278,6 +303,41 @@ def read_compressed(filename):
             return io.TextIOWrapper(zip_content, encoding="utf-8")
     else:
         return open(filename, "r")
+
+
+def read_results_checkm(checkm_file):
+    """Function to transform the output summary file of checkm into a
+    dictionnary.
+
+    Parameters:
+    -----------
+    checkm_file : str
+        Path to the summary output file of CheckM.
+
+    Returns:
+    --------
+    dict:
+        Dictionnary of the output of checkm with binID as keys and with three
+        values lineage, completness and contamination.
+    """
+
+    # Create an empty dictionnary
+    checkm_summary = dict()
+
+    # Read the file.
+    with open(checkm_file, "r") as checkm_lines:
+        for line in checkm_lines:
+            # Only keep informative lines which start with a space.
+            if line[0] == " ":
+                line = line.split()
+                checkm_summary[line[0]] = {
+                    "lineage": line[1],
+                    "completness": line[12],
+                    "contamination": line[13],
+                }
+    checkm_summary.pop("Bin")
+
+    return checkm_summary
 
 
 def sort_pairs(in_file, out_file, tmp_dir=None, threads=1, buffer="2G"):

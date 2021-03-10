@@ -85,9 +85,7 @@ def defined_overlapping_bins(
         # Extract contig ID from the core bin.
         core_bin = core_bins_iterations.iloc[cc_id]
         core_bin = map(str, list(core_bin))
-        core_bin_contigs = core_bins[
-            ";".join(core_bin)
-        ].copy()
+        core_bin_contigs = core_bins[";".join(core_bin)].copy()
         # Add the contig ID on the overlapping bin.
         if oc_id + 1 not in overlapping_bins:
             overlapping_bins[oc_id + 1] = core_bin_contigs
@@ -96,9 +94,7 @@ def defined_overlapping_bins(
         cc_id += 1
 
     logger.info(
-        "{0} overlapping bins were found.".format(
-            len(overlapping_bins)
-        )
+        "{0} overlapping bins were found.".format(len(overlapping_bins))
     )
 
     return overlapping_bins
@@ -150,9 +146,7 @@ def detect_core_bins(output_louvain, iterations):
     # Transform the array in a dataframe
     core_bins_iterations = pd.DataFrame(core_bins_iterations)
 
-    logger.info(
-        "{0} core bins were found.".format(len(core_bins))
-    )
+    logger.info("{0} core bins were found.\n".format(len(core_bins)))
 
     return core_bins, core_bins_iterations
 
@@ -254,7 +248,7 @@ def get_distances_splitmat(bins, core_bins_iterations):
             core_bins_iterations, bins.values, metric="hamming"
         )
     )
-    return x 
+    return x
 
 
 def hamming_distance(core_bins_iterations, n_iter, threads):
@@ -284,9 +278,7 @@ def hamming_distance(core_bins_iterations, n_iter, threads):
     # matrix, in parallel
     step = 1000
     steps = np.arange(step, len(core_bins_iterations.index) + step, step)
-    split_core_bins = [
-        core_bins_iterations[(k - step) : k] for k in steps
-    ]
+    split_core_bins = [core_bins_iterations[(k - step) : k] for k in steps]
     pool = multiprocessing.Pool(processes=threads)
     res = pool.map(
         partial(
@@ -299,10 +291,11 @@ def hamming_distance(core_bins_iterations, n_iter, threads):
     pool.close()
     return res
 
-# TODO 
+
+# TODO
 def louvain_iterations_cpp(network_file, iterations, tmp_dir, louvain_path):
     """Use the cpp original Louvain to partition the network.
-    
+
     Parameters:
     -----------
     network_file : str
@@ -364,7 +357,7 @@ def louvain_iterations_cpp(network_file, iterations, tmp_dir, louvain_path):
     # Run the iterations of Louvain
     for i in range(iterations):
         logger.info("Iteration in progress: {0}".format(i))
-        
+
         louvain_args["iteration"] = i
 
         # Partiotining with weights using louvain and compute the bin tree.
@@ -374,19 +367,17 @@ def louvain_iterations_cpp(network_file, iterations, tmp_dir, louvain_path):
         process = sp.Popen(cmd, shell=True)
         out, err = process.communicate()
 
-        cmd = ("{hierarchy} {net_tree} > {level_file}").format(
-            **louvain_args
-        )
+        cmd = ("{hierarchy} {net_tree} > {level_file}").format(**louvain_args)
         process = sp.Popen(cmd, shell=True)
         out, err = process.communicate()
-     
+
         level_file = open(level_louvain, "r")
         louvain_args["level"] = level_file.readlines()[-1][6]
         level_file.close()
-       
-        cmd = ("{hierarchy} {net_tree} -l {level} > {output}{iteration}.txt").format(
-            **louvain_args
-        )
+
+        cmd = (
+            "{hierarchy} {net_tree} -l {level} > {output}{iteration}.txt"
+        ).format(**louvain_args)
         process = sp.Popen(cmd, shell=True)
         out, err = process.communicate()
 
@@ -401,7 +392,7 @@ def louvain_iterations_cpp(network_file, iterations, tmp_dir, louvain_path):
                 for line in out:
                     result = line.split(" ")
                     output_louvain[int(result[0])] += result[1][:-1]
-        else: 
+        else:
             with open(output + str(i) + ".txt", "r") as out:
                 for line in out:
                     result = line.split(" ")
@@ -460,9 +451,7 @@ def louvain_iterations_py(network_file, iterations):
     return output_louvain
 
 
-def update_contigs_data(
-    contig_data_file, core_bins, overlapping_bins, outdir
-):
+def update_contigs_data(contig_data_file, core_bins, overlapping_bins, outdir):
     """Add bin information in the contigs data file.
 
     This function allow to update the contigs data file which were created
@@ -539,17 +528,11 @@ def update_contigs_data(
         overlapping_bin_length = sum(overlapping_bin_data.length)
         # Write the new information
         contigs_data.iloc[overlapping_bin, 9] = i
-        contigs_data.iloc[
-            overlapping_bin, 10
-        ] = overlapping_bin_contigs_number
-        contigs_data.iloc[
-            overlapping_bin, 11
-        ] = overlapping_bin_length
+        contigs_data.iloc[overlapping_bin, 10] = overlapping_bin_contigs_number
+        contigs_data.iloc[overlapping_bin, 11] = overlapping_bin_length
 
     # Write the new file
-    contig_data_file_2 = join(
-        outdir, "contig_data_partition.txt"
-    )
+    contig_data_file_2 = join(outdir, "contig_data_partition.txt")
     contigs_data.to_csv(contig_data_file_2, sep="\t", header=None, index=False)
 
     return contigs_data

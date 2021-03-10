@@ -27,17 +27,20 @@ NotImplementedError
 
 import os
 import shutil
+import sys
 import metator.align as mta
 import metator.cutsite as mtc
 import metator.io as mio
 import metator.network as mtn
 import metator.partition as mtp
+import metator.validation as mtv
 from docopt import docopt
 from metator.log import logger
-from os.path import exists, dirname
+from os.path import exists, dirname, join
 
 from pyinstrument import Profiler
 from pyinstrument.renderers import ConsoleRenderer
+
 
 class AbstractCommand:
     """Abstract base command class
@@ -137,7 +140,9 @@ class Align(AbstractCommand):
             shutil.rmtree(temp_directory)
 
         session = profiler.stop()
-        profile_renderer = ConsoleRenderer(unicode=True, color=True, show_all=True)
+        profile_renderer = ConsoleRenderer(
+            unicode=True, color=True, show_all=True
+        )
         print(profile_renderer.render(session))
 
 
@@ -215,7 +220,9 @@ class Cutsite(AbstractCommand):
         )
 
         session = profiler.stop()
-        profile_renderer = ConsoleRenderer(unicode=True, color=True, show_all=True)
+        profile_renderer = ConsoleRenderer(
+            unicode=True, color=True, show_all=True
+        )
         print(profile_renderer.render(session))
 
 
@@ -303,7 +310,9 @@ class Network(AbstractCommand):
             shutil.rmtree(temp_directory)
 
         session = profiler.stop()
-        profile_renderer = ConsoleRenderer(unicode=True, color=True, show_all=True)
+        profile_renderer = ConsoleRenderer(
+            unicode=True, color=True, show_all=True
+        )
         print(profile_renderer.render(session))
 
 
@@ -335,10 +344,10 @@ class Partition(AbstractCommand):
         -c, --contigs-data=FILE     The path to the file containing the data of
                                     the contigs (ID, Name, Length, GC content,
                                     Hit, Coverage).
-        -i, --iterations=INT        Number of iterartion of Louvain.
+        -i, --iterations=INT        Number of iterations of Louvain.
                                     [Default: 100]
         -l, --louvain=STR           Path to louvain cpp (faster than python
-                                    implementation). If None given, use python 
+                                    implementation). If None given, use python
                                     implementation instead. [Default: None]
         -n, --network-file=FILE     Path to the file containing the network
                                     information from the meta HiC experiment
@@ -358,7 +367,7 @@ class Partition(AbstractCommand):
     """
 
     def execute(self):
-        
+
         # Start Profiler
         profiler = Profiler()
         profiler.start()
@@ -388,18 +397,18 @@ class Partition(AbstractCommand):
 
         # Perform the iterations of Louvain to partition the network.
         logger.info("Start iterations of Louvain:")
-       
+
         if self.args["--louvain"] == "None":
             output_louvain = mtp.louvain_iterations_py(
                 self.args["--network-file"],
                 iterations,
             )
         else:
-            output_louvain =  mtp.louvain_iterations_cpp(
+            output_louvain = mtp.louvain_iterations_cpp(
                 self.args["--network-file"],
                 iterations,
                 temp_directory,
-                self.args["--louvain"]
+                self.args["--louvain"],
             )
 
         # Detect core bins
@@ -448,7 +457,9 @@ class Partition(AbstractCommand):
             shutil.rmtree(temp_directory)
 
         session = profiler.stop()
-        profile_renderer = ConsoleRenderer(unicode=True, color=True, show_all=True)
+        profile_renderer = ConsoleRenderer(
+            unicode=True, color=True, show_all=True
+        )
         print(profile_renderer.render(session))
 
 
@@ -464,10 +475,35 @@ class Validation(AbstractCommand):
     iterations may split the organism in multiple bins, go back to the original
     bins.
 
-    usage: validation
+    usage:
+        validation --outdir=DIR --network=FILE --assembly=FILE --fasta=DIR --contigs=STR [--iterations=10] [--louvain=STR] [--size=300000]
+        [--threads=1] [--tempdir=DIR]  [--no-clean-up]
 
     options:
-
+        -a, --assembly=FILE     The path to the assembly fasta file used to do
+                                the alignment.
+        -c, --contigs=FILE      The path to the file containing the data ofthe
+                                contigs (ID, Name, Length, GC content, Hit,
+                                Coverage).
+        -f, --fasta=DIR         Path to the directory containing the input fasta
+                                files of the bins.
+        -i, --iterations=INT    Number of recursive iterations of Louvain.
+                                [Default: 10]
+        -l, --louvain=STR       Path to louvain cpp (faster than python
+                                implementation). If None given, use python
+                                implementation instead. [Default: None]
+        -n, --network=FILE      Path to the file containing the network
+                                information from the meta HiC experiment compute
+                                in network function previously.
+        -N, --no-clean-up       Do not remove temporary files.
+        -o, --outdir=DIR        Path to the directory to write the output.
+                                Default to current directory. [Default: ./]
+        -s, --size=INT          Threshold size to keep bins in base pair.
+                                [Default: 300000]
+        -t, --threads=INT       Number of parallel threads allocated for the
+                                partition. [Default: 1]
+        -T, --tempdir=DIR       Temporary directory. Default to current
+                                directory. [Default: ./tmp]
     """
 
     # Launch checkM to evaluate the completion and the contamination. If asked
@@ -475,6 +511,10 @@ class Validation(AbstractCommand):
     # contamination decrease without a huge decrease of the completion keep the
     # new bins. Otherwise go back to the old state.
     def execute(self):
+
+        # Start Profiler
+        profiler = Profiler()
+        profiler.start()
 
         # Defined the temporary directory.
         if not self.args["--tempdir"]:
@@ -484,6 +524,74 @@ class Validation(AbstractCommand):
         # Defined the output directory and output file names.
         if not self.args["--outdir"]:
             self.args["--outdir"] = "."
+        if not exists(self.args["--outdir"]):
+            os.makedirs(self.args["--outdir"])
+
+        # Defined checkm output file path
+        overlapping_checkm_file = join(
+            self.args["--outdir"], "overlapping_checkm_results.txt"
+        )
+        recursif_checkm_file = join(
+            self.args["--outdir"], "recursif_checkm_results.txt"
+        )
+
+        # Transform numeric variable as numeric
+        iterations = int(self.args["--iterations"])
+        size = int(self.args["--size"])
+        threads = int(self.args["--threads"])
+
+        # Check checkM availability
+        if not mio.check_checkm():
+            logger.error(
+                "CheckM is not in the path. Could not make the iterations"
+            )
+            sys.exit(1)
+
+        # Launch checkM
+        mtv.checkm(
+            self.args["--fasta"],
+            overlapping_checkm_file,
+            temp_directory,
+            threads,
+        )
+
+        # Iterates Louvain on contaminated and complete bins
+        contamination = mtv.louvain_recursif(
+            self.args["--assembly"],
+            iterations,
+            self.args["--outdir"],
+            self.args["--louvain"],
+            temp_directory,
+            overlapping_checkm_file,
+            self.args["--contigs"],
+            self.args["--network"],
+            size,
+        )
+
+        # Check and save if better
+        if contamination:
+
+            # Run checkm on the recursif bins.
+            temp_directory = join(temp_directory, "checkm2")
+            mtv.checkm(
+                self.args["--outdir"],
+                recursif_checkm_file,
+                temp_directory,
+                threads,
+            )
+
+            # TODO
+            # Check if the recursif bins are better or not
+            # mtv.compare_bins(overlapping_checkm_file, recursif_checkm_file)
+
+        else:
+            logger.info("No contaminated bin have been found")
+
+        session = profiler.stop()
+        profile_renderer = ConsoleRenderer(
+            unicode=True, color=True, show_all=True
+        )
+        print(profile_renderer.render(session))
 
 
 class Pipeline(AbstractCommand):
@@ -495,10 +603,10 @@ class Pipeline(AbstractCommand):
     files. It's also possible to ask or not to run the validation step which is
     the critical step for memory usage.
 
-    usage: pipeline  --genome=FILE --forward 
+    usage: pipeline  --genome=FILE --forward
         reads_for.fastq[,reads_for2.fastq...] --reverse
         reads_rev.fastq[,reads_rev2.fastq...] [--assembly=FILE] [--tempdir=DIR]
-        [--threads=1] [--normalized] [--no-clean-up] [--overlap=90] 
+        [--threads=1] [--normalized] [--no-clean-up] [--overlap=90]
         [--iterations=100] [--size=100] [--self-contacts] [--min-quality=30]
         [louvain=STR] [--outdir=DIR]
 
@@ -516,7 +624,7 @@ class Pipeline(AbstractCommand):
         -i, --iterations=INT        Number of iterartion of Louvain.
                                     [Default: 100]
         -l, --louvain=STR           Path to louvain cpp (faster than python
-                                    implementation). If None given, use python 
+                                    implementation). If None given, use python
                                     implementation instead. [Default: None]
         -n, --normalized            If enabled,  normalize contacts between
                                     contigs by their geometric mean coverage.
@@ -606,11 +714,11 @@ class Pipeline(AbstractCommand):
                 iterations,
             )
         else:
-            output_louvain =  mtp.louvain_iterations_cpp(
+            output_louvain = mtp.louvain_iterations_cpp(
                 self.args["--network-file"],
                 iterations,
                 temp_directory,
-                self.args["--louvain"]
+                self.args["--louvain"],
             )
 
         # Detect core bins
@@ -658,5 +766,7 @@ class Pipeline(AbstractCommand):
             shutil.rmtree(temp_directory)
 
         session = profiler.stop()
-        profile_renderer = ConsoleRenderer(unicode=True, color=True, show_all=True)
+        profile_renderer = ConsoleRenderer(
+            unicode=True, color=True, show_all=True
+        )
         print(profile_renderer.render(session))
