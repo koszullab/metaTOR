@@ -140,8 +140,8 @@ def louvain_recursif(
 
     # Iterate on chcekm summary to find conatminated bins:
     for bin_id in checkm_summary:
-        if (float(checkm_summary[bin_id]["completness"]) >= 0) & (
-            float(checkm_summary[bin_id]["contamination"]) >= 0
+        if (float(checkm_summary[bin_id]["completness"]) >= 50) & (
+            float(checkm_summary[bin_id]["contamination"]) >= 10
         ):
 
             # Add a boolean to say that there is at least one bin contaminated
@@ -151,9 +151,8 @@ def louvain_recursif(
             bin_id = bin_id.split("_")[1]
 
             # Extract contigs
-            bin_data = contigs_data[contigs_data["oc_id"] == bin_id]
-            list_contigs = list(bin_data["id"])
-
+            list_contigs = list(contigs_data["id"][contigs_data["oc_id"] == bin_id])
+            
             # Extract subnetwork
             subnetwork = network.subgraph(list_contigs)
 

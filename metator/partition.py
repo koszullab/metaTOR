@@ -325,6 +325,7 @@ def louvain_iterations_cpp(network_file, iterations, tmp_dir, louvain_path):
     network_bin = join(tmp_dir, "net_bin")
     network_weight = join(tmp_dir, "net_weight")
     network_tree = join(tmp_dir, "net_tree")
+    network_labels = join(tmp_dir, "labels.txt")
     level_louvain = join(tmp_dir, "level.txt")
     output = join(tmp_dir, "output_louvain_")
     louvain = join(louvain_path, "louvain")
@@ -338,6 +339,7 @@ def louvain_iterations_cpp(network_file, iterations, tmp_dir, louvain_path):
         "net_bin": network_bin,
         "net_weight": network_weight,
         "net_tree": network_tree,
+        "net_labels": network_labels,
         "level_file": level_louvain,
         "output": output,
         "level": 0,
@@ -348,11 +350,18 @@ def louvain_iterations_cpp(network_file, iterations, tmp_dir, louvain_path):
     }
 
     # Convert the file in binary file for Louvain partitionning.
-    cmd = ("{convert_net} -i {net_txt} -o {net_bin} -w {net_weight}").format(
+    cmd = ("{convert_net} -i {net_txt} -o {net_bin} -r {net_labels} -w {net_weight}").format(
         **louvain_args
     )
     process = sp.Popen(cmd, shell=True)
     out, err = process.communicate()
+
+    # Create a dictionary of Louvain labels and original contig id.
+    labels = dict()
+    with open(louvain_args["net_labels"]) as label_file:
+        for label in label_file:
+            label = label.split()
+            labels[label[1]] = int(label[0])
 
     # Run the iterations of Louvain
     for i in range(iterations):
@@ -382,24 +391,26 @@ def louvain_iterations_cpp(network_file, iterations, tmp_dir, louvain_path):
         out, err = process.communicate()
 
         # Save the results in a dictionnary
-        if i == 0:
+        if iterations == 1:
             with open(output + str(i) + ".txt", "r") as out:
                 for line in out:
                     result = line.split(" ")
-                    output_louvain[int(result[0])] = result[1][:-1] + ";"
+                    output_louvain[labels[result[0]]] = result[1][:-1]
+        elif i == 0:
+            with open(output + str(i) + ".txt", "r") as out:
+                for line in out:
+                    result = line.split(" ")
+                    output_louvain[labels[result[0]]] = result[1][:-1] + ";"
         elif i == iterations - 1:
             with open(output + str(i) + ".txt", "r") as out:
                 for line in out:
                     result = line.split(" ")
-                    output_louvain[int(result[0])] += result[1][:-1]
+                    output_louvain[labels[result[0]]] += result[1][:-1]
         else:
             with open(output + str(i) + ".txt", "r") as out:
                 for line in out:
                     result = line.split(" ")
-                    output_louvain[int(result[0])] += result[1][:-1] + ";"
-
-    # As louvain creates a factice contig with id 0 bin with itself, remove it.
-    output_louvain.pop(0)
+                    output_louvain[labels[result[0]]] += result[1][:-1] + ";"
 
     return output_louvain
 
