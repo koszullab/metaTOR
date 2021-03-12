@@ -393,8 +393,6 @@ class Partition(AbstractCommand):
         if self.args["--threads"]:
             threads = int(self.args["--threads"])
 
-        # TODO: Test which function is necessary --> C or Python and call it
-
         # Perform the iterations of Louvain to partition the network.
         logger.info("Start iterations of Louvain:")
 
@@ -603,12 +601,12 @@ class Pipeline(AbstractCommand):
     files. It's also possible to ask or not to run the validation step which is
     the critical step for memory usage.
 
-    usage: pipeline  --genome=FILE --forward
+    usage: pipeline  --fasta=FILE --forward
         reads_for.fastq[,reads_for2.fastq...] --reverse
         reads_rev.fastq[,reads_rev2.fastq...] [--assembly=FILE] [--tempdir=DIR]
         [--threads=1] [--normalized] [--no-clean-up] [--overlap=90]
         [--iterations=100] [--size=100] [--self-contacts] [--min-quality=30]
-        [louvain=STR] [--outdir=DIR]
+        [--louvain=STR] [--outdir=DIR]
 
     options:
         -1, --forward=STR           Fastq file or list of Fastq separated by a
@@ -618,9 +616,9 @@ class Pipeline(AbstractCommand):
                                     comma containing the reverse reads to be
                                     aligned. Forward and reverse reads need to
                                     have the same identifier.
-        -a, --assembly=FILE         Path to the fasta assembly file.
-        -g, --genome=FILE           The genome on which to map the reads. Must
-                                    be the path to the bowtie2/bwa index.
+        -f, --fasta=FILE            The genome on which to map the reads. Must
+                                    be the path to the bowtie2/bwa index or the
+                                    fasta.
         -i, --iterations=INT        Number of iterartion of Louvain.
                                     [Default: 100]
         -l, --louvain=STR           Path to louvain cpp (faster than python
@@ -629,7 +627,7 @@ class Pipeline(AbstractCommand):
         -n, --normalized            If enabled,  normalize contacts between
                                     contigs by their geometric mean coverage.
         -N, --no-clean-up           Do not remove temporary files.
-        -o, --outdir=DIR               Path where the alignment will be written in
+        -o, --outdir=DIR            Path where the alignment will be written in
                                     bed2D format.
         -O, --overlap=INT           Percentage of the identity necessary to be
                                     considered as a part of the core bin.
@@ -678,10 +676,15 @@ class Pipeline(AbstractCommand):
         normalized = self.args["--normalized"]
         self_contacts = self.args["--self-contacts"]
 
-        # Create two path for the fasta index or the fasta assembly.
-        assembly, assembly_index = mio.check_fasta_index(
-            self.args["--assembly"]
-        )
+        # Create two path for the fasta index or the fasta assembly from the
+        # given file.
+        index = mio.check_fasta_index(self.args["--fasta"])
+        if index is None:
+            if mio.check_is_fasta(self.args["--fasta"]):
+                fasta = self.args["--fasta"]
+                index = self.args["--fasta"]
+        else:
+            fasta = mio.retreive_fasta(temp_directory, temp_directory)
 
         # Align pair-end reads with bowtie2.
         pairs = mta.pairs_alignment(
@@ -689,33 +692,36 @@ class Pipeline(AbstractCommand):
             self.args["--reverse"],
             min_qual,
             temp_directory,
-            self.args["--genome"],
+            index,
             self.args["--outdir"],
             self.args["--threads"],
         )
 
         # Generate the network.
-        network, contigs_data = mtn.alignment_to_contacts(
-            bed2D_file=pairs,
-            genome=self.args["--assembly"],
-            output_dir=self.args["--outdir"],
-            output_file_network="network.txt",
-            output_file_contig_data="idx_contig_length_GC_hit_cov.txt",
-            tmpdir=temp_directory,
-            n_cpus=self.args["--threads"],
-            normalized=normalized,
-            self_contacts=self_contacts,
+        mtn.alignment_to_contacts(
+            pairs,
+            fasta,
+            self.args["--outdir"],
+            "network.txt",
+            "contigs_data_network.txt",
+            temp_directory,
+            self.args["--threads"],
+            normalized,
+            self_contacts,
         )
+
+        network_file = join(self.args["--outdir"], "network.txt")
+        contigs_data =  join(self.args["--outdir"], "contigs_data_network.txt")
 
         # Perform iterations of Louvain.
         if self.args["--louvain"] == "None":
             output_louvain = mtp.louvain_iterations_py(
-                self.args["--network-file"],
+                network_file,
                 iterations,
             )
         else:
             output_louvain = mtp.louvain_iterations_cpp(
-                self.args["--network-file"],
+                network_file,
                 iterations,
                 temp_directory,
                 self.args["--louvain"],
@@ -752,7 +758,7 @@ class Pipeline(AbstractCommand):
 
         # Generate Fasta file
         mtp.generate_fasta(
-            self.args["--assembly"],
+            fasta,
             overlapping_bins,
             contigs_data,
             size,

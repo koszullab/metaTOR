@@ -151,8 +151,10 @@ def louvain_recursif(
             bin_id = bin_id.split("_")[1]
 
             # Extract contigs
-            list_contigs = list(contigs_data["id"][contigs_data["oc_id"] == bin_id])
-            
+            list_contigs = list(
+                contigs_data["id"][contigs_data["oc_id"] == bin_id]
+            )
+
             # Extract subnetwork
             subnetwork = network.subgraph(list_contigs)
 

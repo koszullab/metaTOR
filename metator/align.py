@@ -191,13 +191,21 @@ def pairs_alignment(
         Position_startB, Position_endB, StrandB
     """
 
-    # Throw error if index does not exist and digestion mode not enabled
+    # Check what is the reference. If fasta given build it. If not a bowtie2
+    # index or a fasta thraw an error.
     index = mio.check_fasta_index(ref, mode="bowtie2")
     if index is None:
-        logger.error(
-            "Reference index is missing, please build the bowtie2 index first."
-        )
-        sys.exit(1)
+        if mio.check_is_fasta(ref):
+            logger.info("Build index from the given fasta.")
+            index = join(tmp_dir, "index")
+            cmd = "bowtie2-build -q {0} {1}".format(ref, index)
+            process = sp.Popen(cmd, shell=True, stdout=sp.PIPE)
+            out, err = process.communicate()
+        else:
+            logger.error(
+                "Please give as a reference a bowtie2 index or a fasta."
+            )
+            sys.exit(1)
 
     # Create a temporary file to save the alignment.
     temp_alignment_for = join(tmp_dir, "temp_alignment_for.bam")

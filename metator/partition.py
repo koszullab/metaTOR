@@ -350,9 +350,9 @@ def louvain_iterations_cpp(network_file, iterations, tmp_dir, louvain_path):
     }
 
     # Convert the file in binary file for Louvain partitionning.
-    cmd = ("{convert_net} -i {net_txt} -o {net_bin} -r {net_labels} -w {net_weight}").format(
-        **louvain_args
-    )
+    cmd = (
+        "{convert_net} -i {net_txt} -o {net_bin} -r {net_labels} -w {net_weight}"
+    ).format(**louvain_args)
     process = sp.Popen(cmd, shell=True)
     out, err = process.communicate()
 

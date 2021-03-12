@@ -21,7 +21,9 @@ import os
 import pathlib
 import re
 import subprocess as sp
+import sys
 import zipfile
+from Bio import SeqIO
 from Bio.Restriction import RestrictionBatch
 from Bio.Seq import Seq
 from metator.log import logger
@@ -88,6 +90,30 @@ def check_fasta_index(ref, mode="bowtie2"):
         # prefix to obtain index basename (without the dot)
         index = os.path.commonprefix(list(map(str, index))).strip(".")
     return index
+
+
+def check_is_fasta(in_file):
+    """
+    Function from hicstuff.io (https://github.com/koszullab/hicstuff/)
+    Checks whether input file is in fasta format.
+
+    Parameters
+    ----------
+    in_file : str
+        Path to the input file.
+
+    Returns
+    -------
+    bool :
+        True if the input is in fasta format, False otherwise
+    """
+    try:
+        with open(in_file, "r") as handle:
+            test = any(SeqIO.parse(handle, "fasta"))
+    except FileNotFoundError:
+        test = False
+
+    return test
 
 
 def check_louvain_cpp(louvain_path):
@@ -338,6 +364,41 @@ def read_results_checkm(checkm_file):
     checkm_summary.pop("Bin")
 
     return checkm_summary
+
+
+def retreive_fasta(in_file, tmpdir):
+    """
+    Function to retreive fasta from the given reference file. If index is given
+    retreive it using bowtie2 inspect. Thraw an error if not a fasta or bowtie2
+    index.
+
+    Parameters:
+    -----------
+    in_file : str
+        Path to the reference file given.
+    tmpdir : str
+        Path to the temp directory to write the fasta if necessary.
+
+    Returns:
+    --------
+    str:
+        Path to the fasta file.
+    """
+    if check_is_fasta(in_file):
+        fasta = in_file
+    else:
+        if check_fasta_index(in_file):
+            logger.info("Retreive fasta from bowtie2 index.")
+            fasta = join(tmpdir, "assembly.fa")
+            cmd = "bowtie2-inspect {0} > {1}".format(in_file, fasta)
+            process = sp.Popen(cmd, shell=True, stdout=sp.PIPE)
+            out, err = process.communicate()
+        else:
+            logger.error(
+                "Please give as a reference a bowtie2 index or a fasta."
+            )
+            sys.exit(1)
+    return fasta
 
 
 def sort_pairs(in_file, out_file, tmp_dir=None, threads=1, buffer="2G"):
