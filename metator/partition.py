@@ -11,7 +11,6 @@ two or more bins).
 Core functions to partition the network are:
     - defined_overlapping_bins
     - detect_core_bins
-    - extract_contigs
     - generate_fasta
     - get_distances_splitmat
     - hamming_distance
@@ -29,7 +28,6 @@ import numpy as np
 import pandas as pd
 import subprocess as sp
 import sys
-from Bio import SeqIO
 from functools import partial
 from metator.log import logger
 from os.path import join
@@ -151,30 +149,6 @@ def detect_core_bins(output_louvain, iterations):
     return core_bins, core_bins_iterations
 
 
-def extract_contigs(assembly, list_contigs, output_file):
-    """Extract the contigs of the list given from a fasta assembly file and
-    write them in a new fasta file.
-
-    Parameters:
-    -----------
-    assembly : str
-        Path to the fasta file of the original assembly.
-    list_contigs : list of str
-        List with the names of the contigs used in the assembly file.
-    output_file : str
-        Path to the output fasta file.
-    """
-    # Select contigs of the list.
-    records = (
-        contigs
-        for contigs in SeqIO.parse(assembly, "fasta")
-        if contigs.id in list_contigs
-    )
-    # Write the new fasta file.
-    SeqIO.write(records, output_file, "fasta")
-    return 0
-
-
 def generate_fasta(assembly, bins, contigs_data, size, output_dir):
     """Generate the fasta files of each bins from the assembly.
 
@@ -213,7 +187,11 @@ def generate_fasta(assembly, bins, contigs_data, size, output_dir):
             # Define the output file.
             output_file = join(output_dir, "MetaTOR_{0}_0.fa".format(bin))
             # Create the fasta file.
-            extract_contigs(assembly, list_contigs, output_file)
+            list_contigs = " ".join(list_contigs)
+            cmd = "pyfastx extract {0} {1} > {2}".format(
+                assembly, list_contigs, output_file
+            )
+            process = sp.Popen(cmd, shell=True)
     logger.info("{0} bins have been extracted".format(nb_bins))
     logger.info(
         "Total size of the extracted bins: {0}Mb".format(

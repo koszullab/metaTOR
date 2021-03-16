@@ -140,8 +140,8 @@ def louvain_recursif(
 
     # Iterate on chcekm summary to find conatminated bins:
     for bin_id in checkm_summary:
-        if (float(checkm_summary[bin_id]["completness"]) >= 50) & (
-            float(checkm_summary[bin_id]["contamination"]) >= 10
+        if (float(checkm_summary[bin_id]["completness"]) >= 0) & (
+            float(checkm_summary[bin_id]["contamination"]) >= 0
         ):
 
             # Add a boolean to say that there is at least one bin contaminated
@@ -200,7 +200,7 @@ def update_contigs_data(contigs_data, recursif_bins, assembly, outdir, size):
     """Update the data of the bin according to the recursif step and generated
     their fasta.
 
-    Paramaters:
+    Parameters:
     -----------
 
     Returns:
@@ -232,9 +232,10 @@ def update_contigs_data(contigs_data, recursif_bins, assembly, outdir, size):
                 )
 
                 # Retrieve names of the contigs
-                list_contigs = list(contigs_data.iloc[recursif_bin, 1])
+                list_contigs = " ".join(list(contigs_data.iloc[recursif_bin, 1]))
 
                 # Generate the fasta
-                mtp.extract_contigs(assembly, list_contigs, output_file)
+                cmd = "pyfastx extract {0} {1} > {2}".format(assembly, list_contigs, output_file)
+                process = sp.Popen(cmd, shell = True)
 
     return contigs_data
