@@ -448,6 +448,7 @@ class Partition(AbstractCommand):
             contigs_data,
             size,
             self.args["--outdir"],
+            temp_directory,
         )
 
         # Delete the temporary folder
@@ -566,7 +567,9 @@ class Validation(AbstractCommand):
             size,
         )
 
-        # Check and save if better
+        # Recursive iterations of Louvain on the contaminated bins. Save bin
+        # information if the new bins have the same quality otherwise keep the
+        # original bin information.
         if contamination:
 
             # Run checkm on the recursif bins.
@@ -578,12 +581,19 @@ class Validation(AbstractCommand):
                 threads,
             )
 
-            # TODO
-            # Check if the recursif bins are better or not
-            # mtv.compare_bins(overlapping_checkm_file, recursif_checkm_file)
+            # Compare
+            bin_summary = mtv.compare_bins(
+                overlapping_checkm_file, recursif_checkm_file
+            )
 
+        # Keep overlapping bin information
         else:
             logger.info("No contaminated bin have been found")
+            bin_summary = mio.read_results_checkm(overlapping_checkm_file)
+
+        # Save bin information in final file
+        bin_summary_file = join(outdir, "bin_summary.txt")
+        mio.write_checkm_summary(bin_summary, bin_summary_file)
 
         session = profiler.stop()
         profile_renderer = ConsoleRenderer(
@@ -711,7 +721,7 @@ class Pipeline(AbstractCommand):
         )
 
         network_file = join(self.args["--outdir"], "network.txt")
-        contigs_data =  join(self.args["--outdir"], "contigs_data_network.txt")
+        contigs_data = join(self.args["--outdir"], "contigs_data_network.txt")
 
         # Perform iterations of Louvain.
         if self.args["--louvain"] == "None":

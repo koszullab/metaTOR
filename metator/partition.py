@@ -149,7 +149,7 @@ def detect_core_bins(output_louvain, iterations):
     return core_bins, core_bins_iterations
 
 
-def generate_fasta(assembly, bins, contigs_data, size, output_dir):
+def generate_fasta(assembly, bins, contigs_data, size, output_dir, tmpdir):
     """Generate the fasta files of each bins from the assembly.
 
     Parameters:
@@ -167,6 +167,9 @@ def generate_fasta(assembly, bins, contigs_data, size, output_dir):
     output_dir : str
         Path to the output directory where the fasta of all the bin will be
         written.
+    tmpdir : str
+        Path to the temporary directory to write the temporary contigs list
+        files.
     """
 
     nb_bins = 0
@@ -187,9 +190,12 @@ def generate_fasta(assembly, bins, contigs_data, size, output_dir):
             # Define the output file.
             output_file = join(output_dir, "MetaTOR_{0}_0.fa".format(bin))
             # Create the fasta file.
-            list_contigs = " ".join(list_contigs)
-            cmd = "pyfastx extract {0} {1} > {2}".format(
-                assembly, list_contigs, output_file
+            contigs_file = join(tmpdir, "contigs.txt")
+            with open(contigs_file, "w") as f:
+                for item in list_contigs:
+                    f.write("%s\n" % item)
+            cmd = "pyfastx extract {0} -l {1} > {2}".format(
+                assembly, contigs_file, output_file
             )
             process = sp.Popen(cmd, shell=True)
     logger.info("{0} bins have been extracted".format(nb_bins))
@@ -270,7 +276,6 @@ def hamming_distance(core_bins_iterations, n_iter, threads):
     return res
 
 
-# TODO
 def louvain_iterations_cpp(network_file, iterations, tmp_dir, louvain_path):
     """Use the cpp original Louvain to partition the network.
 

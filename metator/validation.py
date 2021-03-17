@@ -68,26 +68,92 @@ def checkm(fasta_dir, outfile, tmpdir, threads):
     out, err = process.communicate()
 
     # Write the summary file
-    cmd = "checkm qa -q {0} {1} -o 1 > {2}".format(markers_set, tmpdir, outfile)
+    cmd = "checkm qa -q {0} {1} -o 2 > {2}".format(markers_set, tmpdir, outfile)
     logger.info(cmd)
     process = sp.Popen(cmd, shell=True)
     out, err = process.communicate()
 
 
-# TODO
 def compare_bins(overlapping_checkm_file, recursif_checkm_file):
     """Compare the completness and contamination of the bins and choose which
     are the most relevant bins.
 
     Parameters:
     -----------
+    overlapping_checkm_file : str
+        Path to the checkm summary from the overlapping step.
+    recursif_checkm_file : str
+        Path to the checkm summary from the recurisf step.
 
-    Recursif:
-    ---------
-
-
+    Returns:
+    --------
+    dict:
+        Dictionnary with the informations of the final bins kept by MetaTOR.
     """
-    return 0
+
+    # Load the checkm summary
+    checkm_summary_overlapping = mio.read_results_checkm(
+        overlapping_checkm_file
+    )
+    checkm_summary_recursif = mio.read_results_checkm(recursif_checkm_file)
+
+    # Prepare a dictionnary for a final summary.
+    checkm_summary = dict()
+
+    # Retrieve maximum completness of the recursif bins.
+    for recursive_bin in checkm_summary_recursif:
+        overlapping_bin = "_".join(
+            ["MetaTOR", recursive_bin.split("_")[1], "0"]
+        )
+        try:
+            checkm_summary_overlapping[overlapping_bin][
+                "max_rec_completness"
+            ] = max(
+                float(checkm_summary_recursif[recursive_bin]["completness"]),
+                checkm_summary_overlapping[overlapping_bin][
+                    "max_rec_completness"
+                ],
+            )
+            checkm_summary_overlapping[overlapping_bin]["rec_id"].append(
+                recursive_bin
+            )
+        except KeyError:
+            checkm_summary_overlapping[overlapping_bin][
+                "max_rec_completness"
+            ] = float(checkm_summary_recursif[recursive_bin]["completness"])
+            checkm_summary_overlapping[overlapping_bin]["rec_id"] = [
+                recursive_bin
+            ]
+
+    # If there are some recursif bins which have not loose too much completion
+    # write their information otherwise keep the original bins.
+    for overlapping_bin in checkm_summary_overlapping:
+        try:
+            max_rec = checkm_summary_overlapping[overlapping_bin][
+                "max_rec_completness"
+            ]
+            over = float(
+                checkm_summary_overlapping[overlapping_bin]["completness"]
+            )
+            if (max_rec > (over / 2)) & (max_rec > 50):
+                for rec_id in checkm_summary_overlapping[overlapping_bin][
+                    "rec_id"
+                ]:
+                    checkm_summary[rec_id] = checkm_summary_recursif[rec_id]
+            else:
+                checkm_summary_overlapping[overlapping_bin].pop(
+                    "max_rec_completness"
+                )
+                checkm_summary_overlapping[overlapping_bin].pop("rec_id")
+                checkm_summary[overlapping_bin] = checkm_summary_overlapping[
+                    overlapping_bin
+                ]
+        except KeyError:
+            checkm_summary[overlapping_bin] = checkm_summary_overlapping[
+                overlapping_bin
+            ]
+
+    return checkm_summary
 
 
 def louvain_recursif(
@@ -101,7 +167,35 @@ def louvain_recursif(
     network_file,
     size,
 ):
-    """Function to run recursive iterations on contaminated bins."""
+    """Function to run recursive iterations on contaminated bins in order to try
+    to improve the quality of the bins using Louvain algorthm.
+
+    Parameters:
+    -----------
+    assembly : str
+        Path to the fasta file used as assembly.
+    iterations : int
+        Number of iterations to use for recursive itarations of Louvain.
+    outdir : str
+        Path to the output directory.
+    louvain : str
+        Path to the directory to found louvain functions if you want to use the
+        cpp version instead of the python one.
+    tmpdir : str
+        Path the temp directory.
+    checkm_file : str
+        Path to the output file of checkm from checkm function.
+    contigs_data_file : str
+        Path to the contigs data file from metator partition.
+    network_file : str
+        Path to the network file from metator network.
+    size : int
+        Size threshodl in base pairs of the bins.
+
+    Return:
+    boolean:
+        True if at least one new bin has been generated.
+    """
 
     # Load CheckM result:
     checkm_summary = mio.read_results_checkm(checkm_file)
@@ -140,12 +234,10 @@ def louvain_recursif(
 
     # Iterate on chcekm summary to find conatminated bins:
     for bin_id in checkm_summary:
-        if (float(checkm_summary[bin_id]["completness"]) >= 0) & (
-            float(checkm_summary[bin_id]["contamination"]) >= 0
+        if (float(checkm_summary[bin_id]["completness"]) >= 50) & (
+            float(checkm_summary[bin_id]["contamination"]) >= 10
         ):
 
-            # Add a boolean to say that there is at least one bin contaminated
-            contamination = True
             logger.info("Bin in progress: {0}".format(bin_id))
             subnetwork_file = join(tmpdir, "subnetwork_" + bin_id + ".txt")
             bin_id = bin_id.split("_")[1]
@@ -185,8 +277,13 @@ def louvain_recursif(
             ) = mtp.detect_core_bins(output_louvain, iterations)
 
             # update bin data
-            contigs_data = update_contigs_data(
-                contigs_data, recursif_bins, assembly, outdir, size
+            contamination, contigs_data = update_contigs_data_recursif(
+                contigs_data,
+                recursif_bins,
+                assembly,
+                outdir,
+                size,
+                cotamination,
             )
 
     # Write the new file
@@ -196,15 +293,39 @@ def louvain_recursif(
     return contamination
 
 
-def update_contigs_data(contigs_data, recursif_bins, assembly, outdir, size):
+def update_contigs_data_recursif(
+    contigs_data, recursif_bins, assembly, outdir, tmpdir, size, contamination
+):
     """Update the data of the bin according to the recursif step and generated
     their fasta.
 
     Parameters:
     -----------
+    contigs_data : pandas.DataFrame
+        Table with all the data from the contigs.
+    recursif_bins : dict
+        Dictionnary which has  as keys the values of the iterations from Louvain
+        separated by a semicolon and as values the list of the id of the
+        contigs.
+    assembly : str
+        Path to the fasta file.
+    outdir : str
+        Path to the output directory to write the new fasta.
+    tmpdir : str
+        Path to the file where to write the temporary contigs list.
+    size : int
+        Size threshold to generate fasta.
+    contamination : boolean
+        True if one bin has already been generated, false otherwise.
 
     Returns:
     --------
+    boolean:
+        True if one bin has already been generated, false otherwise.
+    pandas.DataFrame
+        Updated dictionnary which has as keys the values of the iterations from
+        Louvain separated by a semicolon and as values the list of the id of the
+        contigs.
     """
 
     # Add recursif bin information
@@ -225,6 +346,9 @@ def update_contigs_data(contigs_data, recursif_bins, assembly, outdir, size):
 
             if recursif_bin_length > size:
 
+                # If one new bin is generated change the boolean value to True
+                contamination = True
+
                 # Defined name of the recursif bin
                 oc_id = contigs_data.iloc[recursif_bin[0], 9]
                 output_file = join(
@@ -232,10 +356,18 @@ def update_contigs_data(contigs_data, recursif_bins, assembly, outdir, size):
                 )
 
                 # Retrieve names of the contigs
-                list_contigs = " ".join(list(contigs_data.iloc[recursif_bin, 1]))
+                list_contigs = " ".join(
+                    list(contigs_data.iloc[recursif_bin, 1])
+                )
 
                 # Generate the fasta
-                cmd = "pyfastx extract {0} {1} > {2}".format(assembly, list_contigs, output_file)
-                process = sp.Popen(cmd, shell = True)
+                contigs_file = join(tmpdir, "contigs.txt")
+                with open(contigs_file, "w") as f:
+                    for item in list_contigs:
+                        f.write("%s\n" % item)
+                cmd = "pyfastx extract {0} -l {1} > {2}".format(
+                    assembly, contigs_file, output_file
+                )
+                process = sp.Popen(cmd, shell=True)
 
-    return contigs_data
+    return contamination, contigs_data

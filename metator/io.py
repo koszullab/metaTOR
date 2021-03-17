@@ -12,6 +12,7 @@ This mdoule contains all core I/O functions:
     - read_compressed
     - read_results_checkm
     - sort_pairs
+    - write_checkm_summary
 """
 
 import bz2
@@ -358,8 +359,14 @@ def read_results_checkm(checkm_file):
                 line = line.split()
                 checkm_summary[line[0]] = {
                     "lineage": line[1],
-                    "completness": line[12],
-                    "contamination": line[13],
+                    "completness": line[6],
+                    "contamination": line[7],
+                    "size": line[9],
+                    "contigs": line[12],
+                    "N50": line[14],
+                    "Longest_contig": line[19],
+                    "GC": line[20],
+                    "coding_density": line[22],
                 }
     checkm_summary.pop("Bin")
 
@@ -466,3 +473,21 @@ def sort_pairs(in_file, out_file, tmp_dir=None, threads=1, buffer="2G"):
             sort_cmd.append("--parallel={0}".format(threads))
         sort_proc = sp.Popen(sort_cmd, stdin=grep_proc.stdout, stdout=output)
         sort_proc.communicate()
+
+
+def write_checkm_summary(bin_summary, bin_summary_file):
+    """Function to write the bin summary from dictionnary to table text file.
+
+    Parameters:
+    -----------
+    bin_summary : dict
+        Dictionnary with the output of the checkM of the bins.
+    bin_summary_file : str
+        Path to the output file to write the summary informations of the bins.
+    """
+
+    # Transform dictionnary to pandas DataFrame.
+    bin_summary = pd.DataFrame.from_dict(bin_summary, orient="index")
+
+    # Write the file.
+    bin_summary.to_csv(bin_summary_file, sep="\t")
