@@ -293,16 +293,19 @@ class Network(AbstractCommand):
         normalized = self.args["--normalized"]
         self_contacts = self.args["--self-contacts"]
 
+        # Transform str input files in list splitting on comma
+        alignment_files = self.args["--input"].split(",")
+
         mtn.alignment_to_contacts(
-            bed2D_file=self.args["--input"],
-            genome=self.args["--genome"],
-            output_dir=self.args["--outdir"],
-            output_file_network=self.args["--output-file-network"],
-            output_file_contig_data=self.args["--output-file-contig-data"],
-            tmpdir=temp_directory,
-            n_cpus=self.args["--threads"],
-            normalized=normalized,
-            self_contacts=self_contacts,
+            alignment_files,
+            self.args["--genome"],
+            self.args["--outdir"],
+            self.args["--output-file-network"],
+            self.args["--output-file-contig-data"],
+            temp_directory,
+            self.args["--threads"],
+            normalized,
+            self_contacts,
         )
 
         # Delete the temporary folder

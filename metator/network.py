@@ -31,7 +31,7 @@ import metator.io as mio
 
 
 def alignment_to_contacts(
-    bed2D_file,
+    aligment_files,
     genome,
     output_dir,
     output_file_network="network.txt",
@@ -41,8 +41,8 @@ def alignment_to_contacts(
     normalized=True,
     self_contacts=False,
 ):
-    """Generates a network file (in edgelist form) from an alignment in bed2D
-    format. Contigs are the network nodes and the edges are the contact counts.
+    """Generates a network file (in edgelist form) from an alignment. Contigs
+    are the network nodes and the edges are the contact counts.
 
     The network is in a strict barebone form so that it can be reused and
     imported quickly into other applications etc. Verbose information about
@@ -51,8 +51,8 @@ def alignment_to_contacts(
 
     Parameters
     ----------
-    bed2D_file : str
-        Path to the bed2D file used as input
+    alignment_files : list of str
+        List of path to the alignment file used as input.
     genome : str
         The initial assembly path acting as the alignment file's reference
         genome.
@@ -84,13 +84,19 @@ def alignment_to_contacts(
     precompute_network_file = join(tmpdir, "precompute_network_file.txt")
     network_file = join(output_dir, output_file_network)
     contig_data_file = join(output_dir, output_file_contig_data)
+    hit_data_file = join(output_dir, "hit_data_alignment.txt")
 
-    # Create the contig data dictionnary
-    contig_data = create_contig_data(genome)
+    # Create the contig data dictionnary and hit from each alignments
+    nb_alignment = len(aligment_files)
+    contig_data, hit_data = create_contig_data(genome, nb_alignment)
 
-    # Create a contact file easily readable for counting the contacts
+    # Create a contact file easily readable for counting the contacts.
     contig_data = precompute_network(
-        bed2D_file, contig_data, precompute_network_file, self_contacts
+        aligment_files,
+        contig_data,
+        hit_data,
+        precompute_network_file,
+        self_contacts,
     )
 
     # Compute the coverage of the contigs
@@ -108,6 +114,7 @@ def alignment_to_contacts(
 
     # Write the data from the contigs
     write_contig_data(contig_data, contig_data_file)
+    write_hit_data(hit_data, hit_data_file)
 
     return contig_data
 
@@ -263,39 +270,34 @@ def compute_network(
         n_pairs += n_occ
 
 
-def create_contig_data(assembly):
+def create_contig_data(assembly, nb_alignment):
     """Create a dictionnary with data on each Contig.
 
     Paramaters
     ----------
     assembly : str
         Path to the assembly fasta file
+    nb_alignement : int
+        Numbers of alignment files.
 
     Return
     ------
-    dict():
+    dict:
         Dictionnary of the all the contigs from the assembly, the contigs names
         are the keys to the data of the contig available with the following
         keys: "id", "length", "GC", "hit", "coverage". Hit and coverage are set
         to 0 and need to be updated later.
+    dict:
+        Dictionnary for hit information on each contigs.
     """
-    # TODO: Avoid using the assembly file or make something with the choice. Now
-    # we are avoiding to build index each time.
-    # # Throw error if index does not exist
-    # index = mio.check_fasta_index(ref, mode="bowtie2")
-    # if index is None:
-    #     logger.error(
-    #         "Reference index is missing, please build the bowtie2 index first."
-    #     )
-    #     sys.exit(1)
-
-    # # Extract the name of the contigs and their length from the bowtie2 index
-    # cmd = (
-    #     "bowtie2-inspect -s {}"
-    # ).format(index)
 
     # Create a contig data dictionnary from the assembly file
     contig_data = dict()
+    if nb_alignment > 1:
+        hit_data = dict()
+    else:
+        hit_data = None
+
     global_id = 1
     for contig in SeqIO.parse(assembly, "fasta"):
         contig_name = contig.id
@@ -308,24 +310,30 @@ def create_contig_data(assembly):
             "hit": 0,
             "coverage": 0,
         }
+        if nb_alignment > 1:
+            hit_data[contig_name] = {"id": global_id, "hit": [0] * nb_alignment}
         global_id += 1
-    return contig_data
+    return contig_data, hit_data
 
 
-def precompute_network(bed2D_file, contig_data, out_file, self_contacts=False):
+def precompute_network(
+    aligment_files, contig_data, hit_data, out_file, self_contacts=False
+):
     """Write a file with only the contig id separated by a tabulation and count
     the contacts by contigs to be able to compute directlty the normalized
     network.
 
     Parameters
     ----------
-    bed2D_file : str
-        Path to the bed2D file.
+    alignment_files : str
+        List of path to the alignment file.
     contig_data : dict
         Dictionnary of the all the contigs from the assembly, the contigs names
         are the keys to the data of the contig available with the following
         keys: "id", "length", "GC", "hit", "coverage". Coverage still at 0 and
         need to be updated later.
+    hit_data : dict
+        Dictionnary with the count of hits for each aligment file.
     out_file : str
         Path to the write the output_file which will be necessary to compute the
         network.
@@ -348,51 +356,74 @@ def precompute_network(bed2D_file, contig_data, out_file, self_contacts=False):
     # Prepare a file to save contact with their global ID
     with open(out_file, "w") as pre_net:
 
-        # Read the 2D bed file and build pairs for the network
-        with open(bed2D_file, "r") as pairs:
-            for pair in pairs:
+        # Iterates on the alignment files
+        for i, aligment_file in enumerate(aligment_files):
 
-                # Split the line on the tabulation
-                p = pair.split("\t")
+            all_contacts_temp = 0
+            inter_contacts_temp = 0
 
-                # Extract the contig names which are at the position 2 and 6.
-                contig1, contig2 = p[1], p[5]
+            # Read the alignment_file and build pairs for the network
+            with open(aligment_file, "r") as pairs:
+                for pair in pairs:
 
-                id1 = contig_data[contig1]["id"]
-                id2 = contig_data[contig2]["id"]
+                    # Split the line on the tabulation
+                    p = pair.split("\t")
 
-                # Count the contact
-                all_contacts += 1
-                contig_data[contig1]["hit"] += 1
-                contig_data[contig2]["hit"] += 1
+                    # Extract the contig names which are at the position 2 and 6.
+                    contig1, contig2 = p[1], p[5]
 
-                # Write the file used for the computation of the network.
-                if self_contacts and id1 == id2:
-                    pre_net.write(
-                        "\t".join(map(str, [contig1, contig2])) + "\n"
-                    )
-                    # pre_net[pair] += 1
-                elif id1 < id2:
-                    inter_contacts += 1
-                    pre_net.write(
-                        "\t".join(map(str, [contig1, contig2])) + "\n"
-                    )
-                    # pre_net[pair] += 1
-                elif id1 > id2:
-                    inter_contacts += 1
-                    pre_net.write(
-                        "\t".join(map(str, [contig2, contig1])) + "\n"
-                    )
-                    # pre_net[pair] += 1
-        pairs.close()
-    pre_net.close()
+                    id1 = contig_data[contig1]["id"]
+                    id2 = contig_data[contig2]["id"]
+
+                    # Count the contact
+                    all_contacts_temp += 1
+                    contig_data[contig1]["hit"] += 1
+                    contig_data[contig2]["hit"] += 1
+                    if len(aligment_files) > 1:
+                        hit_data[contig1]["hit"][i] += 1
+                        hit_data[contig2]["hit"][i] += 1
+
+                    # Write the file used for the computation of the network.
+                    if self_contacts and id1 == id2:
+                        pre_net.write(
+                            "\t".join(map(str, [contig1, contig2])) + "\n"
+                        )
+                    elif id1 < id2:
+                        inter_contacts_temp += 1
+                        pre_net.write(
+                            "\t".join(map(str, [contig1, contig2])) + "\n"
+                        )
+                    elif id1 > id2:
+                        inter_contacts_temp += 1
+                        pre_net.write(
+                            "\t".join(map(str, [contig2, contig1])) + "\n"
+                        )
+
+            # Count contacts and return sample informations.
+            all_contacts += all_contacts_temp
+            inter_contacts += inter_contacts_temp
+            logger.info("Information of {0}:".format(aligment_file))
+            logger.info(
+                "{0} contacts in the library.".format(all_contacts_temp)
+            )
+            logger.info(
+                "{0} contacts inter-contigs in the library.".format(
+                    inter_contacts_temp
+                )
+            )
+            logger.info(
+                "3D ratio : {0}\n".format(
+                    inter_contacts_temp / all_contacts_temp
+                )
+            )
 
     # Return information about the network
+    logger.info("General information:")
     logger.info("{0} contacts in the library.".format(all_contacts))
     logger.info(
         "{0} contacts inter-contigs in the library.".format(inter_contacts)
     )
-    logger.info("3D ratio : {0}".format(inter_contacts / all_contacts))
+    logger.info("3D ratio : {0}\n".format(inter_contacts / all_contacts))
 
     return contig_data
 
@@ -425,6 +456,31 @@ def write_contig_data(contig_data, output_path):
                 idx, name, length, GC_content, hit, coverage
             )
             contig_data_file_handle.write(line)
+
+
+def write_hit_data(hit_data, output_path):
+    """Function to write the contig data file at the output path given. The file
+    will contains 6 columns separated by a tabulation: id, name, length,
+    GC_content, hit, coverage for each contig.
+
+    Parameters
+    ----------
+    hit_data : dict
+        Dictionnary of the all the contigs from the assembly, the contigs names
+        are the keys to a list of hits from each alignment files separately.
+    output_path : str
+        Path to the output file where the data from the dictionnary will be
+        written.
+    """
+
+    # For each contig extract the data and write them in the file.
+    with open(output_path, "w") as hit_data_file_handle:
+        for name in hit_data:
+            hit_list = map(str, hit_data[name]["hit"])
+            hit_str = "\t".join(hit_list)
+            idx = hit_data[name]["id"]
+            line = "{0}\t{1}\t{2}\n".format(idx, name, hit_str)
+            hit_data_file_handle.write(line)
 
 
 def contigs_bin_network(

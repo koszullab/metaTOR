@@ -49,7 +49,7 @@ def align(fq_in, index, bam_out, n_cpu):
     # Align the reads on the reference genome
     map_args = {"cpus": n_cpu, "fq": fq_in, "idx": index, "bam": bam_out}
     cmd = (
-        "bowtie2 -x {idx} -p {cpus} --quiet --very-sensitive-local {fq}"
+        "bowtie2 -x {idx} -p {cpus} --quiet --very-sensitive-local {fq} --no-unal"
     ).format(**map_args)
 
     map_process = sp.Popen(cmd, shell=True, stdout=sp.PIPE)
@@ -101,7 +101,7 @@ def merge_alignment(forward_aligned, reverse_aligned, out_file):
         for_read = next(for_bed)
         rev_read = next(rev_bed)
 
-        # Loop while at least one end of one fild is reached. It's possible to
+        # Loop while at least one end of one endd is reached. It's possible to
         # advance like that as the two bed files are sorted on the id of the
         # reads.
         for i in range(10 ** 12):
@@ -185,10 +185,10 @@ def pairs_alignment(
 
     Returns
     -------
-    str:
-        File with the Table containing the alignement data of the pairs: ReadID,
-        ContigA, Position_startA, Position_endA, StrandA, ContigB,
-        Position_startB, Position_endB, StrandB
+    list of str:
+        List of path of the Files with the Table containing the alignement data
+        of the pairs: ReadID, ContigA, Position_startA, Position_endA, StrandA,
+        ContigB, Position_startB, Position_endB, StrandB.
     """
 
     # Check what is the reference. If fasta given build it. If not a bowtie2
@@ -207,33 +207,43 @@ def pairs_alignment(
             )
             sys.exit(1)
 
-    # Create a temporary file to save the alignment.
-    temp_alignment_for = join(tmp_dir, "temp_alignment_for.bam")
-    temp_alignment_rev = join(tmp_dir, "temp_alignment_rev.bam")
-    filtered_out_for = join(tmp_dir, "for_temp_alignment.bed")
-    filtered_out_rev = join(tmp_dir, "rev_temp_alignment.bed")
-    out_file = join(out_dir, "alignment.bed")
+    # Iterates on all the fastq files:
+    for_fq_list = for_fq_in.split(",")
+    rev_fq_list = rev_fq_in.split(",")
+    out_file_list = []
 
-    # Align the forward reads
-    logger.info("Alignement of the forward reads:")
-    align(for_fq_in, index, temp_alignment_for, n_cpu)
+    for i in range(len(for_fq_list)):
+        for_fq_in = for_fq_list[i]
+        rev_fq_in = rev_fq_list[i]
+        name = "alignement_" + str(i)
 
-    # Filters the aligned and non aligned reads
-    process_bamfile(temp_alignment_for, min_qual, filtered_out_for)
+        # Create a temporary file to save the alignment.
+        temp_alignment_for = join(out_dir, name + "_for.bam")
+        temp_alignment_rev = join(out_dir, name + "_rev.bam")
+        filtered_out_for = join(tmp_dir, name + "_for_temp.bed")
+        filtered_out_rev = join(tmp_dir, name + "_rev_temp.bed")
+        out_file = join(out_dir, name + ".bed")
+        out_file_list.append(out_file)
 
-    # Align the reverse reads
-    logger.info("Alignement of the reverse reads:")
-    align(rev_fq_in, index, temp_alignment_rev, n_cpu)
+        # Align the forward reads
+        logger.info("Alignement of {0}:".format(for_fq_in))
+        align(for_fq_in, index, temp_alignment_for, n_cpu)
 
-    # Filters the aligned and non aligned reads
-    process_bamfile(temp_alignment_rev, min_qual, filtered_out_rev)
+        # Filters the aligned and non aligned reads
+        process_bamfile(temp_alignment_for, min_qual, filtered_out_for)
 
-    # Merge alignement to create a pairs file
-    logger.info("Merging the pairs:")
-    merge_alignment(filtered_out_for, filtered_out_rev, out_file)
+        # Align the reverse reads
+        logger.info("Alignement of {0}:".format(rev_fq_in))
+        align(rev_fq_in, index, temp_alignment_rev, n_cpu)
 
-    # pairs.to_csv(out_file, sep="\t", index=False, header=False)
-    return out_file
+        # Filters the aligned and non aligned reads
+        process_bamfile(temp_alignment_rev, min_qual, filtered_out_rev)
+
+        # Merge alignement to create a pairs file
+        logger.info("Merging the pairs:")
+        merge_alignment(filtered_out_for, filtered_out_rev, out_file)
+
+    return out_file_list
 
 
 def process_bamfile(alignment, min_qual, filtered_out):
