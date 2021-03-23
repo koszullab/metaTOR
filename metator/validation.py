@@ -25,7 +25,7 @@ from metator.log import logger
 from os.path import join
 
 
-def checkm(fasta_dir, outfile, tmpdir, threads):
+def checkm(fasta_dir, outfile, outdir, tmpdir, threads):
     """Function to evaluate fasta bins using CheckM. Write a result summary in a
     text file.
 
@@ -48,6 +48,13 @@ def checkm(fasta_dir, outfile, tmpdir, threads):
     cmd = "checkm tree -q -t {0} -x fa {1} {2}".format(
         threads, fasta_dir, tmpdir
     )
+    logger.info(cmd)
+    process = sp.Popen(cmd, shell=True)
+    out, err = process.communicate()
+
+    # Build taxonomy values of the bins
+    taxonomy_file = join(outdir, "taxonomy.txt")
+    cmd = "checkm tree_qa {0} -q -o 1 -f {1}".format(tmpdir, taxonomy_file)
     logger.info(cmd)
     process = sp.Popen(cmd, shell=True)
     out, err = process.communicate()
@@ -154,7 +161,7 @@ def compare_bins(overlapping_checkm_file, recursif_checkm_file):
             ]
 
     return checkm_summary
-
+   
 
 def louvain_recursif(
     assembly,
@@ -197,6 +204,8 @@ def louvain_recursif(
         True if at least one new bin has been generated.
     """
 
+    threads = 1
+
     # Load CheckM result:
     checkm_summary = mio.read_results_checkm(checkm_file)
 
@@ -235,7 +244,7 @@ def louvain_recursif(
     # Iterate on chcekm summary to find conatminated bins:
     for bin_id in checkm_summary:
         if (float(checkm_summary[bin_id]["completness"]) >= 50) & (
-            float(checkm_summary[bin_id]["contamination"]) >= 10
+            float(checkm_summary[bin_id]["contamination"]) >= 5
         ):
 
             logger.info("Bin in progress: {0}".format(bin_id))
@@ -272,9 +281,25 @@ def louvain_recursif(
             # Detect core bins
             logger.info("Detect recursive bins:")
             (
-                recursif_bins,
+                recursif_core_bins,
                 recursif_bins_iterations,
             ) = mtp.detect_core_bins(output_louvain, iterations)
+            
+            # Compute the Hamming distance between core bins.
+            logger.info("Detect overlapping bins:")
+            hamming_distance = mtp.hamming_distance(
+                recursif_bins_iterations,
+                iterations,
+                threads,
+            )
+
+            # Defined overlapping bins according to the threshold
+            recursif_bins = mtp.defined_overlapping_bins(
+                0.9,
+                hamming_distance,
+                recursif_core_bins,
+                recursif_bins_iterations,
+            )
 
             # update bin data
             contamination, contigs_data = update_contigs_data_recursif(
@@ -282,15 +307,16 @@ def louvain_recursif(
                 recursif_bins,
                 assembly,
                 outdir,
+                tmpdir,
                 size,
-                cotamination,
+                contamination,
             )
 
     # Write the new file
-    contig_data_file_2 = join(outdir, "contig_data_rec.txt")
+    contig_data_file_2 = join(outdir, "contig_data_recursif.txt")
     contigs_data.to_csv(contig_data_file_2, sep="\t", header=None, index=False)
 
-    return contamination
+    return contamination, contigs_data
 
 
 def update_contigs_data_recursif(
@@ -342,7 +368,6 @@ def update_contigs_data_recursif(
             contigs_data.iloc[recursif_bin, 12] = rec_id
             contigs_data.iloc[recursif_bin, 13] = recursif_bin_contigs_number
             contigs_data.iloc[recursif_bin, 14] = recursif_bin_length
-            rec_id += 1
 
             if recursif_bin_length > size:
 
@@ -356,18 +381,54 @@ def update_contigs_data_recursif(
                 )
 
                 # Retrieve names of the contigs
-                list_contigs = " ".join(
-                    list(contigs_data.iloc[recursif_bin, 1])
-                )
+                list_contigs = list(contigs_data.iloc[recursif_bin, 1])
 
                 # Generate the fasta
-                contigs_file = join(tmpdir, "contigs.txt")
+                contigs_file = join(tmpdir, "MetaTOR_{0}_{1}.txt".format(oc_id, rec_id))
                 with open(contigs_file, "w") as f:
-                    for item in list_contigs:
-                        f.write("%s\n" % item)
+                    for contig in list_contigs:
+                        f.write("{0}\n".format(contig))
                 cmd = "pyfastx extract {0} -l {1} > {2}".format(
                     assembly, contigs_file, output_file
                 )
                 process = sp.Popen(cmd, shell=True)
+                rec_id += 1
 
     return contamination, contigs_data
+
+
+def write_bins_contigs(bin_summary, contigs_data, outfile):
+    """Function to write a table with the nodes kept in the bins and their bin 
+    id. The file is adapted to be added in anvio.
+
+    Parameters:
+    -----------
+    bin_summary : dict
+        Dictionnary with the informations of the final bins kept by MetaTOR.
+    contigs_data : pandas.core.frame.DataFrame
+        Dataframe with the contigs informations.
+    outfile : str
+        Path where to write the output file.
+    """
+
+    # Create a list with the id of the bins
+    list_bin_id =  []
+    for bin_name in bin_summary:
+        over_id = bin_name.split("_")[1]
+        rec_id = bin_name.split("_")[2]
+        list_bin_id.append((over_id, rec_id))
+
+    # Write the contigs id with their bins id in table file 
+    with open(outfile, "w") as f:
+        for i in range(len(contigs_data)):
+            over_id = str(contigs_data.iloc[i,]["oc_id"])
+            rec_id = str(contigs_data.iloc[i,]["rec_id"])
+            #print(over_id, rec_id)
+            if (over_id, rec_id) in list_bin_id:
+                f.write(
+                    "{0}\tMetaTOR_{1}_{2}\n".format(
+                        contigs_data.iloc[i,]["name"],
+                        over_id, 
+                        rec_id,
+                    )
+                )

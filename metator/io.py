@@ -19,6 +19,7 @@ import bz2
 import gzip
 import io
 import os
+import pandas as pd
 import pathlib
 import re
 import subprocess as sp
@@ -364,9 +365,9 @@ def read_results_checkm(checkm_file):
                     "size": line[9],
                     "contigs": line[12],
                     "N50": line[14],
-                    "Longest_contig": line[19],
-                    "GC": line[20],
-                    "coding_density": line[22],
+                    "Longest_contig": line[18],
+                    "GC": line[19],
+                    "coding_density": line[21],
                 }
     checkm_summary.pop("Bin")
 

@@ -550,12 +550,13 @@ class Validation(AbstractCommand):
         mtv.checkm(
             self.args["--fasta"],
             overlapping_checkm_file,
+            self.args["--outdir"],
             temp_directory,
             threads,
         )
 
         # Iterates Louvain on contaminated and complete bins
-        contamination = mtv.louvain_recursif(
+        contamination, contigs_data = mtv.louvain_recursif(
             self.args["--assembly"],
             iterations,
             self.args["--outdir"],
@@ -577,6 +578,7 @@ class Validation(AbstractCommand):
             mtv.checkm(
                 self.args["--outdir"],
                 recursif_checkm_file,
+                self.args["--outdir"],
                 temp_directory,
                 threads,
             )
@@ -592,8 +594,12 @@ class Validation(AbstractCommand):
             bin_summary = mio.read_results_checkm(overlapping_checkm_file)
 
         # Save bin information in final file
-        bin_summary_file = join(outdir, "bin_summary.txt")
+        bin_summary_file = join(self.args["--outdir"], "bin_summary.txt")
         mio.write_checkm_summary(bin_summary, bin_summary_file)
+
+        # Write relevant bins/contigs information for anvio.
+        binning_file = join(self.args["--outdir"], "binning.txt")
+        mtv.write_bins_contigs(bin_summary, contigs_data, binning_file)
 
         session = profiler.stop()
         profile_renderer = ConsoleRenderer(
@@ -773,6 +779,7 @@ class Pipeline(AbstractCommand):
             contigs_data,
             size,
             self.args["--outdir"],
+            temp_directory,
         )
 
         # TODO: Launch validation if necessary.

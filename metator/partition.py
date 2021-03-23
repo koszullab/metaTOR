@@ -190,7 +190,7 @@ def generate_fasta(assembly, bins, contigs_data, size, output_dir, tmpdir):
             # Define the output file.
             output_file = join(output_dir, "MetaTOR_{0}_0.fa".format(bin))
             # Create the fasta file.
-            contigs_file = join(tmpdir, "contigs.txt")
+            contigs_file = join(tmpdir, "MetaTOR_{0}_0.txt".format(bin))
             with open(contigs_file, "w") as f:
                 for item in list_contigs:
                     f.write("%s\n" % item)
@@ -204,7 +204,6 @@ def generate_fasta(assembly, bins, contigs_data, size, output_dir, tmpdir):
             round(length_bins / 10 ** 6, 3)
         )
     )
-    return 0
 
 
 def get_distances_splitmat(bins, core_bins_iterations):
