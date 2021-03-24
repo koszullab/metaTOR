@@ -533,8 +533,14 @@ class Validation(AbstractCommand):
         overlapping_checkm_file = join(
             self.args["--outdir"], "overlapping_checkm_results.txt"
         )
+        overlapping_taxonomy_file = join(
+            self.args["--outdir"], "overlapping_checkm_taxonomy.txt"
+        )
         recursif_checkm_file = join(
             self.args["--outdir"], "recursif_checkm_results.txt"
+        )
+        recursif_taxonomy_file = join(
+            self.args["--outdir"], "recursif_checkm_taxonomy.txt"
         )
 
         # Transform numeric variable as numeric
@@ -553,7 +559,7 @@ class Validation(AbstractCommand):
         mtv.checkm(
             self.args["--fasta"],
             overlapping_checkm_file,
-            self.args["--outdir"],
+            overlapping_taxonomy_file,
             temp_directory,
             threads,
         )
@@ -566,6 +572,7 @@ class Validation(AbstractCommand):
             self.args["--louvain"],
             temp_directory,
             overlapping_checkm_file,
+            overlapping_taxonomy_file,
             self.args["--contigs"],
             self.args["--network"],
             size,
@@ -581,20 +588,20 @@ class Validation(AbstractCommand):
             mtv.checkm(
                 self.args["--outdir"],
                 recursif_checkm_file,
-                self.args["--outdir"],
+                recursif_taxonomy_file,
                 temp_directory,
                 threads,
             )
 
             # Compare
             bin_summary = mtv.compare_bins(
-                overlapping_checkm_file, recursif_checkm_file
+                overlapping_checkm_file, overlapping_taxonomy_file, recursif_checkm_file, recursif_taxonomy_file
             )
 
         # Keep overlapping bin information
         else:
             logger.info("No contaminated bin have been found")
-            bin_summary = mio.read_results_checkm(overlapping_checkm_file)
+            bin_summary = mio.read_results_checkm(overlapping_checkm_file, overlapping_taxonomy_file)
 
         # Save bin information in final file
         bin_summary_file = join(self.args["--outdir"], "bin_summary.txt")
@@ -703,7 +710,7 @@ class Pipeline(AbstractCommand):
                 fasta = self.args["--fasta"]
                 index = self.args["--fasta"]
         else:
-            fasta = mio.retreive_fasta(temp_directory, temp_directory)
+            fasta = mio.retrieve_fasta(temp_directory, temp_directory)
 
         # Align pair-end reads with bowtie2.
         pairs = mta.pairs_alignment(

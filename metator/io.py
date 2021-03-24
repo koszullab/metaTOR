@@ -333,7 +333,7 @@ def read_compressed(filename):
         return open(filename, "r")
 
 
-def read_results_checkm(checkm_file):
+def read_results_checkm(checkm_file, checkm_taxonomy_file):
     """Function to transform the output summary file of checkm into a
     dictionnary.
 
@@ -352,7 +352,7 @@ def read_results_checkm(checkm_file):
     # Create an empty dictionnary
     checkm_summary = dict()
 
-    # Read the file.
+    # Read the checkm summary file.
     with open(checkm_file, "r") as checkm_lines:
         for line in checkm_lines:
             # Only keep informative lines which start with a space.
@@ -365,19 +365,30 @@ def read_results_checkm(checkm_file):
                     "size": line[9],
                     "contigs": line[12],
                     "N50": line[14],
-                    "Longest_contig": line[18],
+                    "longest_contig": line[18],
                     "GC": line[19],
                     "coding_density": line[21],
+                    "taxonomy": "-"
                 }
+    
+    # Read the taxonomy file.
+    with open(checkm_taxonomy_file, "r") as checkm_lines:
+        for line in checkm_lines:
+            # Only keep informative lines which start with a space.
+            if line[0] == " ":
+                line = line.split()
+                checkm_summary[line[0]]["taxonomy"] = line[3]
+
+    # remove the bin header
     checkm_summary.pop("Bin")
 
     return checkm_summary
 
 
-def retreive_fasta(in_file, tmpdir):
+def retrieve_fasta(in_file, tmpdir):
     """
-    Function to retreive fasta from the given reference file. If index is given
-    retreive it using bowtie2 inspect. Thraw an error if not a fasta or bowtie2
+    Function to retrieve fasta from the given reference file. If index is given
+    retrieve it using bowtie2 inspect. Thraw an error if not a fasta or bowtie2
     index.
 
     Parameters:
@@ -396,7 +407,7 @@ def retreive_fasta(in_file, tmpdir):
         fasta = in_file
     else:
         if check_fasta_index(in_file):
-            logger.info("Retreive fasta from bowtie2 index.")
+            logger.info("Retrieve fasta from bowtie2 index.")
             fasta = join(tmpdir, "assembly.fa")
             cmd = "bowtie2-inspect {0} > {1}".format(in_file, fasta)
             process = sp.Popen(cmd, shell=True, stdout=sp.PIPE)

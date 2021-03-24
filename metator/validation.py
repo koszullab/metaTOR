@@ -25,7 +25,7 @@ from metator.log import logger
 from os.path import join
 
 
-def checkm(fasta_dir, outfile, outdir, tmpdir, threads):
+def checkm(fasta_dir, outfile, taxonomy_file, tmpdir, threads):
     """Function to evaluate fasta bins using CheckM. Write a result summary in a
     text file.
 
@@ -35,6 +35,8 @@ def checkm(fasta_dir, outfile, outdir, tmpdir, threads):
         Path to the input fasta of the bins to evaluate.
     outfile : str
         Path to the file where the results of checkm will be written.
+    taxonomy_file : str
+        path to the file where checkm taxonomy results will be written.
     tmpdir : str
         Path to the temporary directory where CheckM intermediary files will be
         written.
@@ -53,7 +55,6 @@ def checkm(fasta_dir, outfile, outdir, tmpdir, threads):
     out, err = process.communicate()
 
     # Build taxonomy values of the bins
-    taxonomy_file = join(outdir, "taxonomy.txt")
     cmd = "checkm tree_qa {0} -q -o 1 -f {1}".format(tmpdir, taxonomy_file)
     logger.info(cmd)
     process = sp.Popen(cmd, shell=True)
@@ -81,7 +82,7 @@ def checkm(fasta_dir, outfile, outdir, tmpdir, threads):
     out, err = process.communicate()
 
 
-def compare_bins(overlapping_checkm_file, recursif_checkm_file):
+def compare_bins(overlapping_checkm_file, overlapping_taxonomy_file, recursif_checkm_file, recursif_taxonomy_file):
     """Compare the completness and contamination of the bins and choose which
     are the most relevant bins.
 
@@ -89,9 +90,12 @@ def compare_bins(overlapping_checkm_file, recursif_checkm_file):
     -----------
     overlapping_checkm_file : str
         Path to the checkm summary from the overlapping step.
+    overlapping_taxonomy_file : str
+        path to the overlapping checkm taxonomy results file.
     recursif_checkm_file : str
         Path to the checkm summary from the recurisf step.
-
+    recursif_taxonomy_file : str
+        path to the recursif checkm taxonomy results file.
     Returns:
     --------
     dict:
@@ -100,9 +104,9 @@ def compare_bins(overlapping_checkm_file, recursif_checkm_file):
 
     # Load the checkm summary
     checkm_summary_overlapping = mio.read_results_checkm(
-        overlapping_checkm_file
+        overlapping_checkm_file, overlapping_taxonomy_file
     )
-    checkm_summary_recursif = mio.read_results_checkm(recursif_checkm_file)
+    checkm_summary_recursif = mio.read_results_checkm(recursif_checkm_file, recursif_taxonomy_file)
 
     # Prepare a dictionnary for a final summary.
     checkm_summary = dict()
@@ -170,6 +174,7 @@ def louvain_recursif(
     louvain,
     tmpdir,
     checkm_file,
+    taxonomy_file,
     contigs_data_file,
     network_file,
     size,
@@ -191,7 +196,9 @@ def louvain_recursif(
     tmpdir : str
         Path the temp directory.
     checkm_file : str
-        Path to the output file of checkm from checkm function.
+        Path to the output file of CheckM from checkm function.
+    taxonomy_file : str
+        Path to the taxonomy CheckM file.
     contigs_data_file : str
         Path to the contigs data file from metator partition.
     network_file : str
@@ -207,7 +214,7 @@ def louvain_recursif(
     threads = 1
 
     # Load CheckM result:
-    checkm_summary = mio.read_results_checkm(checkm_file)
+    checkm_summary = mio.read_results_checkm(checkm_file, taxonomy_file)
 
     # Load network:
     network = nx.read_edgelist(
@@ -419,9 +426,9 @@ def write_bins_contigs(bin_summary, contigs_data, outfile):
         over_id = bin_name.split("_")[1]
         rec_id = bin_name.split("_")[2]
         try:
-            list_bin_id[over_id].append(rec_id)
+            list_bin_id[int(over_id)].append(rec_id)
         except KeyError:
-            list_bin_id[over_id] = [rec_id]
+            list_bin_id[int(over_id)] = [rec_id]
 
     # Write the contigs id with their bins id in table file
     with open(outfile, "w") as f:
@@ -437,7 +444,7 @@ def write_bins_contigs(bin_summary, contigs_data, outfile):
                 ]["rec_id"]
             )
             try:
-                rec_ids = list_bin_id[over_id]
+                rec_ids = list_bin_id[int(over_id)]
                 if rec_id in rec_ids:
                     f.write(
                         "{0}\tMetaTOR_{1}_{2}\n".format(

@@ -114,7 +114,8 @@ def alignment_to_contacts(
 
     # Write the data from the contigs
     write_contig_data(contig_data, contig_data_file)
-    write_hit_data(hit_data, hit_data_file)
+    if nb_alignment > 1:
+        write_hit_data(hit_data, hit_data_file)
 
     return contig_data
 
