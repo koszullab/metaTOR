@@ -595,13 +595,21 @@ class Validation(AbstractCommand):
 
             # Compare
             bin_summary = mtv.compare_bins(
-                overlapping_checkm_file, overlapping_taxonomy_file, recursif_checkm_file, recursif_taxonomy_file
+                overlapping_checkm_file,
+                overlapping_taxonomy_file,
+                recursif_checkm_file,
+                recursif_taxonomy_file,
             )
 
         # Keep overlapping bin information
         else:
             logger.info("No contaminated bin have been found")
-            bin_summary = mio.read_results_checkm(overlapping_checkm_file, overlapping_taxonomy_file)
+            bin_summary = mio.read_results_checkm(
+                overlapping_checkm_file, overlapping_taxonomy_file
+            )
+
+        # Retrurn some values of efficiency of the binning.
+        mtv.give_results_info(bin_summary)
 
         # Save bin information in final file
         bin_summary_file = join(self.args["--outdir"], "bin_summary.txt")

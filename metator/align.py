@@ -215,7 +215,7 @@ def pairs_alignment(
     for i in range(len(for_fq_list)):
         for_fq_in = for_fq_list[i]
         rev_fq_in = rev_fq_list[i]
-        name = "alignement_" + str(i)
+        name = "alignment_" + str(i)
 
         # Create a temporary file to save the alignment.
         temp_alignment_for = join(out_dir, name + "_for.bam")
@@ -226,14 +226,14 @@ def pairs_alignment(
         out_file_list.append(out_file)
 
         # Align the forward reads
-        logger.info("Alignement of {0}:".format(for_fq_in))
+        logger.info("Alignment of {0}:".format(for_fq_in))
         align(for_fq_in, index, temp_alignment_for, n_cpu)
 
         # Filters the aligned and non aligned reads
         process_bamfile(temp_alignment_for, min_qual, filtered_out_for)
 
         # Align the reverse reads
-        logger.info("Alignement of {0}:".format(rev_fq_in))
+        logger.info("Alignment of {0}:".format(rev_fq_in))
         align(rev_fq_in, index, temp_alignment_rev, n_cpu)
 
         # Filters the aligned and non aligned reads

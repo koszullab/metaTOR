@@ -368,9 +368,9 @@ def read_results_checkm(checkm_file, checkm_taxonomy_file):
                     "longest_contig": line[18],
                     "GC": line[19],
                     "coding_density": line[21],
-                    "taxonomy": "-"
+                    "taxonomy": "-",
                 }
-    
+
     # Read the taxonomy file.
     with open(checkm_taxonomy_file, "r") as checkm_lines:
         for line in checkm_lines:

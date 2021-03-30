@@ -82,7 +82,12 @@ def checkm(fasta_dir, outfile, taxonomy_file, tmpdir, threads):
     out, err = process.communicate()
 
 
-def compare_bins(overlapping_checkm_file, overlapping_taxonomy_file, recursif_checkm_file, recursif_taxonomy_file):
+def compare_bins(
+    overlapping_checkm_file,
+    overlapping_taxonomy_file,
+    recursif_checkm_file,
+    recursif_taxonomy_file,
+):
     """Compare the completness and contamination of the bins and choose which
     are the most relevant bins.
 
@@ -106,7 +111,9 @@ def compare_bins(overlapping_checkm_file, overlapping_taxonomy_file, recursif_ch
     checkm_summary_overlapping = mio.read_results_checkm(
         overlapping_checkm_file, overlapping_taxonomy_file
     )
-    checkm_summary_recursif = mio.read_results_checkm(recursif_checkm_file, recursif_taxonomy_file)
+    checkm_summary_recursif = mio.read_results_checkm(
+        recursif_checkm_file, recursif_taxonomy_file
+    )
 
     # Prepare a dictionnary for a final summary.
     checkm_summary = dict()
@@ -326,6 +333,51 @@ def louvain_recursif(
     return contamination, contigs_data
 
 
+def give_results_info(bin_summary):
+    """Function to return the general information about the binning results.
+
+    Parameters:
+    -----------
+    bin_summary : dict
+        Dictionnary with the summary results of the kept bins.
+    """
+
+    # Defined categories of the bins
+    HQ = 0  # Completness >= 90 and Contamination <= 10
+    MQ = 0  # Completness >= 70 and Contamination <= 10
+    LQ = 0  # Completness >= 50 and Contamination <= 10
+    conta_bins = 0  # Completness >= 50 and Contamination > 10
+    others = 0
+
+    # Class each bin in a category
+    for bin_name in bin_summary:
+        completness = float(bin_summary[bin_name]["completness"])
+        contamination = float(bin_summary[bin_name]["contamination"])
+        if completness >= 50:
+            if contamination > 10:
+                conta_bins += 1
+            else:
+                if completness >= 90:
+                    HQ += 1
+                elif completness >= 70:
+                    MQ += 1
+                else:
+                    LQ += 1
+        else:
+            others += 1
+    total = HQ + MQ + LQ + conta_bins + others
+
+    # Return info in the logger:
+    logger.info(
+        "{0} bins have been kept after the recursive iterations.".format(total)
+    )
+    logger.info("HQ MAGs: {0}".format(HQ))
+    logger.info("MQ MAGs: {0}".format(MQ))
+    logger.info("LQ MAGs: {0}".format(LQ))
+    logger.info("Contaminated potential MAGs: {0}".format(conta_bins))
+    logger.info("Others bins: {0}".format(others))
+
+
 def update_contigs_data_recursif(
     contigs_data, recursif_bins, assembly, outdir, tmpdir, size, contamination
 ):
@@ -421,14 +473,14 @@ def write_bins_contigs(bin_summary, contigs_data, outfile):
     """
 
     # Create a list with the id of the bins
-    list_bin_id = []
+    list_bin_id = dict()
     for bin_name in bin_summary:
         over_id = bin_name.split("_")[1]
         rec_id = bin_name.split("_")[2]
         try:
-            list_bin_id[int(over_id)].append(rec_id)
+            list_bin_id[over_id].append(rec_id)
         except KeyError:
-            list_bin_id[int(over_id)] = [rec_id]
+            list_bin_id[over_id] = [rec_id]
 
     # Write the contigs id with their bins id in table file
     with open(outfile, "w") as f:
@@ -444,7 +496,7 @@ def write_bins_contigs(bin_summary, contigs_data, outfile):
                 ]["rec_id"]
             )
             try:
-                rec_ids = list_bin_id[int(over_id)]
+                rec_ids = list_bin_id[over_id]
                 if rec_id in rec_ids:
                     f.write(
                         "{0}\tMetaTOR_{1}_{2}\n".format(
