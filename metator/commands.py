@@ -397,15 +397,21 @@ class Partition(AbstractCommand):
             threads = int(self.args["--threads"])
 
         # Perform the iterations of Louvain to partition the network.
-        logger.info("Start iterations of Louvain:")
+        logger.info("Start iterations:")
 
-        if self.args["--louvain"] == "None":
-            output_louvain = mtp.louvain_iterations_py(
+        if self.args["--louvain"] == "leiden":
+            output_partition = mtp.leiden_iterations(
+                self.args["--network-file"],
+                iterations,
+                5,
+            )
+        elif self.args["--louvain"] == "louvain":
+            output_partition = mtp.louvain_iterations_py(
                 self.args["--network-file"],
                 iterations,
             )
         else:
-            output_louvain = mtp.louvain_iterations_cpp(
+            output_partition = mtp.louvain_iterations_cpp(
                 self.args["--network-file"],
                 iterations,
                 temp_directory,
@@ -417,7 +423,7 @@ class Partition(AbstractCommand):
         (
             core_bins,
             core_bins_iterations,
-        ) = mtp.detect_core_bins(output_louvain, iterations)
+        ) = mtp.detect_core_bins(output_partition, iterations)
 
         # Compute the Hamming distance between core bins.
         logger.info("Detect overlapping bins:")
@@ -749,12 +755,12 @@ class Pipeline(AbstractCommand):
 
         # Perform iterations of Louvain.
         if self.args["--louvain"] == "None":
-            output_louvain = mtp.louvain_iterations_py(
+            output_partition = mtp.louvain_iterations_py(
                 network_file,
                 iterations,
             )
         else:
-            output_louvain = mtp.louvain_iterations_cpp(
+            output_partition = mtp.louvain_iterations_cpp(
                 network_file,
                 iterations,
                 temp_directory,
@@ -765,7 +771,7 @@ class Pipeline(AbstractCommand):
         (
             core_bins,
             core_bins_iterations,
-        ) = mtp.detect_core_bins(output_louvain, iterations)
+        ) = mtp.detect_core_bins(output_partition, iterations)
 
         # Compute the Hamming distance between core bins.
         hamming_distance = mtp.hamming_distance(

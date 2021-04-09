@@ -20,9 +20,11 @@ Core functions to partition the network are:
 """
 
 
-import multiprocessing
 import community as community_louvain
+import igraph
+import leidenalg
 import metator.io as mio
+import multiprocessing
 import networkx as nx
 import numpy as np
 import pandas as pd
@@ -98,7 +100,7 @@ def defined_overlapping_bins(
     return overlapping_bins
 
 
-def detect_core_bins(output_louvain, iterations):
+def detect_core_bins(output_partition, iterations):
     """Detect core bins from the output of louvain
 
     The function search for duplicated values in the output of Louvain algorithm
@@ -107,7 +109,7 @@ def detect_core_bins(output_louvain, iterations):
 
     Parameters
     ----------
-    output_louvain : dict
+    output_partition : dict
         Dictionnary with the id of the contig as key and the list of the results
         of each iterations separated by a semicolon as values.
     iterations : int
@@ -128,7 +130,7 @@ def detect_core_bins(output_louvain, iterations):
     # Create dictionnary for core bins
     core_bins = {}
     core_bins_iterations = np.empty((0, iterations), int)
-    for key, value in output_louvain.items():
+    for key, value in output_partition.items():
         if value not in core_bins:
             core_bins[value] = [key]
             # Add a line to compute the array used to compute the distance
@@ -275,6 +277,61 @@ def hamming_distance(core_bins_iterations, n_iter, threads):
     return res
 
 
+def leiden_iterations(network_file, iterations, resolution_parameter):
+    """Use the Leiden algorithm to partition the network.
+
+    Parameters:
+    -----------
+    network_file : str
+        Path to the network computed previously. The file is 3 columns table
+        separated by a tabulation with the id of the first contigs the id of the
+        second one and the weights of the edge normalized or not.
+    iterations : int
+        Number of iterations of the algorithm of Leiden.
+    resolution_parameter : float
+        Parameter to use for partition the graph.
+
+    Returns:
+    --------
+    dict:
+        Dictionnary with the id of the contig as key and the list of the results
+        of each iterations separated by a semicolon as values.
+    """
+
+    # Create output dictionnary.
+    output_leiden = dict()
+
+    # Transform network as igraph:
+    network = igraph.Graph.Read_Ncol(
+        network_file, names=True, weights=True, directed=False
+    )
+    weights = network.es["weight"]
+
+    # Partition the network with Leiden algorithm with multiple iterations:
+    for i in range(iterations):
+        partition = leidenalg.find_partition(
+            network,
+            leidenalg.RBConfigurationVertexPartition,
+            weights=weights,
+            n_iterations=-1,
+            resolution_parameter=resolution_parameter,
+        )
+
+        # Save output in a dictionnary
+        # Case of iterative steps, separate initial and fellowing steps:
+        if i == 0:
+            for bin_id in range(len(partition)):
+                for contig_id in partition[bin_id]:
+                    output_leiden[contig_id] = str(bin_id + 1)
+
+        else:
+            for bin_id in range(len(partition)):
+                for contig_id in partition[bin_id]:
+                    output_leiden[contig_id] += ";" + str(bin_id + 1)
+
+    return output_leiden
+
+
 def louvain_iterations_cpp(network_file, iterations, tmp_dir, louvain_path):
     """Use the cpp original Louvain to partition the network.
 
@@ -286,6 +343,10 @@ def louvain_iterations_cpp(network_file, iterations, tmp_dir, louvain_path):
         second one and the weights of the edge normalized or not.
     iterations : int
         Number of iterations of the algorithm of Louvain.
+    tmp_dir : str
+        Path to the temporary directory.
+    louvain_path : str
+        Path to the directory with louvain functions
 
     Returns:
     --------
@@ -373,26 +434,17 @@ def louvain_iterations_cpp(network_file, iterations, tmp_dir, louvain_path):
         out, err = process.communicate()
 
         # Save the results in a dictionnary
-        if iterations == 1:
+        if i == 0:
             with open(output + str(i) + ".txt", "r") as out:
                 for line in out:
                     result = line.split(" ")
                     output_louvain[labels[result[0]]] = result[1][:-1]
-        elif i == 0:
-            with open(output + str(i) + ".txt", "r") as out:
-                for line in out:
-                    result = line.split(" ")
-                    output_louvain[labels[result[0]]] = result[1][:-1] + ";"
-        elif i == iterations - 1:
-            with open(output + str(i) + ".txt", "r") as out:
-                for line in out:
-                    result = line.split(" ")
-                    output_louvain[labels[result[0]]] += result[1][:-1]
+
         else:
             with open(output + str(i) + ".txt", "r") as out:
                 for line in out:
                     result = line.split(" ")
-                    output_louvain[labels[result[0]]] += result[1][:-1] + ";"
+                    output_louvain[labels[result[0]]] += ";" + result[1][:-1]
 
     return output_louvain
 
