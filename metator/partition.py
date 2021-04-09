@@ -21,8 +21,9 @@ Core functions to partition the network are:
 
 
 import community as community_louvain
-import igraph
-import leidenalg
+
+# import igraph
+# import leidenalg
 import metator.io as mio
 import multiprocessing
 import networkx as nx
@@ -277,8 +278,65 @@ def hamming_distance(core_bins_iterations, n_iter, threads):
     return res
 
 
-def leiden_iterations(network_file, iterations, resolution_parameter):
-    """Use the Leiden algorithm to partition the network.
+# def leiden_iterations_py(network_file, iterations, resolution_parameter):
+#     """Use the Leiden algorithm to partition the network.
+
+#     Parameters:
+#     -----------
+#     network_file : str
+#         Path to the network computed previously. The file is 3 columns table
+#         separated by a tabulation with the id of the first contigs the id of the
+#         second one and the weights of the edge normalized or not.
+#     iterations : int
+#         Number of iterations of the algorithm of Leiden.
+#     resolution_parameter : float
+#         Parameter to use for partition the graph.
+
+#     Returns:
+#     --------
+#     dict:
+#         Dictionnary with the id of the contig as key and the list of the results
+#         of each iterations separated by a semicolon as values.
+#     """
+
+#     # Create output dictionnary.
+#     output_leiden = dict()
+
+#     # Transform network as igraph:
+#     network = igraph.Graph.Read_Ncol(
+#         network_file, names=True, weights=True, directed=False
+#     )
+#     weights = network.es["weight"]
+
+#     # Partition the network with Leiden algorithm with multiple iterations:
+#     for i in range(iterations):
+#         partition = leidenalg.find_partition(
+#             network,
+#             leidenalg.RBConfigurationVertexPartition,
+#             weights=weights,
+#             n_iterations=-1,
+#             resolution_parameter=resolution_parameter,
+#         )
+
+#         # Save output in a dictionnary
+#         # Case of iterative steps, separate initial and fellowing steps:
+#         if i == 0:
+#             for bin_id in range(len(partition)):
+#                 for contig_id in partition[bin_id]:
+#                     output_leiden[contig_id] = str(bin_id + 1)
+
+#         else:
+#             for bin_id in range(len(partition)):
+#                 for contig_id in partition[bin_id]:
+#                     output_leiden[contig_id] += ";" + str(bin_id + 1)
+
+#     return output_leiden
+
+
+def leiden_iterations_java(
+    network_file, iterations, resolution_parameter, tmp_dir, leiden_path
+):
+    """Use the java implementation of Leiden to prtition the network.
 
     Parameters:
     -----------
@@ -287,9 +345,13 @@ def leiden_iterations(network_file, iterations, resolution_parameter):
         separated by a tabulation with the id of the first contigs the id of the
         second one and the weights of the edge normalized or not.
     iterations : int
-        Number of iterations of the algorithm of Leiden.
+        Number of iterations of the algorithm of Louvain.
     resolution_parameter : float
-        Parameter to use for partition the graph.
+        Resolution parameter for Leiden clustering.
+    tmp_dir : str
+        Path to the temporary directory.
+    leiden_path : str
+        Path to the directory with network analysis java implementation.
 
     Returns:
     --------
@@ -298,38 +360,49 @@ def leiden_iterations(network_file, iterations, resolution_parameter):
         of each iterations separated by a semicolon as values.
     """
 
-    # Create output dictionnary.
-    output_leiden = dict()
+    # Check if louvain cpp is available in the computer. If it's not available
+    # launch python_louvain instead.
+    # if not mio.check_leiden_java(leiden_path):
+    #     logger.warning(
+    #         "Leiden java implementation was not found. Use Leiden python "
+    #         "instead.\nBe careful it's much slower and give worst results.\nYou"
+    #         " should install the JAVA implementation."
+    #     )
+    #     return louvain_iterations_py(network_file, iterations)
 
-    # Transform network as igraph:
-    network = igraph.Graph.Read_Ncol(
-        network_file, names=True, weights=True, directed=False
-    )
-    weights = network.es["weight"]
+    output_partition = dict()
 
-    # Partition the network with Leiden algorithm with multiple iterations:
+    # Run the iterations of Louvain
     for i in range(iterations):
-        partition = leidenalg.find_partition(
-            network,
-            leidenalg.RBConfigurationVertexPartition,
-            weights=weights,
-            n_iterations=-1,
-            resolution_parameter=resolution_parameter,
-        )
+        logger.info("Iteration in progress: {0}".format(i))
 
-        # Save output in a dictionnary
-        # Case of iterative steps, separate initial and fellowing steps:
+        output = join(tmp_dir, "partition_{0}.txt".format(i))
+
+        # Convert the file in binary file for Louvain partitionning.
+        cmd = (
+            " java -cp {0} nl.cwts.networkanalysis.run.RunNetworkClustering -i 4 -r {1} -w -o {2} -q Modularity -a Leiden {3}"
+        ).format(leiden_path, resolution_parameter, output, network_file)
+        process = sp.Popen(cmd, shell=True, stderr=sp.DEVNULL)
+        process.communicate()
+
+        # Save the results in a dictionnary
         if i == 0:
-            for bin_id in range(len(partition)):
-                for contig_id in partition[bin_id]:
-                    output_leiden[contig_id] = str(bin_id + 1)
+            with open(output, "r") as out:
+                for line in out:
+                    result = line.split("\t")
+                    output_partition[int(result[0])] = result[1][:-1]
 
         else:
-            for bin_id in range(len(partition)):
-                for contig_id in partition[bin_id]:
-                    output_leiden[contig_id] += ";" + str(bin_id + 1)
+            with open(output, "r") as out:
+                for line in out:
+                    result = line.split("\t")
+                    output_partition[int(result[0])] += ";" + result[1][:-1]
 
-    return output_leiden
+    # Remove isolates (nodes with no contacts):
+    output_partition.pop(0)
+    output_partition = remove_isolates(output_partition, network_file)
+
+    return output_partition
 
 
 def louvain_iterations_cpp(network_file, iterations, tmp_dir, louvain_path):
@@ -346,7 +419,7 @@ def louvain_iterations_cpp(network_file, iterations, tmp_dir, louvain_path):
     tmp_dir : str
         Path to the temporary directory.
     louvain_path : str
-        Path to the directory with louvain functions
+        Path to the directory with louvain functions.
 
     Returns:
     --------
@@ -372,7 +445,7 @@ def louvain_iterations_cpp(network_file, iterations, tmp_dir, louvain_path):
     level_louvain = join(tmp_dir, "level.txt")
     output = join(tmp_dir, "output_louvain_")
     louvain = join(louvain_path, "louvain")
-    convert_net = join(louvain_path, "convert_net")
+    convert = join(louvain_path, "convert")
     hierarchy = join(louvain_path, "hierarchy")
     output_louvain = dict()
 
@@ -387,14 +460,14 @@ def louvain_iterations_cpp(network_file, iterations, tmp_dir, louvain_path):
         "output": output,
         "level": 0,
         "iteration": 0,
-        "convert_net": convert_net,
+        "convert": convert,
         "louvain": louvain,
         "hierarchy": hierarchy,
     }
 
     # Convert the file in binary file for Louvain partitionning.
     cmd = (
-        "{convert_net} -i {net_txt} -o {net_bin} -r {net_labels} -w {net_weight}"
+        "{convert} -i {net_txt} -o {net_bin} -r {net_labels} -w {net_weight}"
     ).format(**louvain_args)
     process = sp.Popen(cmd, shell=True)
     out, err = process.communicate()
@@ -494,6 +567,39 @@ def louvain_iterations_py(network_file, iterations):
                 output_louvain[j], partition[j]
             )
     return output_louvain
+
+
+def remove_isolates(output_partition, network_file):
+    """Remove isolates, i.e. nodes without any contacts in the network in the
+    partition. This step is necessary as it will slow the further process of the
+    communities.
+
+    Parameters:
+    -----------
+    output_partition : dict
+        Dictionnary with the id of the contig as key and the list of the results
+        of each iterations separated by a semicolon as values.
+    network_file : str
+        Path to the network computed previously. The file is 3 columns table
+        separated by a tabulation with the id of the first contigs the id of the
+        second one and the weights of the edge normalized or not.
+
+    Returns:
+    --------
+    dict:
+        Dictionnary with the id of the contig as key and the list of the results
+        of each iterations separated by a semicolon as values without isolates.
+    """
+    nodes_presents = []
+    with open(network_file, "r") as network:
+        for line in network:
+            line = line.split("\t")
+            nodes_presents.append(int(line[0]))
+            nodes_presents.append(int(line[1]))
+    for i in range(1, max(nodes_presents)):
+        if i not in nodes_presents:
+            output_partition.pop(i)
+    return output_partition
 
 
 def update_contigs_data(contig_data_file, core_bins, overlapping_bins, outdir):

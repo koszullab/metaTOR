@@ -340,6 +340,7 @@ class Partition(AbstractCommand):
         partition  --outdir=DIR --network-file=FILE --assembly=FILE
         [--iterations=100] [--louvain=STR] [--overlap=INT] [--size=300000]
         [--threads=1] [--tempdir=DIR] [--contigs-data=STR] [--no-clean-up]
+        [--res-parameter=1]
 
     options:
         -a, --assembly=FILE         The path to the assembly fasta file used to
@@ -361,6 +362,8 @@ class Partition(AbstractCommand):
         -O, --overlap=INT           Percentage of the identity necessary to be
                                     considered as a part of the core bin.
                                     [Default: 90]
+        -r, --res-parameter=FLOAT   Resolution paramter to use for Leiden
+                                    algorithm. [Default: 1]
         -s, --size=INT              Threshold size to keep bins in base pair.
                                     [Default: 300000]
         -t, --threads=INT           Number of parallel threads allocated for the
@@ -395,15 +398,22 @@ class Partition(AbstractCommand):
             size = int(self.args["--size"])
         if self.args["--threads"]:
             threads = int(self.args["--threads"])
+        if self.args["--res-parameter"]:
+            resolution_parameter = float(self.args["--res-parameter"])
+
+        # Find path to java network analysis function:
+        NETWORK_ANALYSIS_PATH = "/home/abignaud/repo/networkanalysis/build/libs/networkanalysis-1.1.0-5-ga3f342d.jar"
 
         # Perform the iterations of Louvain to partition the network.
         logger.info("Start iterations:")
 
         if self.args["--louvain"] == "leiden":
-            output_partition = mtp.leiden_iterations(
+            output_partition = mtp.leiden_iterations_java(
                 self.args["--network-file"],
                 iterations,
-                5,
+                resolution_parameter,
+                temp_directory,
+                NETWORK_ANALYSIS_PATH,
             )
         elif self.args["--louvain"] == "louvain":
             output_partition = mtp.louvain_iterations_py(

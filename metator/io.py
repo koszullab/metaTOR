@@ -135,18 +135,16 @@ def check_louvain_cpp(louvain_path):
 
     # Look for the path to call the functions:
     louvain = join(louvain_path, "louvain")
-    convert_net = join(louvain_path, "convert_net")
+    convert = join(louvain_path, "convert")
     hierarchy = join(louvain_path, "hierarchy")
 
     # Check convert:
     try:
         convert_net = sp.check_output(
-            "{0} --help".format(convert_net), stderr=sp.STDOUT, shell=True
+            "{0} --help".format(convert), stderr=sp.STDOUT, shell=True
         )
     except sp.CalledProcessError:
-        logger.warning(
-            "Cannot find the 'convert_net' function from Louvain path."
-        )
+        logger.warning("Cannot find the 'convert' function from Louvain path.")
         return False
 
     # Check louvain:
