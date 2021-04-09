@@ -338,21 +338,20 @@ class Partition(AbstractCommand):
 
     usage:
         partition  --outdir=DIR --network-file=FILE --assembly=FILE
-        [--iterations=100] [--louvain=STR] [--overlap=INT] [--size=300000]
+        [--iterations=100] [--algorithm=STR] [--overlap=INT] [--size=300000]
         [--threads=1] [--tempdir=DIR] [--contigs-data=STR] [--no-clean-up]
         [--res-parameter=1]
 
     options:
         -a, --assembly=FILE         The path to the assembly fasta file used to
                                     do the alignment.
+        -A, --algorithm=STR         louvain|leiden, algorithm to use to 
+                                    partition the network. [Default: louvain]
         -c, --contigs-data=FILE     The path to the file containing the data of
                                     the contigs (ID, Name, Length, GC content,
                                     Hit, Coverage).
         -i, --iterations=INT        Number of iterations of Louvain.
                                     [Default: 100]
-        -l, --louvain=STR           Path to louvain cpp (faster than python
-                                    implementation). If None given, use python
-                                    implementation instead. [Default: None]
         -n, --network-file=FILE     Path to the file containing the network
                                     information from the meta HiC experiment
                                     compute in network function previously.
@@ -401,31 +400,25 @@ class Partition(AbstractCommand):
         if self.args["--res-parameter"]:
             resolution_parameter = float(self.args["--res-parameter"])
 
-        # Find path to java network analysis function:
-        NETWORK_ANALYSIS_PATH = "/home/abignaud/repo/networkanalysis/build/libs/networkanalysis-1.1.0-5-ga3f342d.jar"
-
         # Perform the iterations of Louvain to partition the network.
         logger.info("Start iterations:")
 
-        if self.args["--louvain"] == "leiden":
+        if self.args["--algorithm"] == "leiden":
+            LEIDEN_PATH = os.environ["LEIDEN_PATH"]
             output_partition = mtp.leiden_iterations_java(
                 self.args["--network-file"],
                 iterations,
                 resolution_parameter,
                 temp_directory,
-                NETWORK_ANALYSIS_PATH,
-            )
-        elif self.args["--louvain"] == "louvain":
-            output_partition = mtp.louvain_iterations_py(
-                self.args["--network-file"],
-                iterations,
+                LEIDEN_PATH,
             )
         else:
+            LOUVAIN_PATH = os.environ["LOUVAIN_PATH"]
             output_partition = mtp.louvain_iterations_cpp(
                 self.args["--network-file"],
                 iterations,
                 temp_directory,
-                self.args["--louvain"],
+                LOUVAIN_PATH,
             )
 
         # Detect core bins
@@ -494,12 +487,15 @@ class Validation(AbstractCommand):
     bins.
 
     usage:
-        validation --outdir=DIR --network=FILE --assembly=FILE --fasta=DIR --contigs=STR [--iterations=10] [--louvain=STR] [--size=300000]
+        validation --outdir=DIR --network=FILE --assembly=FILE --fasta=DIR --contigs=STR [--iterations=10] [--algorithm=STR] [--size=300000]
         [--threads=1] [--tempdir=DIR]  [--no-clean-up]
 
     options:
         -a, --assembly=FILE     The path to the assembly fasta file used to do
                                 the alignment.
+        -A, --algorithm=STR     Path to louvain cpp (faster than python
+                                implementation). If None given, use python
+                                implementation instead. [Default: None]
         -c, --contigs=FILE      The path to the file containing the data ofthe
                                 contigs (ID, Name, Length, GC content, Hit,
                                 Coverage).
@@ -507,9 +503,6 @@ class Validation(AbstractCommand):
                                 files of the bins.
         -i, --iterations=INT    Number of recursive iterations of Louvain.
                                 [Default: 10]
-        -l, --louvain=STR       Path to louvain cpp (faster than python
-                                implementation). If None given, use python
-                                implementation instead. [Default: None]
         -n, --network=FILE      Path to the file containing the network
                                 information from the meta HiC experiment compute
                                 in network function previously.
@@ -585,7 +578,7 @@ class Validation(AbstractCommand):
             self.args["--assembly"],
             iterations,
             self.args["--outdir"],
-            self.args["--louvain"],
+            self.args["--algorithm"],
             temp_directory,
             overlapping_checkm_file,
             overlapping_taxonomy_file,
@@ -656,7 +649,7 @@ class Pipeline(AbstractCommand):
         reads_rev.fastq[,reads_rev2.fastq...] [--assembly=FILE] [--tempdir=DIR]
         [--threads=1] [--normalized] [--no-clean-up] [--overlap=90]
         [--iterations=100] [--size=100] [--self-contacts] [--min-quality=30]
-        [--louvain=STR] [--outdir=DIR]
+        [--algorithm=STR] [--outdir=DIR]
 
     options:
         -1, --forward=STR           Fastq file or list of Fastq separated by a
@@ -666,14 +659,14 @@ class Pipeline(AbstractCommand):
                                     comma containing the reverse reads to be
                                     aligned. Forward and reverse reads need to
                                     have the same identifier.
+        -A, --algorithm=STR         Path to louvain cpp (faster than python
+                                    implementation). If None given, use python
+                                    implementation instead. [Default: None]
         -f, --fasta=FILE            The genome on which to map the reads. Must
                                     be the path to the bowtie2/bwa index or the
                                     fasta.
         -i, --iterations=INT        Number of iterartion of Louvain.
                                     [Default: 100]
-        -l, --louvain=STR           Path to louvain cpp (faster than python
-                                    implementation). If None given, use python
-                                    implementation instead. [Default: None]
         -n, --normalized            If enabled,  normalize contacts between
                                     contigs by their geometric mean coverage.
         -N, --no-clean-up           Do not remove temporary files.
@@ -764,7 +757,7 @@ class Pipeline(AbstractCommand):
         contigs_data = join(self.args["--outdir"], "contigs_data_network.txt")
 
         # Perform iterations of Louvain.
-        if self.args["--louvain"] == "None":
+        if self.args["--algorithm"] == "None":
             output_partition = mtp.louvain_iterations_py(
                 network_file,
                 iterations,
@@ -774,7 +767,7 @@ class Pipeline(AbstractCommand):
                 network_file,
                 iterations,
                 temp_directory,
-                self.args["--louvain"],
+                self.args["--algorithm"],
             )
 
         # Detect core bins
