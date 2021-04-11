@@ -140,7 +140,7 @@ def check_louvain_cpp(louvain_path):
 
     # Check convert:
     try:
-        convert_net = sp.check_output(
+        convert = sp.check_output(
             "{0} --help".format(convert), stderr=sp.STDOUT, shell=True
         )
     except sp.CalledProcessError:
@@ -202,6 +202,47 @@ def generate_temp_dir(path):
         )
     return full_path
 
+def get_restriction_site(enzyme):
+    """Function to return a regex which corresponds to all possible restriction
+    sites given a set of enzyme.
+
+    Parameters:
+    -----------
+    enzyme : str
+        String that contains the names of the enzyme separated by a comma.
+
+    Returns:
+    --------
+    str :
+        Regex that corresponds to all possible restriction sites given a set of
+        enzyme.
+
+    Examples:
+    ---------
+    >>> process_enzyme('DpnII')
+    'GATC'
+    >>> process_enzyme('DpnII,HinfI')
+    'GA.TC|GATC'
+    """
+
+    # Split the str on the comma to separate the different enzymes.
+    enzyme = enzyme.split(",")
+
+    # Check on Biopython dictionnary the enzyme.
+    rb = RestrictionBatch(enzyme)
+
+    # Initiation:
+    restriction_list = []
+
+    # Iterates on the enzymes.
+    for enz in rb:
+
+        # Extract restriction sites and look for cut sites.
+        restriction_list.append(enz.site.replace("N", "."))
+        
+    # Build the regex for all retsriction sites.
+    pattern = "|".join(sorted(list(set(restriction_list))))
+    return pattern
 
 def process_enzyme(enzyme):
     """Function to return a regex which corresponds to all possible ligation

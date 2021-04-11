@@ -238,17 +238,28 @@ class Network(AbstractCommand):
     default called 'idx_contig_length_GC_hit_cov.txt'
 
     usage:
-        network --genome=FILE --outdir=DIR --input=FILE [--normalized]
-        [--output-file-contig-data=STR] [--output-file-network=STR]
-        [--self-contacts] [--tempdir=DIR] [--threads=1] [--no-clean-up]
+        network --genome=FILE --outdir=DIR --input=FILE --depth=FILE
+        [--output-file-contig-data=STR] [--self-contacts] [--no-clean-up]
+        [--output-file-network=STR] [--tempdir=DIR] [--normalization=STR]
+        [--threads=1] [--enzyme=STR]
 
     options:
+        -d, --depth=FILE                The depth.txt file from
+                                        jgi_summarize_bam_contig_depths from
+                                        metabat2 pipeline.
+        -e, --enzyme=STR                The list of restriction enzyme used to 
+                                        digest the contigs separated by a comma. 
+                                        Example: DpnII,HinfI.
         -g, --genome=FILE               The initial assembly path acting as the
                                         alignment file's reference genome.
         -i, --input=FILE                Path to the bed2D file used as input
-        -n, --normalized                If enabled,  normalize contacts between
-                                        contigs by their geometric mean
-                                        coverage.
+        -n, --normalization=STR             If None, do not normalized the count of
+                                        a contact by the geometric mean of the
+                                        coverage of the contigs. Otherwise it's
+                                        the type of normalization. 7 values are
+                                        possible None, abundance, length, RS,
+                                        RS_length, empirical_hit,
+                                        theoritical_hit. [Default: abundance]
         -N, --no-clean-up               Do not remove temporary files.
         -o, --outdir=DIR                The output directory to write the
                                         network and contig data into. Default:
@@ -290,7 +301,6 @@ class Network(AbstractCommand):
             self.args["--output-file-network"] = "network.txt"
 
         # Defined boolean variables
-        normalized = self.args["--normalized"]
         self_contacts = self.args["--self-contacts"]
 
         # Transform str input files in list splitting on comma
@@ -299,12 +309,14 @@ class Network(AbstractCommand):
         mtn.alignment_to_contacts(
             alignment_files,
             self.args["--genome"],
+            self.args["--depth"],
             self.args["--outdir"],
             self.args["--output-file-network"],
             self.args["--output-file-contig-data"],
             temp_directory,
             self.args["--threads"],
-            normalized,
+            self.args["--normalization"],
+            self.args["--enzyme"],
             self_contacts,
         )
 
@@ -345,7 +357,7 @@ class Partition(AbstractCommand):
     options:
         -a, --assembly=FILE         The path to the assembly fasta file used to
                                     do the alignment.
-        -A, --algorithm=STR         louvain|leiden, algorithm to use to 
+        -A, --algorithm=STR         louvain|leiden, algorithm to use to
                                     partition the network. [Default: louvain]
         -c, --contigs-data=FILE     The path to the file containing the data of
                                     the contigs (ID, Name, Length, GC content,

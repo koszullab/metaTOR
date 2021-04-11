@@ -7,7 +7,7 @@ some functions to work on the network once the bins are made to study some
 more specific contacts.
 
 Core function to build the network are:
-    - alignement_to_contacts
+    - alignment_to_contacts
     - compute_contig_coverage
     - compute_network
     - create_contig_data
@@ -23,6 +23,7 @@ import csv
 import networkx as nx
 import numpy as np
 import pandas as pd
+import re
 from Bio import SeqIO
 from Bio import SeqUtils
 from os.path import join
@@ -33,13 +34,15 @@ import metator.io as mio
 def alignment_to_contacts(
     aligment_files,
     genome,
+    depth_file,
     output_dir,
-    output_file_network="network.txt",
-    output_file_contig_data="contig_data_network.txt",
-    tmpdir=".",
-    n_cpus=1,
-    normalized=True,
-    self_contacts=False,
+    output_file_network,
+    output_file_contig_data,
+    tmpdir,
+    n_cpus,
+    normalization,
+    enzyme,
+    self_contacts,
 ):
     """Generates a network file (in edgelist form) from an alignment. Contigs
     are the network nodes and the edges are the contact counts.
@@ -56,6 +59,9 @@ def alignment_to_contacts(
     genome : str
         The initial assembly path acting as the alignment file's reference
         genome.
+    depth_file : str
+        Path to the depth.txt file from jgi_summarize_bam_contig_depths from
+        Metabat2 Software.
     output_dir : str
         The output directory to write the network and chunk data into.
     output_file_network : str, optional
@@ -66,12 +72,15 @@ def alignment_to_contacts(
         'idx_contig_length_GC_hit_cov.txt'
     tmpdir : str
         Path to th temporary directory. Default in the working directory
+    normalization : str
+        If None, do not normalized the count of a contact by the geometric mean
+        of the coverage of the contigs. Otherwise it's the type of
+        normalization.
+    enzyme : str
+        String that contains the names of the enzyme separated by a comma.
     self_contacts : bool
         Whether to count alignments between a contig and
         itself. Default is False.
-    normalized : bool
-        Whether to normalize contacts between contigs by their geometric mean
-        coverage. Default is True.
 
     Returns
     -------
@@ -88,7 +97,7 @@ def alignment_to_contacts(
 
     # Create the contig data dictionnary and hit from each alignments
     nb_alignment = len(aligment_files)
-    contig_data, hit_data = create_contig_data(genome, nb_alignment)
+    contig_data, hit_data = create_contig_data(genome, nb_alignment, depth_file, enzyme)
 
     # Create a contact file easily readable for counting the contacts.
     contig_data = precompute_network(
@@ -100,7 +109,9 @@ def alignment_to_contacts(
     )
 
     # Compute the coverage of the contigs
-    contig_data = compute_contig_coverage(contig_data=contig_data)
+    # Not necessary anymore as the coverage is taken from the alignment of the
+    # shotgun reads.
+    # contig_data = compute_contig_coverage(contig_data=contig_data)
 
     # Compute network
     compute_network(
@@ -109,7 +120,7 @@ def alignment_to_contacts(
         contig_data,
         tmpdir,
         n_cpus,
-        normalized,
+        normalization,
     )
 
     # Write the data from the contigs
@@ -159,7 +170,7 @@ def compute_network(
     contig_data,
     tmp_dir,
     n_cpus,
-    normalized=True,
+    normalization,
 ):
     """Generate the network file from the prenetwork file.
 
@@ -173,14 +184,15 @@ def compute_network(
     contig_data : dict
         Dictionnary of the all the contigs from the assembly, the contigs names
         are the keys to the data of the contig available with the following
-        keys: "id", "length", "GC", "hit", "coverage".
+        keys: "id", "length", "GC", "hit", "coverage", "RS".
     tmp_dir : str
         Path of the temporary directory to write files.
     n_cpus : int
         Number of cpus used to sort the prenetwork.
-    normalized : bool
-        If true, normalized the count of a contact by the geometric mean of the
-        coverage od the contigs.
+    normalization : str
+        If None, do not normalized the count of a contact by the geometric mean
+        of the coverage of the contigs. Otherwise it's the type of
+        normalization.
     """
 
     # Create a temporary directory for the sorted pre-network
@@ -215,12 +227,10 @@ def compute_network(
                 if n_occ > 0:
 
                     # Normalisation using the geometric mean of the coverage
-                    if normalized:
-                        mean_coverage = np.sqrt(
-                            contig_data[prev_pair[0]]["coverage"]
-                            * contig_data[prev_pair[1]]["coverage"]
+                    if normalization != "None":
+                        effective_count = normalize_pair(
+                            contig_data, prev_pair, n_occ, normalization
                         )
-                        effective_count = n_occ / mean_coverage
                     else:
                         effective_count = n_occ
 
@@ -245,12 +255,10 @@ def compute_network(
                 n_nonzero += 1
 
         # Write the last value
-        if normalized:
-            mean_coverage = np.sqrt(
-                contig_data[curr_pair[0]]["coverage"]
-                * contig_data[curr_pair[1]]["coverage"]
+        if normalization != "None":
+            effective_count = normalize_pair(
+                contig_data, prev_pair, n_occ, normalization
             )
-            effective_count = n_occ / mean_coverage
         else:
             effective_count = n_occ
 
@@ -271,7 +279,85 @@ def compute_network(
         n_pairs += n_occ
 
 
-def create_contig_data(assembly, nb_alignment):
+def normalize_pair(contig_data, prev_pair, n_occ, normalization):
+    """
+    contig_data : dict
+        Dictionnary of the all the contigs from the assembly, the contigs names
+        are the keys to the data of the contig available with the following
+        keys: "id", "length", "GC", "hit", "coverage", "RS".
+    """
+    # The four first normalizations are normalization by the geometric mean of
+    # "coverage".
+    if normalization == "abundance":
+        factor = np.sqrt(
+            contig_data[prev_pair[0]]["coverage"]
+            * contig_data[prev_pair[1]]["coverage"]
+        )
+        # If no read mapped from Shotgun libraries could be equal to zero.
+        if factor == 0:
+            return 0
+
+    elif normalization == "length":
+        factor = np.sqrt(
+            contig_data[prev_pair[0]]["hit"]
+            / contig_data[prev_pair[0]]["length"]
+            * contig_data[prev_pair[1]]["hit"]
+            / contig_data[prev_pair[1]]["length"]
+        )
+
+    elif normalization == "RS":
+        factor = 0.01 * np.sqrt(
+            contig_data[prev_pair[0]]["hit"]
+            / contig_data[prev_pair[0]]["RS"]
+            * contig_data[prev_pair[1]]["hit"]
+            / contig_data[prev_pair[1]]["RS"]
+        )
+
+    elif normalization == "RS_length":
+        factor = np.sqrt(
+            contig_data[prev_pair[0]]["hit"]
+            / 10
+            * np.sqrt(
+                contig_data[prev_pair[0]]["length"]
+                * contig_data[prev_pair[0]]["RS"]
+            )
+            * contig_data[prev_pair[1]]["hit"]
+            / 10
+            * np.sqrt(
+                contig_data[prev_pair[1]]["length"]
+                * contig_data[prev_pair[1]]["RS"]
+            )
+        )
+
+    # The last two normalizations are normalization by geometric means of hits.
+    elif normalization == "empirical_hit":
+        factor = np.sqrt(
+            contig_data[prev_pair[0]]["hit"] * contig_data[prev_pair[1]]["hit"]
+        )
+
+    elif normalization == "theoritical_hit":
+        factor = np.sqrt(
+            contig_data[prev_pair[0]]["coverage"]
+            * 10
+            * np.sqrt(
+                contig_data[prev_pair[0]]["length"]
+                * contig_data[prev_pair[0]]["RS"]
+            )
+            * contig_data[prev_pair[1]]["coverage"]
+            * 10
+            * np.sqrt(
+                contig_data[prev_pair[1]]["length"]
+                * contig_data[prev_pair[1]]["RS"]
+            )
+        )
+        # If no read mapped from Shotgun libraries could be equal to zero.
+        if factor == 0:
+            return 0
+
+    return n_occ / factor
+
+
+def create_contig_data(assembly, nb_alignment, depth_file, enzyme):
     """Create a dictionnary with data on each Contig.
 
     Paramaters
@@ -280,13 +366,18 @@ def create_contig_data(assembly, nb_alignment):
         Path to the assembly fasta file
     nb_alignement : int
         Numbers of alignment files.
+    depth_file : str
+        Path to the depth.txt file from jgi_summarize_bam_contig_depths from
+        Metabat2 Software.
+    enzyme : str
+        String that contains the names of the enzyme separated by a comma.
 
     Return
     ------
     dict:
         Dictionnary of the all the contigs from the assembly, the contigs names
         are the keys to the data of the contig available with the following
-        keys: "id", "length", "GC", "hit", "coverage". Hit and coverage are set
+        keys: "id", "length", "GC", "hit", "coverage", "RS. Hit and coverage are set
         to 0 and need to be updated later.
     dict:
         Dictionnary for hit information on each contigs.
@@ -299,21 +390,27 @@ def create_contig_data(assembly, nb_alignment):
     else:
         hit_data = None
 
+    pattern = mio.get_restriction_site(enzyme)
+
     global_id = 1
-    for contig in SeqIO.parse(assembly, "fasta"):
-        contig_name = contig.id
-        contig_length = len(contig.seq)
-        contig_GC = SeqUtils.GC(contig.seq)
-        contig_data[contig_name] = {
-            "id": global_id,
-            "length": contig_length,
-            "GC": contig_GC,
-            "hit": 0,
-            "coverage": 0,
-        }
-        if nb_alignment > 1:
-            hit_data[contig_name] = {"id": global_id, "hit": [0] * nb_alignment}
-        global_id += 1
+    with open(depth_file, "r") as depth:
+        line = depth.readline()
+        for contig in SeqIO.parse(assembly, "fasta"):
+            line = depth.readline().split("\t")
+            contig_data[contig.id] = {
+                "id": global_id,
+                "length": int(line[1]),
+                "GC": SeqUtils.GC(contig.seq),
+                "hit": 0,
+                "coverage": float(line[2]),
+                "RS": len(re.findall(pattern, str(contig.seq))) + 1
+            }
+            if nb_alignment > 1:
+                hit_data[contig_name] = {
+                    "id": global_id,
+                    "hit": [0] * nb_alignment,
+                }
+            global_id += 1
     return contig_data, hit_data
 
 

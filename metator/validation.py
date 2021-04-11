@@ -18,6 +18,7 @@ Functions in this module:
 import metator.io as mio
 import metator.partition as mtp
 import networkx as nx
+import os
 import pandas as pd
 import subprocess as sp
 import sys
@@ -285,11 +286,12 @@ def louvain_recursif(
                     iterations,
                 )
             else:
+                LOUVAIN_PATH = os.environ["LOUVAIN_PATH"]
                 output_louvain = mtp.louvain_iterations_cpp(
                     subnetwork_file,
                     iterations,
                     tmpdir,
-                    louvain,
+                    LOUVAIN_PATH,
                 )
 
             # Detect core bins
