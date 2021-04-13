@@ -455,6 +455,7 @@ def update_contigs_data_recursif(
                     assembly, contigs_file, output_file
                 )
                 process = sp.Popen(cmd, shell=True)
+                process.communicate()
                 rec_id += 1
 
     return contamination, contigs_data

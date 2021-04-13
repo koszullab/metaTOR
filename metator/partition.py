@@ -201,6 +201,7 @@ def generate_fasta(assembly, bins, contigs_data, size, output_dir, tmpdir):
                 assembly, contigs_file, output_file
             )
             process = sp.Popen(cmd, shell=True)
+            process.communicate()
     logger.info("{0} bins have been extracted".format(nb_bins))
     logger.info(
         "Total size of the extracted bins: {0}Mb".format(
