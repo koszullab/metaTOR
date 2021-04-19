@@ -247,8 +247,8 @@ class Network(AbstractCommand):
         -d, --depth=FILE                The depth.txt file from
                                         jgi_summarize_bam_contig_depths from
                                         metabat2 pipeline.
-        -e, --enzyme=STR                The list of restriction enzyme used to 
-                                        digest the contigs separated by a comma. 
+        -e, --enzyme=STR                The list of restriction enzyme used to
+                                        digest the contigs separated by a comma.
                                         Example: DpnII,HinfI.
         -g, --genome=FILE               The initial assembly path acting as the
                                         alignment file's reference genome.
@@ -334,14 +334,19 @@ class Network(AbstractCommand):
 class Partition(AbstractCommand):
     """Partition the network using Louvain algorithm
 
-    Partition the network file using iteratively the Louvain algorithm. Then
-    looks for 'cores' that are easily found by identifying identical lines on
-    the global Louvain output. Using hamming distance from these core bins,
-    group the bins with more than the percentage given as the overlap value.
+    Partition the network file using iteratively the Louvain or Leiden
+    algorithm. Then looks for 'cores' that are easily found by identifying
+    identical lines on the global output. Using hamming distance from these core
+    bins, group the bins with more than the percentage (overlapping parameter)
+    given.
 
-    If the contigs data information is given, it will also update the file to
-    integrate the bins information of the contigs. If the version of Louvain is
-    not found, the python version of Louvain will be used.
+    It will also update the file to integrate the bins information of the
+    contigs. If the version of Louvain is not found, the python version of
+    Louvain will be used.
+
+    Furthermore, both Leiden and Louvain algorithm are available here. However,
+    the benchmark made show taht with this pipeline the Louvain algorithm gives
+    better results and is faster on seawater and gut metagenomic samples.
 
     Note that the Louvain software is not, in the strictest sense, necessary.
     Any program that assigns a node to a bin, does so non deterministically and
@@ -349,19 +354,18 @@ class Partition(AbstractCommand):
     instead.
 
     usage:
-        partition  --outdir=DIR --network-file=FILE --assembly=FILE
-        [--iterations=100] [--algorithm=STR] [--overlap=INT] [--size=300000]
-        [--threads=1] [--tempdir=DIR] [--contigs-data=STR] [--no-clean-up]
-        [--res-parameter=1]
+        partition  --outdir=DIR --network-file=FILE --assembly=FILE --contigs-data=FILE
+        [--iterations=100] [--algorithm=louvain] [--overlap=80] [--size=500000]
+        [--threads=1] [--tempdir=DIR] [--no-clean-up] [--res-parameter=1.0]
 
     options:
         -a, --assembly=FILE         The path to the assembly fasta file used to
                                     do the alignment.
         -A, --algorithm=STR         louvain|leiden, algorithm to use to
                                     partition the network. [Default: louvain]
-        -c, --contigs-data=FILE     The path to the file containing the data of
-                                    the contigs (ID, Name, Length, GC content,
-                                    Hit, Coverage).
+        -c, --contigs-data=FILE     The path to the tsv file containing the data
+                                    of the contigs (ID, Name, Length, GC
+                                    content, Hit, Coverage).
         -i, --iterations=INT        Number of iterations of Louvain.
                                     [Default: 100]
         -n, --network-file=FILE     Path to the file containing the network
@@ -372,11 +376,11 @@ class Partition(AbstractCommand):
                                     Default to current directory. [Default: ./]
         -O, --overlap=INT           Percentage of the identity necessary to be
                                     considered as a part of the core bin.
-                                    [Default: 90]
+                                    [Default: 80]
         -r, --res-parameter=FLOAT   Resolution paramter to use for Leiden
-                                    algorithm. [Default: 1]
+                                    algorithm. [Default: 1.0]
         -s, --size=INT              Threshold size to keep bins in base pair.
-                                    [Default: 300000]
+                                    [Default: 500000]
         -t, --threads=INT           Number of parallel threads allocated for the
                                     partition. [Default: 1]
         -T, --tempdir=DIR           Temporary directory. Default to current
@@ -404,7 +408,7 @@ class Partition(AbstractCommand):
         if self.args["--iterations"]:
             iterations = int(self.args["--iterations"])
         if self.args["--overlap"]:
-            overlap = int(self.args["--overlap"]) / 100
+            overlapping_parameter = int(self.args["--overlap"]) / 100
         if self.args["--size"]:
             size = int(self.args["--size"])
         if self.args["--threads"]:
@@ -412,67 +416,19 @@ class Partition(AbstractCommand):
         if self.args["--res-parameter"]:
             resolution_parameter = float(self.args["--res-parameter"])
 
-        # Perform the iterations of Louvain to partition the network.
-        logger.info("Start iterations:")
-
-        if self.args["--algorithm"] == "leiden":
-            LEIDEN_PATH = os.environ["LEIDEN_PATH"]
-            output_partition = mtp.leiden_iterations_java(
-                self.args["--network-file"],
-                iterations,
-                resolution_parameter,
-                temp_directory,
-                LEIDEN_PATH,
-            )
-        else:
-            LOUVAIN_PATH = os.environ["LOUVAIN_PATH"]
-            output_partition = mtp.louvain_iterations_cpp(
-                self.args["--network-file"],
-                iterations,
-                temp_directory,
-                LOUVAIN_PATH,
-            )
-
-        # Detect core bins
-        logger.info("Detect core bins:")
-        (
-            core_bins,
-            core_bins_iterations,
-        ) = mtp.detect_core_bins(output_partition, iterations)
-
-        # Compute the Hamming distance between core bins.
-        logger.info("Detect overlapping bins:")
-        hamming_distance = mtp.hamming_distance(
-            core_bins_iterations,
-            iterations,
-            threads,
-        )
-
-        # Defined overlapping bins according to the threshold
-        overlapping_bins = mtp.defined_overlapping_bins(
-            overlap,
-            hamming_distance,
-            core_bins,
-            core_bins_iterations,
-        )
-
-        # Update the contigs_data_file.
-        logger.info("Extract bins:")
-        contigs_data = mtp.update_contigs_data(
-            self.args["--contigs-data"],
-            core_bins,
-            overlapping_bins,
-            self.args["--outdir"],
-        )
-
-        # Generate Fasta file
-        mtp.generate_fasta(
+        # Partition the network
+        mtp.partition(
+            self.args["--algorithm"],
             self.args["--assembly"],
-            overlapping_bins,
-            contigs_data,
-            size,
+            self.args["--contigs-data"],
+            iterations,
+            self.args["--network-file"],
             self.args["--outdir"],
+            overlapping_parameter,
+            resolution_parameter,
+            size,
             temp_directory,
+            threads,
         )
 
         # Delete the temporary folder

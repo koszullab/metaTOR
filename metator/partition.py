@@ -13,21 +13,26 @@ Core functions to partition the network are:
     - detect_core_bins
     - generate_fasta
     - get_distances_splitmat
-    - hamming_distance
+    - get_hamming_distance
+    - leiden_partition_java
+    - leiden_partition_py
     - louvain_partition_cpp
     - louvain_partition_py
+    - partition
+    - remove_isolates
     - update_contigs_data
 """
 
 
 import community as community_louvain
 
-# import igraph
-# import leidenalg
+import igraph
+import leidenalg
 import metator.io as mio
 import multiprocessing
 import networkx as nx
 import numpy as np
+import os
 import pandas as pd
 import subprocess as sp
 import sys
@@ -238,7 +243,7 @@ def get_distances_splitmat(bins, core_bins_iterations):
     return x
 
 
-def hamming_distance(core_bins_iterations, n_iter, threads):
+def get_hamming_distance(core_bins_iterations, n_iter, threads):
     """Generate matrix of Hamming distances between all pairs of core bins
 
     Parameters
@@ -277,61 +282,6 @@ def hamming_distance(core_bins_iterations, n_iter, threads):
     res = sparse.hstack(res)
     pool.close()
     return res
-
-
-# def leiden_iterations_py(network_file, iterations, resolution_parameter):
-#     """Use the Leiden algorithm to partition the network.
-
-#     Parameters:
-#     -----------
-#     network_file : str
-#         Path to the network computed previously. The file is 3 columns table
-#         separated by a tabulation with the id of the first contigs the id of the
-#         second one and the weights of the edge normalized or not.
-#     iterations : int
-#         Number of iterations of the algorithm of Leiden.
-#     resolution_parameter : float
-#         Parameter to use for partition the graph.
-
-#     Returns:
-#     --------
-#     dict:
-#         Dictionnary with the id of the contig as key and the list of the results
-#         of each iterations separated by a semicolon as values.
-#     """
-
-#     # Create output dictionnary.
-#     output_leiden = dict()
-
-#     # Transform network as igraph:
-#     network = igraph.Graph.Read_Ncol(
-#         network_file, names=True, weights=True, directed=False
-#     )
-#     weights = network.es["weight"]
-
-#     # Partition the network with Leiden algorithm with multiple iterations:
-#     for i in range(iterations):
-#         partition = leidenalg.find_partition(
-#             network,
-#             leidenalg.RBConfigurationVertexPartition,
-#             weights=weights,
-#             n_iterations=-1,
-#             resolution_parameter=resolution_parameter,
-#         )
-
-#         # Save output in a dictionnary
-#         # Case of iterative steps, separate initial and fellowing steps:
-#         if i == 0:
-#             for bin_id in range(len(partition)):
-#                 for contig_id in partition[bin_id]:
-#                     output_leiden[contig_id] = str(bin_id + 1)
-
-#         else:
-#             for bin_id in range(len(partition)):
-#                 for contig_id in partition[bin_id]:
-#                     output_leiden[contig_id] += ";" + str(bin_id + 1)
-
-#     return output_leiden
 
 
 def leiden_iterations_java(
@@ -404,6 +354,61 @@ def leiden_iterations_java(
     output_partition = remove_isolates(output_partition, network_file)
 
     return output_partition
+
+
+def leiden_iterations_py(network_file, iterations, resolution_parameter):
+    """Use the Leiden algorithm to partition the network.
+
+    Parameters:
+    -----------
+    network_file : str
+        Path to the network computed previously. The file is 3 columns table
+        separated by a tabulation with the id of the first contigs the id of the
+        second one and the weights of the edge normalized or not.
+    iterations : int
+        Number of iterations of the algorithm of Leiden.
+    resolution_parameter : float
+        Parameter to use for partition the graph.
+
+    Returns:
+    --------
+    dict:
+        Dictionnary with the id of the contig as key and the list of the results
+        of each iterations separated by a semicolon as values.
+    """
+
+    # Create output dictionnary.
+    output_leiden = dict()
+
+    # Transform network as igraph:
+    network = igraph.Graph.Read_Ncol(
+        network_file, names=True, weights=True, directed=False
+    )
+    weights = network.es["weight"]
+
+    # Partition the network with Leiden algorithm with multiple iterations:
+    for i in range(iterations):
+        partition = leidenalg.find_partition(
+            network,
+            leidenalg.RBConfigurationVertexPartition,
+            weights=weights,
+            n_iterations=-1,
+            resolution_parameter=resolution_parameter,
+        )
+
+        # Save output in a dictionnary
+        # Case of iterative steps, separate initial and fellowing steps:
+        if i == 0:
+            for bin_id in range(len(partition)):
+                for contig_id in partition[bin_id]:
+                    output_leiden[contig_id] = str(bin_id + 1)
+
+        else:
+            for bin_id in range(len(partition)):
+                for contig_id in partition[bin_id]:
+                    output_leiden[contig_id] += ";" + str(bin_id + 1)
+
+    return output_leiden
 
 
 def louvain_iterations_cpp(network_file, iterations, tmp_dir, louvain_path):
@@ -568,6 +573,116 @@ def louvain_iterations_py(network_file, iterations):
                 output_louvain[j], partition[j]
             )
     return output_louvain
+
+
+def partition(
+    algorithm,
+    assembly,
+    contig_data_file,
+    iterations,
+    network_file,
+    outdir,
+    overlapping_parameter,
+    resolution_parameter,
+    size,
+    temp_directory,
+    threads,
+):
+    """Function to partition the network.
+
+    Parameters:
+    -----------
+    algorithm : str
+        Algorithm to use to partition the network. Either leiden or louvain.
+    assembly : str
+        Path to the assembly file used for the partition.
+    contig_data_file : str
+        Path to the contig data table to update.
+    iterations : int
+        Number of iterations to use for the partition.
+    network_file : str
+        Path to the network file.
+    outdir : str
+        Path to the output directory where to write the fasta files.
+    overlapping_parameter : int
+        Percentage used to detect overlapping bins.
+    resolution_parameter : float
+        Resolution parameter to use if Leiden algorithm is chosen. It will be a
+        factor of the cost function used. A resolution parameter of 1 will be
+        equivalent as the modularity function used in Louvain. Higher these
+        parameters, smaller the bins will be in the output.
+    size : int
+        Threshold size in base pair of the output bins.
+    temp_directory : str
+        Path to the directory used to write temporary files.
+    threads : int
+        Number of threads to use.
+    """
+
+    # Perform the iterations of Louvain to partition the network.
+    logger.info("Start iterations:")
+    if algorithm == "leiden":
+        LEIDEN_PATH = os.environ["LEIDEN_PATH"]
+        output_partition = leiden_iterations_java(
+            network_file,
+            iterations,
+            resolution_parameter,
+            temp_directory,
+            LEIDEN_PATH,
+        )
+    elif algorithm == "louvain":
+        LOUVAIN_PATH = os.environ["LOUVAIN_PATH"]
+        output_partition = louvain_iterations_cpp(
+            network_file,
+            iterations,
+            temp_directory,
+            LOUVAIN_PATH,
+        )
+    else:
+        logger.error('algorithm should be either "louvain" or "leiden"')
+        raise ValueError
+
+    # Detect core bins
+    logger.info("Detect core bins:")
+    (
+        core_bins,
+        core_bins_iterations,
+    ) = detect_core_bins(output_partition, iterations)
+
+    # Compute the Hamming distance between core bins.
+    logger.info("Detect overlapping bins:")
+    hamming_distance = get_hamming_distance(
+        core_bins_iterations,
+        iterations,
+        threads,
+    )
+
+    # Defined overlapping bins according to the threshold
+    overlapping_bins = defined_overlapping_bins(
+        overlapping_parameter,
+        hamming_distance,
+        core_bins,
+        core_bins_iterations,
+    )
+
+    # Update the contigs_data_file.
+    logger.info("Extract bins:")
+    contigs_data = update_contigs_data(
+        contig_data_file,
+        core_bins,
+        overlapping_bins,
+        outdir,
+    )
+
+    # Generate Fasta file
+    generate_fasta(
+        assembly,
+        overlapping_bins,
+        contigs_data,
+        size,
+        outdir,
+        temp_directory,
+    )
 
 
 def remove_isolates(output_partition, network_file):
