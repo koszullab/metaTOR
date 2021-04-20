@@ -145,8 +145,17 @@ def get_contact_pairs(
 
         # Filters the aligned and non aligned reads from the forward and
         # reverse bam files.
-        process_bamfile(alignment_for, min_qual, alignment_temp_for)
-        process_bamfile(alignment_rev, min_qual, alignment_temp_rev)
+        aligned_reads_for = process_bamfile(
+            alignment_for, min_qual, alignment_temp_for
+        )
+        aligned_reads_rev = process_bamfile(
+            alignment_rev, min_qual, alignment_temp_rev
+        )
+        logger.info(
+            "{0} forward reads aligned and {1} reverse reads aligned".format(
+                aligned_reads_for, aligned_reads_rev
+            )
+        )
 
         # Merge alignement to create a pairs file
         logger.info("Merging the pairs:")
@@ -299,7 +308,4 @@ def process_bamfile(alignment, min_qual, filtered_out):
     f.close()
     temp_bam.close()
 
-    # Display alignement informations
-    logger.info("{0} reads aligned.".format(aligned_reads))
-
-    return 0
+    return aligned_reads

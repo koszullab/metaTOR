@@ -11,6 +11,7 @@ Core function to build the network are:
     - compute_contig_coverage
     - compute_network
     - create_contig_data
+    - normalize_pair
     - precompute_network
     - write_contig_data
 
@@ -26,14 +27,14 @@ import pandas as pd
 import re
 from Bio import SeqIO
 from Bio import SeqUtils
-from os.path import join
+from os.path import join, basename
 from metator.log import logger
 import metator.io as mio
 
 
 def alignment_to_contacts(
     aligment_files,
-    genome,
+    assembly,
     depth_file,
     output_dir,
     output_file_network,
@@ -56,10 +57,10 @@ def alignment_to_contacts(
     ----------
     alignment_files : list of str
         List of path to the alignment file used as input.
-    genome : str
+    assembly : str
         The initial assembly path acting as the alignment file's reference
-        genome.
-    depth_file : str
+        assembly.
+    depth_file : str or None
         Path to the depth.txt file from jgi_summarize_bam_contig_depths from
         Metabat2 Software.
     output_dir : str
@@ -76,7 +77,7 @@ def alignment_to_contacts(
         If None, do not normalized the count of a contact by the geometric mean
         of the coverage of the contigs. Otherwise it's the type of
         normalization.
-    enzyme : str
+    enzyme : str or None
         String that contains the names of the enzyme separated by a comma.
     self_contacts : bool
         Whether to count alignments between a contig and
@@ -98,7 +99,7 @@ def alignment_to_contacts(
     # Create the contig data dictionnary and hit from each alignments
     nb_alignment = len(aligment_files)
     contig_data, hit_data = create_contig_data(
-        genome, nb_alignment, depth_file, enzyme
+        assembly, nb_alignment, depth_file, enzyme
     )
 
     # Create a contact file easily readable for counting the contacts.
@@ -204,9 +205,8 @@ def compute_network(
     mio.sort_pairs(
         pre_network_file,
         pre_network_sorted,
-        tmp_dir=None,
-        threads=8,
-        buffer="2G",
+        tmp_dir=tmp_dir,
+        threads=n_cpus,
     )
 
     # Set the variables used in the loop
@@ -368,10 +368,10 @@ def create_contig_data(assembly, nb_alignment, depth_file, enzyme):
         Path to the assembly fasta file
     nb_alignement : int
         Numbers of alignment files.
-    depth_file : str
+    depth_file : str or None
         Path to the depth.txt file from jgi_summarize_bam_contig_depths from
         Metabat2 Software.
-    enzyme : str
+    enzyme : str or None
         String that contains the names of the enzyme separated by a comma.
 
     Return
@@ -379,8 +379,8 @@ def create_contig_data(assembly, nb_alignment, depth_file, enzyme):
     dict:
         Dictionnary of the all the contigs from the assembly, the contigs names
         are the keys to the data of the contig available with the following
-        keys: "id", "length", "GC", "hit", "coverage", "RS. Hit and coverage are set
-        to 0 and need to be updated later.
+        keys: "id", "length", "GC", "hit", "coverage", "RS". Hit is set to 0 and
+        need to be updated later.
     dict:
         Dictionnary for hit information on each contigs.
     """
@@ -392,20 +392,43 @@ def create_contig_data(assembly, nb_alignment, depth_file, enzyme):
     else:
         hit_data = None
 
-    pattern = mio.get_restriction_site(enzyme)
+    # Extract restriction sites if an enzyme is given.
+    if enzyme:
+        pattern = mio.get_restriction_site(enzyme)
 
     global_id = 1
-    with open(depth_file, "r") as depth:
-        line = depth.readline()
+    if depth_file:
+        with open(depth_file, "r") as depth:
+            line = depth.readline()
+            for contig in SeqIO.parse(assembly, "fasta"):
+                line = depth.readline().split("\t")
+                contig_data[contig.id] = {
+                    "id": global_id,
+                    "length": int(line[1]),
+                    "GC": SeqUtils.GC(contig.seq),
+                    "hit": 0,
+                    "coverage": float(line[2]),
+                    "RS": (len(re.findall(pattern, str(contig.seq))) + 1)
+                    if enzyme
+                    else "-",
+                }
+                if nb_alignment > 1:
+                    hit_data[contig_name] = {
+                        "id": global_id,
+                        "hit": [0] * nb_alignment,
+                    }
+                global_id += 1
+    else:
         for contig in SeqIO.parse(assembly, "fasta"):
-            line = depth.readline().split("\t")
             contig_data[contig.id] = {
                 "id": global_id,
-                "length": int(line[1]),
+                "length": len(contig.seq),
                 "GC": SeqUtils.GC(contig.seq),
                 "hit": 0,
-                "coverage": float(line[2]),
-                "RS": len(re.findall(pattern, str(contig.seq))) + 1,
+                "coverage": "-",
+                "RS": (len(re.findall(pattern, str(contig.seq))) + 1)
+                if enzyme
+                else "-",
             }
             if nb_alignment > 1:
                 hit_data[contig_name] = {
@@ -413,6 +436,7 @@ def create_contig_data(assembly, nb_alignment, depth_file, enzyme):
                     "hit": [0] * nb_alignment,
                 }
             global_id += 1
+
     return contig_data, hit_data
 
 
@@ -465,13 +489,11 @@ def precompute_network(
             # Read the alignment_file and build pairs for the network
             with open(aligment_file, "r") as pairs:
                 for pair in pairs:
-
                     # Split the line on the tabulation
                     p = pair.split("\t")
 
                     # Extract the contig names which are at the position 2 and 6.
                     contig1, contig2 = p[1], p[5]
-
                     id1 = contig_data[contig1]["id"]
                     id2 = contig_data[contig2]["id"]
 
@@ -502,7 +524,7 @@ def precompute_network(
             # Count contacts and return sample informations.
             all_contacts += all_contacts_temp
             inter_contacts += inter_contacts_temp
-            logger.info("Information of {0}:".format(aligment_file))
+            logger.info("Information of {0}:".format(basename(aligment_file)))
             logger.info(
                 "{0} contacts in the library.".format(all_contacts_temp)
             )
@@ -530,15 +552,15 @@ def precompute_network(
 
 def write_contig_data(contig_data, output_path):
     """Function to write the contig data file at the output path given. The file
-    will contains 6 columns separated by a tabulation: id, name, length,
-    GC_content, hit, coverage for each contig.
+    will contains 7 columns separated by a tabulation: id, name, length,
+    GC_content, hit, coverage, restriction site for each contig.
 
     Parameters
     ----------
     contig_data : dict
         Dictionnary of the all the contigs from the assembly, the contigs names
         are the keys to the data of the contig available with the following
-        keys: "id", "length", "GC", "hit", "coverage".
+        keys: "id", "length", "GC", "hit", "coverage", "RS".
     output_path : str
         Path to the output file where the data from the dictionnary will be
         written
@@ -546,14 +568,17 @@ def write_contig_data(contig_data, output_path):
 
     # For each contig extract the data and write them in the file.
     with open(output_path, "w") as contig_data_file_handle:
+        line = "ID\tName\tSize\tGC_content\tHit\tShotgun_coverage\tRestriction_site\n"
+        contig_data_file_handle.write(line)
         for name in contig_data:
             length = contig_data[name]["length"]
             hit = contig_data[name]["hit"]
             coverage = contig_data[name]["coverage"]
             GC_content = contig_data[name]["GC"]
             idx = contig_data[name]["id"]
-            line = "{}\t{}\t{}\t{}\t{}\t{}\n".format(
-                idx, name, length, GC_content, hit, coverage
+            RS = contig_data[name]["RS"]
+            line = "{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(
+                idx, name, length, GC_content, hit, coverage, RS
             )
             contig_data_file_handle.write(line)
 
@@ -624,18 +649,18 @@ def contigs_bin_network(
         contigs_data_file, sep="\t", header=None, index_col=False
     )
     contigs_data.columns = [
-        "id",
-        "name",
-        "length",
+        "ID",
+        "Name",
+        "Size",
         "GC_content",
-        "hit",
-        "coverage",
-        "cc_id",
-        "cc_nb",
-        "cc_length",
-        "oc_id",
-        "oc_nb",
-        "oc_length",
+        "HiC_contact",
+        "Shotgun_coverage",
+        "Restriction_site" "core_comunitiy_id",
+        "core_community_contigs",
+        "core_community_size",
+        "overlapping_comunitiy_id",
+        "overlapping_community_contigs",
+        "overlapping_community_size",
     ]
 
     # Import network of contigs.

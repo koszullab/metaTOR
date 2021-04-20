@@ -81,10 +81,10 @@ class Network(AbstractCommand):
     every single node in the network is written on a 'contig data' file.
 
     usage:
-        network --forward=STR --reverse=STR --assembly=FILE --depth=FILE
-        [--enzyme=STR] [--normalization=STR] [--no-clean-up] [--outdir=DIR]
-        [--min-quality=30] [--self-contacts] [--start=fastq] [--threads=1]
-        [--tempdir=DIR]
+        network --forward=STR --reverse=STR --assembly=FILE [--depth=FILE]
+        [--enzyme=STR] [--normalization=empirical_hit] [--no-clean-up]
+        [--outdir=DIR] [--min-quality=30] [--self-contacts] [--start=fastq]
+        [--threads=1] [--tempdir=DIR]
 
     options:
         -1, --forward=STR       Fastq file or list of Fastq separated by a comma
@@ -110,7 +110,7 @@ class Network(AbstractCommand):
                                 the contigs. Otherwise it's the type of
                                 normalization. 7 values are possible None,
                                 abundance, length, RS, RS_length, empirical_hit,
-                                theoritical_hit. [Default: abundance]
+                                theoritical_hit. [Default: empirical_hit]
         -N, --no-clean-up       Do not remove temporary files.
         -o, --outdir=DIR        The output directory to write the bam files the
                                 network and contig data into. Default: current
@@ -118,7 +118,7 @@ class Network(AbstractCommand):
         -q, --min-quality=INT   Threshold of quality necessary to considered a
                                 read properly aligned. [Default: 30]
         -s, --self-contacts     If enabled, count alignments between a contig
-                                and itself.
+                                and itself (intracontigs contigs).
         -S, --start=STR         Start stage of the pipeline. Either fastq or
                                 bam. [Default: fastq]
         -t, --threads=INT       Number of parallel threads allocated for the
@@ -165,6 +165,24 @@ class Network(AbstractCommand):
                 'Normalization should be among this list: "None", "abundance", "length", "RS", "RS_length", "empirical_hit", "theoritical_hit"'
             )
             raise ValueError
+        enzyme_required = ["RS", "RS_length", "theoritical_hit"]
+        if (
+            self.args["--normalization"] in enzyme_required
+            and not self.args["--enzyme"]
+        ):
+            logger.error(
+                'For "RS", "RS_length" and "theoritical_hit" normalization, enzyme is required.'
+            )
+            raise ValueError
+        depth_required = ["abundance", "theoritical_hit"]
+        if (
+            self.args["--normalization"] in depth_required
+            and not self.args["--depth"]
+        ):
+            logger.error(
+                'For "abundance" and "theoritical_hit" normalization, depth is required.'
+            )
+            raise ValueError
 
         # Extract index and genome file
         assembly = self.args["--assembly"]
@@ -183,6 +201,13 @@ class Network(AbstractCommand):
         else:
             fasta = mio.retrieve_fasta(index, temp_directory)
 
+        # Print information of teh workflow:
+        logger.info("Enzyme: {0}".format(self.args["--enzyme"]))
+        logger.info("Normalization: {0}".format(self.args["--normalization"]))
+        logger.info(
+            "Minimum mapping quality: {0}".format(self.args["--min-quality"])
+        )
+
         # Align pair-end reads with bowtie2
         alignment_files = mta.get_contact_pairs(
             self.args["--forward"],
@@ -195,6 +220,7 @@ class Network(AbstractCommand):
             self.args["--threads"],
         )
 
+        # Build the network
         mtn.alignment_to_contacts(
             alignment_files,
             fasta,
@@ -243,9 +269,10 @@ class Partition(AbstractCommand):
     instead.
 
     usage:
-        partition  --outdir=DIR --network-file=FILE --assembly=FILE --contigs-data=FILE
+        partition  --network-file=FILE --assembly=FILE --contigs-data=FILE
         [--iterations=100] [--algorithm=louvain] [--overlap=80] [--size=500000]
         [--threads=1] [--tempdir=DIR] [--no-clean-up] [--res-parameter=1.0]
+        [--outdir=DIR]
 
     options:
         -a, --assembly=FILE         The path to the assembly fasta file used to

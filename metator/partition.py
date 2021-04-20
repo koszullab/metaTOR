@@ -752,8 +752,9 @@ def update_contigs_data(contig_data_file, core_bins, overlapping_bins, outdir):
 
     # Read the table
     contigs_data = pd.read_csv(
-        contig_data_file, sep="\t", header=None, index_col=False
+        contig_data_file, sep="\t", header=True, index_col=False
     )
+    breakpoint()
     contigs_data.columns = [
         "id",
         "name",
@@ -761,6 +762,7 @@ def update_contigs_data(contig_data_file, core_bins, overlapping_bins, outdir):
         "GC_content",
         "hit",
         "coverage",
+        "RS",
     ]
 
     # Add new empty columns
@@ -799,6 +801,6 @@ def update_contigs_data(contig_data_file, core_bins, overlapping_bins, outdir):
 
     # Write the new file
     contig_data_file_2 = join(outdir, "contig_data_partition.txt")
-    contigs_data.to_csv(contig_data_file_2, sep="\t", header=None, index=False)
+    contigs_data.to_csv(contig_data_file_2, sep="\t", header=True, index=False)
 
     return contigs_data
