@@ -19,7 +19,6 @@ This module contains all these alignment functions:
 """
 
 import csv
-import sys
 import metator.io as mio
 import pysam
 import subprocess as sp
@@ -205,7 +204,7 @@ def pairs_alignment(
             logger.error(
                 "Please give as a reference a bowtie2 index or a fasta."
             )
-            sys.exit(1)
+            raise ValueError
 
     # Iterates on all the fastq files:
     for_fq_list = for_fq_in.split(",")

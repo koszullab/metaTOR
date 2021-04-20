@@ -25,7 +25,6 @@ Core functions to partition the network are:
 
 
 import community as community_louvain
-
 import igraph
 import leidenalg
 import metator.io as mio
@@ -35,7 +34,6 @@ import numpy as np
 import os
 import pandas as pd
 import subprocess as sp
-import sys
 from functools import partial
 from metator.log import logger
 from os.path import join
@@ -605,7 +603,7 @@ def partition(
     outdir : str
         Path to the output directory where to write the fasta files.
     overlapping_parameter : int
-        Hamming distance threshold to use to consider to bins as one in 
+        Hamming distance threshold to use to consider to bins as one in
         percentage.
     resolution_parameter : float
         Resolution parameter to use if Leiden algorithm is chosen. It will be a

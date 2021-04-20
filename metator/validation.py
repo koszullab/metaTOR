@@ -23,7 +23,6 @@ import networkx as nx
 import os
 import pandas as pd
 import subprocess as sp
-import sys
 from metator.log import logger
 from os.path import join
 

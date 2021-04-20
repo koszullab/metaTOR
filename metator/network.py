@@ -97,7 +97,9 @@ def alignment_to_contacts(
 
     # Create the contig data dictionnary and hit from each alignments
     nb_alignment = len(aligment_files)
-    contig_data, hit_data = create_contig_data(genome, nb_alignment, depth_file, enzyme)
+    contig_data, hit_data = create_contig_data(
+        genome, nb_alignment, depth_file, enzyme
+    )
 
     # Create a contact file easily readable for counting the contacts.
     contig_data = precompute_network(
@@ -403,7 +405,7 @@ def create_contig_data(assembly, nb_alignment, depth_file, enzyme):
                 "GC": SeqUtils.GC(contig.seq),
                 "hit": 0,
                 "coverage": float(line[2]),
-                "RS": len(re.findall(pattern, str(contig.seq))) + 1
+                "RS": len(re.findall(pattern, str(contig.seq))) + 1,
             }
             if nb_alignment > 1:
                 hit_data[contig_name] = {

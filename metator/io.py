@@ -23,7 +23,6 @@ import pandas as pd
 import pathlib
 import re
 import subprocess as sp
-import sys
 import zipfile
 from Bio import SeqIO
 from Bio.Restriction import RestrictionBatch
@@ -202,6 +201,7 @@ def generate_temp_dir(path):
         )
     return full_path
 
+
 def get_restriction_site(enzyme):
     """Function to return a regex which corresponds to all possible restriction
     sites given a set of enzyme.
@@ -239,10 +239,11 @@ def get_restriction_site(enzyme):
 
         # Extract restriction sites and look for cut sites.
         restriction_list.append(enz.site.replace("N", "."))
-        
+
     # Build the regex for all retsriction sites.
     pattern = "|".join(sorted(list(set(restriction_list))))
     return pattern
+
 
 def process_enzyme(enzyme):
     """Function to return a regex which corresponds to all possible ligation
@@ -455,7 +456,7 @@ def retrieve_fasta(in_file, tmpdir):
             logger.error(
                 "Please give as a reference a bowtie2 index or a fasta."
             )
-            sys.exit(1)
+            raise ValueError
     return fasta
 
 

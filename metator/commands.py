@@ -27,7 +27,6 @@ NotImplementedError
 
 import os
 import shutil
-import sys
 import metator.align as mta
 import metator.cutsite as mtc
 import metator.io as mio
@@ -525,7 +524,7 @@ class Validation(AbstractCommand):
             logger.error(
                 "CheckM is not in the path. Could not make the iterations"
             )
-            sys.exit(1)
+            raise NameError
 
         # Check correct algorithm value
         if self.args["--algorithm"] not in ["louvain", "leiden"]:
