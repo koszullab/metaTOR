@@ -111,11 +111,6 @@ def alignment_to_contacts(
         self_contacts,
     )
 
-    # Compute the coverage of the contigs
-    # Not necessary anymore as the coverage is taken from the alignment of the
-    # shotgun reads.
-    # contig_data = compute_contig_coverage(contig_data=contig_data)
-
     # Compute network
     compute_network(
         precompute_network_file,
@@ -131,7 +126,7 @@ def alignment_to_contacts(
     if nb_alignment > 1:
         write_hit_data(hit_data, hit_data_file)
 
-    return contig_data
+    return output_file_network, output_file_contig_data
 
 
 def compute_contig_coverage(contig_data):

@@ -669,7 +669,7 @@ def partition(
 
     # Update the contigs_data_file.
     logger.info("Extract bins:")
-    contigs_data = update_contigs_data(
+    contigs_data, contigs_data_file = update_contigs_data(
         contig_data_file,
         core_bins,
         overlapping_bins,
@@ -685,6 +685,7 @@ def partition(
         fasta_dir,
         temp_directory,
     )
+    return contigs_data_file
 
 
 def remove_isolates(output_partition, network_file):
@@ -796,4 +797,4 @@ def update_contigs_data(contig_data_file, core_bins, overlapping_bins, outdir):
     contig_data_file_2 = join(outdir, "contig_data_partition.txt")
     contigs_data.to_csv(contig_data_file_2, sep="\t", header=True, index=False)
 
-    return contigs_data
+    return contigs_data, contig_data_file_2

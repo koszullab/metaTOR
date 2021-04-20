@@ -269,7 +269,7 @@ class Partition(AbstractCommand):
     instead.
 
     usage:
-        partition  --network-file=FILE --assembly=FILE --contigs-data=FILE
+        partition  --network=FILE --assembly=FILE --contigs=FILE
         [--iterations=100] [--algorithm=louvain] [--overlap=80] [--size=500000]
         [--threads=1] [--tempdir=DIR] [--no-clean-up] [--res-parameter=1.0]
         [--outdir=DIR] [--force]
@@ -279,14 +279,14 @@ class Partition(AbstractCommand):
                                     do the alignment.
         -A, --algorithm=STR         louvain|leiden, algorithm to use to
                                     partition the network. [Default: louvain]
-        -c, --contigs-data=FILE     The path to the tsv file containing the data
+        -c, --contigs=FILE          The path to the tsv file containing the data
                                     of the contigs (ID, Name, Length, GC
                                     content, Hit, Coverage).
         -F, --force                 If enbale, would remove directory of
                                     overlapping bins in the output directory.
         -i, --iterations=INT        Number of iterations of Louvain.
                                     [Default: 100]
-        -n, --network-file=FILE     Path to the file containing the network
+        -n, --network=FILE          Path to the file containing the network
                                     information from the meta HiC experiment
                                     compute in network function previously.
         -N, --no-clean-up           Do not remove temporary files.
@@ -326,25 +326,22 @@ class Partition(AbstractCommand):
             os.makedirs(fasta_dir)
         else:
             if self.args["--force"]:
-                os.rmdir(fasta_dir)
+                shutil.rmtree(fasta_dir)
                 os.makedirs(fasta_dir)
             else:
                 logger.error(
-                    "{0} already existed. Remove directory or use -F argument to overwrite it."
+                    "{0} already existed. Remove directory or use -F argument to overwrite it.".format(
+                        fasta_dir
+                    )
                 )
                 raise ValueError
 
         # Transform numeric variable as numeric
-        if self.args["--iterations"]:
-            iterations = int(self.args["--iterations"])
-        if self.args["--overlap"]:
-            overlapping_parameter = int(self.args["--overlap"]) / 100
-        if self.args["--size"]:
-            size = int(self.args["--size"])
-        if self.args["--threads"]:
-            threads = int(self.args["--threads"])
-        if self.args["--res-parameter"]:
-            resolution_parameter = float(self.args["--res-parameter"])
+        iterations = int(self.args["--iterations"])
+        overlapping_parameter = int(self.args["--overlap"]) / 100
+        size = int(self.args["--size"])
+        threads = int(self.args["--threads"])
+        resolution_parameter = float(self.args["--res-parameter"])
 
         # Check correct algorithm value
         if self.args["--algorithm"] not in ["louvain", "leiden"]:
@@ -449,11 +446,13 @@ class Validation(AbstractCommand):
             os.makedirs(recursive_fasta_dir)
         else:
             if self.args["--force"]:
-                os.rmdir(recursive_fasta_dir)
+                shutil.rmtree(recursive_fasta_dir)
                 os.makedirs(recursive_fasta_dir)
             else:
                 logger.error(
-                    "{0} already existed. Remove directory or use -F argument to overwrite it."
+                    "{0} already existed. Remove directory or use -F argument to overwrite it.".format(
+                        recursive_fasta_dir
+                    )
                 )
                 raise ValueError
 
@@ -508,46 +507,78 @@ class Pipeline(AbstractCommand):
     files. It's also possible to ask or not to run the validation step which is
     the critical step for memory usage.
 
-    usage: pipeline  --fasta=FILE --forward
-        reads_for.fastq[,reads_for2.fastq...] --reverse
-        reads_rev.fastq[,reads_rev2.fastq...] [--assembly=FILE] [--tempdir=DIR]
-        [--threads=1] [--normalized] [--no-clean-up] [--overlap=90]
-        [--iterations=100] [--size=100] [--self-contacts] [--min-quality=30]
-        [--algorithm=STR] [--outdir=DIR]
+    usage:
+        pipeline --forward=STR --reverse=STR --assembly=FILE
+        [--algorithm=louvain] [--contigs=FILE] [--depth=FILE] [--enzyme=STR]
+        [--force] [--iterations=100] [--min-quality=30] [--network=FILE]
+        [--no-clean-up] [--normalization=empirical_hit] [--outdir=DIR]
+        [--overlap=80] [--rec-iter=10] [--rec-overlap=90]
+        [--res-param=1.0] [--size=500000] [--start=fastq] [--threads=1]
+        [--tempdir=DIR] [--skip-validation]
 
     options:
-        -1, --forward=STR           Fastq file or list of Fastq separated by a
-                                    comma containing the forward reads to be
-                                    aligned.
-        -2, --reverse=STR           Fastq file or list of Fastq separated by a
-                                    comma containing the reverse reads to be
-                                    aligned. Forward and reverse reads need to
-                                    have the same identifier.
-        -A, --algorithm=STR         Path to louvain cpp (faster than python
-                                    implementation). If None given, use python
-                                    implementation instead. [Default: None]
-        -f, --fasta=FILE            The genome on which to map the reads. Must
-                                    be the path to the bowtie2/bwa index or the
-                                    fasta.
-        -i, --iterations=INT        Number of iterartion of Louvain.
-                                    [Default: 100]
-        -n, --normalized            If enabled,  normalize contacts between
-                                    contigs by their geometric mean coverage.
-        -N, --no-clean-up           Do not remove temporary files.
-        -o, --outdir=DIR            Path where the alignment will be written in
-                                    bed2D format.
-        -O, --overlap=INT           Percentage of the identity necessary to be
-                                    considered as a part of the core bin.
-                                    [Default: 90]
-        -q, --min-quality=INT       Threshold of quality necessary to considered
-                                    a read properly aligned. [Default: 30]
-        -s, --size=INT              Threshold size to keep bins in base pair.
-                                    [Default: 300000]
-        -S, --self-contacts         If enabled, count alignments between a
-                                    contig and itself.
-        -t, --threads=INT           Number of parallel threads allocated for the
-                                    alignement. [Default: 1]
-        -T, --tempdir=DIR           Temporary directory. [Default: ./tmp]
+        -1, --forward=STR       Fastq file or list of Fastq separated by a comma
+                                containing the forward reads to be aligned or
+                                their corresponding bam files.
+        -2, --reverse=STR       Fastq file or list of Fastq separated by a comma
+                                containing the reverse reads to be aligned or
+                                their corresponding bam files. Forward and
+                                reverse reads need to have the same identifier
+                                (read names).
+        -a, --assembly=FILE     The initial assembly path acting as the
+                                alignment file's reference genome or the
+                                basename of the bowtie2 index.
+        -A, --algorithm=STR     Algorithm to use. Either "louvain" or "leiden".
+                                [Default: louvain]
+        -c, --contigs=FILE      The path to the file containing the data ofthe
+                                contigs (ID, Name, Length, GC content, Hit,
+                                Coverage).
+        -d, --depth=FILE        The depth.txt file from the shotgun reads used
+                                to made the assembly computed by
+                                jgi_summarize_bam_contig_depths from metabat2
+                                pipeline.
+        -e, --enzyme=STR        The list of restriction enzyme used to digest
+                                the contigs separated by a comma. Example:
+                                DpnII,HinfI.
+        -F, --force             If enbale, would remove directory of overlapping
+                                bins in the output directory.
+        -i, --iterations=INT    Number of iterations of Louvain for the
+                                partition step. [Default: 100]
+        -j, --rec-iter=INT      Number of iterations of Louvain for the
+                                recursive step. [Default: 10]
+        -n, --network=FILE      Path to the file containing the network
+                                information from the meta HiC experiment compute
+                                in network function previously.
+        -N, --no-clean-up       Do not remove temporary files.
+        -m, --normalization=STR If None, do not normalized the count of a
+                                contact by the geometric mean of the coverage of
+                                the contigs. Otherwise it's the type of
+                                normalization. 7 values are possible None,
+                                abundance, length, RS, RS_length, empirical_hit,
+                                theoritical_hit. [Default: empirical_hit]
+        -o, --outdir=DIR        The output directory to write the bam files the
+                                network and contig data into. Default: current
+                                directory.
+        -O, --overlap=INT       Percentage of the identity necessary to be
+                                considered as a part of the same bin for the
+                                partition step. [Default: 80]
+        -P, --rec-overlap=INT   Percentage of the identity necessary to be
+                                considered as a part of the same bin for the
+                                recursive step. [Default: 90]
+        -q, --min-quality=INT   Threshold of quality necessary to considered a
+                                read properly aligned. [Default: 30]
+        -r, --res-param=FLOAT   Resolution paramter to use for Leiden
+                                algorithm. [Default: 1.0]
+        -s, --size=INT          Threshold size to keep bins in base pair.
+                                [Default: 500000]
+        -S, --start=STR         Start stage of the pipeline. Either fastq or
+                                bam. [Default: fastq]
+        -t, --threads=INT       Number of parallel threads allocated for the
+                                alignement. [Default: 1]
+        -T, --tempdir=DIR       Temporary directory. Default to current
+                                directory. [Default: ./tmp]
+        -v, --skip-validation   If  enables do not do the validation step which
+                                have an high memory usage (checkM ~ 40G)
     """
 
     def execute(self):
@@ -566,114 +597,201 @@ class Pipeline(AbstractCommand):
             self.args["--outdir"] = "."
         if not exists(self.args["--outdir"]):
             os.makedirs(self.args["--outdir"])
+        overlapping_fasta_dir = join(self.args["--outdir"], "overlapping_bin")
+        if not exists(overlapping_fasta_dir):
+            os.makedirs(overlapping_fasta_dir)
+        else:
+            if self.args["--force"]:
+                shutil.rmtree(overlapping_fasta_dir)
+                os.makedirs(overlapping_fasta_dir)
+            else:
+                print(self.args["--force"])
+                logger.error(
+                    "{0} already existed. Remove directory or use -F argument to overwrite it.".format(
+                        overlapping_fasta_dir
+                    )
+                )
+                raise ValueError
 
-        # Transform integer variables as integer.
-        if self.args["--min-quality"]:
-            min_qual = int(self.args["--min-quality"])
-        if self.args["--iterations"]:
-            iterations = int(self.args["--iterations"])
-        if self.args["--overlap"]:
-            overlap = float(self.args["--overlap"])
-        if self.args["--size"]:
-            size = int(self.args["--size"])
-        if self.args["--threads"]:
-            threads = int(self.args["--threads"])
+        # Define variable
+        min_qual = int(self.args["--min-quality"])
+        iterations = int(self.args["--iterations"])
+        recursive_iterations = int(self.args["--rec-iter"])
+        overlapping_parameter = int(self.args["--overlap"]) / 100
+        recursive_overlapping_parameter = int(self.args["--rec-overlap"]) / 100
+        size = int(self.args["--size"])
+        threads = int(self.args["--threads"])
+        resolution_parameter = float(self.args["--res-param"])
 
-        # Defined boolean variables.
-        normalized = self.args["--normalized"]
-        self_contacts = self.args["--self-contacts"]
+        # Check correct algorithm value
+        if self.args["--algorithm"] not in ["louvain", "leiden"]:
+            logger.error('algorithm should be either "louvain" or "leiden"')
+            raise ValueError
 
-        # Create two path for the fasta index or the fasta assembly from the
-        # given file.
-        index = mio.check_fasta_index(self.args["--fasta"])
+        # Check if normalization in the list of possible normalization.
+        list_normalization = [
+            "None",
+            "abundance",
+            "length",
+            "RS",
+            "RS_length",
+            "empirical_hit",
+            "theoritical_hit",
+        ]
+        if self.args["--normalization"] not in list_normalization:
+            logger.error(
+                'Normalization should be among this list: "None", "abundance", "length", "RS", "RS_length", "empirical_hit", "theoritical_hit"'
+            )
+            raise ValueError
+        enzyme_required = ["RS", "RS_length", "theoritical_hit"]
+        if (
+            self.args["--normalization"] in enzyme_required
+            and not self.args["--enzyme"]
+        ):
+            logger.error(
+                'For "RS", "RS_length" and "theoritical_hit" normalization, enzyme is required.'
+            )
+            raise ValueError
+        depth_required = ["abundance", "theoritical_hit"]
+        if (
+            self.args["--normalization"] in depth_required
+            and not self.args["--depth"]
+        ):
+            logger.error(
+                'For "abundance" and "theoritical_hit" normalization, depth is required.'
+            )
+            raise ValueError
+
+        # Sanity check for validation
+        if not self.args["--skip-validation"]:
+            recursive_fasta_dir = join(self.args["--outdir"], "recursive_bin")
+            if not exists(recursive_fasta_dir):
+                os.makedirs(recursive_fasta_dir)
+            else:
+                if self.args["--force"]:
+                    shutil.rmtree(recursive_fasta_dir)
+                    os.makedirs(recursive_fasta_dir)
+                else:
+                    logger.error(
+                        "{0} already existed. Remove directory or use -F argument to overwrite it.".format(
+                            recursive_fasta_dir
+                        )
+                    )
+                    raise ValueError
+
+            # Check checkM availability
+            if not mio.check_checkm():
+                logger.error(
+                    "CheckM is not in the path. Could not make the iterations"
+                )
+                raise NameError
+
+        # Print information of teh workflow:
+        logger.info("Minimum mapping quality: {0}".format(min_qual))
+        logger.info("Enzyme: {0}".format(self.args["--enzyme"]))
+        logger.info("Normalization: {0}".format(self.args["--normalization"]))
+        logger.info("Partition algorithm: {0}".format(self.args["--algorithm"]))
+        logger.info("Partition iterations: {0}".format(iterations))
+        logger.info("Overlapping parameter: {0}".format(overlapping_parameter))
+        logger.info(
+            "Recursive partition iterations: {0}".format(recursive_iterations)
+        )
+        logger.info(
+            "Recursive overlapping parameter: {0}".format(
+                recursive_overlapping_parameter
+            )
+        )
+
+        # Extract index and genome file
+        assembly = self.args["--assembly"]
+        # Check what is the reference. If a fasta is given build the index. If a
+        # bowtie2 index is given, retreive the fasta.
+        index = mio.check_fasta_index(assembly, mode="bowtie2")
         if index is None:
-            if mio.check_is_fasta(self.args["--fasta"]):
-                fasta = self.args["--fasta"]
-                index = self.args["--fasta"]
+            if mio.check_is_fasta(assembly):
+                fasta = assembly
+                index = mio.generate_fasta_index(fasta, temp_directory)
+            else:
+                logger.error(
+                    "Please give as assembly argument a bowtie2 index or a fasta."
+                )
+                raise ValueError
         else:
-            fasta = mio.retrieve_fasta(temp_directory, temp_directory)
+            fasta = mio.retrieve_fasta(index, temp_directory)
 
-        # Align pair-end reads with bowtie2.
-        pairs = mta.pairs_alignment(
-            self.args["--forward"],
-            self.args["--reverse"],
-            min_qual,
-            temp_directory,
-            index,
-            self.args["--outdir"],
-            self.args["--threads"],
-        )
+        # Run the whole workflow
+        if self.args["--start"] == "bam" or self.args["--start"] == "fastq":
 
-        # Generate the network.
-        mtn.alignment_to_contacts(
-            pairs,
-            fasta,
-            self.args["--outdir"],
-            "network.txt",
-            "contigs_data_network.txt",
-            temp_directory,
-            self.args["--threads"],
-            normalized,
-            self_contacts,
-        )
-
-        network_file = join(self.args["--outdir"], "network.txt")
-        contigs_data = join(self.args["--outdir"], "contigs_data_network.txt")
-
-        # Perform iterations of Louvain.
-        if self.args["--algorithm"] == "None":
-            output_partition = mtp.louvain_iterations_py(
-                network_file,
-                iterations,
-            )
-        else:
-            output_partition = mtp.louvain_iterations_cpp(
-                network_file,
-                iterations,
+            # Align pair-end reads with bowtie2
+            alignment_files = mta.get_contact_pairs(
+                self.args["--forward"],
+                self.args["--reverse"],
+                index,
+                min_qual,
+                self.args["--start"],
+                self.args["--outdir"],
                 temp_directory,
-                self.args["--algorithm"],
+                self.args["--threads"],
             )
 
-        # Detect core bins
-        (
-            core_bins,
-            core_bins_iterations,
-        ) = mtp.detect_core_bins(output_partition, iterations)
+            # Build the network
+            network_file, contigs_data_file = mtn.alignment_to_contacts(
+                alignment_files,
+                fasta,
+                self.args["--depth"],
+                self.args["--outdir"],
+                "network.txt",
+                "contig_data_network.txt",
+                temp_directory,
+                self.args["--threads"],
+                self.args["--normalization"],
+                self.args["--enzyme"],
+                False,
+            )
 
-        # Compute the Hamming distance between core bins.
-        hamming_distance = mtp.hamming_distance(
-            core_bins_iterations,
+        elif self.args["--start"] == "network":
+            contigs_data_file = self.args["--contigs-data"]
+            network_file = self.args["--network-file"]
+
+        else:
+            logger.error(
+                "Start argument should be 'fastq', 'bam' or 'network'."
+            )
+            raise ValueError
+
+        # Partition the network
+        contigs_data_file = mtp.partition(
+            self.args["--algorithm"],
+            fasta,
+            contigs_data_file,
             iterations,
+            network_file,
+            self.args["--outdir"],
+            overlapping_fasta_dir,
+            overlapping_parameter,
+            resolution_parameter,
+            size,
+            temp_directory,
             threads,
         )
 
-        # Defined overlapping bins according to the threshold
-        overlapping_bins = mtp.defined_overlapping_bins(
-            overlap,
-            hamming_distance,
-            core_bins,
-            core_bins_iterations,
-        )
-
-        # Update the contigs_data_file.
-        contigs_data = mtp.update_contigs_data(
-            contigs_data,
-            core_bins,
-            overlapping_bins,
-            self.args["--outdir"],
-        )
-
-        # Generate Fasta file
-        mtp.generate_fasta(
-            fasta,
-            overlapping_bins,
-            contigs_data,
-            size,
-            self.args["--outdir"],
-            temp_directory,
-        )
-
-        # TODO: Launch validation if necessary.
+        # Launch validation if desired.
+        if not self.args["--skip-validation"]:
+            mtv.recursive_decontamination(
+                self.args["--algorithm"],
+                fasta,
+                contigs_data_file,
+                overlapping_fasta_dir,
+                recursive_iterations,
+                network_file,
+                self.args["--outdir"],
+                recursive_overlapping_parameter,
+                recursive_fasta_dir,
+                resolution_parameter,
+                size,
+                temp_directory,
+                threads,
+            )
 
         # Delete the temporary folder.
         if not self.args["--no-clean-up"]:
