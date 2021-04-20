@@ -301,10 +301,10 @@ def louvain_recursif(
             (
                 recursif_core_bins,
                 recursif_bins_iterations,
-            ) = mtp.detect_core_bins(output_louvain, iterations)
+            ) = mtp.detect_core_bins(output_partition, iterations)
 
             # Compute the Hamming distance between core bins.
-            hamming_distance = mtp.hamming_distance(
+            hamming_distance = mtp.get_hamming_distance(
                 recursif_bins_iterations,
                 iterations,
                 threads,
@@ -319,7 +319,7 @@ def louvain_recursif(
             )
 
             # update bin data and generate fasta
-            fasta_outdir = os.join(outdir, "fasta/")
+            fasta_outdir = join(outdir, "fasta/")
             contamination, contigs_data = update_contigs_data_recursif(
                 contigs_data,
                 recursif_bins,

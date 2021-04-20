@@ -352,9 +352,9 @@ class Partition(AbstractCommand):
         mtp.partition(
             self.args["--algorithm"],
             self.args["--assembly"],
-            self.args["--contigs-data"],
+            self.args["--contigs"],
             iterations,
-            self.args["--network-file"],
+            self.args["--network"],
             self.args["--outdir"],
             fasta_dir,
             overlapping_parameter,

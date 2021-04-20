@@ -244,9 +244,9 @@ def get_restriction_site(enzyme):
 
     Examples:
     ---------
-    >>> process_enzyme('DpnII')
+    >>> get_restriction_site('DpnII')
     'GATC'
-    >>> process_enzyme('DpnII,HinfI')
+    >>> get_restriction_site('DpnII,HinfI')
     'GA.TC|GATC'
     """
 

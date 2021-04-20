@@ -126,7 +126,7 @@ def alignment_to_contacts(
     if nb_alignment > 1:
         write_hit_data(hit_data, hit_data_file)
 
-    return output_file_network, output_file_contig_data
+    return network_file, contig_data_file
 
 
 def compute_contig_coverage(contig_data):
@@ -408,7 +408,7 @@ def create_contig_data(assembly, nb_alignment, depth_file, enzyme):
                     else "-",
                 }
                 if nb_alignment > 1:
-                    hit_data[contig_name] = {
+                    hit_data[contig.id] = {
                         "id": global_id,
                         "hit": [0] * nb_alignment,
                     }
@@ -426,7 +426,7 @@ def create_contig_data(assembly, nb_alignment, depth_file, enzyme):
                 else "-",
             }
             if nb_alignment > 1:
-                hit_data[contig_name] = {
+                hit_data[contig.id] = {
                     "id": global_id,
                     "hit": [0] * nb_alignment,
                 }
