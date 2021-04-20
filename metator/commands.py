@@ -319,7 +319,7 @@ class Partition(AbstractCommand):
             self.args["--outdir"] = "."
         if not exists(self.args["--outdir"]):
             os.makedirs(self.args["--outdir"])
-        fasta_dir = join(self.args["--outidr"], "overlapping_bin")
+        fasta_dir = join(self.args["--outdir"], "overlapping_bin")
         if not exists(fasta_dir):
             os.makedirs(fasta_dir)
 
@@ -370,19 +370,15 @@ class Partition(AbstractCommand):
 class Validation(AbstractCommand):
     """Use CheckM to validate the bins.
 
-    Use checkM to validate bacterial and archae bins. The script returns the
-    output of CheckM is an output directory.
-
-    It is possible to also partition again the contaminated bins to improve
-    them. The new bins contamination and completion will be compute again. If
-    there is a loss of the completion from the original bins, i.e. the new
-    iterations may split the organism in multiple bins, go back to the original
-    bins.
+    Recursively decontaminate the contaminated bins evaluated by checkM. The
+    script returns new decontaminated fasta and summary files of the
+    decontamination.
 
     usage:
-        validation --outdir=DIR --network=FILE --assembly=FILE --fasta=DIR --contigs=STR
-        [--iterations=10] [--algorithm=louvain] [--size=500000] [--res-param=1.0]
-        [--threads=1] [--tempdir=DIR]  [--no-clean-up] [--overlap=90]
+        validation --network=FILE --assembly=FILE --fasta=DIR --contigs=STR
+        [--iterations=10] [--algorithm=louvain] [--size=500000]
+        [--res-param=1.0] [--threads=1] [--tempdir=DIR]  [--no-clean-up]
+        [--overlap=90] [--outdir=DIR]
 
     options:
         -a, --assembly=FILE     The path to the assembly fasta file used to do
@@ -435,8 +431,9 @@ class Validation(AbstractCommand):
             self.args["--outdir"] = "."
         if not exists(self.args["--outdir"]):
             os.makedirs(self.args["--outdir"])
-        if not exists(self.args["--outdir"]):
-            os.makedirs(os.join(self.args["--outdir"], "recursive_bin"))
+        recursive_fasta_dir = join(self.args["--outdir"], "recursive_bin")
+        if not exists(recursive_fasta_dir):
+            os.makedirs(recursive_fasta_dir)
 
         # Transform numeric variable as numeric
         iterations = int(self.args["--iterations"])
@@ -466,6 +463,7 @@ class Validation(AbstractCommand):
             self.args["--network"],
             self.args["--outdir"],
             overlapping_parameter,
+            recursive_fasta_dir,
             resolution_parameter,
             size,
             temp_directory,

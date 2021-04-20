@@ -187,7 +187,7 @@ def generate_fasta(assembly, bins, contigs_data, size, output_dir, tmpdir):
         list_contigs_id = bins[bin]
         list_contigs = list_contigs_id
         # Test if the bin is bigger than the size threshold given.
-        length_bin = contigs_data.iloc[list_contigs[0] - 1, 11]
+        length_bin = contigs_data.iloc[list_contigs[0] - 1, 12]
         if length_bin >= size:
             nb_bins += 1
             length_bins += length_bin
@@ -755,26 +755,16 @@ def update_contigs_data(contig_data_file, core_bins, overlapping_bins, outdir):
 
     # Read the table
     contigs_data = pd.read_csv(
-        contig_data_file, sep="\t", header=True, index_col=False
+        contig_data_file, sep="\t", header=0, index_col=False
     )
-    breakpoint()
-    contigs_data.columns = [
-        "id",
-        "name",
-        "length",
-        "GC_content",
-        "hit",
-        "coverage",
-        "RS",
-    ]
 
     # Add new empty columns
-    contigs_data["cc_id"] = "-"
-    contigs_data["cc_nb"] = "-"
-    contigs_data["cc_length"] = "-"
-    contigs_data["oc_id"] = "-"
-    contigs_data["oc_nb"] = "-"
-    contigs_data["oc_length"] = "-"
+    contigs_data["Core bin ID"] = "-"
+    contigs_data["Core bin contigs"] = "-"
+    contigs_data["Core bin size"] = "-"
+    contigs_data["Overlapping bin ID"] = "-"
+    contigs_data["Overlapping bin contigs"] = "-"
+    contigs_data["Overlapping bin size"] = "-"
 
     # Add core bin information
     n = 1
@@ -783,11 +773,11 @@ def update_contigs_data(contig_data_file, core_bins, overlapping_bins, outdir):
         core_bin = [id - 1 for id in core_bins[i]]
         core_bin_data = contigs_data.iloc[core_bin]
         core_bin_contigs_number = len(core_bin)
-        core_bin_length = sum(core_bin_data.length)
+        core_bin_length = sum(core_bin_data.Size)
         # Write the new information
-        contigs_data.iloc[core_bin, 6] = n
-        contigs_data.iloc[core_bin, 7] = core_bin_contigs_number
-        contigs_data.iloc[core_bin, 8] = core_bin_length
+        contigs_data.iloc[core_bin, 7] = n
+        contigs_data.iloc[core_bin, 8] = core_bin_contigs_number
+        contigs_data.iloc[core_bin, 9] = core_bin_length
         n += 1
 
     # Add overlapping information
@@ -796,11 +786,11 @@ def update_contigs_data(contig_data_file, core_bins, overlapping_bins, outdir):
         overlapping_bin = [id - 1 for id in overlapping_bins[i]]
         overlapping_bin_data = contigs_data.iloc[overlapping_bin]
         overlapping_bin_contigs_number = len(overlapping_bin)
-        overlapping_bin_length = sum(overlapping_bin_data.length)
+        overlapping_bin_length = sum(overlapping_bin_data.Size)
         # Write the new information
-        contigs_data.iloc[overlapping_bin, 9] = i
-        contigs_data.iloc[overlapping_bin, 10] = overlapping_bin_contigs_number
-        contigs_data.iloc[overlapping_bin, 11] = overlapping_bin_length
+        contigs_data.iloc[overlapping_bin, 10] = i
+        contigs_data.iloc[overlapping_bin, 11] = overlapping_bin_contigs_number
+        contigs_data.iloc[overlapping_bin, 12] = overlapping_bin_length
 
     # Write the new file
     contig_data_file_2 = join(outdir, "contig_data_partition.txt")

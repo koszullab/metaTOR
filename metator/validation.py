@@ -241,27 +241,13 @@ def louvain_recursif(
 
     # Load contigs data:
     contigs_data = pd.read_csv(
-        contigs_data_file, sep="\t", header=None, index_col=False
+        contigs_data_file, sep="\t", header=0, index_col=False
     )
-    contigs_data.columns = [
-        "id",
-        "name",
-        "length",
-        "GC_content",
-        "hit",
-        "coverage",
-        "cc_id",
-        "cc_nb",
-        "cc_length",
-        "oc_id",
-        "oc_nb",
-        "oc_length",
-    ]
 
     # Add new coulumns for recursive information.
-    contigs_data["rec_id"] = "0"
-    contigs_data["rec_nb"] = "-"
-    contigs_data["rec_length"] = "-"
+    contigs_data["Recursive bin ID"] = "0"
+    contigs_data["Recursive bin contigs"] = "-"
+    contigs_data["Recursive bin length"] = "-"
 
     # Default no contamination
     contamination = False
@@ -278,7 +264,7 @@ def louvain_recursif(
 
             # Extract contigs
             list_contigs = list(
-                contigs_data["id"][contigs_data["oc_id"] == bin_id]
+                contigs_data["ID"][contigs_data["Overlapping bin ID"] == bin_id]
             )
 
             # Extract subnetwork
@@ -346,7 +332,7 @@ def louvain_recursif(
 
     # Write the new file
     contig_data_file_2 = join(outdir, "contig_data_recursif.txt")
-    contigs_data.to_csv(contig_data_file_2, sep="\t", header=None, index=False)
+    contigs_data.to_csv(contig_data_file_2, sep="\t", header=True, index=False)
 
     # Put back the info log
     logger.setLevel(logging.INFO)
@@ -408,6 +394,7 @@ def recursive_decontamination(
     network_file,
     outdir,
     overlapping_parameter,
+    recursive_fasta_dir,
     resolution_parameter,
     size,
     temp_directory,
@@ -433,11 +420,11 @@ def recursive_decontamination(
         Path to the network file.
     outdir : str
         Path to the output directory where to write the output files.
-    fasta_dir : str
-        Path to write the fasta decontaminated bins.
     overlapping_parameter : int
         Hamming distance threshold in percentage to use to consider to bins as
         one in the recursive partition.
+    recursive_fasta_dir : str
+        Path to write the fasta decontaminated bins.
     resolution_parameter : float
         Resolution parameter to use if Leiden algorithm is chosen. It will be a
         factor of the cost function used. A resolution parameter of 1 will be
@@ -491,7 +478,7 @@ def recursive_decontamination(
         # Run checkm on the recursif bins.
         temp_directory = join(temp_directory, "checkm2")
         checkm(
-            fasta_dir,
+            recursive_fasta_dir,
             recursif_checkm_file,
             recursif_taxonomy_file,
             temp_directory,
@@ -567,13 +554,13 @@ def update_contigs_data_recursif(
         recursif_bin = [id - 1 for id in recursif_bins[i]]
         recursif_bin_data = contigs_data.iloc[recursif_bin]
         recursif_bin_contigs_number = len(recursif_bin)
-        recursif_bin_length = sum(recursif_bin_data.length)
+        recursif_bin_length = sum(recursif_bin_data.Size)
 
         if recursif_bin_contigs_number > 1:
             # Write the new information
-            contigs_data.iloc[recursif_bin, 12] = rec_id
-            contigs_data.iloc[recursif_bin, 13] = recursif_bin_contigs_number
-            contigs_data.iloc[recursif_bin, 14] = recursif_bin_length
+            contigs_data.iloc[recursif_bin, 13] = rec_id
+            contigs_data.iloc[recursif_bin, 14] = recursif_bin_contigs_number
+            contigs_data.iloc[recursif_bin, 15] = recursif_bin_length
 
             if recursif_bin_length > size:
 
@@ -581,7 +568,7 @@ def update_contigs_data_recursif(
                 contamination = True
 
                 # Defined name of the recursif bin
-                oc_id = contigs_data.iloc[recursif_bin[0], 9]
+                oc_id = contigs_data.iloc[recursif_bin[0], 10]
                 output_file = join(
                     outdir, "MetaTOR_{0}_{1}.fa".format(oc_id, rec_id)
                 )
@@ -636,12 +623,12 @@ def write_bins_contigs(bin_summary, contigs_data, outfile):
             over_id = str(
                 contigs_data.iloc[
                     i,
-                ]["oc_id"]
+                ]["Overlapping bin ID"]
             )
             rec_id = str(
                 contigs_data.iloc[
                     i,
-                ]["rec_id"]
+                ]["Recursive bin ID"]
             )
             try:
                 rec_ids = list_bin_id[over_id]
@@ -650,7 +637,7 @@ def write_bins_contigs(bin_summary, contigs_data, outfile):
                         "{0}\tMetaTOR_{1}_{2}\n".format(
                             contigs_data.iloc[
                                 i,
-                            ]["name"],
+                            ]["Name"],
                             over_id,
                             rec_id,
                         )
@@ -662,7 +649,7 @@ def write_bins_contigs(bin_summary, contigs_data, outfile):
                         "{0}\tMetaTOR_{1}_{2}\n".format(
                             contigs_data.iloc[
                                 i,
-                            ]["name"],
+                            ]["Name"],
                             over_id,
                             rec_id,
                         )
