@@ -364,7 +364,7 @@ def give_results_info(bin_summary):
     """
 
     # Defined categories of the bins
-    HQ = 0  # Completness >= 90 and Contamination <= 10
+    HQ = 0  # Completness >= 90 and Contamination <= 5
     MQ = 0  # Completness >= 70 and Contamination <= 10
     LQ = 0  # Completness >= 50 and Contamination <= 10
     conta_bins = 0  # Completness >= 50 and Contamination > 10
@@ -378,7 +378,7 @@ def give_results_info(bin_summary):
             if contamination > 10:
                 conta_bins += 1
             else:
-                if completness >= 90:
+                if completness >= 90 and contamination <= 5:
                     HQ += 1
                 elif completness >= 70:
                     MQ += 1
