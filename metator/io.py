@@ -6,11 +6,15 @@
 This mdoule contains all core I/O functions:
     - check_checkm
     - check_fasta_index
-    - check_louvain_function
+    - check_is_fasta
+    - check_louvain_cpp
+    - generate_fasta_index
     - generate_temp_dir
+    - get_restriction_site
     - process_ligation_sites
     - read_compressed
     - read_results_checkm
+    - retreive_fastas
     - sort_pairs
     - write_checkm_summary
 """
@@ -44,7 +48,7 @@ def check_checkm():
     try:
         checkm = sp.check_output("checkm", stderr=sp.STDOUT, shell=True)
     except sp.CalledProcessError:
-        logger.warning(
+        logger.error(
             "Cannot find 'checkm' in your path please install it or add it in your path."
         )
         return False
@@ -143,7 +147,7 @@ def check_louvain_cpp(louvain_path):
             "{0} --help".format(convert), stderr=sp.STDOUT, shell=True
         )
     except sp.CalledProcessError:
-        logger.warning("Cannot find the 'convert' function from Louvain path.")
+        logger.error("Cannot find the 'convert' function from Louvain path.")
         return False
 
     # Check louvain:
@@ -152,7 +156,7 @@ def check_louvain_cpp(louvain_path):
             "{0} --help".format(louvain), stderr=sp.STDOUT, shell=True
         )
     except sp.CalledProcessError:
-        logger.warning("Cannot find the 'louvain' function from Louvain path.")
+        logger.error("Cannot find the 'louvain' function from Louvain path.")
         return False
 
     # Check hierarchy:
@@ -161,12 +165,33 @@ def check_louvain_cpp(louvain_path):
             "{0} --help".format(hierarchy), stderr=sp.STDOUT, shell=True
         )
     except sp.CalledProcessError:
-        logger.warning(
-            "Cannot find the convert_net function from Louvain path."
-        )
+        logger.error("Cannot find the convert_net function from Louvain path.")
         return False
 
     return True
+
+
+def generate_fasta_index(fasta, outdir):
+    """Generate fasta index.
+
+    Parameters:
+    -----------
+    fasta : str
+        Path to the fasta reference to index.
+    outdir : str
+        Path to the directory to write the index.
+
+    Returns:
+    --------
+    str:
+        Path to the bowtie2 index build
+    """
+    logger.info("Build index from the given fasta.")
+    index = join(outdir, "index")
+    cmd = "bowtie2-build -q {0} {1}".format(fasta, index)
+    process = sp.Popen(cmd, shell=True, stdout=sp.PIPE)
+    out, err = process.communicate()
+    return index
 
 
 def generate_temp_dir(path):

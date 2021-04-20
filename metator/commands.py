@@ -68,37 +68,63 @@ class AbstractCommand:
             os.makedirs(dirname(path), exist_ok=True)
 
 
-class Align(AbstractCommand):
-    """Alignment command
+class Network(AbstractCommand):
+    """Generation of network command
 
     Align reads from froward and reverse fastq files. Multiple fastq could be
-    given separated by commas. Option to digest the reads using ligation
-    sites to optimize the number of mapped reads.
+    given separated by commas. Generates a network file (in edgelist form) from
+    an alignment in bed2D format. Contigs are the network nodes and the edges
+    are the contact counts.
+
+    The network is in a strict barebone form so that it can be reused and
+    imported quickly into other applications etc. Verbose information about
+    every single node in the network is written on a 'contig data' file.
 
     usage:
-        align --forward=STR --reverse=STR --genome=FILE [--tempdir=DIR]
-        [--threads=1] [--min-quality=30] [--no-clean-up] [--outdir=DIR]
+        network --forward=STR --reverse=STR --assembly=FILE --depth=FILE
+        [--enzyme=STR] [--normalization=STR] [--no-clean-up] [--outdir=DIR]
+        [--min-quality=30] [--self-contacts] [--start=fastq] [--threads=1]
+        [--tempdir=DIR]
 
     options:
         -1, --forward=STR       Fastq file or list of Fastq separated by a comma
-                                containing the forward reads to be aligned.
+                                containing the forward reads to be aligned or
+                                their corresponding bam files.
         -2, --reverse=STR       Fastq file or list of Fastq separated by a comma
-                                containing the reverse reads to be aligned.
-                                Forward and reverse reads need to have the same
-                                identifier.
-        -g, --genome=FILE       The genome on which to map the reads. Must be
-                                the path to the bowtie2/bwa index. Mandatory if
-                                not digestion only enabled.
+                                containing the reverse reads to be aligned or
+                                their corresponding bam files. Forward and
+                                reverse reads need to have the same identifier
+                                (read names).
+        -a, --assembly=FILE     The initial assembly path acting as the
+                                alignment file's reference genome or the
+                                basename of the bowtie2 index.
+        -d, --depth=FILE        The depth.txt file from the shotgun reads used
+                                to made the assembly computed by
+                                jgi_summarize_bam_contig_depths from metabat2
+                                pipeline.
+        -e, --enzyme=STR        The list of restriction enzyme used to digest
+                                the contigs separated by a comma. Example:
+                                DpnII,HinfI.
+        -n, --normalization=STR If None, do not normalized the count of a
+                                contact by the geometric mean of the coverage of
+                                the contigs. Otherwise it's the type of
+                                normalization. 7 values are possible None,
+                                abundance, length, RS, RS_length, empirical_hit,
+                                theoritical_hit. [Default: abundance]
         -N, --no-clean-up       Do not remove temporary files.
-        -o, --outdir=DIR        Path of the directory where the alignment will
-                                be written in bed2D format and the digested
-                                fastq. Default to current directory.
-                                [Default: .]
+        -o, --outdir=DIR        The output directory to write the bam files the
+                                network and contig data into. Default: current
+                                directory.
         -q, --min-quality=INT   Threshold of quality necessary to considered a
                                 read properly aligned. [Default: 30]
+        -s, --self-contacts     If enabled, count alignments between a contig
+                                and itself.
+        -S, --start=STR         Start stage of the pipeline. Either fastq or
+                                bam. [Default: fastq]
         -t, --threads=INT       Number of parallel threads allocated for the
                                 alignement. [Default: 1]
-        -T, --tempdir=DIR       Temporary directory. [Default: ./tmp]
+        -T, --tempdir=DIR       Temporary directory. Default to current
+                                directory. [Default: ./tmp]
     """
 
     def execute(self):
@@ -121,115 +147,61 @@ class Align(AbstractCommand):
         # Transform integer variables as integer.
         min_qual = int(self.args["--min-quality"])
 
+        # Defined boolean variables:
+        self_contacts = self.args["--self-contacts"]
+
+        # Check if normalization in the list of possible normalization.
+        list_normalization = [
+            "None",
+            "abundance",
+            "length",
+            "RS",
+            "RS_length",
+            "empirical_hit",
+            "theoritical_hit",
+        ]
+        if self.args["--normalization"] not in list_normalization:
+            logger.error(
+                'Normalization should be among this list: "None", "abundance", "length", "RS", "RS_length", "empirical_hit", "theoritical_hit"'
+            )
+            raise ValueError
+
+        # Extract index and genome file
+        assembly = self.args["--assembly"]
+        # Check what is the reference. If a fasta is given build the index. If a
+        # bowtie2 index is given, retreive the fasta.
+        index = mio.check_fasta_index(assembly, mode="bowtie2")
+        if index is None:
+            if mio.check_is_fasta(assembly):
+                fasta = assembly
+                index = mio.generate_fasta_index(fasta, temp_directory)
+            else:
+                logger.error(
+                    "Please give as assembly argument a bowtie2 index or a fasta."
+                )
+                raise ValueError
+        else:
+            fasta = mio.retrieve_fasta(index, temp_directory)
+
         # Align pair-end reads with bowtie2
-        mta.pairs_alignment(
+        alignment_files = mta.get_contact_pairs(
             self.args["--forward"],
             self.args["--reverse"],
+            index,
             min_qual,
-            temp_directory,
-            self.args["--genome"],
+            self.args["--start"],
             self.args["--outdir"],
+            temp_directory,
             self.args["--threads"],
         )
 
-        # Delete the temporary folder
-        if not self.args["--no-clean-up"]:
-            shutil.rmtree(temp_directory)
-
-        session = profiler.stop()
-        profile_renderer = ConsoleRenderer(
-            unicode=True, color=True, show_all=True
-        )
-        print(profile_renderer.render(session))
-
-
-class Network(AbstractCommand):
-    """Generation of network command
-
-    Generates a network file (in edgelist form) from an alignment in bed2D
-    format. Contigs are the network nodes and the edges are the contact counts.
-
-    The network is in a strict barebone form so that it can be reused and
-    imported quickly into other applications etc. Verbose information about
-    every single node in the network is written on a 'contig data' file, by
-    default called 'idx_contig_length_GC_hit_cov.txt'
-
-    usage:
-        network --genome=FILE --outdir=DIR --input=FILE --depth=FILE
-        [--output-file-contig-data=STR] [--self-contacts] [--no-clean-up]
-        [--output-file-network=STR] [--tempdir=DIR] [--normalization=STR]
-        [--threads=1] [--enzyme=STR]
-
-    options:
-        -d, --depth=FILE                The depth.txt file from
-                                        jgi_summarize_bam_contig_depths from
-                                        metabat2 pipeline.
-        -e, --enzyme=STR                The list of restriction enzyme used to
-                                        digest the contigs separated by a comma.
-                                        Example: DpnII,HinfI.
-        -g, --genome=FILE               The initial assembly path acting as the
-                                        alignment file's reference genome.
-        -i, --input=FILE                Path to the bed2D file used as input
-        -n, --normalization=STR             If None, do not normalized the count of
-                                        a contact by the geometric mean of the
-                                        coverage of the contigs. Otherwise it's
-                                        the type of normalization. 7 values are
-                                        possible None, abundance, length, RS,
-                                        RS_length, empirical_hit,
-                                        theoritical_hit. [Default: abundance]
-        -N, --no-clean-up               Do not remove temporary files.
-        -o, --outdir=DIR                The output directory to write the
-                                        network and contig data into. Default:
-                                        current directory.
-        --output-file-contig-data=STR   The specific file name for the output
-                                        chunk data file. [Default:
-                                        contig_data_network.txt]
-        --output-file-network=STR       The specific file name for the output
-                                        network file. [Default: network.txt]
-        -s, --self-contacts             If enabled, count alignments between a
-                                        contig and itself.
-        -t, --threads=INT               Number of parallel threads allocated for
-                                        the alignement. [Default: 1]
-        -T, --tempdir=DIR               Temporary directory. Default to current
-                                        directory. [Default: ./tmp]
-    """
-
-    def execute(self):
-
-        # Start Profiler
-        profiler = Profiler()
-        profiler.start()
-
-        # Defined the temporary directory.
-        if not self.args["--tempdir"]:
-            self.args["--tempdir"] = "./tmp"
-        temp_directory = mio.generate_temp_dir(self.args["--tempdir"])
-
-        # Defined the output directory and output file names.
-        if not self.args["--outdir"]:
-            self.args["--outdir"] = "."
-        if not exists(self.args["--outdir"]):
-            os.makedirs(self.args["--outdir"])
-
-        if not self.args["--output-file-contig-data"]:
-            self.args["--output-file-contig-data"] = "contig_data_network.txt"
-
-        if not self.args["--output-file-network"]:
-            self.args["--output-file-network"] = "network.txt"
-
-        # Defined boolean variables
-        self_contacts = self.args["--self-contacts"]
-
-        # Transform str input files in list splitting on comma
-        alignment_files = self.args["--input"].split(",")
-
         mtn.alignment_to_contacts(
             alignment_files,
-            self.args["--genome"],
+            fasta,
             self.args["--depth"],
             self.args["--outdir"],
-            self.args["--output-file-network"],
-            self.args["--output-file-contig-data"],
+            "network.txt",
+            "contig_data_network.txt",
             temp_directory,
             self.args["--threads"],
             self.args["--normalization"],

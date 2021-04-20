@@ -3,19 +3,16 @@
 
 """Alignement of reads
 
-Align read files onto the assembly and return a 2D BED file with columns:
-readIDA, contigA, posA, strandA, readIDB, contigB, posB, strandB. Reads are
-mapped separately, sorted by names, then interleaved (rather than mapped in
-paired-end mode) to capture the pairs mapping on two different contigs.
+Align read files onto the assembly and return a tsv file with columns: readIDA,
+contigA, posA, strandA, readIDB, contigB, posB, strandB. Reads are mapped
+separately, sorted by names, then interleaved (rather than mapped in paired-end
+mode) to capture the pairs mapping on two different contigs.
 
 This module contains all these alignment functions:
     - align
-    - digest_liagtion_sites
-    - digest_pair
+    - get_contact_pairs
     - merge_alignement
-    - pairs_alignement
     - process_bamfile 
-    - Writer
 """
 
 import csv
@@ -62,6 +59,102 @@ def align(fq_in, index, bam_out, n_cpu):
     return 0
 
 
+def get_contact_pairs(
+    for_in,
+    rev_in,
+    index,
+    min_qual,
+    start,
+    out_dir,
+    tmp_dir,
+    n_cpu,
+):
+    """General function to do the whole alignment of both fastq.
+
+    The Function write at the output directory location given as an argument and
+    return a tsv file of the aligned reads with 9 columns: ReadID, ContigA,
+    Position_startA, Position_endA, StrandA, ContigB, Position_startB,
+    Position_endB, StrandB. The name of the file will be alignment.txt.
+
+    Parameters:
+    -----------
+    for_in : str
+        Path to input forward fastq or bam file to align. If multiple files are
+        given, list of path separated by a comma.
+    rev_in : str
+        Path to input reverse fastq or bam file to align. If multiple files are
+        given, list of path separated by a comma.
+    index : str
+        Path to the bowtie2 index of the assembly.
+    min_qual : int
+        Minimum mapping quality required to keep Hi-C pairs.
+    start : str
+        Either fastq or bam. Starting point for the pipeline.
+    out_file : str
+        Path to directory where to write the output file.
+    tmp_dir : str
+        Path where temporary files should be written.
+    n_cpu : int
+        The number of CPUs to use for the alignment.
+
+    Returns:
+    --------
+    list of str:
+        List of path of the Files with the Table containing the alignement data
+        of the pairs: ReadID, ContigA, Position_startA, Position_endA, StrandA,
+        ContigB, Position_startB, Position_endB, StrandB.
+    """
+
+    # Iterates on all the input files:
+    for_list = for_in.split(",")
+    rev_list = rev_in.split(",")
+    out_file_list = []
+
+    for i in range(len(for_list)):
+        for_in = for_list[i]
+        rev_in = rev_list[i]
+        name = "alignment_" + str(i)
+
+        # Align if necessary
+        if start == "fastq":
+            # Create files to save the alignment.
+            alignment_for = join(out_dir, name + "_for.bam")
+            alignment_rev = join(out_dir, name + "_rev.bam")
+            out_file = join(tmp_dir, name + ".txt")
+            out_file_list.append(out_file)
+
+            # Align the forward reads
+            logger.info("Alignment of {0}:".format(for_in))
+            align(for_in, index, alignment_for, n_cpu)
+
+            # Align the reverse reads
+            logger.info("Alignment of {0}:".format(rev_in))
+            align(rev_in, index, alignment_rev, n_cpu)
+
+        elif start == "bam":
+            alignment_for = for_in
+            alignment_rev = rev_in
+
+        else:
+            logger.error("Start argument should be either 'fastq' or 'bam'.")
+            raise ValueError
+
+        # Create files to save the alignment.
+        alignment_temp_for = join(tmp_dir, name + "_for_temp.txt")
+        alignment_temp_rev = join(tmp_dir, name + "_rev_temp.txt")
+
+        # Filters the aligned and non aligned reads from the forward and
+        # reverse bam files.
+        process_bamfile(alignment_for, min_qual, alignment_temp_for)
+        process_bamfile(alignment_rev, min_qual, alignment_temp_rev)
+
+        # Merge alignement to create a pairs file
+        logger.info("Merging the pairs:")
+        merge_alignment(alignment_temp_for, alignment_temp_rev, out_file)
+
+    return out_file_list
+
+
 def merge_alignment(forward_aligned, reverse_aligned, out_file):
     """Merge forward and reverse alignment into one file with pairs which both
     reads are aligned on the genome. The final alignment  dataframe is written
@@ -91,30 +184,30 @@ def merge_alignment(forward_aligned, reverse_aligned, out_file):
     # Open files for reading and writing.
     with open(forward_aligned, "r") as for_file, open(
         reverse_aligned, "r"
-    ) as rev_file, open(out_file, "w") as merge_bed:
-        for_bed = csv.reader(for_file, delimiter="\t")
-        rev_bed = csv.reader(rev_file, delimiter="\t")
+    ) as rev_file, open(out_file, "w") as merged:
+        for_bam = csv.reader(for_file, delimiter="\t")
+        rev_bam = csv.reader(rev_file, delimiter="\t")
 
         # Initialization.
         n_pairs = 0
-        for_read = next(for_bed)
-        rev_read = next(rev_bed)
+        for_read = next(for_bam)
+        rev_read = next(rev_bam)
 
         # Loop while at least one end of one endd is reached. It's possible to
-        # advance like that as the two bed files are sorted on the id of the
+        # advance like that as the two tsv files are sorted on the id of the
         # reads.
         for i in range(10 ** 12):
             # Case of both reads of the pair map.
             if for_read[0] == rev_read[0]:
-                merge_bed.write("\t".join(for_read + rev_read[1:]) + "\n")
+                merged.write("\t".join(for_read + rev_read[1:]) + "\n")
                 n_pairs += 1
                 # print("w")
                 try:
-                    for_read = next(for_bed)
+                    for_read = next(for_bam)
                 except StopIteration:
                     break
                 try:
-                    rev_read = next(rev_bed)
+                    rev_read = next(rev_bam)
                 except StopIteration:
                     break
             # As the file is version sorted we have to do compare the two names
@@ -127,122 +220,19 @@ def merge_alignment(forward_aligned, reverse_aligned, out_file):
                 # map.
                 if names == names_sorted:
                     try:
-                        for_read = next(for_bed)
+                        for_read = next(for_bam)
                     except StopIteration:
                         break
                 # Same but with no mapped forward reads.
                 else:
                     try:
-                        rev_read = next(rev_bed)
+                        rev_read = next(rev_bam)
                     except StopIteration:
                         break
 
     logger.info("{0} pairs aligned.".format(n_pairs))
 
     return out_file
-
-
-def pairs_alignment(
-    for_fq_in,
-    rev_fq_in,
-    min_qual,
-    tmp_dir,
-    ref,
-    out_dir,
-    n_cpu,
-):
-    """General function to do the whole alignment of both fastq.
-
-    The Function write at the output directory location given as an argument and
-    return a 2D bed file of the aligned reads with 9 columns: ReadID, ContigA,
-    Position_startA, Position_endA, StrandA, ContigB, Position_startB,
-    Position_endB, StrandB. The name of the file will be alignment.bed.
-
-    The function will also digest the Fastq files on the sequences of the
-    ligation sites if there are given and write the new fastq in the output
-    directory. The name of the fastq will be the same as the previous ones with
-    a "_digested" added in their names.
-
-    Parameters
-    ----------
-    for_fq_in : str
-        Path to input forward fastq file to align. If multiple files are given,
-        list of path separated by a comma.
-    rev_fq_in : str
-        Path to input reverse fastq file to align. If multiple files are given,
-        list of path separated by a comma.
-    min_qual : int
-        Minimum mapping quality required to keep Hi-C pairs.
-    tmp_dir : str
-        Path where temporary files should be written.
-    ref : str
-        Path to the index genome.
-    out_file : str
-        Path to directory where to write the output file.
-    n_cpu : int
-        The number of CPUs to use for the alignment.
-
-    Returns
-    -------
-    list of str:
-        List of path of the Files with the Table containing the alignement data
-        of the pairs: ReadID, ContigA, Position_startA, Position_endA, StrandA,
-        ContigB, Position_startB, Position_endB, StrandB.
-    """
-
-    # Check what is the reference. If fasta given build it. If not a bowtie2
-    # index or a fasta thraw an error.
-    index = mio.check_fasta_index(ref, mode="bowtie2")
-    if index is None:
-        if mio.check_is_fasta(ref):
-            logger.info("Build index from the given fasta.")
-            index = join(tmp_dir, "index")
-            cmd = "bowtie2-build -q {0} {1}".format(ref, index)
-            process = sp.Popen(cmd, shell=True, stdout=sp.PIPE)
-            out, err = process.communicate()
-        else:
-            logger.error(
-                "Please give as a reference a bowtie2 index or a fasta."
-            )
-            raise ValueError
-
-    # Iterates on all the fastq files:
-    for_fq_list = for_fq_in.split(",")
-    rev_fq_list = rev_fq_in.split(",")
-    out_file_list = []
-
-    for i in range(len(for_fq_list)):
-        for_fq_in = for_fq_list[i]
-        rev_fq_in = rev_fq_list[i]
-        name = "alignment_" + str(i)
-
-        # Create a temporary file to save the alignment.
-        temp_alignment_for = join(out_dir, name + "_for.bam")
-        temp_alignment_rev = join(out_dir, name + "_rev.bam")
-        filtered_out_for = join(tmp_dir, name + "_for_temp.bed")
-        filtered_out_rev = join(tmp_dir, name + "_rev_temp.bed")
-        out_file = join(out_dir, name + ".bed")
-        out_file_list.append(out_file)
-
-        # Align the forward reads
-        logger.info("Alignment of {0}:".format(for_fq_in))
-        align(for_fq_in, index, temp_alignment_for, n_cpu)
-
-        # Filters the aligned and non aligned reads
-        process_bamfile(temp_alignment_for, min_qual, filtered_out_for)
-
-        # Align the reverse reads
-        logger.info("Alignment of {0}:".format(rev_fq_in))
-        align(rev_fq_in, index, temp_alignment_rev, n_cpu)
-
-        # Filters the aligned and non aligned reads
-        process_bamfile(temp_alignment_rev, min_qual, filtered_out_rev)
-
-        # Merge alignement to create a pairs file
-        logger.info("Merging the pairs:")
-        merge_alignment(filtered_out_for, filtered_out_rev, out_file)
-
-    return out_file_list
 
 
 def process_bamfile(alignment, min_qual, filtered_out):
@@ -259,7 +249,7 @@ def process_bamfile(alignment, min_qual, filtered_out):
     min_qual : int
         Minimum mapping quality required to keep a Hi-C pair.
     filtered_out : str
-        Path to the output temporary bed alignement.
+        Path to the output temporary tsv alignement.
 
     Returns:
     --------
