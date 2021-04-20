@@ -272,7 +272,7 @@ class Partition(AbstractCommand):
         partition  --network-file=FILE --assembly=FILE --contigs-data=FILE
         [--iterations=100] [--algorithm=louvain] [--overlap=80] [--size=500000]
         [--threads=1] [--tempdir=DIR] [--no-clean-up] [--res-parameter=1.0]
-        [--outdir=DIR]
+        [--outdir=DIR] [--force]
 
     options:
         -a, --assembly=FILE         The path to the assembly fasta file used to
@@ -282,6 +282,8 @@ class Partition(AbstractCommand):
         -c, --contigs-data=FILE     The path to the tsv file containing the data
                                     of the contigs (ID, Name, Length, GC
                                     content, Hit, Coverage).
+        -F, --force                 If enbale, would remove directory of
+                                    overlapping bins in the output directory.
         -i, --iterations=INT        Number of iterations of Louvain.
                                     [Default: 100]
         -n, --network-file=FILE     Path to the file containing the network
@@ -322,6 +324,15 @@ class Partition(AbstractCommand):
         fasta_dir = join(self.args["--outdir"], "overlapping_bin")
         if not exists(fasta_dir):
             os.makedirs(fasta_dir)
+        else:
+            if self.args["--force"]:
+                os.rmdir(fasta_dir)
+                os.makedirs(fasta_dir)
+            else:
+                logger.error(
+                    "{0} already existed. Remove directory or use -F argument to overwrite it."
+                )
+                raise ValueError
 
         # Transform numeric variable as numeric
         if self.args["--iterations"]:
@@ -378,7 +389,7 @@ class Validation(AbstractCommand):
         validation --network=FILE --assembly=FILE --fasta=DIR --contigs=STR
         [--iterations=10] [--algorithm=louvain] [--size=500000]
         [--res-param=1.0] [--threads=1] [--tempdir=DIR]  [--no-clean-up]
-        [--overlap=90] [--outdir=DIR]
+        [--overlap=90] [--outdir=DIR] [--force]
 
     options:
         -a, --assembly=FILE     The path to the assembly fasta file used to do
@@ -390,6 +401,8 @@ class Validation(AbstractCommand):
                                 Coverage).
         -f, --fasta=DIR         Path to the directory containing the input fasta
                                 files of the bins.
+        -F, --force             If enbale, would remove directory of recursive
+                                bins in the output directory.
         -i, --iterations=INT    Number of recursive iterations of Louvain.
                                 [Default: 10]
         -n, --network=FILE      Path to the file containing the network
@@ -434,6 +447,15 @@ class Validation(AbstractCommand):
         recursive_fasta_dir = join(self.args["--outdir"], "recursive_bin")
         if not exists(recursive_fasta_dir):
             os.makedirs(recursive_fasta_dir)
+        else:
+            if self.args["--force"]:
+                os.rmdir(recursive_fasta_dir)
+                os.makedirs(recursive_fasta_dir)
+            else:
+                logger.error(
+                    "{0} already existed. Remove directory or use -F argument to overwrite it."
+                )
+                raise ValueError
 
         # Transform numeric variable as numeric
         iterations = int(self.args["--iterations"])
