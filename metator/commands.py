@@ -455,15 +455,15 @@ class Validation(AbstractCommand):
     bins.
 
     usage:
-        validation --outdir=DIR --network=FILE --assembly=FILE --fasta=DIR --contigs=STR [--iterations=10] [--algorithm=STR] [--size=300000]
-        [--threads=1] [--tempdir=DIR]  [--no-clean-up]
+        validation --outdir=DIR --network=FILE --assembly=FILE --fasta=DIR --contigs=STR
+        [--iterations=10] [--algorithm=louvain] [--size=500000] [--res-param=1.0]
+        [--threads=1] [--tempdir=DIR]  [--no-clean-up] [--overlap=90]
 
     options:
         -a, --assembly=FILE     The path to the assembly fasta file used to do
                                 the alignment.
-        -A, --algorithm=STR     Path to louvain cpp (faster than python
-                                implementation). If None given, use python
-                                implementation instead. [Default: None]
+        -A, --algorithm=STR     Algorithm to use. Either "louvain" or "leiden".
+                                [Default: louvain]
         -c, --contigs=FILE      The path to the file containing the data ofthe
                                 contigs (ID, Name, Length, GC content, Hit,
                                 Coverage).
@@ -477,8 +477,13 @@ class Validation(AbstractCommand):
         -N, --no-clean-up       Do not remove temporary files.
         -o, --outdir=DIR        Path to the directory to write the output.
                                 Default to current directory. [Default: ./]
+        -O, --overlap=INT       Percentage of the identity necessary to be
+                                considered as a part of the core bin.
+                                [Default: 90]
+        -r, --res-param=FLOAT   Resolution paramter to use for Leiden
+                                algorithm. [Default: 1.0]
         -s, --size=INT          Threshold size to keep bins in base pair.
-                                [Default: 300000]
+                                [Default: 500000]
         -t, --threads=INT       Number of parallel threads allocated for the
                                 partition. [Default: 1]
         -T, --tempdir=DIR       Temporary directory. Default to current
@@ -505,25 +510,15 @@ class Validation(AbstractCommand):
             self.args["--outdir"] = "."
         if not exists(self.args["--outdir"]):
             os.makedirs(self.args["--outdir"])
-
-        # Defined checkm output file path
-        overlapping_checkm_file = join(
-            self.args["--outdir"], "overlapping_checkm_results.txt"
-        )
-        overlapping_taxonomy_file = join(
-            self.args["--outdir"], "overlapping_checkm_taxonomy.txt"
-        )
-        recursif_checkm_file = join(
-            self.args["--outdir"], "recursif_checkm_results.txt"
-        )
-        recursif_taxonomy_file = join(
-            self.args["--outdir"], "recursif_checkm_taxonomy.txt"
-        )
+        if not exists(self.args["--outdir"]):
+            os.makedirs(os.join(self.args["--outdir"], "fasta"))
 
         # Transform numeric variable as numeric
         iterations = int(self.args["--iterations"])
         size = int(self.args["--size"])
         threads = int(self.args["--threads"])
+        overlapping_parameter = int(self.args["--overlap"]) / 100
+        resolution_parameter = float(self.args["--res-param"])
 
         # Check checkM availability
         if not mio.check_checkm():
@@ -532,69 +527,25 @@ class Validation(AbstractCommand):
             )
             sys.exit(1)
 
-        # Launch checkM
-        mtv.checkm(
+        # Check correct algorithm value
+        if self.args["--algorithm"] not in ["louvain", "leiden"]:
+            logger.error('algorithm should be either "louvain" or "leiden"')
+            raise ValueError
+
+        mtv.recursive_decontamination(
+            self.args["--algorithm"],
+            self.args["--assembly"],
+            self.args["--contigs"],
             self.args["--fasta"],
-            overlapping_checkm_file,
-            overlapping_taxonomy_file,
+            iterations,
+            self.args["--network"],
+            self.args["--outdir"],
+            overlapping_parameter,
+            resolution_parameter,
+            size,
             temp_directory,
             threads,
         )
-
-        # Iterates Louvain on contaminated and complete bins
-        contamination, contigs_data = mtv.louvain_recursif(
-            self.args["--assembly"],
-            iterations,
-            self.args["--outdir"],
-            self.args["--algorithm"],
-            temp_directory,
-            overlapping_checkm_file,
-            overlapping_taxonomy_file,
-            self.args["--contigs"],
-            self.args["--network"],
-            size,
-        )
-
-        # Recursive iterations of Louvain on the contaminated bins. Save bin
-        # information if the new bins have the same quality otherwise keep the
-        # original bin information.
-        if contamination:
-
-            # Run checkm on the recursif bins.
-            temp_directory = join(temp_directory, "checkm2")
-            mtv.checkm(
-                self.args["--outdir"],
-                recursif_checkm_file,
-                recursif_taxonomy_file,
-                temp_directory,
-                threads,
-            )
-
-            # Compare
-            bin_summary = mtv.compare_bins(
-                overlapping_checkm_file,
-                overlapping_taxonomy_file,
-                recursif_checkm_file,
-                recursif_taxonomy_file,
-            )
-
-        # Keep overlapping bin information
-        else:
-            logger.info("No contaminated bin have been found")
-            bin_summary = mio.read_results_checkm(
-                overlapping_checkm_file, overlapping_taxonomy_file
-            )
-
-        # Retrurn some values of efficiency of the binning.
-        mtv.give_results_info(bin_summary)
-
-        # Save bin information in final file
-        bin_summary_file = join(self.args["--outdir"], "bin_summary.txt")
-        mio.write_checkm_summary(bin_summary, bin_summary_file)
-
-        # Write relevant bins/contigs information for anvio.
-        binning_file = join(self.args["--outdir"], "binning.txt")
-        mtv.write_bins_contigs(bin_summary, contigs_data, binning_file)
 
         session = profiler.stop()
         profile_renderer = ConsoleRenderer(

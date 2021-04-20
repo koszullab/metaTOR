@@ -11,10 +11,12 @@ Functions in this module:
     - checkM
     - compare_bins
     - louvain_recursif
+    - recursive_decontamination
     - update_recursif_louvain
+    - write_bin_contigs
 """
 
-
+import logging
 import metator.io as mio
 import metator.partition as mtp
 import networkx as nx
@@ -178,14 +180,17 @@ def compare_bins(
 def louvain_recursif(
     assembly,
     iterations,
+    overlapping_parameter,
+    resolution_parameter,
     outdir,
-    louvain,
+    algorithm,
     tmpdir,
     checkm_file,
     taxonomy_file,
     contigs_data_file,
     network_file,
     size,
+    threads,
 ):
     """Function to run recursive iterations on contaminated bins in order to try
     to improve the quality of the bins using Louvain algorthm.
@@ -196,11 +201,14 @@ def louvain_recursif(
         Path to the fasta file used as assembly.
     iterations : int
         Number of iterations to use for recursive itarations of Louvain.
+    overlapping_parameter : float
+        Hamming distance threshold to consider two bins as the same bin.
+    resolution parameter : float
+        Resolution paramater of Leiden algorithm
     outdir : str
         Path to the output directory.
-    louvain : str
-        Path to the directory to found louvain functions if you want to use the
-        cpp version instead of the python one.
+    algorithm : str
+        Algorithm to use, either louvain or leiden.
     tmpdir : str
         Path the temp directory.
     checkm_file : str
@@ -213,13 +221,16 @@ def louvain_recursif(
         Path to the network file from metator network.
     size : int
         Size threshodl in base pairs of the bins.
+    threads : int
+        Number of threads to use.
 
     Return:
     boolean:
         True if at least one new bin has been generated.
     """
 
-    threads = 1
+    # Stop to report info log
+    logger.setLevel(logging.WARNING)
 
     # Load CheckM result:
     checkm_summary = mio.read_results_checkm(checkm_file, taxonomy_file)
@@ -280,29 +291,34 @@ def louvain_recursif(
             )
 
             # Use Louvain algorithmon the subnetwork.
-            if louvain == "None":
-                output_louvain = mtp.louvain_iterations_py(
+            if algorithm == "leiden":
+                LEIDEN_PATH = os.environ["LEIDEN_PATH"]
+                output_partition = mtp.leiden_iterations_java(
                     subnetwork_file,
                     iterations,
+                    resolution_parameter,
+                    tmpdir,
+                    LEIDEN_PATH,
                 )
-            else:
+            elif algorithm == "louvain":
                 LOUVAIN_PATH = os.environ["LOUVAIN_PATH"]
-                output_louvain = mtp.louvain_iterations_cpp(
+                output_partition = mtp.louvain_iterations_cpp(
                     subnetwork_file,
                     iterations,
                     tmpdir,
                     LOUVAIN_PATH,
                 )
+            else:
+                logger.error('algorithm should be either "louvain" or "leiden"')
+                raise ValueError
 
             # Detect core bins
-            logger.info("Detect recursive bins:")
             (
                 recursif_core_bins,
                 recursif_bins_iterations,
             ) = mtp.detect_core_bins(output_louvain, iterations)
 
             # Compute the Hamming distance between core bins.
-            logger.info("Detect overlapping bins:")
             hamming_distance = mtp.hamming_distance(
                 recursif_bins_iterations,
                 iterations,
@@ -311,18 +327,19 @@ def louvain_recursif(
 
             # Defined overlapping bins according to the threshold
             recursif_bins = mtp.defined_overlapping_bins(
-                0.9,
+                overlapping_parameter,
                 hamming_distance,
                 recursif_core_bins,
                 recursif_bins_iterations,
             )
 
-            # update bin data
+            # update bin data and generate fasta
+            fasta_outdir = os.join(outdir, "fasta/")
             contamination, contigs_data = update_contigs_data_recursif(
                 contigs_data,
                 recursif_bins,
                 assembly,
-                outdir,
+                fasta_outdir,
                 tmpdir,
                 size,
                 contamination,
@@ -331,6 +348,9 @@ def louvain_recursif(
     # Write the new file
     contig_data_file_2 = join(outdir, "contig_data_recursif.txt")
     contigs_data.to_csv(contig_data_file_2, sep="\t", header=None, index=False)
+
+    # Put back the info log
+    logger.setLevel(logging.INFO)
 
     return contamination, contigs_data
 
@@ -378,6 +398,131 @@ def give_results_info(bin_summary):
     logger.info("LQ MAGs: {0}".format(LQ))
     logger.info("Contaminated potential MAGs: {0}".format(conta_bins))
     logger.info("Others bins: {0}".format(others))
+
+
+def recursive_decontamination(
+    algorithm,
+    assembly,
+    contig_data_file,
+    input_fasta_dir,
+    iterations,
+    network_file,
+    outdir,
+    overlapping_parameter,
+    resolution_parameter,
+    size,
+    temp_directory,
+    threads,
+):
+    """Function to launch all the validation and recursive decontamination used
+    of Louvain.
+
+    Parameters:
+    -----------
+    algorithm : str
+        Algorithm to use to recursively partition the network. Either leiden or
+        louvain.
+    assembly : str
+        Path to the assembly file used for the partition.
+    contig_data_file : str
+        Path to the contig data table to update.
+    input_fasta_dir : str
+        Path to the directory where the fasta bin from the partition are.
+    iterations : int
+        Number of iterations to use for the recursive partition.
+    network_file : str
+        Path to the network file.
+    outdir : str
+        Path to the output directory where to write the output files.
+    overlapping_parameter : int
+        Hamming distance threshold in percentage to use to consider to bins as
+        one in the recursive partition.
+    resolution_parameter : float
+        Resolution parameter to use if Leiden algorithm is chosen. It will be a
+        factor of the cost function used. A resolution parameter of 1 will be
+        equivalent as the modularity function used in Louvain. Higher these
+        parameters, smaller the bins will be in the output.
+    size : int
+        Threshold size in base pair of the output bins.
+    temp_directory : str
+        Path to the directory used to write temporary files.
+    threads : int
+        Number of threads to use.
+    """
+
+    # Defined checkm output file path
+    overlapping_checkm_file = join(outdir, "overlapping_checkm_results.txt")
+    overlapping_taxonomy_file = join(outdir, "overlapping_checkm_taxonomy.txt")
+    recursif_checkm_file = join(outdir, "recursif_checkm_results.txt")
+    recursif_taxonomy_file = join(outdir, "recursif_checkm_taxonomy.txt")
+
+    # Launch checkM
+    checkm(
+        input_fasta_dir,
+        overlapping_checkm_file,
+        overlapping_taxonomy_file,
+        temp_directory,
+        threads,
+    )
+
+    # Iterates Louvain on contaminated and complete bins
+    contamination, contigs_data = louvain_recursif(
+        assembly,
+        iterations,
+        overlapping_parameter,
+        resolution_parameter,
+        outdir,
+        algorithm,
+        temp_directory,
+        overlapping_checkm_file,
+        overlapping_taxonomy_file,
+        contig_data_file,
+        network_file,
+        size,
+        threads,
+    )
+
+    # Recursive iterations of Louvain on the contaminated bins. Save bin
+    # information if the new bins have the same quality otherwise keep the
+    # original bin information.
+    if contamination:
+
+        # Run checkm on the recursif bins.
+        temp_directory = join(temp_directory, "checkm2")
+        fasta_outdir = os.join(outdir, "fasta")
+        checkm(
+            fasta_outdir,
+            recursif_checkm_file,
+            recursif_taxonomy_file,
+            temp_directory,
+            threads,
+        )
+
+        # Compare
+        bin_summary = compare_bins(
+            overlapping_checkm_file,
+            overlapping_taxonomy_file,
+            recursif_checkm_file,
+            recursif_taxonomy_file,
+        )
+
+    # Keep overlapping bin information
+    else:
+        logger.info("No contaminated bin have been found")
+        bin_summary = mio.read_results_checkm(
+            overlapping_checkm_file, overlapping_taxonomy_file
+        )
+
+    # Retrurn some values of efficiency of the binning.
+    give_results_info(bin_summary)
+
+    # Save bin information in final file
+    bin_summary_file = join(outdir, "bin_summary.txt")
+    mio.write_checkm_summary(bin_summary, bin_summary_file)
+
+    # Write relevant bins/contigs information for anvio.
+    binning_file = join(outdir, "binning.txt")
+    write_bins_contigs(bin_summary, contigs_data, binning_file)
 
 
 def update_contigs_data_recursif(

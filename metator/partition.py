@@ -605,7 +605,8 @@ def partition(
     outdir : str
         Path to the output directory where to write the fasta files.
     overlapping_parameter : int
-        Percentage used to detect overlapping bins.
+        Hamming distance threshold to use to consider to bins as one in 
+        percentage.
     resolution_parameter : float
         Resolution parameter to use if Leiden algorithm is chosen. It will be a
         factor of the cost function used. A resolution parameter of 1 will be
