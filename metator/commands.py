@@ -319,6 +319,9 @@ class Partition(AbstractCommand):
             self.args["--outdir"] = "."
         if not exists(self.args["--outdir"]):
             os.makedirs(self.args["--outdir"])
+        fasta_dir = join(self.args["--outidr"], "overlapping_bin")
+        if not exists(fasta_dir):
+            os.makedirs(fasta_dir)
 
         # Transform numeric variable as numeric
         if self.args["--iterations"]:
@@ -332,6 +335,11 @@ class Partition(AbstractCommand):
         if self.args["--res-parameter"]:
             resolution_parameter = float(self.args["--res-parameter"])
 
+        # Check correct algorithm value
+        if self.args["--algorithm"] not in ["louvain", "leiden"]:
+            logger.error('algorithm should be either "louvain" or "leiden"')
+            raise ValueError
+
         # Partition the network
         mtp.partition(
             self.args["--algorithm"],
@@ -340,6 +348,7 @@ class Partition(AbstractCommand):
             iterations,
             self.args["--network-file"],
             self.args["--outdir"],
+            fasta_dir,
             overlapping_parameter,
             resolution_parameter,
             size,
@@ -427,7 +436,7 @@ class Validation(AbstractCommand):
         if not exists(self.args["--outdir"]):
             os.makedirs(self.args["--outdir"])
         if not exists(self.args["--outdir"]):
-            os.makedirs(os.join(self.args["--outdir"], "fasta"))
+            os.makedirs(os.join(self.args["--outdir"], "recursive_bin"))
 
         # Transform numeric variable as numeric
         iterations = int(self.args["--iterations"])

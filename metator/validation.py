@@ -433,6 +433,8 @@ def recursive_decontamination(
         Path to the network file.
     outdir : str
         Path to the output directory where to write the output files.
+    fasta_dir : str
+        Path to write the fasta decontaminated bins.
     overlapping_parameter : int
         Hamming distance threshold in percentage to use to consider to bins as
         one in the recursive partition.
@@ -488,9 +490,8 @@ def recursive_decontamination(
 
         # Run checkm on the recursif bins.
         temp_directory = join(temp_directory, "checkm2")
-        fasta_outdir = os.join(outdir, "fasta")
         checkm(
-            fasta_outdir,
+            fasta_dir,
             recursif_checkm_file,
             recursif_taxonomy_file,
             temp_directory,

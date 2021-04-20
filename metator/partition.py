@@ -580,6 +580,7 @@ def partition(
     iterations,
     network_file,
     outdir,
+    fasta_dir,
     overlapping_parameter,
     resolution_parameter,
     size,
@@ -601,7 +602,9 @@ def partition(
     network_file : str
         Path to the network file.
     outdir : str
-        Path to the output directory where to write the fasta files.
+        Path to the output directory where to write the output files.
+    fasta_dir : str
+        Path to directory where to write the fasta files.
     overlapping_parameter : int
         Hamming distance threshold to use to consider to bins as one in
         percentage.
@@ -679,7 +682,7 @@ def partition(
         overlapping_bins,
         contigs_data,
         size,
-        outdir,
+        fasta_dir,
         temp_directory,
     )
 
