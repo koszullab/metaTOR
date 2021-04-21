@@ -15,21 +15,14 @@ Core functions to partition the network are:
     - get_distances_splitmat
     - get_hamming_distance
     - leiden_partition_java
-    - leiden_partition_py
     - louvain_partition_cpp
-    - louvain_partition_py
     - partition
     - remove_isolates
     - update_contigs_data
 """
 
-
-import community as community_louvain
-import igraph
-import leidenalg
 import metator.io as mio
 import multiprocessing
-import networkx as nx
 import numpy as np
 import os
 import pandas as pd
@@ -354,61 +347,6 @@ def leiden_iterations_java(
     return output_partition
 
 
-def leiden_iterations_py(network_file, iterations, resolution_parameter):
-    """Use the Leiden algorithm to partition the network.
-
-    Parameters:
-    -----------
-    network_file : str
-        Path to the network computed previously. The file is 3 columns table
-        separated by a tabulation with the id of the first contigs the id of the
-        second one and the weights of the edge normalized or not.
-    iterations : int
-        Number of iterations of the algorithm of Leiden.
-    resolution_parameter : float
-        Parameter to use for partition the graph.
-
-    Returns:
-    --------
-    dict:
-        Dictionnary with the id of the contig as key and the list of the results
-        of each iterations separated by a semicolon as values.
-    """
-
-    # Create output dictionnary.
-    output_leiden = dict()
-
-    # Transform network as igraph:
-    network = igraph.Graph.Read_Ncol(
-        network_file, names=True, weights=True, directed=False
-    )
-    weights = network.es["weight"]
-
-    # Partition the network with Leiden algorithm with multiple iterations:
-    for i in range(iterations):
-        partition = leidenalg.find_partition(
-            network,
-            leidenalg.RBConfigurationVertexPartition,
-            weights=weights,
-            n_iterations=-1,
-            resolution_parameter=resolution_parameter,
-        )
-
-        # Save output in a dictionnary
-        # Case of iterative steps, separate initial and fellowing steps:
-        if i == 0:
-            for bin_id in range(len(partition)):
-                for contig_id in partition[bin_id]:
-                    output_leiden[contig_id] = str(bin_id + 1)
-
-        else:
-            for bin_id in range(len(partition)):
-                for contig_id in partition[bin_id]:
-                    output_leiden[contig_id] += ";" + str(bin_id + 1)
-
-    return output_leiden
-
-
 def louvain_iterations_cpp(network_file, iterations, tmp_dir, louvain_path):
     """Use the cpp original Louvain to partition the network.
 
@@ -523,53 +461,6 @@ def louvain_iterations_cpp(network_file, iterations, tmp_dir, louvain_path):
                     result = line.split(" ")
                     output_louvain[labels[result[0]]] += ";" + result[1][:-1]
 
-    return output_louvain
-
-
-def louvain_iterations_py(network_file, iterations):
-    """Use python-louvain algorithm to partition the network.
-
-    The fonction will make ietrations of the algorithm of Louvain to partition
-    the given network. The iterations will allow to select the nodes which will
-    always be associated together.
-
-    Parameters:
-    -----------
-    network_file : str
-        Path to the network computed previously. The file is 3 columns table
-        separated by a tabulation with the id of the first contigs the id of the
-        second one and the weights of the edge normalized or not.
-    iterations : int
-        Number of iterations of the algorithm of Louvain.
-
-    Returns:
-    --------
-    dict:
-        Dictionnary with the id of the contig as key and the list of the results
-        of each iterations separated by a semicolon as values.
-    """
-
-    # Convert the file in a networkx graph for Louvain partitionning.
-    network = nx.read_edgelist(
-        network_file, nodetype=int, data=(("weight", float),)
-    )
-
-    # Initiation (first iteration).
-    logger.info("Iteration in progress: 1")
-    output_louvain = community_louvain.best_partition(network)
-    modularity = community_louvain.modularity(output_louvain, network)
-    logger.info("Modularity: {0}".format(modularity))
-
-    # Run the iterations of Louvain.
-    for iteration in range(2, iterations + 1):
-        logger.info("Iteration in progress: {0}".format(iteration))
-        partition = community_louvain.best_partition(network)
-        modularity = community_louvain.modularity(partition, network)
-        logger.info("Modularity: {0}".format(modularity))
-        for j in partition:
-            output_louvain[j] = "{0};{1}".format(
-                output_louvain[j], partition[j]
-            )
     return output_louvain
 
 
