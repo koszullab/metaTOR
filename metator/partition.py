@@ -301,17 +301,6 @@ def leiden_iterations_java(
         Dictionnary with the id of the contig as key and the list of the results
         of each iterations separated by a semicolon as values.
     """
-
-    # Check if louvain cpp is available in the computer. If it's not available
-    # launch python_louvain instead.
-    # if not mio.check_leiden_java(leiden_path):
-    #     logger.warning(
-    #         "Leiden java implementation was not found. Use Leiden python "
-    #         "instead.\nBe careful it's much slower and give worst results.\nYou"
-    #         " should install the JAVA implementation."
-    #     )
-    #     return louvain_iterations_py(network_file, iterations)
-
     output_partition = dict()
 
     # Run the iterations of Louvain
@@ -373,10 +362,11 @@ def louvain_iterations_cpp(network_file, iterations, tmp_dir, louvain_path):
     # Check if louvain cpp is available in the computer. If it's not available
     # launch python_louvain instead.
     if not mio.check_louvain_cpp(louvain_path):
-        logger.warning(
-            "Louvain cpp was not found. Louvain from python is used instead"
+        logger.error("Louvain implementation was not found.")
+        logger.error(
+            "You should have a LOUVAIN_PATH variable in your environnement"
         )
-        return louvain_iterations_py(network_file, iterations)
+        raise NameError
 
     # Defined temporary files and args for louvain fonction calling and path to
     # the variables to call.
