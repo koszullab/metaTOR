@@ -508,13 +508,13 @@ class Pipeline(AbstractCommand):
     the critical step for memory usage.
 
     usage:
-        pipeline --forward=STR --reverse=STR --assembly=FILE
+        pipeline --assembly=FILE [--forward=STR] [--reverse=STR]
         [--algorithm=louvain] [--contigs=FILE] [--depth=FILE] [--enzyme=STR]
         [--force] [--iterations=100] [--min-quality=30] [--network=FILE]
         [--no-clean-up] [--normalization=empirical_hit] [--outdir=DIR]
-        [--overlap=80] [--rec-iter=10] [--rec-overlap=90]
-        [--res-param=1.0] [--size=500000] [--start=fastq] [--threads=1]
-        [--tempdir=DIR] [--skip-validation]
+        [--overlap=80] [--rec-iter=10] [--rec-overlap=90] [--res-param=1.0]
+        [--size=500000] [--start=fastq] [--threads=1] [--tempdir=DIR]
+        [--skip-validation]
 
     options:
         -1, --forward=STR       Fastq file or list of Fastq separated by a comma
@@ -686,21 +686,41 @@ class Pipeline(AbstractCommand):
                 )
                 raise NameError
 
-        # Print information of teh workflow:
-        logger.info("Minimum mapping quality: {0}".format(min_qual))
-        logger.info("Enzyme: {0}".format(self.args["--enzyme"]))
-        logger.info("Normalization: {0}".format(self.args["--normalization"]))
+        # Manage start point.
+        if self.args["--start"] == "fastq":
+            start = 1
+        elif self.args["--start"] == "bam":
+            start = 2
+        elif self.args["--start"] == "network":
+            start = 3
+        else:
+            logger.error(
+                "Start argument should be 'fastq', 'bam' or 'network'."
+            )
+            raise ValueError
+
+        # Print information of the workflow:
+        if start == 1:
+            logger.info("Minimum mapping quality: {0}".format(min_qual))
+        if start <= 2:
+            logger.info("Enzyme: {0}".format(self.args["--enzyme"]))
+            logger.info(
+                "Normalization: {0}".format(self.args["--normalization"])
+            )
         logger.info("Partition algorithm: {0}".format(self.args["--algorithm"]))
         logger.info("Partition iterations: {0}".format(iterations))
         logger.info("Overlapping parameter: {0}".format(overlapping_parameter))
-        logger.info(
-            "Recursive partition iterations: {0}".format(recursive_iterations)
-        )
-        logger.info(
-            "Recursive overlapping parameter: {0}".format(
-                recursive_overlapping_parameter
+        if not self.args["--skip-validation"]:
+            logger.info(
+                "Recursive partition iterations: {0}".format(
+                    recursive_iterations
+                )
             )
-        )
+            logger.info(
+                "Recursive overlapping parameter: {0}".format(
+                    recursive_overlapping_parameter
+                )
+            )
 
         # Extract index and genome file
         assembly = self.args["--assembly"]
@@ -710,7 +730,8 @@ class Pipeline(AbstractCommand):
         if index is None:
             if mio.check_is_fasta(assembly):
                 fasta = assembly
-                index = mio.generate_fasta_index(fasta, temp_directory)
+                if start == 1:
+                    index = mio.generate_fasta_index(fasta, temp_directory)
             else:
                 logger.error(
                     "Please give as assembly argument a bowtie2 index or a fasta."
@@ -720,8 +741,7 @@ class Pipeline(AbstractCommand):
             fasta = mio.retrieve_fasta(index, temp_directory)
 
         # Run the whole workflow
-        if self.args["--start"] == "bam" or self.args["--start"] == "fastq":
-
+        if start <= 2:
             # Align pair-end reads with bowtie2
             alignment_files = mta.get_contact_pairs(
                 self.args["--forward"],
@@ -748,16 +768,9 @@ class Pipeline(AbstractCommand):
                 self.args["--enzyme"],
                 False,
             )
-
-        elif self.args["--start"] == "network":
-            contigs_data_file = self.args["--contigs-data"]
-            network_file = self.args["--network-file"]
-
         else:
-            logger.error(
-                "Start argument should be 'fastq', 'bam' or 'network'."
-            )
-            raise ValueError
+            contigs_data_file = self.args["--contigs"]
+            network_file = self.args["--network"]
 
         # Partition the network
         contigs_data_file = mtp.partition(

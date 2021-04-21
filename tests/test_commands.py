@@ -4,7 +4,7 @@
 
 import metator.commands as mtc
 import pytest
-import os
+import shutil
 
 
 # Use global variables for input files
@@ -26,8 +26,11 @@ global_args = {
     # "OUT_FASTA": "tests_data/outdir_fasta/",
     "TMP": "tests_data/tmp/",
 }
-
-os.makedirs(global_args["OUT_TEST"], exist_ok=True)
+NORMALIZE = (
+    "norm",
+    ["None", "length", "abundance", "RS", "empirical_hit", "theoritical_hit"],
+)
+ALGORITHM = ("alg", ["louvain", "leiden"])
 
 
 def test_network():
@@ -38,21 +41,12 @@ def test_network():
     proc.execute()
 
 
-NORMALIZE = (
-    "norm",
-    ["None", "length", "abundance", "RS", "empirical_hit", "theoritical_hit"],
-)
-
-
 @pytest.mark.parametrize(*NORMALIZE)
 def test_network2(norm):
     args = "-1 {BAM_FOR} -2 {BAM_REV} -a {FASTA_INDEX} -d {DEPTH} -o {OUT_TEST} -T {TMP} -n {0} -e DpnII,HinfI -S bam".format(
         norm, **global_args
     )
     proc = mtc.Network(args.split(" "), {})
-
-
-ALGORITHM = ("alg", ["louvain", "leiden"])
 
 
 @pytest.mark.parametrize(*ALGORITHM)
@@ -80,6 +74,6 @@ def test_pipeline():
     proc = mtc.Pipeline(args.split(" "), {})
     proc.execute()
 
-
-# shutil.rmtree("tests_data/out_test")
-# shutil.rmtree("tests_data/tmp/")
+    shutil.rmtree("tests_data/out_test")
+    shutil.rmtree("tests_data/tmp/")
+    os.rmdir("tests_data/tmp/")

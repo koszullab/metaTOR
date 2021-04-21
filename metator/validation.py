@@ -182,6 +182,7 @@ def louvain_recursif(
     overlapping_parameter,
     resolution_parameter,
     outdir,
+    recursive_fasta_dir,
     algorithm,
     tmpdir,
     checkm_file,
@@ -206,6 +207,8 @@ def louvain_recursif(
         Resolution paramater of Leiden algorithm
     outdir : str
         Path to the output directory.
+    recursive_fasta_dir : str
+        Path to the directory where to write the decontaminated fasta.
     algorithm : str
         Algorithm to use, either louvain or leiden.
     tmpdir : str
@@ -228,9 +231,6 @@ def louvain_recursif(
         True if at least one new bin has been generated.
     """
 
-    # Stop to report info log
-    logger.setLevel(logging.WARNING)
-
     # Load CheckM result:
     checkm_summary = mio.read_results_checkm(checkm_file, taxonomy_file)
 
@@ -245,9 +245,9 @@ def louvain_recursif(
     )
 
     # Add new coulumns for recursive information.
-    contigs_data["Recursive bin ID"] = "0"
-    contigs_data["Recursive bin contigs"] = "-"
-    contigs_data["Recursive bin length"] = "-"
+    contigs_data["Recursive_bin_ID"] = "0"
+    contigs_data["Recursive_bin_contigs"] = "-"
+    contigs_data["Recursive_bin_length"] = "-"
 
     # Default no contamination
     contamination = False
@@ -260,11 +260,11 @@ def louvain_recursif(
 
             logger.info("Bin in progress: {0}".format(bin_id))
             subnetwork_file = join(tmpdir, "subnetwork_" + bin_id + ".txt")
-            bin_id = bin_id.split("_")[1]
+            bin_id = int(bin_id.split("_")[1])
 
             # Extract contigs
             list_contigs = list(
-                contigs_data["ID"][contigs_data["Overlapping bin ID"] == bin_id]
+                contigs_data["ID"][contigs_data["Overlapping_bin_ID"] == bin_id]
             )
 
             # Extract subnetwork
@@ -274,6 +274,9 @@ def louvain_recursif(
             nx.write_edgelist(
                 subnetwork, subnetwork_file, delimiter="\t", data=["weight"]
             )
+
+            # Stop to report info log
+            # logger.setLevel(logging.WARNING)
 
             # Use Louvain algorithmon the subnetwork.
             if algorithm == "leiden":
@@ -319,23 +322,22 @@ def louvain_recursif(
             )
 
             # update bin data and generate fasta
-            fasta_outdir = join(outdir, "fasta/")
             contamination, contigs_data = update_contigs_data_recursif(
                 contigs_data,
                 recursif_bins,
                 assembly,
-                fasta_outdir,
+                recursive_fasta_dir,
                 tmpdir,
                 size,
                 contamination,
             )
 
+            # Put back the info log
+            logger.setLevel(logging.INFO)
+
     # Write the new file
     contig_data_file_2 = join(outdir, "contig_data_recursif.txt")
     contigs_data.to_csv(contig_data_file_2, sep="\t", header=True, index=False)
-
-    # Put back the info log
-    logger.setLevel(logging.INFO)
 
     return contamination, contigs_data
 
@@ -460,6 +462,7 @@ def recursive_decontamination(
         overlapping_parameter,
         resolution_parameter,
         outdir,
+        recursive_fasta_dir,
         algorithm,
         temp_directory,
         overlapping_checkm_file,
@@ -623,12 +626,12 @@ def write_bins_contigs(bin_summary, contigs_data, outfile):
             over_id = str(
                 contigs_data.iloc[
                     i,
-                ]["Overlapping bin ID"]
+                ]["Overlapping_bin_ID"]
             )
             rec_id = str(
                 contigs_data.iloc[
                     i,
-                ]["Recursive bin ID"]
+                ]["Recursive_bin_ID"]
             )
             try:
                 rec_ids = list_bin_id[over_id]

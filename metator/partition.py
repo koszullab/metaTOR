@@ -760,12 +760,12 @@ def update_contigs_data(contig_data_file, core_bins, overlapping_bins, outdir):
     )
 
     # Add new empty columns
-    contigs_data["Core bin ID"] = "-"
-    contigs_data["Core bin contigs"] = "-"
-    contigs_data["Core bin size"] = "-"
-    contigs_data["Overlapping bin ID"] = "-"
-    contigs_data["Overlapping bin contigs"] = "-"
-    contigs_data["Overlapping bin size"] = "-"
+    contigs_data["Core_bin_ID"] = "-"
+    contigs_data["Core_bin_contigs"] = "-"
+    contigs_data["Core_bin_size"] = "-"
+    contigs_data["Overlapping_bin_ID"] = "-"
+    contigs_data["Overlapping_bin_contigs"] = "-"
+    contigs_data["Overlapping_bin_size"] = "-"
 
     # Add core bin information
     n = 1
