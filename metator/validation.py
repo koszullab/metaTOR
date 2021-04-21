@@ -11,6 +11,7 @@ Functions in this module:
     - checkM
     - compare_bins
     - louvain_recursif
+    - give_results_info
     - recursive_decontamination
     - update_recursif_louvain
     - write_bin_contigs

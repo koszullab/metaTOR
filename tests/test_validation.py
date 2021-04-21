@@ -1,9 +1,10 @@
 # Test for validation modules
 
-
+import metator.io as mio
 import metator.validation as mtv
 import pytest
 import os, shutil
+import re
 
 ALGORITHM = ("alg", ["louvain", "leiden"])
 
@@ -13,7 +14,40 @@ def test_checkm():
 
 
 def test_compare_bins():
-    ...
+    checkm_summary = mtv.compare_bins(
+        overlapping_checkm_file="tests_data/outdir2/overlapping_checkm_results.txt",
+        overlapping_taxonomy_file="tests_data/outdir2/overlapping_checkm_taxonomy.txt",
+        recursif_checkm_file="tests_data/outdir2/recursif_checkm_results.txt",
+        recursif_taxonomy_file="tests_data/outdir2/recursif_checkm_taxonomy.txt",
+    )
+    over = mio.read_results_checkm(
+        "tests_data/outdir2/overlapping_checkm_results.txt",
+        "tests_data/outdir2/overlapping_checkm_taxonomy.txt",
+    )
+    rec = mio.read_results_checkm(
+        "tests_data/outdir2/recursif_checkm_results.txt",
+        "tests_data/outdir2/recursif_checkm_taxonomy.txt",
+    )
+
+    # Assert there is the rigth numbers of keys for a bin:
+    keys = list(checkm_summary.keys())
+    assert len(checkm_summary[keys[0]]) == 10
+
+    # Assert there are no more keys then available:
+    test_over = [re.search("_0", key) is not None for key in keys]
+    assert sum(test_over) <= len(test_over)
+    assert len(checkm_summary) - sum(test_over) <= len(rec)
+
+    # Assert there are no duplicates  (one bin from overlapping and from
+    # recursive)
+    over_id = []
+    rec_id = []
+    for i in range(len(test_over)):
+        if test_over[i]:
+            over_id.append(int(keys[i].split("_")[1]))
+        else:
+            rec_id.append(int(keys[i].split("_")[1]))
+    assert not (set(over_id) & set(rec_id))
 
 
 @pytest.mark.parametrize(*ALGORITHM)
@@ -39,6 +73,10 @@ def test_louvain_recursif(alg):
         threads=1,
     )
     shutil.rmtree("tests_data/out_test/")
+
+
+def give_results_info():
+    ...
 
 
 def test_recursive_decontamination():

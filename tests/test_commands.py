@@ -22,8 +22,6 @@ global_args = {
     "ALIGNMENT": "tests_data/outdir/alignment.bed",
     "OUT": "tests_data/outdir/",
     "OUT_TEST": "tests_data/out_test",
-    # "OUT_VAL": "tests_data/outdir_validation/",
-    # "OUT_FASTA": "tests_data/outdir_fasta/",
     "TMP": "tests_data/tmp/",
 }
 NORMALIZE = (
@@ -76,4 +74,3 @@ def test_pipeline():
 
     shutil.rmtree("tests_data/out_test")
     shutil.rmtree("tests_data/tmp/")
-    os.rmdir("tests_data/tmp/")
