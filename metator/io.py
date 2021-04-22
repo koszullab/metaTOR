@@ -102,13 +102,13 @@ def check_is_fasta(in_file):
     Function from hicstuff.io (https://github.com/koszullab/hicstuff/)
     Checks whether input file is in fasta format.
 
-    Parameters
-    ----------
+    Parameters:
+    -----------
     in_file : str
         Path to the input file.
 
-    Returns
-    -------
+    Returns:
+    --------
     bool :
         True if the input is in fasta format, False otherwise
     """

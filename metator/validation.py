@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
-"""Validation of the bins and recursive used of Louvain to try to removed
-contaminated bins.
+"""Validates bins using CheckM and make a recursive partition to try to
+decontaminate them.
 
 General functions to validate bins completion using checkM and make recursive
-iterations of Louvain to try to partition contaminated bins.
+iterations of Louvain or Leiden to try to partition contaminated bins. Only bins
+with more than 50% completion and 5% contamination are subject to the recursive
+step. If the recursive step gave worst results than the first (decrease of the
+completion with no decrease of the contamination), it will keep the original 
+bin.
+
 
 Functions in this module:
     - checkM
@@ -29,8 +34,8 @@ from os.path import join
 
 
 def checkm(fasta_dir, outfile, taxonomy_file, tmpdir, threads):
-    """Function to evaluate fasta bins using CheckM. Write a result summary in a
-    text file.
+    """Function to evaluate fasta bins using CheckM. Write the checkM results
+    summary in the outfile and the taxonomy results in the the taxonomy file.
 
     Parameters:
     -----------
@@ -44,7 +49,7 @@ def checkm(fasta_dir, outfile, taxonomy_file, tmpdir, threads):
         Path to the temporary directory where CheckM intermediary files will be
         written.
     threads : int
-        Numbers of threads to use for CheckM
+        Numbers of threads to use for CheckM.
     """
 
     logger.info("Start CheckM validation.")
@@ -91,8 +96,11 @@ def compare_bins(
     recursif_checkm_file,
     recursif_taxonomy_file,
 ):
-    """Compare the completness and contamination of the bins and choose which
-    are the most relevant bins.
+    """Compare the completness and contamination of the bins from the first step
+    and from the recursive step. If the recursive step decrease the completion
+    of one bin without decreasing its contamination, it will kept the bin before
+    the recursive step. Moreover if the completion goes below 50% with the
+    recursive it will not take the recursive bins.
 
     Parameters:
     -----------
@@ -104,6 +112,7 @@ def compare_bins(
         Path to the checkm summary from the recurisf step.
     recursif_taxonomy_file : str
         path to the recursif checkm taxonomy results file.
+
     Returns:
     --------
     dict:
@@ -194,18 +203,19 @@ def louvain_recursif(
     threads,
 ):
     """Function to run recursive iterations on contaminated bins in order to try
-    to improve the quality of the bins using Louvain algorthm.
+    to improve the quality of the bins using Louvain or Leiden algorthm.
 
     Parameters:
     -----------
     assembly : str
         Path to the fasta file used as assembly.
     iterations : int
-        Number of iterations to use for recursive itarations of Louvain.
+        Number of iterations to use for recursive iterations of Louvain or
+        Leiden.
     overlapping_parameter : float
         Hamming distance threshold to consider two bins as the same bin.
     resolution parameter : float
-        Resolution paramater of Leiden algorithm
+        Resolution parameter of Leiden algorithm.
     outdir : str
         Path to the output directory.
     recursive_fasta_dir : str
@@ -229,7 +239,7 @@ def louvain_recursif(
 
     Return:
     boolean:
-        True if at least one new bin has been generated.
+        True if at least one new recursive bin has been generated.
     """
 
     # Load CheckM result:
@@ -403,8 +413,8 @@ def recursive_decontamination(
     temp_directory,
     threads,
 ):
-    """Function to launch all the validation and recursive decontamination used
-    of Louvain.
+    """Function to validate bins do the recursive decontamination using Louvain
+    or Leiden algorithm
 
     Parameters:
     -----------
@@ -519,7 +529,7 @@ def recursive_decontamination(
 def update_contigs_data_recursif(
     contigs_data, recursif_bins, assembly, outdir, tmpdir, size, contamination
 ):
-    """Update the data of the bin according to the recursif step and generated
+    """Update the data of the bin according to the recursive step and generated
     their fasta.
 
     Parameters:
@@ -527,9 +537,9 @@ def update_contigs_data_recursif(
     contigs_data : pandas.DataFrame
         Table with all the data from the contigs.
     recursif_bins : dict
-        Dictionnary which has  as keys the values of the iterations from Louvain
-        separated by a semicolon and as values the list of the id of the
-        contigs.
+        Dictionnary which has  as keys the values of the recursive iterations
+        from Louvain or Leiden separated by a semicolon and as values the list
+        of the id of the contigs.
     assembly : str
         Path to the fasta file.
     outdir : str
@@ -547,8 +557,8 @@ def update_contigs_data_recursif(
         True if one bin has already been generated, false otherwise.
     pandas.DataFrame
         Updated dictionnary which has as keys the values of the iterations from
-        Louvain separated by a semicolon and as values the list of the id of the
-        contigs.
+        the recursive partition separated by a semicolon and as values the list
+        of the id of the contigs.
     """
 
     # Add recursif bin information

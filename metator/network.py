@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""Generate 3C networks of teh contig.
-General utility functions for handling BAM files and generating 3C networks and 
-some functions to work on the network once the bins are made to study some 
-more specific contacts.
+"""Generate metaHiC contigs network from fastq reads or bam files.
+
+General utility functions for handling aligment files from align modul and
+generating metaHiC networks.
 
 Core function to build the network are:
     - alignment_to_contacts
@@ -14,6 +14,7 @@ Core function to build the network are:
     - normalize_pair
     - precompute_network
     - write_contig_data
+    - write_hit_data
 """
 
 import csv
@@ -46,13 +47,12 @@ def alignment_to_contacts(
 
     The network is in a strict barebone form so that it can be reused and
     imported quickly into other applications etc. Verbose information about
-    every single node in the network is written on a 'contig data' file, by
-    default called 'idx_contig_length_GC_hit_cov.txt'
+    every single node in the network is written on a 'contig data' file.
 
-    Parameters
-    ----------
+    Parameters:
+    -----------
     alignment_files : list of str
-        List of path to the alignment file used as input.
+        List of path to the alignment file(s) used as input.
     assembly : str
         The initial assembly path acting as the alignment file's reference
         assembly.
@@ -76,14 +76,14 @@ def alignment_to_contacts(
     enzyme : str or None
         String that contains the names of the enzyme separated by a comma.
     self_contacts : bool
-        Whether to count alignments between a contig and
-        itself. Default is False.
+        Whether to return network with self contact. Default is False.
 
-    Returns
-    -------
-    dict
-        A dictionary where the keys are chunks in (contig, position) form and
-        the values are their id, name, total contact count, size and coverage.
+    Returns:
+    --------
+    str:
+        Path to the network file.
+    str:
+        Path to the verbose contig data file.
     """
 
     # Create temporary and output file which will be necessary
@@ -127,7 +127,7 @@ def alignment_to_contacts(
 
 def compute_contig_coverage(contig_data):
     """Compute the coverage of the contigs from the hit information compute
-    previously
+    previously.
 
     Parameters:
     -----------
@@ -272,89 +272,11 @@ def compute_network(
         n_pairs += n_occ
 
 
-def normalize_pair(contig_data, prev_pair, n_occ, normalization):
-    """
-    contig_data : dict
-        Dictionnary of the all the contigs from the assembly, the contigs names
-        are the keys to the data of the contig available with the following
-        keys: "id", "length", "GC", "hit", "coverage", "RS".
-    """
-    # The four first normalizations are normalization by the geometric mean of
-    # "coverage".
-    if normalization == "abundance":
-        factor = np.sqrt(
-            contig_data[prev_pair[0]]["coverage"]
-            * contig_data[prev_pair[1]]["coverage"]
-        )
-        # If no read mapped from Shotgun libraries could be equal to zero.
-        if factor == 0:
-            return 0
-
-    elif normalization == "length":
-        factor = np.sqrt(
-            contig_data[prev_pair[0]]["hit"]
-            / contig_data[prev_pair[0]]["length"]
-            * contig_data[prev_pair[1]]["hit"]
-            / contig_data[prev_pair[1]]["length"]
-        )
-
-    elif normalization == "RS":
-        factor = 0.01 * np.sqrt(
-            contig_data[prev_pair[0]]["hit"]
-            / contig_data[prev_pair[0]]["RS"]
-            * contig_data[prev_pair[1]]["hit"]
-            / contig_data[prev_pair[1]]["RS"]
-        )
-
-    elif normalization == "RS_length":
-        factor = np.sqrt(
-            contig_data[prev_pair[0]]["hit"]
-            / 10
-            * np.sqrt(
-                contig_data[prev_pair[0]]["length"]
-                * contig_data[prev_pair[0]]["RS"]
-            )
-            * contig_data[prev_pair[1]]["hit"]
-            / 10
-            * np.sqrt(
-                contig_data[prev_pair[1]]["length"]
-                * contig_data[prev_pair[1]]["RS"]
-            )
-        )
-
-    # The last two normalizations are normalization by geometric means of hits.
-    elif normalization == "empirical_hit":
-        factor = np.sqrt(
-            contig_data[prev_pair[0]]["hit"] * contig_data[prev_pair[1]]["hit"]
-        )
-
-    elif normalization == "theoritical_hit":
-        factor = np.sqrt(
-            contig_data[prev_pair[0]]["coverage"]
-            * 10
-            * np.sqrt(
-                contig_data[prev_pair[0]]["length"]
-                * contig_data[prev_pair[0]]["RS"]
-            )
-            * contig_data[prev_pair[1]]["coverage"]
-            * 10
-            * np.sqrt(
-                contig_data[prev_pair[1]]["length"]
-                * contig_data[prev_pair[1]]["RS"]
-            )
-        )
-        # If no read mapped from Shotgun libraries could be equal to zero.
-        if factor == 0:
-            return 0
-
-    return n_occ / factor
-
-
 def create_contig_data(assembly, nb_alignment, depth_file, enzyme):
     """Create a dictionnary with data on each Contig.
 
-    Paramaters
-    ----------
+    Parameters:
+    -----------
     assembly : str
         Path to the assembly fasta file
     nb_alignement : int
@@ -365,8 +287,8 @@ def create_contig_data(assembly, nb_alignment, depth_file, enzyme):
     enzyme : str or None
         String that contains the names of the enzyme separated by a comma.
 
-    Return
-    ------
+    Returns:
+    --------
     dict:
         Dictionnary of the all the contigs from the assembly, the contigs names
         are the keys to the data of the contig available with the following
@@ -431,6 +353,94 @@ def create_contig_data(assembly, nb_alignment, depth_file, enzyme):
     return contig_data, hit_data
 
 
+def normalize_pair(contig_data, pair, n_occ, normalization):
+    """Function to do the normalization of an inter contig contact depending on
+    the mode of normalisation given.
+
+    Parameters:
+    -----------
+    contig_data : dict
+        Dictionnary of the all the contigs from the assembly, the contigs names
+        are the keys to the data of the contig available with the following
+        keys: "id", "length", "GC", "hit", "coverage", "RS".
+    pair : tuple
+        Tuple of the id of the contigs contributing to the contact.
+    n_occ : int
+        Contac count between the two contigs.
+    normalization : str
+        Mode of normalization to use.
+
+    Returns:
+    --------
+    float:
+        Normalized contact count.
+    """
+    # The four first normalizations are normalization by the geometric mean of
+    # "coverage".
+    if normalization == "abundance":
+        factor = np.sqrt(
+            contig_data[pair[0]]["coverage"] * contig_data[pair[1]]["coverage"]
+        )
+        # If no read mapped from Shotgun libraries could be equal to zero.
+        if factor == 0:
+            return 0
+
+    elif normalization == "length":
+        factor = np.sqrt(
+            contig_data[pair[0]]["hit"]
+            / contig_data[pair[0]]["length"]
+            * contig_data[pair[1]]["hit"]
+            / contig_data[pair[1]]["length"]
+        )
+
+    elif normalization == "RS":
+        factor = 0.01 * np.sqrt(
+            contig_data[pair[0]]["hit"]
+            / contig_data[pair[0]]["RS"]
+            * contig_data[pair[1]]["hit"]
+            / contig_data[pair[1]]["RS"]
+        )
+
+    elif normalization == "RS_length":
+        factor = np.sqrt(
+            contig_data[pair[0]]["hit"]
+            / 10
+            * np.sqrt(
+                contig_data[pair[0]]["length"] * contig_data[pair[0]]["RS"]
+            )
+            * contig_data[pair[1]]["hit"]
+            / 10
+            * np.sqrt(
+                contig_data[pair[1]]["length"] * contig_data[pair[1]]["RS"]
+            )
+        )
+
+    # The last two normalizations are normalization by geometric means of hits.
+    elif normalization == "empirical_hit":
+        factor = np.sqrt(
+            contig_data[pair[0]]["hit"] * contig_data[pair[1]]["hit"]
+        )
+
+    elif normalization == "theoritical_hit":
+        factor = np.sqrt(
+            contig_data[pair[0]]["coverage"]
+            * 10
+            * np.sqrt(
+                contig_data[pair[0]]["length"] * contig_data[pair[0]]["RS"]
+            )
+            * contig_data[pair[1]]["coverage"]
+            * 10
+            * np.sqrt(
+                contig_data[pair[1]]["length"] * contig_data[pair[1]]["RS"]
+            )
+        )
+        # If no read mapped from Shotgun libraries could be equal to zero.
+        if factor == 0:
+            return 0
+
+    return n_occ / factor
+
+
 def precompute_network(
     aligment_files, contig_data, hit_data, out_file, self_contacts=False
 ):
@@ -438,10 +448,10 @@ def precompute_network(
     the contacts by contigs to be able to compute directlty the normalized
     network.
 
-    Parameters
-    ----------
+    Parameters:
+    -----------
     alignment_files : str
-        List of path to the alignment file.
+        List of path to the alignment file(s).
     contig_data : dict
         Dictionnary of the all the contigs from the assembly, the contigs names
         are the keys to the data of the contig available with the following
@@ -453,16 +463,16 @@ def precompute_network(
         Path to the write the output_file which will be necessary to compute the
         network.
     self_contacts : bool
-        If True, the contacts on the same contigs will be displayed. Otherwise
-        only displays the inter contigs contacts.
+        If True, the contacts on the same contigs will be kept. Otherwise only
+        displays the inter contigs contacts. [Default False]
 
-    Return
-    ------
+    Return:
+    -------
     dict:
         Dictionnary of the all the contigs from the assembly, the contigs names
         are the keys to the data of the contig available with the following
-        keys: "id", "length", "GC", "hit", "coverage". Coverage still at 0 and
-        need to be updated later.
+        keys: "id", "length", "GC", "hit", "coverage" "RS". Coverage still at 0
+        and need to be updated later.
     """
     # Initiate value to compute 3D ratio
     all_contacts = 0
@@ -544,10 +554,10 @@ def precompute_network(
 def write_contig_data(contig_data, output_path):
     """Function to write the contig data file at the output path given. The file
     will contains 7 columns separated by a tabulation: id, name, length,
-    GC_content, hit, coverage, restriction site for each contig.
+    GC_content, hit, coverage, restriction site for each contig with an header.
 
-    Parameters
-    ----------
+    Parameters:
+    -----------
     contig_data : dict
         Dictionnary of the all the contigs from the assembly, the contigs names
         are the keys to the data of the contig available with the following
@@ -579,8 +589,8 @@ def write_hit_data(hit_data, output_path):
     will contains 6 columns separated by a tabulation: id, name, length,
     GC_content, hit, coverage for each contig.
 
-    Parameters
-    ----------
+    Parameters:
+    -----------
     hit_data : dict
         Dictionnary of the all the contigs from the assembly, the contigs names
         are the keys to a list of hits from each alignment files separately.

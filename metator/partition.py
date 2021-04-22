@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""Partition HiC network using Louvain function.
+"""Partition metaHiC network using Louvain or Leiden algorithm.
 
 General utility function for generating bins from the network file using Louvain
 algorithm. If an overlapping threshold is given, it will use the Hamming 
 distance to group together bins relatively closed (to avaoid to split genomes in
-two or more bins).
+different bins).
 
 Core functions to partition the network are:
     - defined_overlapping_bins
@@ -49,14 +49,15 @@ def defined_overlapping_bins(
     Parameters:
     -----------
     overlap : float
-        Threshold use to consider that two bins are overlapping.
+        hamming distance threshold use to consider that two bins are
+        overlapping.
     hamming_distance : scipy.sparse.csr.csr_matrix
         Matrix with all the previously computed hamming distance between two
-        core bins
+        core bins.
     core_bins : dict
-        Dictionaary which has as keys the values of the iterations from Louvain
-        separated by a semicolon and as value the id of the contigs of the core
-        bin.
+        Dictionnary which has as keys the values of the iterations from the
+        partition algorithm separated by a semicolon and as value the id of the
+        contigs of the core bin.
     core_bins_iteration : pandas.core.frame.DataFrame
         Table with the id of the core bin and their values for each iterations.
 
@@ -98,26 +99,26 @@ def defined_overlapping_bins(
 
 
 def detect_core_bins(output_partition, iterations):
-    """Detect core bins from the output of louvain
+    """Detect core bins from the output of the partition algorithm.
 
-    The function search for duplicated values in the output of Louvain algorithm
-    in order to find contigs which are always in the same bin. The bins find
-    with this method are called the core bins.
+    The function search for duplicated values in the output of Louvain or Leiden
+    algorithm in order to find contigs which are always in the same bin. The
+    bins find with this method are called the core bins.
 
-    Parameters
-    ----------
+    Parameters:
+    -----------
     output_partition : dict
         Dictionnary with the id of the contig as key and the list of the results
         of each iterations separated by a semicolon as values.
     iterations : int
-        Number of iterations made previously with Louvain algorithm.
+        Number of iterations made previously with the partition algorithm.
 
-    Returns
-    -------
+    Returns:
+    --------
     dict:
         Dictionnary which has as keys the values of the iterations from Louvain
-        separated by a semicolon and as value the id of the contigs of the core
-        bin.
+        or Leiden separated by a semicolon and as value the id of the contigs of
+        the core bin.
     pandas.core.frame.DataFrame:
         Table with the id of the core bin and their values for each iterations.
     """
@@ -235,26 +236,26 @@ def get_distances_splitmat(bins, core_bins_iterations):
 
 
 def get_hamming_distance(core_bins_iterations, n_iter, threads):
-    """Generate matrix of Hamming distances between all pairs of core bins
+    """Generate matrix of Hamming distances between all pairs of core bins.
 
-    Parameters
-    ----------
+    Parameters:
+    -----------
     core_bins_iterations : pandas.core.frame.DataFrame
         Table with the id of the core bin and their values for each iterations.
     core_bins : dict
-        Dictionaary which has as keys the values of the iterations from Louvain
-        separated by a semicolon and as value the id of the contigs of the core
-        bin.
+        Dictionnary which has as keys the values of the iterations from Louvain
+        or Leiden separated by a semicolon and as value the id of the contigs of
+        the core bin.
     n_iter : int
-        Number of iterations of Louvain made previously.
+        Number of iterations made previously.
     threads : int
         Number of cores to parallelize computation.
 
-    Returns
-    -------
+    Returns:
+    --------
     scipy.sparse.csr.csr_matrix:
         Matrix with all the previously computed hamming distance between two
-        core bins
+        core bins.
     """
 
     # Compute Hamming distances in the core-bin-level iterative clustering
@@ -287,7 +288,7 @@ def leiden_iterations_java(
         separated by a tabulation with the id of the first contigs the id of the
         second one and the weights of the edge normalized or not.
     iterations : int
-        Number of iterations of the algorithm of Louvain.
+        Number of iterations of the algorithm of Leiden.
     resolution_parameter : float
         Resolution parameter for Leiden clustering.
     tmp_dir : str
@@ -468,7 +469,7 @@ def partition(
     temp_directory,
     threads,
 ):
-    """Function to partition the network.
+    """Function to call the others functions to partition the network.
 
     Parameters:
     -----------
@@ -487,8 +488,7 @@ def partition(
     fasta_dir : str
         Path to directory where to write the fasta files.
     overlapping_parameter : int
-        Hamming distance threshold to use to consider to bins as one in
-        percentage.
+        Hamming distance threshold to use to merge bins (percentage).
     resolution_parameter : float
         Resolution parameter to use if Leiden algorithm is chosen. It will be a
         factor of the cost function used. A resolution parameter of 1 will be
@@ -500,6 +500,11 @@ def partition(
         Path to the directory used to write temporary files.
     threads : int
         Number of threads to use.
+
+    Returns:
+    --------
+    str:
+        Path to the new contig data file with the bin informations in it.
     """
 
     # Perform the iterations of Louvain to partition the network.
@@ -572,7 +577,7 @@ def partition(
 def remove_isolates(output_partition, network_file):
     """Remove isolates, i.e. nodes without any contacts in the network in the
     partition. This step is necessary as it will slow the further process of the
-    communities.
+    communities. This function is only useful while using Leiden algorithm.
 
     Parameters:
     -----------
@@ -607,12 +612,10 @@ def update_contigs_data(contig_data_file, core_bins, overlapping_bins, outdir):
 
     This function allow to update the contigs data file which were created
     previously in the network functions with the columns: contig id, contig
-    name, contig length, GC content, hit, coverage. The function will add six
-    columns: core bin id, core bin number of contigs, core bin length,
-    overlapping bin id, overlapping bin number of contigs, overlapping bin
-    length.
-
-    The previous file will be overwritten.
+    name, contig length, GC content, hit, coverage, restriction site. The
+    function will add six columns: core bin id, core bin number of contigs, core
+    bin length, overlapping bin id, overlapping bin number of contigs,
+    overlapping bin length.
 
     Parameters:
     -----------
@@ -620,13 +623,13 @@ def update_contigs_data(contig_data_file, core_bins, overlapping_bins, outdir):
         Path to the contigs data file.
     core_bins : dict
         Dictionnary which has as keys the values of the iterations from Louvain
-        separated by a semicolon and as values the list of the id of the
-        contigs.
+        or Leiden separated by a semicolon and as values the list of the id of
+        the contigs.
     overlapping_bins : dict
         A dictionnary with the id of the overlapping bins as keys and the list
         of id of their contigs as values.
     outdir : str
-        Path of the output directory to write the update contigs data file
+        Path of the output directory to write the update contigs data file.
 
     Returns:
     --------

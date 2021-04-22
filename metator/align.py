@@ -3,10 +3,11 @@
 
 """Alignement of reads
 
-Align read files onto the assembly and return a tsv file with columns: readIDA,
-contigA, posA, strandA, readIDB, contigB, posB, strandB. Reads are mapped
-separately, sorted by names, then interleaved (rather than mapped in paired-end
-mode) to capture the pairs mapping on two different contigs.
+Align read files onto the assembly and return a tsv file with 9 columns: ReadID,
+ContigA, Position_startA, Position_endA, StrandA, ContigB, Position_startB,
+Position_endB, StrandB. Reads are mapped separately, sorted by names, then
+interleaved (rather than mapped in paired-end mode) to capture the pairs mapping
+on two different contigs.
 
 This module contains all these alignment functions:
     - align
@@ -27,10 +28,12 @@ from pkg_resources import parse_version
 def align(fq_in, index, bam_out, n_cpu):
     """Alignment
     Aligns reads of fq_in with bowtie2. Parameters of bowtie2 are set as
-    --very-sensitive-local
+    -D 20 -R 3 -N 0 -L 16 -i S,1,0.50 --local and only the aligned reads are
+    kept in the bam file.
+    Multiple files could be given, but only one file will be written as output.
 
-    Parameters
-    ----------
+    Parameters:
+    -----------
     fq_in : str
         Path to input fastq file to align. If multiple files are given, list of
         path separated by a comma.
@@ -45,7 +48,7 @@ def align(fq_in, index, bam_out, n_cpu):
     # Align the reads on the reference genome
     map_args = {"cpus": n_cpu, "fq": fq_in, "idx": index, "bam": bam_out}
     cmd = (
-        "bowtie2 -x {idx} -p {cpus} --quiet --very-sensitive-local {fq} --no-unal"
+        "bowtie2 -x {idx} -p {cpus} --quiet are set as -D 20 -R 3 -N 0 -L 16 -i S,1,0.50 --local {fq} --no-unal"
     ).format(**map_args)
 
     map_process = sp.Popen(cmd, shell=True, stdout=sp.PIPE)
@@ -76,6 +79,8 @@ def get_contact_pairs(
     Position_startA, Position_endA, StrandA, ContigB, Position_startB,
     Position_endB, StrandB. The name of the file will be alignment.txt.
 
+    Two start stages are possible, from fastq or bam files.
+
     Parameters:
     -----------
     for_in : str
@@ -90,7 +95,7 @@ def get_contact_pairs(
         Minimum mapping quality required to keep Hi-C pairs.
     start : str
         Either fastq or bam. Starting point for the pipeline.
-    out_file : str
+    out_dir : str
         Path to directory where to write the output file.
     tmp_dir : str
         Path where temporary files should be written.
@@ -100,7 +105,7 @@ def get_contact_pairs(
     Returns:
     --------
     list of str:
-        List of path of the Files with the Table containing the alignement data
+        List of path of the Files with the table containing the alignement data
         of the pairs: ReadID, ContigA, Position_startA, Position_endA, StrandA,
         ContigB, Position_startB, Position_endB, StrandB.
     """
@@ -165,12 +170,13 @@ def get_contact_pairs(
 
 
 def merge_alignment(forward_aligned, reverse_aligned, out_file):
-    """Merge forward and reverse alignment into one file with pairs which both
-    reads are aligned on the genome. The final alignment  dataframe is written
-    in the output file.
+    """Merge forward and reverse alignment into one file with only pairs which
+    have both reads are aligned on the genome with 9 columns: ReadID, ContigA,
+    Position_startA, Position_endA, StrandA, ContigB, Position_startB,
+    Position_endB, StrandB.
 
-    Parameters
-    ----------
+    Parameters:
+    -----------
     forward_alignement : str
         File with the table containing the data of the forward reads kept after
         the alignment. With five columns: ReadID, Contig, Position_start,
@@ -182,10 +188,10 @@ def merge_alignment(forward_aligned, reverse_aligned, out_file):
     out_file : str
         Path to write the output file.
 
-    Returns
-    -------
+    Returns:
+    --------
     str:
-        File with the Table containing the alignement data of the pairs: ReadID,
+        File with the table containing the alignement data of the pairs: ReadID,
         ContigA, Position_startA, Position_endA, StrandA, ContigB,
         Position_startB, Position_endB, StrandB
     """
@@ -248,8 +254,9 @@ def process_bamfile(alignment, min_qual, filtered_out):
     """Filter alignment BAM files
 
     Reads all the reads in the input BAM alignment file. Keep reads in the
-    output if they are aligned with a good quality saving their uniquely ReadID,
-    Contig, Position_start, Position_end, strand to save memory.
+    output if they are aligned with a good quality (greater than min quality
+    threshold given) saving their only some columns: ReadID, Contig,
+    Position_start, Position_end, strand to save memory.
 
     Parameters:
     -----------
@@ -265,17 +272,17 @@ def process_bamfile(alignment, min_qual, filtered_out):
     str:
         Path to the table containing the data of the reads mapping unambiguously
         and with a mapping quality superior to the threshold given. Five
-        columns: ReadID, Contig, Position_start, Position_end, strand
+        columns: ReadID, Contig, Position_start, Position_end, strand.
     """
-    # Check the quality and status of each aligned fragment.
-    # Write the ones with good quality in the aligned dataframe.
-    # Keep ID of those that do not map unambiguously to be trimmed.
 
+    # Check the quality and status of each aligned fragment.
     aligned_reads = 0
     temp_bam = pysam.AlignmentFile(alignment, "rb", check_sq=False)
     with open(filtered_out, "a") as f:
         for r in temp_bam:
+            # Check mapping quality
             if r.mapping_quality >= min_qual:
+                # Check Mapping (0 or 16 flags are kept only)
                 if r.flag == 0:
                     aligned_reads += 1
                     read = str(
@@ -304,8 +311,6 @@ def process_bamfile(alignment, min_qual, filtered_out):
                         + "-\n"
                     )
                     f.write(read)
-
-    f.close()
     temp_bam.close()
 
     return aligned_reads

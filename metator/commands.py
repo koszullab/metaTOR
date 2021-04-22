@@ -4,8 +4,6 @@
 """Abstract command classes for metaTOR
 
 This module contains all classes related to metaTOR commands:
-
-    - align
     - network 
     - partition
     - pipeline
@@ -71,12 +69,16 @@ class AbstractCommand:
 class Network(AbstractCommand):
     """Generation of network command
 
-    Align reads from froward and reverse fastq files. Multiple fastq could be
-    given separated by commas. Generates a network file (in edgelist form) from
-    an alignment in bed2D format. Contigs are the network nodes and the edges
-    are the contact counts.
+    Generate metaHiC contigs network from fastq reads or bam files.Generates a
+    network file (in edgelist form) from either fastq files or bam files. For
+    both starting input forward and reverse reads or alignment need to be in
+    seprated files with the same read names. In the output network contigs are
+    the network nodes and the edges are the contact counts.
 
-    The network is in a strict barebone form so that it can be reused and
+    If multiple fastq are given will align them seprately and return a hit file
+    with a number of hit for each sample.
+
+    Note: the network is in a strict barebone form so that it can be reused and
     imported quickly into other applications etc. Verbose information about
     every single node in the network is written on a 'contig data' file.
 
@@ -108,9 +110,9 @@ class Network(AbstractCommand):
         -n, --normalization=STR If None, do not normalized the count of a
                                 contact by the geometric mean of the coverage of
                                 the contigs. Otherwise it's the type of
-                                normalization. 7 values are possible None,
-                                abundance, length, RS, RS_length, empirical_hit,
-                                theoritical_hit. [Default: empirical_hit]
+                                normalization. 6 values are possible "None",
+                                "abundance", "length", "RS", "empirical_hit",
+                                "theoritical_hit". [Default: empirical_hit]
         -N, --no-clean-up       Do not remove temporary files.
         -o, --outdir=DIR        The output directory to write the bam files the
                                 network and contig data into. Default: current
@@ -118,9 +120,9 @@ class Network(AbstractCommand):
         -q, --min-quality=INT   Threshold of quality necessary to considered a
                                 read properly aligned. [Default: 30]
         -s, --self-contacts     If enabled, count alignments between a contig
-                                and itself (intracontigs contigs).
-        -S, --start=STR         Start stage of the pipeline. Either fastq or
-                                bam. [Default: fastq]
+                                and itself (intracontigs contacts).
+        -S, --start=STR         Start stage of the pipeline. Either "fastq" or
+                                "bam". [Default: fastq]
         -t, --threads=INT       Number of parallel threads allocated for the
                                 alignement. [Default: 1]
         -T, --tempdir=DIR       Temporary directory. Default to current
@@ -250,59 +252,57 @@ class Partition(AbstractCommand):
     """Partition the network using Louvain algorithm
 
     Partition the network file using iteratively the Louvain or Leiden
-    algorithm. Then looks for 'cores' that are easily found by identifying
-    identical lines on the global output. Using hamming distance from these core
-    bins, group the bins with more than the percentage (overlapping parameter)
+    algorithm. Then looks for 'cores' bins that are constituted by the contigs
+    which are always in the same cluster at each iterations. Then using the
+    Hamming distance from these cores bins, merege the bins with a small Hamming
+    distance (close to 1), bigger than the percentage (overlapping parameter)
     given.
 
     It will also update the file to integrate the bins information of the
-    contigs. If the version of Louvain is not found, the python version of
-    Louvain will be used.
+    contigs.
 
     Furthermore, both Leiden and Louvain algorithm are available here. However,
-    the benchmark made show taht with this pipeline the Louvain algorithm gives
-    better results and is faster on seawater and gut metagenomic samples.
+    the benchmark made show that here the Louvain algorithm have better
+    performance and is faster on seawater and gut metagenomic samples.
 
-    Note that the Louvain software is not, in the strictest sense, necessary.
-    Any program that assigns a node to a bin, does so non deterministically and
-    solely outputs a list in the form: 'node_id bin_id' could be plugged
-    instead.
+    Note that the Louvain or Leiden software are not, in the strictest sense,
+    necessary. Any program that assigns a node to a bin, does so non
+    deterministically and solely outputs a list in the form: 'node_id bin_id'
+    could be plugged instead.
 
     usage:
-        partition  --network=FILE --assembly=FILE --contigs=FILE
-        [--iterations=100] [--algorithm=louvain] [--overlap=80] [--size=500000]
-        [--threads=1] [--tempdir=DIR] [--no-clean-up] [--res-parameter=1.0]
-        [--outdir=DIR] [--force]
+        partition  --assembly=FILE --contigs=FILE --network=FILE
+        [--algorithm=louvain] [--force] [--iterations=100] [--no-clean-up]
+        [--outdir=DIR] [--overlap=80] [--res-param=1.0] [--size=500000]
+        [--threads=1] [--tempdir=DIR]
 
     options:
-        -a, --assembly=FILE         The path to the assembly fasta file used to
-                                    do the alignment.
-        -A, --algorithm=STR         louvain|leiden, algorithm to use to
-                                    partition the network. [Default: louvain]
-        -c, --contigs=FILE          The path to the tsv file containing the data
-                                    of the contigs (ID, Name, Length, GC
-                                    content, Hit, Coverage).
-        -F, --force                 If enbale, would remove directory of
-                                    overlapping bins in the output directory.
-        -i, --iterations=INT        Number of iterations of Louvain.
-                                    [Default: 100]
-        -n, --network=FILE          Path to the file containing the network
-                                    information from the meta HiC experiment
-                                    compute in network function previously.
-        -N, --no-clean-up           Do not remove temporary files.
-        -o, --outdir=DIR            Path to the directory to write the output.
-                                    Default to current directory. [Default: ./]
-        -O, --overlap=INT           Percentage of the identity necessary to be
-                                    considered as a part of the core bin.
-                                    [Default: 80]
-        -r, --res-parameter=FLOAT   Resolution paramter to use for Leiden
-                                    algorithm. [Default: 1.0]
-        -s, --size=INT              Threshold size to keep bins in base pair.
-                                    [Default: 500000]
-        -t, --threads=INT           Number of parallel threads allocated for the
-                                    partition. [Default: 1]
-        -T, --tempdir=DIR           Temporary directory. Default to current
-                                    directory. [Default: ./tmp]
+        -a, --assembly=FILE     The path to the assembly fasta file used to do
+                                the alignment.
+        -A, --algorithm=STR     Either "louvain" or "leiden", algorithm to use
+                                to partition the network. [Default: louvain]
+        -c, --contigs=FILE      The path to the tsv file containing the data of
+                                the contigs (ID, Name, Length, GC content, Hit,
+                                Coverage, Restriction Site).
+        -F, --force             If enabled, would remove directory of
+                                overlapping bins in the output directory.
+        -i, --iterations=INT    Number of iterations of Louvain. [Default: 100]
+        -n, --network=FILE      Path to the file containing the network
+                                information from the meta HiC experiment compute
+                                in network function previously.
+        -N, --no-clean-up       Do not remove temporary files.
+        -o, --outdir=DIR        Path to the directory to write the output.
+                                Default to current directory. [Default: ./]
+        -O, --overlap=INT       Hamming distance threshold to use to merge bins
+                                (percentage). [Default: 80]
+        -r, --res-param=FLOAT   Resolution paramter to use for Leiden algorithm.
+                                [Default: 1.0]
+        -s, --size=INT          Threshold size to keep bins in base pair.
+                                [Default: 500000]
+        -t, --threads=INT       Number of parallel threads allocated for the
+                                partition. [Default: 1]
+        -T, --tempdir=DIR       Temporary directory. Default to current
+                                directory. [Default: ./tmp]
     """
 
     def execute(self):
@@ -341,7 +341,7 @@ class Partition(AbstractCommand):
         overlapping_parameter = int(self.args["--overlap"]) / 100
         size = int(self.args["--size"])
         threads = int(self.args["--threads"])
-        resolution_parameter = float(self.args["--res-parameter"])
+        resolution_parameter = float(self.args["--res-param"])
 
         # Check correct algorithm value
         if self.args["--algorithm"] not in ["louvain", "leiden"]:
@@ -382,23 +382,27 @@ class Validation(AbstractCommand):
     script returns new decontaminated fasta and summary files of the
     decontamination.
 
+    Only bins with more than 50% completion and 5% contamination are subject to
+    the recursive step. If the recursive step gave worst results than the first
+    (decrease of the completion with no decrease of the contamination), it will
+    keep the original bin.
+
     usage:
-        validation --network=FILE --assembly=FILE --fasta=DIR --contigs=STR
-        [--iterations=10] [--algorithm=louvain] [--size=500000]
-        [--res-param=1.0] [--threads=1] [--tempdir=DIR]  [--no-clean-up]
-        [--overlap=90] [--outdir=DIR] [--force]
+        validation --assembly=FILE --contigs=FILE --fasta=DIR --network=FILE
+        [--algorithm=louvain] [--force] [--iterations=10] [--no-clean-up]
+        [--outdir=DIR] [--overlap=90] [--res-param=1.0] [--size=500000]
+        [--threads=1] [--tempdir=DIR]
 
     options:
         -a, --assembly=FILE     The path to the assembly fasta file used to do
                                 the alignment.
         -A, --algorithm=STR     Algorithm to use. Either "louvain" or "leiden".
                                 [Default: louvain]
-        -c, --contigs=FILE      The path to the file containing the data ofthe
-                                contigs (ID, Name, Length, GC content, Hit,
-                                Coverage).
+        -c, --contigs=FILE      The path to the file containing the data of the
+                                contigs from the partition step (13 columns).
         -f, --fasta=DIR         Path to the directory containing the input fasta
-                                files of the bins.
-        -F, --force             If enbale, would remove directory of recursive
+                                files of the bins to decontaminate.
+        -F, --force             If enable, would remove directory of recursive
                                 bins in the output directory.
         -i, --iterations=INT    Number of recursive iterations of Louvain.
                                 [Default: 10]
@@ -408,9 +412,8 @@ class Validation(AbstractCommand):
         -N, --no-clean-up       Do not remove temporary files.
         -o, --outdir=DIR        Path to the directory to write the output.
                                 Default to current directory. [Default: ./]
-        -O, --overlap=INT       Percentage of the identity necessary to be
-                                considered as a part of the core bin.
-                                [Default: 90]
+        -O, --overlap=INT       Hamming distance threshold to use to merge bins
+                                (percentage). [Default: 90]
         -r, --res-param=FLOAT   Resolution paramter to use for Leiden
                                 algorithm. [Default: 1.0]
         -s, --size=INT          Threshold size to keep bins in base pair.
@@ -501,18 +504,19 @@ class Validation(AbstractCommand):
 class Pipeline(AbstractCommand):
     """Launch the full metator pipeline
 
-    Partition the assembly in bins from the HiC reads of the metapopulation.
+    Partition the contigs from teh  assembly in bins from the metaHiC reads.
 
-    It's possible to start from the fastq, the bam, the bed2D, or the network
-    files. It's also possible to ask or not to run the validation step which is
-    the critical step for memory usage.
+    It's possible to start from the fastq, the bam or the network files. It's
+    will also possible to ask or not to run a validation step which will
+    decontaminate the bins when it's necessary. However as it's the critical
+    step for memory usage (~40G), it's possible to skip these step.
 
     usage:
         pipeline --assembly=FILE [--forward=STR] [--reverse=STR]
         [--algorithm=louvain] [--contigs=FILE] [--depth=FILE] [--enzyme=STR]
-        [--force] [--iterations=100] [--min-quality=30] [--network=FILE]
+        [--force] [--iterations=100] [--rec-iter=10] [--network=FILE]
         [--no-clean-up] [--normalization=empirical_hit] [--outdir=DIR]
-        [--overlap=80] [--rec-iter=10] [--rec-overlap=90] [--res-param=1.0]
+        [--overlap=80] [--rec-overlap=90]  [--min-quality=30] [--res-param=1.0]
         [--size=500000] [--start=fastq] [--threads=1] [--tempdir=DIR]
         [--skip-validation]
 
@@ -532,7 +536,7 @@ class Pipeline(AbstractCommand):
                                 [Default: louvain]
         -c, --contigs=FILE      The path to the file containing the data ofthe
                                 contigs (ID, Name, Length, GC content, Hit,
-                                Coverage).
+                                Coverage, Restriction site).
         -d, --depth=FILE        The depth.txt file from the shotgun reads used
                                 to made the assembly computed by
                                 jgi_summarize_bam_contig_depths from metabat2
@@ -540,7 +544,7 @@ class Pipeline(AbstractCommand):
         -e, --enzyme=STR        The list of restriction enzyme used to digest
                                 the contigs separated by a comma. Example:
                                 DpnII,HinfI.
-        -F, --force             If enbale, would remove directory of overlapping
+        -F, --force             If enable, would remove directory of overlapping
                                 bins in the output directory.
         -i, --iterations=INT    Number of iterations of Louvain for the
                                 partition step. [Default: 100]
@@ -553,18 +557,17 @@ class Pipeline(AbstractCommand):
         -m, --normalization=STR If None, do not normalized the count of a
                                 contact by the geometric mean of the coverage of
                                 the contigs. Otherwise it's the type of
-                                normalization. 7 values are possible None,
-                                abundance, length, RS, RS_length, empirical_hit,
+                                normalization. 6 values are possible None,
+                                abundance, length, RS, empirical_hit,
                                 theoritical_hit. [Default: empirical_hit]
         -o, --outdir=DIR        The output directory to write the bam files the
                                 network and contig data into. Default: current
                                 directory.
-        -O, --overlap=INT       Percentage of the identity necessary to be
-                                considered as a part of the same bin for the
-                                partition step. [Default: 80]
-        -P, --rec-overlap=INT   Percentage of the identity necessary to be
-                                considered as a part of the same bin for the
-                                recursive step. [Default: 90]
+        -O, --overlap=INT       Hamming distance threshold to use to merge bins
+                                for the first step (percentage). [Default: 80]
+        -P, --rec-overlap=INT   Hamming distance threshold to use to merge bins
+                                for the recursive step (percentage).
+                                [Default: 90]
         -q, --min-quality=INT   Threshold of quality necessary to considered a
                                 read properly aligned. [Default: 30]
         -r, --res-param=FLOAT   Resolution paramter to use for Leiden
