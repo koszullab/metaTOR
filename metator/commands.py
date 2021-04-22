@@ -469,6 +469,10 @@ class Validation(AbstractCommand):
             threads,
         )
 
+        # Delete the temporary folder
+        if not self.args["--no-clean-up"]:
+            shutil.rmtree(temp_directory)
+
 
 class Pipeline(AbstractCommand):
     """Launch the full metator pipeline
