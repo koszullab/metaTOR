@@ -368,11 +368,13 @@ def give_results_info(bin_summary):
     LQ = 0  # Completness >= 50 and Contamination <= 10
     conta_bins = 0  # Completness >= 50 and Contamination > 10
     others = 0
+    total_size = 0  # Total size of the extracted bins.
 
     # Class each bin in a category
     for bin_name in bin_summary:
         completness = float(bin_summary[bin_name]["completness"])
         contamination = float(bin_summary[bin_name]["contamination"])
+        size = int(bin_summary[bin_name]["size"])
         if completness >= 50:
             if contamination > 10:
                 conta_bins += 1
@@ -385,12 +387,14 @@ def give_results_info(bin_summary):
                     LQ += 1
         else:
             others += 1
+        total_size += size
     total = HQ + MQ + LQ + conta_bins + others
 
     # Return info in the logger:
     logger.info(
         "{0} bins have been kept after the recursive iterations.".format(total)
     )
+    logger.info("Total size of the extracted bins: {0}".format(total_size))
     logger.info("HQ MAGs: {0}".format(HQ))
     logger.info("MQ MAGs: {0}".format(MQ))
     logger.info("LQ MAGs: {0}".format(LQ))
