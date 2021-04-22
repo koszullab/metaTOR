@@ -189,7 +189,9 @@ class Network(AbstractCommand):
         if index is None:
             if mio.check_is_fasta(assembly):
                 fasta = assembly
-                index = mio.generate_fasta_index(fasta, temp_directory)
+                # If start at bam could skip the index generation.
+                if self.args["--start"] == "fastq":
+                    index = mio.generate_fasta_index(fasta, temp_directory)
             else:
                 logger.error(
                     "Please give as assembly argument a bowtie2 index or a fasta."
