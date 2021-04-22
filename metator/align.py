@@ -48,7 +48,7 @@ def align(fq_in, index, bam_out, n_cpu):
     # Align the reads on the reference genome
     map_args = {"cpus": n_cpu, "fq": fq_in, "idx": index, "bam": bam_out}
     cmd = (
-        "bowtie2 -x {idx} -p {cpus} --quiet are set as -D 20 -R 3 -N 0 -L 16 -i S,1,0.50 --local {fq} --no-unal"
+        "bowtie2 -x {idx} -p {cpus} --quiet -D 20 -R 3 -N 0 -L 16 -i S,1,0.50 --local {fq} --no-unal"
     ).format(**map_args)
 
     map_process = sp.Popen(cmd, shell=True, stdout=sp.PIPE)
