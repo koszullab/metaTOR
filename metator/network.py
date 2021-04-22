@@ -8,7 +8,6 @@ generating metaHiC networks.
 
 Core function to build the network are:
     - alignment_to_contacts
-    - compute_contig_coverage
     - compute_network
     - create_contig_data
     - normalize_pair
@@ -123,39 +122,6 @@ def alignment_to_contacts(
         write_hit_data(hit_data, hit_data_file)
 
     return network_file, contig_data_file
-
-
-def compute_contig_coverage(contig_data):
-    """Compute the coverage of the contigs from the hit information compute
-    previously.
-
-    Parameters:
-    -----------
-    contig_data : dict
-        Dictionnary of the all the contigs from the assembly, the contigs names
-        are the keys to the data of the contig available with the following
-        keys: "id", "length", "GC", "hit", "coverage".
-
-    Returns:
-    --------
-    dict:
-        Dictionnary of the all the contigs from the assembly, the contigs names
-        are the keys to the data of the contig available with the following
-        keys: "id", "length", "GC", "hit", "coverage" with the coverage
-        computed.
-
-    Examples:
-    ---------
-    >>> compute_contig_coverage({"NODE_1" : {"id" : 1, "length" : 500, "GC" : 45.07, "hit" : 25, "coverage" : 0}, "NODE_2" : {"id" : 2, "length" : 100, "GC" : 45.07, "hit" : 200, "coverage" : 0}})
-    {'NODE_1': {'id': 1, 'length': 500, 'GC': 45.07, 'hit': 25, 'coverage': 0.05}, 'NODE_2': {'id': 2, 'length': 100, 'GC': 45.07, 'hit': 200, 'coverage': 2.0}}
-    """
-
-    # Loop on the dictionnary and compute the coverage
-    for name in contig_data:
-        contig_data[name]["coverage"] = (
-            contig_data[name]["hit"] * 1.0 / contig_data[name]["length"]
-        )
-    return contig_data
 
 
 def compute_network(
