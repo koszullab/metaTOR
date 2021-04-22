@@ -401,20 +401,6 @@ def normalize_pair(contig_data, pair, n_occ, normalization):
             / contig_data[pair[1]]["RS"]
         )
 
-    elif normalization == "RS_length":
-        factor = np.sqrt(
-            contig_data[pair[0]]["hit"]
-            / 10
-            * np.sqrt(
-                contig_data[pair[0]]["length"] * contig_data[pair[0]]["RS"]
-            )
-            * contig_data[pair[1]]["hit"]
-            / 10
-            * np.sqrt(
-                contig_data[pair[1]]["length"] * contig_data[pair[1]]["RS"]
-            )
-        )
-
     # The last two normalizations are normalization by geometric means of hits.
     elif normalization == "empirical_hit":
         factor = np.sqrt(

@@ -158,22 +158,21 @@ class Network(AbstractCommand):
             "abundance",
             "length",
             "RS",
-            "RS_length",
             "empirical_hit",
             "theoritical_hit",
         ]
         if self.args["--normalization"] not in list_normalization:
             logger.error(
-                'Normalization should be among this list: "None", "abundance", "length", "RS", "RS_length", "empirical_hit", "theoritical_hit"'
+                'Normalization should be among this list: "None", "abundance", "length", "RS", "empirical_hit", "theoritical_hit"'
             )
             raise ValueError
-        enzyme_required = ["RS", "RS_length", "theoritical_hit"]
+        enzyme_required = ["RS", "theoritical_hit"]
         if (
             self.args["--normalization"] in enzyme_required
             and not self.args["--enzyme"]
         ):
             logger.error(
-                'For "RS", "RS_length" and "theoritical_hit" normalization, enzyme is required.'
+                'For "RS" and "theoritical_hit" normalization, enzyme is required.'
             )
             raise ValueError
         depth_required = ["abundance", "theoritical_hit"]
@@ -637,22 +636,21 @@ class Pipeline(AbstractCommand):
             "abundance",
             "length",
             "RS",
-            "RS_length",
             "empirical_hit",
             "theoritical_hit",
         ]
         if self.args["--normalization"] not in list_normalization:
             logger.error(
-                'Normalization should be among this list: "None", "abundance", "length", "RS", "RS_length", "empirical_hit", "theoritical_hit"'
+                'Normalization should be among this list: "None", "abundance", "length", "RS", "empirical_hit", "theoritical_hit"'
             )
             raise ValueError
-        enzyme_required = ["RS", "RS_length", "theoritical_hit"]
+        enzyme_required = ["RS", "theoritical_hit"]
         if (
             self.args["--normalization"] in enzyme_required
             and not self.args["--enzyme"]
         ):
             logger.error(
-                'For "RS", "RS_length" and "theoritical_hit" normalization, enzyme is required.'
+                'For "RS" and "theoritical_hit" normalization, enzyme is required.'
             )
             raise ValueError
         depth_required = ["abundance", "theoritical_hit"]
