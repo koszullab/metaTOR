@@ -33,9 +33,6 @@ from docopt import docopt
 from metator.log import logger
 from os.path import exists, dirname, join
 
-from pyinstrument import Profiler
-from pyinstrument.renderers import ConsoleRenderer
-
 
 class AbstractCommand:
     """Abstract base command class

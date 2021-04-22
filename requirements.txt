@@ -1,11 +1,11 @@
 biopython
+checkm-genome
 docopt
-matplotlib
+networkx
 numpy
-pyfastx
+pandas
 pysam
+requests
 scipy
-seaborn
-setuptools
+shutil
 sklearn
-python-louvain
