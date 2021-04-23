@@ -1,3 +1,4 @@
-include metator/bin/*
 include requirements.txt
 include README.md
+recursive-exclude test_data *
+recursive-exclude tests *
