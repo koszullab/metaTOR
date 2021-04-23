@@ -4,7 +4,7 @@
 """Abstract command classes for metaTOR
 
 This module contains all classes related to metaTOR commands:
-    - network 
+    - network
     - partition
     - pipeline
     - validation

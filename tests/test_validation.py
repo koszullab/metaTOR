@@ -3,8 +3,9 @@
 import metator.io as mio
 import metator.validation as mtv
 import pytest
-import os, shutil
+import os
 import re
+import shutil
 
 ALGORITHM = ("alg", ["louvain", "leiden"])
 
@@ -35,7 +36,7 @@ def test_compare_bins():
 
     # Assert there are no more keys then available:
     test_over = [re.search("_0", key) is not None for key in keys]
-    assert sum(test_over) <= len(test_over)
+    assert sum(test_over) <= len(over)
     assert len(checkm_summary) - sum(test_over) <= len(rec)
 
     # Assert there are no duplicates  (one bin from overlapping and from

@@ -1,0 +1,70 @@
+# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
+
+name: Test python package
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.6, 3.7, 3.8, 3.9]
+
+    steps:
+    
+    - uses: actions/checkout@v2
+
+    - name: Load apt packages
+      run: |
+        sudo apt-get update
+        sudo apt-get -y install git make g++
+    
+    - name: Set up ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Set up conda with Python ${{ matrix.python-version }}
+      uses: conda-incubator/setup-miniconda@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+        mamba-version: "*"
+        channels: bioconda,conda-forge,defaults
+        activate-environment: test-environment
+
+    - name: Install conda dependencies
+      run: mamba install -c bioconda java-jdk bowtie2 samtools
+    
+    - name: Install Louvain
+      run: |
+        cd external 
+        tar -xzf louvain-generic.tar.gz
+        cd  gen-louvain
+        make
+        cd ../..
+    
+    - name: Install Leiden
+      run: |
+        git clone https://github.com/vtraag/networkanalysis.git
+        cd networkanalysis
+        ./gradlew build
+        cd ../
+
+    - name: Install pytest and dependencies
+      run: |
+        pip install pytest pylint pytest-cov pylint pytest-pylint
+        pip install -r requirements.txt
+
+    - name: Test with pytest
+      run: |
+        export LOUVAIN_PATH=external/gen-louvain
+        export LEIDEN_PATH=networkanalysis/build/libs/networkanalysis-1.2.0.jar
+        pytest --pylint --pylint-error-types=EF --pylint-refile=.pylintrc --doctest-modules
+        pytest --cov=metator

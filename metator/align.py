@@ -13,11 +13,10 @@ This module contains all these alignment functions:
     - align
     - get_contact_pairs
     - merge_alignement
-    - process_bamfile 
+    - process_bamfile
 """
 
 import csv
-import metator.io as mio
 import pysam
 import subprocess as sp
 from metator.log import logger

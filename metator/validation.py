@@ -8,7 +8,7 @@ General functions to validate bins completion using checkM and make recursive
 iterations of Louvain or Leiden to try to partition contaminated bins. Only bins
 with more than 50% completion and 5% contamination are subject to the recursive
 step. If the recursive step gave worst results than the first (decrease of the
-completion with no decrease of the contamination), it will keep the original 
+completion with no decrease of the contamination), it will keep the original
 bin.
 
 

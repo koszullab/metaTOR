@@ -17,9 +17,7 @@ Core function to build the network are:
 """
 
 import csv
-import networkx as nx
 import numpy as np
-import pandas as pd
 import re
 from Bio import SeqIO
 from Bio import SeqUtils

@@ -45,6 +45,7 @@ def test_network2(norm):
         norm, **global_args
     )
     proc = mtc.Network(args.split(" "), {})
+    proc.execute()
 
 
 @pytest.mark.parametrize(*ALGORITHM)

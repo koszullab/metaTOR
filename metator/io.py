@@ -30,7 +30,6 @@ import subprocess as sp
 import zipfile
 from Bio import SeqIO
 from Bio.Restriction import RestrictionBatch
-from Bio.Seq import Seq
 from metator.log import logger
 from os.path import join, exists
 from random import getrandbits
