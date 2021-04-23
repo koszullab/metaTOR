@@ -102,8 +102,6 @@ of them depending on the arguments given. This can take a while.
 
 * ```help``` : display help message.
 
-Please refer to the [tutorial](https://github.com/koszullab/metaTOR/blob/master/doc/TUTORIAL.md) in order to quickly get the pipeline up and running on example data (or your own).
-
 ## References
 
 * [Metagenomic chromosome conformation capture (meta3C) unveils the diversity of chromosome organization in microorganisms](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4381813/), Martial Marbouty, Axel Cournac, Jean-François Flot, Hervé Marie-Nelly, Julien Mozziconacci, and Romain Koszul, eLife, 2014
