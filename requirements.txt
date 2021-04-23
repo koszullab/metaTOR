@@ -3,5 +3,6 @@ scipy
 matplotlib
 biopython
 pysam
+requests
 seaborn
 setuptools
