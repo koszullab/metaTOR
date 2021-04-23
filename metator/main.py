@@ -14,7 +14,8 @@ options:
     -v, --version           shows the version
 
 The subcommands are:
-    network     Generate metaHiC contigs network from fastq reads or bam files.
+    network     Generate metaHiC contigs network from fastq reads or bam files 
+                and normalize it.
     partition   Partition metaHiC network using Louvain or Leiden algorithm.
     pipeline    Use all the others command to give a binned output in one 
                 command line. 
