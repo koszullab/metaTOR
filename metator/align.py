@@ -118,14 +118,14 @@ def get_contact_pairs(
         for_in = for_list[i]
         rev_in = rev_list[i]
         name = "alignment_" + str(i)
+        out_file = join(tmp_dir, name + ".txt")
+        out_file_list.append(out_file)
 
         # Align if necessary
         if start == "fastq":
             # Create files to save the alignment.
             alignment_for = join(out_dir, name + "_for.bam")
             alignment_rev = join(out_dir, name + "_rev.bam")
-            out_file = join(tmp_dir, name + ".txt")
-            out_file_list.append(out_file)
 
             # Align the forward reads
             logger.info("Alignment of {0}:".format(for_in))

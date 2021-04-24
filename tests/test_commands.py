@@ -18,9 +18,6 @@ global_args = {
     "FASTA_INDEX": "tests_data/assembly",
     "NETWORK": "tests_data/outdir/network.txt",
     "CONTIGS": "tests_data/outdir/contig_data_network.txt",
-    "CONTIGS2": "tests_data/outdir/contig_data_partition.txt",
-    "ALIGNMENT": "tests_data/outdir/alignment.bed",
-    "OUT": "tests_data/outdir/",
     "OUT_TEST": "tests_data/out_test",
     "TMP": "tests_data/tmp/",
 }

@@ -47,6 +47,9 @@ coverage.xml
 *.cover
 .hypothesis/
 .pytest_cache/
+tmp/
+tests_data/tmp
+tests_data/out_test
 
 # Translations
 *.mo
@@ -115,3 +118,7 @@ venv.bak/
 .dmypy.json
 dmypy.json
 nf-metator.sif
+
+# Louvain and Leiden installation
+external/gen-louvain/
+networkanalysis
