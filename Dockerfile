@@ -1,23 +1,52 @@
-FROM ubuntu:18.04
+# syntax=docker/dockerfile:1
 
-RUN \
-    apt-get update && \
-    apt-get install -y --no-install-recommends git python python-pip python3-setuptools python3 python3-dev python3-pip python3-virtualenv bowtie2 samtools hmmer prodigal libfreetype6-dev libpng-dev pkg-config wget && \
-    rm -rf /var/lib/apt/lists
+FROM adoptopenjdk/openjdk12
 
-COPY metator /app/metator
-
-COPY *.* /app/
+LABEL Name=metator Version=1.0.0
 
 WORKDIR /app
+COPY ./ /app
 
-RUN cd /app && \
-    pip3 install .
+# Install 3rd party packages
+RUN \
+    apt-get update && \
+    apt-get install -y --no-install-recommends git make g++ curl
 
-USER root
+# Install miniconda to /miniconda
+RUN curl -LO http://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
+RUN bash Miniconda3-latest-Linux-x86_64.sh -p /miniconda -b
+RUN rm Miniconda3-latest-Linux-x86_64.sh
+ENV PATH=/miniconda/bin:${PATH}
+RUN conda update -y conda
+RUN conda config --add channels bioconda
 
-RUN chmod 777 -R /usr/local/lib/python3.6/dist-packages/metator/bin/
+# # Get 3rd party package
+RUN conda install -c conda-forge -y python=3.8\
+    pip \
+    bowtie2 \
+    samtools \
+    checkm-genome && conda clean -afy
 
-RUN metator dependencies
+# Install Louvain 
+RUN cd /app/external && \
+    tar -xzf louvain-generic.tar.gz && \
+    cd gen-louvain && \
+    make && \
+    cd /app
+ENV LOUVAIN_PATH=/app/external/gen-louvain
+
+# Install Leiden through Network analysis repo
+RUN git clone https://github.com/vtraag/networkanalysis.git && \
+    cd /app/networkanalysis && \
+    ./gradlew build && \
+    cd /app
+ENV LEIDEN_PATH=/app/networkanalysis/build/libs/networkanalysis-1.2.0.jar
+
+
+# Install python dependencies
+RUN pip3 install -Ur requirements.txt
+
+# Install metator
+RUN pip3 install .
 
 ENTRYPOINT ["metator"]

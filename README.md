@@ -8,9 +8,28 @@
 [![License: GPLv3](https://img.shields.io/badge/License-GPL%203-0298c3.svg)](https://opensource.org/licenses/GPL-3.0)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black)
 
-Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that streamline the processing and binning of metagenomic 3C datasets.
+Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that 
+streamlines the processing and binning of metagenomic metaHiC datasets.
 
 ## Installation
+
+### Requirements:
+
+* Python 3.6 or later is required.
+* The following librairies are required but will be automatically installed with
+ the pip installation: ```numpy```, ```scipy```, ```sklearn```, ```pandas```, 
+ ```docopt```, ```networkx``` ```biopython``` ```pyfastx``` and ```pysam```.
+* The following software should be installed separetely if you used the pip 
+installation:
+    * [bowtie2](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml)
+    * [samtools](http://www.htslib.org/)
+    * [louvain](https://sourceforge.net/projects/louvain/) (original
+        implementation).
+    * [networkanalysis](https://github.com/vtraag/networkanalysis) (not 
+    necessary only if you want to use Leiden algorithm to partition the network)
+    * [checkm](https://github.com/Ecogenomics/CheckM)
+
+### Using pip:
 
 ```sh
    pip3 install metator
@@ -22,63 +41,28 @@ or, to use the latest version:
    pip3 install -e git+https://github.com/koszullab/metator.git@master#egg=metator
 ```
 
-Python 3.4 or later is required. A [standalone version](https://github.com/koszullab/metaTOR/tree/python3-standalone) (no installation, just download/unzip/run) is also available, as well as a [Python 2 version](https://github.com/koszullab/metaTOR/tree/python2), but keep in mind that development will focus on the current branch.
+In order to use Louvain or Leiden it's necessary to set a global variable 
+```LOUVAIN_PATH``` and ```LEIDEN_PATH``` depending on which algorithm you wan to 
+use with the absolute path where the executable are.
 
-## Usage
-
-    metator {align|partition|annotation|binning} [parameters]
-
-A metaTOR command takes the form ```metator action --param1 arg1 --param2
-arg2 #etc.```
-
-There are four actions/steps in the metaTOR pipeline, which must be run in the following order:
-
-* ```align``` : map paired-end reads on a preliminary assembly, then generate a network from
- detected contacts between DNA chunks.
-
-* ```partition``` : perform the Louvain community detection algorithm many times to isolate
-     chunks that consistently cluster together for binning purposes.
-
-* ```annotation``` : run standard annotation software on the assembly (namely gene prediction
-      and database comparison) to match with the bins.
-
-* ```binning``` : match annotations to bins, extract bin genomes and subnetworks, build bin-local
-   and global contact maps.
-
-After the last step is completed there should be a set of bins, their relative enrichments in various gene categories, and the contact map of each bin.
-
-There are a number of other, optional, miscellaneous actions:
-
-* ```pipeline``` : check the environment is right, then run all four of the above actions sequentially.
-    This can take a while.
-
-* ```dependencies``` : download third party dependencies that are not available in most package managers.
-
-* ```deploy``` : set up the environment and all dependencies for Ubuntu 14.04 and higher (run as root).
-
-* ```version``` : display current version number.
-
-* ```help``` : display this help message.
-
-Please refer to the [tutorial](https://github.com/koszullab/metaTOR/blob/master/doc/TUTORIAL.md) in order to quickly get the pipeline up and running on example data (or your own), and the [metaTOR manual](https://github.com/koszullab/metaTOR/blob/master/metator_manual.pdf) for detailed explanations on the parameters.
-
-## Requirements
-
-* Python 3 with ```numpy```, ```scipy```, ```matplotlib```, ```biopython``` and ```pysam``` libraries.
-* [bowtie2](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml)
-* [samtools](http://www.htslib.org/)
-* [hmmer](http://hmmer.org/) and some HMM databases (such as [these](http://dl.pasteur.fr/fop/LItxiFe9/hmm_databases.tgz))
-* [prodigal](https://github.com/hyattpd/Prodigal)
-* [louvain](https://sourceforge.net/projects/louvain/) (original
-    implementation)
-
-Requirements can usually be installed with an OS's package manager. The requirements that cannot (namely ```prodigal```, ```louvain``` and HMM databases) can be fetched with the following (The package may need to be run as a root depending on where the package is installed):
+For Louvain algorithm in the directory where you have the archive file 
+(available in the external directory of this repository):
 
 ```sh
-    metator dependencies
+YOUR_DIRECTORY=$(pwd)
+tar -xvzf louvain-generic.tar.gz
+cd gen-louvain
+make
+export LOUVAIN_PATH=$YOUR_DIRECTORY/gen-louvain/
 ```
 
-## Containers
+For Leiden algorithm, clone the networkanalysis repository from github and build
+the Java script. Then you can export the Leiden path:
+
+```sh
+export LEIDEN_PATH=/networkanalysis_repository_path/build/libs/networkanalysis-1.2.0.jar
+```
+### Using docker container:
 
 A dockerfile is also available if that is of interest. You may fetch the image by running the following:
 
@@ -86,11 +70,37 @@ A dockerfile is also available if that is of interest. You may fetch the image b
     docker pull koszullab/metator
 ```
 
-Additionally, a [Singularity](https://www.sylabs.io/) file is also available, courtesy of [avilab](https://github.com/avilab/metator). You may fetch the container this way:
+## Usage
 
 ```sh
-    singularity pull shub://kosullab/metator
+    metator {network|partition|validation|pipeline} [parameters]
 ```
+
+A metaTOR command takes the form ```metator action --param1 arg1 --param2
+arg2 #etc.```
+
+There are three actions/steps in the metaTOR pipeline, which must be run in the 
+following order:
+
+* ```network``` : Generate metaHiC contigs network from fastq reads or bam files
+ and normalize it.
+* ```partition``` : Perform the Louvain or Leiden community detection algorithm 
+many times to bin contigs together according to the metaHiC signal between 
+contigs.
+
+* ```validation``` : Use CheckM to validate the bins, then do a recursive decontamination step to remove contamination.
+
+After the last step is completed there should be a set of bins and a table with
+various descriptors of the bins.
+
+There are a number of other, optional, miscellaneous actions:
+
+* ```pipeline``` : Run all three of the above actions sequentially or only some 
+of them depending on the arguments given. This can take a while.
+
+* ```version``` : display current version number.
+
+* ```help``` : display help message.
 
 ## References
 
@@ -102,6 +112,7 @@ Additionally, a [Singularity](https://www.sylabs.io/) file is also available, co
 
 ### Authors
 
+* amaury.bignaud@pasteur.fr
 * lyam.baudry@pasteur.fr
 * thfoutel@pasteur.fr
 * martial.marbouty@pasteur.fr
