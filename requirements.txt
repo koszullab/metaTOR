@@ -8,3 +8,5 @@ pysam
 requests
 scipy
 sklearn
+seaborn
+setuptools
