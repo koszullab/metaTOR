@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""A pipeline for binning metagenomic datasets from 3C data.
+"""A pipeline for binning metagenomic datasets from metaHiC data.
 """
 
 from setuptools import setup, find_packages

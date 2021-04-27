@@ -262,7 +262,7 @@ def get_hamming_distance(core_bins_iterations, n_iter, threads):
     # matrix, in parallel
     step = 1000
     steps = np.arange(step, len(core_bins_iterations.index) + step, step)
-    split_core_bins = [core_bins_iterations[(k - step): k] for k in steps]
+    split_core_bins = [core_bins_iterations[(k - step) : k] for k in steps]
     pool = multiprocessing.Pool(processes=threads)
     res = pool.map(
         partial(

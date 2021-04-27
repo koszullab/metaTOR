@@ -271,11 +271,13 @@ def louvain_recursif(
 
             logger.info("Bin in progress: {0}".format(bin_id))
             subnetwork_file = join(tmpdir, "subnetwork_" + bin_id + ".txt")
-            bin_id = int(bin_id.split("_")[1])
+            bin_id = str(bin_id.split("_")[1])
 
             # Extract contigs
             list_contigs = list(
-                contigs_data["ID"][contigs_data["Overlapping_bin_ID"] == bin_id]
+                contigs_data["ID"][
+                    contigs_data.Overlapping_bin_ID.apply(str) == bin_id
+                ]
             )
 
             # Extract subnetwork
