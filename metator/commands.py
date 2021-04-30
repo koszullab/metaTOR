@@ -435,6 +435,7 @@ class Validation(AbstractCommand):
         if not exists(self.args["--outdir"]):
             os.makedirs(self.args["--outdir"])
         recursive_fasta_dir = join(self.args["--outdir"], "recursive_bin")
+        final_fasta_dir = join(self.args["--outdir"], "recursive_bin")
         if not exists(recursive_fasta_dir):
             os.makedirs(recursive_fasta_dir)
         else:
@@ -445,6 +446,19 @@ class Validation(AbstractCommand):
                 logger.error(
                     "{0} already existed. Remove directory or use -F argument to overwrite it.".format(
                         recursive_fasta_dir
+                    )
+                )
+                raise ValueError
+        if not exists(final_fasta_dir):
+            os.makedirs(final_fasta_dir)
+        else:
+            if self.args["--force"]:
+                shutil.rmtree(final_fasta_dir)
+                os.makedirs(final_fasta_dir)
+            else:
+                logger.error(
+                    "{0} already existed. Remove directory or use -F argument to overwrite it.".format(
+                        final_fasta_dir
                     )
                 )
                 raise ValueError
@@ -479,6 +493,7 @@ class Validation(AbstractCommand):
             self.args["--algorithm"],
             self.args["--assembly"],
             self.args["--contigs"],
+            final_fasta_dir,
             self.args["--fasta"],
             iterations,
             self.args["--network"],
@@ -676,6 +691,20 @@ class Pipeline(AbstractCommand):
                         )
                     )
                     raise ValueError
+            final_fasta_dir = join(self.args["--outdir"], "final_bin")
+            if not exists(final_fasta_dir):
+                os.makedirs(final_fasta_dir)
+            else:
+                if self.args["--force"]:
+                    shutil.rmtree(final_fasta_dir)
+                    os.makedirs(final_fasta_dir)
+                else:
+                    logger.error(
+                        "{0} already existed. Remove directory or use -F argument to overwrite it.".format(
+                            final_fasta_dir
+                        )
+                    )
+                    raise ValueError
 
             # Check checkM availability
             if not mio.check_checkm():
@@ -799,6 +828,7 @@ class Pipeline(AbstractCommand):
                 self.args["--algorithm"],
                 fasta,
                 contigs_data_file,
+                final_fasta_dir,
                 overlapping_fasta_dir,
                 recursive_iterations,
                 network_file,

@@ -440,7 +440,7 @@ def precompute_network(
             # Read the alignment_file and build pairs for the network
             with open(aligment_file, "r") as pairs:
                 for pair in pairs:
-                    # Ignore header lines 
+                    # Ignore header lines
                     if pair.startswith("#"):
                         continue
 

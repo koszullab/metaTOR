@@ -28,6 +28,7 @@ import metator.partition as mtp
 import networkx as nx
 import os
 import pandas as pd
+import shutil
 import subprocess as sp
 from metator.log import logger
 from os.path import join
@@ -426,6 +427,7 @@ def recursive_decontamination(
     algorithm,
     assembly,
     contig_data_file,
+    final_fasta_dir,
     input_fasta_dir,
     iterations,
     network_file,
@@ -449,6 +451,8 @@ def recursive_decontamination(
         Path to the assembly file used for the partition.
     contig_data_file : str
         Path to the contig data table to update.
+    final_fasta_dir : str
+        Path to write the final fasta decontaminated bins.
     input_fasta_dir : str
         Path to the directory where the fasta bin from the partition are.
     iterations : int
@@ -537,6 +541,15 @@ def recursive_decontamination(
         bin_summary = mio.read_results_checkm(
             overlapping_checkm_file, overlapping_taxonomy_file
         )
+
+    # Create fasta directory and copy final bins.
+    for bin_name in bin_summary:
+        dst = join(final_fasta_dir, bin_name + ".fa")
+        if bin_name.split("_")[2] == "0":
+            src = join(input_fasta_dir, bin_name + ".fa")
+        else:
+            src = join(recursive_fasta_dir, bin_name + ".fa")
+        shutil.copyfile(src, dst)
 
     # Retrurn some values of efficiency of the binning.
     give_results_info(bin_summary)
@@ -681,10 +694,10 @@ def write_bins_contigs(bin_summary, contigs_data, outfile):
                         over_id,
                         rec_id,
                     )
-                    contig_data.Final_bin[i] = final_bin
+                    contigs_data.Final_bin[i] = final_bin
                     f.write(
                         "{0}\t{1}\n".format(contigs_data.Name[i], final_bin)
                     )
             except KeyError:
                 pass
-    return contig_data
+    return contigs_data
