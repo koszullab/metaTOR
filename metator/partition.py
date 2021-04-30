@@ -674,8 +674,12 @@ def update_contigs_data(contig_data_file, core_bins, overlapping_bins, outdir):
         overlapping_bin_length = sum(overlapping_bin_data.Size)
         # Write the new information
         contigs_data.Overlapping_bin_ID[overlapping_bin] = i
-        contigs_data.Overlapping_bin_contigs[overlapping_bin] = overlapping_bin_contigs_number
-        contigs_data.Overlapping_bin_size[overlapping_bin] = overlapping_bin_length
+        contigs_data.Overlapping_bin_contigs[
+            overlapping_bin
+        ] = overlapping_bin_contigs_number
+        contigs_data.Overlapping_bin_size[
+            overlapping_bin
+        ] = overlapping_bin_length
 
     # Write the new file
     contig_data_file_2 = join(outdir, "contig_data_partition.txt")

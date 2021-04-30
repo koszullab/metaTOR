@@ -259,7 +259,7 @@ def louvain_recursif(
     contigs_data["Recursive_bin_ID"] = "0"
     contigs_data["Recursive_bin_contigs"] = "-"
     contigs_data["Recursive_bin_size"] = "-"
-    
+
     # Default no contamination
     contamination = False
 
@@ -600,7 +600,9 @@ def update_contigs_data_recursif(
         if recursif_bin_contigs_number > 1:
             # Write the new information
             contigs_data.Recursive_bin_ID[recursif_bin] = rec_id
-            contigs_data.Recursive_bin_contigs[recursif_bin] = recursif_bin_contigs_number
+            contigs_data.Recursive_bin_contigs[
+                recursif_bin
+            ] = recursif_bin_contigs_number
             contigs_data.Recursive_bin_size[recursif_bin] = recursif_bin_length
 
             if recursif_bin_length > size:
@@ -667,7 +669,8 @@ def write_bins_contigs(bin_summary, contigs_data, outfile):
                 rec_ids = list_bin_id[over_id]
                 if rec_id in rec_ids:
                     f.write(
-                        "{0}\tMetaTOR_{1}_{2}\n".format(contigs_data.Name[i],
+                        "{0}\tMetaTOR_{1}_{2}\n".format(
+                            contigs_data.Name[i],
                             over_id,
                             rec_id,
                         )
@@ -676,7 +679,8 @@ def write_bins_contigs(bin_summary, contigs_data, outfile):
                 elif rec_ids == ["0"]:
                     rec_id = "0"
                     f.write(
-                        "{0}\tMetaTOR_{1}_{2}\n".format(contigs_data.Name[i],
+                        "{0}\tMetaTOR_{1}_{2}\n".format(
+                            contigs_data.Name[i],
                             over_id,
                             rec_id,
                         )

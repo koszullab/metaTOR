@@ -26,22 +26,22 @@ from pkg_resources import parse_version
 
 def align(fq_in, index, bam_out, n_cpu):
     """Alignment
-    Aligns reads of fq_in with bowtie2. Parameters of bowtie2 are set as
-   --very-sensitive-local and only the aligned reads are
-    kept in the bam file.
-    Multiple files could be given, but only one file will be written as output.
+     Aligns reads of fq_in with bowtie2. Parameters of bowtie2 are set as
+    --very-sensitive-local and only the aligned reads are
+     kept in the bam file.
+     Multiple files could be given, but only one file will be written as output.
 
-    Parameters:
-    -----------
-    fq_in : str
-        Path to input fastq file to align. If multiple files are given, list of
-        path separated by a comma.
-    index : str
-        Path to the bowtie2 index genome.
-    bam_out : str
-        Path where the alignment should be written in BAM format.
-    n_cpu : int
-        The number of CPUs to use for the alignment.
+     Parameters:
+     -----------
+     fq_in : str
+         Path to input fastq file to align. If multiple files are given, list of
+         path separated by a comma.
+     index : str
+         Path to the bowtie2 index genome.
+     bam_out : str
+         Path where the alignment should be written in BAM format.
+     n_cpu : int
+         The number of CPUs to use for the alignment.
     """
 
     # Align the reads on the reference genome

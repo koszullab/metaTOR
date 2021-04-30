@@ -24,8 +24,10 @@ NotImplementedError
 
 import os
 import shutil
+import time
 import metator.align as mta
 import metator.io as mio
+import metator.log as mtl
 import metator.network as mtn
 import metator.partition as mtp
 import metator.validation as mtv
@@ -138,6 +140,13 @@ class Network(AbstractCommand):
             self.args["--outdir"] = "."
         if not exists(self.args["--outdir"]):
             os.makedirs(self.args["--outdir"])
+
+        # Enable file logging
+        now = time.strftime("%Y%m%d%H%M%S")
+        log_file = join(
+            self.args["--outdir"], ("metator_network" + now + ".log")
+        )
+        mtl.set_file_handler(log_file)
 
         # Transform integer variables as integer.
         min_qual = int(self.args["--min-quality"])
@@ -320,6 +329,13 @@ class Partition(AbstractCommand):
                 )
                 raise ValueError
 
+        # Enable file logging
+        now = time.strftime("%Y%m%d%H%M%S")
+        log_file = join(
+            self.args["--outdir"], ("metator_partition" + now + ".log")
+        )
+        mtl.set_file_handler(log_file)
+
         # Transform numeric variable as numeric
         iterations = int(self.args["--iterations"])
         overlapping_parameter = int(self.args["--overlap"]) / 100
@@ -432,6 +448,13 @@ class Validation(AbstractCommand):
                     )
                 )
                 raise ValueError
+
+        # Enable file logging
+        now = time.strftime("%Y%m%d%H%M%S")
+        log_file = join(
+            self.args["--outdir"], ("metator_validation" + now + ".log")
+        )
+        mtl.set_file_handler(log_file)
 
         # Transform numeric variable as numeric
         iterations = int(self.args["--iterations"])
@@ -583,6 +606,11 @@ class Pipeline(AbstractCommand):
                     )
                 )
                 raise ValueError
+
+        # Enable file logging
+        now = time.strftime("%Y%m%d%H%M%S")
+        log_file = join(self.args["--outdir"], ("metator" + now + ".log"))
+        mtl.set_file_handler(log_file)
 
         # Define variable
         min_qual = int(self.args["--min-quality"])
