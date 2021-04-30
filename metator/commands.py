@@ -103,7 +103,7 @@ class Network(AbstractCommand):
                                 pipeline.
         -e, --enzyme=STR        The list of restriction enzyme used to digest
                                 the contigs separated by a comma. Example:
-                                DpnII,HinfI.
+                                HpaII,MluCI.
         -n, --normalization=STR If None, do not normalized the count of a
                                 contact by the geometric mean of the coverage of
                                 the contigs. Otherwise it's the type of
@@ -515,7 +515,7 @@ class Pipeline(AbstractCommand):
                                 pipeline.
         -e, --enzyme=STR        The list of restriction enzyme used to digest
                                 the contigs separated by a comma. Example:
-                                DpnII,HinfI.
+                                HpaII,MluCI.
         -F, --force             If enable, would remove directory of overlapping
                                 bins in the output directory.
         -i, --iterations=INT    Number of iterations of Louvain for the
@@ -546,8 +546,8 @@ class Pipeline(AbstractCommand):
                                 algorithm. [Default: 1.0]
         -s, --size=INT          Threshold size to keep bins in base pair.
                                 [Default: 500000]
-        -S, --start=STR         Start stage of the pipeline. Either fastq or
-                                bam. [Default: fastq]
+        -S, --start=STR         Start stage of the pipeline. Either fastq, bam
+                                or network. [Default: fastq]
         -t, --threads=INT       Number of parallel threads allocated for the
                                 alignement. [Default: 1]
         -T, --tempdir=DIR       Temporary directory. Default to current

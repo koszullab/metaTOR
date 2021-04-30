@@ -289,7 +289,7 @@ def louvain_recursif(
             )
 
             # Stop to report info log
-            # logger.setLevel(logging.WARNING)
+            logger.setLevel(logging.WARNING)
 
             # Use Louvain algorithmon the subnetwork.
             if algorithm == "leiden":
@@ -366,11 +366,15 @@ def give_results_info(bin_summary):
 
     # Defined categories of the bins
     HQ = 0  # Completness >= 90 and Contamination <= 5
+    total_size_HQ = 0
     MQ = 0  # Completness >= 70 and Contamination <= 10
+    total_size_MQ = 0
     LQ = 0  # Completness >= 50 and Contamination <= 10
+    total_size_LQ = 0
     conta_bins = 0  # Completness >= 50 and Contamination > 10
-    others = 0
-    total_size = 0  # Total size of the extracted bins.
+    total_size_conta_bins = 0
+    others = 0  # Not determined bins.
+    total_size_others = 0
 
     # Class each bin in a category
     for bin_name in bin_summary:
@@ -380,28 +384,45 @@ def give_results_info(bin_summary):
         if completness >= 50:
             if contamination > 10:
                 conta_bins += 1
+                total_size_conta_bins += size
             else:
                 if completness >= 90 and contamination <= 5:
                     HQ += 1
+                    total_size_HQ += size
                 elif completness >= 70:
                     MQ += 1
+                    total_size_MQ += size
                 else:
                     LQ += 1
+                    total_size_LQ += size
         else:
             others += 1
-        total_size += size
+            total_size_others += size
     total = HQ + MQ + LQ + conta_bins + others
+    total_size = (
+        total_size_HQ
+        + total_size_MQ
+        + total_size_LQ
+        + total_size_conta_bins
+        + total_size_others
+    )
 
     # Return info in the logger:
     logger.info(
         "{0} bins have been kept after the recursive iterations.".format(total)
     )
     logger.info("Total size of the extracted bins: {0}".format(total_size))
-    logger.info("HQ MAGs: {0}".format(HQ))
-    logger.info("MQ MAGs: {0}".format(MQ))
-    logger.info("LQ MAGs: {0}".format(LQ))
-    logger.info("Contaminated potential MAGs: {0}".format(conta_bins))
-    logger.info("Others bins: {0}".format(others))
+    logger.info("HQ MAGs: {0}\tTotal Size: {1}".format(HQ, total_size_HQ))
+    logger.info("MQ MAGs: {0}\tTotal Size: {1}".format(MQ, total_size_MQ))
+    logger.info("LQ MAGs: {0}\tTotal Size: {1}".format(LQ, total_size_LQ))
+    logger.info(
+        "Contaminated potential MAGs: {0}\tTotal Size: {1}".format(
+            conta_bins, total_size_conta_bins
+        )
+    )
+    logger.info(
+        "Others bins: {0}\tTotal Size: {1}".format(others, total_size_others)
+    )
 
 
 def recursive_decontamination(
