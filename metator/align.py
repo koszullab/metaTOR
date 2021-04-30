@@ -118,7 +118,7 @@ def get_contact_pairs(
         for_in = for_list[i]
         rev_in = rev_list[i]
         name = "alignment_" + str(i)
-        out_file = join(tmp_dir, name + ".txt")
+        out_file = join(out_dir, "pairs_" + str(i) + ".txt")
         out_file_list.append(out_file)
 
         # Align if necessary
@@ -207,10 +207,17 @@ def merge_alignment(forward_aligned, reverse_aligned, out_file):
         for_read = next(for_bam)
         rev_read = next(rev_bam)
 
+        # Write header of the pairs file. No chromsize are given.
+        merged.write(
+            "## pairs format v1.0\n"
+            + "#columns: readID chr1 pos1 strand1 chr2 pos2 strand2\n"
+            + "#sorted: readID-chr1-pos1-strand1-chr2-pos2-strand2\n"
+        )
+
         # Loop while at least one end of one endd is reached. It's possible to
         # advance like that as the two tsv files are sorted on the id of the
         # reads.
-        for i in range(10 ** 12):
+        while n_pairs >= 0:
             # Case of both reads of the pair map.
             if for_read[0] == rev_read[0]:
                 merged.write("\t".join(for_read + rev_read[1:]) + "\n")
@@ -291,9 +298,8 @@ def process_bamfile(alignment, min_qual, filtered_out):
                         + "\t"
                         + str(r.reference_start)
                         + "\t"
-                        + str(r.reference_end)
-                        + "\t"
-                        + "+\n"
+                        + "+"
+                        + "\n"
                     )
                     f.write(read)
                 elif r.flag == 16:
@@ -305,9 +311,8 @@ def process_bamfile(alignment, min_qual, filtered_out):
                         + "\t"
                         + str(r.reference_start)
                         + "\t"
-                        + str(r.reference_end)
-                        + "\t"
-                        + "-\n"
+                        + "-"
+                        + "\n"
                     )
                     f.write(read)
     temp_bam.close()

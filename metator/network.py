@@ -440,11 +440,15 @@ def precompute_network(
             # Read the alignment_file and build pairs for the network
             with open(aligment_file, "r") as pairs:
                 for pair in pairs:
+                    # Ignore header lines 
+                    if pair.startswith("#"):
+                        continue
+
                     # Split the line on the tabulation
                     p = pair.split("\t")
 
                     # Extract the contig names which are at the position 2 and 6.
-                    contig1, contig2 = p[1], p[5]
+                    contig1, contig2 = p[1], p[4]
                     id1 = contig_data[contig1]["id"]
                     id2 = contig_data[contig2]["id"]
 
