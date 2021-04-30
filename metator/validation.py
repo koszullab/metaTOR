@@ -15,8 +15,9 @@ bin.
 Functions in this module:
     - checkM
     - compare_bins
-    - louvain_recursif
+    - get_bin_coverage
     - give_results_info
+    - louvain_recursif
     - recursive_decontamination
     - update_recursif_louvain
     - write_bin_contigs
@@ -187,6 +188,114 @@ def compare_bins(
     return checkm_summary
 
 
+def get_bin_coverage(bin_summary, contigs_data):
+    """Function to compute the coverage of each bin.
+
+    Parameters:
+    -----------
+    bin_summary : dict
+        Dictionnary with the informations of the final bins kept by MetaTOR.
+    contigs_data : pandas.core.frame.DataFrame
+        Dataframe with the contigs informations.
+
+    Returns:
+    --------
+    dict:
+        Dictionnary with the informations of the final bins kept by MetaTOR with
+        the coverage.
+    """
+    # If no depth files were given put some zero on all columns
+    if contigs_data.Shotgun_coverage[0] == "-":
+        return bin_summary
+    # Else read all contigs data file and compute mean coverage for each bin.
+    for i in range(len(contigs_data)):
+        bin_name = contigs_data.Final_bin[i]
+        if bin_name != "ND":
+            try:
+                bin_summary[bin_name]["Coverage"] += (
+                    contigs_data.Size[i]
+                    * contigs_data.Shotgun_coverage[i]
+                    / int(bin_summary[bin_name]["size"])
+                )
+            except KeyError:
+                bin_summary[bin_name]["Coverage"] = (
+                    contigs_data.Size[i]
+                    * contigs_data.Shotgun_coverage[i]
+                    / int(bin_summary[bin_name]["size"])
+                )
+    return bin_summary
+
+
+def give_results_info(bin_summary):
+    """Function to return the general information about the binning results.
+
+    Parameters:
+    -----------
+    bin_summary : dict
+        Dictionnary with the summary results of the kept bins.
+    """
+
+    # Defined categories of the bins
+    HQ = 0  # Completness >= 90 and Contamination <= 5
+    total_size_HQ = 0
+    MQ = 0  # Completness >= 70 and Contamination <= 10
+    total_size_MQ = 0
+    LQ = 0  # Completness >= 50 and Contamination <= 10
+    total_size_LQ = 0
+    conta_bins = 0  # Completness >= 50 and Contamination > 10
+    total_size_conta_bins = 0
+    others = 0  # Not determined bins.
+    total_size_others = 0
+
+    # Class each bin in a category
+    for bin_name in bin_summary:
+        completness = float(bin_summary[bin_name]["completness"])
+        contamination = float(bin_summary[bin_name]["contamination"])
+        size = int(bin_summary[bin_name]["size"])
+        if completness >= 50:
+            if contamination > 10:
+                conta_bins += 1
+                total_size_conta_bins += size
+            else:
+                if completness >= 90 and contamination <= 5:
+                    HQ += 1
+                    total_size_HQ += size
+                elif completness >= 70:
+                    MQ += 1
+                    total_size_MQ += size
+                else:
+                    LQ += 1
+                    total_size_LQ += size
+        else:
+            others += 1
+            total_size_others += size
+    total = HQ + MQ + LQ + conta_bins + others
+    total_size = (
+        total_size_HQ
+        + total_size_MQ
+        + total_size_LQ
+        + total_size_conta_bins
+        + total_size_others
+    )
+
+    # Return info in the logger:
+    logger.info(
+        "{0} bins have been kept after the recursive iterations.".format(total)
+    )
+    logger.info("Total size of the extracted bins: {0}".format(total_size))
+    logger.info("HQ MAGs: {0}\tTotal Size: {1}".format(HQ, total_size_HQ))
+    logger.info("MQ MAGs: {0}\tTotal Size: {1}".format(MQ, total_size_MQ))
+    logger.info("LQ MAGs: {0}\tTotal Size: {1}".format(LQ, total_size_LQ))
+    logger.info(
+        "Contaminated potential MAGs: {0}\tTotal Size: {1}".format(
+            conta_bins, total_size_conta_bins
+        )
+    )
+    logger.info(
+        "Others bins: {0}\tTotal Size: {1}".format(others, total_size_others)
+    )
+
+
 def louvain_recursif(
     assembly,
     iterations,
@@ -353,76 +462,6 @@ def louvain_recursif(
     return contamination, contigs_data
 
 
-def give_results_info(bin_summary):
-    """Function to return the general information about the binning results.
-
-    Parameters:
-    -----------
-    bin_summary : dict
-        Dictionnary with the summary results of the kept bins.
-    """
-
-    # Defined categories of the bins
-    HQ = 0  # Completness >= 90 and Contamination <= 5
-    total_size_HQ = 0
-    MQ = 0  # Completness >= 70 and Contamination <= 10
-    total_size_MQ = 0
-    LQ = 0  # Completness >= 50 and Contamination <= 10
-    total_size_LQ = 0
-    conta_bins = 0  # Completness >= 50 and Contamination > 10
-    total_size_conta_bins = 0
-    others = 0  # Not determined bins.
-    total_size_others = 0
-
-    # Class each bin in a category
-    for bin_name in bin_summary:
-        completness = float(bin_summary[bin_name]["completness"])
-        contamination = float(bin_summary[bin_name]["contamination"])
-        size = int(bin_summary[bin_name]["size"])
-        if completness >= 50:
-            if contamination > 10:
-                conta_bins += 1
-                total_size_conta_bins += size
-            else:
-                if completness >= 90 and contamination <= 5:
-                    HQ += 1
-                    total_size_HQ += size
-                elif completness >= 70:
-                    MQ += 1
-                    total_size_MQ += size
-                else:
-                    LQ += 1
-                    total_size_LQ += size
-        else:
-            others += 1
-            total_size_others += size
-    total = HQ + MQ + LQ + conta_bins + others
-    total_size = (
-        total_size_HQ
-        + total_size_MQ
-        + total_size_LQ
-        + total_size_conta_bins
-        + total_size_others
-    )
-
-    # Return info in the logger:
-    logger.info(
-        "{0} bins have been kept after the recursive iterations.".format(total)
-    )
-    logger.info("Total size of the extracted bins: {0}".format(total_size))
-    logger.info("HQ MAGs: {0}\tTotal Size: {1}".format(HQ, total_size_HQ))
-    logger.info("MQ MAGs: {0}\tTotal Size: {1}".format(MQ, total_size_MQ))
-    logger.info("LQ MAGs: {0}\tTotal Size: {1}".format(LQ, total_size_LQ))
-    logger.info(
-        "Contaminated potential MAGs: {0}\tTotal Size: {1}".format(
-            conta_bins, total_size_conta_bins
-        )
-    )
-    logger.info(
-        "Others bins: {0}\tTotal Size: {1}".format(others, total_size_others)
-    )
-
-
 def recursive_decontamination(
     algorithm,
     assembly,
@@ -551,16 +590,19 @@ def recursive_decontamination(
             src = join(recursive_fasta_dir, bin_name + ".fa")
         shutil.copyfile(src, dst)
 
-    # Retrurn some values of efficiency of the binning.
+    # Return some values of efficiency of the binning.
     give_results_info(bin_summary)
-
-    # Save bin information in final file
-    bin_summary_file = join(outdir, "bin_summary.txt")
-    mio.write_checkm_summary(bin_summary, bin_summary_file)
 
     # Write relevant bins/contigs information for anvio.
     binning_file = join(outdir, "binning.txt")
     contigs_data = write_bins_contigs(bin_summary, contigs_data, binning_file)
+
+    # Compute the abundance of the mags.
+    bin_summary = get_bin_coverage(bin_summary, contigs_data)
+
+    # Save bin information in final file
+    bin_summary_file = join(outdir, "bin_summary.txt")
+    mio.write_checkm_summary(bin_summary, bin_summary_file)
 
     # Write the new file
     contig_data_file_2 = join(outdir, "contig_data_final.txt")
@@ -631,7 +673,7 @@ def update_contigs_data_recursif(
                 )
 
                 # Retrieve names of the contigs
-                list_contigs = list(contigs_data.ID[recursif_bin])
+                list_contigs = list(contigs_data.Name[recursif_bin])
 
                 # Generate the fasta
                 contigs_file = join(
@@ -662,6 +704,11 @@ def write_bins_contigs(bin_summary, contigs_data, outfile):
         Dataframe with the contigs informations.
     outfile : str
         Path where to write the output file.
+
+    Returns:
+    --------
+    pandas.core.frame.DataFrame
+        Dataframe with the contigs informations with the final bin information.
     """
 
     # Create a list with the id of the bins
@@ -684,10 +731,11 @@ def write_bins_contigs(bin_summary, contigs_data, outfile):
                 binned = False
                 # Case of a recursive bin
                 if rec_id in rec_ids:
-                    binned = False
+                    binned = True
                 # Case where the recursive bins where not kept.
                 elif rec_ids == ["0"]:
                     rec_id = "0"
+                    binned = True
 
                 if binned:
                     final_bin = "MetaTOR_{0}_{1}".format(

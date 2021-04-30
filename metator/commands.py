@@ -435,7 +435,7 @@ class Validation(AbstractCommand):
         if not exists(self.args["--outdir"]):
             os.makedirs(self.args["--outdir"])
         recursive_fasta_dir = join(self.args["--outdir"], "recursive_bin")
-        final_fasta_dir = join(self.args["--outdir"], "recursive_bin")
+        final_fasta_dir = join(self.args["--outdir"], "final_bin")
         if not exists(recursive_fasta_dir):
             os.makedirs(recursive_fasta_dir)
         else:
