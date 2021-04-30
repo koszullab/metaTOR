@@ -786,6 +786,13 @@ class Pipeline(AbstractCommand):
             threads,
         )
 
+        # remove contig_data_network if not an input
+        if start <= 2:
+            contig_data_network_file = join(
+                self.args["--outdir"], "contig_data_network.txt"
+            )
+            os.remove(contig_data_network_file)
+
         # Launch validation if desired.
         if not self.args["--skip-validation"]:
             mtv.recursive_decontamination(
@@ -803,6 +810,12 @@ class Pipeline(AbstractCommand):
                 temp_directory,
                 threads,
             )
+
+            # Remove contig_data_partition file
+            contig_data_partition_file = join(
+                self.args["--outdir"], "contig_data_partition.txt"
+            )
+            os.remove(contig_data_partition_file)
 
         # Delete the temporary folder.
         if not self.args["--no-clean-up"]:

@@ -259,6 +259,7 @@ def louvain_recursif(
     contigs_data["Recursive_bin_ID"] = "0"
     contigs_data["Recursive_bin_contigs"] = "-"
     contigs_data["Recursive_bin_size"] = "-"
+    contigs_data["Final_bin"] = "ND"
 
     # Default no contamination
     contamination = False
@@ -347,10 +348,6 @@ def louvain_recursif(
 
             # Put back the info log
             logger.setLevel(logging.INFO)
-
-    # Write the new file
-    contig_data_file_2 = join(outdir, "contig_data_final.txt")
-    contigs_data.to_csv(contig_data_file_2, sep="\t", header=True, index=False)
 
     return contamination, contigs_data
 
@@ -550,7 +547,11 @@ def recursive_decontamination(
 
     # Write relevant bins/contigs information for anvio.
     binning_file = join(outdir, "binning.txt")
-    write_bins_contigs(bin_summary, contigs_data, binning_file)
+    contigs_data = write_bins_contigs(bin_summary, contigs_data, binning_file)
+
+    # Write the new file
+    contig_data_file_2 = join(outdir, "contig_data_final.txt")
+    contigs_data.to_csv(contig_data_file_2, sep="\t", header=True, index=False)
 
 
 def update_contigs_data_recursif(
@@ -667,23 +668,23 @@ def write_bins_contigs(bin_summary, contigs_data, outfile):
             rec_id = str(contigs_data.Recursive_bin_ID[i])
             try:
                 rec_ids = list_bin_id[over_id]
+                binned = False
+                # Case of a recursive bin
                 if rec_id in rec_ids:
-                    f.write(
-                        "{0}\tMetaTOR_{1}_{2}\n".format(
-                            contigs_data.Name[i],
-                            over_id,
-                            rec_id,
-                        )
-                    )
-                # Case where the recursif bins where not kept.
+                    binned = False
+                # Case where the recursive bins where not kept.
                 elif rec_ids == ["0"]:
                     rec_id = "0"
+
+                if binned:
+                    final_bin = "MetaTOR_{0}_{1}".format(
+                        over_id,
+                        rec_id,
+                    )
+                    contig_data.Final_bin[i] = final_bin
                     f.write(
-                        "{0}\tMetaTOR_{1}_{2}\n".format(
-                            contigs_data.Name[i],
-                            over_id,
-                            rec_id,
-                        )
+                        "{0}\t{1}\n".format(contigs_data.Name[i], final_bin)
                     )
             except KeyError:
                 pass
+    return contig_data
