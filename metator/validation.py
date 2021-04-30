@@ -258,8 +258,8 @@ def louvain_recursif(
     # Add new coulumns for recursive information.
     contigs_data["Recursive_bin_ID"] = "0"
     contigs_data["Recursive_bin_contigs"] = "-"
-    contigs_data["Recursive_bin_length"] = "-"
-
+    contigs_data["Recursive_bin_size"] = "-"
+    
     # Default no contamination
     contamination = False
 
@@ -349,7 +349,7 @@ def louvain_recursif(
             logger.setLevel(logging.INFO)
 
     # Write the new file
-    contig_data_file_2 = join(outdir, "contig_data_recursif.txt")
+    contig_data_file_2 = join(outdir, "contig_data_final.txt")
     contigs_data.to_csv(contig_data_file_2, sep="\t", header=True, index=False)
 
     return contamination, contigs_data
@@ -599,9 +599,9 @@ def update_contigs_data_recursif(
 
         if recursif_bin_contigs_number > 1:
             # Write the new information
-            contigs_data.iloc[recursif_bin, 13] = rec_id
-            contigs_data.iloc[recursif_bin, 14] = recursif_bin_contigs_number
-            contigs_data.iloc[recursif_bin, 15] = recursif_bin_length
+            contigs_data.Recursive_bin_ID[recursif_bin] = rec_id
+            contigs_data.Recursive_bin_contigs[recursif_bin] = recursif_bin_contigs_number
+            contigs_data.Recursive_bin_size[recursif_bin] = recursif_bin_length
 
             if recursif_bin_length > size:
 
@@ -609,13 +609,13 @@ def update_contigs_data_recursif(
                 contamination = True
 
                 # Defined name of the recursif bin
-                oc_id = contigs_data.iloc[recursif_bin[0], 10]
+                oc_id = contigs_data.Overlapping_bin_ID[recursif_bin[0]]
                 output_file = join(
                     outdir, "MetaTOR_{0}_{1}.fa".format(oc_id, rec_id)
                 )
 
                 # Retrieve names of the contigs
-                list_contigs = list(contigs_data.iloc[recursif_bin, 1])
+                list_contigs = list(contigs_data.ID[recursif_bin])
 
                 # Generate the fasta
                 contigs_file = join(
@@ -661,24 +661,13 @@ def write_bins_contigs(bin_summary, contigs_data, outfile):
     # Write the contigs id with their bins id in table file
     with open(outfile, "w") as f:
         for i in range(len(contigs_data)):
-            over_id = str(
-                contigs_data.iloc[
-                    i,
-                ]["Overlapping_bin_ID"]
-            )
-            rec_id = str(
-                contigs_data.iloc[
-                    i,
-                ]["Recursive_bin_ID"]
-            )
+            over_id = str(contigs_data.Overlapping_bin_ID[i])
+            rec_id = str(contigs_data.Recursive_bin_ID[i])
             try:
                 rec_ids = list_bin_id[over_id]
                 if rec_id in rec_ids:
                     f.write(
-                        "{0}\tMetaTOR_{1}_{2}\n".format(
-                            contigs_data.iloc[
-                                i,
-                            ]["Name"],
+                        "{0}\tMetaTOR_{1}_{2}\n".format(contigs_data.Name[i],
                             over_id,
                             rec_id,
                         )
@@ -687,10 +676,7 @@ def write_bins_contigs(bin_summary, contigs_data, outfile):
                 elif rec_ids == ["0"]:
                     rec_id = "0"
                     f.write(
-                        "{0}\tMetaTOR_{1}_{2}\n".format(
-                            contigs_data.iloc[
-                                i,
-                            ]["Name"],
+                        "{0}\tMetaTOR_{1}_{2}\n".format(contigs_data.Name[i],
                             over_id,
                             rec_id,
                         )
