@@ -2,7 +2,7 @@
 
 FROM adoptopenjdk/openjdk12
 
-LABEL Name=metator Version=1.0.1
+LABEL Name=metator Version=1.0.2
 
 WORKDIR /app
 COPY ./ /app
