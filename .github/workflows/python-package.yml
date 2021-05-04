@@ -46,7 +46,7 @@ jobs:
 
     - name: Install pytest and dependencies
       run: |
-        pip install pytest pylint pytest-cov pylint pytest-pylint
+        pip install pytest pylint pytest-cov pylint pytest-pylint codecov
         pip install -r requirements.txt
 
     - name: Test with pytest
@@ -55,3 +55,4 @@ jobs:
         export LEIDEN_PATH=networkanalysis/build/libs/networkanalysis-1.2.0.jar
         pytest --pylint --pylint-error-types=EF --pylint-rcfile=.pylintrc --doctest-modules
         pytest --cov=metator
+        codecov
