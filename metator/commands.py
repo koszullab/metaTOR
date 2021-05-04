@@ -36,9 +36,6 @@ from metator.log import logger
 from os.path import exists, dirname, join
 from scipy.sparse import save_npz
 
-from pyinstrument import Profiler
-from pyinstrument.renderers import ConsoleRenderer
-
 
 class AbstractCommand:
     """Abstract base command class
@@ -308,10 +305,6 @@ class Partition(AbstractCommand):
 
     def execute(self):
 
-        # Start Profiler
-        profiler = Profiler()
-        profiler.start()
-
         # Defined the temporary directory.
         if not self.args["--tempdir"]:
             self.args["--tempdir"] = "./tmp"
@@ -381,12 +374,6 @@ class Partition(AbstractCommand):
         # Delete the temporary folder
         if not self.args["--no-clean-up"]:
             shutil.rmtree(temp_directory)
-
-        session = profiler.stop()
-        profile_renderer = ConsoleRenderer(
-            unicode=True, color=True, show_all=True
-        )
-        print(profile_renderer.render(session))
 
 
 class Validation(AbstractCommand):
@@ -621,10 +608,6 @@ class Pipeline(AbstractCommand):
     """
 
     def execute(self):
-
-        # Start Profiler
-        profiler = Profiler()
-        profiler.start()
 
         # Defined the temporary directory.
         if not self.args["--tempdir"]:
@@ -891,9 +874,3 @@ class Pipeline(AbstractCommand):
         # Delete the temporary folder.
         if not self.args["--no-clean-up"]:
             shutil.rmtree(temp_directory)
-
-        session = profiler.stop()
-        profile_renderer = ConsoleRenderer(
-            unicode=True, color=True, show_all=True
-        )
-        print(profile_renderer.render(session))
