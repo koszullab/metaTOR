@@ -9,6 +9,7 @@ distance to group together bins relatively closed (to avaoid to split genomes in
 different bins).
 
 Core functions to partition the network are:
+    - build_clustering_matrix
     - defined_overlapping_bins
     - detect_core_bins
     - generate_fasta
@@ -34,8 +35,93 @@ from scipy import sparse
 from sklearn import metrics
 
 
+def build_clustering_matrix(core_bins_contigs, hamming_distance, N):
+    """Function to return the clustering matrix in sparse format.
+
+    For each contigs, the value correspond to the number of iterations where the
+    contigs are clusterized together divided by the number of iterations. A
+    value of 1 means that the contigs are in the same core bin.
+
+    Parameters:
+    -----------
+    core_bins_contigs : dict
+        Dictionnary which has as keys the core bins id and as value the id of
+        the contigs of the core bin.
+    hamming_distance : scipy.sparse.csr.csr_matrix:
+        Matrix with all the previously computed hamming distance between two
+        core bins.
+    N : int
+        Number of contigs in the assembly.
+
+    Returns:
+    --------
+    scipy.sparse.coo.coo_matrix:
+        Matrix with all the previously computed hamming distance between two
+        contigs.
+    """
+    # To build the clustering matrix it's necessary to transform the indexes in
+    # core bins id to contigs id.
+    # final_rows = []
+    # final_cols = []
+    # final_values = []
+
+    # # We iterates on the non zero values to transform for each point the
+    # # indexes.
+    # for row, col in zip(*hamming_distance.nonzero()):
+    #     # Extract all contigs id from the core bins.
+    #     if row < col:
+    #         clustering_value = hamming_distance[row, col]
+    #         row_contigs = core_bins_contigs[row]
+    #         col_contigs = core_bins_contigs[col]
+    #         # Append new values in the list.
+    #         for row_contig in row_contigs:
+    #             for col_contig in col_contigs:
+    #                 if row_contig > col_contig:
+    #                     final_rows.append(col_contig)
+    #                     final_cols.append(row_contig)
+    #                     final_values.append(clustering_value)
+    #                 else:
+    #                     final_rows.append(row_contig)
+    #                     final_cols.append(col_contig)
+    #                     final_values.append(clustering_value)
+    #     elif row == col:
+    #         contigs = core_bins_contigs[row]
+    #         for i in range(len(contigs)):
+    #             for j in range(i + 1, len(contigs)):
+    #                 final_rows.append(contigs[i])
+    #                 final_cols.append(contigs[j])
+    #                 final_values.append(1)
+    # # Build the sparse matrix
+    # clustering_matrix = sparse.coo_matrix(
+    #     (final_values, (final_rows, final_cols)),
+    #     shape=(N + 1, N + 1),
+    #     dtype=np.float32,
+    # )
+
+    # To do it we build a transition matrix T which look like the identity
+    # matrix but not square to extend our matrix as fellow: B = T.T * A * T
+    rows = []
+    cols = []
+    values = []
+    for core_bin in core_bins_contigs:
+        for contig_id in core_bins_contigs[core_bin]:
+            rows.append(core_bin)
+            cols.append(contig_id)
+            values.append(1)
+    transition_matrix = sparse.coo_matrix(
+        (values, (rows, cols)),
+        shape=(len(core_bins_contigs), N + 1),
+        dtype=np.float32,
+    )
+    # Compute the clustering matrix and keep only the upper triangle.
+    clustering_matrix = sparse.triu(
+        transition_matrix.T.dot(hamming_distance).dot(transition_matrix), k=1
+    )
+    return ((clustering_matrix + clustering_matrix) / 2).tocoo()
+
+
 def defined_overlapping_bins(
-    overlap, hamming_distance, core_bins, core_bins_iterations
+    overlap, hamming_distance, core_bins_contigs, core_bins_iterations
 ):
     """This function extract the overlapped bins
 
@@ -54,10 +140,9 @@ def defined_overlapping_bins(
     hamming_distance : scipy.sparse.csr.csr_matrix
         Matrix with all the previously computed hamming distance between two
         core bins.
-    core_bins : dict
-        Dictionnary which has as keys the values of the iterations from the
-        partition algorithm separated by a semicolon and as value the id of the
-        contigs of the core bin.
+    core_bins_contigs : dict
+        Dictionnary which has as keys the core bins id and as value the id of
+        the contigs of the core bin.
     core_bins_iteration : pandas.core.frame.DataFrame
         Table with the id of the core bin and their values for each iterations.
 
@@ -68,8 +153,10 @@ def defined_overlapping_bins(
         of id of their contigs as values.
     """
     # Extract bins which are connected, i.e. bins with an hamming distance
-    # superior than the threshold given.
-    connections = hamming_distance >= overlap
+    # superior than the threshold given. The small variation is necessary as
+    # python give a float not really equal to the true value
+    # (i.e. 0.1 -> 0.09999999999999998)
+    connections = hamming_distance >= (overlap - 1e-10)
     overlapping_bins_id = sparse.csgraph.connected_components(
         connections, directed=False
     )[1]
@@ -81,9 +168,7 @@ def defined_overlapping_bins(
     # Iterate on each core bins.
     for oc_id in overlapping_bins_id:
         # Extract contig ID from the core bin.
-        core_bin = core_bins_iterations.iloc[cc_id]
-        core_bin = map(str, list(core_bin))
-        core_bin_contigs = core_bins[";".join(core_bin)].copy()
+        core_bin_contigs = core_bins_contigs[cc_id].copy()
         # Add the contig ID on the overlapping bin.
         if oc_id + 1 not in overlapping_bins:
             overlapping_bins[oc_id + 1] = core_bin_contigs
@@ -116,21 +201,29 @@ def detect_core_bins(output_partition, iterations):
     Returns:
     --------
     dict:
-        Dictionnary which has as keys the values of the iterations from Louvain
-        or Leiden separated by a semicolon and as value the id of the contigs of
-        the core bin.
+        Dictionnary which has as keys the core bins id and as value the id of
+        the contigs of the core bin.
     pandas.core.frame.DataFrame:
         Table with the id of the core bin and their values for each iterations.
     """
-    # finding duplicate values in the output of louvain using a flipped
-    # dictionary.
+    # finding duplicate values in the output of louvain or leiden using a
+    # flipped dictionary.
 
     # Create dictionnary for core bins
     core_bins = {}
+    core_bins_contigs = {}
     core_bins_iterations = np.empty((0, iterations), int)
+    core_bin_id = 0
     for key, value in output_partition.items():
         if value not in core_bins:
-            core_bins[value] = [key]
+            # Create an entry in a dictionnary with all the contigs with
+            # iterations list as a key.
+            core_bins[value] = core_bin_id
+
+            # Create an entry in a dictionnary with all the contigs with core
+            # bin id as a key.
+            core_bins_contigs[core_bin_id] = [key]
+            core_bin_id += 1
             # Add a line to compute the array used to compute the distance
             # between two core bins
             core_bins_iterations = np.append(
@@ -138,25 +231,28 @@ def detect_core_bins(output_partition, iterations):
                 np.array([list(map(int, value.split(";")))]),
                 axis=0,
             )
+        # If already an entry created for this bin add a contig in the lists.
         else:
-            core_bins[value].append(key)
+            core_bins_contigs[core_bins[value]].append(key)
 
     # Transform the array in a dataframe
     core_bins_iterations = pd.DataFrame(core_bins_iterations)
 
     logger.info("{0} core bins were found.\n".format(len(core_bins)))
 
-    return core_bins, core_bins_iterations
+    return core_bins_contigs, core_bins_iterations
 
 
-def generate_fasta(assembly, bins, contigs_data, size, output_dir, tmpdir):
+def generate_fasta(
+    assembly, overlapping_bins, contigs_data, size, output_dir, tmpdir
+):
     """Generate the fasta files of each bins from the assembly.
 
     Parameters:
     -----------
     assembly : str
         Path to the fasta file of the original assembly.
-    bins : dict
+    overlapping_bins : dict
         A dictionnary with the id of the overlapping bins as keys and the list
         of id of their contigs as values.
     contigs_data : pandas.core.frame.DataFrame
@@ -176,24 +272,24 @@ def generate_fasta(assembly, bins, contigs_data, size, output_dir, tmpdir):
     length_bins = 0
     # For each bin create a list of the contigs and extract them from the
     # assembly to create a new fasta file with only the bin.
-    for bin in bins:
+    for bin_id in overlapping_bins:
         # Extract the list of the contigs from the contigs data file.
-        list_contigs_id = bins[bin]
-        list_contigs = list_contigs_id
+        list_contigs_id = overlapping_bins[bin_id]
+        list_contigs_name = []
         # Test if the bin is bigger than the size threshold given.
-        length_bin = contigs_data.iloc[list_contigs[0] - 1, 12]
+        length_bin = contigs_data.Overlapping_bin_size[list_contigs_id[0] - 1]
         if length_bin >= size:
             nb_bins += 1
             length_bins += length_bin
-            for indice, value in enumerate(list_contigs_id):
-                list_contigs[indice] = contigs_data.iloc[value - 1, 1]
+            for contig_id in list_contigs_id:
+                list_contigs_name.append(contigs_data.Name[contig_id - 1])
             # Define the output file.
-            output_file = join(output_dir, "MetaTOR_{0}_0.fa".format(bin))
+            output_file = join(output_dir, "MetaTOR_{0}_0.fa".format(bin_id))
             # Create the fasta file.
-            contigs_file = join(tmpdir, "MetaTOR_{0}_0.txt".format(bin))
+            contigs_file = join(tmpdir, "MetaTOR_{0}_0.txt".format(bin_id))
             with open(contigs_file, "w") as f:
-                for item in list_contigs:
-                    f.write("%s\n" % item)
+                for contig_name in list_contigs_name:
+                    f.write("%s\n" % contig_name)
             cmd = "pyfastx extract {0} -l {1} > {2}".format(
                 assembly, contigs_file, output_file
             )
@@ -273,7 +369,7 @@ def get_hamming_distance(core_bins_iterations, n_iter, threads):
     )
     res = sparse.hstack(res)
     pool.close()
-    return res
+    return res.tocsr()
 
 
 def leiden_iterations_java(
@@ -304,13 +400,13 @@ def leiden_iterations_java(
     """
     output_partition = dict()
 
-    # Run the iterations of Louvain
+    # Run the iterations of Leiden
     for i in range(iterations):
         logger.info("Iteration in progress: {0}".format(i))
 
         output = join(tmp_dir, "partition_{0}.txt".format(i))
 
-        # Convert the file in binary file for Louvain partitionning.
+        # Clusterize the network using Leiden.
         cmd = (
             " java -cp {0} nl.cwts.networkanalysis.run.RunNetworkClustering -i 4 -r {1} -w -o {2} -q Modularity -a Leiden {3}"
         ).format(leiden_path, resolution_parameter, output, network_file)
@@ -503,11 +599,14 @@ def partition(
 
     Returns:
     --------
+    scipy.sparse.coo.coo_matrix:
+        Matrix with all the previously computed hamming distance between two
+        contigs.
     str:
         Path to the new contig data file with the bin informations in it.
     """
 
-    # Perform the iterations of Louvain to partition the network.
+    # Perform the iterations of Louvain or Leiden to partition the network.
     logger.info("Start iterations:")
     if algorithm == "leiden":
         LEIDEN_PATH = os.environ["LEIDEN_PATH"]
@@ -533,7 +632,7 @@ def partition(
     # Detect core bins
     logger.info("Detect core bins:")
     (
-        core_bins,
+        core_bins_contigs,
         core_bins_iterations,
     ) = detect_core_bins(output_partition, iterations)
 
@@ -549,7 +648,7 @@ def partition(
     overlapping_bins = defined_overlapping_bins(
         overlapping_parameter,
         hamming_distance,
-        core_bins,
+        core_bins_contigs,
         core_bins_iterations,
     )
 
@@ -557,7 +656,7 @@ def partition(
     logger.info("Extract bins:")
     contigs_data, contigs_data_file = update_contigs_data(
         contig_data_file,
-        core_bins,
+        core_bins_contigs,
         overlapping_bins,
         outdir,
     )
@@ -571,7 +670,14 @@ def partition(
         fasta_dir,
         temp_directory,
     )
-    return contigs_data_file
+
+    # Build clustering matrix.
+    logger.info("Build  clustering matrix")
+    clustering_matrix = build_clustering_matrix(
+        core_bins_contigs, hamming_distance, len(contigs_data.ID)
+    )
+
+    return clustering_matrix, contigs_data_file
 
 
 def remove_isolates(output_partition, network_file):
@@ -607,7 +713,9 @@ def remove_isolates(output_partition, network_file):
     return output_partition
 
 
-def update_contigs_data(contig_data_file, core_bins, overlapping_bins, outdir):
+def update_contigs_data(
+    contig_data_file, core_bins_contigs, overlapping_bins, outdir
+):
     """Add bin information in the contigs data file.
 
     This function allow to update the contigs data file which were created
@@ -621,10 +729,9 @@ def update_contigs_data(contig_data_file, core_bins, overlapping_bins, outdir):
     -----------
     contig_data_file : str
         Path to the contigs data file.
-    core_bins : dict
-        Dictionnary which has as keys the values of the iterations from Louvain
-        or Leiden separated by a semicolon and as values the list of the id of
-        the contigs.
+    core_bins_contigs : dict
+        Dictionnary which has as keys the core bins id and as value the id of
+        the contigs of the core bin.
     overlapping_bins : dict
         A dictionnary with the id of the overlapping bins as keys and the list
         of id of their contigs as values.
@@ -652,18 +759,16 @@ def update_contigs_data(contig_data_file, core_bins, overlapping_bins, outdir):
     contigs_data["Overlapping_bin_size"] = "-"
 
     # Add core bin information
-    n = 1
-    for i in core_bins:
+    for i in core_bins_contigs:
         # Extract contigs of the bin
-        core_bin = [id - 1 for id in core_bins[i]]
+        core_bin = [id - 1 for id in core_bins_contigs[i]]
         core_bin_data = contigs_data.iloc[core_bin]
         core_bin_contigs_number = len(core_bin)
         core_bin_length = sum(core_bin_data.Size)
         # Write the new information
-        contigs_data.Core_bin_ID[core_bin] = n
+        contigs_data.Core_bin_ID[core_bin] = i + 1
         contigs_data.Core_bin_contigs[core_bin] = core_bin_contigs_number
         contigs_data.Core_bin_size[core_bin] = core_bin_length
-        n += 1
 
     # Add overlapping information
     for i in overlapping_bins:

@@ -3,7 +3,7 @@
 
 """Generate metaHiC contigs network from fastq reads or bam files.
 
-General utility functions for handling aligment files from align modul and
+General utility functions for handling aligment files from align module and
 generating metaHiC networks.
 
 Core function to build the network are:

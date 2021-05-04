@@ -17,9 +17,9 @@ Functions in this module:
     - compare_bins
     - get_bin_coverage
     - give_results_info
-    - louvain_recursif
+    - recursive_clustering
     - recursive_decontamination
-    - update_recursif_louvain
+    - update_contigs_data_recursive
     - write_bin_contigs
 """
 
@@ -27,12 +27,14 @@ import logging
 import metator.io as mio
 import metator.partition as mtp
 import networkx as nx
+import numpy as np
 import os
 import pandas as pd
 import shutil
 import subprocess as sp
 from metator.log import logger
 from os.path import join
+from scipy import sparse
 
 
 def checkm(fasta_dir, outfile, taxonomy_file, tmpdir, threads):
@@ -95,8 +97,8 @@ def checkm(fasta_dir, outfile, taxonomy_file, tmpdir, threads):
 def compare_bins(
     overlapping_checkm_file,
     overlapping_taxonomy_file,
-    recursif_checkm_file,
-    recursif_taxonomy_file,
+    recursive_checkm_file,
+    recursive_taxonomy_file,
 ):
     """Compare the completness and contamination of the bins from the first step
     and from the recursive step. If the recursive step decrease the completion
@@ -110,10 +112,10 @@ def compare_bins(
         Path to the checkm summary from the overlapping step.
     overlapping_taxonomy_file : str
         path to the overlapping checkm taxonomy results file.
-    recursif_checkm_file : str
+    recursive_checkm_file : str
         Path to the checkm summary from the recurisf step.
-    recursif_taxonomy_file : str
-        path to the recursif checkm taxonomy results file.
+    recursive_taxonomy_file : str
+        path to the recursive checkm taxonomy results file.
 
     Returns:
     --------
@@ -125,15 +127,15 @@ def compare_bins(
     checkm_summary_overlapping = mio.read_results_checkm(
         overlapping_checkm_file, overlapping_taxonomy_file
     )
-    checkm_summary_recursif = mio.read_results_checkm(
-        recursif_checkm_file, recursif_taxonomy_file
+    checkm_summary_recursive = mio.read_results_checkm(
+        recursive_checkm_file, recursive_taxonomy_file
     )
 
     # Prepare a dictionnary for a final summary.
     checkm_summary = dict()
 
-    # Retrieve maximum completness of the recursif bins.
-    for recursive_bin in checkm_summary_recursif:
+    # Retrieve maximum completness of the recursive bins.
+    for recursive_bin in checkm_summary_recursive:
         overlapping_bin = "_".join(
             ["MetaTOR", recursive_bin.split("_")[1], "0"]
         )
@@ -141,7 +143,7 @@ def compare_bins(
             checkm_summary_overlapping[overlapping_bin][
                 "max_rec_completness"
             ] = max(
-                float(checkm_summary_recursif[recursive_bin]["completness"]),
+                float(checkm_summary_recursive[recursive_bin]["completness"]),
                 checkm_summary_overlapping[overlapping_bin][
                     "max_rec_completness"
                 ],
@@ -152,12 +154,12 @@ def compare_bins(
         except KeyError:
             checkm_summary_overlapping[overlapping_bin][
                 "max_rec_completness"
-            ] = float(checkm_summary_recursif[recursive_bin]["completness"])
+            ] = float(checkm_summary_recursive[recursive_bin]["completness"])
             checkm_summary_overlapping[overlapping_bin]["rec_id"] = [
                 recursive_bin
             ]
 
-    # If there are some recursif bins which have not loose too much completion
+    # If there are some recursive bins which have not loose too much completion
     # write their information otherwise keep the original bins.
     for overlapping_bin in checkm_summary_overlapping:
         try:
@@ -171,7 +173,7 @@ def compare_bins(
                 for rec_id in checkm_summary_overlapping[overlapping_bin][
                     "rec_id"
                 ]:
-                    checkm_summary[rec_id] = checkm_summary_recursif[rec_id]
+                    checkm_summary[rec_id] = checkm_summary_recursive[rec_id]
             else:
                 checkm_summary_overlapping[overlapping_bin].pop(
                     "max_rec_completness"
@@ -296,7 +298,7 @@ def give_results_info(bin_summary):
     )
 
 
-def louvain_recursif(
+def recursive_clustering(
     assembly,
     iterations,
     overlapping_parameter,
@@ -347,9 +349,17 @@ def louvain_recursif(
     threads : int
         Number of threads to use.
 
-    Return:
+    Returns:
+    --------
     boolean:
         True if at least one new recursive bin has been generated.
+    pandas.DataFrame
+        Updated dictionnary which has as keys the values of the iterations from
+        the recursive partition separated by a semicolon and as values the list
+        of the id of the contigs.
+    scipy.sparse.coo.coo_matrix:
+        Matrix with all the previously computed hamming distance between two
+        contigs.
     """
 
     # Load CheckM result:
@@ -373,6 +383,10 @@ def louvain_recursif(
 
     # Default no contamination
     contamination = False
+
+    # Create an empty matrix
+    N = len(contigs_data.ID)
+    clustering_matrix = sparse.coo_matrix((N + 1, N + 1), dtype=np.float32)
 
     # Iterate on chcekm summary to find conatminated bins:
     for bin_id in checkm_summary:
@@ -402,7 +416,7 @@ def louvain_recursif(
             # Stop to report info log
             logger.setLevel(logging.WARNING)
 
-            # Use Louvain algorithmon the subnetwork.
+            # Use Louvain or Leiden algorithm the subnetwork.
             if algorithm == "leiden":
                 LEIDEN_PATH = os.environ["LEIDEN_PATH"]
                 output_partition = mtp.leiden_iterations_java(
@@ -426,29 +440,29 @@ def louvain_recursif(
 
             # Detect core bins
             (
-                recursif_core_bins,
-                recursif_bins_iterations,
+                recursive_core_bins,
+                recursive_bins_iterations,
             ) = mtp.detect_core_bins(output_partition, iterations)
 
             # Compute the Hamming distance between core bins.
             hamming_distance = mtp.get_hamming_distance(
-                recursif_bins_iterations,
+                recursive_bins_iterations,
                 iterations,
                 threads,
             )
 
             # Defined overlapping bins according to the threshold
-            recursif_bins = mtp.defined_overlapping_bins(
+            recursive_bins = mtp.defined_overlapping_bins(
                 overlapping_parameter,
                 hamming_distance,
-                recursif_core_bins,
-                recursif_bins_iterations,
+                recursive_core_bins,
+                recursive_bins_iterations,
             )
 
             # update bin data and generate fasta
-            contamination, contigs_data = update_contigs_data_recursif(
+            contamination, contigs_data = update_contigs_data_recursive(
                 contigs_data,
-                recursif_bins,
+                recursive_bins,
                 assembly,
                 recursive_fasta_dir,
                 tmpdir,
@@ -456,10 +470,14 @@ def louvain_recursif(
                 contamination,
             )
 
+            clustering_matrix += mtp.build_clustering_matrix(
+                recursive_core_bins, hamming_distance, N
+            )
+
             # Put back the info log
             logger.setLevel(logging.INFO)
 
-    return contamination, contigs_data
+    return contamination, contigs_data, clustering_matrix
 
 
 def recursive_decontamination(
@@ -516,13 +534,19 @@ def recursive_decontamination(
         Path to the directory used to write temporary files.
     threads : int
         Number of threads to use.
+
+    Returns:
+    --------
+    scipy.sparse.coo.coo_matrix:
+        Matrix with all the previously computed hamming distance between two
+        contigs.
     """
 
     # Defined checkm output file path
     overlapping_checkm_file = join(outdir, "overlapping_checkm_results.txt")
     overlapping_taxonomy_file = join(outdir, "overlapping_checkm_taxonomy.txt")
-    recursif_checkm_file = join(outdir, "recursif_checkm_results.txt")
-    recursif_taxonomy_file = join(outdir, "recursif_checkm_taxonomy.txt")
+    recursive_checkm_file = join(outdir, "recursive_checkm_results.txt")
+    recursive_taxonomy_file = join(outdir, "recursive_checkm_taxonomy.txt")
 
     # Launch checkM
     checkm(
@@ -533,8 +557,8 @@ def recursive_decontamination(
         threads,
     )
 
-    # Iterates Louvain on contaminated and complete bins
-    contamination, contigs_data = louvain_recursif(
+    # Iterates Louvain or Leiden on contaminated and complete bins.
+    contamination, contigs_data, clustering_matrix = recursive_clustering(
         assembly,
         iterations,
         overlapping_parameter,
@@ -551,17 +575,17 @@ def recursive_decontamination(
         threads,
     )
 
-    # Recursive iterations of Louvain on the contaminated bins. Save bin
-    # information if the new bins have the same quality otherwise keep the
+    # Recursive iterations of Louvain or Leiden on the contaminated bins. Save
+    # bin information if the new bins have the same quality otherwise keep the
     # original bin information.
     if contamination:
 
-        # Run checkm on the recursif bins.
+        # Run checkm on the recursive bins.
         temp_directory = join(temp_directory, "checkm2")
         checkm(
             recursive_fasta_dir,
-            recursif_checkm_file,
-            recursif_taxonomy_file,
+            recursive_checkm_file,
+            recursive_taxonomy_file,
             temp_directory,
             threads,
         )
@@ -570,8 +594,8 @@ def recursive_decontamination(
         bin_summary = compare_bins(
             overlapping_checkm_file,
             overlapping_taxonomy_file,
-            recursif_checkm_file,
-            recursif_taxonomy_file,
+            recursive_checkm_file,
+            recursive_taxonomy_file,
         )
 
     # Keep overlapping bin information
@@ -608,9 +632,11 @@ def recursive_decontamination(
     contig_data_file_2 = join(outdir, "contig_data_final.txt")
     contigs_data.to_csv(contig_data_file_2, sep="\t", header=True, index=False)
 
+    return clustering_matrix
 
-def update_contigs_data_recursif(
-    contigs_data, recursif_bins, assembly, outdir, tmpdir, size, contamination
+
+def update_contigs_data_recursive(
+    contigs_data, recursive_bins, assembly, outdir, tmpdir, size, contamination
 ):
     """Update the data of the bin according to the recursive step and generated
     their fasta.
@@ -619,7 +645,7 @@ def update_contigs_data_recursif(
     -----------
     contigs_data : pandas.DataFrame
         Table with all the data from the contigs.
-    recursif_bins : dict
+    recursive_bins : dict
         Dictionnary which has  as keys the values of the recursive iterations
         from Louvain or Leiden separated by a semicolon and as values the list
         of the id of the contigs.
@@ -644,36 +670,38 @@ def update_contigs_data_recursif(
         of the id of the contigs.
     """
 
-    # Add recursif bin information
+    # Add recursive bin information
     rec_id = 1
-    for i in recursif_bins:
+    for i in recursive_bins:
         # Extract contigs of the bin
-        recursif_bin = [id - 1 for id in recursif_bins[i]]
-        recursif_bin_data = contigs_data.iloc[recursif_bin]
-        recursif_bin_contigs_number = len(recursif_bin)
-        recursif_bin_length = sum(recursif_bin_data.Size)
+        recursive_bin = [id - 1 for id in recursive_bins[i]]
+        recursive_bin_data = contigs_data.iloc[recursive_bin]
+        recursive_bin_contigs_number = len(recursive_bin)
+        recursive_bin_length = sum(recursive_bin_data.Size)
 
-        if recursif_bin_contigs_number > 1:
+        if recursive_bin_contigs_number > 1:
             # Write the new information
-            contigs_data.Recursive_bin_ID[recursif_bin] = rec_id
+            contigs_data.Recursive_bin_ID[recursive_bin] = rec_id
             contigs_data.Recursive_bin_contigs[
-                recursif_bin
-            ] = recursif_bin_contigs_number
-            contigs_data.Recursive_bin_size[recursif_bin] = recursif_bin_length
+                recursive_bin
+            ] = recursive_bin_contigs_number
+            contigs_data.Recursive_bin_size[
+                recursive_bin
+            ] = recursive_bin_length
 
-            if recursif_bin_length > size:
+            if recursive_bin_length > size:
 
                 # If one new bin is generated change the boolean value to True
                 contamination = True
 
-                # Defined name of the recursif bin
-                oc_id = contigs_data.Overlapping_bin_ID[recursif_bin[0]]
+                # Defined name of the recursive bin
+                oc_id = contigs_data.Overlapping_bin_ID[recursive_bin[0]]
                 output_file = join(
                     outdir, "MetaTOR_{0}_{1}.fa".format(oc_id, rec_id)
                 )
 
                 # Retrieve names of the contigs
-                list_contigs = list(contigs_data.Name[recursif_bin])
+                list_contigs = list(contigs_data.Name[recursive_bin])
 
                 # Generate the fasta
                 contigs_file = join(

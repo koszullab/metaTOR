@@ -22,6 +22,7 @@ This mdoule contains all core I/O functions:
 import bz2
 import gzip
 import io
+import numpy as np
 import os
 import pandas as pd
 import pathlib
@@ -412,6 +413,35 @@ def retrieve_fasta(in_file, tmpdir):
             )
             raise ValueError
     return fasta
+
+
+def save_sparse_matrix(s_mat, path):
+    """Save a sparse matrix
+
+    Saves a sparse matrix object into tsv format.
+
+    Parameters
+    ----------
+    s_mat : scipy.sparse.coo_matrix
+        The sparse matrix to save on disk
+    path : str
+        File path where the matrix will be stored
+    """
+    if s_mat.format != "coo":
+        ValueError("Sparse matrix must be in coo format")
+    dtype = s_mat.dtype
+    sparse_arr = np.vstack([s_mat.row, s_mat.col, s_mat.data]).T
+
+    np.savetxt(
+        path,
+        sparse_arr,
+        header="{nrows}\t{ncols}\t{nonzero}".format(
+            nrows=s_mat.shape[0], ncols=s_mat.shape[1], nonzero=s_mat.nnz
+        ),
+        comments="",
+        fmt=["%i", "%i", "%1.3f"],
+        delimiter="\t",
+    )
 
 
 def sort_pairs(in_file, out_file, tmp_dir=None, threads=1, buffer="2G"):

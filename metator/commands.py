@@ -34,6 +34,10 @@ import metator.validation as mtv
 from docopt import docopt
 from metator.log import logger
 from os.path import exists, dirname, join
+from scipy.sparse import save_npz
+
+from pyinstrument import Profiler
+from pyinstrument.renderers import ConsoleRenderer
 
 
 class AbstractCommand:
@@ -144,7 +148,7 @@ class Network(AbstractCommand):
         # Enable file logging
         now = time.strftime("%Y%m%d%H%M%S")
         log_file = join(
-            self.args["--outdir"], ("metator_network" + now + ".log")
+            self.args["--outdir"], ("metator_network_" + now + ".log")
         )
         mtl.set_file_handler(log_file)
 
@@ -304,6 +308,10 @@ class Partition(AbstractCommand):
 
     def execute(self):
 
+        # Start Profiler
+        profiler = Profiler()
+        profiler.start()
+
         # Defined the temporary directory.
         if not self.args["--tempdir"]:
             self.args["--tempdir"] = "./tmp"
@@ -332,7 +340,7 @@ class Partition(AbstractCommand):
         # Enable file logging
         now = time.strftime("%Y%m%d%H%M%S")
         log_file = join(
-            self.args["--outdir"], ("metator_partition" + now + ".log")
+            self.args["--outdir"], ("metator_partition_" + now + ".log")
         )
         mtl.set_file_handler(log_file)
 
@@ -349,7 +357,7 @@ class Partition(AbstractCommand):
             raise ValueError
 
         # Partition the network
-        mtp.partition(
+        clustering_matrix, contigs_data_file = mtp.partition(
             self.args["--algorithm"],
             self.args["--assembly"],
             self.args["--contigs"],
@@ -364,9 +372,21 @@ class Partition(AbstractCommand):
             threads,
         )
 
+        # Save the clustering matrix
+        clustering_matrix_file = join(
+            self.args["--outdir"], "clustering_matrix_partition.txt"
+        )
+        save_npz(clustering_matrix_file, clustering_matrix)
+
         # Delete the temporary folder
         if not self.args["--no-clean-up"]:
             shutil.rmtree(temp_directory)
+
+        session = profiler.stop()
+        profile_renderer = ConsoleRenderer(
+            unicode=True, color=True, show_all=True
+        )
+        print(profile_renderer.render(session))
 
 
 class Validation(AbstractCommand):
@@ -466,7 +486,7 @@ class Validation(AbstractCommand):
         # Enable file logging
         now = time.strftime("%Y%m%d%H%M%S")
         log_file = join(
-            self.args["--outdir"], ("metator_validation" + now + ".log")
+            self.args["--outdir"], ("metator_validation_" + now + ".log")
         )
         mtl.set_file_handler(log_file)
 
@@ -489,7 +509,7 @@ class Validation(AbstractCommand):
             logger.error('algorithm should be either "louvain" or "leiden"')
             raise ValueError
 
-        mtv.recursive_decontamination(
+        clustering_matrix = mtv.recursive_decontamination(
             self.args["--algorithm"],
             self.args["--assembly"],
             self.args["--contigs"],
@@ -505,6 +525,12 @@ class Validation(AbstractCommand):
             temp_directory,
             threads,
         )
+
+        # Save the clustering matrix
+        clustering_matrix_file = join(
+            self.args["--outdir"], "clustering_matrix_recursive.txt"
+        )
+        save_npz(clustering_matrix_file, clustering_matrix)
 
         # Delete the temporary folder
         if not self.args["--no-clean-up"]:
@@ -596,6 +622,10 @@ class Pipeline(AbstractCommand):
 
     def execute(self):
 
+        # Start Profiler
+        profiler = Profiler()
+        profiler.start()
+
         # Defined the temporary directory.
         if not self.args["--tempdir"]:
             self.args["--tempdir"] = "./tmp"
@@ -624,7 +654,7 @@ class Pipeline(AbstractCommand):
 
         # Enable file logging
         now = time.strftime("%Y%m%d%H%M%S")
-        log_file = join(self.args["--outdir"], ("metator" + now + ".log"))
+        log_file = join(self.args["--outdir"], ("metator_" + now + ".log"))
         mtl.set_file_handler(log_file)
 
         # Define variable
@@ -800,7 +830,7 @@ class Pipeline(AbstractCommand):
             network_file = self.args["--network"]
 
         # Partition the network
-        contigs_data_file = mtp.partition(
+        clustering_matrix, contigs_data_file = mtp.partition(
             self.args["--algorithm"],
             fasta,
             contigs_data_file,
@@ -824,7 +854,7 @@ class Pipeline(AbstractCommand):
 
         # Launch validation if desired.
         if not self.args["--skip-validation"]:
-            mtv.recursive_decontamination(
+            clustering_matrix_recursive = mtv.recursive_decontamination(
                 self.args["--algorithm"],
                 fasta,
                 contigs_data_file,
@@ -841,12 +871,29 @@ class Pipeline(AbstractCommand):
                 threads,
             )
 
+            # Make the sum with the partiton clustering matrix
+            clustering_matrix = (
+                (clustering_matrix + clustering_matrix_recursive) / 2
+            ).tocoo()
+
             # Remove contig_data_partition file
             contig_data_partition_file = join(
                 self.args["--outdir"], "contig_data_partition.txt"
             )
             os.remove(contig_data_partition_file)
 
+        # Save the clustering matrix
+        clustering_matrix_file = join(
+            self.args["--outdir"], "clustering_matrix.txt"
+        )
+        save_npz(clustering_matrix_file, clustering_matrix)
+
         # Delete the temporary folder.
         if not self.args["--no-clean-up"]:
             shutil.rmtree(temp_directory)
+
+        session = profiler.stop()
+        profile_renderer = ConsoleRenderer(
+            unicode=True, color=True, show_all=True
+        )
+        print(profile_renderer.render(session))

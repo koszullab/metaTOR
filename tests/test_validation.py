@@ -18,8 +18,8 @@ def test_compare_bins():
     checkm_summary = mtv.compare_bins(
         overlapping_checkm_file="tests_data/outdir2/overlapping_checkm_results.txt",
         overlapping_taxonomy_file="tests_data/outdir2/overlapping_checkm_taxonomy.txt",
-        recursif_checkm_file="tests_data/outdir2/recursif_checkm_results.txt",
-        recursif_taxonomy_file="tests_data/outdir2/recursif_checkm_taxonomy.txt",
+        recursive_checkm_file="tests_data/outdir2/recursif_checkm_results.txt",
+        recursive_taxonomy_file="tests_data/outdir2/recursif_checkm_taxonomy.txt",
     )
     over = mio.read_results_checkm(
         "tests_data/outdir2/overlapping_checkm_results.txt",
@@ -52,12 +52,12 @@ def test_compare_bins():
 
 
 @pytest.mark.parametrize(*ALGORITHM)
-def test_louvain_recursif(alg):
+def test_recursive_clustering(alg):
     """Crash test for the partition of contaminated bins."""
     os.makedirs("tests_data/out_test/", exist_ok=True)
     os.makedirs("tests_data/out_test/tmp/", exist_ok=True)
     os.makedirs("tests_data/out_test/recursive_bin/", exist_ok=True)
-    mtv.louvain_recursif(
+    mtv.recursive_clustering(
         assembly="tests_data/assembly.fa",
         iterations=5,
         overlapping_parameter=0.9,
@@ -84,7 +84,7 @@ def test_recursive_decontamination():
     ...
 
 
-def update_recursif_louvain():
+def update_contigs_data_recursive():
     ...
 
 
