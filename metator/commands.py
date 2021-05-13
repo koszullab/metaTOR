@@ -83,7 +83,7 @@ class Network(AbstractCommand):
     every single node in the network is written on a 'contig data' file.
 
     usage:
-        network --forward=STR --reverse=STR --assembly=FILE [--depth=FILE]
+        network --forward=STR --assembly=FILE [--reverse=STR] [--depth=FILE]
         [--enzyme=STR] [--normalization=empirical_hit] [--no-clean-up]
         [--outdir=DIR] [--min-quality=30] [--self-contacts] [--start=fastq]
         [--threads=1] [--tempdir=DIR]
@@ -91,12 +91,13 @@ class Network(AbstractCommand):
     options:
         -1, --forward=STR       Fastq file or list of Fastq separated by a comma
                                 containing the forward reads to be aligned or
-                                their corresponding bam files.
+                                their corresponding bam or pairs files.
         -2, --reverse=STR       Fastq file or list of Fastq separated by a comma
                                 containing the reverse reads to be aligned or
                                 their corresponding bam files. Forward and
                                 reverse reads need to have the same identifier
-                                (read names).
+                                (read names). If start is set to pair, no 
+                                argument is necessary.
         -a, --assembly=FILE     The initial assembly path acting as the
                                 alignment file's reference genome or the
                                 basename of the bowtie2 index.
@@ -121,8 +122,8 @@ class Network(AbstractCommand):
                                 read properly aligned. [Default: 30]
         -s, --self-contacts     If enabled, count alignments between a contig
                                 and itself (intracontigs contacts).
-        -S, --start=STR         Start stage of the pipeline. Either "fastq" or
-                                "bam". [Default: fastq]
+        -S, --start=STR         Start stage of the pipeline. Either "fastq",
+                                "bam", or "pair". [Default: fastq]
         -t, --threads=INT       Number of parallel threads allocated for the
                                 alignement. [Default: 1]
         -T, --tempdir=DIR       Temporary directory. Default to current
@@ -154,6 +155,12 @@ class Network(AbstractCommand):
 
         # Defined boolean variables:
         self_contacts = self.args["--self-contacts"]
+
+        # Check if forward and reverse arguments are given:
+        if self.args["--start"] != "pair":
+            if not self.args["--forward"] or not self.args["--reverse"]:
+                logger.error("Forward and reverse arguments are necessary for fastq or bam start.")
+                raise ValueError
 
         # Check if normalization in the list of possible normalization.
         list_normalization = [
@@ -214,20 +221,32 @@ class Network(AbstractCommand):
             "Minimum mapping quality: {0}".format(self.args["--min-quality"])
         )
 
-        # Align pair-end reads with bowtie2
-        alignment_files, contig_data, hit_data = mta.get_contact_pairs(
-            self.args["--forward"],
-            self.args["--reverse"],
-            index,
-            fasta,
-            min_qual,
-            self.args["--start"],
-            self.args["--depth"],
-            self.args["--enzyme"],
-            self.args["--outdir"],
-            temp_directory,
-            self.args["--threads"],
-        )
+        # Do not align if pair start
+        if self.args["--start"] == "pair":
+            alignment_files = self.args["--forward"].split(",")
+            nb_alignment = len(alignment_files)
+            contig_data, hit_data = mtn.create_contig_data(
+                fasta,
+                nb_alignment,
+                self.args["--depth"],
+                self.args["--enzyme"],
+            )
+        
+        else:
+            # Align pair-end reads with bowtie2
+            alignment_files, contig_data, hit_data = mta.get_contact_pairs(
+                self.args["--forward"],
+                self.args["--reverse"],
+                index,
+                fasta,
+                min_qual,
+                self.args["--start"],
+                self.args["--depth"],
+                self.args["--enzyme"],
+                self.args["--outdir"],
+                temp_directory,
+                self.args["--threads"],
+            )
 
         # Build the network
         mtn.alignment_to_contacts(
@@ -531,10 +550,10 @@ class Pipeline(AbstractCommand):
 
     Partition the contigs from teh  assembly in bins from the metaHiC reads.
 
-    It's possible to start from the fastq, the bam or the network files. It's
-    will also possible to ask or not to run a validation step which will
-    decontaminate the bins when it's necessary. However as it's the critical
-    step for memory usage (~40G), it's possible to skip these step.
+    It's possible to start from the fastq, the bam, the pair or the network
+    files. It's will also possible to ask or not to run a validation step which
+    will decontaminate the bins when it's necessary. However as it's the
+    critical step for memory usage (~40G), it's possible to skip these step.
 
     usage:
         pipeline --assembly=FILE [--forward=STR] [--reverse=STR]
@@ -548,12 +567,13 @@ class Pipeline(AbstractCommand):
     options:
         -1, --forward=STR       Fastq file or list of Fastq separated by a comma
                                 containing the forward reads to be aligned or
-                                their corresponding bam files.
+                                their corresponding bam or pairs files.
         -2, --reverse=STR       Fastq file or list of Fastq separated by a comma
                                 containing the reverse reads to be aligned or
                                 their corresponding bam files. Forward and
                                 reverse reads need to have the same identifier
-                                (read names).
+                                (read names). If pair start is used no argument 
+                                is necessary.
         -a, --assembly=FILE     The initial assembly path acting as the
                                 alignment file's reference genome or the
                                 basename of the bowtie2 index.
@@ -600,7 +620,7 @@ class Pipeline(AbstractCommand):
         -s, --size=INT          Threshold size to keep bins in base pair.
                                 [Default: 500000]
         -S, --start=STR         Start stage of the pipeline. Either fastq, bam
-                                or network. [Default: fastq]
+                                pair, or network. [Default: fastq]
         -t, --threads=INT       Number of parallel threads allocated for the
                                 alignement. [Default: 1]
         -T, --tempdir=DIR       Temporary directory. Default to current
@@ -733,13 +753,21 @@ class Pipeline(AbstractCommand):
             start = 1
         elif self.args["--start"] == "bam":
             start = 2
-        elif self.args["--start"] == "network":
+        elif self.args["--start"] == "pair":
             start = 3
+        elif self.args["--start"] == "network":
+            start = 4
         else:
             logger.error(
-                "Start argument should be 'fastq', 'bam' or 'network'."
+                "Start argument should be 'fastq', 'bam', 'pair' or 'network'."
             )
             raise ValueError
+        
+        # Check if forward and reverse reads are given for fastq and bam start.
+        if start <= 2:
+            if not self.args["--forward"] or not self.args["--reverse"]:
+                logger.error("Forward and reverse arguments are necessary for fastq or bam start.")
+                raise ValueError
 
         # Print information of the workflow:
         if start == 1:
@@ -783,22 +811,31 @@ class Pipeline(AbstractCommand):
             fasta = mio.retrieve_fasta(index, temp_directory)
 
         # Run the whole workflow
-        if start <= 2:
-            # Align pair-end reads with bowtie2
-            alignment_files, contig_data, hit_data = mta.get_contact_pairs(
-                self.args["--forward"],
-                self.args["--reverse"],
-                index,
-                fasta,
-                min_qual,
-                self.args["--start"],
-                self.args["--depth"],
-                self.args["--enzyme"],
-                self.args["--outdir"],
-                temp_directory,
-                self.args["--threads"],
-            )
-
+        if start <= 3:
+            if start <= 2:
+                # Align pair-end reads with bowtie2
+                alignment_files, contig_data, hit_data = mta.get_contact_pairs(
+                    self.args["--forward"],
+                    self.args["--reverse"],
+                    index,
+                    fasta,
+                    min_qual,
+                    self.args["--start"],
+                    self.args["--depth"],
+                    self.args["--enzyme"],
+                    self.args["--outdir"],
+                    temp_directory,
+                    self.args["--threads"],
+                )
+            else:
+                alignment_files = self.args["--forward"].split(",")
+                nb_alignment = len(alignment_files)
+                contig_data, hit_data = mtn.create_contig_data(
+                    fasta,
+                    nb_alignment,
+                    self.args["--depth"],
+                    self.args["--enzyme"],
+                )
             # Build the network
             network_file, contigs_data_file = mtn.alignment_to_contacts(
                 alignment_files,

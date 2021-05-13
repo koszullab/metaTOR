@@ -19,6 +19,7 @@ global_args = {
     "NETWORK": "tests_data/outdir/network.txt",
     "CONTIGS": "tests_data/outdir/contig_data_network.txt",
     "OUT_TEST": "tests_data/out_test",
+    "PAIRS": "tests_data/outdir/pairs.txt",
     "TMP": "tests_data/tmp/",
 }
 NORMALIZE = (
@@ -36,9 +37,17 @@ def test_network():
     proc.execute()
 
 
+def test_network2():
+    args = "-1 {BAM_FOR} -2 {BAM_REV} -a {FASTA_INDEX} -d {DEPTH} -o {OUT_TEST} -T {TMP} -S bam".format(
+        **global_args
+    )
+    proc = mtc.Network(args.split(" "), {})
+    proc.execute()
+
+
 @pytest.mark.parametrize(*NORMALIZE)
-def test_network2(norm):
-    args = "-1 {BAM_FOR} -2 {BAM_REV} -a {FASTA_INDEX} -d {DEPTH} -o {OUT_TEST} -T {TMP} -n {0} -e DpnII,HinfI -S bam".format(
+def test_network3(norm):
+    args = "-1 {PAIRS} -a {FASTA} -d {DEPTH} -o {OUT_TEST} -T {TMP} -n {0} -e HindIII,DpnII -S pair".format(
         norm, **global_args
     )
     proc = mtc.Network(args.split(" "), {})
