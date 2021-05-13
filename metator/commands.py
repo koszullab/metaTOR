@@ -215,12 +215,15 @@ class Network(AbstractCommand):
         )
 
         # Align pair-end reads with bowtie2
-        alignment_files = mta.get_contact_pairs(
+        alignment_files, contig_data, hit_data = mta.get_contact_pairs(
             self.args["--forward"],
             self.args["--reverse"],
             index,
+            fasta,
             min_qual,
             self.args["--start"],
+            self.args["--depth"],
+            self.args["--enzyme"],
             self.args["--outdir"],
             temp_directory,
             self.args["--threads"],
@@ -229,15 +232,14 @@ class Network(AbstractCommand):
         # Build the network
         mtn.alignment_to_contacts(
             alignment_files,
-            fasta,
-            self.args["--depth"],
+            contig_data,
+            hit_data,
             self.args["--outdir"],
             "network.txt",
             "contig_data_network.txt",
             temp_directory,
             self.args["--threads"],
             self.args["--normalization"],
-            self.args["--enzyme"],
             self_contacts,
         )
 
@@ -783,12 +785,15 @@ class Pipeline(AbstractCommand):
         # Run the whole workflow
         if start <= 2:
             # Align pair-end reads with bowtie2
-            alignment_files = mta.get_contact_pairs(
+            alignment_files, contig_data, hit_data = mta.get_contact_pairs(
                 self.args["--forward"],
                 self.args["--reverse"],
                 index,
+                fasta,
                 min_qual,
                 self.args["--start"],
+                self.args["--depth"],
+                self.args["--enzyme"],
                 self.args["--outdir"],
                 temp_directory,
                 self.args["--threads"],
@@ -797,15 +802,14 @@ class Pipeline(AbstractCommand):
             # Build the network
             network_file, contigs_data_file = mtn.alignment_to_contacts(
                 alignment_files,
-                fasta,
-                self.args["--depth"],
+                contig_data,
+                hit_data,
                 self.args["--outdir"],
                 "network.txt",
                 "contig_data_network.txt",
                 temp_directory,
                 self.args["--threads"],
                 self.args["--normalization"],
-                self.args["--enzyme"],
                 False,
             )
         else:

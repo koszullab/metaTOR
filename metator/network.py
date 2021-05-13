@@ -27,16 +27,15 @@ import metator.io as mio
 
 
 def alignment_to_contacts(
-    aligment_files,
-    assembly,
-    depth_file,
+    alignment_files,
+    contig_data,
+    hit_data,
     output_dir,
     output_file_network,
     output_file_contig_data,
     tmpdir,
     n_cpus,
     normalization,
-    enzyme,
     self_contacts,
 ):
     """Generates a network file (in edgelist form) from an alignment. Contigs
@@ -50,12 +49,13 @@ def alignment_to_contacts(
     -----------
     alignment_files : list of str
         List of path to the alignment file(s) used as input.
-    assembly : str
-        The initial assembly path acting as the alignment file's reference
-        assembly.
-    depth_file : str or None
-        Path to the depth.txt file from jgi_summarize_bam_contig_depths from
-        Metabat2 Software.
+    contig_data : dict
+        Dictionnary of the all the contigs from the assembly, the contigs names
+        are the keys to the data of the contig available with the following
+        keys: "id", "length", "GC", "hit", "coverage". Coverage still at 0 and
+        need to be updated later.
+    hit_data : dict:
+        Dictionnary for hit information on each contigs.
     output_dir : str
         The output directory to write the network and chunk data into.
     output_file_network : str, optional
@@ -70,8 +70,6 @@ def alignment_to_contacts(
         If None, do not normalized the count of a contact by the geometric mean
         of the coverage of the contigs. Otherwise it's the type of
         normalization.
-    enzyme : str or None
-        String that contains the names of the enzyme separated by a comma.
     self_contacts : bool
         Whether to return network with self contact. Default is False.
 
@@ -88,16 +86,11 @@ def alignment_to_contacts(
     network_file = join(output_dir, output_file_network)
     contig_data_file = join(output_dir, output_file_contig_data)
     hit_data_file = join(output_dir, "hit_data_alignment.txt")
-
-    # Create the contig data dictionnary and hit from each alignments
-    nb_alignment = len(aligment_files)
-    contig_data, hit_data = create_contig_data(
-        assembly, nb_alignment, depth_file, enzyme
-    )
+    nb_alignment = len(alignment_files)
 
     # Create a contact file easily readable for counting the contacts.
     contig_data = precompute_network(
-        aligment_files,
+        alignment_files,
         contig_data,
         hit_data,
         precompute_network_file,
@@ -392,7 +385,7 @@ def normalize_pair(contig_data, pair, n_occ, normalization):
 
 
 def precompute_network(
-    aligment_files, contig_data, hit_data, out_file, self_contacts=False
+    alignment_files, contig_data, hit_data, out_file, self_contacts=False
 ):
     """Write a file with only the contig id separated by a tabulation and count
     the contacts by contigs to be able to compute directlty the normalized
@@ -432,7 +425,7 @@ def precompute_network(
     with open(out_file, "w") as pre_net:
 
         # Iterates on the alignment files
-        for i, aligment_file in enumerate(aligment_files):
+        for i, aligment_file in enumerate(alignment_files):
 
             all_contacts_temp = 0
             inter_contacts_temp = 0
@@ -445,7 +438,7 @@ def precompute_network(
                         continue
 
                     # Split the line on the tabulation
-                    p = pair.split("\t")
+                    p = pair.split(" ")
 
                     # Extract the contig names which are at the position 2 and 6.
                     contig1, contig2 = p[1], p[4]
@@ -456,7 +449,7 @@ def precompute_network(
                     all_contacts_temp += 1
                     contig_data[contig1]["hit"] += 1
                     contig_data[contig2]["hit"] += 1
-                    if len(aligment_files) > 1:
+                    if len(alignment_files) > 1:
                         hit_data[contig1]["hit"][i] += 1
                         hit_data[contig2]["hit"][i] += 1
 

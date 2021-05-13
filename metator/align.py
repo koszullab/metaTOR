@@ -19,6 +19,7 @@ This module contains all these alignment functions:
 import csv
 import pysam
 import subprocess as sp
+import metator.network as mtn
 from metator.log import logger
 from os.path import join
 from pkg_resources import parse_version
@@ -65,8 +66,11 @@ def get_contact_pairs(
     for_in,
     rev_in,
     index,
+    assembly,
     min_qual,
     start,
+    depth_file,
+    enzyme,
     out_dir,
     tmp_dir,
     n_cpu,
@@ -90,10 +94,18 @@ def get_contact_pairs(
         given, list of path separated by a comma.
     index : str
         Path to the bowtie2 index of the assembly.
+    assembly : str
+        The initial assembly path acting as the alignment file's reference
+        assembly.
     min_qual : int
         Minimum mapping quality required to keep Hi-C pairs.
     start : str
         Either fastq or bam. Starting point for the pipeline.
+    depth_file : str or None
+        Path to the depth.txt file from jgi_summarize_bam_contig_depths from
+        Metabat2 Software.
+    enzyme : str or None
+        String that contains the names of the enzyme separated by a comma.
     out_dir : str
         Path to directory where to write the output file.
     tmp_dir : str
@@ -107,12 +119,25 @@ def get_contact_pairs(
         List of path of the Files with the table containing the alignement data
         of the pairs: ReadID, ContigA, Position_startA, Position_endA, StrandA,
         ContigB, Position_startB, Position_endB, StrandB.
+    dict
+        Dictionnary of the all the contigs from the assembly, the contigs names
+        are the keys to the data of the contig available with the following
+        keys: "id", "length", "GC", "hit", "coverage". Coverage still at 0 and
+        need to be updated later.
+    dict:
+        Dictionnary for hit information on each contigs.
     """
 
     # Iterates on all the input files:
     for_list = for_in.split(",")
     rev_list = rev_in.split(",")
     out_file_list = []
+
+    # Create the contig data dictionnary and hit from each alignments
+    nb_alignment = len(for_list)
+    contig_data, hit_data = mtn.create_contig_data(
+        assembly, nb_alignment, depth_file, enzyme
+    )
 
     for i in range(len(for_list)):
         for_in = for_list[i]
@@ -163,12 +188,14 @@ def get_contact_pairs(
 
         # Merge alignement to create a pairs file
         logger.info("Merging the pairs:")
-        merge_alignment(alignment_temp_for, alignment_temp_rev, out_file)
+        merge_alignment(
+            alignment_temp_for, alignment_temp_rev, contig_data, out_file
+        )
 
-    return out_file_list
+    return out_file_list, contig_data, hit_data
 
 
-def merge_alignment(forward_aligned, reverse_aligned, out_file):
+def merge_alignment(forward_aligned, reverse_aligned, contig_data, out_file):
     """Merge forward and reverse alignment into one file with only pairs which
     have both reads are aligned on the genome with 9 columns: ReadID, ContigA,
     Position_startA, Position_endA, StrandA, ContigB, Position_startB,
@@ -184,6 +211,11 @@ def merge_alignment(forward_aligned, reverse_aligned, out_file):
         File with the table containing the data of the forward reads kept after
         the alignment. With five columns: ReadID, Contig, Position_start,
         Position_end, strand.
+    contig_data : dict
+        Dictionnary of the all the contigs from the assembly, the contigs names
+        are the keys to the data of the contig available with the following
+        keys: "id", "length", "GC", "hit", "coverage". Coverage still at 0 and
+        need to be updated later.
     out_file : str
         Path to write the output file.
 
@@ -208,11 +240,15 @@ def merge_alignment(forward_aligned, reverse_aligned, out_file):
         rev_read = next(rev_bam)
 
         # Write header of the pairs file. No chromsize are given.
-        merged.write(
-            "## pairs format v1.0\n"
-            + "#columns: readID chr1 pos1 strand1 chr2 pos2 strand2\n"
-            + "#sorted: readID-chr1-pos1-strand1-chr2-pos2-strand2\n"
-        )
+        merged.write("## pairs format v1.0\n")
+        merged.write("#sorted: readID\n")
+        merged.write("#columns: readID chr1 pos1 strand1 chr2 pos2 strand2\n")
+        for contig in contig_data:
+            merged.write(
+                "#chromsize: {0} {1}\n".format(
+                    contig, contig_data[contig]["length"]
+                )
+            )
 
         # Loop while at least one end of one endd is reached. It's possible to
         # advance like that as the two tsv files are sorted on the id of the
@@ -220,9 +256,8 @@ def merge_alignment(forward_aligned, reverse_aligned, out_file):
         while n_pairs >= 0:
             # Case of both reads of the pair map.
             if for_read[0] == rev_read[0]:
-                merged.write("\t".join(for_read + rev_read[1:]) + "\n")
+                merged.write(" ".join(for_read + rev_read[1:]) + "\n")
                 n_pairs += 1
-                # print("w")
                 try:
                     for_read = next(for_bam)
                 except StopIteration:
