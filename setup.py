@@ -29,7 +29,7 @@ name = "metator"
 
 MAJOR = 1
 MINOR = 0
-MAINTENANCE = 3
+MAINTENANCE = 4
 VERSION = "{}.{}.{}".format(MAJOR, MINOR, MAINTENANCE)
 
 LICENSE = "GPLv3"
@@ -49,7 +49,7 @@ with open("metator/version.py", "w") as f:
 
 setup(
     name=name,
-    author="lyam.baudry@pasteur.fr",
+    author="amaury.bignaud@pasteur.fr",
     description=DESCRIPTION,
     long_description=LONG_DESCRIPTION,
     version=VERSION,
