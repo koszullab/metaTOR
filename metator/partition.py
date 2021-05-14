@@ -59,45 +59,6 @@ def build_clustering_matrix(core_bins_contigs, hamming_distance, N):
         Matrix with all the previously computed hamming distance between two
         contigs.
     """
-    # To build the clustering matrix it's necessary to transform the indexes in
-    # core bins id to contigs id.
-    # final_rows = []
-    # final_cols = []
-    # final_values = []
-
-    # # We iterates on the non zero values to transform for each point the
-    # # indexes.
-    # for row, col in zip(*hamming_distance.nonzero()):
-    #     # Extract all contigs id from the core bins.
-    #     if row < col:
-    #         clustering_value = hamming_distance[row, col]
-    #         row_contigs = core_bins_contigs[row]
-    #         col_contigs = core_bins_contigs[col]
-    #         # Append new values in the list.
-    #         for row_contig in row_contigs:
-    #             for col_contig in col_contigs:
-    #                 if row_contig > col_contig:
-    #                     final_rows.append(col_contig)
-    #                     final_cols.append(row_contig)
-    #                     final_values.append(clustering_value)
-    #                 else:
-    #                     final_rows.append(row_contig)
-    #                     final_cols.append(col_contig)
-    #                     final_values.append(clustering_value)
-    #     elif row == col:
-    #         contigs = core_bins_contigs[row]
-    #         for i in range(len(contigs)):
-    #             for j in range(i + 1, len(contigs)):
-    #                 final_rows.append(contigs[i])
-    #                 final_cols.append(contigs[j])
-    #                 final_values.append(1)
-    # # Build the sparse matrix
-    # clustering_matrix = sparse.coo_matrix(
-    #     (final_values, (final_rows, final_cols)),
-    #     shape=(N + 1, N + 1),
-    #     dtype=np.float32,
-    # )
-
     # To do it we build a transition matrix T which look like the identity
     # matrix but not square to extend our matrix as fellow: B = T.T * A * T
     rows = []
@@ -606,6 +567,14 @@ def partition(
         Path to the new contig data file with the bin informations in it.
     """
 
+    # Create partition folders in the temporary directory
+    temp_directory = join(temp_directory, "partition")
+    os.makedirs(temp_directory, exist_ok=True)
+    temp_directory_clustering = join(temp_directory, "clustering")
+    os.makedirs(temp_directory_clustering, exist_ok=True)
+    temp_directory_bins = join(temp_directory, "partition_bins")
+    os.makedirs(temp_directory_bins, exist_ok=True)
+
     # Perform the iterations of Louvain or Leiden to partition the network.
     logger.info("Start iterations:")
     if algorithm == "leiden":
@@ -614,7 +583,7 @@ def partition(
             network_file,
             iterations,
             resolution_parameter,
-            temp_directory,
+            temp_directory_clustering,
             LEIDEN_PATH,
         )
     elif algorithm == "louvain":
@@ -622,7 +591,7 @@ def partition(
         output_partition = louvain_iterations_cpp(
             network_file,
             iterations,
-            temp_directory,
+            temp_directory_clustering,
             LOUVAIN_PATH,
         )
     else:
@@ -668,7 +637,7 @@ def partition(
         contigs_data,
         size,
         fasta_dir,
-        temp_directory,
+        temp_directory_bins,
     )
 
     # Build clustering matrix.

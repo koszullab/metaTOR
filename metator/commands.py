@@ -140,8 +140,7 @@ class Network(AbstractCommand):
         # Defined the output directory and output file names.
         if not self.args["--outdir"]:
             self.args["--outdir"] = "."
-        if not exists(self.args["--outdir"]):
-            os.makedirs(self.args["--outdir"])
+        os.makedirs(self.args["--outdir"], exist_ok=True)
 
         # Enable file logging
         now = time.strftime("%Y%m%d%H%M%S")
@@ -336,8 +335,7 @@ class Partition(AbstractCommand):
         # Defined the output directory.
         if not self.args["--outdir"]:
             self.args["--outdir"] = "."
-        if not exists(self.args["--outdir"]):
-            os.makedirs(self.args["--outdir"])
+        os.makedirs(self.args["--outdir"], exist_ok=True)
         fasta_dir = join(self.args["--outdir"], "overlapping_bin")
         if not exists(fasta_dir):
             os.makedirs(fasta_dir)
@@ -462,8 +460,7 @@ class Validation(AbstractCommand):
         # Defined the output directory and output file names.
         if not self.args["--outdir"]:
             self.args["--outdir"] = "."
-        if not exists(self.args["--outdir"]):
-            os.makedirs(self.args["--outdir"])
+        os.makedirs(self.args["--outdir"], exist_ok=True)
         recursive_fasta_dir = join(self.args["--outdir"], "recursive_bin")
         final_fasta_dir = join(self.args["--outdir"], "final_bin")
         if not exists(recursive_fasta_dir):
@@ -641,8 +638,7 @@ class Pipeline(AbstractCommand):
         # Defined the output directory and output file names.
         if not self.args["--outdir"]:
             self.args["--outdir"] = "."
-        if not exists(self.args["--outdir"]):
-            os.makedirs(self.args["--outdir"])
+        os.makedirs(self.args["--outdir"], exist_ok=True)
         overlapping_fasta_dir = join(self.args["--outdir"], "overlapping_bin")
         if not exists(overlapping_fasta_dir):
             os.makedirs(overlapping_fasta_dir)

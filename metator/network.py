@@ -33,7 +33,7 @@ def alignment_to_contacts(
     output_dir,
     output_file_network,
     output_file_contig_data,
-    tmpdir,
+    tmp_dir,
     n_cpus,
     normalization,
     self_contacts,
@@ -64,7 +64,7 @@ def alignment_to_contacts(
     output_file_contig_data : str, optional
         The specific file name for the output chunk data file. Default is
         'idx_contig_length_GC_hit_cov.txt'
-    tmpdir : str
+    tmp_dir : str
         Path to th temporary directory. Default in the working directory
     normalization : str
         If None, do not normalized the count of a contact by the geometric mean
@@ -82,7 +82,7 @@ def alignment_to_contacts(
     """
 
     # Create temporary and output file which will be necessary
-    precompute_network_file = join(tmpdir, "precompute_network_file.txt")
+    precompute_network_file = join(tmp_dir, "precompute_network_file.txt")
     network_file = join(output_dir, output_file_network)
     contig_data_file = join(output_dir, output_file_contig_data)
     hit_data_file = join(output_dir, "hit_data_alignment.txt")
@@ -102,7 +102,7 @@ def alignment_to_contacts(
         precompute_network_file,
         network_file,
         contig_data,
-        tmpdir,
+        tmp_dir,
         n_cpus,
         normalization,
     )

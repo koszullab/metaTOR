@@ -374,6 +374,14 @@ def recursive_clustering(
         contigs.
     """
 
+    # Create temporary folders
+    tmpdir_subnetwork = join(tmpdir, "recursive_bins")
+    os.makedirs(tmpdir_subnetwork, exist_ok=True)
+    tmpdir_clustering = join(tmpdir, "recursive_clustering")
+    os.makedirs(tmpdir_clustering, exist_ok=True)
+    tmpdir_binning = join(tmpdir, "recursive_bins")
+    os.makedirs(tmpdir_binning, exist_ok=True)
+
     # Load CheckM result:
     checkm_summary = mio.read_results_checkm(checkm_file, taxonomy_file)
 
@@ -407,7 +415,9 @@ def recursive_clustering(
         ):
 
             logger.info("Bin in progress: {0}".format(bin_id))
-            subnetwork_file = join(tmpdir, "subnetwork_" + bin_id + ".txt")
+            subnetwork_file = join(
+                tmpdir_subnetwork, "subnetwork_" + bin_id + ".txt"
+            )
             bin_id = str(bin_id.split("_")[1])
 
             # Extract contigs
@@ -435,7 +445,7 @@ def recursive_clustering(
                     subnetwork_file,
                     iterations,
                     resolution_parameter,
-                    tmpdir,
+                    tmpdir_clustering,
                     LEIDEN_PATH,
                 )
             elif algorithm == "louvain":
@@ -443,7 +453,7 @@ def recursive_clustering(
                 output_partition = mtp.louvain_iterations_cpp(
                     subnetwork_file,
                     iterations,
-                    tmpdir,
+                    tmpdir_clustering,
                     LOUVAIN_PATH,
                 )
             else:
@@ -477,7 +487,7 @@ def recursive_clustering(
                 recursive_bins,
                 assembly,
                 recursive_fasta_dir,
-                tmpdir,
+                tmpdir_binning,
                 size,
                 contamination,
             )
@@ -554,6 +564,12 @@ def recursive_decontamination(
         contigs.
     """
 
+    # Create folders in the temporary directory
+    tmpdir_checkm = join(temp_directory, "checkm")
+    os.makedirs(tmpdir_checkm, exist_ok=True)
+    tmpdir_recursive_clustering = join(temp_directory, "recursive_clustering")
+    os.makedirs(tmpdir_recursive_clustering, exist_ok=True)
+
     # Defined checkm output file path
     overlapping_checkm_file = join(outdir, "overlapping_checkm_results.txt")
     overlapping_taxonomy_file = join(outdir, "overlapping_checkm_taxonomy.txt")
@@ -565,7 +581,7 @@ def recursive_decontamination(
         input_fasta_dir,
         overlapping_checkm_file,
         overlapping_taxonomy_file,
-        temp_directory,
+        tmpdir_checkm,
         threads,
     )
 
@@ -578,7 +594,7 @@ def recursive_decontamination(
         outdir,
         recursive_fasta_dir,
         algorithm,
-        temp_directory,
+        tmpdir_recursive_clustering,
         overlapping_checkm_file,
         overlapping_taxonomy_file,
         contig_data_file,
@@ -593,12 +609,12 @@ def recursive_decontamination(
     if contamination:
 
         # Run checkm on the recursive bins.
-        temp_directory = join(temp_directory, "checkm2")
+        tmpdir_checkm = join(temp_directory, "checkm2")
         checkm(
             recursive_fasta_dir,
             recursive_checkm_file,
             recursive_taxonomy_file,
-            temp_directory,
+            tmpdir_checkm,
             threads,
         )
 
