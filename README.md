@@ -96,8 +96,8 @@ The output files will be in the ouput directory given as parmater or in working 
 | Files/Commands | description | network | partition | validation | pipeline |
 | - | :-: | :-: | :-: | :-: | :-: |
 | alignment_N_for.bam |Bam file of the forward alignment |X|||X|
-| alignment_N_for.bam |Bam file of the reverse alignment|X|||X|
-| pairs_N.txt |Pairs of the merge alignment|X|||X|
+| alignment_N_rev.bam |Bam file of the reverse alignment|X|||X|
+| alignment_N.pairs |Pairs of the merge alignment|X|||X|
 | network.txt |Normalized network of the metaHiC library|X|||X|
 | contig_data_network.txt |Information on contigs after network step|X||||
 | clustering_matrix_partition.txt |Matrix of clustering from the partition iterations||X|||
@@ -119,7 +119,7 @@ The output files will be in the ouput directory given as parmater or in working 
 For the bam alignments files, only the aligned reads are kept and the bam are sorted by name. The N value correspond to the id (order of the given fastq started at 0)
 
 **Pairs aligment files**
-This format is used to store the relevant information of mapping of the merged alignment. It's a s The N value correspond to the id (order of the given fastq started at 0). It is a space-separated format holding informations about Hi-C pairs. It has an [official specification](https://github.com/4dn-dcic/pairix/blob/master/pairs_format_specification.md) defined by the 4D Nucleome data coordination and integration center. Here we kept 7 columns readID-chr1-pos1-strand1-chr2-pos2-strand2.
+This format is used to store the relevant information of mapping of the merged alignment. It's a s The N value correspond to the id (order of the given fastq started at 0). It is a tab-separated format holding informations about Hi-C pairs. It has an [official specification](https://github.com/4dn-dcic/pairix/blob/master/pairs_format_specification.md) defined by the 4D Nucleome data coordination and integration center. Here we kept 7 columns readID-chr1-pos1-chr2-pos2-strand1-strand2.
 
 **Network file**
 This is a tsv file of the network with edgelist form: Id of the first contig, id of the second contig and the weigth of edge normalized.

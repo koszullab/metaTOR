@@ -144,7 +144,7 @@ def get_contact_pairs(
         for_in = for_list[i]
         rev_in = rev_list[i]
         name = "alignment_" + str(i)
-        out_file = join(out_dir, "pairs_" + str(i) + ".txt")
+        out_file = join(out_dir, "alignment_" + str(i) + ".pairs")
         out_file_list.append(out_file)
 
         # Align if necessary
@@ -247,7 +247,7 @@ def merge_alignment(forward_aligned, reverse_aligned, contig_data, out_file):
         # Write header of the pairs file. No chromsize are given.
         merged.write("## pairs format v1.0\n")
         merged.write("#sorted: readID\n")
-        merged.write("#columns: readID chr1 pos1 strand1 chr2 pos2 strand2\n")
+        merged.write("#columns: readID chr1 pos1 chr2 pos2 strand1 strand2\n")
         for contig in contig_data:
             merged.write(
                 "#chromsize: {0} {1}\n".format(
@@ -261,7 +261,14 @@ def merge_alignment(forward_aligned, reverse_aligned, contig_data, out_file):
         while n_pairs >= 0:
             # Case of both reads of the pair map.
             if for_read[0] == rev_read[0]:
-                merged.write(" ".join(for_read + rev_read[1:]) + "\n")
+                merged.write(
+                    "\t".join(for_read[:3] + rev_read[1:3])
+                    + "\t"
+                    + for_read[3]
+                    + "\t"
+                    + rev_read[3]
+                    + "\n"
+                )
                 n_pairs += 1
                 try:
                     for_read = next(for_bam)

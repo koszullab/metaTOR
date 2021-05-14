@@ -19,7 +19,7 @@ global_args = {
     "NETWORK": "tests_data/outdir/network.txt",
     "CONTIGS": "tests_data/outdir/contig_data_network.txt",
     "OUT_TEST": "tests_data/out_test",
-    "PAIRS": "tests_data/outdir/pairs.txt",
+    "PAIRS": "tests_data/outdir/alignment.pairs",
     "TMP": "tests_data/tmp/",
 }
 NORMALIZE = (

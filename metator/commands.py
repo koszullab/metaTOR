@@ -195,7 +195,11 @@ class Network(AbstractCommand):
                 'For "abundance" and "theoritical_hit" normalization, depth is required.'
             )
             raise ValueError
-
+        if self.args["--start"] not in ["fastq", "bam", "pair", "network"]:
+            logger.error(
+                "Start argument should be 'fastq', 'bam', 'pair' or 'network'."
+            )
+            raise ValueError
         # Extract index and genome file
         assembly = self.args["--assembly"]
         # Check what is the reference. If a fasta is given build the index. If a

@@ -438,10 +438,11 @@ def precompute_network(
                         continue
 
                     # Split the line on the tabulation
-                    p = pair.split(" ")
+                    p = pair.split("\t")
 
-                    # Extract the contig names which are at the position 2 and 6.
-                    contig1, contig2 = p[1], p[4]
+                    # Extract the contig names which are at the position 2 and
+                    # 4.
+                    contig1, contig2 = p[1], p[3]
                     id1 = contig_data[contig1]["id"]
                     id2 = contig_data[contig2]["id"]
 
