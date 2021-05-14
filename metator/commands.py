@@ -96,7 +96,7 @@ class Network(AbstractCommand):
                                 containing the reverse reads to be aligned or
                                 their corresponding bam files. Forward and
                                 reverse reads need to have the same identifier
-                                (read names). If start is set to pair, no 
+                                (read names). If start is set to pair, no
                                 argument is necessary.
         -a, --assembly=FILE     The initial assembly path acting as the
                                 alignment file's reference genome or the
@@ -159,7 +159,9 @@ class Network(AbstractCommand):
         # Check if forward and reverse arguments are given:
         if self.args["--start"] != "pair":
             if not self.args["--forward"] or not self.args["--reverse"]:
-                logger.error("Forward and reverse arguments are necessary for fastq or bam start.")
+                logger.error(
+                    "Forward and reverse arguments are necessary for fastq or bam start."
+                )
                 raise ValueError
 
         # Check if normalization in the list of possible normalization.
@@ -231,7 +233,7 @@ class Network(AbstractCommand):
                 self.args["--depth"],
                 self.args["--enzyme"],
             )
-        
+
         else:
             # Align pair-end reads with bowtie2
             alignment_files, contig_data, hit_data = mta.get_contact_pairs(
@@ -572,7 +574,7 @@ class Pipeline(AbstractCommand):
                                 containing the reverse reads to be aligned or
                                 their corresponding bam files. Forward and
                                 reverse reads need to have the same identifier
-                                (read names). If pair start is used no argument 
+                                (read names). If pair start is used no argument
                                 is necessary.
         -a, --assembly=FILE     The initial assembly path acting as the
                                 alignment file's reference genome or the
@@ -762,11 +764,13 @@ class Pipeline(AbstractCommand):
                 "Start argument should be 'fastq', 'bam', 'pair' or 'network'."
             )
             raise ValueError
-        
+
         # Check if forward and reverse reads are given for fastq and bam start.
         if start <= 2:
             if not self.args["--forward"] or not self.args["--reverse"]:
-                logger.error("Forward and reverse arguments are necessary for fastq or bam start.")
+                logger.error(
+                    "Forward and reverse arguments are necessary for fastq or bam start."
+                )
                 raise ValueError
 
         # Print information of the workflow:

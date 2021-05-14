@@ -132,6 +132,7 @@ def get_contact_pairs(
     for_list = for_in.split(",")
     rev_list = rev_in.split(",")
     out_file_list = []
+    total_aligned_pairs = 0
 
     # Create the contig data dictionnary and hit from each alignments
     nb_alignment = len(for_list)
@@ -188,9 +189,13 @@ def get_contact_pairs(
 
         # Merge alignement to create a pairs file
         logger.info("Merging the pairs:")
-        merge_alignment(
+        n_pairs = merge_alignment(
             alignment_temp_for, alignment_temp_rev, contig_data, out_file
         )
+        logger.info("{0} pairs aligned.".format(n_pairs))
+        total_aligned_pairs += n_pairs
+    if len(out_file_list) > 1:
+        logger.info("TOTAL PAIRS MAPPED: {0}".format(total_aligned_pairs))
 
     return out_file_list, contig_data, hit_data
 
@@ -286,9 +291,7 @@ def merge_alignment(forward_aligned, reverse_aligned, contig_data, out_file):
                     except StopIteration:
                         break
 
-    logger.info("{0} pairs aligned.".format(n_pairs))
-
-    return out_file
+    return n_pairs
 
 
 def process_bamfile(alignment, min_qual, filtered_out):

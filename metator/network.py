@@ -393,7 +393,7 @@ def precompute_network(
 
     Parameters:
     -----------
-    alignment_files : str
+    alignment_files : list of str
         List of path to the alignment file(s).
     contig_data : dict
         Dictionnary of the all the contigs from the assembly, the contigs names
@@ -488,12 +488,13 @@ def precompute_network(
             )
 
     # Return information about the network
-    logger.info("General information:")
-    logger.info("{0} contacts in the library.".format(all_contacts))
-    logger.info(
-        "{0} contacts inter-contigs in the library.".format(inter_contacts)
-    )
-    logger.info("3D ratio : {0}\n".format(inter_contacts / all_contacts))
+    if len(alignment_files) > 1:
+        logger.info("General information:")
+        logger.info("{0} contacts in the library.".format(all_contacts))
+        logger.info(
+            "{0} contacts inter-contigs in the library.".format(inter_contacts)
+        )
+        logger.info("3D ratio : {0}\n".format(inter_contacts / all_contacts))
 
     return contig_data
 
