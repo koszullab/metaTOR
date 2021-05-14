@@ -206,25 +206,37 @@ def get_bin_coverage(bin_summary, contigs_data):
         Dictionnary with the informations of the final bins kept by MetaTOR with
         the coverage.
     """
-    # If no depth files were given put some zero on all columns
-    if contigs_data.Shotgun_coverage[0] == "-":
-        return bin_summary
-    # Else read all contigs data file and compute mean coverage for each bin.
+    # Compute HiC_coverage
     for i in range(len(contigs_data)):
         bin_name = contigs_data.Final_bin[i]
         if bin_name != "ND":
             try:
-                bin_summary[bin_name]["Coverage"] += (
-                    contigs_data.Size[i]
-                    * contigs_data.Shotgun_coverage[i]
+                bin_summary[bin_name]["HiC_Coverage"] += (
+                    1000
+                    * contigs_data.Hit[i]
                     / int(bin_summary[bin_name]["size"])
                 )
             except KeyError:
-                bin_summary[bin_name]["Coverage"] = (
-                    contigs_data.Size[i]
-                    * contigs_data.Shotgun_coverage[i]
+                bin_summary[bin_name]["HiC_Coverage"] = (
+                    1000
+                    * contigs_data.Hit[i]
                     / int(bin_summary[bin_name]["size"])
                 )
+
+            # If no depth files were given do not compute the Shotgun coverage.
+            if contigs_data.Shotgun_coverage[0] != "-":
+                try:
+                    bin_summary[bin_name]["SG_Coverage"] += (
+                        contigs_data.Size[i]
+                        * contigs_data.Shotgun_coverage[i]
+                        / int(bin_summary[bin_name]["size"])
+                    )
+                except KeyError:
+                    bin_summary[bin_name]["SG_Coverage"] = (
+                        contigs_data.Size[i]
+                        * contigs_data.Shotgun_coverage[i]
+                        / int(bin_summary[bin_name]["size"])
+                    )
     return bin_summary
 
 

@@ -131,6 +131,7 @@ These are the files with all the informations from the contigs:
 |1|NODE_1|642311|38.6876450815882|3837|41.1565|2006|1|65|2175226|1|396|6322353|1|52|2158803|MetaTOR_1_1|
 |2|NODE_2|576356|30.235826468363303|1724|24.509|1256|2|40|1735419|2|401|735419|0|-|-|MetaTOR_2_0|
 |3|NODE_3|540571|42.305266098255366|2188|14.5855|3405|3|127|6409484|3|431|13615480|1|112|6385126|MetaTOR_3_1|
+
 They have to have the header when they are use as input but the order of the columns nd if they are others columns doesn't matter when they are used as input files.
 Depending on which step of the pipeline have been launch they just have some of these columns:
 
@@ -153,7 +154,7 @@ Files from [checkM](https://github.com/Ecogenomics/CheckM) output. Two types of 
 This is a tsv file with two columns: the contig name and the final were the contig is. It only contains contigs which are binned. It could be use a an input to import a binning results in anvio.
 
 **Bin summary file**
-This is the summary of the data of the final bins build with all the step of metaTOR.
+This is the summary of the data of the final bins build with all the step of metaTOR. The HiC coverage is the number of contacts (intra and inter contigs) per kilobase in the whole bin. The Shotgun coverage is the mean coverage normalized by the size of the shotgun reads from the depth file.
 
 ||lineage|completness|contamination|size|contigs|N50|longest_contig|GC|coding_density|taxonomy|Coverage|
 |:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|

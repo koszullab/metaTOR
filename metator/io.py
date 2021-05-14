@@ -525,5 +525,16 @@ def write_checkm_summary(bin_summary, bin_summary_file):
     # Transform dictionnary to pandas DataFrame.
     bin_summary = pd.DataFrame.from_dict(bin_summary, orient="index")
 
+    # Change float format of the coverage.
+    bin_summary["HiC_Coverage"] = bin_summary["HiC_Coverage"].map(
+        lambda x: "%.2E" % x
+    )
+    try:
+        bin_summary["SG_Coverage"] = bin_summary["SG_Coverage"].map(
+            lambda x: "%.2E" % x
+        )
+    except KeyError:
+        pass
+
     # Write the file.
-    bin_summary.to_csv(bin_summary_file, sep="\t")
+    bin_summary.to_csv(bin_summary_file, sep="\t", float_format="%.2f")
