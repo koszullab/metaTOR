@@ -21,6 +21,8 @@ The subcommands are:
                 command line.
     validation  Validates bins using CheckM and make a recursive partition to
                 try to decontaminate them.
+    view        Generates a contact map from one bin from the final ouptut of 
+                metaTOR.
 """
 
 from docopt import docopt

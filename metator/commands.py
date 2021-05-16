@@ -31,6 +31,7 @@ import metator.log as mtl
 import metator.network as mtn
 import metator.partition as mtp
 import metator.validation as mtv
+import metator.view as mtw
 from docopt import docopt
 from metator.log import logger
 from os.path import exists, dirname, join
@@ -919,3 +920,81 @@ class Pipeline(AbstractCommand):
         # Delete the temporary folder.
         if not self.args["--no-clean-up"]:
             shutil.rmtree(temp_directory)
+
+
+class View(AbstractCommand):
+    """Generate a contact map from one bin from the final ouptut of metaTOR.
+
+    Generates the Hi-C matrix of one bin form the pair alignment file of 
+    metaTOR. Do not display the matrix, you have to run another pipeline to 
+    display it.
+
+    usage:
+        view --bin=STR --project=DIR --enzyme=STR [--filter] [--force]
+        [--mat-fmt=graal] [--min-size=5000] [--no-clean-up] [--outdir=DIR]
+        [--pcr-dup] [--tmpdir=DIR] [--threads=1]
+
+    options:
+        -b, --bin=STR           Name of the bin. Example: "MetaTOR_1_0".
+        -p, --project=DIR       Path of the output directory from metator
+                                validation or metator pipeline with the
+                                validation step done.
+        -e, --enzyme=STR        The list of restriction enzyme used to digest
+                                the contigs separated by a comma. Example:
+                                HpaII,MluCI.
+        -D, --pcr-dup,          Filter out PCR duplicates based on read
+                                positions.
+        -f, --filter            Filter out spurious 3C events (loops and uncuts)
+                                using hicstuff filter. For more informations,
+                                see Cournac et al. BMC Genomics, 2012.
+        -F, --force             Write files even if the output files already
+                                exists.
+        -m, --mat-fmt=STR       The format of the output sparse matrix. Can be
+                                "bg2" for 2D Bedgraph format, "cool" for
+                                Mirnylab's cooler software, or "graal" for
+                                graal-compatible plain text COO format.
+                                [default: graal]
+        -N, --no-clean-up       If enabled intermediary files will be kept.
+        -o, --outdir=DIR        Output directory. Default creates a new
+                                directory "bin_contact_map" in the projects
+                                folder.
+        -s, --min-size=INT      Minimum size threshold to consider contigs.
+                                [Default: 5000]
+        -t, --threads=INT       Number of threads to allocate. [Default: 1]
+        -T, --tmpdir=DIR        Directory for storing intermediary files and
+                                temporary files. Default creates a "tmp" folder
+                                in the current directory.
+    """
+
+    def execute(self):
+
+        # Defined the temporary directory.
+        if not self.args["--tmpdir"]:
+            self.args["--tmpdir"] = "./tmp"
+        tmp_dir = mio.generate_temp_dir(self.args["--tmpdir"])
+
+        # Defined the output directory and output file names.
+        if not self.args["--outdir"]:
+            self.args["--outdir"] = join(
+                self.args["--project"], "bin_contact_map"
+            )
+        os.makedirs(self.args["--outdir"], exist_ok=True)
+
+        mtw.generate_contact_map_bin(
+            self.args["--bin"],
+            self.args["--project"],
+            self.args["--outdir"],
+            tmp_dir,
+            self.args["--enzyme"],
+            self.args["--filter"],
+            self.args["--force"],
+            self.args["--mat-fmt"],
+            int(self.args["--min-size"]),
+            self.args["--no-clean-up"],
+            self.args["--pcr-dup"],
+            int(self.args["--threads"]),
+        )
+
+        # Delete the temporary folder.
+        if not self.args["--no-clean-up"]:
+            shutil.rmtree(tmp_dir)
