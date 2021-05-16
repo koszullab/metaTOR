@@ -16,11 +16,11 @@ Core function to build the network are:
 
 
 import fnmatch
+import hicstuff.pipeline as hcp
 import os
 import pandas as pd
 from metator.log import logger
 from os.path import join
-import hicstuff.pipeline as hcp
 
 
 class Bin:
@@ -203,7 +203,7 @@ def generate_contact_map_bin(
     """
 
     # Extract bin information from metaTOR outdir.
-    logger.info("## Generate HiC contact map for {0}".format(bin_name))
+    logger.info("Generate HiC contact map for {0}".format(bin_name))
     bin_data = Bin(bin_name, project, min_size)
     bin_data.set_contigs()
     bin_data.set_large_contigs()
@@ -211,7 +211,7 @@ def generate_contact_map_bin(
 
     # Extract pairs of the bin.
     n_pairs = extract_pairs_bin(bin_data)
-    logger.info("## {0} pairs have been extracted.".format(n_pairs))
+    logger.info("{0} pairs have been extracted.".format(n_pairs))
 
     # Launch hicstuff pipeline.
     hcp.full_pipeline(
