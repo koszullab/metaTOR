@@ -72,11 +72,13 @@ def build_clustering_matrix(core_bins_contigs, hamming_distance, N):
     transition_matrix = sparse.coo_matrix(
         (values, (rows, cols)),
         shape=(len(core_bins_contigs), N + 1),
-        dtype=np.float32,
+        dtype=np.int32,
     )
-    # Compute the clustering matrix and keep only the upper triangle.
-    clustering_matrix = sparse.triu(
-        transition_matrix.T.dot(hamming_distance).dot(transition_matrix), k=1
+    # Compute the clustering matrix on only the upper triangle of the hamming
+    # distance matrix as it's symmetric to reduce memory usage.
+    hamming_distance = sparse.triu(hamming_distance, k=1)
+    clustering_matrix = transition_matrix.T.dot(hamming_distance).dot(
+        transition_matrix
     )
     return ((clustering_matrix + clustering_matrix) / 2).tocoo()
 

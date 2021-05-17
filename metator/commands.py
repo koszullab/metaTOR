@@ -397,6 +397,8 @@ class Partition(AbstractCommand):
         )
         save_npz(clustering_matrix_file, clustering_matrix)
 
+        # Delete pyfastx index:
+        os.remove(self.args["--assembly"] + ".fxi")
         # Delete the temporary folder
         if not self.args["--no-clean-up"]:
             shutil.rmtree(temp_directory)
@@ -544,6 +546,8 @@ class Validation(AbstractCommand):
         )
         save_npz(clustering_matrix_file, clustering_matrix)
 
+        # Delete pyfastx index:
+        os.remove(self.args["--assembly"] + ".fxi")
         # Delete the temporary folder
         if not self.args["--no-clean-up"]:
             shutil.rmtree(temp_directory)
@@ -917,6 +921,8 @@ class Pipeline(AbstractCommand):
         )
         save_npz(clustering_matrix_file, clustering_matrix)
 
+        # Delete pyfastx index:
+        os.remove(fasta + ".fxi")
         # Delete the temporary folder.
         if not self.args["--no-clean-up"]:
             shutil.rmtree(temp_directory)
@@ -925,8 +931,8 @@ class Pipeline(AbstractCommand):
 class View(AbstractCommand):
     """Generate a contact map from one bin from the final ouptut of metaTOR.
 
-    Generates the Hi-C matrix of one bin form the pair alignment file of 
-    metaTOR. Do not display the matrix, you have to run another pipeline to 
+    Generates the Hi-C matrix of one bin form the pair alignment file of
+    metaTOR. Do not display the matrix, you have to run another pipeline to
     display it.
 
     usage:

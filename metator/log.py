@@ -36,6 +36,7 @@ stream_handler.setFormatter(stdout_formatter)
 logger.addHandler(stream_handler)
 logger.propagate = False
 
+
 def set_file_handler(log_path, formatter=logfile_formatter):
     """Change the file handler for custom log file location"""
 
@@ -46,6 +47,7 @@ def set_file_handler(log_path, formatter=logfile_formatter):
         if isinstance(hdlr, logging.FileHandler):
             logger.removeHandler(hdlr)
     logger.addHandler(filehandler)  # set the new handler
+
 
 def setup_text_logging(credentials=TEXT_CREDENTIALS_DEFAULT_PATH):
     """Setup text logging

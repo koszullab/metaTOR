@@ -162,6 +162,7 @@ def get_contact_pairs(
             align(rev_in, index, alignment_rev, n_cpu)
 
         elif start == "bam":
+            logger.info("Processing {0} and {1}:".format(for_in, rev_in))
             alignment_for = for_in
             alignment_rev = rev_in
 
