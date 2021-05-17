@@ -320,15 +320,15 @@ def process_bamfile(alignment, min_qual, filtered_out):
 
     Returns:
     --------
-    str:
-        Path to the table containing the data of the reads mapping unambiguously
-        and with a mapping quality superior to the threshold given. Five
-        columns: ReadID, Contig, Position_start, Position_end, strand.
+    int:
+        Number of reads aligned.
     """
 
     # Check the quality and status of each aligned fragment.
     aligned_reads = 0
+    save = pysam.set_verbosity(0)
     temp_bam = pysam.AlignmentFile(alignment, "rb", check_sq=False)
+    pysam.set_verbosity(save)
     with open(filtered_out, "a") as f:
         for r in temp_bam:
             # Check mapping quality
