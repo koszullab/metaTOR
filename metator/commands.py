@@ -35,7 +35,7 @@ import metator.view as mtw
 from docopt import docopt
 from metator.log import logger
 from os.path import exists, dirname, join
-from scipy.sparse import save_npz
+from scipy.sparse import save_npz, load_npz
 
 
 class AbstractCommand:
@@ -297,9 +297,9 @@ class Partition(AbstractCommand):
 
     usage:
         partition  --assembly=FILE --contigs=FILE --network=FILE
-        [--algorithm=louvain] [--force] [--iterations=100] [--no-clean-up]
-        [--outdir=DIR] [--overlap=80] [--res-param=1.0] [--size=500000]
-        [--threads=1] [--tempdir=DIR]
+        [--algorithm=louvain] [--cluster-matrix] [--force] [--iterations=100]
+        [--no-clean-up] [--outdir=DIR] [--overlap=80] [--res-param=1.0]
+        [--size=500000] [--threads=1] [--tempdir=DIR]
 
     options:
         -a, --assembly=FILE     The path to the assembly fasta file used to do
@@ -309,6 +309,7 @@ class Partition(AbstractCommand):
         -c, --contigs=FILE      The path to the tsv file containing the data of
                                 the contigs (ID, Name, Length, GC content, Hit,
                                 Coverage, Restriction Site).
+        -C, --cluster-matrix    If enabled, save the clustering matrix.
         -F, --force             If enabled, would remove directory of
                                 overlapping bins in the output directory.
         -i, --iterations=INT    Number of iterations of Louvain. [Default: 100]
@@ -376,9 +377,10 @@ class Partition(AbstractCommand):
             raise ValueError
 
         # Partition the network
-        clustering_matrix, contigs_data_file = mtp.partition(
+        clustering_matrix_file, contigs_data_file = mtp.partition(
             self.args["--algorithm"],
             self.args["--assembly"],
+            self.args["--cluster-matrix"],
             self.args["--contigs"],
             iterations,
             self.args["--network"],
@@ -390,12 +392,6 @@ class Partition(AbstractCommand):
             temp_directory,
             threads,
         )
-
-        # Save the clustering matrix
-        clustering_matrix_file = join(
-            self.args["--outdir"], "clustering_matrix_partition.txt"
-        )
-        save_npz(clustering_matrix_file, clustering_matrix)
 
         # Delete pyfastx index:
         os.remove(self.args["--assembly"] + ".fxi")
@@ -418,9 +414,9 @@ class Validation(AbstractCommand):
 
     usage:
         validation --assembly=FILE --contigs=FILE --fasta=DIR --network=FILE
-        [--algorithm=louvain] [--force] [--iterations=10] [--no-clean-up]
-        [--outdir=DIR] [--overlap=90] [--res-param=1.0] [--size=500000]
-        [--threads=1] [--tempdir=DIR]
+        [--algorithm=louvain] [--cluster-matrix] [--force] [--iterations=10]
+        [--no-clean-up] [--outdir=DIR] [--overlap=90] [--res-param=1.0]
+        [--size=500000] [--threads=1] [--tempdir=DIR]
 
     options:
         -a, --assembly=FILE     The path to the assembly fasta file used to do
@@ -429,6 +425,7 @@ class Validation(AbstractCommand):
                                 [Default: louvain]
         -c, --contigs=FILE      The path to the file containing the data of the
                                 contigs from the partition step (13 columns).
+        -C, --cluster-matrix    If enabled, save the clustering matrix.
         -f, --fasta=DIR         Path to the directory containing the input fasta
                                 files of the bins to decontaminate.
         -F, --force             If enable, would remove directory of recursive
@@ -523,9 +520,10 @@ class Validation(AbstractCommand):
             logger.error('algorithm should be either "louvain" or "leiden"')
             raise ValueError
 
-        clustering_matrix = mtv.recursive_decontamination(
+        clustering_matrix_file = mtv.recursive_decontamination(
             self.args["--algorithm"],
             self.args["--assembly"],
+            self.args["--cluster-matrix"],
             self.args["--contigs"],
             final_fasta_dir,
             self.args["--fasta"],
@@ -539,12 +537,6 @@ class Validation(AbstractCommand):
             temp_directory,
             threads,
         )
-
-        # Save the clustering matrix
-        clustering_matrix_file = join(
-            self.args["--outdir"], "clustering_matrix_recursive.txt"
-        )
-        save_npz(clustering_matrix_file, clustering_matrix)
 
         # Delete pyfastx index:
         os.remove(self.args["--assembly"] + ".fxi")
@@ -565,12 +557,12 @@ class Pipeline(AbstractCommand):
 
     usage:
         pipeline --assembly=FILE [--forward=STR] [--reverse=STR]
-        [--algorithm=louvain] [--contigs=FILE] [--depth=FILE] [--enzyme=STR]
-        [--force] [--iterations=100] [--rec-iter=10] [--network=FILE]
-        [--no-clean-up] [--normalization=empirical_hit] [--outdir=DIR]
-        [--overlap=80] [--rec-overlap=90]  [--min-quality=30] [--res-param=1.0]
-        [--size=500000] [--start=fastq] [--threads=1] [--tempdir=DIR]
-        [--skip-validation]
+        [--algorithm=louvain] [--cluster-matrix] [--contigs=FILE] [--depth=FILE]
+        [--enzyme=STR] [--force] [--iterations=100] [--rec-iter=10]
+        [--network=FILE] [--no-clean-up] [--normalization=empirical_hit]
+        [--outdir=DIR] [--overlap=80] [--rec-overlap=90]  [--min-quality=30]
+        [--res-param=1.0] [--size=500000] [--start=fastq] [--threads=1]
+        [--tempdir=DIR] [--skip-validation]
 
     options:
         -1, --forward=STR       Fastq file or list of Fastq separated by a comma
@@ -590,6 +582,7 @@ class Pipeline(AbstractCommand):
         -c, --contigs=FILE      The path to the file containing the data ofthe
                                 contigs (ID, Name, Length, GC content, Hit,
                                 Coverage, Restriction site).
+        -C, --cluster-matrix    If enabled, save the clustering matrix.
         -d, --depth=FILE        The depth.txt file from the shotgun reads used
                                 to made the assembly computed by
                                 jgi_summarize_bam_contig_depths from metabat2
@@ -863,9 +856,10 @@ class Pipeline(AbstractCommand):
             network_file = self.args["--network"]
 
         # Partition the network
-        clustering_matrix, contigs_data_file = mtp.partition(
+        clustering_matrix_partition_file, contigs_data_file = mtp.partition(
             self.args["--algorithm"],
             fasta,
+            self.args["--cluster-matrix"],
             contigs_data_file,
             iterations,
             network_file,
@@ -887,9 +881,10 @@ class Pipeline(AbstractCommand):
 
         # Launch validation if desired.
         if not self.args["--skip-validation"]:
-            clustering_matrix_recursive = mtv.recursive_decontamination(
+            clustering_matrix_recursive_file = mtv.recursive_decontamination(
                 self.args["--algorithm"],
                 fasta,
+                self.args["--cluster-matrix"],
                 contigs_data_file,
                 final_fasta_dir,
                 overlapping_fasta_dir,
@@ -904,22 +899,25 @@ class Pipeline(AbstractCommand):
                 threads,
             )
 
-            # Make the sum with the partiton clustering matrix
-            clustering_matrix = (
-                (clustering_matrix + clustering_matrix_recursive) / 2
-            ).tocoo()
+            if self.args["--cluster-matrix"]:
+                # Make the sum with the partiton clustering matrix and save it.
+                clustering_matrix = load_npz(clustering_matrix_partition_file)
+                clustering_matrix_recursive = load_npz(
+                    clustering_matrix_recursive_file
+                )
+                clustering_matrix = (
+                    (clustering_matrix + clustering_matrix_recursive) / 2
+                ).tocoo()
+                clustering_matrix_file = join(
+                    self.args["--outdir"], "clustering_matrix"
+                )
+                save_npz(clustering_matrix_file, clustering_matrix)
 
             # Remove contig_data_partition file
             contig_data_partition_file = join(
                 self.args["--outdir"], "contig_data_partition.txt"
             )
             os.remove(contig_data_partition_file)
-
-        # Save the clustering matrix
-        clustering_matrix_file = join(
-            self.args["--outdir"], "clustering_matrix.txt"
-        )
-        save_npz(clustering_matrix_file, clustering_matrix)
 
         # Delete pyfastx index:
         os.remove(fasta + ".fxi")

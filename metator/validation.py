@@ -323,6 +323,7 @@ def recursive_clustering(
     taxonomy_file,
     contigs_data_file,
     network_file,
+    cluster_matrix,
     size,
     threads,
 ):
@@ -356,6 +357,8 @@ def recursive_clustering(
         Path to the contigs data file from metator partition.
     network_file : str
         Path to the network file from metator network.
+    cluster_matrix : bool
+        If True, build the clustering matrix and save it.
     size : int
         Size threshodl in base pairs of the bins.
     threads : int
@@ -492,19 +495,29 @@ def recursive_clustering(
                 contamination,
             )
 
-            clustering_matrix += mtp.build_clustering_matrix(
-                recursive_core_bins, hamming_distance, N
-            )
+            # Build the clustering matrix of the subnetwork and add it.
+            if cluster_matrix:
+                clustering_matrix += mtp.build_clustering_matrix(
+                    recursive_core_bins, hamming_distance, N
+                )
 
             # Put back the info log
             logger.setLevel(logging.INFO)
 
-    return contamination, contigs_data, clustering_matrix
+    # Save the clustering matrix
+    if cluster_matrix:
+        clustering_matrix_file = join(outdir, "clustering_matrix_recursive")
+        sparse.save_npz(clustering_matrix_file, clustering_matrix)
+    else:
+        clustering_matrix_file = None
+
+    return contamination, contigs_data, clustering_matrix_file
 
 
 def recursive_decontamination(
     algorithm,
     assembly,
+    cluster_matrix,
     contig_data_file,
     final_fasta_dir,
     input_fasta_dir,
@@ -528,6 +541,8 @@ def recursive_decontamination(
         louvain.
     assembly : str
         Path to the assembly file used for the partition.
+    cluster_matrix : bool
+        If True, build the clustering matrix and save it.
     contig_data_file : str
         Path to the contig data table to update.
     final_fasta_dir : str
@@ -586,7 +601,7 @@ def recursive_decontamination(
     )
 
     # Iterates Louvain or Leiden on contaminated and complete bins.
-    contamination, contigs_data, clustering_matrix = recursive_clustering(
+    contamination, contigs_data, clustering_matrix_file = recursive_clustering(
         assembly,
         iterations,
         overlapping_parameter,
@@ -599,6 +614,7 @@ def recursive_decontamination(
         overlapping_taxonomy_file,
         contig_data_file,
         network_file,
+        cluster_matrix,
         size,
         threads,
     )
@@ -660,7 +676,7 @@ def recursive_decontamination(
     contig_data_file_2 = join(outdir, "contig_data_final.txt")
     contigs_data.to_csv(contig_data_file_2, sep="\t", header=True, index=False)
 
-    return clustering_matrix
+    return clustering_matrix_file
 
 
 def update_contigs_data_recursive(

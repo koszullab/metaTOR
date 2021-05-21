@@ -517,6 +517,7 @@ def louvain_iterations_cpp(network_file, iterations, tmp_dir, louvain_path):
 def partition(
     algorithm,
     assembly,
+    cluster_matrix,
     contig_data_file,
     iterations,
     network_file,
@@ -536,6 +537,8 @@ def partition(
         Algorithm to use to partition the network. Either leiden or louvain.
     assembly : str
         Path to the assembly file used for the partition.
+    cluster_matrix : bool
+        If True, build and save the clustering matrix.
     contig_data_file : str
         Path to the contig data table to update.
     iterations : int
@@ -642,13 +645,19 @@ def partition(
         temp_directory_bins,
     )
 
-    # Build clustering matrix.
-    logger.info("Build  clustering matrix")
-    clustering_matrix = build_clustering_matrix(
-        core_bins_contigs, hamming_distance, len(contigs_data.ID)
-    )
+    if cluster_matrix:
+        # Build clustering matrix and save it.
+        logger.info("Build  clustering matrix")
+        clustering_matrix = build_clustering_matrix(
+            core_bins_contigs, hamming_distance, len(contigs_data.ID)
+        )
+        # Save the clustering matrix
+        clustering_matrix_file = join(outdir, "clustering_matrix_partition")
+        sparse.save_npz(clustering_matrix_file, clustering_matrix)
+    else:
+        clustering_matrix_file = None
 
-    return clustering_matrix, contigs_data_file
+    return clustering_matrix_file, contigs_data_file
 
 
 def remove_isolates(output_partition, network_file):

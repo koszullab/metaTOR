@@ -70,6 +70,7 @@ def test_recursive_clustering(alg):
         taxonomy_file="tests_data/outdir2/overlapping_checkm_taxonomy.txt",
         contigs_data_file="tests_data/outdir2/contig_data_partition.txt",
         network_file="tests_data/outdir2/network.txt",
+        cluster_matrix=True,
         size=1000000,
         threads=1,
     )

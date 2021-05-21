@@ -57,7 +57,7 @@ def test_network3(norm):
 @pytest.mark.parametrize(*ALGORITHM)
 def test_partition(alg):
     args = (
-        "-a {FASTA} -c {CONTIGS} -i 5 -n {NETWORK} -o {OUT_TEST} -s 30000 -t 8 -T {TMP} -A {0} -F"
+        "-a {FASTA} -c {CONTIGS} -i 5 -n {NETWORK} -o {OUT_TEST} -s 30000 -t 8 -T {TMP} -A {0} -FC"
     ).format(alg, **global_args)
     proc = mtc.Partition(args.split(" "), {})
     proc.execute()
@@ -74,7 +74,7 @@ def test_partition(alg):
 
 def test_pipeline():
     args = (
-        "-1 {FASTQ_FOR} -2 {FASTQ_REV} -a {FASTA_INDEX} -v -F -o {OUT_TEST} -s 30000"
+        "-1 {FASTQ_FOR} -2 {FASTQ_REV} -a {FASTA_INDEX} -v -F -o {OUT_TEST} -s 30000 -C"
     ).format(**global_args)
     proc = mtc.Pipeline(args.split(" "), {})
     proc.execute()
