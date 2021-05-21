@@ -84,7 +84,7 @@ following order:
 There are a number of other, optional, miscellaneous actions:
 
 * `pipeline` : Run all three of the above actions sequentially or only some of them depending on the arguments given. This can take a while.
-* `view` : Generates a contact map from one bin from the final ouptut of metaTOR.
+* `contactmap` : Generates a contact map from one bin from the final ouptut of metaTOR.
 
 * `version` : display current version number.
 

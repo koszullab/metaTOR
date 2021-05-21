@@ -4,7 +4,7 @@
 # abignaud, 20201118
 
 """
-Meta3C pipeline for generating and manipulating MAGs.
+MetaHiC pipeline for generating and manipulating MAGs.
 
 usage:
     metator [-hv] <command> [<args>...]
@@ -21,8 +21,8 @@ The subcommands are:
                 command line.
     validation  Validates bins using CheckM and make a recursive partition to
                 try to decontaminate them.
-    view        Generates a contact map from one bin from the final ouptut of 
-                metaTOR.
+    contactmap  Generates a HiC contact map from one metaTOR object from the
+                final ouptut of metaTOR.
 """
 
 from docopt import docopt

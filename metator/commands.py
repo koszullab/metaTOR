@@ -31,7 +31,7 @@ import metator.log as mtl
 import metator.network as mtn
 import metator.partition as mtp
 import metator.validation as mtv
-import metator.view as mtw
+import metator.contact_map as mtc
 from docopt import docopt
 from metator.log import logger
 from os.path import exists, dirname, join
@@ -901,9 +901,11 @@ class Pipeline(AbstractCommand):
 
             if self.args["--cluster-matrix"]:
                 # Make the sum with the partiton clustering matrix and save it.
-                clustering_matrix = load_npz(clustering_matrix_partition_file)
+                clustering_matrix = load_npz(
+                    clustering_matrix_partition_file + ".npz"
+                )
                 clustering_matrix_recursive = load_npz(
-                    clustering_matrix_recursive_file
+                    clustering_matrix_recursive_file + ".npz"
                 )
                 clustering_matrix = (
                     (clustering_matrix + clustering_matrix_recursive) / 2
@@ -926,26 +928,40 @@ class Pipeline(AbstractCommand):
             shutil.rmtree(temp_directory)
 
 
-class View(AbstractCommand):
-    """Generate a contact map from one bin from the final ouptut of metaTOR.
+class Contactmap(AbstractCommand):
+    """Generates a HiC contact map of a MetaTOR object from the pairs files, the
+    contig data file and a fasta file containing the contigs of interest.
 
-    Generates the Hi-C matrix of one bin form the pair alignment file of
-    metaTOR. Do not display the matrix, you have to run another pipeline to
-    display it.
+    Generates the Hi-C matrix of one MetaTOR object form the pair alignment file
+    of metaTOR. MetaTOR object integrated are contigs, and core, overlapping,
+    recursive, final or personalized bins. For the personalized bins you should
+    add a column in the contig_data_final.txt file with a header called "Other".
+
+    Do not display the matrix, you have to run another pipeline to display it
+    such hicstuff view or cooler show depending on the metrix format chosen.
+    It's also possible to try to scaffold the bin using instagraal pipeline
+    using the output.
 
     usage:
-        view --bin=STR --project=DIR --enzyme=STR [--filter] [--force]
-        [--mat-fmt=graal] [--min-size=5000] [--no-clean-up] [--outdir=DIR]
-        [--pcr-dup] [--tmpdir=DIR] [--threads=1]
+        contactmap --assembly=FILE --contig-data=FILE --enzyme=STR --name=STR --pairs=FILE
+        [--filter] [--force] [--mat-fmt=graal] [--min-size=5000]
+        [--no-clean-up] [--object=final_bin] [--outdir=DIR] [--pcr-dup]
+        [--tmpdir=DIR] [--threads=1]
 
     options:
-        -b, --bin=STR           Name of the bin. Example: "MetaTOR_1_0".
-        -p, --project=DIR       Path of the output directory from metator
-                                validation or metator pipeline with the
-                                validation step done.
+        -a, --assembly=FILE     Path to the fasta file containing the contigs of
+                                interest. Could be the whole or the extracted
+                                contigs of one bin.
+        -c, --contig-data=FILE  Path to the contig_data_final.txt file form
+                                MetaTOR output.
         -e, --enzyme=STR        The list of restriction enzyme used to digest
                                 the contigs separated by a comma. Example:
                                 HpaII,MluCI.
+        -n, --name=STR          Name of the metator or its numerical ID for the
+                                core bin, overlapping bin or recursive bin
+                                objects. Example: "NODE_1", "MetaTOR_1_0" or 8.
+        -p, --pairs=FILE        Path of the ".pairs" file. If more than one is
+                                given, files should be separated by a comma.
         -D, --pcr-dup,          Filter out PCR duplicates based on read
                                 positions.
         -f, --filter            Filter out spurious 3C events (loops and uncuts)
@@ -960,8 +976,11 @@ class View(AbstractCommand):
                                 [default: graal]
         -N, --no-clean-up       If enabled intermediary files will be kept.
         -o, --outdir=DIR        Output directory. Default creates a new
-                                directory "bin_contact_map" in the projects
-                                folder.
+                                directory contact_map in the current directory.
+        -O, --object=STR        Type of metator object used to build a contact
+                                map. Either "contig", "core_bin",
+                                "overlapping_bin", "recursive_bin", "final_bin"
+                                or "other". [Default: final_bin]
         -s, --min-size=INT      Minimum size threshold to consider contigs.
                                 [Default: 5000]
         -t, --threads=INT       Number of threads to allocate. [Default: 1]
@@ -980,25 +999,30 @@ class View(AbstractCommand):
         # Defined the output directory and output file names.
         if not self.args["--outdir"]:
             self.args["--outdir"] = join(
-                self.args["--project"], "bin_contact_map"
+                ".", "contact_map_" + self.args["--name"]
             )
         os.makedirs(self.args["--outdir"], exist_ok=True)
 
-        mtw.generate_contact_map_bin(
-            self.args["--bin"],
-            self.args["--project"],
+        mtc.generate_contact_map(
+            self.args["--assembly"],
+            self.args["--contig-data"],
+            self.args["--enzyme"],
+            self.args["--name"],
+            self.args["--pairs"],
             self.args["--outdir"],
             tmp_dir,
-            self.args["--enzyme"],
             self.args["--filter"],
             self.args["--force"],
             self.args["--mat-fmt"],
+            self.args["--object"],
             int(self.args["--min-size"]),
             self.args["--no-clean-up"],
             self.args["--pcr-dup"],
             int(self.args["--threads"]),
         )
 
+        # Delete pyfastx index:
+        os.remove(self.args["--assembly"] + ".fxi")
         # Delete the temporary folder.
         if not self.args["--no-clean-up"]:
             shutil.rmtree(tmp_dir)
