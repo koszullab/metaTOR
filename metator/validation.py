@@ -25,6 +25,7 @@ Functions in this module:
 
 import logging
 import metator.io as mio
+import metator.figures as mtf
 import metator.partition as mtp
 import networkx as nx
 import numpy as np
@@ -675,6 +676,9 @@ def recursive_decontamination(
     # Write the new file
     contig_data_file_2 = join(outdir, "contig_data_final.txt")
     contigs_data.to_csv(contig_data_file_2, sep="\t", header=True, index=False)
+
+    # Plot some figures of contigs distribution inside bins:
+    mtf.plot_figures(outdir, contigs_data, bin_summary)
 
     return clustering_matrix_file
 
