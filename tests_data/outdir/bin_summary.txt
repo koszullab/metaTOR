@@ -1,0 +1,4 @@
+	lineage	completness	contamination	size	contigs	N50	longest_contig	GC	coding_density	taxonomy	HiC_Coverage	SG_Coverage
+MetaTOR_1_0	o__Clostridiales	97.99	1111.03	2045922	72	119919	642311	38.47	91.09	k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales;f__Ruminococcaceae	4.06E+01	3.59E+01
+MetaTOR_2_0	o__Clostridiales	78.91	2.80	1727703	44	110589	576356	29.88	89.30	k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales	4.45E+01	2.59E+01
+MetaTOR_3_1	g__Bacteroides	99.41	0.94	6435482	156	179010	540571	42.88	90.34	k__Bacteria;p__Bacteroidetes;c__Bacteroidia;o__Bacteroidales;f__Bacteroidaceae;g__Bacteroides;s__Bacteroides_thetaiotaomicron	7.49E+01	1.73E+01

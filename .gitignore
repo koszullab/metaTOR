@@ -50,6 +50,7 @@ coverage.xml
 tmp/
 tests_data/tmp
 tests_data/out_test
+tests_data/outdir/plot/
 
 # Translations
 *.mo

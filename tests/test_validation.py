@@ -1,4 +1,4 @@
-# Test for validation modules
+# Test for validation module
 
 import metator.io as mio
 import metator.validation as mtv
