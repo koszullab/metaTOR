@@ -240,12 +240,16 @@ def generate_fasta(
         list_contigs_id = overlapping_bins[bin_id]
         list_contigs_name = []
         # Test if the bin is bigger than the size threshold given.
-        length_bin = contigs_data.Overlapping_bin_size[list_contigs_id[0] - 1]
+        length_bin = contigs_data.loc[
+            list_contigs_id[0] - 1, "Overlapping_bin_size"
+        ]
         if length_bin >= size:
             nb_bins += 1
             length_bins += length_bin
             for contig_id in list_contigs_id:
-                list_contigs_name.append(contigs_data.Name[contig_id - 1])
+                list_contigs_name.append(
+                    contigs_data.loc[contig_id - 1, "Name"]
+                )
             # Define the output file.
             output_file = join(output_dir, "MetaTOR_{0}_0.fa".format(bin_id))
             # Create the fasta file.
@@ -746,9 +750,9 @@ def update_contigs_data(
         core_bin_contigs_number = len(core_bin)
         core_bin_length = sum(core_bin_data.Size)
         # Write the new information
-        contigs_data.Core_bin_ID[core_bin] = i + 1
-        contigs_data.Core_bin_contigs[core_bin] = core_bin_contigs_number
-        contigs_data.Core_bin_size[core_bin] = core_bin_length
+        contigs_data.loc[core_bin, "Core_bin_ID"] = i + 1
+        contigs_data.loc[core_bin, "Core_bin_contigs"] = core_bin_contigs_number
+        contigs_data.loc[core_bin, "Core_bin_size"] = core_bin_length
 
     # Add overlapping information
     for i in overlapping_bins:
@@ -758,12 +762,12 @@ def update_contigs_data(
         overlapping_bin_contigs_number = len(overlapping_bin)
         overlapping_bin_length = sum(overlapping_bin_data.Size)
         # Write the new information
-        contigs_data.Overlapping_bin_ID[overlapping_bin] = i
-        contigs_data.Overlapping_bin_contigs[
-            overlapping_bin
+        contigs_data.loc[overlapping_bin, "Overlapping_bin_ID"] = i
+        contigs_data.loc[
+            overlapping_bin, "Overlapping_bin_contigs"
         ] = overlapping_bin_contigs_number
-        contigs_data.Overlapping_bin_size[
-            overlapping_bin
+        contigs_data.loc[
+            overlapping_bin, "Overlapping_bin_size"
         ] = overlapping_bin_length
 
     # Write the new file

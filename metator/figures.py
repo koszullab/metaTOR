@@ -222,7 +222,7 @@ def figures_mags_HiC_cov_boxplots(contigs_data, out_file):
         Path where to write the figure.
     """
     # Compute the HiC coverage.
-    contigs_data['HiC_cov'] = 100 * contigs_data['Hit'] /contigs_data['Size']
+    contigs_data["HiC_cov"] = 100 * contigs_data["Hit"] / contigs_data["Size"]
     # Plot the figure.
     fig, ax = plt.subplots(figsize=(20, 10))
     sns.boxplot(

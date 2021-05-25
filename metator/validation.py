@@ -209,33 +209,33 @@ def get_bin_coverage(bin_summary, contigs_data):
     """
     # Compute HiC_coverage
     for i in range(len(contigs_data)):
-        bin_name = contigs_data.Final_bin[i]
+        bin_name = contigs_data.loc[i, "Final_bin"]
         if bin_name != "ND":
             try:
                 bin_summary[bin_name]["HiC_Coverage"] += (
                     1000
-                    * contigs_data.Hit[i]
+                    * contigs_data.loc[i, "Hit"]
                     / int(bin_summary[bin_name]["size"])
                 )
             except KeyError:
                 bin_summary[bin_name]["HiC_Coverage"] = (
                     1000
-                    * contigs_data.Hit[i]
+                    * contigs_data.loc[i, "Hit"]
                     / int(bin_summary[bin_name]["size"])
                 )
 
             # If no depth files were given do not compute the Shotgun coverage.
-            if contigs_data.Shotgun_coverage[0] != "-":
+            if contigs_data.loc[0, "Shotgun_coverage"] != "-":
                 try:
                     bin_summary[bin_name]["SG_Coverage"] += (
-                        contigs_data.Size[i]
-                        * contigs_data.Shotgun_coverage[i]
+                        contigs_data.loc[i, "Size"]
+                        * contigs_data.loc[i, "Shotgun_coverage"]
                         / int(bin_summary[bin_name]["size"])
                     )
                 except KeyError:
                     bin_summary[bin_name]["SG_Coverage"] = (
-                        contigs_data.Size[i]
-                        * contigs_data.Shotgun_coverage[i]
+                        contigs_data.loc[i, "Size"]
+                        * contigs_data.loc[i, "Shotgun_coverage"]
                         / int(bin_summary[bin_name]["size"])
                     )
     return bin_summary
@@ -425,11 +425,8 @@ def recursive_clustering(
             bin_id = str(bin_id.split("_")[1])
 
             # Extract contigs
-            list_contigs = list(
-                contigs_data["ID"][
-                    contigs_data.Overlapping_bin_ID.apply(str) == bin_id
-                ]
-            )
+            mask = contigs_data["Overlapping_bin_ID"].apply(str) == bin_id
+            list_contigs = list(contigs_data.loc[mask, "ID"])
 
             # Extract subnetwork
             subnetwork = network.subgraph(list_contigs)
@@ -729,12 +726,12 @@ def update_contigs_data_recursive(
 
         if recursive_bin_contigs_number > 1:
             # Write the new information
-            contigs_data.Recursive_bin_ID[recursive_bin] = rec_id
-            contigs_data.Recursive_bin_contigs[
-                recursive_bin
+            contigs_data.loc[recursive_bin, "Recursive_bin_ID"] = rec_id
+            contigs_data.loc[
+                recursive_bin, "Recursive_bin_contigs"
             ] = recursive_bin_contigs_number
-            contigs_data.Recursive_bin_size[
-                recursive_bin
+            contigs_data.loc[
+                recursive_bin, "Recursive_bin_size"
             ] = recursive_bin_length
 
             if recursive_bin_length > size:
@@ -743,13 +740,13 @@ def update_contigs_data_recursive(
                 contamination = True
 
                 # Defined name of the recursive bin
-                oc_id = contigs_data.Overlapping_bin_ID[recursive_bin[0]]
+                oc_id = contigs_data.loc[recursive_bin[0], "Overlapping_bin_ID"]
                 output_file = join(
                     outdir, "MetaTOR_{0}_{1}.fa".format(oc_id, rec_id)
                 )
 
                 # Retrieve names of the contigs
-                list_contigs = list(contigs_data.Name[recursive_bin])
+                list_contigs = list(contigs_data.loc[recursive_bin, "Name"])
 
                 # Generate the fasta
                 contigs_file = join(
@@ -800,8 +797,8 @@ def write_bins_contigs(bin_summary, contigs_data, outfile):
     # Write the contigs id with their bins id in table file
     with open(outfile, "w") as f:
         for i in range(len(contigs_data)):
-            over_id = str(contigs_data.Overlapping_bin_ID[i])
-            rec_id = str(contigs_data.Recursive_bin_ID[i])
+            over_id = str(contigs_data.loc[i, "Overlapping_bin_ID"])
+            rec_id = str(contigs_data.loc[i, "Recursive_bin_ID"])
             try:
                 rec_ids = list_bin_id[over_id]
                 binned = False
@@ -818,9 +815,11 @@ def write_bins_contigs(bin_summary, contigs_data, outfile):
                         over_id,
                         rec_id,
                     )
-                    contigs_data.Final_bin[i] = final_bin
+                    contigs_data.loc[i, "Final_bin"] = final_bin
                     f.write(
-                        "{0}\t{1}\n".format(contigs_data.Name[i], final_bin)
+                        "{0}\t{1}\n".format(
+                            contigs_data.loc[i, "Name"], final_bin
+                        )
                     )
             except KeyError:
                 pass
