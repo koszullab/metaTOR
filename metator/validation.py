@@ -675,7 +675,7 @@ def recursive_decontamination(
     contigs_data.to_csv(contig_data_file_2, sep="\t", header=True, index=False)
 
     # Plot some figures of contigs distribution inside bins:
-    mtf.plot_figures(outdir, contigs_data, bin_summary)
+    mtf.plot_figures(outdir, contigs_data, bin_summary, size)
 
     return clustering_matrix_file
 

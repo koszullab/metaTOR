@@ -8,4 +8,5 @@ pyfastx
 pysam
 requests
 scipy
+seaborn
 sklearn

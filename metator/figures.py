@@ -83,7 +83,9 @@ def figures_bins_distribution(bin_summary, out_file):
     plt.savefig(out_file, dpi=200, bbox_inches="tight")
 
 
-def figures_bins_size_distribution(bin_summary, total_size, out_file):
+def figures_bins_size_distribution(
+    bin_summary, total_size, threshold, out_file
+):
     """Function to plot a camembert of the fraction of size corresponding
     to each quality of bins. We defined 6 categories:
         - High quality MAGs (HQ MAGs): >= 90% completion ; < 5% contamination
@@ -99,9 +101,13 @@ def figures_bins_size_distribution(bin_summary, total_size, out_file):
         Table with the informations about the final bins.
     total_size : int
         Size of the whole assembly.
+    threshold : int
+        Minimun size of the bins considered.
     out_file : str
         Path where to save the figure.
     """
+    # Add a qualitive quality column in bin_summary with the quality of the MAGs
+    bin_summary["MAG_quality"] = "ND"
     # Build a small table with the sum for each quality category.
     mags_summary = pd.DataFrame(
         [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [None, 0]],
@@ -115,42 +121,64 @@ def figures_bins_size_distribution(bin_summary, total_size, out_file):
             if contamination > 10:
                 mags_summary.loc[3, "bins"] += 1
                 mags_summary.loc[3, "size"] += size
+                bin_summary.loc[i, "MAG_quality"] = "Contaminated"
             else:
                 if completness >= 90 and contamination <= 5:
                     mags_summary.loc[0, "bins"] += 1
                     mags_summary.loc[0, "size"] += size
+                    bin_summary.loc[i, "MAG_quality"] = "HQ"
                 elif completness >= 70:
                     mags_summary.loc[1, "bins"] += 1
                     mags_summary.loc[1, "size"] += size
+                    bin_summary.loc[i, "MAG_quality"] = "MQ"
                 else:
                     mags_summary.loc[2, "bins"] += 1
                     mags_summary.loc[2, "size"] += size
+                    bin_summary.loc[i, "MAG_quality"] = "LQ"
         else:
             mags_summary.loc[4, "bins"] += 1
             mags_summary.loc[4, "size"] += size
+            bin_summary.loc[i, "MAG_quality"] = "Other"
     mags_summary.loc[5, "size"] = total_size - sum(mags_summary["size"])
     # Plot the camembert of the size ratio.
     labels = [
-        "HQ MAGs: " + str(int(mags_summary.loc[0, "bins"])),
-        "MQ MAGs: " + str(int(mags_summary.loc[1, "bins"])),
-        "LQ MAGs: " + str(int(mags_summary.loc[2, "bins"])),
-        "Contaminated bins: " + str(int(mags_summary.loc[3, "bins"])),
-        "Other bins: " + str(int(mags_summary.loc[4, "bins"])),
-        "Unbinned contigs",
+        "HQ MAGs: {0} - {1}Mb".format(
+            int(mags_summary.loc[0, "bins"]),
+            round(mags_summary.loc[0, "size"] / 1000000, 2),
+        ),
+        "MQ MAGs: {0} - {1}Mb".format(
+            int(mags_summary.loc[1, "bins"]),
+            round(mags_summary.loc[1, "size"] / 1000000, 2),
+        ),
+        "LQ MAGs: {0} - {1}Mb".format(
+            int(mags_summary.loc[2, "bins"]),
+            round(mags_summary.loc[2, "size"] / 1000000, 2),
+        ),
+        "Contaminated bins: {0} - {1}Mb".format(
+            int(mags_summary.loc[3, "bins"]),
+            round(mags_summary.loc[3, "size"] / 1000000, 2),
+        ),
+        "Others bins: {0} - {1}Mb".format(
+            int(mags_summary.loc[4, "bins"]),
+            round(mags_summary.loc[4, "size"] / 1000000, 2),
+        ),
+        "Others contigs - {0}Mb".format(
+            round(mags_summary.loc[5, "size"] / 1000000, 2),
+        ),
     ]
     fig, ax = plt.subplots()
     plt.pie(
         mags_summary["size"],
         colors=[
-            "midnightblue",
-            "royalblue",
-            "cornflowerblue",
-            "peru",
-            "brown",
+            "#313695",
+            "#4575b4",
+            "#abd9e9",
+            "#fdae61",
+            "#a50026",
             "k",
         ],
     )
-    plt.legend(labels, bbox_to_anchor=(0.7, 0.0, 1.0, 1.0), loc="upper right")
+    plt.legend(labels, bbox_to_anchor=(0.9, 0.0, 1.0, 1.0), loc="upper right")
     plt.text(
         -1.5,
         -1.2,
@@ -161,15 +189,24 @@ def figures_bins_size_distribution(bin_summary, total_size, out_file):
     )
     plt.text(
         -1.5,
-        -1.4,
+        -1.35,
         "Percentage of MAGs: {0}%".format(
             round(sum(mags_summary["size"][0:3]) / total_size * 100, 2)
+        ),
+        fontdict=None,
+    )
+    plt.text(
+        -1.5,
+        -1.5,
+        "Bins threshold: {0}kb".format(
+            round(threshold / 1000, 2),
         ),
         fontdict=None,
     )
     plt.title("Size proportion of bins depending on their quality")
     # Save the file
     plt.savefig(out_file, dpi=200, bbox_inches="tight")
+    return bin_summary
 
 
 def figures_mags_GC_boxplots(contigs_data, out_file):
@@ -185,25 +222,45 @@ def figures_mags_GC_boxplots(contigs_data, out_file):
     out_file : str
         Path where to write the figure.
     """
+    # Sort by decreasing GC.
+    contigs_data = contigs_data.sort_values(by="GC", ascending=False)
+    # Build the palette
+    my_pal = {
+        "HQ": "#313695",
+        "MQ": "#4575b4",
+        "LQ": "#abd9e9",
+        "Contaminated": "#fdae61",
+        "Other": "#a50026",
+    }
     # Plot the figure.
     fig, ax = plt.subplots(figsize=(20, 10))
-    sns.boxplot(
+    boxplot = sns.boxplot(
         y="GC_content",
         x="Final_bin",
         data=reindex_df(contigs_data, "size_weight"),
-        palette="colorblind",
+        palette=my_pal,
+        hue="MAG_quality",
+        hue_order=["HQ", "MQ", "LQ", "Contaminated", "Other"],
         flierprops=dict(
             markerfacecolor="0.5",
             markersize=1.0,
             marker="o",
             markeredgewidth=0.0,
         ),
-        linewidth=0.5,
+        linewidth=1.25,
         width=1.0,
+        dodge=False,
     )
-    ax.set(
-        xlabel="Finals bins", ylabel="GC content distribution", xticklabels=[]
-    )
+    ax.set(xlabel="", ylabel="GC content distribution", xticklabels=[])
+    labels = [
+        "HQ MAGs (Completion > 90, Contamination < 5)",
+        "MQ MAGs (Completion > 70, Contamination < 10)",
+        "LQ MAGs (Completion > 50, Contamination < 10)",
+        "Contaminated (Completion > 50, Contamination < 10)",
+        "Other (Completion < 50)",
+    ]
+    handles, _ = boxplot.get_legend_handles_labels()
+    boxplot.legend(handles, labels)
     # Save the file.
     plt.savefig(out_file, dpi=200, bbox_inches="tight")
 
@@ -223,26 +280,46 @@ def figures_mags_HiC_cov_boxplots(contigs_data, out_file):
     """
     # Compute the HiC coverage.
     contigs_data["HiC_cov"] = 100 * contigs_data["Hit"] / contigs_data["Size"]
+    # Sort by decreasing HiC coverage.
+    contigs_data = contigs_data.sort_values(by="HiC_cov", ascending=False)
+    # Build the palette
+    my_pal = {
+        "HQ": "#313695",
+        "MQ": "#4575b4",
+        "LQ": "#abd9e9",
+        "Contaminated": "#fdae61",
+        "Other": "#a50026",
+    }
     # Plot the figure.
     fig, ax = plt.subplots(figsize=(20, 10))
-    sns.boxplot(
+    boxplot = sns.boxplot(
         y="HiC_cov",
         x="Final_bin",
         data=reindex_df(contigs_data, "size_weight"),
-        palette="colorblind",
+        palette=my_pal,
+        hue="MAG_quality",
+        hue_order=["HQ", "MQ", "LQ", "Contaminated", "Other"],
         flierprops=dict(
             markerfacecolor="0.5",
             markersize=1.0,
             marker="o",
             markeredgewidth=0.0,
         ),
-        linewidth=0.5,
+        linewidth=1.25,
         width=1.0,
+        dodge=False,
     )
     plt.yscale("log")
-    ax.set(
-        xlabel="Finals bins", ylabel="HiC coverage distribution", xticklabels=[]
-    )
+    ax.set(xlabel="", ylabel="HiC coverage distribution", xticklabels=[])
+    labels = [
+        "HQ MAGs (Completion > 90, Contamination < 5)",
+        "MQ MAGs (Completion > 70, Contamination < 10)",
+        "LQ MAGs (Completion > 50, Contamination < 10)",
+        "Contaminated (Completion > 50, Contamination < 10)",
+        "Other (Completion < 50)",
+    ]
+    handles, _ = boxplot.get_legend_handles_labels()
+    boxplot.legend(handles, labels)
     # Save the file.
     plt.savefig(out_file, dpi=200, bbox_inches="tight")
 
@@ -260,33 +337,52 @@ def figures_mags_SG_cov_boxplots(contigs_data, out_file):
     out_file : str
         Path where to write the figure.
     """
+    # Sort by decreasing Shotgun coverage.
+    contigs_data = contigs_data.sort_values(by="SG_Coverage", ascending=False)
+    # Build the palette
+    my_pal = {
+        "HQ": "#313695",
+        "MQ": "#4575b4",
+        "LQ": "#abd9e9",
+        "Contaminated": "#fdae61",
+        "Other": "#a50026",
+    }
+
     # Plot the figure.
     fig, ax = plt.subplots(figsize=(20, 10))
-    sns.boxplot(
+    boxplot = sns.boxplot(
         y="Shotgun_coverage",
         x="Final_bin",
         data=reindex_df(contigs_data, "size_weight"),
-        palette="colorblind",
+        palette=my_pal,
+        hue="MAG_quality",
+        hue_order=["HQ", "MQ", "LQ", "Contaminated", "Other"],
         flierprops=dict(
             markerfacecolor="0.5",
             markersize=1.0,
             marker="o",
             markeredgewidth=0.0,
         ),
-        linewidth=0.5,
+        linewidth=1.25,
         width=1.0,
+        dodge=False,
     )
     plt.yscale("log")
-    ax.set(
-        xlabel="Finals bins",
-        ylabel="Assembly coverage distribution",
-        xticklabels=[],
-    )
+    ax.set(xlabel="", ylabel="Assembly coverage distribution", xticklabels=[])
+    labels = [
+        "HQ MAGs (Completion > 90, Contamination < 5)",
+        "MQ MAGs (Completion > 70, Contamination < 10)",
+        "LQ MAGs (Completion > 50, Contamination < 10)",
+        "Contaminated (Completion > 50, Contamination < 10)",
+        "Other (Completion < 50)",
+    ]
+    handles, _ = boxplot.get_legend_handles_labels()
+    boxplot.legend(handles, labels)
     # Save the file.
     plt.savefig(out_file, dpi=200, bbox_inches="tight")
 
 
-def plot_figures(out_dir, contigs_data, bin_summary):
+def plot_figures(out_dir, contigs_data, bin_summary, threshold):
     """Function to generates all figures.
 
     Parameters:
@@ -297,6 +393,8 @@ def plot_figures(out_dir, contigs_data, bin_summary):
         Table with all the data from the contigs.
     bin_summary : dict
         Dictionnary with the informations of the final bins kept by MetaTOR.
+    threshold : int
+        Minimun size of the bins considered.
     """
     # Create plot directory
     plot_dir = join(out_dir, "plot")
@@ -320,13 +418,15 @@ def plot_figures(out_dir, contigs_data, bin_summary):
 
     # Transform dictionnary to pandas DataFrame.
     bin_summary = pd.DataFrame.from_dict(bin_summary, orient="index")
+    bin_summary['Bin'] = bin_summary.index
+    bin_summary.index = range(len(bin_summary))
     # Compute size of the assembly.
     total_size = sum(contigs_data["Size"])
 
     # Plot bin distribution
     figures_bins_distribution(bin_summary, outfile_bins_distribution)
-    figures_bins_size_distribution(
-        bin_summary, total_size, outfile_bins_size_distribution
+    bin_summary = figures_bins_size_distribution(
+        bin_summary, total_size, threshold, outfile_bins_size_distribution
     )
 
     # Remove unbinned contigs.
@@ -334,6 +434,10 @@ def plot_figures(out_dir, contigs_data, bin_summary):
     # Create a column of size divided by the minimum size of the contigs.
     min_size = min(contigs_data["Size"])
     contigs_data["size_weight"] = (contigs_data["Size"] / min_size).apply(int)
+    # Merge the bin_summary and the contigs data file.
+    contigs_data = pd.merge(
+        contigs_data, bin_summary, left_on="Final_bin", right_on="Bin"
+    )
 
     # Plots the distribution of GC and coverage inside the bins.
     figures_mags_GC_boxplots(contigs_data, outfile_MAGs_GC)
