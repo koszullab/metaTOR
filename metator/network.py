@@ -30,7 +30,7 @@ def alignment_to_contacts(
     alignment_files,
     contig_data,
     hit_data,
-    output_dir,
+    out_dir,
     output_file_network,
     output_file_contig_data,
     tmp_dir,
@@ -56,7 +56,7 @@ def alignment_to_contacts(
         need to be updated later.
     hit_data : dict:
         Dictionnary for hit information on each contigs.
-    output_dir : str
+    out_dir : str
         The output directory to write the network and chunk data into.
     output_file_network : str, optional
         The specific file name for the output network file. Default is
@@ -83,17 +83,20 @@ def alignment_to_contacts(
 
     # Create temporary and output file which will be necessary
     precompute_network_file = join(tmp_dir, "precompute_network_file.txt")
-    network_file = join(output_dir, output_file_network)
-    contig_data_file = join(output_dir, output_file_contig_data)
-    hit_data_file = join(output_dir, "hit_data_alignment.txt")
+    pre_network_sorted_file = join(tmp_dir, "tmp_network_sorted.txt")
+    network_file = join(out_dir, output_file_network)
+    contig_data_file = join(out_dir, output_file_contig_data)
+    hit_data_file = join(out_dir, "hit_data_alignment.txt")
     nb_alignment = len(alignment_files)
+    logger.info("New time course network")
 
     # Create a contact file easily readable for counting the contacts.
-    contig_data = precompute_network(
+    contig_data, out_files_list = precompute_network(
         alignment_files,
         contig_data,
         hit_data,
         precompute_network_file,
+        tmp_dir,
         self_contacts,
     )
 
@@ -103,9 +106,26 @@ def alignment_to_contacts(
         network_file,
         contig_data,
         tmp_dir,
+        pre_network_sorted_file,
         n_cpus,
         normalization,
     )
+
+    # Compute sample network
+    for i, precompute_network_file_sample in enumerate(out_files_list):
+        network_file_sample = join(out_dir, "network_{0}.txt".format(i))
+        pre_network_sorted_file = join(
+            tmp_dir, "tmp_network_sorted_{0}.txt".format(i)
+        )
+        compute_network(
+            precompute_network_file_sample,
+            network_file_sample,
+            contig_data,
+            tmp_dir,
+            pre_network_sorted_file,
+            n_cpus,
+            normalization,
+        )
 
     # Write the data from the contigs
     write_contig_data(contig_data, contig_data_file)
@@ -120,6 +140,7 @@ def compute_network(
     network_file,
     contig_data,
     tmp_dir,
+    tmp_file,
     n_cpus,
     normalization,
 ):
@@ -137,7 +158,9 @@ def compute_network(
         are the keys to the data of the contig available with the following
         keys: "id", "length", "GC", "hit", "coverage", "RS".
     tmp_dir : str
-        Path of the temporary directory to write files.
+        Path to the temporary directory.
+    tmp_file : str
+        Path of the temporary file to write the sorted precompute network.
     n_cpus : int
         Number of cpus used to sort the prenetwork.
     normalization : str
@@ -146,13 +169,10 @@ def compute_network(
         normalization.
     """
 
-    # Create a temporary directory for the sorted pre-network
-    pre_network_sorted = join(tmp_dir, "tmp_network_sorted.txt")
-
     # Sort the the pre-network file
     mio.sort_pairs(
         pre_network_file,
-        pre_network_sorted,
+        tmp_file,
         tmp_dir=tmp_dir,
         threads=n_cpus,
     )
@@ -163,7 +183,7 @@ def compute_network(
     n_pairs = 0  # Total number of pairs entered in the matrix
 
     # Read the sorted paors
-    with open(pre_network_sorted, "r") as pairs, open(network_file, "w") as net:
+    with open(tmp_file, "r") as pairs, open(network_file, "w") as net:
         pairs_reader = csv.reader(pairs, delimiter="\t")
         prev_pair = next(pairs_reader)
         for pair in pairs_reader:
@@ -385,7 +405,12 @@ def normalize_pair(contig_data, pair, n_occ, normalization):
 
 
 def precompute_network(
-    alignment_files, contig_data, hit_data, out_file, self_contacts=False
+    alignment_files,
+    contig_data,
+    hit_data,
+    out_file,
+    tmp_dir,
+    self_contacts=False,
 ):
     """Write a file with only the contig id separated by a tabulation and count
     the contacts by contigs to be able to compute directlty the normalized
@@ -420,6 +445,7 @@ def precompute_network(
     # Initiate value to compute 3D ratio
     all_contacts = 0
     inter_contacts = 0
+    out_files_list = []
 
     # Prepare a file to save contact with their global ID
     with open(out_file, "w") as pre_net:
@@ -429,9 +455,13 @@ def precompute_network(
 
             all_contacts_temp = 0
             inter_contacts_temp = 0
+            out_file_sample = join(tmp_dir, "prenetwork" + str(i) + ".txt")
+            out_files_list.append(out_file_sample)
 
             # Read the alignment_file and build pairs for the network
-            with open(aligment_file, "r") as pairs:
+            with open(aligment_file, "r") as pairs, open(
+                out_file_sample, "w"
+            ) as pre_net_sample:
                 for pair in pairs:
                     # Ignore header lines
                     if pair.startswith("#"):
@@ -459,14 +489,23 @@ def precompute_network(
                         pre_net.write(
                             "\t".join(map(str, [contig1, contig2])) + "\n"
                         )
+                        pre_net_sample.write(
+                            "\t".join(map(str, [contig1, contig2])) + "\n"
+                        )
                     elif id1 < id2:
                         inter_contacts_temp += 1
                         pre_net.write(
                             "\t".join(map(str, [contig1, contig2])) + "\n"
                         )
+                        pre_net_sample.write(
+                            "\t".join(map(str, [contig1, contig2])) + "\n"
+                        )
                     elif id1 > id2:
                         inter_contacts_temp += 1
                         pre_net.write(
+                            "\t".join(map(str, [contig2, contig1])) + "\n"
+                        )
+                        pre_net_sample.write(
                             "\t".join(map(str, [contig2, contig1])) + "\n"
                         )
 
@@ -497,7 +536,7 @@ def precompute_network(
         )
         logger.info("3D ratio : {0}\n".format(inter_contacts / all_contacts))
 
-    return contig_data
+    return contig_data, out_files_list
 
 
 def write_contig_data(contig_data, output_path):
