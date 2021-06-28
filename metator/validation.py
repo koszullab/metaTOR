@@ -724,7 +724,10 @@ def update_contigs_data_recursive(
         recursive_bin_contigs_number = len(recursive_bin)
         recursive_bin_length = sum(recursive_bin_data.Size)
 
-        if recursive_bin_contigs_number > 1:
+        if recursive_bin_length > size:
+            # If one new bin is generated change the boolean value to True
+            contamination = True
+
             # Write the new information
             contigs_data.loc[recursive_bin, "Recursive_bin_ID"] = rec_id
             contigs_data.loc[
@@ -734,33 +737,30 @@ def update_contigs_data_recursive(
                 recursive_bin, "Recursive_bin_size"
             ] = recursive_bin_length
 
-            if recursive_bin_length > size:
+            # Defined name of the recursive bin
+            oc_id = contigs_data.loc[recursive_bin[0], "Overlapping_bin_ID"]
+            output_file = join(
+                outdir, "MetaTOR_{0}_{1}.fa".format(oc_id, rec_id)
+            )
 
-                # If one new bin is generated change the boolean value to True
-                contamination = True
+            # Retrieve names of the contigs
+            list_contigs = list(contigs_data.loc[recursive_bin, "Name"])
 
-                # Defined name of the recursive bin
-                oc_id = contigs_data.loc[recursive_bin[0], "Overlapping_bin_ID"]
-                output_file = join(
-                    outdir, "MetaTOR_{0}_{1}.fa".format(oc_id, rec_id)
-                )
+            # Generate the fasta
+            contigs_file = join(
+                tmpdir, "MetaTOR_{0}_{1}.txt".format(oc_id, rec_id)
+            )
+            with open(contigs_file, "w") as f:
+                for contig in list_contigs:
+                    f.write("{0}\n".format(contig))
+            cmd = "pyfastx extract {0} -l {1} > {2}".format(
+                assembly, contigs_file, output_file
+            )
+            process = sp.Popen(cmd, shell=True)
+            process.communicate()
 
-                # Retrieve names of the contigs
-                list_contigs = list(contigs_data.loc[recursive_bin, "Name"])
-
-                # Generate the fasta
-                contigs_file = join(
-                    tmpdir, "MetaTOR_{0}_{1}.txt".format(oc_id, rec_id)
-                )
-                with open(contigs_file, "w") as f:
-                    for contig in list_contigs:
-                        f.write("{0}\n".format(contig))
-                cmd = "pyfastx extract {0} -l {1} > {2}".format(
-                    assembly, contigs_file, output_file
-                )
-                process = sp.Popen(cmd, shell=True)
-                process.communicate()
-                rec_id += 1
+            # Add one to the recursive id
+            rec_id += 1
 
     return contamination, contigs_data
 
