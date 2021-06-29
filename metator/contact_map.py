@@ -99,9 +99,13 @@ class MetatorObject:
         small bins which will be smaller than the binning value and which will
         prevent a good scaffolding with Instagraal.
         """
-        self.contigs_size = [x for x in self.contigs_size if x >= self.min_size]
-        self.contigs = self.contigs[: len(self.contigs_size)]
-
+        self.large_contigs = []
+        for index, value in enumerate(self.contigs_size):
+            if value >= self.min_size:
+                self.large_contigs.append(self.contigs[index])
+        self.contigs = self.large_contigs
+        self.contigs_size = [size for size in self.contigs_size if size >= self.min_size]
+         
     def set_metator_object(self, metator_object, name):
         """Method to get the metator object and name of the object usable for
         the algorithm.
@@ -340,10 +344,11 @@ def generate_contact_map(
         enzyme=enzyme,
         filter_events=filter_events,
         force=force,
+        mat_fmt=mat_fmt,
         out_dir=out_dir,
         pcr_duplicates=pcr_duplicates,
         plot=False,
-        prefix=metator_data.name,
+        #prefix=metator_data.name,
         start_stage="pairs",
         threads=threads,
         tmp_dir=tmp_dir,
