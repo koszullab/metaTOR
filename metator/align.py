@@ -247,8 +247,9 @@ def merge_alignment(forward_aligned, reverse_aligned, contig_data, out_file):
 
         # Write header of the pairs file. No chromsize are given.
         merged.write("## pairs format v1.0\n")
-        merged.write("#sorted: readID\n")
         merged.write("#columns: readID chr1 pos1 chr2 pos2 strand1 strand2\n")
+        merged.write("#sorted: readID\n")
+        merged.write("#shape: upper triangle")
         for contig in contig_data:
             merged.write(
                 "#chromsize: {0} {1}\n".format(
@@ -262,14 +263,29 @@ def merge_alignment(forward_aligned, reverse_aligned, contig_data, out_file):
         while n_pairs >= 0:
             # Case of both reads of the pair map.
             if for_read[0] == rev_read[0]:
-                merged.write(
-                    "\t".join(for_read[:3] + rev_read[1:3])
-                    + "\t"
-                    + for_read[3]
-                    + "\t"
-                    + rev_read[3]
-                    + "\n"
-                )
+                # Have upper trinagle shape
+                if (
+                    for_read[1] == rev_read[1] and int(for_read[2]) <= int(rev_read[2])
+                ) or contig_data[for_read[1]]["id"] < contig_data[rev_read[1]][
+                    "id"
+                ]:
+                    merged.write(
+                        "\t".join(for_read[:3] + rev_read[1:3])
+                        + "\t"
+                        + for_read[3]
+                        + "\t"
+                        + rev_read[3]
+                        + "\n"
+                    )
+                else:
+                    merged.write(
+                        "\t".join(rev_read[:3] + for_read[1:3])
+                        + "\t"
+                        + rev_read[3]
+                        + "\t"
+                        + for_read[3]
+                        + "\n"
+                    )
                 n_pairs += 1
                 try:
                     for_read = next(for_bam)
