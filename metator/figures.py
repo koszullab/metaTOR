@@ -418,7 +418,7 @@ def plot_figures(out_dir, contigs_data, bin_summary, threshold):
 
     # Transform dictionnary to pandas DataFrame.
     bin_summary = pd.DataFrame.from_dict(bin_summary, orient="index")
-    bin_summary['Bin'] = bin_summary.index
+    bin_summary["Bin"] = bin_summary.index
     bin_summary.index = range(len(bin_summary))
     # Compute size of the assembly.
     total_size = sum(contigs_data["Size"])
