@@ -139,6 +139,7 @@ disable=print-statement,
         deprecated-sys-function,
         exception-escape,
         comprehension-escape,
+        unsubscriptable-object,
 	assignment-from-no-return, #add assignment related errors since pylint seems to raise a lot of false positives
 	unsupported-assignment-operation
 
