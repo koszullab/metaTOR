@@ -1,4 +1,4 @@
-# metaTOR
+# MetaTOR
 
 [![PyPI version](https://badge.fury.io/py/metator.svg)](https://badge.fury.io/py/metator)
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/metator.svg)
@@ -10,6 +10,17 @@
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black)
 
 Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that streamlines the processing and binning of metagenomic metaHiC datasets.
+
+## Table of contents
+
+* [Installation](#Installation)
+  * [Requirements](#Requirements)
+  * [Using pip](#Using-pip)
+  * [Using docker container](#Using-docker-container)
+* [Usage](#Usage)
+* [Output files](#Output-files)
+* [References](#References)
+* [Contact](#Contact)
 
 ## Installation
 
@@ -89,6 +100,15 @@ There are a number of other, optional, miscellaneous actions:
 * `version` : display current version number.
 
 * `help` : display help message.
+
+A tutorial is available [here](example/metator_tutorial.md) to explain how to use metaTOR. More advanced tutorials to analyze the output files are also available:
+
+* [Anvio](https://merenlab.org/software/anvio/) manual curation of the contaminated bins. Available [here](example/manual_curation_of_metator_MAGs.md).
+* Visualization and scaffolding of the MAGs with the contactmap modules of MetaTOR. Available [here](example/MAG_visualization_and_scaffolding.md).
+
+Principle of MetaTOR pipeline:
+
+![metator_pipeline](example/metator_figure.png)
 
 ## Output files
 
