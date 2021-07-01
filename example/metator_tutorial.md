@@ -114,7 +114,7 @@ If give you some binning plot summary too:
 
 |Bins completion/contamination distribution|Bins size quality distribution|
 |:-:|:-:|
-|![bins_distribution](bins_distribution.png) | ![bins_size_distribution](bins_size_distribution.png)|
+|![bins_distribution](images/bins_distribution.png) | ![bins_size_distribution](images/bins_size_distribution.png)|
 
 ## B. A multiple modules pipeline
 
@@ -122,7 +122,7 @@ This command will take some time as the Software will run all the steps with thi
 
 ### 1. Choose your starting point
 
-![metator_pipeline_figures](metator_figures_modules.png)
+![metator_pipeline_figures](images/metator_figures_modules.png)
 
 One of the longest step is the alignemnent of the reads and the computation of the pairs file. Moreover, currently metaTOR use only bowtie2 to do the alignment with the --very-sensitive-local parameters to align the reads. You may already have a bam or a pairs file from another anlysis, or just want to use another aligner software, or different parameters of bowtie2. That's why it's possible to start at different stage with the `--start` parameter. There are four possible start:
 
@@ -188,7 +188,7 @@ The module returns two new digested fastq with prefix given (here hic_reads_cuts
 
 A lot of parameters could be modify to optimize the binning at your own datasets. The default parameters aare the one which usually give the best results. However, depending on your datasets and if you want to do a manual cleaning step to decontaminate your MAGs, some parameters could be optimize.
 
-![metator_binning](metator_figures_param.png)
+![metator_binning](images/metator_figures_param.png)
 
 #### a. Alignment
 
@@ -221,9 +221,8 @@ For the partition you have 6 parameters that you can change. The default paramet
 
 Some others tutorials are available to analyze the output:
 
-* [Anvio](https://merenlab.org/software/anvio/) manual curation of the contaminated bins. Available [here](Manual_curation_metator).
-* Visualization and scaffolding of the MAGs with the contactmap modules of MetaTOR. Available [here](MAG_visualization_and_scaffolding).
-* Phages-bacterial host detection with [MetaVir](https://github.com/ABignaud/MetaVir). Available [here](Phage_Host_interaction).
+* [Anvio](https://merenlab.org/software/anvio/) manual curation of the contaminated bins. Available [here](Manual_curation_of_metator_MAGs.md).
+* Visualization and scaffolding of the MAGs with the contactmap modules of MetaTOR. Available [here](MAG_visualization_and_scaffolding.md).
 
 ## References
 

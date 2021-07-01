@@ -108,7 +108,7 @@ A tutorial is available [here](example/metator_tutorial.md) to explain how to us
 
 Principle of MetaTOR pipeline:
 
-![metator_pipeline](example/metator_figure.png)
+![metator_pipeline](example/images/metator_figure.png)
 
 ## Output files
 

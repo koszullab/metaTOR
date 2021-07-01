@@ -29,6 +29,7 @@ As an example we will display the MetaTOR_18_10 MAG which is a high quality MAG 
 |Name|lineage|completness|contamination|size|contigs|N50|longest_contig|GC|coding_density|taxonomy|HiC_Coverage|
 |:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
 |MetaTOR_18_10|o__Clostridiales|98.99|1.08|2971267|339|44097|160347|45.02|86.97|k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales;f__Ruminococcaceae|4.48E+03|
+|MetaTOR_57_3|o__Bacteroidales|98.87|1.30|2638544|115|299658|490151|44.82|89.31|k__Bacteria;p__Bacteroidetes;c__Bacteroidia;o__Bacteroidales;f__Porphyromonadaceae_2|3.68E+03|
 
 ```sh
 bin=MetaTOR_18_10
@@ -75,7 +76,7 @@ If you have install using pip, hicstuff should already be installed. So you can 
 hicstuff view -f contact_map/$bin/fragments_list.txt -n -b 5kb -c afmhot_r -o contact_map/$bin/original_contact_map.png contact_map/$bin/abs_fragments_contacts_weighted.txt
 ```
 
-![contact_map_MAG](contact_map_MAG.png)
+![contact_map_MAG](images/contact_map_MAG.png)
 
 ## C. Scaffolding of the contact map
 
@@ -88,9 +89,9 @@ instagraal ./ $bin.fa  ./ --save-matrix -n 50
 
 The save matrix parameter will give intermediate steps matrix from insatgraal during the convergence and you will see something like that:
 
-|Iteration 1:|Iteration 10:|Iteration 100:|
+|Iteration 1:|Iteration 10:|Iteration 50:|
 |:-:|:-:|:-:|
-|![instagraal_step_1](instagraal_step_1.png)|![instagraal_step_10](instagraal_step_10.png)|![instagraal_step_100](instagraal_step_100.png)|
+|![instagraal_step_1](images/instagraal_step_1.png)|![instagraal_step_10](images/instagraal_step_10.png)|![instagraal_step_50](images/instagraal_step_50.png)|
 
 After instagraal has run, a plosihing step of the genome is necessary to retrieve assembly contigs which might be split by instagraal.
 
@@ -109,11 +110,18 @@ hicstuff view -f hicstuff_scaffold/fragments_list.txt -n -b 5kb -c afmhot_r -o s
 cd ../../
 ```
 
-|Original Contact map|Scaffolded contact map|
-|:-:|:-:|
-|![contact_map_MAG](contact_map_MAG.png)|![instagraal_contact_map](contact_map_instagraal.png)|
+|MAG|Original Contact map|Scaffolded contact map|
+|:-:|:-:|:-:|
+|MetaTOR_18_10|![contact_map_MAG](images/contact_map_MAG_18.png)|![instagraal_contact_map](images/contact_map_instagraal_18.png)|
+|MetaTOR_57_3|![contact_map_MAG](images/contact_map_MAG_57.png)|![instagraal_contact_map](images/contact_map_instagraal_57.png)|
 
-As you can see the output scaffolding matrix is not perfect and there are still some translocation. Moreover, some bacterial signals are difficult to catch such as circularity and secondary diagonal. Instagraal will put the strongest border as the extremity of the genome or a region with a deletion which will mask the circularity signal in the corner. Finally, genome with a secondary diagonal are very difficult to scaffold for instagraal. As it's based on the proximity ligation the secondary diagonal mess with its model and a lot of translocation are produced during scaffolding, so a manual step is needed after the scaffolding.
+As you can see the output scaffolding matrix is not perfect and there are still some translocation. Here is two examples of scaffolding output.
+
+For the MetaTOR_57_3, instagraal manage to build a nice scaffold with a nice circular signal. However there are still some small contigs which are noot integrate in the scaffold. This is an issue as instagraal have some diffculties to scaffold small contigs. That's why we advise to not integrate contigs smaller than 5kb. They just add some noise without improving the scaffolding. If you want a more perfect genome, it's possible using the contact map matrix to reintegrates this contigs by hand.
+
+The second example, MetaTOR_18_10, presents a recurrent issue of instagraal. Indeed, bacterial chromosome have often a "secondary diagonal". This signal will perturbate proximity ligation signal model of instagraal causing a lot of translocation along the diagonal that we called "stair syndrome". As in the previous step, a manual step allows to reconstruct the genome without all this translocation.
+
+To conclude, instagraal can build nice scaffolds of the high quality MAGs with high HiC coverage and the majority contigs bigger than 5kb from the metaTOR binning. However, to build a more perfect scaffold a final manual step is still necessary.
 
 ## References
 
