@@ -76,7 +76,7 @@ If you have install using pip, hicstuff should already be installed. So you can 
 hicstuff view -f contact_map/$bin/fragments_list.txt -n -b 5kb -c afmhot_r -o contact_map/$bin/original_contact_map.png contact_map/$bin/abs_fragments_contacts_weighted.txt
 ```
 
-![contact_map_MAG](images/contact_map_MAG.png)
+![contact_map_MAG](images/contact_map_MAG_18.png)
 
 ## C. Scaffolding of the contact map
 
