@@ -6,9 +6,9 @@ The anvio [[1]](#References) manual curation of the MAGs is a step which is time
 
 * [Requirements](#Requirements)
 * [Input data](#Input-data)
-* [A. Build anvio database](#A.-Build-anvio-database)
-* [B. Build anvio coverage profile](#B.-Build-anvio-coverage-profile)
-* [C. Refine the bins](#C.-Refine-the-bins)
+* [A. Build anvio database](#A-Build-anvio-database)
+* [B. Build anvio coverage profile](#B-Build-anvio-coverage-profile)
+* [C. Refine the bins](#C-Refine-the-bins)
 * [References](#References)
 
 ## Requirements

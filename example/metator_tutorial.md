@@ -5,17 +5,17 @@ In this notebook we will give an example on how to run MetaTOR [[1]](#References
 ## Table of contents
 
 * [Input data](#Input-data)
-* [A.Quick start](#A.-Quick-start)
-  * [1. Simplest command](#1.-Simplest-command)
-  * [2. Main output files](#2.-Main-output-files)
-* [B. A multiple modules pipeline](#B.-A-multiple-modules-pipeline)
-  * [1. Choose your starting point](#1.-Choose-your-starting-point)
-  * [2. Skip the validation module](#2.-Skipthe-validation-module)
-  * [3. Launch the modules separately](#3.-Launch-the-modules-separately)
-* [C. Advanced parameters](#C.-Advanced-parameters)
-  * [1. Digestion site](#1.-Digestion-site)
-  * [2. Binning parameters](#2.-Binning-parameters)
-* [D. Analysing the output](#D.-Analysing-the-output)
+* [A.Quick start](#A-Quick-start)
+  * [1. Simplest command](#1-Simplest-command)
+  * [2. Main output files](#2-Main-output-files)
+* [B. A multiple modules pipeline](#B-A-multiple-modules-pipeline)
+  * [1. Choose your starting point](#1-Choose-your-starting-point)
+  * [2. Skip the validation module](#2-Skipthe-validation-module)
+  * [3. Launch the modules separately](#3-Launch-the-modules-separately)
+* [C. Advanced parameters](#C-Advanced-parameters)
+  * [1. Digestion site](#1-Digestion-site)
+  * [2. Binning parameters](#2-Binning-parameters)
+* [D. Analysing the output](#D-Analysing-the-output)
 * [References](#References)
 
 ## Input data
@@ -221,7 +221,7 @@ For the partition you have 6 parameters that you can change. The default paramet
 
 Some others tutorials are available to analyze the output:
 
-* [Anvio](https://merenlab.org/software/anvio/) manual curation of the contaminated bins. Available [here](Manual_curation_of_metator_MAGs.md).
+* [Anvio](https://merenlab.org/software/anvio/) manual curation of the contaminated bins. Available [here](manual_curation_of_metator_MAGs.md).
 * Visualization and scaffolding of the MAGs with the contactmap modules of MetaTOR. Available [here](MAG_visualization_and_scaffolding.md).
 
 ## References
@@ -229,5 +229,5 @@ Some others tutorials are available to analyze the output:
 * [1] [MetaTOR: A Computational Pipeline to Recover High-Quality Metagenomic Bins From Mammalian Gut Proximity-Ligation (meta3C) Libraries.](https://www.frontiersin.org/articles/10.3389/fgene.2019.00753/full), L. Baudry, T. Foutel-Rodier, A. Thierry, R. Koszul, M. Marbouty. *Frontiers in genetics*, 2019.
 * [2] [MEGAHIT: an ultra-fast single-node solution for large and complex metagenomics assembly via succinct de Bruijn graph](https://academic.oup.com/bioinformatics/article/31/10/1674/177884), D. Li, C. Liu, R. Luo, Kunihiko Sadakane, T. Lam, *Bioinformatics*, 2015.
 * [3] [Using SPAdes De Novo Assembler](https://currentprotocols.onlinelibrary.wiley.com/doi/full/10.1002/cpbi.102), A. Prjibelski, D. Antipov, D. Meleshko, A. Lapidus, A. Korobeynikov, *Current Protocol in Bioinformatics*, 2020.
-* [4] [Hicstuff: Simple library/pipeline to generate and handle Hi-C data.](http://doi.org/10.5281/zenodo.4066363), C. Matthey-Doret, L. Baudry, A. Bignaud, A. Cournac, R. Montagne, N. Guiglielmoni, T. Foutel Rodier and V. F. Scolari, *Zenodo*, 2020.
+* [4] [Hicstuff: Simple library/pipeline to generate and handle Hi-C data.](http://doi.org/10.5281/zenodo.2620608), C. Matthey-Doret, L. Baudry, A. Bignaud, A. Cournac, R. Montagne, N. Guiglielmoni, T. Foutel Rodier and V. F. Scolari, *Zenodo*, 2020.
 * [5] [HiCzin: Normalizing metagenomic Hi-C data and detecting spurious contacts using zero-inflated negative binomial regression](https://doi.org/10.1101/2021.03.01.433489) Y. Du, S. M. Laperriere, J. Fuhrman, F. Sun, *bioRxiv*, 2021.

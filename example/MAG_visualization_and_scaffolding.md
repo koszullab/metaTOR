@@ -6,9 +6,9 @@ The goal of this tutorial is to show how to build the HiC contact map of a MAG f
 
 * [Requirements](#Requirements)
 * [Input data](#Input-data)
-* [A. Build the HiC contact map](#A.-Build-the-HiC-contact-map)
-* [B. Visualization of the contact map](#B.-Visualization-of-the-contact-map)
-* [C. Scaffolding of the contact map](#C.-Scaffolding-of-the-contact-map)
+* [A. Build the HiC contact map](#A-Build-the-HiC-contact-map)
+* [B. Visualization of the contact map](#B-Visualization-of-the-contact-map)
+* [C. Scaffolding of the contact map](#C-Scaffolding-of-the-contact-map)
 * [References](#References)
 
 ## Requirements
@@ -127,4 +127,4 @@ To conclude, instagraal can build nice scaffolds of the high quality MAGs with h
 
 * [1] [MetaTOR: A Computational Pipeline to Recover High-Quality Metagenomic Bins From Mammalian Gut Proximity-Ligation (meta3C) Libraries.](https://www.frontiersin.org/articles/10.3389/fgene.2019.00753/full), L. Baudry, T. Foutel-Rodier, A. Thierry, R. Koszul, M. Marbouty. *Frontiers in genetics*, 2019.
 * [2] [instaGRAAL: chromosome-level quality scaffolding of genomes using a proximity ligation-based scaffolder](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-020-02041-z), L. Baudry, N. Guiglielmoni, H. Marie-Nelly, A. Cormier, M. Marbouty, K. Avia, Y. Loe Mie, O. Godfroy, L. Sterck, J. M. Cock, C. Zimmer, S. M. Coelho, R. Koszul, *Genome Biology*, 2020.
-* [3] [Hicstuff: Simple library/pipeline to generate and handle Hi-C data.](http://doi.org/10.5281/zenodo.4066363), C. Matthey-Doret, L. Baudry, A. Bignaud, A. Cournac, R. Montagne, N. Guiglielmoni, T. Foutel Rodier and V. F. Scolari, *Zenodo*, 2020.
+* [3] [Hicstuff: Simple library/pipeline to generate and handle Hi-C data.](http://doi.org/10.5281/zenodo.2620608), C. Matthey-Doret, L. Baudry, A. Bignaud, A. Cournac, R. Montagne, N. Guiglielmoni, T. Foutel Rodier and V. F. Scolari, *Zenodo*, 2020.
