@@ -263,22 +263,27 @@ def merge_alignment(forward_aligned, reverse_aligned, contig_data, out_file):
         while n_pairs >= 0:
             # Case of both reads of the pair map.
             if for_read[0] == rev_read[0]:
-                # Wriet read ID
+                # Write read ID
                 merged.write(for_read[0] + "\t")
-                # Pairs are 1-based so we have to add 1 to 0 based position 
+                # Pairs are 1-based so we have to add 1 to 0 based positionco
                 # from bam.
-                for_position = for_read[1] + "\t" + str(int(for_read[2]) + 1) + "\t"
-                rev_position = rev_read[1] + "\t" + str(int(rev_read[2]) + 1) + "\t"
+                for_position = (
+                    for_read[1] + "\t" + str(int(for_read[2]) + 1) + "\t"
+                )
+                rev_position = (
+                    rev_read[1] + "\t" + str(int(rev_read[2]) + 1) + "\t"
+                )
 
                 # Have upper trinagle shape
                 if (
-                    for_read[1] == rev_read[1] and int(for_read[2]) <= int(rev_read[2])
+                    for_read[1] == rev_read[1]
+                    and int(for_read[2]) <= int(rev_read[2])
                 ) or contig_data[for_read[1]]["id"] < contig_data[rev_read[1]][
                     "id"
                 ]:
-                    
+
                     merged.write(
-                        for_position 
+                        for_position
                         + rev_position
                         + for_read[3]
                         + "\t"
@@ -287,7 +292,7 @@ def merge_alignment(forward_aligned, reverse_aligned, contig_data, out_file):
                     )
                 else:
                     merged.write(
-                        rev_position 
+                        rev_position
                         + for_position
                         + rev_read[3]
                         + "\t"

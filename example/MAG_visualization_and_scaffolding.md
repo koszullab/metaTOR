@@ -13,12 +13,13 @@ The goal of this tutorial is to show how to build the HiC contact map of a MAG f
 
 ## Requirements
 
-* [MetaTOR](https://github.com/koszullab/metaTOR) [[1]](#References) v1.1.0 or upper.
+* [MetaTOR](https://github.com/koszullab/metaTOR) [[1]](#References)
+* [Pairix](https://github.com/4dn-dcic/pairix)
 * [Instagraal](https://github.com/koszullab/instaGRAAL) [[2]](#References) if you want to try to scaffold your MAG. The installation could be tricky so we recommend to install it with docker which is a one step installation.
 
 ## Input data
 
-As input data we will use the output of the [metaTOR (v1.1.1) tutorial](metator_tutorial.md) based on  the metaHiC sample from [Marbouty *et al.*, eLife, 2021](https://elifesciences.org/articles/60608). The accession number of the fastq sequences is SRR13435231 and the assembly accession number is ASM1314648v1 in the BioProject PRJNA627086 on the NCBI database. To have more contacts in the map we also use the MluCI library (SRR13435230) made on the same sample.
+As input data we will use the output of the [metaTOR (v1.1.2) tutorial](metator_tutorial.md) based on  the metaHiC sample from [Marbouty *et al.*, eLife, 2021](https://elifesciences.org/articles/60608). The accession number of the fastq sequences is SRR13435231 and the assembly accession number is ASM1314648v1 in the BioProject PRJNA627086 on the NCBI database. To have more contacts in the map we also use the MluCI library (SRR13435230) made on the same sample.
 
 ## A. Build the HiC contact map
 
@@ -65,6 +66,22 @@ metator contactmap -a ../assembly.fa -c contig_data_final.txt -e HpaII n $bin -p
 ```
 
 **Note**: Here we show to give an example using a Final bin, but you could put others "metaTOR object": contigs, core bins, overlpping bin, recursive bin or others. For the contigs it's possible to give both the id or the name. For the "other" object, you need to add a column in the contig data file call "Others" with whatever clustering you want. It could be another such as anvio binning (see tutorial [here](manual_curation_of_metator_MAGs.md)).
+
+### Using pairix index
+
+If you want to viusalize multiple objects, in order to avoid to iterate each time on the pairs file it's possible to build an index of the pairs file using pairix. For now, MetaTOR do not provide any script which directly build the index and you have to build it by hand. Here it's an example of command to build the pairs indexed and launch MetaTOR contactm map on it.
+
+```sh
+# Sort the pairs file
+grep "^#" alignment_0.pairs > alignment_0_sorted.pairs
+grep -v "^#" alignment_0.pairs | sort --parallel 16 -S 2GB -k2,2V -k4,4V -k3,3n -k5,5n >> alignment_0_sorted.pairs
+# Compress the pairs file
+bgzip alignment_0_sorted.pairs
+# Build the index
+pairix alignment_0_sorted.pairs.gz
+# Launch MetaTOR contact map
+metator contactmap -a ../assembly.fa -c contig_data_final.txt -e HpaII,MluCI -n $bin -p alignment_0_sorted.pairs.gz -DfF -s 5000 -o contact_map/$bin/
+```
 
 ## B. Visualization of the contact map
 

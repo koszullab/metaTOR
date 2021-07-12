@@ -16,11 +16,11 @@ Core function to build the network are:
 
 
 import hicstuff.pipeline as hcp
-import os
-import pandas as pd
-import subprocess as sp
 from metator.log import logger
 from os.path import join
+import pandas as pd
+import pypairix
+import subprocess as sp
 
 
 class MetatorObject:
@@ -70,6 +70,11 @@ class MetatorObject:
         self.pairs_files = pairs.split(",")
         self.min_size = min_size
         self.set_metator_object(metator_object, name)
+        self.contigs = None
+        self.large_contigs = None
+        self.contigs_size = None
+        self.fasta = None
+        self.pairs = None
 
     def get_contigs_data(self):
         """Method to get contigs data Dataframe
@@ -104,8 +109,10 @@ class MetatorObject:
             if value >= self.min_size:
                 self.large_contigs.append(self.contigs[index])
         self.contigs = self.large_contigs
-        self.contigs_size = [size for size in self.contigs_size if size >= self.min_size]
-         
+        self.contigs_size = [
+            size for size in self.contigs_size if size >= self.min_size
+        ]
+
     def set_metator_object(self, metator_object, name):
         """Method to get the metator object and name of the object usable for
         the algorithm.
@@ -127,11 +134,12 @@ class MetatorObject:
             try:
                 int(name)
                 self.name = str(name)
-            except ValueError:
+            except ValueError as object_no_exist:
                 logger.error(
-                    "With core bin object, the name should be the numeric ID of the core bin."
+                    "With core bin object, the name should be the numeric ID of\
+                     the core bin."
                 )
-                raise ValueError
+                raise ValueError from object_no_exist
         elif metator_object == "overlapping_bin":
             self.object = "Overlapping_bin_ID"
             try:
@@ -141,11 +149,12 @@ class MetatorObject:
                 self.name = str(name.split("_")[1])
                 try:
                     int(self.name)
-                except ValueError:
+                except ValueError as object_no_exist:
                     logger.error(
-                        "Overlapping bin name should be either numerical ID or a name like 'MetaTOR_1' or 'MetaTOR_1_0'."
+                        "Overlapping bin name should be either numerical ID or \
+                        a name like 'MetaTOR_1' or 'MetaTOR_1_0'."
                     )
-                    raise ValueError
+                    raise ValueError from object_no_exist
         elif metator_object == "recursive_bin":
             self.object = "Recursive_bin_ID"
             try:
@@ -155,11 +164,12 @@ class MetatorObject:
                 self.name = str(name.split("_")[2])
                 try:
                     int(self.name)
-                except ValueError:
+                except ValueError as object_no_exist:
                     logger.error(
-                        "Overlapping bin name should be either numerical ID or a name like 'MetaTOR_1_1'."
+                        "Overlapping bin name should be either numerical ID or \
+                        a name like 'MetaTOR_1_1'."
                     )
-                    raise ValueError
+                    raise ValueError from object_no_exist
                 if int(self.name) <= 0:
                     logger.error(
                         "A recursive bin should have an id bigger than 0."
@@ -172,7 +182,9 @@ class MetatorObject:
             self.name = name
         else:
             logger.error(
-                'Metator object should be one of these value: "contig", "core_bin", "overlapping_bin", "recursive_bin", "final_bin", "other"'
+                'Metator object should be one of these value: "contig", \
+                core_bin", "overlapping_bin", "recursive_bin", "final_bin", \
+                "other"'
             )
             raise ValueError
 
@@ -192,9 +204,9 @@ class MetatorObject:
         self.fasta = join(out_dir, self.name + ".fa")
         # Write a contigs used by pyfastx extract.
         contigs_list = join(tmp_dir, self.name + ".txt")
-        with open(contigs_list, "w") as f:
+        with open(contigs_list, "w") as file:
             for contig_name in self.contigs:
-                f.write("%s\n" % contig_name)
+                file.write("%s\n" % contig_name)
         # Extract contigs from the fastq.
         cmd = "pyfastx extract {0} -l {1} > {2}".format(
             self.assembly, contigs_list, self.fasta
@@ -228,29 +240,57 @@ def extract_pairs(metator_data):
         output_pairs.write(
             "#columns: readID chr1 pos1 chr2 pos2 strand1 strand2\n"
         )
-        for i in range(len(metator_data.contigs)):
+        for contig_id, contig in enumerate(metator_data.contigs):
             output_pairs.write(
                 "#chromsize: {0} {1}\n".format(
-                    metator_data.contigs[i],
-                    metator_data.contigs_size[i],
+                    contig,
+                    metator_data.contigs_size[contig_id],
                 )
             )
-        for pair_file in metator_data.pairs_files:
-            # Iterates on the input pairs file
-            with open(pair_file, "r") as input_pairs:
-                for pair in input_pairs:
-                    # Ignore header lines.
-                    if pair.startswith("#"):
-                        continue
-                    # Split the line on the tabulation and check if both contigs
-                    # are in the bin.
-                    p = pair.split("\t")
-                    if (
-                        p[1] in metator_data.contigs
-                        and p[3] in metator_data.contigs
+        for pairs_file in metator_data.pairs_files:
+            # Check if the pairix index exist
+            try:
+                pairs_data = pypairix.open(pairs_file)
+                pypairix_index = True
+            except pypairix.PairixError:
+                logger.warning("No pairix index found. Iterates on the pairs.")
+                pypairix_index = False
+            # Need a sorted (chr1 chr2 pos1 pos2) pair file indexed with pairix.
+            if pypairix_index:
+                for contig_id1, contig in enumerate(metator_data.contigs):
+                    # Only need to retrieve the upper triangle.
+                    for contig_id2 in range(
+                        contig_id1, len(metator_data.contigs)
                     ):
-                        n_pairs += 1
-                        output_pairs.write(pair)
+                        pairs_lines = pairs_data.query2D(
+                            contig,
+                            0,
+                            metator_data.contigs_size[contig_id1],
+                            metator_data.contigs[contig_id2],
+                            0,
+                            metator_data.contigs_size[contig_id2],
+                            1,
+                        )
+                        for pairs_line in pairs_lines:
+                            n_pairs += 1
+                            output_pairs.write("\t".join(pairs_line) + "\n")
+            # else Iterates on the input pairs file (take much longer than with
+            # the index).
+            else:
+                with open(pairs_file, "r") as input_pairs:
+                    for pairs_line in input_pairs:
+                        # Ignore header lines.
+                        if pairs_line.startswith("#"):
+                            continue
+                        # Split the line on the tabulation and check if both contigs
+                        # are in the bin.
+                        pairs = pairs_line.split("\t")
+                        if (
+                            pairs[1] in metator_data.contigs
+                            and pairs[3] in metator_data.contigs
+                        ):
+                            n_pairs += 1
+                            output_pairs.write(pairs_line)
     return n_pairs
 
 
@@ -267,7 +307,6 @@ def generate_contact_map(
     mat_fmt="graal",
     metator_object="final_bin",
     min_size=5000,
-    no_cleanup=False,
     pcr_duplicates=False,
     threads=1,
 ):
@@ -288,8 +327,8 @@ def generate_contact_map(
         Name of the object. Could be the name of a contig, an id of a bin or the
         name of the bin. Example: "NODE_1" or "MetaTOR_1_0".
     pairs : str
-        Path of the ".pairs" file. If more than one is given, files should be
-        separated by a comma.
+        Path of the ".pairs" file or bgzip indexed pair file. If more than one
+        is given, files should be separated by a comma.
     out_dir : str
         Path where output files should be written. Current directory by default.
     tmp_dir : str
@@ -310,9 +349,6 @@ def generate_contact_map(
         "core_bin", "overlapping_bin", "recursive_bin", "final_bin" or "other".
     min_size : int
         Minimum contig size required to keep it.
-    no_cleanup : bool
-        Whether temporary files should be deleted at the end of the pipeline.
-        Default: False.
     pcr_duplicates : bool
         If True, PCR duplicates will be filtered based on genomic positions.
         Pairs where both reads have exactly the same coordinates are considered
@@ -322,7 +358,7 @@ def generate_contact_map(
     """
 
     # Extract bin information from metaTOR outdir.
-    logger.info("Generate HiC contact map for {0}".format(name))
+    logger.info("Generate HiC contact map for %s", name)
     metator_data = MetatorObject(
         metator_object, name, assembly, contig_data_file, pairs, min_size
     )
@@ -334,7 +370,7 @@ def generate_contact_map(
 
     # Extract pairs of the bin.
     n_pairs = extract_pairs(metator_data)
-    logger.info("{0} pairs have been extracted.".format(n_pairs))
+    logger.info("%d pairs have been extracted.", n_pairs)
 
     # Launch hicstuff pipeline.
     hcp.full_pipeline(
@@ -348,7 +384,6 @@ def generate_contact_map(
         out_dir=out_dir,
         pcr_duplicates=pcr_duplicates,
         plot=False,
-        #prefix=metator_data.name,
         start_stage="pairs",
         threads=threads,
         tmp_dir=tmp_dir,

@@ -25,6 +25,7 @@ RUN conda install -c conda-forge -y python=3.8\
     pip \
     bowtie2 \
     samtools \
+    pairix \
     checkm-genome && conda clean -afy
 
 # Install Louvain 

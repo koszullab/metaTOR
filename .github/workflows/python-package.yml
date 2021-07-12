@@ -22,7 +22,7 @@ jobs:
     - name: Load apt packages
       run: |
         sudo apt-get update
-        sudo apt-get -y install git make g++ bowtie2 samtools
+        sudo apt-get -y install git make g++ bowtie2 samtools zlib1g-dev
     
     - name: Set up ${{ matrix.python-version }}
       uses: actions/setup-python@v2
@@ -43,6 +43,12 @@ jobs:
         cd networkanalysis
         ./gradlew build
         cd ../
+    
+    - name: Install pairix
+      run: |
+        git clone https://github.com/4dn-dcic/pairix.git
+        cd pairix
+        make
 
     - name: Install pytest and dependencies
       run: |

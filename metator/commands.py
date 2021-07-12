@@ -1016,7 +1016,6 @@ class Contactmap(AbstractCommand):
             self.args["--mat-fmt"],
             self.args["--object"],
             int(self.args["--min-size"]),
-            self.args["--no-clean-up"],
             self.args["--pcr-dup"],
             int(self.args["--threads"]),
         )
