@@ -5,6 +5,7 @@ networkx
 numpy
 pandas
 pyfastx
+pypairix
 pysam
 requests
 scipy
