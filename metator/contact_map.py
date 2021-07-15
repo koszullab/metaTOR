@@ -370,21 +370,27 @@ def generate_contact_map(
 
     # Extract pairs of the bin.
     n_pairs = extract_pairs(metator_data)
-    logger.info("%d pairs have been extracted.", n_pairs)
 
-    # Launch hicstuff pipeline.
-    hcp.full_pipeline(
-        genome=metator_data.fasta,
-        input1=metator_data.pairs,
-        distance_law=False,
-        enzyme=enzyme,
-        filter_events=filter_events,
-        force=force,
-        mat_fmt=mat_fmt,
-        out_dir=out_dir,
-        pcr_duplicates=pcr_duplicates,
-        plot=False,
-        start_stage="pairs",
-        threads=threads,
-        tmp_dir=tmp_dir,
-    )
+    if n_pairs == 0:
+        logger.info("No pairs have been extracted")
+
+    else:
+        logger.info("%d pairs have been extracted.", n_pairs)
+
+        # Launch hicstuff pipeline.
+        hcp.full_pipeline(
+            genome=metator_data.fasta,
+            input1=metator_data.pairs,
+            distance_law=False,
+            enzyme=enzyme,
+            filter_events=filter_events,
+            force=force,
+            mat_fmt=mat_fmt,
+            out_dir=out_dir,
+            pcr_duplicates=pcr_duplicates,
+            plot=False,
+            start_stage="pairs",
+            threads=threads,
+            tmp_dir=tmp_dir,
+        )
+    return n_pairs

@@ -1020,8 +1020,8 @@ class Contactmap(AbstractCommand):
             int(self.args["--threads"]),
         )
 
-        # Delete pyfastx index:
-        os.remove(self.args["--assembly"] + ".fxi")
         # Delete the temporary folder.
         if not self.args["--no-clean-up"]:
             shutil.rmtree(tmp_dir)
+            # Delete pyfastx index:
+            os.remove(self.args["--assembly"] + ".fxi")
