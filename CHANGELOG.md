@@ -3,6 +3,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.3] - 2021-07-23
+
+- Avoid raising error if no pairs extracted in contact map module.
+- Add network heatmap plot in the ouput.
+
+## [1.1.2] - 2021-07-13
+
+- Add the possibility to read pairix index files in the contact map module to retrieve faster pairs from a 2D region.
+
 ## [1.1.1] - 2021-06-30
 
 Correct some minor issues:
