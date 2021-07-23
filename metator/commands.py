@@ -221,11 +221,9 @@ class Network(AbstractCommand):
             fasta = mio.retrieve_fasta(index, temp_directory)
 
         # Print information of teh workflow:
-        logger.info("Enzyme: {0}".format(self.args["--enzyme"]))
-        logger.info("Normalization: {0}".format(self.args["--normalization"]))
-        logger.info(
-            "Minimum mapping quality: {0}".format(self.args["--min-quality"])
-        )
+        logger.info("Enzyme: %s", self.args["--enzyme"])
+        logger.info("Normalization: %s", self.args["--normalization"])
+        logger.info("Minimum mapping quality: %d", self.args["--min-quality"])
 
         # Do not align if pair start
         if self.args["--start"] == "pair":
@@ -351,9 +349,8 @@ class Partition(AbstractCommand):
                 os.makedirs(fasta_dir)
             else:
                 logger.error(
-                    "{0} already existed. Remove directory or use -F argument to overwrite it.".format(
-                        fasta_dir
-                    )
+                    "%s already existed. Remove directory or use -F argument to overwrite it.",
+                    fasta_dir,
                 )
                 raise ValueError
 
@@ -475,9 +472,8 @@ class Validation(AbstractCommand):
                 os.makedirs(recursive_fasta_dir)
             else:
                 logger.error(
-                    "{0} already existed. Remove directory or use -F argument to overwrite it.".format(
-                        recursive_fasta_dir
-                    )
+                    "%s already existed. Remove directory or use -F argument to overwrite it.",
+                    recursive_fasta_dir,
                 )
                 raise ValueError
         if not exists(final_fasta_dir):
@@ -488,9 +484,8 @@ class Validation(AbstractCommand):
                 os.makedirs(final_fasta_dir)
             else:
                 logger.error(
-                    "{0} already existed. Remove directory or use -F argument to overwrite it.".format(
-                        final_fasta_dir
-                    )
+                    "%s already existed. Remove directory or use -F argument to overwrite it.",
+                    final_fasta_dir,
                 )
                 raise ValueError
 
@@ -581,7 +576,8 @@ class Pipeline(AbstractCommand):
                                 [Default: louvain]
         -c, --contigs=FILE      The path to the file containing the data ofthe
                                 contigs (ID, Name, Length, GC content, Hit,
-                                Coverage, Restriction site).
+                                Coverage, Restriction site). Required if start
+                                network.
         -C, --cluster-matrix    If enabled, save the clustering matrix.
         -d, --depth=FILE        The depth.txt file from the shotgun reads used
                                 to made the assembly computed by
@@ -651,9 +647,8 @@ class Pipeline(AbstractCommand):
             else:
                 print(self.args["--force"])
                 logger.error(
-                    "{0} already existed. Remove directory or use -F argument to overwrite it.".format(
-                        overlapping_fasta_dir
-                    )
+                    "%s already existed. Remove directory or use -F argument to overwrite it.",
+                    overlapping_fasta_dir,
                 )
                 raise ValueError
 
@@ -721,9 +716,8 @@ class Pipeline(AbstractCommand):
                     os.makedirs(recursive_fasta_dir)
                 else:
                     logger.error(
-                        "{0} already existed. Remove directory or use -F argument to overwrite it.".format(
-                            recursive_fasta_dir
-                        )
+                        "%s already existed. Remove directory or use -F argument to overwrite it",
+                        recursive_fasta_dir,
                     )
                     raise ValueError
             final_fasta_dir = join(self.args["--outdir"], "final_bin")
@@ -735,9 +729,8 @@ class Pipeline(AbstractCommand):
                     os.makedirs(final_fasta_dir)
                 else:
                     logger.error(
-                        "{0} already existed. Remove directory or use -F argument to overwrite it.".format(
-                            final_fasta_dir
-                        )
+                        "%s already existed. Remove directory or use -F argument to overwrite it.",
+                        final_fasta_dir,
                     )
                     raise ValueError
 
@@ -773,25 +766,20 @@ class Pipeline(AbstractCommand):
 
         # Print information of the workflow:
         if start == 1:
-            logger.info("Minimum mapping quality: {0}".format(min_qual))
+            logger.info("Minimum mapping quality: %d", min_qual)
         if start <= 2:
-            logger.info("Enzyme: {0}".format(self.args["--enzyme"]))
-            logger.info(
-                "Normalization: {0}".format(self.args["--normalization"])
-            )
-        logger.info("Partition algorithm: {0}".format(self.args["--algorithm"]))
-        logger.info("Partition iterations: {0}".format(iterations))
-        logger.info("Overlapping parameter: {0}".format(overlapping_parameter))
+            logger.info("Enzyme: %s", self.args["--enzyme"])
+            logger.info("Normalization: %s", self.args["--normalization"])
+        logger.info("Partition algorithm: %s", self.args["--algorithm"])
+        logger.info("Partition iterations: %s", iterations)
+        logger.info("Overlapping parameter: %s", overlapping_parameter)
         if not self.args["--skip-validation"]:
             logger.info(
-                "Recursive partition iterations: {0}".format(
-                    recursive_iterations
-                )
+                "Recursive partition iterations: %d", recursive_iterations
             )
             logger.info(
-                "Recursive overlapping parameter: {0}".format(
-                    recursive_overlapping_parameter
-                )
+                "Recursive overlapping parameter: %s",
+                recursive_overlapping_parameter,
             )
 
         # Extract index and genome file
