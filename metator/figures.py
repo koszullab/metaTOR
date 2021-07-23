@@ -471,7 +471,7 @@ def generates_frags_network(contig_data, bin_summary, bin_size):
         mag_starts.append(frag_id)
         bin_summary[bin_name]["current"] = frag_id
         bin_summary[bin_name]["rest"] = 0
-        frag_id += (bin_summary[bin_name]["size"] // bin_size) + 1
+        frag_id += (int(bin_summary[bin_name]["size"]) // bin_size) + 1
 
     # Define start frag id for each bins
     info_contigs = dict()
