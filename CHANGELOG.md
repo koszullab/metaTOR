@@ -3,6 +3,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.4] - 2021-07-23
+
+- Correct broken release 1.1.3
+
 ## [1.1.3] - 2021-07-23
 
 - Avoid raising error if no pairs extracted in contact map module.

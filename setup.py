@@ -29,7 +29,7 @@ name = "metator"
 
 MAJOR = 1
 MINOR = 1
-MAINTENANCE = 3
+MAINTENANCE = 4
 VERSION = "{}.{}.{}".format(MAJOR, MINOR, MAINTENANCE)
 
 LICENSE = "GPLv3"
