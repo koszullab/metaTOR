@@ -6,11 +6,14 @@
 General utility functions to plot some figures to describe metaTOR output.
 
 Core functions to plot the firgures are:
+    - build_matrix_network
     - figures_bins_distribution
     - figures_bins_size_distribution
     - figures_mags_GC_boxplots
     - figures_mags_HiC_cov_boxplots
     - figures_mags_SG_cov_boxplots
+    - generates_frags_network
+    - network_heatmap
     - plot_figures
     - reindex_df
 """
@@ -20,8 +23,65 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pandas as pd
+import re
 import seaborn as sns
+from metator.log import logger
 from os.path import join
+
+
+def build_matrix_network(pairs_files, info_contigs, N, bin_size):
+    """Build a binned matrix from the pairs alignement files and the final
+    binning information in the contig data file.
+
+    Parameters:
+    -----------
+    pairs_files : list of str
+        List of path of the alignment ".pairs" file.
+    info_contigs: dict
+        Dictionnary with frags id of the contigs.
+    N : int
+        Size of the final bin matrix.
+    bin_size : int
+        Size of the bin to plot the heatmap.
+
+    Returns:
+    --------
+    numpy.array:
+        Binned dense matrix of the network.
+    """
+    # Initiate the matix
+    matrix = np.zeros((N, N))
+
+    # Iterates on the input pairs file
+    for pairs_file in pairs_files:
+        with open(pairs_file, "r") as input_pairs:
+            for pairs_line in input_pairs:
+                # Ignore header lines.
+                if pairs_line.startswith("#"):
+                    continue
+                # Split the line on the tabulation and check if both contigs
+                # are in the bin.
+                pairs = pairs_line.split("\t")
+                contig1, contig2 = pairs[1], pairs[3]
+                pos1, pos2 = pairs[2], pairs[4]
+                try:
+                    frag1 = (
+                        info_contigs[contig1]["start"]
+                        + (int(pos1) + info_contigs[contig1]["init"])
+                        // bin_size
+                    )
+                    frag2 = (
+                        info_contigs[contig2]["start"]
+                        + (int(pos2) + info_contigs[contig2]["init"])
+                        // bin_size
+                    )
+                    if frag1 < frag2:
+                        matrix[frag1, frag2] += 1
+                    elif frag1 > frag2:
+                        matrix[frag2, frag1] += 1
+                except KeyError:
+                    continue
+    return matrix + matrix.T
 
 
 def figures_bins_distribution(bin_summary, out_file):
@@ -166,7 +226,6 @@ def figures_bins_size_distribution(
             round(mags_summary.loc[5, "size"] / 1000000, 2),
         ),
     ]
-    fig, ax = plt.subplots()
     plt.pie(
         mags_summary["size"],
         colors=[
@@ -382,6 +441,101 @@ def figures_mags_SG_cov_boxplots(contigs_data, out_file):
     plt.savefig(out_file, dpi=200, bbox_inches="tight")
 
 
+def generates_frags_network(contig_data, bin_summary, bin_size):
+    """Generates info fragments for all contigs and start position all bins.
+
+    Parameters:
+    -----------
+    contigs_data : pandas.DataFrame
+        Table with all the data from the contigs.
+    bin_summary : dict
+        Dictionnary with the informations of the final bins kept by MetaTOR.
+    bin_size : int
+        Size of the bin to plot the heatmap.
+
+    Returns:
+    --------
+    dict:
+        Dictionnary with frags id of the contigs.
+    list of int:
+        List of the start positions of the mags
+    int:
+        Size of the mfinal binned matrix
+    """
+
+    # Define start frag id for each MAGs.
+    frag_id = 0
+    mag_starts = []
+    for bin_name in bin_summary:
+        bin_summary[bin_name]["start"] = frag_id
+        mag_starts.append(frag_id)
+        bin_summary[bin_name]["current"] = frag_id
+        bin_summary[bin_name]["rest"] = 0
+        frag_id += (bin_summary[bin_name]["size"] // bin_size) + 1
+
+    # Define start frag id for each bins
+    info_contigs = dict()
+    for i in range(len(contig_data.Name)):
+        if contig_data.loc[i, "Final_bin"] != "ND":
+            # Call bin name dict to have the status of start frag id and rest.
+            bin_name = contig_data.loc[i, "Final_bin"]
+            size = contig_data.loc[i, "Size"]
+            info_contigs[contig_data.loc[i, "Name"]] = {
+                "start": bin_summary[bin_name]["current"],
+                "init": bin_summary[bin_name]["rest"],
+            }
+            # Update rest and start position.
+            bin_summary[bin_name]["current"] += (
+                size + bin_summary[bin_name]["rest"]
+            ) // bin_size
+            bin_summary[bin_name]["rest"] = (
+                size + bin_summary[bin_name]["rest"]
+            ) % bin_size
+
+    return info_contigs, mag_starts, frag_id
+
+
+def network_heatmap(matrix, out_file=None, mag_starts=None):
+    """Plot the heatmap of the network, with the contig ordering by their bin
+    attribution.
+
+    Parameters:
+    -----------
+    matrix : numpy.array
+        Binned dense matrix of the network.
+    out_file : str
+        Name of the file to save the plot.
+    mag_starts : list of int
+        List of bin positions where to draw mags starts as dotted lines.
+    """
+
+    # Plot the heatmap.
+    vmax = np.percentile(matrix, 99.5)
+    im_kwargs = {
+        "vmin": 0,
+        "vmax": vmax,
+        "cmap": "viridis",
+        "interpolation": "none",
+    }
+    li_kwargs = {"ls": ":", "alpha": 0.8, "c": "white", "linewidth": 0.1}
+    plt.figure()
+    plt.imshow(matrix, **im_kwargs)
+    plt.colorbar()
+    plt.axis("off")
+
+    # Add line between MAGs.
+    if mag_starts is not None:
+        for pos in mag_starts:
+            plt.axvline(pos, **li_kwargs)
+            plt.axhline(pos, **li_kwargs)
+
+    # Save or show the file.
+    if out_file:
+        plt.savefig(out_file, bbox_inches="tight", pad_inches=0.0, dpi=2000)
+    else:
+        plt.show()
+
+
 def plot_figures(out_dir, contigs_data, bin_summary, threshold):
     """Function to generates all figures.
 
@@ -416,6 +570,28 @@ def plot_figures(out_dir, contigs_data, bin_summary, threshold):
     if SG_cov:
         outfile_MAGs_SG_cov = join(plot_dir, "MAGs_SG_cov_distribution.png")
 
+    # Look for pairs file in out_dir
+    pairs_files = []
+    list_files = os.listdir(out_dir)
+    for file in list_files:
+        if re.search("\.pairs$", file):
+            pairs_files.append(join(out_dir, file))
+
+    # Plot heatmap with a binning of 50kb.
+    if len(pairs_files) > 0:
+        heatmap_file = join(plot_dir, "network_heatmap.png")
+        bin_size = 50000
+        info_contigs, mag_starts, N = generates_frags_network(
+            contigs_data, bin_summary, bin_size
+        )
+        matrix = build_matrix_network(pairs_files, info_contigs, N, bin_size)
+        network_heatmap(matrix, heatmap_file, mag_starts)
+    else:
+        logger.warning(
+            "No pairs alignment files found in %s, no heatmap will be generated.",
+            out_dir,
+        )
+
     # Transform dictionnary to pandas DataFrame.
     bin_summary = pd.DataFrame.from_dict(bin_summary, orient="index")
     bin_summary["Bin"] = bin_summary.index
@@ -446,13 +622,13 @@ def plot_figures(out_dir, contigs_data, bin_summary, threshold):
         figures_mags_SG_cov_boxplots(contigs_data, outfile_MAGs_SG_cov)
 
 
-def reindex_df(df, weight_col):
+def reindex_df(dataframe, weight_col):
     """Expand the dataframe to prepare for resampling result is 1 row per count
     per sample.
 
     Parameters:
     -----------
-    df : pandas.core.frame.DataFrame
+    dataframe : pandas.core.frame.DataFrame
         Table to expand.
     weight_col : str
         Name of the weighted column to use.
@@ -462,6 +638,6 @@ def reindex_df(df, weight_col):
     pandas.core.frame.DataFrame:
         Table expanded with new index.
     """
-    df = df.reindex(df.index.repeat(df[weight_col]))
-    df.reset_index(drop=True, inplace=True)
-    return df
+    dataframe = dataframe.reindex(dataframe.index.repeat(dataframe[weight_col]))
+    dataframe.reset_index(drop=True, inplace=True)
+    return dataframe

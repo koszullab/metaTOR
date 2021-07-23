@@ -2,7 +2,6 @@
 
 import metator.figures as mtf
 import pandas as pd
-import shutil
 
 
 def test_figures_bins_distribution():

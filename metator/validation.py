@@ -671,8 +671,10 @@ def recursive_decontamination(
     mio.write_checkm_summary(bin_summary, bin_summary_file)
 
     # Write the new file
-    contig_data_file_2 = join(outdir, "contig_data_final.txt")
-    contigs_data.to_csv(contig_data_file_2, sep="\t", header=True, index=False)
+    contig_data_file_final = join(outdir, "contig_data_final.txt")
+    contigs_data.to_csv(
+        contig_data_file_final, sep="\t", header=True, index=False
+    )
 
     # Plot some figures of contigs distribution inside bins:
     mtf.plot_figures(outdir, contigs_data, bin_summary, size)
