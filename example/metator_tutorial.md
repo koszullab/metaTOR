@@ -116,6 +116,10 @@ If give you some binning plot summary too:
 |:-:|:-:|
 |![bins_distribution](images/bins_distribution.png) | ![bins_size_distribution](images/bins_size_distribution.png)|
 
+Another plot is the heatmap of the final bin network. It display the integrity inside a MAG and the noise between MAGs. All the bins of more than 500kb are represented. The order of the bins is the same as in the bin_summary.txt file. The binning size is 50kb.
+
+![network_heatmap](images/network_heatmap.png)
+
 ## B. A multiple modules pipeline
 
 This command will take some time as the Software will run all the steps with this. For the 140,409 contigs assembly example (314Mb) with 56 millions reads with 16 threads, it will take around 74.2 minutes and up to around 40G memory usage (CheckM validation step). However it's possible to skip some step if you don't need them or you have already done them to speed up the process.
