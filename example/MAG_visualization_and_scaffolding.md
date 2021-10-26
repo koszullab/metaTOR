@@ -62,7 +62,7 @@ This will build the contact map and store it to the graal format which could be 
 ```sh
 bin=MetaTOR_18_10
 mkdir -p contact_map
-metator contactmap -a ../assembly.fa -c contig_data_final.txt -e HpaII n $bin -p alignment_0.pairs,alignment_1.pairs -DfF -s 5000 -o contact_map/$bin/ -m cool
+metator contactmap -a ../assembly.fa -c contig_data_final.txt -e HpaII -n $bin -p alignment_0.pairs,alignment_1.pairs -DfF -s 5000 -o contact_map/$bin/ -m cool
 ```
 
 **Note**: Here we show to give an example using a Final bin, but you could put others "metaTOR object": contigs, core bins, overlpping bin, recursive bin or others. For the contigs it's possible to give both the id or the name. For the "other" object, you need to add a column in the contig data file call "Others" with whatever clustering you want. It could be another such as anvio binning (see tutorial [here](manual_curation_of_metator_MAGs.md)).

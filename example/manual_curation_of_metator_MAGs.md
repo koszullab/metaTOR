@@ -42,7 +42,7 @@ anvi-gen-contigs-database -f anvio/bin_contigs.fa -o anvio/bin_contigs.db -n met
 
 ### Runs the hmm profiles and definde the taxonomy with anvio
 
-Anvio have some default database of HMM profiles to annotate your profiles. This annotation are really useful because they show you the . Here we present them with the default HMM profiles from anvio. But you could also build your own HMM profiles if you want. A nice tutorial to do that is available [here](https://merenlab.org/2016/05/21/archaeal-single-copy-genes/).
+Anvio have some default database of HMM profiles to annotate your profiles. These annotations are really useful because they show you the completion/contamination of the MAGs. Here we present them with the default HMM profiles from anvio. But you could also build your own HMM profiles if you want. A nice tutorial to do that is available [here](https://merenlab.org/2016/05/21/archaeal-single-copy-genes/).
 
 ```sh
 anvi-run-hmms -c anvio/bin_contigs.db -T 16
@@ -61,7 +61,7 @@ anvi-run-hmms -c anvio/bin_contigs.db --also-scan-trnas -T 16
 
 * **Annotating your contigs database**
 
-Anvio have a function to annotate genes in your contigs database with functions from the NCBI’s Clusters of Orthologus Groups. A more complete explanation of this annotation is available [here](https://merenlab.org/2016/10/25/cog-annotation/).
+Anvio have a function to annotate genes in your contigs database with functions from the NCBI’s Clusters of Orthologus Groups. A more complete explanation of this annotation pipeline is available [here](https://merenlab.org/2016/10/25/cog-annotation/).
 
 ```sh
 anvi-run-ncbi-cogs -T 16 --sensitive -c anvio/bin_contigs.db

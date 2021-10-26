@@ -11,6 +11,10 @@
 
 Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that streamlines the processing and binning of metagenomic metaHiC datasets.
 
+<p align="center">
+  <img src="example/images/metator_logo.png" width="200">
+</p>
+
 ## Table of contents
 
 * [Installation](#Installation)
