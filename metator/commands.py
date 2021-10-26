@@ -32,6 +32,7 @@ import metator.network as mtn
 import metator.partition as mtp
 import metator.validation as mtv
 import metator.contact_map as mtc
+import numpy as np
 from docopt import docopt
 from metator.log import logger
 from os.path import exists, dirname, join
@@ -84,10 +85,11 @@ class Network(AbstractCommand):
     every single node in the network is written on a 'contig data' file.
 
     usage:
-        network --forward=STR --assembly=FILE [--reverse=STR] [--depth=FILE]
-        [--enzyme=STR] [--normalization=empirical_hit] [--no-clean-up]
-        [--outdir=DIR] [--min-quality=30] [--self-contacts] [--start=fastq]
-        [--threads=1] [--tempdir=DIR]
+        network --forward=STR --assembly=FILE [--reverse=STR]
+        [--aligner=bowtie2] [--depth=FILE] [--enzyme=STR]
+        [--normalization=empirical_hit] [--no-clean-up] [--outdir=DIR]
+        [--min-quality=30] [--self-contacts] [--start=fastq] [--threads=1]
+        [--tempdir=DIR]
 
     options:
         -1, --forward=STR       Fastq file or list of Fastq separated by a comma
@@ -102,6 +104,8 @@ class Network(AbstractCommand):
         -a, --assembly=FILE     The initial assembly path acting as the
                                 alignment file's reference genome or the
                                 basename of the bowtie2 index.
+        -b, --aligner=STR       Aligner algorithm to use. Either "bwa" or
+                                "bowtie2". [Default: bowtie2]
         -d, --depth=FILE        The depth.txt file from the shotgun reads used
                                 to made the assembly computed by
                                 jgi_summarize_bam_contig_depths from metabat2
@@ -221,9 +225,10 @@ class Network(AbstractCommand):
             fasta = mio.retrieve_fasta(index, temp_directory)
 
         # Print information of teh workflow:
+        logger.info("Aligner algorithm: %s", self.args["--aligner"])
         logger.info("Enzyme: %s", self.args["--enzyme"])
         logger.info("Normalization: %s", self.args["--normalization"])
-        logger.info("Minimum mapping quality: %d", self.args["--min-quality"])
+        logger.info("Minimum mapping quality: %s", self.args["--min-quality"])
 
         # Do not align if pair start
         if self.args["--start"] == "pair":
@@ -237,12 +242,15 @@ class Network(AbstractCommand):
             )
 
         else:
+            if self.args["--aligner"] == "bwa":
+                self.args["--reverse"] = np.zeros(len(self.args["--forward"]))
             # Align pair-end reads with bowtie2
             alignment_files, contig_data, hit_data = mta.get_contact_pairs(
                 self.args["--forward"],
                 self.args["--reverse"],
                 index,
                 fasta,
+                self.args["--aligner"],
                 min_qual,
                 self.args["--start"],
                 self.args["--depth"],
@@ -552,12 +560,12 @@ class Pipeline(AbstractCommand):
 
     usage:
         pipeline --assembly=FILE [--forward=STR] [--reverse=STR]
-        [--algorithm=louvain] [--cluster-matrix] [--contigs=FILE] [--depth=FILE]
-        [--enzyme=STR] [--force] [--iterations=100] [--rec-iter=10]
-        [--network=FILE] [--no-clean-up] [--normalization=empirical_hit]
-        [--outdir=DIR] [--overlap=80] [--rec-overlap=90]  [--min-quality=30]
-        [--res-param=1.0] [--size=500000] [--start=fastq] [--threads=1]
-        [--tempdir=DIR] [--skip-validation]
+        [--algorithm=louvain] [--aligner=bowtie2] [--cluster-matrix]
+        [--contigs=FILE] [--depth=FILE] [--enzyme=STR] [--force]
+        [--iterations=100] [--rec-iter=10] [--network=FILE] [--no-clean-up]
+        [--normalization=empirical_hit] [--outdir=DIR] [--overlap=80]
+        [--rec-overlap=90]  [--min-quality=30] [--res-param=1.0] [--size=500000]
+        [--start=fastq] [--threads=1] [--tempdir=DIR] [--skip-validation]
 
     options:
         -1, --forward=STR       Fastq file or list of Fastq separated by a comma
@@ -574,6 +582,8 @@ class Pipeline(AbstractCommand):
                                 basename of the bowtie2 index.
         -A, --algorithm=STR     Algorithm to use. Either "louvain" or "leiden".
                                 [Default: louvain]
+        -b, --aligner=STR       Aligner algorithm to use. Either "bwa" or
+                                "bowtie2". [Default: bowtie2]
         -c, --contigs=FILE      The path to the file containing the data ofthe
                                 contigs (ID, Name, Length, GC content, Hit,
                                 Coverage, Restriction site). Required if start
@@ -770,6 +780,7 @@ class Pipeline(AbstractCommand):
         if start <= 2:
             logger.info("Enzyme: %s", self.args["--enzyme"])
             logger.info("Normalization: %s", self.args["--normalization"])
+        logger.info("Aligner algorithm: %s", self.args["--aligner"])
         logger.info("Partition algorithm: %s", self.args["--algorithm"])
         logger.info("Partition iterations: %s", iterations)
         logger.info("Overlapping parameter: %s", overlapping_parameter)
@@ -803,12 +814,17 @@ class Pipeline(AbstractCommand):
         # Run the whole workflow
         if start <= 3:
             if start <= 2:
+                if self.args["--aligner"] == "bwa":
+                    self.args["--reverse"] = np.zeros(
+                        len(self.args["--forward"])
+                    )
                 # Align pair-end reads with bowtie2
                 alignment_files, contig_data, hit_data = mta.get_contact_pairs(
                     self.args["--forward"],
                     self.args["--reverse"],
                     index,
                     fasta,
+                    self.args["--aligner"],
                     min_qual,
                     self.args["--start"],
                     self.args["--depth"],

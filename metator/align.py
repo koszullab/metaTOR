@@ -67,6 +67,7 @@ def get_contact_pairs(
     rev_in,
     index,
     assembly,
+    aligner,
     min_qual,
     start,
     depth_file,
@@ -97,6 +98,8 @@ def get_contact_pairs(
     assembly : str
         The initial assembly path acting as the alignment file's reference
         assembly.
+    aligner : str
+        Either 'bowtie2' or 'bwa' aligner used or to be use to map the reads.
     min_qual : int
         Minimum mapping quality required to keep Hi-C pairs.
     start : str
@@ -162,41 +165,50 @@ def get_contact_pairs(
             align(rev_in, index, alignment_rev, n_cpu)
 
         elif start == "bam":
-            logger.info("Processing {0} and {1}:".format(for_in, rev_in))
-            alignment_for = for_in
-            alignment_rev = rev_in
+            if aligner == "bowtie2":
+                logger.info("Processing {0} and {1}:".format(for_in, rev_in))
+                alignment_for = for_in
+                alignment_rev = rev_in
 
         else:
             logger.error("Start argument should be either 'fastq' or 'bam'.")
             raise ValueError
 
-        # Create files to save the alignment.
-        alignment_temp_for = join(tmp_dir, name + "_for_temp.txt")
-        alignment_temp_rev = join(tmp_dir, name + "_rev_temp.txt")
+        if aligner == "bowtie2":
+            # Create files to save the alignment.
+            alignment_temp_for = join(tmp_dir, name + "_for_temp.txt")
+            alignment_temp_rev = join(tmp_dir, name + "_rev_temp.txt")
 
-        # Filters the aligned and non aligned reads from the forward and
-        # reverse bam files.
-        aligned_reads_for = process_bamfile(
-            alignment_for, min_qual, alignment_temp_for
-        )
-        aligned_reads_rev = process_bamfile(
-            alignment_rev, min_qual, alignment_temp_rev
-        )
-        logger.info(
-            "{0} forward reads aligned and {1} reverse reads aligned".format(
-                aligned_reads_for, aligned_reads_rev
+            # Filters the aligned and non aligned reads from the forward and
+            # reverse bam files.
+            aligned_reads_for = process_bamfile(
+                alignment_for, min_qual, alignment_temp_for
             )
-        )
+            aligned_reads_rev = process_bamfile(
+                alignment_rev, min_qual, alignment_temp_rev
+            )
+            logger.info(
+                "{0} forward reads aligned and {1} reverse reads aligned".format(
+                    aligned_reads_for, aligned_reads_rev
+                )
+            )
 
-        # Merge alignement to create a pairs file
-        logger.info("Merging the pairs:")
-        n_pairs = merge_alignment(
-            alignment_temp_for, alignment_temp_rev, contig_data, out_file
-        )
-        logger.info("{0} pairs aligned.".format(n_pairs))
-        total_aligned_pairs += n_pairs
+            # Merge alignement to create a pairs file
+            logger.info("Merging the pairs:")
+            n_pairs = merge_alignment(
+                alignment_temp_for, alignment_temp_rev, contig_data, out_file
+            )
+            logger.info("%s pairs aligned.", n_pairs)
+            total_aligned_pairs += n_pairs
+
+        # Case where a bam file from bwa is given as input.
+        if aligner == "bwa":
+            n_pairs += process_bwa_bamfile(
+                for_in, min_qual, contig_data, out_file
+            )
+
     if len(out_file_list) > 1:
-        logger.info("TOTAL PAIRS MAPPED: {0}".format(total_aligned_pairs))
+        logger.info("TOTAL PAIRS MAPPED: %s", total_aligned_pairs)
 
     return out_file_list, contig_data, hit_data
 
@@ -223,7 +235,7 @@ def merge_alignment(forward_aligned, reverse_aligned, contig_data, out_file):
         keys: "id", "length", "GC", "hit", "coverage". Coverage still at 0 and
         need to be updated later.
     out_file : str
-        Path to write the output file.
+        Path to write the output pairs file.
 
     Returns:
     --------
@@ -245,7 +257,7 @@ def merge_alignment(forward_aligned, reverse_aligned, contig_data, out_file):
         for_read = next(for_bam)
         rev_read = next(rev_bam)
 
-        # Write header of the pairs file. No chromsize are given.
+        # Write header of the pairs file.
         merged.write("## pairs format v1.0\n")
         merged.write("#columns: readID chr1 pos1 chr2 pos2 strand1 strand2\n")
         merged.write("#sorted: readID\n")
@@ -257,7 +269,7 @@ def merge_alignment(forward_aligned, reverse_aligned, contig_data, out_file):
                 )
             )
 
-        # Loop while at least one end of one endd is reached. It's possible to
+        # Loop while at least one end of one end is reached. It's possible to
         # advance like that as the two tsv files are sorted on the id of the
         # reads.
         while n_pairs >= 0:
@@ -265,8 +277,7 @@ def merge_alignment(forward_aligned, reverse_aligned, contig_data, out_file):
             if for_read[0] == rev_read[0]:
                 # Write read ID
                 merged.write(for_read[0] + "\t")
-                # Pairs are 1-based so we have to add 1 to 0 based positionco
-                # from bam.
+                # Pairs are 1-based so we have to add 1 to 0 based bam position
                 for_position = (
                     for_read[1] + "\t" + str(int(for_read[2]) + 1) + "\t"
                 )
@@ -274,7 +285,7 @@ def merge_alignment(forward_aligned, reverse_aligned, contig_data, out_file):
                     rev_read[1] + "\t" + str(int(rev_read[2]) + 1) + "\t"
                 )
 
-                # Have upper trinagle shape
+                # Have upper triangle shape
                 if (
                     for_read[1] == rev_read[1]
                     and int(for_read[2]) <= int(rev_read[2])
@@ -393,3 +404,128 @@ def process_bamfile(alignment, min_qual, filtered_out):
     temp_bam.close()
 
     return aligned_reads
+
+
+def process_bwa_bamfile(alignment, min_qual, contig_data, out_file):
+    """Filter alignment BAM files
+
+    Reads all the reads in the input BAM alignment file. Keep reads in the
+    output if they are aligned with a good quality (greater than min quality
+    threshold given) saving their only some columns: ReadID, Contig,
+    Position_start, Position_end, strand to save memory.
+
+    Parameters:
+    -----------
+    alignment : str
+        Path to the input temporary alignment.
+    min_qual : int
+        Minimum mapping quality required to keep a Hi-C pair.
+    contig_data : dict
+        Dictionnary of the all the contigs from the assembly, the contigs names
+        are the keys to the data of the contig available with the following
+        keys: "id", "length", "GC", "hit", "coverage". Coverage still at 0 and
+        need to be updated later.
+    out_file : str
+        Path to the output pairs file.
+
+    Returns:
+    --------
+    int:
+        Number of pairs aligned.
+    """
+
+    # Read the bam file.
+    n_pairs = 0
+    save = pysam.set_verbosity(0)
+    temp_bam = pysam.AlignmentFile(alignment, "rb", check_sq=False)
+    pysam.set_verbosity(save)
+
+    with open(out_file, "w") as merged:
+
+        # Write header of the pairs file.
+        merged.write("## pairs format v1.0\n")
+        merged.write("#columns: readID chr1 pos1 chr2 pos2 strand1 strand2\n")
+        merged.write("#sorted: readID\n")
+        merged.write("#shape: upper triangle\n")
+        for contig in contig_data:
+            merged.write(
+                "#chromsize: {0} {1}\n".format(
+                    contig, contig_data[contig]["length"]
+                )
+            )
+
+        # Loop until the end of the file. Read the reads by two as the forward
+        # and reverse reads should be interleaved.
+        while n_pairs >= 0:
+            try:
+                for_read = next(temp_bam)
+                rev_read = next(temp_bam)
+
+                # Check mapping quality
+                if (
+                    for_read.mapping_quality >= min_qual
+                    and rev_read.mapping_quality >= min_qual
+                ):
+
+                    # Check flag
+                    if not (for_read.is_unmapped or rev_read.is_unmapped):
+                        n_pairs += 1
+
+                        # Safety check (forward and reverse are the same reads)
+                        if for_read.query_name != rev_read.query_name:
+                            logger.error("Reads should be paired.")
+                            raise ValueError
+
+                        # Define pairs value.
+                        name = for_read.query_name
+                        contig1 = for_read.reference_name
+                        contig2 = rev_read.reference_name
+                        pos1 = for_read.pos + 1
+                        pos2 = for_read.pos + 1
+                        strand1 = "+"
+                        strand2 = "+"
+                        if for_read.is_reverse:
+                            strand1 = "-"
+                        if rev_read.is_reverse:
+                            strand2 = "-"
+
+                        # Modify order to have an upper triangle and write
+                        # the pair.
+                        if (contig1 == contig2 and pos1 <= pos2) or contig_data[
+                            contig1
+                        ]["id"] < contig_data[contig2]["id"]:
+                            merged.write(
+                                "\t".join(
+                                    [
+                                        name,
+                                        contig1,
+                                        str(pos1),
+                                        contig2,
+                                        str(pos2),
+                                        strand1,
+                                        strand2,
+                                    ]
+                                )
+                            )
+                        else:
+                            merged.write(
+                                "\t".join(
+                                    [
+                                        name,
+                                        contig2,
+                                        str(pos2),
+                                        contig1,
+                                        str(pos1),
+                                        strand2,
+                                        strand1,
+                                    ]
+                                )
+                            )
+
+            # Exit the loop if no more reads.
+            except StopIteration:
+                break
+
+    # Close the bam file and return number of pairs
+    temp_bam.close()
+    return n_pairs
