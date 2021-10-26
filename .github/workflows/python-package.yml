@@ -29,6 +29,13 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
     
+    - name: Install bwa
+      run: |
+        git clone https://github.com/lh3/bwa.git
+        cd bwa
+        make
+        cd ..
+
     - name: Install Louvain
       run: |
         cd external 
@@ -53,6 +60,7 @@ jobs:
       run: |
         export LOUVAIN_PATH=external/gen-louvain
         export LEIDEN_PATH=networkanalysis/build/libs/networkanalysis-1.2.0.jar
+        export PATH="$PATH:bwa/"
         pytest --pylint --pylint-error-types=EF --pylint-rcfile=.pylintrc --doctest-modules
         pytest --cov=metator
         codecov

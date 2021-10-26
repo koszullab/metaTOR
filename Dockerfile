@@ -28,6 +28,13 @@ RUN conda install -c conda-forge -y python=3.8\
     pairix \
     checkm-genome && conda clean -afy
 
+# Install bwa
+RUN git clone https://github.com/lh3/bwa.git && \
+    cd bwa && \
+    make &&\
+    cd /app
+ENV PATH="$PATH:/app/bwa"
+
 # Install Louvain 
 RUN cd /app/external && \
     tar -xzf louvain-generic.tar.gz && \
