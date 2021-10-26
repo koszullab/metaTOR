@@ -32,7 +32,6 @@ import metator.network as mtn
 import metator.partition as mtp
 import metator.validation as mtv
 import metator.contact_map as mtc
-import numpy as np
 from docopt import docopt
 from metator.log import logger
 from os.path import exists, dirname, join
@@ -89,7 +88,7 @@ class Network(AbstractCommand):
         [--aligner=bowtie2] [--depth=FILE] [--enzyme=STR]
         [--normalization=empirical_hit] [--no-clean-up] [--outdir=DIR]
         [--min-quality=30] [--self-contacts] [--start=fastq] [--threads=1]
-        [--tempdir=DIR]
+        [--tmpdir=DIR]
 
     options:
         -1, --forward=STR       Fastq file or list of Fastq separated by a comma
@@ -131,16 +130,18 @@ class Network(AbstractCommand):
                                 "bam", or "pair". [Default: fastq]
         -t, --threads=INT       Number of parallel threads allocated for the
                                 alignement. [Default: 1]
-        -T, --tempdir=DIR       Temporary directory. Default to current
+        -T, --tmpdir=DIR       Temporary directory. Default to current
                                 directory. [Default: ./tmp]
     """
 
     def execute(self):
 
         # Defined the temporary directory.
-        if not self.args["--tempdir"]:
-            self.args["--tempdir"] = "./tmp"
-        temp_directory = mio.generate_temp_dir(self.args["--tempdir"])
+        if not self.args["--tmpdir"]:
+            tmp_dir = mio.generate_temp_dir("./tmp")
+        else:
+            tmp_dir = self.args["--tmpdir"]
+            os.makedirs(tmp_dir, exist_ok=True)
 
         # Defined the output directory and output file names.
         if not self.args["--outdir"]:
@@ -161,12 +162,19 @@ class Network(AbstractCommand):
         self_contacts = self.args["--self-contacts"]
 
         # Check if forward and reverse arguments are given:
-        if self.args["--start"] != "pair":
-            if not self.args["--forward"] or not self.args["--reverse"]:
-                logger.error(
-                    "Forward and reverse arguments are necessary for fastq or bam start."
-                )
-                raise ValueError
+        if (
+            self.args["--start"] == "fastq"
+            or (
+                self.args["--start"] == "bam"
+                and self.args["--aligner"] == "bowtie2"
+            )
+        ) and not self.args["--reverse"]:
+            logger.error(
+                "Forward and reverse arguments are necessary for fastq with %s start and %s aligner.",
+                self.args["--start"],
+                self.args["--aligner"],
+            )
+            raise ValueError
 
         # Check if normalization in the list of possible normalization.
         list_normalization = [
@@ -209,20 +217,23 @@ class Network(AbstractCommand):
         assembly = self.args["--assembly"]
         # Check what is the reference. If a fasta is given build the index. If a
         # bowtie2 index is given, retreive the fasta.
-        index = mio.check_fasta_index(assembly, mode="bowtie2")
+        index = mio.check_fasta_index(assembly, mode=self.args["--aligner"])
         if index is None:
             if mio.check_is_fasta(assembly):
                 fasta = assembly
                 # If start at bam could skip the index generation.
                 if self.args["--start"] == "fastq":
-                    index = mio.generate_fasta_index(fasta, temp_directory)
+                    index = mio.generate_fasta_index(
+                        fasta, self.args["--aligner"], tmp_dir
+                    )
             else:
                 logger.error(
-                    "Please give as assembly argument a bowtie2 index or a fasta."
+                    "Please give as assembly argument a %s index or a fasta.",
+                    self.args["--aligner"],
                 )
                 raise ValueError
         else:
-            fasta = mio.retrieve_fasta(index, temp_directory)
+            fasta = mio.retrieve_fasta(index, self.args["--aligner"], tmp_dir)
 
         # Print information of teh workflow:
         logger.info("Aligner algorithm: %s", self.args["--aligner"])
@@ -242,8 +253,6 @@ class Network(AbstractCommand):
             )
 
         else:
-            if self.args["--aligner"] == "bwa":
-                self.args["--reverse"] = np.zeros(len(self.args["--forward"]))
             # Align pair-end reads with bowtie2
             alignment_files, contig_data, hit_data = mta.get_contact_pairs(
                 self.args["--forward"],
@@ -256,7 +265,7 @@ class Network(AbstractCommand):
                 self.args["--depth"],
                 self.args["--enzyme"],
                 self.args["--outdir"],
-                temp_directory,
+                tmp_dir,
                 self.args["--threads"],
             )
 
@@ -268,7 +277,7 @@ class Network(AbstractCommand):
             self.args["--outdir"],
             "network.txt",
             "contig_data_network.txt",
-            temp_directory,
+            tmp_dir,
             self.args["--threads"],
             self.args["--normalization"],
             self_contacts,
@@ -276,7 +285,7 @@ class Network(AbstractCommand):
 
         # Delete the temporary folder
         if not self.args["--no-clean-up"]:
-            shutil.rmtree(temp_directory)
+            shutil.rmtree(tmp_dir)
 
 
 class Partition(AbstractCommand):
@@ -305,7 +314,7 @@ class Partition(AbstractCommand):
         partition  --assembly=FILE --contigs=FILE --network=FILE
         [--algorithm=louvain] [--cluster-matrix] [--force] [--iterations=100]
         [--no-clean-up] [--outdir=DIR] [--overlap=80] [--res-param=1.0]
-        [--size=500000] [--threads=1] [--tempdir=DIR]
+        [--size=500000] [--threads=1] [--tmpdir=DIR]
 
     options:
         -a, --assembly=FILE     The path to the assembly fasta file used to do
@@ -333,16 +342,18 @@ class Partition(AbstractCommand):
                                 [Default: 500000]
         -t, --threads=INT       Number of parallel threads allocated for the
                                 partition. [Default: 1]
-        -T, --tempdir=DIR       Temporary directory. Default to current
+        -T, --tmpdir=DIR       Temporary directory. Default to current
                                 directory. [Default: ./tmp]
     """
 
     def execute(self):
 
         # Defined the temporary directory.
-        if not self.args["--tempdir"]:
-            self.args["--tempdir"] = "./tmp"
-        temp_directory = mio.generate_temp_dir(self.args["--tempdir"])
+        if not self.args["--tmpdir"]:
+            tmp_dir = mio.generate_temp_dir("./tmp")
+        else:
+            tmp_dir = self.args["--tmpdir"]
+            os.makedirs(tmp_dir, exist_ok=True)
 
         # Defined the output directory.
         if not self.args["--outdir"]:
@@ -382,7 +393,7 @@ class Partition(AbstractCommand):
             raise ValueError
 
         # Partition the network
-        clustering_matrix_file, contigs_data_file = mtp.partition(
+        _clustering_matrix_file, _contigs_data_file = mtp.partition(
             self.args["--algorithm"],
             self.args["--assembly"],
             self.args["--cluster-matrix"],
@@ -394,7 +405,7 @@ class Partition(AbstractCommand):
             overlapping_parameter,
             resolution_parameter,
             size,
-            temp_directory,
+            tmp_dir,
             threads,
         )
 
@@ -402,7 +413,7 @@ class Partition(AbstractCommand):
         os.remove(self.args["--assembly"] + ".fxi")
         # Delete the temporary folder
         if not self.args["--no-clean-up"]:
-            shutil.rmtree(temp_directory)
+            shutil.rmtree(tmp_dir)
 
 
 class Validation(AbstractCommand):
@@ -421,7 +432,7 @@ class Validation(AbstractCommand):
         validation --assembly=FILE --contigs=FILE --fasta=DIR --network=FILE
         [--algorithm=louvain] [--cluster-matrix] [--force] [--iterations=10]
         [--no-clean-up] [--outdir=DIR] [--overlap=90] [--res-param=1.0]
-        [--size=500000] [--threads=1] [--tempdir=DIR]
+        [--size=500000] [--threads=1] [--tmpdir=DIR]
 
     options:
         -a, --assembly=FILE     The path to the assembly fasta file used to do
@@ -451,7 +462,7 @@ class Validation(AbstractCommand):
                                 [Default: 500000]
         -t, --threads=INT       Number of parallel threads allocated for the
                                 partition. [Default: 1]
-        -T, --tempdir=DIR       Temporary directory. Default to current
+        -T, --tmpdir=DIR       Temporary directory. Default to current
                                 directory. [Default: ./tmp]
     """
 
@@ -462,9 +473,11 @@ class Validation(AbstractCommand):
     def execute(self):
 
         # Defined the temporary directory.
-        if not self.args["--tempdir"]:
-            self.args["--tempdir"] = "./tmp"
-        temp_directory = mio.generate_temp_dir(self.args["--tempdir"])
+        if not self.args["--tmpdir"]:
+            tmp_dir = mio.generate_temp_dir("./tmp")
+        else:
+            tmp_dir = self.args["--tmpdir"]
+            os.makedirs(tmp_dir, exist_ok=True)
 
         # Defined the output directory and output file names.
         if not self.args["--outdir"]:
@@ -511,7 +524,7 @@ class Validation(AbstractCommand):
         overlapping_parameter = int(self.args["--overlap"]) / 100
         resolution_parameter = float(self.args["--res-param"])
 
-        # Check checkM availability
+        # Check checkM availabilitys
         if not mio.check_checkm():
             logger.error(
                 "CheckM is not in the path. Could not make the iterations"
@@ -523,7 +536,7 @@ class Validation(AbstractCommand):
             logger.error('algorithm should be either "louvain" or "leiden"')
             raise ValueError
 
-        clustering_matrix_file = mtv.recursive_decontamination(
+        _clustering_matrix_file = mtv.recursive_decontamination(
             self.args["--algorithm"],
             self.args["--assembly"],
             self.args["--cluster-matrix"],
@@ -537,7 +550,7 @@ class Validation(AbstractCommand):
             recursive_fasta_dir,
             resolution_parameter,
             size,
-            temp_directory,
+            tmp_dir,
             threads,
         )
 
@@ -545,7 +558,7 @@ class Validation(AbstractCommand):
         os.remove(self.args["--assembly"] + ".fxi")
         # Delete the temporary folder
         if not self.args["--no-clean-up"]:
-            shutil.rmtree(temp_directory)
+            shutil.rmtree(tmp_dir)
 
 
 class Pipeline(AbstractCommand):
@@ -565,7 +578,7 @@ class Pipeline(AbstractCommand):
         [--iterations=100] [--rec-iter=10] [--network=FILE] [--no-clean-up]
         [--normalization=empirical_hit] [--outdir=DIR] [--overlap=80]
         [--rec-overlap=90]  [--min-quality=30] [--res-param=1.0] [--size=500000]
-        [--start=fastq] [--threads=1] [--tempdir=DIR] [--skip-validation]
+        [--start=fastq] [--threads=1] [--tmpdir=DIR] [--skip-validation]
 
     options:
         -1, --forward=STR       Fastq file or list of Fastq separated by a comma
@@ -630,7 +643,7 @@ class Pipeline(AbstractCommand):
                                 pair, or network. [Default: fastq]
         -t, --threads=INT       Number of parallel threads allocated for the
                                 alignement. [Default: 1]
-        -T, --tempdir=DIR       Temporary directory. Default to current
+        -T, --tmpdir=DIR       Temporary directory. Default to current
                                 directory. [Default: ./tmp]
         -v, --skip-validation   If  enables do not do the validation step which
                                 have an high memory usage (checkM ~ 40G)
@@ -639,9 +652,11 @@ class Pipeline(AbstractCommand):
     def execute(self):
 
         # Defined the temporary directory.
-        if not self.args["--tempdir"]:
-            self.args["--tempdir"] = "./tmp"
-        temp_directory = mio.generate_temp_dir(self.args["--tempdir"])
+        if not self.args["--tmpdir"]:
+            tmp_dir = mio.generate_temp_dir("./tmp")
+        else:
+            tmp_dir = self.args["--tmpdir"]
+            os.makedirs(tmp_dir, exist_ok=True)
 
         # Defined the output directory and output file names.
         if not self.args["--outdir"]:
@@ -767,12 +782,19 @@ class Pipeline(AbstractCommand):
             raise ValueError
 
         # Check if forward and reverse reads are given for fastq and bam start.
-        if start <= 2:
-            if not self.args["--forward"] or not self.args["--reverse"]:
-                logger.error(
-                    "Forward and reverse arguments are necessary for fastq or bam start."
-                )
-                raise ValueError
+        if (
+            self.args["--start"] == "fastq"
+            or (
+                self.args["--start"] == "bam"
+                and self.args["--aligner"] == "bowtie2"
+            )
+        ) and not self.args["--reverse"]:
+            logger.error(
+                "Forward and reverse arguments are necessary for fastq with %s start and %s aligner.",
+                self.args["--start"],
+                self.args["--aligner"],
+            )
+            raise ValueError
 
         # Print information of the workflow:
         if start == 1:
@@ -797,27 +819,25 @@ class Pipeline(AbstractCommand):
         assembly = self.args["--assembly"]
         # Check what is the reference. If a fasta is given build the index. If a
         # bowtie2 index is given, retreive the fasta.
-        index = mio.check_fasta_index(assembly, mode="bowtie2")
+        index = mio.check_fasta_index(assembly, mode=self.args["--aligner"])
         if index is None:
             if mio.check_is_fasta(assembly):
                 fasta = assembly
                 if start == 1:
-                    index = mio.generate_fasta_index(fasta, temp_directory)
+                    index = mio.generate_fasta_index(
+                        fasta, self.args["--aligner"], tmp_dir
+                    )
             else:
                 logger.error(
                     "Please give as assembly argument a bowtie2 index or a fasta."
                 )
                 raise ValueError
         else:
-            fasta = mio.retrieve_fasta(index, temp_directory)
+            fasta = mio.retrieve_fasta(index, self.args["--aligner"], tmp_dir)
 
         # Run the whole workflow
         if start <= 3:
             if start <= 2:
-                if self.args["--aligner"] == "bwa":
-                    self.args["--reverse"] = np.zeros(
-                        len(self.args["--forward"])
-                    )
                 # Align pair-end reads with bowtie2
                 alignment_files, contig_data, hit_data = mta.get_contact_pairs(
                     self.args["--forward"],
@@ -830,7 +850,7 @@ class Pipeline(AbstractCommand):
                     self.args["--depth"],
                     self.args["--enzyme"],
                     self.args["--outdir"],
-                    temp_directory,
+                    tmp_dir,
                     self.args["--threads"],
                 )
             else:
@@ -850,7 +870,7 @@ class Pipeline(AbstractCommand):
                 self.args["--outdir"],
                 "network.txt",
                 "contig_data_network.txt",
-                temp_directory,
+                tmp_dir,
                 self.args["--threads"],
                 self.args["--normalization"],
                 False,
@@ -872,7 +892,7 @@ class Pipeline(AbstractCommand):
             overlapping_parameter,
             resolution_parameter,
             size,
-            temp_directory,
+            tmp_dir,
             threads,
         )
 
@@ -899,7 +919,7 @@ class Pipeline(AbstractCommand):
                 recursive_fasta_dir,
                 resolution_parameter,
                 size,
-                temp_directory,
+                tmp_dir,
                 threads,
             )
 
@@ -929,7 +949,7 @@ class Pipeline(AbstractCommand):
         os.remove(fasta + ".fxi")
         # Delete the temporary folder.
         if not self.args["--no-clean-up"]:
-            shutil.rmtree(temp_directory)
+            shutil.rmtree(tmp_dir)
 
 
 class Contactmap(AbstractCommand):

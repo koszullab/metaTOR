@@ -14,7 +14,7 @@ This mdoule contains all core I/O functions:
     - process_ligation_sites
     - read_compressed
     - read_results_checkm
-    - retreive_fastas
+    - retrieve_fasta
     - sort_pairs
     - write_checkm_summary
 """
@@ -32,7 +32,7 @@ import zipfile
 from Bio import SeqIO
 from Bio.Restriction import RestrictionBatch
 from metator.log import logger
-from os.path import join, exists
+from os.path import join, exists, isfile
 from random import getrandbits
 
 
@@ -171,13 +171,15 @@ def check_louvain_cpp(louvain_path):
     return True
 
 
-def generate_fasta_index(fasta, outdir):
+def generate_fasta_index(fasta, aligner, outdir):
     """Generate fasta index.
 
     Parameters:
     -----------
     fasta : str
         Path to the fasta reference to index.
+    aligner : str
+        Aligner to use to build the index.
     outdir : str
         Path to the directory to write the index.
 
@@ -188,9 +190,12 @@ def generate_fasta_index(fasta, outdir):
     """
     logger.info("Build index from the given fasta.")
     index = join(outdir, "index")
-    cmd = "bowtie2-build -q {0} {1}".format(fasta, index)
+    if aligner == "bowtie2":
+        cmd = "bowtie2-build -q {0} {1}".format(fasta, index)
+    elif aligner == "bwa":
+        cmd = "bwa index -p {1} {0}".format(fasta, index)
     process = sp.Popen(cmd, shell=True, stdout=sp.PIPE)
-    out, err = process.communicate()
+    _out, _err = process.communicate()
     return index
 
 
@@ -380,7 +385,7 @@ def read_results_checkm(checkm_file, checkm_taxonomy_file):
     return checkm_summary
 
 
-def retrieve_fasta(in_file, tmpdir):
+def retrieve_fasta(in_file, aligner, tmpdir):
     """
     Function to retrieve fasta from the given reference file. If index is given
     retrieve it using bowtie2 inspect. Thraw an error if not a fasta or bowtie2
@@ -390,6 +395,8 @@ def retrieve_fasta(in_file, tmpdir):
     -----------
     in_file : str
         Path to the reference file given.
+    aligner : str
+        Name of the aligner used. Either 'bowtie2' or 'bwa'.
     tmpdir : str
         Path to the temp directory to write the fasta if necessary.
 
@@ -401,12 +408,25 @@ def retrieve_fasta(in_file, tmpdir):
     if check_is_fasta(in_file):
         fasta = in_file
     else:
-        if check_fasta_index(in_file):
-            logger.info("Retrieve fasta from bowtie2 index.")
-            fasta = join(tmpdir, "assembly.fa")
-            cmd = "bowtie2-inspect {0} > {1}".format(in_file, fasta)
-            process = sp.Popen(cmd, shell=True, stdout=sp.PIPE)
-            out, err = process.communicate()
+        if check_fasta_index(in_file, aligner):
+            if aligner == "bowtie2":
+                logger.info("Retrieve fasta from bowtie2 index.")
+                fasta = join(tmpdir, "assembly.fa")
+                cmd = "bowtie2-inspect {0} > {1}".format(in_file, fasta)
+                process = sp.Popen(cmd, shell=True, stdout=sp.PIPE)
+                _out, _err = process.communicate()
+            elif aligner == "bwa":
+                if isfile(in_file + ".fa"):
+                    if check_is_fasta(in_file + ".fa"):
+                        fasta = in_file + ".fa"
+                elif isfile(in_file + ".fasta"):
+                    if check_is_fasta(in_file + ".fasta"):
+                        fasta = in_file + ".fasta"
+                else:
+                    logger.error(
+                        "If you give bwa index, please make sure the fasta exists with the same prefix."
+                    )
+                    raise ValueError
         else:
             logger.error(
                 "Please give as a reference a bowtie2 index or a fasta."
@@ -429,7 +449,7 @@ def save_sparse_matrix(s_mat, path):
     """
     if s_mat.format != "coo":
         ValueError("Sparse matrix must be in coo format")
-    dtype = s_mat.dtype
+    _dtype = s_mat.dtype
     sparse_arr = np.vstack([s_mat.row, s_mat.col, s_mat.data]).T
 
     np.savetxt(

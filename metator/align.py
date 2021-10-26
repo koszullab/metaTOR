@@ -14,6 +14,7 @@ This module contains all these alignment functions:
     - get_contact_pairs
     - merge_alignement
     - process_bamfile
+    - process_bwa_bamfile
 """
 
 import csv
@@ -25,39 +26,58 @@ from os.path import join
 from pkg_resources import parse_version
 
 
-def align(fq_in, index, bam_out, n_cpu):
+def align(fq_in, index, aligner, bam_out, n_cpu, fq_in_2=None):
     """Alignment
-     Aligns reads of fq_in with bowtie2. Parameters of bowtie2 are set as
+    Aligns reads of fq_in with bowtie2. Parameters of bowtie2 are set as
     --very-sensitive-local and only the aligned reads are
-     kept in the bam file.
-     Multiple files could be given, but only one file will be written as output.
+    kept in the bam file.
+    Multiple files could be given, but only one file will be written as output.
 
-     Parameters:
-     -----------
-     fq_in : str
-         Path to input fastq file to align. If multiple files are given, list of
-         path separated by a comma.
-     index : str
-         Path to the bowtie2 index genome.
-     bam_out : str
-         Path where the alignment should be written in BAM format.
-     n_cpu : int
-         The number of CPUs to use for the alignment.
+    Parameters:
+    -----------
+    fq_in : str
+        Path to input fastq file to align.
+    index : str
+        Path to the bowtie2 index genome.
+    aligner : str
+        Name of the aligner algorithm to use. Either bowtie2 or bwa.
+    bam_out : str
+        Path where the alignment should be written in BAM format.
+    n_cpu : int
+        The number of CPUs to use for the alignment.
+    fq_in_2 : str
+        Path to the reverse fastq file for bwa (map both reads at the same time
+        but do not take into account their poistion as pairs.)
+
+    Returns:
+    --------
+    int :
+        0
     """
 
-    # Align the reads on the reference genome
-    map_args = {"cpus": n_cpu, "fq": fq_in, "idx": index, "bam": bam_out}
-    cmd = (
-        "bowtie2 -x {idx} -p {cpus} --quiet --very-sensitive-local {fq} --no-unal"
-    ).format(**map_args)
+    # Align the reads on the reference genome with the chosen aligner.
+    map_args = {
+        "cpus": n_cpu,
+        "fq": fq_in,
+        "idx": index,
+        "bam": bam_out,
+        "fq_rev": fq_in_2,
+    }
+    if aligner == "bwa":
+        cmd = "bwa mem -5SP -t {cpus} {idx} {fq} {fq_rev}".format(**map_args)
+    elif aligner == "bowtie2":
+        cmd = (
+            "bowtie2 -x {idx} -p {cpus} --very-sensitive-local {fq} --no-unal"
+        ).format(**map_args)
 
+    # Write the outputfile in a temporary bam file.
     map_process = sp.Popen(cmd, shell=True, stdout=sp.PIPE)
     sort_process = sp.Popen(
         "samtools sort -n -@ {cpus} -o {bam}".format(**map_args),
         shell=True,
         stdin=map_process.stdout,
     )
-    out, err = sort_process.communicate()
+    _out, _err = sort_process.communicate()
 
     return 0
 
@@ -145,30 +165,41 @@ def get_contact_pairs(
 
     for i in range(len(for_list)):
         for_in = for_list[i]
-        rev_in = rev_list[i]
+        try:
+            rev_in = rev_list[i]
+        except IndexError:
+            rev_in = None
         name = "alignment_" + str(i)
         out_file = join(out_dir, "alignment_" + str(i) + ".pairs")
         out_file_list.append(out_file)
 
         # Align if necessary
         if start == "fastq":
-            # Create files to save the alignment.
-            alignment_for = join(out_dir, name + "_for.bam")
-            alignment_rev = join(out_dir, name + "_rev.bam")
+            if aligner == "bowtie2":
+                # Create files to save the alignment.
+                alignment_for = join(out_dir, name + "_for.bam")
+                alignment_rev = join(out_dir, name + "_rev.bam")
 
-            # Align the forward reads
-            logger.info("Alignment of {0}:".format(for_in))
-            align(for_in, index, alignment_for, n_cpu)
+                # Align the forward reads
+                logger.info("Alignment of %s:", for_in)
+                align(for_in, index, aligner, alignment_for, n_cpu)
 
-            # Align the reverse reads
-            logger.info("Alignment of {0}:".format(rev_in))
-            align(rev_in, index, alignment_rev, n_cpu)
+                # Align the reverse reads
+                logger.info("Alignment of %s:", rev_in)
+                align(rev_in, index, aligner, alignment_rev, n_cpu)
+            elif aligner == "bwa":
+                # Create file to save the alignement.
+                alignment = join(out_dir, name + ".bam")
+                logger.info("Alignment of %s and %s:", for_in, rev_in)
+                align(for_in, index, aligner, alignment, n_cpu, rev_in)
 
         elif start == "bam":
             if aligner == "bowtie2":
-                logger.info("Processing {0} and {1}:".format(for_in, rev_in))
+                logger.info("Processing %s and %s:", for_in, rev_in)
                 alignment_for = for_in
                 alignment_rev = rev_in
+            elif aligner == "bwa":
+                alignment = for_in
 
         else:
             logger.error("Start argument should be either 'fastq' or 'bam'.")
@@ -188,9 +219,9 @@ def get_contact_pairs(
                 alignment_rev, min_qual, alignment_temp_rev
             )
             logger.info(
-                "{0} forward reads aligned and {1} reverse reads aligned".format(
-                    aligned_reads_for, aligned_reads_rev
-                )
+                "%s forward reads aligned and %s reverse reads aligned",
+                aligned_reads_for,
+                aligned_reads_rev,
             )
 
             # Merge alignement to create a pairs file
@@ -203,9 +234,11 @@ def get_contact_pairs(
 
         # Case where a bam file from bwa is given as input.
         if aligner == "bwa":
-            n_pairs += process_bwa_bamfile(
-                for_in, min_qual, contig_data, out_file
+            n_pairs = process_bwa_bamfile(
+                alignment, min_qual, contig_data, out_file
             )
+            logger.info("%s pairs aligned.", n_pairs)
+            total_aligned_pairs += n_pairs
 
     if len(out_file_list) > 1:
         logger.info("TOTAL PAIRS MAPPED: %s", total_aligned_pairs)
@@ -459,7 +492,11 @@ def process_bwa_bamfile(alignment, min_qual, contig_data, out_file):
         while n_pairs >= 0:
             try:
                 for_read = next(temp_bam)
+                while for_read.is_supplementary:
+                    for_read = next(temp_bam)
                 rev_read = next(temp_bam)
+                while rev_read.is_supplementary:
+                    rev_read = next(temp_bam)
 
                 # Check mapping quality
                 if (
@@ -473,7 +510,11 @@ def process_bwa_bamfile(alignment, min_qual, contig_data, out_file):
 
                         # Safety check (forward and reverse are the same reads)
                         if for_read.query_name != rev_read.query_name:
-                            logger.error("Reads should be paired.")
+                            logger.error(
+                                "Reads should be paired - %s\t%s",
+                                for_read.query_name,
+                                rev_read.query_name,
+                            )
                             raise ValueError
 
                         # Define pairs value.
@@ -506,6 +547,7 @@ def process_bwa_bamfile(alignment, min_qual, contig_data, out_file):
                                         strand2,
                                     ]
                                 )
+                                + "\n"
                             )
                         else:
                             merged.write(
@@ -520,6 +562,7 @@ def process_bwa_bamfile(alignment, min_qual, contig_data, out_file):
                                         strand1,
                                     ]
                                 )
+                                + "\n"
                             )
 
             # Exit the loop if no more reads.

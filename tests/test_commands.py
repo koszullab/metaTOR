@@ -27,11 +27,14 @@ NORMALIZE = (
     ["None", "length", "abundance", "RS", "empirical_hit", "theoritical_hit"],
 )
 ALGORITHM = ("alg", ["louvain", "leiden"])
+ALIGNER = ("aligner", ["bwa", "bowtie2"])
 
 
-def test_network():
-    args = "-1 {FASTQ_FOR} -2 {FASTQ_REV} -a {FASTA} -o {OUT_TEST} -T {TMP}".format(
-        **global_args
+@pytest.mark.parametrize(*ALIGNER)
+def test_network(aligner):
+    args = "-1 {FASTQ_FOR} -2 {FASTQ_REV} -a {FASTA} -b {0} -o {OUT_TEST} -T {TMP}".format(
+        aligner,
+        **global_args,
     )
     proc = mtc.Network(args.split(" "), {})
     proc.execute()
@@ -80,4 +83,4 @@ def test_pipeline():
     proc.execute()
 
     shutil.rmtree("tests_data/out_test")
-    shutil.rmtree("tests_data/tmp/")
+    # shutil.rmtree("tests_data/tmp/")
