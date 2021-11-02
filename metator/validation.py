@@ -243,7 +243,8 @@ def get_bin_coverage(bin_summary, contigs_data):
                         * 100
                     )
     for bin_name in bin_summary:
-        bin_summary[bin_name]["HiC_abundance"] /= total_hic_hit
+        # Divide the HiC abundance by two as the hit are counted twice.
+        bin_summary[bin_name]["HiC_abundance"] /= 2 * total_hic_hit
         if contigs_data.loc[0, "Shotgun_coverage"] != "-":
             bin_summary[bin_name]["SG_abundance"] /= total_sg_hit
     return bin_summary
