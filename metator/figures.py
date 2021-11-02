@@ -19,6 +19,7 @@ Core functions to plot the firgures are:
 """
 
 
+import hicstuff.hicstuff as hcs
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -81,7 +82,10 @@ def build_matrix_network(pairs_files, info_contigs, N, bin_size):
                         matrix[frag2, frag1] += 1
                 except KeyError:
                     continue
-    return matrix + matrix.T
+    matrix_norm = hcs.normalize_dense(
+        matrix + matrix.T, norm="SCN", iterations=100
+    )
+    return matrix_norm
 
 
 def figures_bins_distribution(bin_summary, out_file):
@@ -106,7 +110,7 @@ def figures_bins_distribution(bin_summary, out_file):
     mask = bin_summary["contamination"] >= 105
     bin_summary.loc[mask, "contamination"] = 105
     # Plot the contamination and the completion.
-    fig, ax = plt.subplots()
+    _fig, ax = plt.subplots()
     ax.tick_params(axis=u"both", which=u"both", length=0)
     plt.box(on=None)
     plt.scatter(
@@ -292,7 +296,7 @@ def figures_mags_GC_boxplots(contigs_data, out_file):
         "Other": "#a50026",
     }
     # Plot the figure.
-    fig, ax = plt.subplots(figsize=(20, 10))
+    _fig, ax = plt.subplots(figsize=(20, 10))
     boxplot = sns.boxplot(
         y="GC_content",
         x="Final_bin",
@@ -350,7 +354,7 @@ def figures_mags_HiC_cov_boxplots(contigs_data, out_file):
         "Other": "#a50026",
     }
     # Plot the figure.
-    fig, ax = plt.subplots(figsize=(20, 10))
+    _fig, ax = plt.subplots(figsize=(20, 10))
     boxplot = sns.boxplot(
         y="HiC_cov",
         x="Final_bin",
@@ -408,7 +412,7 @@ def figures_mags_SG_cov_boxplots(contigs_data, out_file):
     }
 
     # Plot the figure.
-    fig, ax = plt.subplots(figsize=(20, 10))
+    _fig, ax = plt.subplots(figsize=(20, 10))
     boxplot = sns.boxplot(
         y="Shotgun_coverage",
         x="Final_bin",
@@ -460,10 +464,11 @@ def generates_frags_network(contig_data, bin_summary, bin_size):
     list of int:
         List of the start positions of the mags
     int:
-        Size of the mfinal binned matrix
+        Size of the final binned matrix
     """
 
-    # Define start frag id for each MAGs.
+    # Define start frag id for each MAGs. The rest column is the size still
+    # available from the previous contigs.
     frag_id = 0
     mag_starts = []
     for bin_name in bin_summary:
@@ -476,6 +481,7 @@ def generates_frags_network(contig_data, bin_summary, bin_size):
     # Define start frag id for each bins
     info_contigs = dict()
     for i in range(len(contig_data.Name)):
+        # Only add the contig if it's in a final bin.
         if contig_data.loc[i, "Final_bin"] != "ND":
             # Call bin name dict to have the status of start frag id and rest.
             bin_name = contig_data.loc[i, "Final_bin"]
