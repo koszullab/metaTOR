@@ -546,12 +546,12 @@ def write_checkm_summary(bin_summary, bin_summary_file):
     bin_summary = pd.DataFrame.from_dict(bin_summary, orient="index")
 
     # Change float format of the coverage.
-    bin_summary["HiC_Coverage"] = bin_summary["HiC_Coverage"].map(
-        lambda x: "%.2E" % x
+    bin_summary["HiC_abundance"] = bin_summary["HiC_abundance"].map(
+        lambda x: "%.4f" % x
     )
     try:
-        bin_summary["SG_Coverage"] = bin_summary["SG_Coverage"].map(
-            lambda x: "%.2E" % x
+        bin_summary["SG_abundance"] = bin_summary["SG_abundance"].map(
+            lambda x: "%.4f" % x
         )
     except KeyError:
         pass

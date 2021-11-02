@@ -20,7 +20,7 @@ Functions in this module:
     - recursive_clustering
     - recursive_decontamination
     - update_contigs_data_recursive
-    - write_bin_contigs
+    - write_bins_contigs
 """
 
 import logging
@@ -208,36 +208,44 @@ def get_bin_coverage(bin_summary, contigs_data):
         the coverage.
     """
     # Compute HiC_coverage
+    total_hic_hit = 0
+    total_sg_hit = 0
     for i in range(len(contigs_data)):
         bin_name = contigs_data.loc[i, "Final_bin"]
+        if contigs_data.loc[0, "Shotgun_coverage"] != "-":
+            total_sg_hit += (
+                contigs_data.loc[i, "Size"]
+                * contigs_data.loc[i, "Shotgun_coverage"]
+            )
+        total_hic_hit += contigs_data.loc[i, "Hit"]
         if bin_name != "ND":
             try:
-                bin_summary[bin_name]["HiC_Coverage"] += (
-                    1000
-                    * contigs_data.loc[i, "Hit"]
-                    / int(bin_summary[bin_name]["size"])
+                bin_summary[bin_name]["HiC_abundance"] += (
+                    100 * contigs_data.loc[i, "Hit"]
                 )
             except KeyError:
-                bin_summary[bin_name]["HiC_Coverage"] = (
-                    1000
-                    * contigs_data.loc[i, "Hit"]
-                    / int(bin_summary[bin_name]["size"])
+                bin_summary[bin_name]["HiC_abundance"] = (
+                    100 * contigs_data.loc[i, "Hit"]
                 )
 
             # If no depth files were given do not compute the Shotgun coverage.
             if contigs_data.loc[0, "Shotgun_coverage"] != "-":
                 try:
-                    bin_summary[bin_name]["SG_Coverage"] += (
+                    bin_summary[bin_name]["SG_abundance"] += (
                         contigs_data.loc[i, "Size"]
                         * contigs_data.loc[i, "Shotgun_coverage"]
-                        / int(bin_summary[bin_name]["size"])
+                        * 100
                     )
                 except KeyError:
-                    bin_summary[bin_name]["SG_Coverage"] = (
+                    bin_summary[bin_name]["SG_abundance"] = (
                         contigs_data.loc[i, "Size"]
                         * contigs_data.loc[i, "Shotgun_coverage"]
-                        / int(bin_summary[bin_name]["size"])
+                        * 100
                     )
+    for bin_name in bin_summary:
+        bin_summary[bin_name]["HiC_abundance"] /= total_hic_hit
+        if contigs_data.loc[0, "Shotgun_coverage"] != "-":
+            bin_summary[bin_name]["SG_abundance"] /= total_sg_hit
     return bin_summary
 
 
