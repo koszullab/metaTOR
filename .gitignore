@@ -69,6 +69,8 @@ instance/
 .scrapy
 
 # Sphinx documentation
+docs/build/
+docs/source/api/modules.rst
 docs/_build/
 docs/_static/
 docs/_templates/
