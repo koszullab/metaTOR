@@ -12,7 +12,7 @@
 Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that streamlines the processing and binning of metagenomic metaHiC datasets.
 
 <p align="center">
-  <img src="example/images/metator_logo.png" width="200">
+  <img src="docs/example/images/metator_logo.png" width="200">
 </p>
 
 ## Table of contents
@@ -106,14 +106,14 @@ There are a number of other, optional, miscellaneous actions:
 
 * `help` : display help message.
 
-A tutorial is available [here](example/metator_tutorial.md) to explain how to use metaTOR. More advanced tutorials to analyze the output files are also available:
+A tutorial is available [here](docs/example/metator_tutorial.md) to explain how to use metaTOR. More advanced tutorials to analyze the output files are also available:
 
-* [Anvio](https://merenlab.org/software/anvio/) manual curation of the contaminated bins. Available [here](example/manual_curation_of_metator_MAGs.md).
-* Visualization and scaffolding of the MAGs with the contactmap modules of MetaTOR. Available [here](example/MAG_visualization_and_scaffolding.md).
+* [Anvio](https://merenlab.org/software/anvio/) manual curation of the contaminated bins. Available [here](docs/example/manual_curation_of_metator_MAGs.md).
+* Visualization and scaffolding of the MAGs with the contactmap modules of MetaTOR. Available [here](docs/example/MAG_visualization_and_scaffolding.md).
 
 Principle of MetaTOR pipeline:
 
-![metator_pipeline](example/images/metator_figure.png)
+![metator_pipeline](docs/example/images/metator_figure.png)
 
 ## Output files
 
