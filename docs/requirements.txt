@@ -1,0 +1,7 @@
+metator
+notebook
+sphinx
+nbsphinx
+recommonmark
+sphinx-markdown-tables
+sphinx-press-theme
