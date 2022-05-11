@@ -105,8 +105,8 @@ def get_contact_pairs(
 
     Two start stages are possible, from fastq or bam files.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     for_in : str
         Path to input forward fastq or bam file to align. If multiple files are
         given, list of path separated by a comma.
@@ -136,13 +136,13 @@ def get_contact_pairs(
     n_cpu : int
         The number of CPUs to use for the alignment.
 
-    Returns:
-    --------
+    Returns
+    -------
     list of str:
         List of path of the Files with the table containing the alignement data
         of the pairs: ReadID, ContigA, Position_startA, Position_endA, StrandA,
         ContigB, Position_startB, Position_endB, StrandB.
-    dict
+    dict:
         Dictionnary of the all the contigs from the assembly, the contigs names
         are the keys to the data of the contig available with the following
         keys: "id", "length", "GC", "hit", "coverage". Coverage still at 0 and
@@ -252,8 +252,8 @@ def merge_alignment(forward_aligned, reverse_aligned, contig_data, out_file):
     Position_startA, Position_endA, StrandA, ContigB, Position_startB,
     Position_endB, StrandB.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     forward_alignement : str
         File with the table containing the data of the forward reads kept after
         the alignment. With five columns: ReadID, Contig, Position_start,
@@ -270,8 +270,8 @@ def merge_alignment(forward_aligned, reverse_aligned, contig_data, out_file):
     out_file : str
         Path to write the output pairs file.
 
-    Returns:
-    --------
+    Returns
+    -------
     str:
         File with the table containing the alignement data of the pairs: ReadID,
         ContigA, Position_startA, Position_endA, StrandA, ContigB,
@@ -383,8 +383,8 @@ def process_bamfile(alignment, min_qual, filtered_out):
     threshold given) saving their only some columns: ReadID, Contig,
     Position_start, Position_end, strand to save memory.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     alignment : str
         Path to the input temporary alignment.
     min_qual : int
@@ -392,8 +392,8 @@ def process_bamfile(alignment, min_qual, filtered_out):
     filtered_out : str
         Path to the output temporary tsv alignement.
 
-    Returns:
-    --------
+    Returns
+    -------
     int:
         Number of reads aligned.
     """
@@ -447,8 +447,8 @@ def process_bwa_bamfile(alignment, min_qual, contig_data, out_file):
     threshold given) saving their only some columns: ReadID, Contig,
     Position_start, Position_end, strand to save memory.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     alignment : str
         Path to the input temporary alignment.
     min_qual : int
@@ -461,8 +461,8 @@ def process_bwa_bamfile(alignment, min_qual, contig_data, out_file):
     out_file : str
         Path to the output pairs file.
 
-    Returns:
-    --------
+    Returns
+    -------
     int:
         Number of pairs aligned.
     """

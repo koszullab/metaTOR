@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 # Based on Rémy Greinhofer (rgreinho) tutorial on subcommands in docopt
 # https://github.com/rgreinho/docopt-subcommands-example
 # abignaud, 20201118
