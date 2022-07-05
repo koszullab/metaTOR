@@ -388,6 +388,7 @@ def generate_contact_map(
             mat_fmt=mat_fmt,
             out_dir=out_dir,
             pcr_duplicates=pcr_duplicates,
+            prefix=name,
             plot=False,
             start_stage="pairs",
             threads=threads,
