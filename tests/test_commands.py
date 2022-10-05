@@ -28,6 +28,7 @@ NORMALIZE = (
 )
 ALGORITHM = ("alg", ["louvain", "leiden"])
 ALIGNER = ("aligner", ["bwa", "bowtie2"])
+MODE = ("mode", ["normal", "iterative", "cutsite"])
 
 
 @pytest.mark.parametrize(*ALIGNER)
@@ -57,6 +58,15 @@ def test_network3(norm):
     proc.execute()
 
 
+@pytest.mark.parametrize(*MODE)
+def test_network4(mode):
+    args = "-1 {PAIRS} -a {FASTA} -d {DEPTH} -o {OUT_TEST} -T {TMP} -B {0} -e HindIII,DpnII -S pair".format(
+        mode, **global_args
+    )
+    proc = mtc.Network(args.split(" "), {})
+    proc.execute()
+
+
 @pytest.mark.parametrize(*ALGORITHM)
 def test_partition(alg):
     args = (
@@ -77,7 +87,7 @@ def test_partition(alg):
 
 def test_pipeline():
     args = (
-        "-1 {FASTQ_FOR} -2 {FASTQ_REV} -a {FASTA_INDEX} -v -F -o {OUT_TEST} -s 30000 -C"
+        "-1 {FASTQ_FOR} -2 {FASTQ_REV} -a {FASTA_INDEX} -v -F -o {OUT_TEST} -B cutsite -s 30000 -C"
     ).format(**global_args)
     proc = mtc.Pipeline(args.split(" "), {})
     proc.execute()

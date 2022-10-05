@@ -19,14 +19,27 @@ This module contains all these alignment functions:
 
 import csv
 import pysam
+import shutil as st
 import subprocess as sp
+import hicstuff.cutsite as hcc
+import hicstuff.io as hio
+import hicstuff.iteralign as hci
 import metator.network as mtn
 from metator.log import logger
 from os.path import join
 from pkg_resources import parse_version
 
 
-def align(fq_in, index, aligner, bam_out, n_cpu, fq_in_2=None):
+def align(
+    fq_in,
+    index,
+    aligner,
+    bam_out,
+    n_cpu,
+    tmp_dir,
+    iterative=False,
+    fq_in_2=None,
+):
     """Alignment
     Aligns reads of fq_in with bowtie2. Parameters of bowtie2 are set as
     --very-sensitive-local and only the aligned reads are
@@ -45,6 +58,11 @@ def align(fq_in, index, aligner, bam_out, n_cpu, fq_in_2=None):
         Path where the alignment should be written in BAM format.
     n_cpu : int
         The number of CPUs to use for the alignment.
+    tmp_dir:
+        Path to directory to store temporary files.
+    iterative:
+        Wether to use the iterative mapping procedure (truncating reads and
+        extending iteratively)
     fq_in_2 : str
         Path to the reverse fastq file for bwa (map both reads at the same time
         but do not take into account their poistion as pairs.)
@@ -55,29 +73,53 @@ def align(fq_in, index, aligner, bam_out, n_cpu, fq_in_2=None):
         0
     """
 
-    # Align the reads on the reference genome with the chosen aligner.
-    map_args = {
-        "cpus": n_cpu,
-        "fq": fq_in,
-        "idx": index,
-        "bam": bam_out,
-        "fq_rev": fq_in_2,
-    }
-    if aligner == "bwa":
-        cmd = "bwa mem -5SP -t {cpus} {idx} {fq} {fq_rev}".format(**map_args)
-    elif aligner == "bowtie2":
-        cmd = (
-            "bowtie2 -x {idx} -p {cpus} --very-sensitive-local {fq} --no-unal"
-        ).format(**map_args)
+    if iterative:
+        iter_tmp_dir = hio.generate_temp_dir(tmp_dir)
+        tmp_bam = join(tmp_dir, "tmp.bam")
+        hci.iterative_align(
+            fq_in,
+            tmp_dir=iter_tmp_dir,
+            ref=index,
+            n_cpu=n_cpu,
+            bam_out=tmp_bam,
+            min_qual=40,
+            aligner=aligner,
+            read_len=20,
+        )
+        st.rmtree(iter_tmp_dir)
+        sp.call(
+            "samtools sort -F 2048 -n -@ {n_cpu} -o {out} {tmp}".format(
+                n_cpu=n_cpu, tmp=tmp_bam, out=bam_out
+            ),
+            shell=True,
+        )
 
-    # Write the outputfile in a temporary bam file.
-    map_process = sp.Popen(cmd, shell=True, stdout=sp.PIPE)
-    sort_process = sp.Popen(
-        "samtools sort -n -@ {cpus} -o {bam}".format(**map_args),
-        shell=True,
-        stdin=map_process.stdout,
-    )
-    _out, _err = sort_process.communicate()
+    else:
+        # Align the reads on the reference genome with the chosen aligner.
+        map_args = {
+            "cpus": n_cpu,
+            "fq": fq_in,
+            "idx": index,
+            "bam": bam_out,
+            "fq_rev": fq_in_2,
+        }
+        if aligner == "bwa":
+            cmd = "bwa mem -5SP -t {cpus} {idx} {fq} {fq_rev}".format(
+                **map_args
+            )
+        elif aligner == "bowtie2":
+            cmd = (
+                "bowtie2 -x {idx} -p {cpus} --very-sensitive-local {fq} --no-unal"
+            ).format(**map_args)
+
+        # Write the outputfile in a temporary bam file.
+        map_process = sp.Popen(cmd, shell=True, stdout=sp.PIPE)
+        sort_process = sp.Popen(
+            "samtools sort -n -@ {cpus} -o {bam}".format(**map_args),
+            shell=True,
+            stdin=map_process.stdout,
+        )
+        _out, _err = sort_process.communicate()
 
     return 0
 
@@ -88,6 +130,7 @@ def get_contact_pairs(
     index,
     assembly,
     aligner,
+    aligner_mode,
     min_qual,
     start,
     depth_file,
@@ -120,6 +163,8 @@ def get_contact_pairs(
         assembly.
     aligner : str
         Either 'bowtie2' or 'bwa' aligner used or to be use to map the reads.
+    aligner_mode : str
+        Either 'normal', 'iterative' or 'cutsiste'. Mode to align the HiC reads.
     min_qual : int
         Minimum mapping quality required to keep Hi-C pairs.
     start : str
@@ -175,23 +220,61 @@ def get_contact_pairs(
 
         # Align if necessary
         if start == "fastq":
-            if aligner == "bowtie2":
+
+            iterative = False
+
+            # Digest reads if necessary.
+            if aligner_mode == "cutsite":
+                digest_for = join(tmp_dir, f"digest_for_{i}.fq.gz")
+                digest_rev = join(tmp_dir, f"digest_rev_{i}.fq.gz")
+                hcc.cut_ligation_sites(
+                    fq_for=for_in,
+                    fq_rev=rev_in,
+                    digest_for=digest_for,
+                    digest_rev=digest_rev,
+                    enzyme=enzyme,
+                    mode="for_vs_rev",
+                    seed_size=20,
+                    n_cpu=n_cpu,
+                )
+                for_in, rev_in = digest_for, digest_rev
+
+            elif aligner_mode == "iterative":
+                iterative = True
+
+            if iterative or (aligner == "bowtie2"):
                 # Create files to save the alignment.
                 alignment_for = join(out_dir, name + "_for.bam")
                 alignment_rev = join(out_dir, name + "_rev.bam")
 
                 # Align the forward reads
                 logger.info("Alignment of %s:", for_in)
-                align(for_in, index, aligner, alignment_for, n_cpu)
+                align(for_in, index, aligner, alignment_for, n_cpu, iterative)
 
                 # Align the reverse reads
                 logger.info("Alignment of %s:", rev_in)
-                align(rev_in, index, aligner, alignment_rev, n_cpu)
+                align(
+                    rev_in,
+                    index,
+                    aligner,
+                    alignment_rev,
+                    n_cpu,
+                    tmp_dir,
+                    iterative,
+                )
             elif aligner == "bwa":
                 # Create file to save the alignement.
                 alignment = join(out_dir, name + ".bam")
                 logger.info("Alignment of %s and %s:", for_in, rev_in)
-                align(for_in, index, aligner, alignment, n_cpu, rev_in)
+                align(
+                    for_in,
+                    index,
+                    aligner,
+                    alignment,
+                    n_cpu,
+                    tmp_dir,
+                    fq_in_2=rev_in,
+                )
 
         elif start == "bam":
             if aligner == "bowtie2":

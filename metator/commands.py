@@ -85,10 +85,10 @@ class Network(AbstractCommand):
 
     usage:
         network --forward=STR --assembly=FILE [--reverse=STR]
-        [--aligner=bowtie2] [--depth=FILE] [--enzyme=STR]
-        [--normalization=empirical_hit] [--no-clean-up] [--outdir=DIR]
-        [--min-quality=30] [--self-contacts] [--start=fastq] [--threads=1]
-        [--tmpdir=DIR]
+        [--aligner=bowtie2] [--aligner-mode=normal] [--depth=FILE]
+        [--enzyme=STR] [--normalization=empirical_hit] [--no-clean-up]
+        [--outdir=DIR] [--min-quality=30] [--self-contacts] [--start=fastq]
+        [--threads=1] [--tmpdir=DIR]
 
     options:
         -1, --forward=STR       Fastq file or list of Fastq separated by a comma
@@ -105,6 +105,8 @@ class Network(AbstractCommand):
                                 basename of the bowtie2 index.
         -b, --aligner=STR       Aligner algorithm to use. Either "bwa" or
                                 "bowtie2". [Default: bowtie2]
+        -B, --aligner-mode=STR  Mode of alignment from hicstuff. Either normal,
+                                iterative or cutsite. [Default: normal]
         -d, --depth=FILE        The depth.txt file from the shotgun reads used
                                 to made the assembly computed by
                                 jgi_summarize_bam_contig_depths from metabat2
@@ -175,6 +177,30 @@ class Network(AbstractCommand):
                 self.args["--aligner"],
             )
             raise ValueError
+
+        # Check aligner.
+        if self.args["--aligner"] not in ["bowtie2", "bwa"]:
+            logger.error('Aligner should be either "bowtie2" or "bwa".')
+
+        # Check aligner mode.
+        if self.args["--aligner-mode"] not in [
+            "normal",
+            "iterative",
+            "cutsiste",
+        ]:
+            logger.error(
+                'Aligner mode should be either "normal", "iterative" or "cutsite".'
+            )
+        if (
+            self.args["--aligner-mode"] == "cutsite"
+            and not self.args["--enzyme"]
+        ):
+            logger.warning(
+                "cutsite mode required an enzyme. Iterative mode will be use instead."
+            )
+            self.args["--aligner-mode"] = "iterative"
+
+        # Check correct algorithm value.
 
         # Check if normalization in the list of possible normalization.
         list_normalization = [
@@ -260,6 +286,7 @@ class Network(AbstractCommand):
                 index,
                 fasta,
                 self.args["--aligner"],
+                self.args["--aligner-mode"],
                 min_qual,
                 self.args["--start"],
                 self.args["--depth"],
@@ -573,12 +600,13 @@ class Pipeline(AbstractCommand):
 
     usage:
         pipeline --assembly=FILE [--forward=STR] [--reverse=STR]
-        [--algorithm=louvain] [--aligner=bowtie2] [--cluster-matrix]
-        [--contigs=FILE] [--depth=FILE] [--enzyme=STR] [--force]
-        [--iterations=100] [--rec-iter=10] [--network=FILE] [--no-clean-up]
-        [--normalization=empirical_hit] [--outdir=DIR] [--overlap=80]
-        [--rec-overlap=90]  [--min-quality=30] [--res-param=1.0] [--size=500000]
-        [--start=fastq] [--threads=1] [--tmpdir=DIR] [--skip-validation]
+        [--algorithm=louvain] [--aligner=bowtie2] [--aligner-mode=normal]
+        [--cluster-matrix] [--contigs=FILE] [--depth=FILE] [--enzyme=STR]
+        [--force] [--iterations=100] [--rec-iter=10] [--network=FILE]
+        [--no-clean-up] [--normalization=empirical_hit] [--outdir=DIR]
+        [--overlap=80] [--rec-overlap=90]  [--min-quality=30] [--res-param=1.0]
+        [--size=500000] [--start=fastq] [--threads=1] [--tmpdir=DIR]
+        [--skip-validation]
 
     options:
         -1, --forward=STR       Fastq file or list of Fastq separated by a comma
@@ -597,6 +625,8 @@ class Pipeline(AbstractCommand):
                                 [Default: louvain]
         -b, --aligner=STR       Aligner algorithm to use. Either "bwa" or
                                 "bowtie2". [Default: bowtie2]
+        -B, --aligner-mode=STR  Mode of alignment from hicstuff. Either normal,
+                                iterative or cutsite. [Default: normal]
         -c, --contigs=FILE      The path to the file containing the data ofthe
                                 contigs (ID, Name, Length, GC content, Hit,
                                 Coverage, Restriction site). Required if start
@@ -692,7 +722,29 @@ class Pipeline(AbstractCommand):
         threads = int(self.args["--threads"])
         resolution_parameter = float(self.args["--res-param"])
 
-        # Check correct algorithm value
+        # Check aligner.
+        if self.args["--aligner"] not in ["bowtie2", "bwa"]:
+            logger.error('Aligner should be either "bowtie2" or "bwa".')
+
+        # Check aligner mode.
+        if self.args["--aligner-mode"] not in [
+            "normal",
+            "iterative",
+            "cutsiste",
+        ]:
+            logger.error(
+                'Aligner mode should be either "normal", "iterative" or "cutsite".'
+            )
+        if (
+            self.args["--aligner-mode"] == "cutsite"
+            and not self.args["--enzyme"]
+        ):
+            logger.warning(
+                "cutsite mode required an enzyme. Iterative mode will be use instead."
+            )
+            self.args["--aligner-mode"] = "iterative"
+
+        # Check correct algorithm value.
         if self.args["--algorithm"] not in ["louvain", "leiden"]:
             logger.error('algorithm should be either "louvain" or "leiden"')
             raise ValueError
@@ -845,6 +897,7 @@ class Pipeline(AbstractCommand):
                     index,
                     fasta,
                     self.args["--aligner"],
+                    self.args["--aligner-mode"],
                     min_qual,
                     self.args["--start"],
                     self.args["--depth"],
