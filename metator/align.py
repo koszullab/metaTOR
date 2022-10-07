@@ -235,7 +235,7 @@ def get_contact_pairs(
                     enzyme=enzyme,
                     mode="for_vs_rev",
                     seed_size=20,
-                    n_cpu=n_cpu,
+                    n_cpu=int(n_cpu),
                 )
                 for_in, rev_in = digest_for, digest_rev
 

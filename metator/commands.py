@@ -181,6 +181,7 @@ class Network(AbstractCommand):
         # Check aligner.
         if self.args["--aligner"] not in ["bowtie2", "bwa"]:
             logger.error('Aligner should be either "bowtie2" or "bwa".')
+            raise ValueError
 
         # Check aligner mode.
         if self.args["--aligner-mode"] not in [
@@ -191,6 +192,7 @@ class Network(AbstractCommand):
             logger.error(
                 'Aligner mode should be either "normal", "iterative" or "cutsite".'
             )
+            raise ValueError
         if (
             self.args["--aligner-mode"] == "cutsite"
             and not self.args["--enzyme"]
@@ -725,6 +727,7 @@ class Pipeline(AbstractCommand):
         # Check aligner.
         if self.args["--aligner"] not in ["bowtie2", "bwa"]:
             logger.error('Aligner should be either "bowtie2" or "bwa".')
+            raise ValueError
 
         # Check aligner mode.
         if self.args["--aligner-mode"] not in [
@@ -735,6 +738,7 @@ class Pipeline(AbstractCommand):
             logger.error(
                 'Aligner mode should be either "normal", "iterative" or "cutsite".'
             )
+            raise ValueError
         if (
             self.args["--aligner-mode"] == "cutsite"
             and not self.args["--enzyme"]
