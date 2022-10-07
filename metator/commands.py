@@ -186,7 +186,7 @@ class Network(AbstractCommand):
         if self.args["--aligner-mode"] not in [
             "normal",
             "iterative",
-            "cutsiste",
+            "cutsite",
         ]:
             logger.error(
                 'Aligner mode should be either "normal", "iterative" or "cutsite".'
@@ -730,7 +730,7 @@ class Pipeline(AbstractCommand):
         if self.args["--aligner-mode"] not in [
             "normal",
             "iterative",
-            "cutsiste",
+            "cutsite",
         ]:
             logger.error(
                 'Aligner mode should be either "normal", "iterative" or "cutsite".'
