@@ -3,6 +3,9 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.6] - 2022-10-06
+- Add iterative and cutsite alignment mode.
+
 ## [1.1.5] - 2022-07-05
 - Add possibility to start with bam files.
 - Add SCN normalization to balance the heatmap.
