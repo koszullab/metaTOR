@@ -1,5 +1,6 @@
 # Test
 test.out
+tests_data/assembly.fa.fxi
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
