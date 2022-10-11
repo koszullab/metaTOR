@@ -92,6 +92,11 @@ class MetatorObject:
         data file and their size.
         """
         contigs_data = self.get_contigs_data()
+        try:
+            contigs_data[self.object]
+        except KeyError:
+            logger.error('The object that you gave is not in the table.')
+            raise ValueError
         self.contigs = list(
             contigs_data["Name"][contigs_data[self.object] == self.name]
         )
@@ -177,16 +182,12 @@ class MetatorObject:
         elif metator_object == "final_bin":
             self.object = "Final_bin"
             self.name = name
-        elif metator_object == "other":
-            self.object = "Other"
-            self.name = name
         else:
-            logger.error(
-                'Metator object should be one of these value: "contig", \
-                core_bin", "overlapping_bin", "recursive_bin", "final_bin", \
-                "other"'
-            )
-            raise ValueError
+            self.object = str(metator_object)
+            try:
+                self.name = int(name)
+            except ValueError:
+                self.name = str(name)
 
     def write_fasta(self, tmp_dir, out_dir):
         """Method to write the new fasta with only the contigs of interest in
@@ -201,9 +202,9 @@ class MetatorObject:
             Path to the output directory where to write the new fasta file.
         """
         # Create a fasta ouput file.
-        self.fasta = join(out_dir, self.name + ".fa")
+        self.fasta = join(out_dir, f'{self.name}.fa')
         # Write a contigs used by pyfastx extract.
-        contigs_list = join(tmp_dir, self.name + ".txt")
+        contigs_list = join(tmp_dir,  f'{self.name}.txt')
         with open(contigs_list, "w") as file:
             for contig_name in self.contigs:
                 file.write("%s\n" % contig_name)
