@@ -111,7 +111,7 @@ def figures_bins_distribution(bin_summary, out_file):
     bin_summary.loc[mask, "contamination"] = 105
     # Plot the contamination and the completion.
     _fig, ax = plt.subplots()
-    ax.tick_params(axis=u"both", which=u"both", length=0)
+    ax.tick_params(axis="both", which="both", length=0)
     plt.box(on=None)
     plt.scatter(
         y=bin_summary["completness"],
@@ -233,12 +233,12 @@ def figures_bins_size_distribution(
     plt.pie(
         mags_summary["size"],
         colors=[
-            "#313695",
-            "#4575b4",
-            "#abd9e9",
-            "#fdae61",
-            "#a50026",
-            "k",
+            "#103b6f",
+            "#6666ff",
+            "#ccccff",
+            "#ed3139",
+            "#c0bcbc",
+            "#eaeded",
         ],
     )
     plt.legend(labels, bbox_to_anchor=(0.9, 0.0, 1.0, 1.0), loc="upper right")
@@ -289,11 +289,11 @@ def figures_mags_GC_boxplots(contigs_data, out_file):
     contigs_data = contigs_data.sort_values(by="GC", ascending=False)
     # Build the palette
     my_pal = {
-        "HQ": "#313695",
-        "MQ": "#4575b4",
-        "LQ": "#abd9e9",
-        "Contaminated": "#fdae61",
-        "Other": "#a50026",
+        "HQ": "#103b6f",
+        "MQ": "#6666ff",
+        "LQ": "#ccccff",
+        "Contaminated": "#ed3139",
+        "Other": "#c0bcbc",
     }
     # Plot the figure.
     _fig, ax = plt.subplots(figsize=(20, 10))
@@ -347,11 +347,11 @@ def figures_mags_HiC_cov_boxplots(contigs_data, out_file):
     contigs_data = contigs_data.sort_values(by="HiC_cov", ascending=False)
     # Build the palette
     my_pal = {
-        "HQ": "#313695",
-        "MQ": "#4575b4",
-        "LQ": "#abd9e9",
-        "Contaminated": "#fdae61",
-        "Other": "#a50026",
+        "HQ": "#103b6f",
+        "MQ": "#6666ff",
+        "LQ": "#ccccff",
+        "Contaminated": "#ed3139",
+        "Other": "#c0bcbc",
     }
     # Plot the figure.
     _fig, ax = plt.subplots(figsize=(20, 10))
@@ -404,13 +404,12 @@ def figures_mags_SG_cov_boxplots(contigs_data, out_file):
     contigs_data = contigs_data.sort_values(by="SG_Coverage", ascending=False)
     # Build the palette
     my_pal = {
-        "HQ": "#313695",
-        "MQ": "#4575b4",
-        "LQ": "#abd9e9",
-        "Contaminated": "#fdae61",
-        "Other": "#a50026",
+        "HQ": "#103b6f",
+        "MQ": "#6666ff",
+        "LQ": "#ccccff",
+        "Contaminated": "#ed3139",
+        "Other": "#c0bcbc",
     }
-
     # Plot the figure.
     _fig, ax = plt.subplots(figsize=(20, 10))
     boxplot = sns.boxplot(
