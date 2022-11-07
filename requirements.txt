@@ -1,6 +1,7 @@
 biopython
 docopt
 hicstuff
+looseversion
 networkx
 numpy
 pandas

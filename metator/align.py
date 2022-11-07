@@ -27,7 +27,7 @@ import hicstuff.iteralign as hci
 import metator.network as mtn
 from metator.log import logger
 from os.path import join
-from pkg_resources import parse_version
+from looseversion import LooseVersion
 
 
 def align(
@@ -439,7 +439,7 @@ def merge_alignment(forward_aligned, reverse_aligned, contig_data, out_file):
             # according to the version order.
             else:
                 names = [for_read[0], rev_read[0]]
-                names_sorted = sorted(names, key=parse_version)
+                names_sorted = sorted(names, key=LooseVersion)
                 # Case of the forward read mapped but not the reverse. Indeed,
                 # no line would have been added previously if the read didn't
                 # map.
