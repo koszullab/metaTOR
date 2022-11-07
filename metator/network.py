@@ -29,6 +29,7 @@ import metator.io as mio
 def alignment_to_contacts(
     alignment_files,
     contig_data,
+    edge,
     hit_data,
     out_dir,
     output_file_network,
@@ -54,6 +55,9 @@ def alignment_to_contacts(
         are the keys to the data of the contig available with the following
         keys: "id", "length", "GC", "hit", "coverage". Coverage still at 0 and
         need to be updated later.
+    edge : int
+        Distance of the edge region in base pair on the contigs where the
+        mapping reads are not considered as inter contigs.
     hit_data : dict:
         Dictionnary for hit information on each contigs.
     out_dir : str
@@ -94,6 +98,7 @@ def alignment_to_contacts(
     contig_data, out_files_list = precompute_network(
         alignment_files,
         contig_data,
+        edge,
         hit_data,
         precompute_network_file,
         tmp_dir,
@@ -171,10 +176,7 @@ def compute_network(
 
     # Sort the the pre-network file
     mio.sort_pairs(
-        pre_network_file,
-        tmp_file,
-        tmp_dir=tmp_dir,
-        threads=n_cpus,
+        pre_network_file, tmp_file, tmp_dir=tmp_dir, threads=n_cpus,
     )
 
     # Set the variables used in the loop
@@ -182,7 +184,7 @@ def compute_network(
     n_nonzero = 1  # Total number of nonzero matrix entries
     n_pairs = 0  # Total number of pairs entered in the matrix
 
-    # Read the sorted paors
+    # Read the sorted pairs
     with open(tmp_file, "r") as pairs, open(network_file, "w") as net:
         pairs_reader = csv.reader(pairs, delimiter="\t")
         prev_pair = next(pairs_reader)
@@ -407,6 +409,7 @@ def normalize_pair(contig_data, pair, n_occ, normalization):
 def precompute_network(
     alignment_files,
     contig_data,
+    edge,
     hit_data,
     out_file,
     tmp_dir,
@@ -425,6 +428,9 @@ def precompute_network(
         are the keys to the data of the contig available with the following
         keys: "id", "length", "GC", "hit", "coverage". Coverage still at 0 and
         need to be updated later.
+    edge : int
+        Distance of the edge region in base pair on the contigs where the
+        mapping reads are not considered as inter contigs.
     hit_data : dict
         Dictionnary with the count of hits for each aligment file.
     out_file : str
@@ -473,6 +479,9 @@ def precompute_network(
                     # Extract the contig names which are at the position 2 and
                     # 4.
                     contig1, contig2 = p[1], p[3]
+                    pos1, pos2 = int(p[2]), int(p[4])
+                    len1 = contig_data[contig1]["length"]
+                    len2 = contig_data[contig2]["length"]
                     id1 = contig_data[contig1]["id"]
                     id2 = contig_data[contig2]["id"]
 
@@ -485,29 +494,60 @@ def precompute_network(
                         hit_data[contig2]["hit"][i] += 1
 
                     # Write the file used for the computation of the network.
-                    if self_contacts and id1 == id2:
-                        pre_net.write(
-                            "\t".join(map(str, [contig1, contig2])) + "\n"
-                        )
-                        pre_net_sample.write(
-                            "\t".join(map(str, [contig1, contig2])) + "\n"
-                        )
-                    elif id1 < id2:
-                        inter_contacts_temp += 1
-                        pre_net.write(
-                            "\t".join(map(str, [contig1, contig2])) + "\n"
-                        )
-                        pre_net_sample.write(
-                            "\t".join(map(str, [contig1, contig2])) + "\n"
-                        )
-                    elif id1 > id2:
-                        inter_contacts_temp += 1
-                        pre_net.write(
-                            "\t".join(map(str, [contig2, contig1])) + "\n"
-                        )
-                        pre_net_sample.write(
-                            "\t".join(map(str, [contig2, contig1])) + "\n"
-                        )
+                    # Write all pairs if self contacts.
+                    if self_contacts:
+                        if id1 == id2:
+                            pre_net.write(
+                                "\t".join(map(str, [contig1, contig2])) + "\n"
+                            )
+                            pre_net_sample.write(
+                                "\t".join(map(str, [contig1, contig2])) + "\n"
+                            )
+                        if id1 < id2:
+                            inter_contacts_temp += 1
+                            pre_net.write(
+                                "\t".join(map(str, [contig1, contig2])) + "\n"
+                            )
+                            pre_net_sample.write(
+                                "\t".join(map(str, [contig1, contig2])) + "\n"
+                            )
+                        elif id1 > id2:
+                            inter_contacts_temp += 1
+                            pre_net.write(
+                                "\t".join(map(str, [contig2, contig1])) + "\n"
+                            )
+                            pre_net_sample.write(
+                                "\t".join(map(str, [contig2, contig1])) + "\n"
+                            )
+                    # Write only intercontigs pairs with both reads not mapping
+                    # on the edges of the contigs (defined by edge).
+                    else:
+                        if (
+                            (pos1 > edge)
+                            and (pos2 > edge)
+                            and (len1 - pos1 > edge)
+                            and (len2 - pos2 > edge)
+                        ):
+                            if id1 < id2:
+                                inter_contacts_temp += 1
+                                pre_net.write(
+                                    "\t".join(map(str, [contig1, contig2]))
+                                    + "\n"
+                                )
+                                pre_net_sample.write(
+                                    "\t".join(map(str, [contig1, contig2]))
+                                    + "\n"
+                                )
+                            elif id1 > id2:
+                                inter_contacts_temp += 1
+                                pre_net.write(
+                                    "\t".join(map(str, [contig2, contig1]))
+                                    + "\n"
+                                )
+                                pre_net_sample.write(
+                                    "\t".join(map(str, [contig2, contig1]))
+                                    + "\n"
+                                )
 
             # Count contacts and return sample informations.
             all_contacts += all_contacts_temp

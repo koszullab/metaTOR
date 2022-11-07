@@ -85,7 +85,7 @@ class Network(AbstractCommand):
 
     usage:
         network --forward=STR --assembly=FILE [--reverse=STR]
-        [--aligner=bowtie2] [--aligner-mode=normal] [--depth=FILE]
+        [--aligner=bowtie2] [--aligner-mode=normal] [--depth=FILE] [--edge=0]
         [--enzyme=STR] [--normalization=empirical_hit] [--no-clean-up]
         [--outdir=DIR] [--min-quality=30] [--self-contacts] [--start=fastq]
         [--threads=1] [--tmpdir=DIR]
@@ -111,6 +111,9 @@ class Network(AbstractCommand):
                                 to made the assembly computed by
                                 jgi_summarize_bam_contig_depths from metabat2
                                 pipeline.
+        -E, --edge=INT          Distance of the edge region in base pair on the
+                                contigs where the mapping reads are not
+                                considered as inter contigs. [Default: 0]
         -e, --enzyme=STR        The list of restriction enzyme used to digest
                                 the contigs separated by a comma. Example:
                                 HpaII,MluCI.
@@ -159,6 +162,7 @@ class Network(AbstractCommand):
 
         # Transform integer variables as integer.
         min_qual = int(self.args["--min-quality"])
+        edge = int(self.args["--edge"])
 
         # Defined boolean variables:
         self_contacts = self.args["--self-contacts"]
@@ -302,6 +306,7 @@ class Network(AbstractCommand):
         mtn.alignment_to_contacts(
             alignment_files,
             contig_data,
+            edge,
             hit_data,
             self.args["--outdir"],
             "network.txt",
@@ -603,12 +608,12 @@ class Pipeline(AbstractCommand):
     usage:
         pipeline --assembly=FILE [--forward=STR] [--reverse=STR]
         [--algorithm=louvain] [--aligner=bowtie2] [--aligner-mode=normal]
-        [--cluster-matrix] [--contigs=FILE] [--depth=FILE] [--enzyme=STR]
-        [--force] [--iterations=100] [--rec-iter=10] [--network=FILE]
-        [--no-clean-up] [--normalization=empirical_hit] [--outdir=DIR]
-        [--overlap=80] [--rec-overlap=90]  [--min-quality=30] [--res-param=1.0]
-        [--size=500000] [--start=fastq] [--threads=1] [--tmpdir=DIR]
-        [--skip-validation]
+        [--cluster-matrix] [--contigs=FILE] [--depth=FILE] [--edge=0]
+        [--enzyme=STR] [--force] [--iterations=100] [--rec-iter=10]
+        [--network=FILE] [--no-clean-up] [--normalization=empirical_hit]
+        [--outdir=DIR] [--overlap=80] [--rec-overlap=90]  [--min-quality=30]
+        [--res-param=1.0] [--size=500000] [--start=fastq] [--threads=1]
+        [--tmpdir=DIR] [--skip-validation]
 
     options:
         -1, --forward=STR       Fastq file or list of Fastq separated by a comma
@@ -638,6 +643,9 @@ class Pipeline(AbstractCommand):
                                 to made the assembly computed by
                                 jgi_summarize_bam_contig_depths from metabat2
                                 pipeline.
+        -E, --edge=INT          Distance of the edge region in base pair on the
+                                contigs where the mapping reads are not
+                                considered as inter contigs. [Default: 0]
         -e, --enzyme=STR        The list of restriction enzyme used to digest
                                 the contigs separated by a comma. Example:
                                 HpaII,MluCI.
@@ -717,6 +725,7 @@ class Pipeline(AbstractCommand):
         # Define variable
         min_qual = int(self.args["--min-quality"])
         iterations = int(self.args["--iterations"])
+        edge = int(self.args["--edge"])
         recursive_iterations = int(self.args["--rec-iter"])
         overlapping_parameter = int(self.args["--overlap"]) / 100
         recursive_overlapping_parameter = int(self.args["--rec-overlap"]) / 100
@@ -923,6 +932,7 @@ class Pipeline(AbstractCommand):
             network_file, contigs_data_file = mtn.alignment_to_contacts(
                 alignment_files,
                 contig_data,
+                edge,
                 hit_data,
                 self.args["--outdir"],
                 "network.txt",

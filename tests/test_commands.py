@@ -42,7 +42,7 @@ def test_network(aligner):
 
 
 def test_network2():
-    args = "-1 {BAM_FOR} -2 {BAM_REV} -a {FASTA_INDEX} -d {DEPTH} -o {OUT_TEST} -T {TMP} -S bam".format(
+    args = "-1 {BAM_FOR} -2 {BAM_REV} -a {FASTA_INDEX} -d {DEPTH} -E 500 -o {OUT_TEST} -T {TMP} -S bam".format(
         **global_args
     )
     proc = mtc.Network(args.split(" "), {})
