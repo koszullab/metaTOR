@@ -19,6 +19,7 @@ global_args = {
     "NETWORK": "tests_data/outdir/network.txt",
     "CONTIGS": "tests_data/outdir/contig_data_network.txt",
     "OUT_TEST": "tests_data/out_test",
+    "OUT_DIR": "tests_data/outdir",
     "PAIRS": "tests_data/outdir/alignment.pairs",
     "TMP": "tests_data/tmp/",
 }
@@ -83,6 +84,14 @@ def test_partition(alg):
 #     ).format(**global_args)
 #     proc = mtc.Validation(args.split(" "), {})
 #     proc.execute()
+
+
+def qc():
+    args = (
+        "-a {FASTA} -F -O {OUT_DIR} -o {OUT_TEST}/QC -p test -e HindIII,DpnII -T {TMP} -P"
+    ).format(**global_args)
+    proc = mtc.Qc(args.split(" "), {})
+    proc.execute()
 
 
 def test_pipeline():
