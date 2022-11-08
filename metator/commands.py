@@ -8,6 +8,8 @@ This module contains all classes related to metaTOR commands:
     - partition
     - pipeline
     - validation
+    - qualitycheck
+    - contactmap
 
 Note
 ----
@@ -31,6 +33,7 @@ import metator.log as mtl
 import metator.network as mtn
 import metator.partition as mtp
 import metator.validation as mtv
+import metator.quality_check as mtq
 import metator.contact_map as mtc
 from docopt import docopt
 from metator.log import logger
@@ -1019,6 +1022,143 @@ class Pipeline(AbstractCommand):
             shutil.rmtree(tmp_dir)
 
 
+class Qc(AbstractCommand):
+    """Generates some quality check on the output of metator.
+
+    The quality check is done on the high quality MAGs and only contigs witha
+    size bigger than 100kb. The goal is to assess HiC quality metrics on genomes
+    we kinda know to have a estimation of the quality of the library.
+
+    If the plot are set it will return some plot of the event distribution on
+    the high quality contigs.
+
+    usage:
+        qc --assembly=FILE --enzyme=STR [--bin-summary=FILE]
+        [--contig-data=FILE] [--metator-dir=DIR] [--no-clean-up] [--outdir=DIR]
+        [--pairs=FILE] [--prefix=STR] [--plot] [--threshold=STR] [--tmpdir=DIR]
+
+    options:
+        -a, --assembly=FILE     Path to the fasta file containing the contigs of
+                                interest. Could be the whole or the extracted
+                                contigs of one bin.
+        -b, --bin-summary=FILE  Path to the bin_summary.txt file from MetaTOR
+                                output.
+        -c, --contig-data=FILE  Path to the contig_data_final.txt file from
+                                MetaTOR output.
+        -e, --enzyme=STR        The list of restriction enzyme used to digest
+                                the contigs separated by a comma. Example:
+                                HpaII,MluCI.
+        -n, --no-clean-up       If enabled intermediary files will be kept.
+        -O, --metator-dir=DIR   Output directory from metator pipeline. If set
+                                bin summary, contigds data and bin summary will
+                                be found automatically.
+        -o, --outdir=DIR        Directory to save output plots and log.
+        -p, --prefix=STR        Name of the sample to add on plot and files.
+        -P, --plot              If enable display some plots.
+        -r, --pairs=FILE        Path of the ".pairs" file. If more than one is
+                                given, files should be separated by a comma.
+        -t, --threshold=STR     Hicstuff religation and loop thresholds.
+                                Two integers seperated by a coma.
+        -T, --tmpdir=DIR        Temporary directory to save pairs files
+    """
+
+    def execute(self):
+
+        # Defined the temporary directory.
+        if not self.args["--tmpdir"]:
+            self.args["--tmpdir"] = "./tmp"
+        tmp_dir = mio.generate_temp_dir(self.args["--tmpdir"])
+
+        # Set output directory.
+        if not self.args["--outdir"]:
+            if self.args["--prefix"]:
+                prefix = self.args["--prefix"]
+                self.args["--outdir"] = join(".", f"metator_qc_{prefix}")
+            else:
+                self.args["--outdir"] = join(".", "metator_qc")
+        os.makedirs(self.args["--outdir"], exist_ok=True)
+
+        # Enable file logging
+        now = time.strftime("%Y%m%d%H%M%S")
+        log_file = join(self.args["--outdir"], ("metator_qc_" + now + ".log"))
+        mtl.set_file_handler(log_file)
+
+        # Try to find input files.
+        if self.args["--metator-dir"]:
+            metator_dir = self.args["--metator-dir"]
+        else:
+            metator_dir = "."
+        if self.args["--pairs"]:
+            pairs_files = self.args["--pairs"].split(",")
+        else:
+            pairs_files = [
+                join(metator_dir, file)
+                for file in filter(
+                    lambda x: "pairs" in x, os.listdir(metator_dir)
+                )
+            ]
+            if len(pairs_files) == 0:
+                logger.error(
+                    "Please give a pairs file, or the ouput directory of metator, or launch this command from the output directory of metator."
+                )
+                logger.error(
+                    "You can also check that a pairs file is present in metator output directory"
+                )
+                raise FileNotFoundError
+        if self.args["--bin-summary"]:
+            bin_summary_file = self.args["--bin-summary"]
+        else:
+            bin_summary_file = join(metator_dir, "bin_summary.txt")
+            if not exists(bin_summary_file):
+                logger.error(
+                    "Please give a bin summary file, or the ouput directory of metator or launch this command from the output directory of metator."
+                )
+                logger.error(
+                    "You can also check that a bin_summary.txt is present in metator output directory"
+                )
+                raise FileNotFoundError
+        if self.args["--contig-data"]:
+            contig_data_file = self.args["--contig-data"]
+        else:
+            contig_data_file = join(metator_dir, "contig_data_final.txt")
+            if not exists(contig_data_file):
+                logger.error(
+                    "Please give a contig data file, or the ouput directory of metator or launch this command from the output directory of metator."
+                )
+                logger.error(
+                    "You can also check that a contig_data_final.txt is present in metator output directory"
+                )
+                raise FileNotFoundError
+
+        # Set parameters.
+        if self.args["--prefix"]:
+            prefix = self.args["--prefix"]
+        else:
+            prefix = "metator_qc"
+        if self.args["--enzyme"]:
+            self.args["--enzyme"] = self.args["--enzyme"].split(",")
+        if self.args["--threshold"]:
+            self.args["--threshold"] = self.args["--threshold"].split(",")
+
+        # Launch quality check
+        mtq.quality_check(
+            contig_data_file,
+            bin_summary_file,
+            self.args["--assembly"],
+            pairs_files,
+            self.args["--outdir"],
+            tmp_dir,
+            prefix,
+            self.args["--plot"],
+            enzyme=self.args["--enzyme"],
+            threshold=self.args["--threshold"],
+        )
+
+        # Delete the temporary folder.
+        if not self.args["--no-clean-up"]:
+            shutil.rmtree(tmp_dir)
+
+
 class Contactmap(AbstractCommand):
     """Generates a HiC contact map of a MetaTOR object from the pairs files, the
     contig data file and a fasta file containing the contigs of interest.
@@ -1043,7 +1183,7 @@ class Contactmap(AbstractCommand):
         -a, --assembly=FILE     Path to the fasta file containing the contigs of
                                 interest. Could be the whole or the extracted
                                 contigs of one bin.
-        -c, --contig-data=FILE  Path to the contig_data_final.txt file form
+        -c, --contig-data=FILE  Path to the contig_data_final.txt file from
                                 MetaTOR output.
         -e, --enzyme=STR        The list of restriction enzyme used to digest
                                 the contigs separated by a comma. Example:

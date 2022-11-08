@@ -21,6 +21,7 @@ The subcommands are:
                 command line.
     validation  Validates bins using CheckM and make a recursive partition to
                 try to decontaminate them.
+    qc          Generates some quality check on the output of metator.
     contactmap  Generates a HiC contact map from one metaTOR object from the
                 final ouptut of metaTOR.
 """

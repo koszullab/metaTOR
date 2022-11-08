@@ -9,6 +9,7 @@ Core functions to plot the firgures are:
     - build_matrix_network
     - figures_bins_distribution
     - figures_bins_size_distribution
+    - figure_camembert_quality
     - figures_mags_GC_boxplots
     - figures_mags_HiC_cov_boxplots
     - figures_mags_SG_cov_boxplots
@@ -261,15 +262,78 @@ def figures_bins_size_distribution(
     plt.text(
         -1.5,
         -1.5,
-        "Bins threshold: {0}kb".format(
-            round(threshold / 1000, 2),
-        ),
+        "Bins threshold: {0}kb".format(round(threshold / 1000, 2),),
         fontdict=None,
     )
     plt.title("Size proportion of bins depending on their quality")
     # Save the file
     plt.savefig(out_file, dpi=200, bbox_inches="tight")
     return bin_summary
+
+
+def figure_camembert_quality(
+    out_file,
+    prefix,
+    n_religated,
+    n_loops,
+    n_weirds,
+    n_informative,
+    n_intra_mags,
+    n_inter_mags,
+    uncut_thr,
+    loop_thr,
+):
+    """Functon to plot nice hicstuff camembert from metator high quality
+    contigs.
+    """
+    plt.figure(2, figsize=(6, 6))
+    # The slices will be ordered and plotted counter-clockwise.
+    total = n_inter_mags + n_intra_mags
+    fracs = [n_religated, n_loops, n_weirds, n_informative, n_inter_mags]
+    # Format labels to include event names and proportion
+    labels = list(
+        map(
+            lambda x: (x[0] + ": %.2f%%") % (100 * x[1] / total),
+            [
+                ("Religated", n_religated),
+                ("Loops", n_loops),
+                ("Weirds", n_weirds),
+                ("Informative intra", n_informative),
+                ("Noise inter", n_inter_mags),
+            ],
+        )
+    )
+    colors = ["#D55E00", "#E69F00", "#999999", "#6096fd", "#cc0000"]
+    patches, _ = plt.pie(fracs, colors=colors, startangle=90)
+    plt.legend(
+        patches, labels, loc="upper left", bbox_to_anchor=(-0.1, 1.0),
+    )
+    if prefix:
+        plt.title(
+            "Distribution of library events in {}".format(prefix),
+            bbox={"facecolor": "1.0", "pad": 5},
+        )
+    plt.text(
+        0.3, 1.15, "Threshold Uncuts = " + str(uncut_thr), fontdict=None,
+    )
+    plt.text(
+        0.3, 1.05, "Threshold Loops = " + str(loop_thr), fontdict=None,
+    )
+    plt.text(
+        -1.5,
+        -1.2,
+        f"Total number of reads in the estimation: {total / 1_000_00:.3f} millions reads",
+        fontdict=None,
+    )
+    noise = 100 * n_inter_mags / (n_intra_mags + n_inter_mags)
+    plt.text(
+        -1.5, -1.3, f"Estimated noise signal = {noise:.2f}%", fontdict=None,
+    )
+    informative = 100 * n_informative / (n_intra_mags + n_inter_mags)
+    plt.text(
+        -1.5, -1.4, f"Informative reads = {informative:.2f}%", fontdict=None,
+    )
+    plt.savefig(out_file)
 
 
 def figures_mags_GC_boxplots(contigs_data, out_file):

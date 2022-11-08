@@ -12,7 +12,9 @@ This mdoule contains all core I/O functions:
     - generate_temp_dir
     - get_restriction_site
     - process_ligation_sites
+    - read_bin_summary
     - read_compressed
+    - read_contig_data
     - read_results_checkm
     - retrieve_fasta
     - sort_pairs
@@ -275,6 +277,22 @@ def get_restriction_site(enzyme):
     return pattern
 
 
+def read_bin_summary(bin_summary_file):
+    """Read bin summary file from metator pipeline.
+
+    Parameters
+    ----------
+    bin_summary_file : str
+        Path to the bin summary file.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Table from bin summary with bin name as index.
+    """
+    return pd.read_csv(bin_summary_file, sep="\t", index_col=0)
+
+
 def read_compressed(filename):
     """Read compressed file
 
@@ -331,6 +349,24 @@ def read_compressed(filename):
             return io.TextIOWrapper(zip_content, encoding="utf-8")
     else:
         return open(filename, "r")
+
+
+def read_contig_data(contig_data_file):
+    """Read bin summary file from metator pipeline.
+
+    Parameters
+    ----------
+    contig_data_file : str
+        Path to the contig data file.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Table from contig data with contig name as index.
+    """
+    data = pd.read_csv(contig_data_file, sep="\t")
+    data = data.set_index("Name", drop=False)
+    return data
 
 
 def read_results_checkm(checkm_file, checkm_taxonomy_file):
