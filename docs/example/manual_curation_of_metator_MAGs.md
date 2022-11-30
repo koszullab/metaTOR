@@ -42,13 +42,15 @@ anvi-gen-contigs-database -f anvio/bin_contigs.fa -o anvio/bin_contigs.db -n met
 
 ### Runs the hmm profiles and definde the taxonomy with anvio
 
-Anvio have some default database of HMM profiles to annotate your profiles. These annotations are really useful because they show you the completion/contamination of the MAGs. Here we present them with the default HMM profiles from anvio. But you could also build your own HMM profiles if you want. A nice tutorial to do that is available [here](https://merenlab.org/2016/05/21/archaeal-single-copy-genes/).
 
 If it's the first time you launched anvio, you will need to setup database first:
 
 ```sh
 anvi-setup-scg-taxonomy
+anvi-setup-ncbi-cogs
 ```
+
+Anvio have some default database of HMM profiles to annotate your profiles. These annotations are really useful because they show you the completion/contamination of the MAGs. Here we present them with the default HMM profiles from anvio. But you could also build your own HMM profiles if you want. A nice tutorial to do that is available [here](https://merenlab.org/2016/05/21/archaeal-single-copy-genes/).
 
 ```sh
 anvi-run-hmms -c anvio/bin_contigs.db -T 16
