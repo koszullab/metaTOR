@@ -162,7 +162,13 @@ anvi-export-collection -p anvio/HiC/PROFILE.db -C METATOR -O anvio/anvio_binning
 
 ### Output analysis
 
-From the new clustering, it's possible to build new fasta sequence for each new bin and check the qualities of the new MAGs with checkM. These are metaTOR figures with the old and new bins to compare the quality of the binning before and after the manual curation.
+From the new clustering, it's possible to build new fasta sequence for each new bin and check the qualities of the new MAGs with checkM. These are metaTOR figures with the old and new bins to compare the quality of the binning before and after the manual curation. Below is an example on how to generate the figures. The scripts here are availabl ein the github repository at `docs/example/scripts/`.
+
+```sh
+python3 ./anvio_extract_fasta.py anvio/anvio_binning.txt tmp_dir anvio/fasta assembly.fa
+sh ./checkM.sh anvio fasta anvio fa 16
+python3 ./anvio_figures.py anvio metator_folder/contig_data_final.txt anvio/checkM_data/anvio/
+```
 
 | |MetaTOR binning|MetaTOR binning with anvio manual curation step|
 |:-:|:-:|:-:|
