@@ -19,6 +19,7 @@ Core functions to partition the network are:
     - louvain_partition_cpp
     - partition
     - remove_isolates
+    - spinglass_partition
     - update_contigs_data
 """
 
@@ -28,6 +29,7 @@ import numpy as np
 import os
 import pandas as pd
 import subprocess as sp
+from cdlib import algorithms
 from functools import partial
 from metator.log import logger
 from os.path import join
@@ -265,7 +267,7 @@ def generate_fasta(
     logger.info("{0} bins have been extracted".format(nb_bins))
     logger.info(
         "Total size of the extracted bins: {0}Mb".format(
-            round(length_bins / 10 ** 6, 3)
+            round(length_bins / 10**6, 3)
         )
     )
 
@@ -342,7 +344,7 @@ def get_hamming_distance(core_bins_iterations, n_iter, threads):
 def leiden_iterations_java(
     network_file, iterations, resolution_parameter, tmp_dir, leiden_path
 ):
-    """Use the java implementation of Leiden to prtition the network.
+    """Use the java implementation of Leiden to partition the network.
 
     Parameters:
     -----------
@@ -694,6 +696,39 @@ def remove_isolates(output_partition, network_file):
     for i in range(1, max(nodes_presents)):
         if i not in nodes_presents:
             output_partition.pop(i)
+    return output_partition
+
+
+def spinglass_partition(
+    subnetwork,
+    spins=2,
+):
+    """Use spinglass function from cdlib to partition the network.
+
+    This function is only used in the validation step as it will take a long
+    time to run on a large network.
+
+    Parameters:
+    -----------
+    subnetwork : networkx.classes.graph.Graph
+        Network of interaction of a contaminated bins.
+    spins : int
+        Number of expected MAGs in the contaminated bins.
+
+    Returns:
+    dict:
+        Dictionnary with the id of the contig as key and the clusterung result
+        as values.
+    """
+    # Partition the network using spingalss algorithm.
+    coms = algorithms.spinglass(subnetwork, spins=spins)
+
+    # Extract the clusters.
+    output_partition = {}
+    for ids, list_contigs in enumerate(coms.communities):
+        for contig in list_contigs:
+            output_partition[contig] = str(ids)
+
     return output_partition
 
 

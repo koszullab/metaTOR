@@ -356,7 +356,7 @@ def recursive_clustering(
     recursive_fasta_dir : str
         Path to the directory where to write the decontaminated fasta.
     algorithm : str
-        Algorithm to use, either louvain or leiden.
+        Algorithm to use, either louvain, leiden or spinglass.
     tmpdir : str
         Path the temp directory.
     checkm_file : str
@@ -431,10 +431,10 @@ def recursive_clustering(
             subnetwork_file = join(
                 tmpdir_subnetwork, "subnetwork_" + bin_id + ".txt"
             )
-            bin_id = str(bin_id.split("_")[1])
+            over_bin_id = str(bin_id.split("_")[1])
 
             # Extract contigs
-            mask = contigs_data["Overlapping_bin_ID"].apply(str) == bin_id
+            mask = contigs_data["Overlapping_bin_ID"].apply(str) == over_bin_id
             list_contigs = list(contigs_data.loc[mask, "ID"])
 
             # Extract subnetwork
@@ -466,8 +466,24 @@ def recursive_clustering(
                     tmpdir_clustering,
                     LOUVAIN_PATH,
                 )
+            elif algorithm == "spinglass":
+                spin = max(
+                    2,
+                    int(
+                        1
+                        + float(checkm_summary[bin_id]["completness"])
+                        + float(checkm_summary[bin_id]["contamination"])
+                    ),
+                )
+                output_partition = mtp.spinglass_partition(
+                    subnetwork,
+                    spins=spin,
+                )
+                iterations = 1
             else:
-                logger.error('algorithm should be either "louvain" or "leiden"')
+                logger.error(
+                    'algorithm should be either "louvain", "leiden" or "spinglass".'
+                )
                 raise ValueError
 
             # Detect core bins
@@ -544,8 +560,8 @@ def recursive_decontamination(
     Parameters:
     -----------
     algorithm : str
-        Algorithm to use to recursively partition the network. Either leiden or
-        louvain.
+        Algorithm to use to recursively partition the network. Either leiden,
+        louvain or spinglass.
     assembly : str
         Path to the assembly file used for the partition.
     cluster_matrix : bool
