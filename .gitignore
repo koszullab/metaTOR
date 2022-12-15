@@ -1,6 +1,7 @@
 # Test
 test.out
 tests_data/assembly.fa.fxi
+tests_data/outdir/cam.pdf
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

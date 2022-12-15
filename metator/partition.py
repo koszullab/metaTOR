@@ -9,6 +9,7 @@ distance to group together bins relatively closed (to avaoid to split genomes in
 different bins).
 
 Core functions to partition the network are:
+    - algo_partition
     - build_clustering_matrix
     - defined_overlapping_bins
     - detect_core_bins
@@ -35,6 +36,76 @@ from metator.log import logger
 from os.path import join
 from scipy import sparse
 from sklearn import metrics
+
+
+def algo_partition(
+    algorithm="louvain",
+    network_file=None,
+    network=None,
+    iterations=10,
+    resolution_parameter=1.0,
+    tmpdir=".",
+    spin=2,
+):
+    """Function to partition the network depednding on the used algorithm.
+
+    Parameters:
+    -----------
+    algorithm : str
+        Algorithm to use to partition network. [Default: louvain]
+    network_file : str
+        Path to the network computed previously. The file is 3 columns table
+        separated by a tabulation with the id of the first contigs the id of the
+        second one and the weights of the edge normalized or not. Mandatory if
+        louvain or leiden algorithm. [Default: None]
+    network : networkx.classes.graph.Graph
+        Network of interaction of a contaminated bins. Mandatory if spinglass
+        algorithm. [Default: None]
+    iterations : int
+        Number of iterations of the algorithm of Leiden or Louvain.
+        [Default: 10]
+    resolution_parameter : float
+        Resolution parameter for Leiden clustering. [Default: 1.0]
+    tmp_dir : str
+        Path to the temporary directory. [Default: current directory]
+    spin : int
+        Number of final cluster if spinglass algorithm chosen. [Default: 2]
+
+    Returns:
+    --------
+    dict:
+        Dictionnary with the id of the contig as key and the list of the results
+        of each iterations separated by a semicolon as values.
+    """
+    # Launch the write partition algorithm
+    if algorithm == "leiden":
+        LEIDEN_PATH = os.environ["LEIDEN_PATH"]
+        output_partition = leiden_iterations_java(
+            network_file,
+            iterations,
+            resolution_parameter,
+            tmpdir,
+            LEIDEN_PATH,
+        )
+    elif algorithm == "louvain":
+        LOUVAIN_PATH = os.environ["LOUVAIN_PATH"]
+        output_partition = louvain_iterations_cpp(
+            network_file,
+            iterations,
+            tmpdir,
+            LOUVAIN_PATH,
+        )
+    elif algorithm == "spinglass":
+        output_partition = spinglass_partition(
+            network,
+            spins=spin,
+        )
+    else:
+        logger.error(
+            'algorithm should be either "louvain", "leiden", or "spinglass"'
+        )
+        raise ValueError
+    return output_partition
 
 
 def build_clustering_matrix(core_bins_contigs, hamming_distance, N):

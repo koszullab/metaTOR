@@ -27,12 +27,14 @@ import logging
 import metator.io as mio
 import metator.figures as mtf
 import metator.partition as mtp
+import multiprocessing
 import networkx as nx
 import numpy as np
 import os
 import pandas as pd
 import shutil
 import subprocess as sp
+from functools import partial
 from metator.log import logger
 from os.path import join
 from scipy import sparse
@@ -387,11 +389,7 @@ def recursive_clustering(
         contigs.
     """
 
-    # Create temporary folders
-    tmpdir_subnetwork = join(tmpdir, "recursive_bins")
-    os.makedirs(tmpdir_subnetwork, exist_ok=True)
-    tmpdir_clustering = join(tmpdir, "recursive_clustering")
-    os.makedirs(tmpdir_clustering, exist_ok=True)
+    # Create temporary folders.
     tmpdir_binning = join(tmpdir, "recursive_bins")
     os.makedirs(tmpdir_binning, exist_ok=True)
 
@@ -421,111 +419,78 @@ def recursive_clustering(
     N = len(contigs_data.ID)
     clustering_matrix = sparse.coo_matrix((N + 1, N + 1), dtype=np.float32)
 
-    # Iterate on chcekm summary to find conatminated bins:
+    # Put iterations to on eif spinglass partition used.
+    if algorithm == "spinglass":
+        iterations = 1
+
+    # Check bin_id to decontaminate.
+    bin_ids = []
     for bin_id in checkm_summary:
         if (float(checkm_summary[bin_id]["completness"]) >= 50) & (
             float(checkm_summary[bin_id]["contamination"]) >= 5
         ):
+            bin_ids.append(bin_id)
 
-            logger.info("Bin in progress: {0}".format(bin_id))
-            subnetwork_file = join(
-                tmpdir_subnetwork, "subnetwork_" + bin_id + ".txt"
-            )
-            over_bin_id = str(bin_id.split("_")[1])
+    # Iterate on checkm summary to find conatminated bins:
+    pool = multiprocessing.Pool(threads)
+    output_partitions = pool.map(
+        partial(
+            recursive_clustering_worker,
+            checkm_summary=checkm_summary,
+            tmpdir=tmpdir,
+            network=network,
+            algorithm=algorithm,
+            iterations=iterations,
+            resolution_parameter=resolution_parameter,
+            contigs_data=contigs_data,
+        ),
+        bin_ids,
+    )
 
-            # Extract contigs
-            mask = contigs_data["Overlapping_bin_ID"].apply(str) == over_bin_id
-            list_contigs = list(contigs_data.loc[mask, "ID"])
+    for i, bin_id in enumerate(bin_ids):
+        output_partition = output_partitions[i]
 
-            # Extract subnetwork
-            subnetwork = network.subgraph(list_contigs)
+        # Detect core bins
+        (
+            recursive_core_bins,
+            recursive_bins_iterations,
+        ) = mtp.detect_core_bins(output_partition, iterations)
 
-            # Write the new subnetwork
-            nx.write_edgelist(
-                subnetwork, subnetwork_file, delimiter="\t", data=["weight"]
-            )
+        # Compute the Hamming distance between core bins.
+        hamming_distance = mtp.get_hamming_distance(
+            recursive_bins_iterations,
+            iterations,
+            threads,
+        )
 
-            # Stop to report info log
-            logger.setLevel(logging.WARNING)
+        # Defined overlapping bins according to the threshold
+        recursive_bins = mtp.defined_overlapping_bins(
+            overlapping_parameter,
+            hamming_distance,
+            recursive_core_bins,
+            recursive_bins_iterations,
+        )
 
-            # Use Louvain or Leiden algorithm the subnetwork.
-            if algorithm == "leiden":
-                LEIDEN_PATH = os.environ["LEIDEN_PATH"]
-                output_partition = mtp.leiden_iterations_java(
-                    subnetwork_file,
-                    iterations,
-                    resolution_parameter,
-                    tmpdir_clustering,
-                    LEIDEN_PATH,
-                )
-            elif algorithm == "louvain":
-                LOUVAIN_PATH = os.environ["LOUVAIN_PATH"]
-                output_partition = mtp.louvain_iterations_cpp(
-                    subnetwork_file,
-                    iterations,
-                    tmpdir_clustering,
-                    LOUVAIN_PATH,
-                )
-            elif algorithm == "spinglass":
-                spin = max(
-                    2,
-                    int(
-                        1
-                        + float(checkm_summary[bin_id]["completness"])
-                        + float(checkm_summary[bin_id]["contamination"])
-                    ),
-                )
-                output_partition = mtp.spinglass_partition(
-                    subnetwork,
-                    spins=spin,
-                )
-                iterations = 1
-            else:
-                logger.error(
-                    'algorithm should be either "louvain", "leiden" or "spinglass".'
-                )
-                raise ValueError
+        # update bin data and generate fasta
+        contamination, contigs_data = update_contigs_data_recursive(
+            contigs_data,
+            recursive_bins,
+            assembly,
+            recursive_fasta_dir,
+            tmpdir_binning,
+            size,
+            contamination,
+        )
 
-            # Detect core bins
-            (
-                recursive_core_bins,
-                recursive_bins_iterations,
-            ) = mtp.detect_core_bins(output_partition, iterations)
-
-            # Compute the Hamming distance between core bins.
-            hamming_distance = mtp.get_hamming_distance(
-                recursive_bins_iterations,
-                iterations,
-                threads,
+        # Build the clustering matrix of the subnetwork and add it.
+        if cluster_matrix > 0:
+            clustering_matrix += mtp.build_clustering_matrix(
+                recursive_core_bins, hamming_distance, cluster_matrix
             )
 
-            # Defined overlapping bins according to the threshold
-            recursive_bins = mtp.defined_overlapping_bins(
-                overlapping_parameter,
-                hamming_distance,
-                recursive_core_bins,
-                recursive_bins_iterations,
-            )
-
-            # update bin data and generate fasta
-            contamination, contigs_data = update_contigs_data_recursive(
-                contigs_data,
-                recursive_bins,
-                assembly,
-                recursive_fasta_dir,
-                tmpdir_binning,
-                size,
-                contamination,
-            )
-
-            # Build the clustering matrix of the subnetwork and add it.
-            if cluster_matrix:
-                clustering_matrix += mtp.build_clustering_matrix(
-                    recursive_core_bins, hamming_distance, N
-                )
-
-            # Put back the info log
-            logger.setLevel(logging.INFO)
+        # Put back the info log
+        logger.setLevel(logging.INFO)
+        logger.info("Recursive step for {0} is done.".format(bin_id))
 
     # Save the clustering matrix
     if cluster_matrix:
@@ -535,6 +500,71 @@ def recursive_clustering(
         clustering_matrix_file = None
 
     return contamination, contigs_data, clustering_matrix_file
+
+
+def recursive_clustering_worker(
+    bin_id,
+    checkm_summary,
+    tmpdir,
+    network,
+    algorithm,
+    iterations,
+    resolution_parameter,
+    contigs_data,
+):
+    """Worker to partition one bin if it's contaminated.
+
+    Parameters:
+    -----------
+    """
+    # Create temporary folders.
+    tmpdir_subnetwork = join(tmpdir, "recursive_bins", bin_id)
+    os.makedirs(tmpdir_subnetwork, exist_ok=True)
+    tmpdir_clustering = join(tmpdir, "recursive_clustering", bin_id)
+    os.makedirs(tmpdir_clustering, exist_ok=True)
+
+    logger.info("Bin in progress: {0}".format(bin_id))
+    subnetwork_file = join(tmpdir_subnetwork, "subnetwork_" + bin_id + ".txt")
+    over_bin_id = str(bin_id.split("_")[1])
+
+    # Extract contigs
+    mask = contigs_data["Overlapping_bin_ID"].apply(str) == over_bin_id
+    list_contigs = list(contigs_data.loc[mask, "ID"])
+
+    # Extract subnetwork
+    subnetwork = network.subgraph(list_contigs)
+
+    # Write the new subnetwork
+    nx.write_edgelist(
+        subnetwork, subnetwork_file, delimiter="\t", data=["weight"]
+    )
+
+    # Stop to report info log
+    logger.setLevel(logging.WARNING)
+
+    # Compute spin prediction on the completion/contamination values.
+    spin = max(
+        2,
+        int(
+            1
+            + float(checkm_summary[bin_id]["completness"])
+            + float(checkm_summary[bin_id]["contamination"])
+        ),
+    )
+    # Partition the subnetwork.
+
+    output_partition = mtp.algo_partition(
+        algorithm,
+        subnetwork_file,
+        subnetwork,
+        iterations,
+        resolution_parameter,
+        tmpdir_clustering,
+        spin,
+    )
+    logger.info("Output partition done for {0}.".format(bin_id))
+
+    return output_partition
 
 
 def recursive_decontamination(
