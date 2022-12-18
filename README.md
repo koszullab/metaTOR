@@ -39,7 +39,7 @@ Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that
         implementation).
   * [networkanalysis](https://github.com/vtraag/networkanalysis) (not
     necessary only if you want to use Leiden algorithm to partition the network)
-  * [checkm](https://github.com/Ecogenomics/CheckM)
+  * [micomplete](https://bitbucket.org/evolegiolab/micomplete/src/master/)
   * [pairix](https://github.com/4dn-dcic/pairix) (not necessary if you do not use metator contact map)
 
 ### Using pip

@@ -103,26 +103,32 @@ def figures_bins_distribution(bin_summary, out_file):
         Path where to save the figure.
     """
     # Transform values as float
-    bin_summary["completness"] = bin_summary["completness"].apply(float)
-    bin_summary["contamination"] = bin_summary["contamination"].apply(float)
+    bin_summary["Weighted completeness"] = bin_summary[
+        "Weighted completeness"
+    ].apply(float)
+    bin_summary["Weighted redundancy"] = bin_summary[
+        "Weighted redundancy"
+    ].apply(float)
     # Sort the values by decreasing completion.
-    bin_summary = bin_summary.sort_values(by="completness", ascending=False)
+    bin_summary = bin_summary.sort_values(
+        by="Weighted completeness", ascending=False
+    )
     # Put the contamination values bigger than 105 to 105.
-    mask = bin_summary["contamination"] >= 105
-    bin_summary.loc[mask, "contamination"] = 105
+    mask = bin_summary["Weighted redundancy"] >= 105
+    bin_summary.loc[mask, "Weighted redundancy"] = 105
     # Plot the contamination and the completion.
     _fig, ax = plt.subplots()
     ax.tick_params(axis="both", which="both", length=0)
     plt.box(on=None)
     plt.scatter(
-        y=bin_summary["completness"],
+        y=bin_summary["Weighted completeness"],
         x=range(len(bin_summary)),
         color="r",
         label="Completion",
         s=2.5,
     )
     plt.scatter(
-        y=bin_summary["contamination"],
+        y=bin_summary["Weighted redundancy"],
         x=range(len(bin_summary)),
         color="k",
         label="Contamination",
@@ -179,9 +185,9 @@ def figures_bins_size_distribution(
         columns=["bins", "size"],
     )
     for i in range(len(bin_summary)):
-        completness = float(bin_summary.loc[i, "completness"])
-        contamination = float(bin_summary.loc[i, "contamination"])
-        size = int(bin_summary.loc[i, "size"])
+        completness = float(bin_summary.loc[i, "Weighted completeness"])
+        contamination = float(bin_summary.loc[i, "Weighted redundancy"])
+        size = int(bin_summary.loc[i, "Length"])
         if completness >= 50:
             if contamination > 10:
                 mags_summary.loc[3, "bins"] += 1
@@ -262,7 +268,9 @@ def figures_bins_size_distribution(
     plt.text(
         -1.5,
         -1.5,
-        "Bins threshold: {0}kb".format(round(threshold / 1000, 2),),
+        "Bins threshold: {0}kb".format(
+            round(threshold / 1000, 2),
+        ),
         fontdict=None,
     )
     plt.title("Size proportion of bins depending on their quality")
@@ -306,7 +314,10 @@ def figure_camembert_quality(
     colors = ["#D55E00", "#E69F00", "#999999", "#6096fd", "#cc0000"]
     patches, _ = plt.pie(fracs, colors=colors, startangle=90)
     plt.legend(
-        patches, labels, loc="upper left", bbox_to_anchor=(-0.1, 1.0),
+        patches,
+        labels,
+        loc="upper left",
+        bbox_to_anchor=(-0.1, 1.0),
     )
     if prefix:
         plt.title(
@@ -314,10 +325,16 @@ def figure_camembert_quality(
             bbox={"facecolor": "1.0", "pad": 5},
         )
     plt.text(
-        0.3, 1.15, "Threshold Uncuts = " + str(uncut_thr), fontdict=None,
+        0.3,
+        1.15,
+        "Threshold Uncuts = " + str(uncut_thr),
+        fontdict=None,
     )
     plt.text(
-        0.3, 1.05, "Threshold Loops = " + str(loop_thr), fontdict=None,
+        0.3,
+        1.05,
+        "Threshold Loops = " + str(loop_thr),
+        fontdict=None,
     )
     plt.text(
         -1.5,
@@ -327,11 +344,17 @@ def figure_camembert_quality(
     )
     noise = 100 * n_inter_mags / (n_intra_mags + n_inter_mags)
     plt.text(
-        -1.5, -1.3, f"Estimated noise signal = {noise:.2f}%", fontdict=None,
+        -1.5,
+        -1.3,
+        f"Estimated noise signal = {noise:.2f}%",
+        fontdict=None,
     )
     informative = 100 * n_informative / (n_intra_mags + n_inter_mags)
     plt.text(
-        -1.5, -1.4, f"Informative reads = {informative:.2f}%", fontdict=None,
+        -1.5,
+        -1.4,
+        f"Informative reads = {informative:.2f}%",
+        fontdict=None,
     )
     plt.savefig(out_file)
 
@@ -350,7 +373,7 @@ def figures_mags_GC_boxplots(contigs_data, out_file):
         Path where to write the figure.
     """
     # Sort by decreasing GC.
-    contigs_data = contigs_data.sort_values(by="GC", ascending=False)
+    contigs_data = contigs_data.sort_values(by="GC-content", ascending=False)
     # Build the palette
     my_pal = {
         "HQ": "#103b6f",

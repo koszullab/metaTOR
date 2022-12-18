@@ -3,6 +3,7 @@ cdlib
 docopt
 hicstuff
 looseversion
+micomplete
 networkx
 numpy
 pandas

@@ -18,7 +18,7 @@ This mdoule contains all core I/O functions:
     - read_results_checkm
     - retrieve_fasta
     - sort_pairs
-    - write_checkm_summary
+    - write_bin_summary
 """
 
 import bz2
@@ -275,6 +275,35 @@ def get_restriction_site(enzyme):
     # Build the regex for all retsriction sites.
     pattern = "|".join(sorted(list(set(restriction_list))))
     return pattern
+
+
+def micomplete_results_to_dict(micomplete_file):
+    """Read micomplte output file and transfrom it as a dictionnary with the
+    bin name as keys and bin information as values.
+
+    Parameters
+    ----------
+    micomplete_file : str
+        Path to the micomplete output file.
+
+    Returns
+    -------
+    dict
+        Dictionnary of the output of miComplete as values and the bin id as
+        keys.
+    """
+    # Read table.
+    micomplete_summary = pd.read_csv(
+        micomplete_file,
+        sep="\t",
+        comment="#",
+        index_col=0,
+    ).iloc[:, :13]
+
+    # Transform to dictionnary.
+    micomplete_summary = micomplete_summary.to_dict(orient="index")
+
+    return micomplete_summary
 
 
 def read_bin_summary(bin_summary_file):
@@ -567,13 +596,13 @@ def sort_pairs(in_file, out_file, tmp_dir=None, threads=1, buffer="2G"):
         sort_proc.communicate()
 
 
-def write_checkm_summary(bin_summary, bin_summary_file):
+def write_bin_summary(bin_summary, bin_summary_file):
     """Function to write the bin summary from dictionnary to table text file.
 
     Parameters:
     -----------
     bin_summary : dict
-        Dictionnary with the output of the checkM of the bins.
+        Dictionnary with the output of the miComplete of the bins.
     bin_summary_file : str
         Path to the output file to write the summary informations of the bins.
     """

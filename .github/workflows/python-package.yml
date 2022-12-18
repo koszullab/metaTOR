@@ -61,6 +61,6 @@ jobs:
         export LOUVAIN_PATH=external/gen-louvain
         export LEIDEN_PATH=networkanalysis/build/libs/networkanalysis-1.2.0.jar
         export PATH="$PATH:bwa/"
-        pytest --pylint --pylint-error-types=EF --pylint-rcfile=.pylintrc --doctest-modules metator pytest --pylint --pylint-error-types=EF --pylint-rcfile=.pylintrc --doctest-modules metator 
+        pytest --pylint --pylint-error-types=EF --pylint-rcfile=.pylintrc --doctest-modules metator tests
         pytest --cov=metator
         codecov
