@@ -47,8 +47,8 @@ def extract_hq_contigs(bin_summary, contigs_data):
     # Extract high quality MAGs.
     hq_mags = bin_summary.index[
         np.logical_and(
-            (bin_summary["completness"] > 90),
-            (bin_summary["contamination"] < 5),
+            (bin_summary["Weighted completeness"] > 0.9),
+            (bin_summary["Weighted redundancy"] < 1.1),
         )
     ]
     # Extract contigs bigger than 100kb.
@@ -88,7 +88,8 @@ def extract_pairs(pairs_files, out_file, contigs, contigs_data):
         for contig in contigs:
             output_pairs.write(
                 "#chromsize: {0} {1}\n".format(
-                    contig, contigs_data.loc[contig, "Size"],
+                    contig,
+                    contigs_data.loc[contig, "Size"],
                 )
             )
         for pairs_file in pairs_files:

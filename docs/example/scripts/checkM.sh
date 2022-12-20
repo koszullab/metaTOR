@@ -22,7 +22,7 @@ projects=$1
 input=$2
 output=$3
 end=$4
-threads=$16
+threads=$5
 
 echo "data in progress"
 
