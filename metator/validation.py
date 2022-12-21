@@ -298,6 +298,13 @@ def micomplete_quality(fasta_dir, outfile, threads):
     cmd = f"miComplete {tmp_seq_tab} --hmms Bact105 --weights Bact105 --threads {threads} --outfile {outfile}"
     process = sp.Popen(cmd, shell=True)
     out, err = process.communicate()
+    # Remove micomplete temporary files.
+    for path in filter(lambda x: ".fa" in x, os.listdir(fasta_dir)):
+        name = path.split(".")[0]
+        os.remove(f"{name}_prodigal.faa")
+        os.remove(f"{name}.tblout")
+    os.remove(tmp_seq_tab)
+    os.remove("miComplete.log")
 
 
 def recursive_clustering(
@@ -460,8 +467,6 @@ def recursive_clustering(
                 recursive_core_bins, hamming_distance, cluster_matrix
             )
 
-        # Put back the info log
-        logger.setLevel(logging.INFO)
         logger.info("Recursive step for {0} is done.".format(bin_id))
 
     # Save the clustering matrix
@@ -529,9 +534,6 @@ def recursive_clustering_worker(
     nx.write_edgelist(
         subnetwork, subnetwork_file, delimiter="\t", data=["weight"]
     )
-
-    # Stop to report info log
-    logger.setLevel(logging.WARNING)
 
     # Compute spin prediction on the completion/contamination values.
     spin = max(
@@ -628,6 +630,8 @@ def recursive_decontamination(
         outdir, "overlapping_micomplete_results.txt"
     )
 
+    logger.info("Lauch miComplete quality check.")
+
     # Launch miComplete
     micomplete_quality(
         input_fasta_dir,
@@ -646,7 +650,7 @@ def recursive_decontamination(
     )
 
     # Add new coulumns for recursive information.
-    contigs_data["Recursive_bin_ID"] = "0"
+    contigs_data["Recursive_bin_ID"] = f"{0:05d}"
     contigs_data["Recursive_bin_contigs"] = "-"
     contigs_data["Recursive_bin_size"] = "-"
     contigs_data["Final_bin"] = "ND"
@@ -664,10 +668,15 @@ def recursive_decontamination(
     contamination = True
     step = 1
 
+    logger.info("Starts recursive decontamition step:")
+
     while contamination == True:
         # Create fasta dir.
         recursive_fasta_dir_step = join(recursive_fasta_dir, f"step_{step}")
         os.makedirs(recursive_fasta_dir_step, exist_ok=True)
+
+        # Stop to report info log
+        logger.setLevel(logging.WARNING)
 
         # Iterates Louvain or Leiden on contaminated and complete bins.
         (
@@ -691,6 +700,9 @@ def recursive_decontamination(
             size,
             threads,
         )
+
+        # Put back the info log
+        logger.setLevel(logging.INFO)
 
         # Recursive iterations of Louvain or Leiden on the contaminated bins.
         # Save bin information if the new bins have the same quality otherwise
@@ -721,6 +733,7 @@ def recursive_decontamination(
                 f"No more contaminated bin have been found after {step} steps."
             )
         # Increase count
+        logger.info(f"Recursive step {step} done.")
         step += 1
         if step == 10:
             contamination = False
@@ -728,10 +741,10 @@ def recursive_decontamination(
     # Create fasta directory and copy final bins.
     for bin_name in bin_summary:
         dst = join(final_fasta_dir, bin_name + ".fa")
-        if bin_name.split("_")[2] == "0":
+        step = bin_summary[bin_name]["step"]
+        if step == 0:
             src = join(input_fasta_dir, bin_name + ".fa")
         else:
-            step = bin_summary[bin_name]["step"]
             src = join(recursive_fasta_dir, f"step_{step}", f"{bin_name}.fa")
         shutil.copyfile(src, dst)
 
