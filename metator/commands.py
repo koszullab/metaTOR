@@ -24,6 +24,7 @@ NotImplementedError
     of its children.
 """
 
+import logging
 import os
 import shutil
 import time
@@ -37,6 +38,7 @@ import metator.quality_check as mtq
 import metator.contact_map as mtc
 from docopt import docopt
 from metator.log import logger
+from metator.version import __version__
 from os.path import exists, dirname, join
 from scipy.sparse import save_npz, load_npz
 
@@ -158,10 +160,8 @@ class Network(AbstractCommand):
 
         # Enable file logging
         now = time.strftime("%Y%m%d%H%M%S")
-        log_file = join(
-            self.args["--outdir"], ("metator_network_" + now + ".log")
-        )
-        mtl.set_file_handler(log_file)
+        log_file = join(self.args["--outdir"], (f"metator_network_{now}.log"))
+        generate_log_header(log_file, cmd="network", args=self.args)
 
         # Transform integer variables as integer.
         min_qual = int(self.args["--min-quality"])
@@ -324,6 +324,8 @@ class Network(AbstractCommand):
         if not self.args["--no-clean-up"]:
             shutil.rmtree(tmp_dir)
 
+        generate_log_footer(log_file)
+
 
 class Partition(AbstractCommand):
     """Partition the network using Louvain algorithm
@@ -412,10 +414,8 @@ class Partition(AbstractCommand):
 
         # Enable file logging
         now = time.strftime("%Y%m%d%H%M%S")
-        log_file = join(
-            self.args["--outdir"], ("metator_partition_" + now + ".log")
-        )
-        mtl.set_file_handler(log_file)
+        log_file = join(self.args["--outdir"], (f"metator_partition_{now}.log"))
+        generate_log_header(log_file, cmd="partition", args=self.args)
 
         # Transform numeric variable as numeric
         iterations = int(self.args["--iterations"])
@@ -451,6 +451,8 @@ class Partition(AbstractCommand):
         # Delete the temporary folder
         if not self.args["--no-clean-up"]:
             shutil.rmtree(tmp_dir)
+
+        generate_log_footer(log_file)
 
 
 class Validation(AbstractCommand):
@@ -550,9 +552,9 @@ class Validation(AbstractCommand):
         # Enable file logging
         now = time.strftime("%Y%m%d%H%M%S")
         log_file = join(
-            self.args["--outdir"], ("metator_validation_" + now + ".log")
+            self.args["--outdir"], (f"metator_validation_{now}.log")
         )
-        mtl.set_file_handler(log_file)
+        generate_log_header(log_file, cmd="validation", args=self.args)
 
         # Transform numeric variable as numeric
         iterations = int(self.args["--iterations"])
@@ -598,6 +600,8 @@ class Validation(AbstractCommand):
         # Delete the temporary folder
         if not self.args["--no-clean-up"]:
             shutil.rmtree(tmp_dir)
+
+        generate_log_footer(log_file)
 
 
 class Pipeline(AbstractCommand):
@@ -726,8 +730,8 @@ class Pipeline(AbstractCommand):
 
         # Enable file logging
         now = time.strftime("%Y%m%d%H%M%S")
-        log_file = join(self.args["--outdir"], ("metator_" + now + ".log"))
-        mtl.set_file_handler(log_file)
+        log_file = join(self.args["--outdir"], (f"metator_pipeline_{now}.log"))
+        generate_log_header(log_file, cmd="pipeline", args=self.args)
 
         # Define variable
         min_qual = int(self.args["--min-quality"])
@@ -872,21 +876,20 @@ class Pipeline(AbstractCommand):
 
         # Print information of the workflow:
         if start == 1:
-            logger.info("Minimum mapping quality: %d", min_qual)
+            logger.info(f"Minimum mapping quality: {min_qual}")
         if start <= 2:
-            logger.info("Enzyme: %s", self.args["--enzyme"])
-            logger.info("Normalization: %s", self.args["--normalization"])
-        logger.info("Aligner algorithm: %s", self.args["--aligner"])
-        logger.info("Partition algorithm: %s", self.args["--algorithm"])
-        logger.info("Partition iterations: %s", iterations)
-        logger.info("Overlapping parameter: %s", overlapping_parameter)
+            logger.info(f"Enzyme: {self.args['--enzyme']}")
+            logger.info(f"Normalization: {self.args['--normalization']}")
+        logger.info(f"Aligner algorithm: {self.args['--aligner']}")
+        logger.info(f"Partition algorithm: {self.args['--algorithm']}")
+        logger.info(f"Partition iterations: {iterations}%s", iterations)
+        logger.info(f"Overlapping parameter: {overlapping_parameter}")
         if not self.args["--skip-validation"]:
             logger.info(
-                "Recursive partition iterations: %d", recursive_iterations
+                f"Recursive partition iterations: {recursive_iterations}"
             )
             logger.info(
-                "Recursive overlapping parameter: %s",
-                recursive_overlapping_parameter,
+                f"Recursive overlapping parameter: {recursive_overlapping_parameter}\n"
             )
 
         # Extract index and genome file
@@ -1027,6 +1030,8 @@ class Pipeline(AbstractCommand):
         if not self.args["--no-clean-up"]:
             shutil.rmtree(tmp_dir)
 
+        generate_log_footer(log_file)
+
 
 class Qc(AbstractCommand):
     """Generates some quality check on the output of metator.
@@ -1086,8 +1091,8 @@ class Qc(AbstractCommand):
 
         # Enable file logging
         now = time.strftime("%Y%m%d%H%M%S")
-        log_file = join(self.args["--outdir"], ("metator_qc_" + now + ".log"))
-        mtl.set_file_handler(log_file)
+        log_file = join(self.args["--outdir"], (f"metator_qc_{now}.log"))
+        generate_log_header(log_file, cmd="qc", args=self.args)
 
         # Try to find input files.
         if self.args["--metator-dir"]:
@@ -1163,6 +1168,8 @@ class Qc(AbstractCommand):
         # Delete the temporary folder.
         if not self.args["--no-clean-up"]:
             shutil.rmtree(tmp_dir)
+
+        generate_log_footer(log_file)
 
 
 class Contactmap(AbstractCommand):
@@ -1262,3 +1269,20 @@ class Contactmap(AbstractCommand):
             shutil.rmtree(tmp_dir)
             # Delete pyfastx index:
             os.remove(self.args["--assembly"] + ".fxi")
+
+
+def generate_log_header(log_path, cmd, args):
+    mtl.set_file_handler(log_path, formatter=logging.Formatter(""))
+    logger.info(f"## MetaTOR: v{__version__} log file")
+    logger.info(f"## date: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(
+        f"## Command used: metator {cmd} {' '.join(f'{key} {value}' for key, value in args.items())}"
+    )
+    logger.info("\n---\n")
+    mtl.set_file_handler(log_path, formatter=mtl.logfile_formatter)
+
+
+def generate_log_footer(log_path):
+    mtl.set_file_handler(log_path, formatter=logging.Formatter(""))
+    logger.info("\n---")
+    logger.info(f"## date: {time.strftime('%Y-%m-%d %H:%M:%S')}")

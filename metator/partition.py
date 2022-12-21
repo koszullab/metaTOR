@@ -212,9 +212,7 @@ def defined_overlapping_bins(
             overlapping_bins[oc_id + 1] += core_bin_contigs
         cc_id += 1
 
-    logger.info(
-        "{0} overlapping bins were found.".format(len(overlapping_bins))
-    )
+    logger.info(f"{len(overlapping_bins)} overlapping bins were found.")
 
     return overlapping_bins
 
@@ -335,11 +333,9 @@ def generate_fasta(
             )
             process = sp.Popen(cmd, shell=True)
             process.communicate()
-    logger.info("{0} bins have been extracted".format(nb_bins))
+    logger.info(f"{nb_bins} bins have been extracted")
     logger.info(
-        "Total size of the extracted bins: {0}Mb".format(
-            round(length_bins / 10**6, 3)
-        )
+        f"Total size of the extracted bins: {round(length_bins / 10**6, 3)}Mb"
     )
 
 
@@ -442,9 +438,9 @@ def leiden_iterations_java(
 
     # Run the iterations of Leiden
     for i in range(iterations):
-        logger.info("Iteration in progress: {0}".format(i))
+        # logger.info(f"Iteration in progress: {i}")
 
-        output = join(tmp_dir, "partition_{0}.txt".format(i))
+        output = join(tmp_dir, f"partition_{i}.txt")
 
         # Clusterize the network using Leiden.
         cmd = (
@@ -550,7 +546,7 @@ def louvain_iterations_cpp(network_file, iterations, tmp_dir, louvain_path):
 
     # Run the iterations of Louvain
     for i in range(iterations):
-        logger.info("Iteration in progress: {0}".format(i))
+        # logger.info(f"Iteration in progress: {i}")
 
         louvain_args["iteration"] = i
 

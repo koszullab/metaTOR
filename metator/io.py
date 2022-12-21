@@ -190,7 +190,7 @@ def generate_fasta_index(fasta, aligner, outdir):
     str:
         Path to the bowtie2 index build
     """
-    logger.info("Build index from the given fasta.")
+    logger.info("Build index from the given fasta.\n")
     index = join(outdir, "index")
     if aligner == "bowtie2":
         cmd = "bowtie2-build -q {0} {1}".format(fasta, index)
@@ -475,7 +475,7 @@ def retrieve_fasta(in_file, aligner, tmpdir):
     else:
         if check_fasta_index(in_file, aligner):
             if aligner == "bowtie2":
-                logger.info("Retrieve fasta from bowtie2 index.")
+                logger.info("Retrieve fasta from bowtie2 index.\n")
                 fasta = join(tmpdir, "assembly.fa")
                 cmd = "bowtie2-inspect {0} > {1}".format(in_file, fasta)
                 process = sp.Popen(cmd, shell=True, stdout=sp.PIPE)

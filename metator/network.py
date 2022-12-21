@@ -92,7 +92,6 @@ def alignment_to_contacts(
     contig_data_file = join(out_dir, output_file_contig_data)
     hit_data_file = join(out_dir, "hit_data_alignment.txt")
     nb_alignment = len(alignment_files)
-    logger.info("New time course network")
 
     # Create a contact file easily readable for counting the contacts.
     contig_data, out_files_list = precompute_network(
@@ -176,7 +175,10 @@ def compute_network(
 
     # Sort the the pre-network file
     mio.sort_pairs(
-        pre_network_file, tmp_file, tmp_dir=tmp_dir, threads=n_cpus,
+        pre_network_file,
+        tmp_file,
+        tmp_dir=tmp_dir,
+        threads=n_cpus,
     )
 
     # Set the variables used in the loop
@@ -552,19 +554,13 @@ def precompute_network(
             # Count contacts and return sample informations.
             all_contacts += all_contacts_temp
             inter_contacts += inter_contacts_temp
-            logger.info("Information of {0}:".format(basename(aligment_file)))
+            logger.info(f"Information of {basename(aligment_file)}:")
+            logger.info(f"{all_contacts_temp} contacts in the library.")
             logger.info(
-                "{0} contacts in the library.".format(all_contacts_temp)
+                f"{inter_contacts_temp} contacts inter-contigs in the library."
             )
             logger.info(
-                "{0} contacts inter-contigs in the library.".format(
-                    inter_contacts_temp
-                )
-            )
-            logger.info(
-                "3D ratio : {0}\n".format(
-                    inter_contacts_temp / all_contacts_temp
-                )
+                f"3D ratio : {inter_contacts_temp / all_contacts_temp}\n"
             )
 
     # Return information about the network

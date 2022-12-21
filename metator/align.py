@@ -113,14 +113,16 @@ def align(
             ).format(**map_args)
 
         # Write the outputfile in a temporary bam file.
-        map_process = sp.Popen(cmd, shell=True, stdout=sp.PIPE)
+        map_process = sp.Popen(cmd, shell=True, stdout=sp.PIPE, stderr=sp.PIPE)
         sort_process = sp.Popen(
             "samtools sort -n -@ {cpus} -o {bam}".format(**map_args),
             shell=True,
             stdin=map_process.stdout,
         )
         _out, _err = sort_process.communicate()
-
+        mapping_values = map_process.stderr.read()
+        for line in mapping_values.split(b"\n"):
+            logger.info(f"{line.decode('utf-8')}")
     return 0
 
 
@@ -248,11 +250,11 @@ def get_contact_pairs(
                 alignment_rev = join(out_dir, name + "_rev.bam")
 
                 # Align the forward reads
-                logger.info("Alignment of %s:", for_in)
+                logger.info(f"Alignment of {for_in}:")
                 align(for_in, index, aligner, alignment_for, n_cpu, iterative)
 
                 # Align the reverse reads
-                logger.info("Alignment of %s:", rev_in)
+                logger.info(f"Alignment of  {rev_in}:")
                 align(
                     rev_in,
                     index,
@@ -265,7 +267,7 @@ def get_contact_pairs(
             elif aligner == "bwa":
                 # Create file to save the alignement.
                 alignment = join(out_dir, name + ".bam")
-                logger.info("Alignment of %s and %s:", for_in, rev_in)
+                logger.info(f"Alignment of {for_in} and {rev_in}:")
                 align(
                     for_in,
                     index,
@@ -278,7 +280,7 @@ def get_contact_pairs(
 
         elif start == "bam":
             if aligner == "bowtie2":
-                logger.info("Processing %s and %s:", for_in, rev_in)
+                logger.info(f"Processing {for_in} and {rev_in}:")
                 alignment_for = for_in
                 alignment_rev = rev_in
             elif aligner == "bwa":
@@ -302,9 +304,7 @@ def get_contact_pairs(
                 alignment_rev, min_qual, alignment_temp_rev
             )
             logger.info(
-                "%s forward reads aligned and %s reverse reads aligned",
-                aligned_reads_for,
-                aligned_reads_rev,
+                f"{aligned_reads_for} forward reads aligned and {aligned_reads_rev} reverse reads aligned."
             )
 
             # Merge alignement to create a pairs file
@@ -312,7 +312,7 @@ def get_contact_pairs(
             n_pairs = merge_alignment(
                 alignment_temp_for, alignment_temp_rev, contig_data, out_file
             )
-            logger.info("%s pairs aligned.", n_pairs)
+            logger.info(f"{n_pairs} pairs aligned.\n")
             total_aligned_pairs += n_pairs
 
         # Case where a bam file from bwa is given as input.
@@ -320,11 +320,11 @@ def get_contact_pairs(
             n_pairs = process_bwa_bamfile(
                 alignment, min_qual, contig_data, out_file
             )
-            logger.info("%s pairs aligned.", n_pairs)
+            logger.info(f"{n_pairs} pairs aligned.\n")
             total_aligned_pairs += n_pairs
 
     if len(out_file_list) > 1:
-        logger.info("TOTAL PAIRS MAPPED: %s", total_aligned_pairs)
+        logger.info(f"TOTAL PAIRS MAPPED: {total_aligned_pairs}\n")
 
     return out_file_list, contig_data, hit_data
 
@@ -594,9 +594,7 @@ def process_bwa_bamfile(alignment, min_qual, contig_data, out_file):
                         # Safety check (forward and reverse are the same reads)
                         if for_read.query_name != rev_read.query_name:
                             logger.error(
-                                "Reads should be paired - %s\t%s",
-                                for_read.query_name,
-                                rev_read.query_name,
+                                f"Reads should be paired - {for_read.query_name}\t{rev_read.query_name}"
                             )
                             raise ValueError
 
