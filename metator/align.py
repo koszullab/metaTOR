@@ -88,8 +88,8 @@ def align(
         )
         st.rmtree(iter_tmp_dir)
         sp.call(
-            "samtools sort -F 2048 -n -@ {n_cpu} -o {out} {tmp}".format(
-                n_cpu=n_cpu, tmp=tmp_bam, out=bam_out
+            "samtools sort -n -@ {n_cpu} -o {bam} {tmp}".format(
+                n_cpu=n_cpu, tmp=tmp_bam, bam=bam_out
             ),
             shell=True,
         )
@@ -486,7 +486,7 @@ def process_bamfile(alignment, min_qual, filtered_out):
     save = pysam.set_verbosity(0)
     temp_bam = pysam.AlignmentFile(alignment, "rb", check_sq=False)
     pysam.set_verbosity(save)
-    with open(filtered_out, "a") as f:
+    with open(filtered_out, "w") as f:
         for r in temp_bam:
             # Check mapping quality
             if r.mapping_quality >= min_qual:
