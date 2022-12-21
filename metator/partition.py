@@ -274,7 +274,7 @@ def detect_core_bins(output_partition, iterations):
     # Transform the array in a dataframe
     core_bins_iterations = pd.DataFrame(core_bins_iterations)
 
-    logger.info("{0} core bins were found.\n".format(len(core_bins)))
+    logger.info(f"{len(core_bins)} core bins were found.")
 
     return core_bins_contigs, core_bins_iterations
 
@@ -324,9 +324,9 @@ def generate_fasta(
                     contigs_data.loc[contig_id - 1, "Name"]
                 )
             # Define the output file.
-            output_file = join(output_dir, "MetaTOR_{0}_0.fa".format(bin_id))
+            output_file = join(output_dir, f"MetaTOR_{bin_id:05d}_{0:05d}.fa")
             # Create the fasta file.
-            contigs_file = join(tmpdir, "MetaTOR_{0}_0.txt".format(bin_id))
+            contigs_file = join(tmpdir, f"MetaTOR_{bin_id:05d}_{0:05d}.txt")
             with open(contigs_file, "w") as f:
                 for contig_name in list_contigs_name:
                     f.write("%s\n" % contig_name)
@@ -856,7 +856,7 @@ def update_contigs_data(
         core_bin_contigs_number = len(core_bin)
         core_bin_length = sum(core_bin_data.Size)
         # Write the new information
-        contigs_data.loc[core_bin, "Core_bin_ID"] = i + 1
+        contigs_data.loc[core_bin, "Core_bin_ID"] = f"{i + 1:05d}"
         contigs_data.loc[core_bin, "Core_bin_contigs"] = core_bin_contigs_number
         contigs_data.loc[core_bin, "Core_bin_size"] = core_bin_length
 
@@ -868,7 +868,7 @@ def update_contigs_data(
         overlapping_bin_contigs_number = len(overlapping_bin)
         overlapping_bin_length = sum(overlapping_bin_data.Size)
         # Write the new information
-        contigs_data.loc[overlapping_bin, "Overlapping_bin_ID"] = i
+        contigs_data.loc[overlapping_bin, "Overlapping_bin_ID"] = f"{i:05d}"
         contigs_data.loc[
             overlapping_bin, "Overlapping_bin_contigs"
         ] = overlapping_bin_contigs_number

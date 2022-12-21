@@ -298,7 +298,6 @@ def micomplete_quality(fasta_dir, outfile, threads):
     cmd = f"miComplete {tmp_seq_tab} --hmms Bact105 --weights Bact105 --threads {threads} --outfile {outfile}"
     process = sp.Popen(cmd, shell=True)
     out, err = process.communicate()
-    return 0
 
 
 def recursive_clustering(
@@ -518,7 +517,9 @@ def recursive_clustering_worker(
     rec_bin_id = str(bin_id.split("_")[2])
 
     # Extract contigs
-    mask = (contigs_data["Overlapping_bin_ID"].apply(str) == over_bin_id) & (contigs_data["Recursive_bin_ID"].apply(str) == rec_bin_id)
+    mask = (contigs_data["Overlapping_bin_ID"].apply(str) == over_bin_id) & (
+        contigs_data["Recursive_bin_ID"].apply(str) == rec_bin_id
+    )
     list_contigs = list(contigs_data.loc[mask, "ID"])
 
     # Extract subnetwork
@@ -702,7 +703,7 @@ def recursive_decontamination(
 
             micomplete_quality(
                 recursive_fasta_dir_step,
-                recursive_micomplete_file, 
+                recursive_micomplete_file,
                 threads,
             )
 
@@ -816,8 +817,10 @@ def update_contigs_data_recursive(
     over_id = contigs_data.loc[recursive_bins[1][0] - 1, "Overlapping_bin_ID"]
     max_rec_id = max(
         map(
-            int, 
-            contigs_data[contigs_data.Overlapping_bin_ID == over_id]["Recursive_bin_ID"],
+            int,
+            contigs_data[contigs_data.Overlapping_bin_ID == over_id][
+                "Recursive_bin_ID"
+            ],
         )
     )
 
@@ -833,7 +836,9 @@ def update_contigs_data_recursive(
             contamination = True
             rec_final_id = max_rec_id + rec_id
             # Write the new information
-            contigs_data.loc[recursive_bin, "Recursive_bin_ID"] = rec_final_id
+            contigs_data.loc[
+                recursive_bin, "Recursive_bin_ID"
+            ] = f"{rec_final_id:05d}"
             contigs_data.loc[
                 recursive_bin, "Recursive_bin_contigs"
             ] = recursive_bin_contigs_number
@@ -842,17 +847,23 @@ def update_contigs_data_recursive(
             ] = recursive_bin_length
 
             # Defined name of the recursive bin
-            oc_id = contigs_data.loc[recursive_bin[0], "Overlapping_bin_ID"]
-            output_file = join(outdir, f"MetaTOR_{oc_id}_{rec_final_id}.fa")
+            oc_id = int(
+                contigs_data.loc[recursive_bin[0], "Overlapping_bin_ID"]
+            )
+            output_file = join(
+                outdir, f"MetaTOR_{oc_id:05d}_{rec_final_id:05d}.fa"
+            )
 
             # Update bin_summary:
-            parent_dict[f"MetaTOR_{oc_id}_{rec_final_id}"] = bin_id
+            parent_dict[f"MetaTOR_{oc_id:05d}_{rec_final_id:05d}"] = bin_id
 
             # Retrieve names of the contigs
             list_contigs = list(contigs_data.loc[recursive_bin, "Name"])
 
             # Generate the fasta
-            contigs_file = join(tmpdir, f"MetaTOR_{oc_id}_{rec_final_id}.txt")
+            contigs_file = join(
+                tmpdir, f"MetaTOR_{oc_id:05d}_{rec_final_id:05d}.txt"
+            )
             with open(contigs_file, "w") as f:
                 for contig in list_contigs:
                     f.write("{0}\n".format(contig))
