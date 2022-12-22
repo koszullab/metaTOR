@@ -253,7 +253,7 @@ def compute_network(
         n_pairs += n_occ
 
 
-def create_contig_data(assembly, nb_alignment, depth_file, enzyme):
+def create_contig_data(assembly, nb_alignment=1, depth_file=None, enzyme=None):
     """Create a dictionnary with data on each Contig.
 
     Parameters:
@@ -261,12 +261,13 @@ def create_contig_data(assembly, nb_alignment, depth_file, enzyme):
     assembly : str
         Path to the assembly fasta file
     nb_alignement : int
-        Numbers of alignment files.
+        Numbers of alignment files.  [Default: 1]
     depth_file : str or None
         Path to the depth.txt file from jgi_summarize_bam_contig_depths from
-        Metabat2 Software.
+        Metabat2 Software. [Default: None]
     enzyme : str or None
         String that contains the names of the enzyme separated by a comma.
+        [Default: None]
 
     Returns:
     --------
@@ -347,7 +348,7 @@ def normalize_pair(contig_data, pair, n_occ, normalization):
     pair : tuple
         Tuple of the id of the contigs contributing to the contact.
     n_occ : int
-        Contac count between the two contigs.
+        Contact count between the two contigs.
     normalization : str
         Mode of normalization to use.
 
@@ -438,6 +439,8 @@ def precompute_network(
     out_file : str
         Path to the write the output_file which will be necessary to compute the
         network.
+    tmp_dir : str
+        Directory where to store temporary files.
     self_contacts : bool
         If True, the contacts on the same contigs will be kept. Otherwise only
         displays the inter contigs contacts. [Default False]
