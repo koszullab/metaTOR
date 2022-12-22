@@ -432,7 +432,6 @@ def recursive_clustering(
         # Compute the Hamming distance between core bins.
         hamming_distance = mtp.get_hamming_distance(
             recursive_bins_iterations,
-            iterations,
             threads,
         )
 
@@ -441,7 +440,6 @@ def recursive_clustering(
             overlapping_parameter,
             hamming_distance,
             recursive_core_bins,
-            recursive_bins_iterations,
         )
 
         # update bin data and generate fasta

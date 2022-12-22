@@ -16,8 +16,8 @@ Core functions to partition the network are:
     - generate_fasta
     - get_distances_splitmat
     - get_hamming_distance
-    - leiden_partition_java
-    - louvain_partition_cpp
+    - leiden_iterations_java
+    - louvain_iterations_cpp
     - partition
     - remove_isolates
     - spinglass_partition
@@ -149,15 +149,17 @@ def build_clustering_matrix(core_bins_contigs, hamming_distance, N):
     )
     # Compute the clustering matrix on only the upper triangle of the hamming
     # distance matrix as it's symmetric to reduce memory usage.
-    hamming_distance = sparse.triu(hamming_distance, k=1)
-    clustering_matrix = transition_matrix.T.dot(hamming_distance).dot(
-        transition_matrix
-    )
-    return ((clustering_matrix + clustering_matrix) / 2).tocoo()
+    hamming_distance = sparse.triu(hamming_distance, k=0)
+    M = transition_matrix.T.dot(hamming_distance).dot(transition_matrix)
+    M = (M + M.T).tocsr()
+    M[M > 1] = 1
+    return sparse.triu(M.tocoo(), k=0)
 
 
 def defined_overlapping_bins(
-    overlap, hamming_distance, core_bins_contigs, core_bins_iterations
+    overlap,
+    hamming_distance,
+    core_bins_contigs,
 ):
     """This function extract the overlapped bins
 
@@ -179,8 +181,6 @@ def defined_overlapping_bins(
     core_bins_contigs : dict
         Dictionnary which has as keys the core bins id and as value the id of
         the contigs of the core bin.
-    core_bins_iteration : pandas.core.frame.DataFrame
-        Table with the id of the core bin and their values for each iterations.
 
     Returns:
     --------
@@ -311,9 +311,9 @@ def generate_fasta(
         list_contigs_id = overlapping_bins[bin_id]
         list_contigs_name = []
         # Test if the bin is bigger than the size threshold given.
-        length_bin = contigs_data.loc[
-            list_contigs_id[0] - 1, "Overlapping_bin_size"
-        ]
+        length_bin = int(
+            contigs_data.loc[list_contigs_id[0] - 1, "Overlapping_bin_size"]
+        )
         if length_bin >= size:
             nb_bins += 1
             length_bins += length_bin
@@ -367,19 +367,14 @@ def get_distances_splitmat(bins, core_bins_iterations):
     return x
 
 
-def get_hamming_distance(core_bins_iterations, n_iter, threads):
+def get_hamming_distance(core_bins_iterations, threads):
     """Generate matrix of Hamming distances between all pairs of core bins.
 
     Parameters:
     -----------
     core_bins_iterations : pandas.core.frame.DataFrame
-        Table with the id of the core bin and their values for each iterations.
-    core_bins : dict
-        Dictionnary which has as keys the values of the iterations from Louvain
-        or Leiden separated by a semicolon and as value the id of the contigs of
-        the core bin.
-    n_iter : int
-        Number of iterations made previously.
+        Table with the id of the core bin as index and their values for each
+        iterations.
     threads : int
         Number of cores to parallelize computation.
 
@@ -687,7 +682,6 @@ def partition(
     logger.info("Detect overlapping bins:")
     hamming_distance = get_hamming_distance(
         core_bins_iterations,
-        iterations,
         threads,
     )
 
@@ -696,7 +690,6 @@ def partition(
         overlapping_parameter,
         hamming_distance,
         core_bins_contigs,
-        core_bins_iterations,
     )
 
     # Update the contigs_data_file.
@@ -784,7 +777,7 @@ def spinglass_partition(
 
     Returns:
     dict:
-        Dictionnary with the id of the contig as key and the clusterung result
+        Dictionnary with the id of the contig as key and the clustering result
         as values.
     """
     # Partition the network using spingalss algorithm.
