@@ -53,6 +53,7 @@ jobs:
 
     - name: Install pytest and dependencies
       run: |
+        SKLEARN_ALLOW_DEPRECATED_SKLEARN_PACKAGE_INSTALL=True
         pip install pytest pylint pytest-cov pylint pytest-pylint codecov
         pip install -r requirements.txt
 
