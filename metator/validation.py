@@ -15,6 +15,7 @@ the original bin.
 Functions in this module:
     - get_bin_coverage
     - give_results_info
+    - merge_micomplete
     - micomplete_compare_bins
     - micomplete_quality
     - recursive_clustering
@@ -24,14 +25,15 @@ Functions in this module:
     - write_bins_contigs
 
 CheckM deprecated functions:
-    - checkM
-    - compare_bins
+    - checkm
+    - checkm_compare_bins
 """
 
 import logging
 import metator.io as mio
 import metator.figures as mtf
 import metator.partition as mtp
+import micomplete
 import multiprocessing
 import networkx as nx
 import numpy as np
@@ -177,6 +179,52 @@ def give_results_info(bin_summary):
     )
 
 
+def merge_micomplete(out_bact105, out_arch131, outfile):
+    """Function to merge bacterial and archaeal output of micomplete into one
+    file.
+
+    Parameters:
+    out_bact105 : str
+        Output of micomplete using 105 bacterial markers.
+    out_arch131 : str
+        Output of micomplete using 131 arcaheal markers.
+    outfile : str
+        Final merged output.
+    """
+    # Reads both files.
+    bact105 = pd.read_csv(out_bact105, sep="\t", comment="#", index_col=0).drop(
+        "Unnamed: 14", axis=1
+    )
+    arch131 = pd.read_csv(out_arch131, sep="\t", comment="#", index_col=0).drop(
+        "Unnamed: 14", axis=1
+    )
+
+    # Write header
+    with open(outfile, "w") as out:
+        out.write("## miComplete\n")
+        out.write(f"## v{micomplete.__version__}\n")
+        out.write(f"## Weights: Bact105 and Arch131\n")
+        out.write(
+            "Name\t{0}\tMarkers\n".format("\t".join(list(arch131.columns)))
+        )
+        for bin_id in bact105.index:
+            if (
+                bact105.loc[bin_id, "Weighted completeness"]
+                >= arch131.loc[bin_id, "Weighted completeness"]
+            ):
+                out.write(
+                    "{0}\t{1}\tBacteria\n".format(
+                        bin_id, "\t".join(map(str, list(bact105.loc[bin_id])))
+                    )
+                )
+            else:
+                out.write(
+                    "{0}\t{1}\tArchaea\n".format(
+                        bin_id, "\t".join(map(str, list(arch131.loc[bin_id])))
+                    )
+                )
+
+
 def micomplete_compare_bins(
     recursive_micomplete_file,
     bin_summary,
@@ -294,16 +342,31 @@ def micomplete_quality(fasta_dir, outfile, threads):
         for fasta in list_fasta:
             tab.write(f"{fasta}\tfna\n")
 
-    # Launch miComplete using subprocess.
-    cmd = f"miComplete {tmp_seq_tab} --hmms Bact105 --weights Bact105 --threads {threads} --outfile {outfile}"
+    # Create two temporary output for archae and bacteria.
+    out_bact105 = join(fasta_dir, "micomplete_bact105.tsv")
+    out_arch131 = join(fasta_dir, "micomplete_arch131.tsv")
+
+    # Launch miComplete using subprocess for bacteria.
+    cmd = f"miComplete {tmp_seq_tab} --hmms Bact105 --weights Bact105 --threads {threads} --outfile {out_bact105}"
     process = sp.Popen(cmd, shell=True)
     out, err = process.communicate()
+
+    # Launch miComplete using subprocess for archaea.
+    cmd = f"miComplete {tmp_seq_tab} --hmms Arch131 --weights Arch131 --threads {threads} --outfile {out_arch131}"
+    process = sp.Popen(cmd, shell=True)
+    out, err = process.communicate()
+
+    # Merge bacteria and archaea
+    merge_micomplete(out_bact105, out_arch131, outfile)
+
     # Remove micomplete temporary files.
     for path in filter(lambda x: ".fa" in x, os.listdir(fasta_dir)):
         name = path.split(".")[0]
         os.remove(f"{name}_prodigal.faa")
         os.remove(f"{name}.tblout")
     os.remove(tmp_seq_tab)
+    os.remove(out_bact105)
+    os.remove(out_arch131)
     os.remove("miComplete.log")
 
 
@@ -1013,7 +1076,7 @@ def checkm(fasta_dir, outfile, taxonomy_file, tmpdir, threads):
     out, err = process.communicate()
 
 
-def compare_bins(
+def checkm_compare_bins(
     overlapping_checkm_file,
     overlapping_taxonomy_file,
     recursive_checkm_file,
