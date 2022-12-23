@@ -562,11 +562,11 @@ def generates_frags_network(contig_data, bin_summary, bin_size):
         mag_starts.append(frag_id)
         bin_summary[bin_name]["current"] = frag_id
         bin_summary[bin_name]["rest"] = 0
-        frag_id += (int(bin_summary[bin_name]["size"]) // bin_size) + 1
+        frag_id += (int(bin_summary[bin_name]["Length"]) // bin_size) + 1
 
     # Define start frag id for each bins
     info_contigs = dict()
-    for i in range(len(contig_data.Name)):
+    for i in contig_data.index:
         # Only add the contig if it's in a final bin.
         if contig_data.loc[i, "Final_bin"] != "ND":
             # Call bin name dict to have the status of start frag id and rest.
@@ -647,7 +647,7 @@ def plot_figures(out_dir, contigs_data, bin_summary, threshold):
     os.makedirs(plot_dir, exist_ok=True)
 
     # Test if Shotgun coverage have been given
-    if contigs_data.loc[0, "Shotgun_coverage"] == "-":
+    if contigs_data.loc[contigs_data.index[0], "Shotgun_coverage"] == "-":
         SG_cov = False
     else:
         SG_cov = True

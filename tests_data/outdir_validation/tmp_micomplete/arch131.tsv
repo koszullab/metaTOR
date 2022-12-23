@@ -1,0 +1,7 @@
+## miComplete
+## v1.1.1
+## Weights:	/home/rsg/anaconda3/lib/python3.9/site-packages/micomplete/share/Arch131.weights
+## Weights Standard deviation:	0.15995862951363995
+Name	Length	GC-content	Present Markers	Completeness	Redundancy	Weighted completeness	Weighted redundancy	Contigs	N50	L50	N90	L90	CDs	
+MetaTOR_00001_00000	1876669	30.28	128	0.9771	1.0000	0.9681	1.0	216	18240	33	4553	114	1900	
+MetaTOR_00002_00000	4636634	53.77	63	0.4809	2.0952	0.4646	1.7659	192	64112	25	15776	79	4198	

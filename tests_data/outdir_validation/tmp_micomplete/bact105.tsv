@@ -1,0 +1,7 @@
+## miComplete
+## v1.1.1
+## Weights:	/home/rsg/anaconda3/lib/python3.9/site-packages/micomplete/share/Bact105.weights
+## Weights Standard deviation:	0.13917826966028532
+Name	Length	GC-content	Present Markers	Completeness	Redundancy	Weighted completeness	Weighted redundancy	Contigs	N50	L50	N90	L90	CDs	
+MetaTOR_00001_00000	1876669	30.28	51	0.4857	1.0588	0.3073	1.0686	216	18240	33	4553	114	1900	
+MetaTOR_00002_00000	4636634	53.77	105	1.0000	2.0381	1.0	1.9588	192	64112	25	15776	79	4198	

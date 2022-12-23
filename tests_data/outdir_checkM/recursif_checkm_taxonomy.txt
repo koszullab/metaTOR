@@ -1,0 +1,27 @@
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+  Bin Id         # unique markers (of 43)   # multi-copy   Taxonomy                                                                                              
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+  MetaTOR_25_1              43                   0         k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales                                              
+  MetaTOR_4_1               42                   0         k__Bacteria;p__Bacteroidetes;c__Bacteroidia;o__Bacteroidales;f__Porphyromonadaceae_2                  
+  MetaTOR_6_2               40                   0         k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales;f__Lachnospiraceae                           
+  MetaTOR_25_2              35                   0         k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales                                              
+  MetaTOR_6_1               30                   1         k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales;f__Lachnospiraceae                           
+  MetaTOR_35_1              26                   0         k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales                                              
+  MetaTOR_30_3              26                   0         k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales;f__Lachnospiraceae                           
+  MetaTOR_19_1              23                   0         k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales;f__Peptostreptococcaceae_3;g__Clostridium_3  
+  MetaTOR_6_3               21                   0         k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales;f__Lachnospiraceae                           
+  MetaTOR_14_1              21                   0         k__Bacteria;p__Tenericutes;c__Mollicutes                                                              
+  MetaTOR_14_2              15                   0         k__Bacteria;p__Deferribacteres;c__Deferribacteres;o__Deferribacterales;f__Deferribacteraceae          
+  MetaTOR_8_3               11                   0         k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales;f__Lachnospiraceae                           
+  MetaTOR_39_1              10                   0         k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales                                              
+  MetaTOR_19_2              6                    0         k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales                                              
+  MetaTOR_8_2               5                    0         k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales;f__Lachnospiraceae                           
+  MetaTOR_8_1               5                    0         k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales;f__Lachnospiraceae                           
+  MetaTOR_39_2              4                    0         k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales;f__Peptostreptococcaceae_2;g__Clostridium_2  
+  MetaTOR_40_2              2                    0         k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales;f__Lachnospiraceae;g__Ruminococcus           
+  MetaTOR_40_1              1                    0         k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales;f__Lachnospiraceae;g__Ruminococcus           
+  MetaTOR_30_2              1                    0         k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales;f__Lachnospiraceae                           
+  MetaTOR_39_3              0                    0         NA                                                                                                    
+  MetaTOR_30_4              0                    0         NA                                                                                                    
+  MetaTOR_30_1              0                    0         NA                                                                                                    
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-	lineage	completness	contamination	size	contigs	N50	longest_contig	GC	coding_density	taxonomy	HiC_Coverage	SG_Coverage
-MetaTOR_1_0	o__Clostridiales	97.99	1111.03	2045922	72	119919	642311	38.47	91.09	k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales;f__Ruminococcaceae	4.06E+01	3.59E+01
-MetaTOR_2_0	o__Clostridiales	78.91	2.80	1727703	44	110589	576356	29.88	89.30	k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales	4.45E+01	2.59E+01
-MetaTOR_3_1	g__Bacteroides	99.41	0.94	6435482	156	179010	540571	42.88	90.34	k__Bacteria;p__Bacteroidetes;c__Bacteroidia;o__Bacteroidales;f__Bacteroidaceae;g__Bacteroides;s__Bacteroides_thetaiotaomicron	7.49E+01	1.73E+01
+        Length  GC-content      Present Markers Completeness    Redundancy      Weighted completeness   Weighted redundancy     Contigs N50   L50      N90     L90     CDs     HiC_abundance
+MetaTOR_66_0    1513026.00      33.62   85.00   0.81    1.18    0.72    1.24    1656.00 1135.00 388.00  434.00  1234.00 2653.00 0.0597
+MetaTOR_37_0    1681556.00      38.44   77.00   0.73    1.13    0.67    1.18    1364.00 1624.00 334.00  619.00  990.00  2600.00 0.0075
+MetaTOR_14_0    1543324.00      43.89   41.00   0.39    1.20    0.55    1.12    2312.00 742.00  676.00  367.00  1846.00 3223.00 0.0357

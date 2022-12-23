@@ -13,11 +13,15 @@ global_args = {
     "BAM_REV": "tests_data/outdir/alignment_0_rev.bam",
     "DEPTH": "tests_data/depth.txt",
     "FASTA": "tests_data/assembly.fa",
-    "FASTQ_FOR": "tests_data/for_paired.fq",
-    "FASTQ_REV": "tests_data/rev_paired.fq",
+    "FASTA_VAL": "tests_data/outdir_validation/assembly_val.fa",
+    "FASTQ_FOR": "tests_data/for_paired.fq.gz",
+    "FASTQ_REV": "tests_data/rev_paired.fq.gz",
     "FASTA_INDEX": "tests_data/assembly",
     "NETWORK": "tests_data/outdir/network.txt",
+    "NETWORK_VAL": "tests_data/outdir_validation/network.txt",
     "CONTIGS": "tests_data/outdir/contig_data_network.txt",
+    "CONTIGS_VAL": "tests_data/outdir_validation/contig_data_final.txt",
+    "OUT_FASTA": "tests_data/outdir_validation/overlapping_bin",
     "OUT_TEST": "tests_data/out_test",
     "OUT_DIR": "tests_data/outdir",
     "PAIRS": "tests_data/outdir/alignment.pairs",
@@ -43,7 +47,7 @@ def test_network(aligner):
 
 
 def test_network2():
-    args = "-1 {BAM_FOR} -2 {BAM_REV} -a {FASTA_INDEX} -d {DEPTH} -E 500 -o {OUT_TEST} -T {TMP} -S bam".format(
+    args = "-1 {BAM_FOR} -2 {BAM_REV} -a {FASTA_INDEX} -d {DEPTH} -E 500 -o {OUT_TEST} -T {TMP} -S bam -N".format(
         **global_args
     )
     proc = mtc.Network(args.split(" "), {})
@@ -61,7 +65,7 @@ def test_network3(norm):
 
 @pytest.mark.parametrize(*MODE)
 def test_network4(mode):
-    args = "-1 {PAIRS} -a {FASTA} -d {DEPTH} -o {OUT_TEST} -T {TMP} -B {0} -e HindIII,DpnII -S pair".format(
+    args = "-1 {FASTQ_FOR} -2 {FASTQ_REV} -a {FASTA} -o {OUT_TEST} -T {TMP} -B {0} -t 4 -e HindIII,DpnII".format(
         mode, **global_args
     )
     proc = mtc.Network(args.split(" "), {})
@@ -77,29 +81,28 @@ def test_partition(alg):
     proc.execute()
 
 
-# Do not do test for validation as checkM is too slow and ask two much memory.
-# def test_validation():
-#     args = (
-#         "-a {FASTA} -c {CONTIGS2} -f {OUT_FASTA} -i 5 -n {NETWORK} -o {OUT_VAL} -s 10000 -t 8 -T {TMP}"
-#     ).format(**global_args)
-#     proc = mtc.Validation(args.split(" "), {})
-#     proc.execute()
-
-
-def qc():
+def test_validation():
     args = (
-        "-a {FASTA} -F -O {OUT_DIR} -o {OUT_TEST}/QC -p test -e HindIII,DpnII -T {TMP} -P"
+        "-a {FASTA_VAL} -c {CONTIGS_VAL} -f {OUT_FASTA} -i 5 -n {NETWORK_VAL} -o {OUT_TEST} -t 8 -T {TMP} -F"
     ).format(**global_args)
-    proc = mtc.Qc(args.split(" "), {})
+    proc = mtc.Validation(args.split(" "), {})
     proc.execute()
+
+
+# def qc():
+#     args = (
+#         "-a {FASTA} -F -O {OUT_DIR} -o {OUT_TEST}/QC -p test -e HindIII,DpnII -T {TMP} -P"
+#     ).format(**global_args)
+#     proc = mtc.Qc(args.split(" "), {})
+#     proc.execute()
 
 
 def test_pipeline():
     args = (
-        "-1 {FASTQ_FOR} -2 {FASTQ_REV} -a {FASTA_INDEX} -v -F -o {OUT_TEST} -B cutsite -s 30000 -C"
+        "-1 {FASTQ_FOR} -2 {FASTQ_REV} -a {FASTA_INDEX} -F -o {OUT_TEST} -s 30000 -C"
     ).format(**global_args)
     proc = mtc.Pipeline(args.split(" "), {})
     proc.execute()
 
-    shutil.rmtree("tests_data/out_test")
-    # shutil.rmtree("tests_data/tmp/")
+
+shutil.rmtree("tests_data/out_test")

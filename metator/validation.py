@@ -66,9 +66,9 @@ def get_bin_coverage(bin_summary, contigs_data):
     # Compute HiC_coverage
     total_hic_hit = 0
     total_sg_hit = 0
-    for i in range(len(contigs_data)):
+    for i in contigs_data.index:
         bin_name = contigs_data.loc[i, "Final_bin"]
-        if contigs_data.loc[0, "Shotgun_coverage"] != "-":
+        if contigs_data.loc[contigs_data.index[0], "Shotgun_coverage"] != "-":
             total_sg_hit += (
                 contigs_data.loc[i, "Size"]
                 * contigs_data.loc[i, "Shotgun_coverage"]
@@ -85,7 +85,10 @@ def get_bin_coverage(bin_summary, contigs_data):
                 )
 
             # If no depth files were given do not compute the Shotgun coverage.
-            if contigs_data.loc[0, "Shotgun_coverage"] != "-":
+            if (
+                contigs_data.loc[contigs_data.index[0], "Shotgun_coverage"]
+                != "-"
+            ):
                 try:
                     bin_summary[bin_name]["SG_abundance"] += (
                         contigs_data.loc[i, "Size"]
@@ -101,7 +104,7 @@ def get_bin_coverage(bin_summary, contigs_data):
     for bin_name in bin_summary:
         # Divide the HiC abundance by two as the hit are counted twice.
         bin_summary[bin_name]["HiC_abundance"] /= 2 * total_hic_hit
-        if contigs_data.loc[0, "Shotgun_coverage"] != "-":
+        if contigs_data.loc[contigs_data.index[0], "Shotgun_coverage"] != "-":
             bin_summary[bin_name]["SG_abundance"] /= total_sg_hit
     return bin_summary
 
@@ -192,12 +195,12 @@ def merge_micomplete(out_bact105, out_arch131, outfile):
         Final merged output.
     """
     # Reads both files.
-    bact105 = pd.read_csv(out_bact105, sep="\t", comment="#", index_col=0).drop(
-        "Unnamed: 14", axis=1
-    )
-    arch131 = pd.read_csv(out_arch131, sep="\t", comment="#", index_col=0).drop(
-        "Unnamed: 14", axis=1
-    )
+    bact105 = pd.read_csv(out_bact105, sep="\t", comment="#", index_col=0).loc[
+        :, :"CDs"
+    ]
+    arch131 = pd.read_csv(out_arch131, sep="\t", comment="#", index_col=0).loc[
+        :, :"CDs"
+    ]
 
     # Write header
     with open(outfile, "w") as out:
@@ -583,7 +586,7 @@ def recursive_clustering_worker(
     rec_bin_id = str(bin_id.split("_")[2])
 
     # Extract contigs
-    mask = (contigs_data["Overlapping_bin_ID"].apply(str) == over_bin_id) & (
+    mask = (contigs_data["Overlapping_bin_ID"] == over_bin_id) & (
         contigs_data["Recursive_bin_ID"].apply(str) == rec_bin_id
     )
     list_contigs = list(contigs_data.loc[mask, "ID"])
@@ -707,8 +710,13 @@ def recursive_decontamination(
 
     # Load contigs data:
     contigs_data = pd.read_csv(
-        contig_data_file, sep="\t", header=0, index_col=False
+        contig_data_file,
+        sep="\t",
+        header=0,
+        converters={"Overlapping_bin_ID": str},
     )
+    contigs_data["index"] = contigs_data["ID"] - 1
+    contigs_data = contigs_data.set_index("index")
 
     # Add new coulumns for recursive information.
     contigs_data["Recursive_bin_ID"] = f"{0:05d}"
@@ -901,7 +909,7 @@ def update_contigs_data_recursive(
     for i in recursive_bins:
         # Extract contigs of the bin
         recursive_bin = [id - 1 for id in recursive_bins[i]]
-        recursive_bin_data = contigs_data.iloc[recursive_bin]
+        recursive_bin_data = contigs_data.loc[recursive_bin]
         recursive_bin_contigs_number = len(recursive_bin)
         recursive_bin_length = sum(recursive_bin_data.Size)
 
@@ -984,7 +992,7 @@ def write_bins_contigs(bin_summary, contigs_data, outfile):
 
     # Write the contigs id with their bins id in table file
     with open(outfile, "w") as f:
-        for i in range(len(contigs_data)):
+        for i in contigs_data.index:
             over_id = str(contigs_data.loc[i, "Overlapping_bin_ID"])
             rec_id = str(contigs_data.loc[i, "Recursive_bin_ID"])
             try:

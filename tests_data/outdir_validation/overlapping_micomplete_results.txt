@@ -1,0 +1,6 @@
+## miComplete
+## v1.1.1
+## Weights: Bact105 and Arch131
+Name	Length	GC-content	Present Markers	Completeness	Redundancy	Weighted completeness	Weighted redundancy	Contigs	N50	L50	N90	L90	CDs	Markers
+MetaTOR_00001_00000	1876669.0	30.28	128.0	0.9771	1.0	0.9681	1.0	216.0	18240.0	33.0	4553.0	114.0	1900.0	Archaea
+MetaTOR_00002_00000	4636634.0	53.77	105.0	1.0	2.0381	1.0	1.9588	192.0	64112.0	25.0	15776.0	79.0	4198.0	Bacteria
