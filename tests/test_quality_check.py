@@ -6,13 +6,13 @@ import pytest
 import os
 
 
-def test_extract_hq_contigs():
-    bin_summary = mio.read_bin_summary("tests_data/outdir/bin_summary.txt")
-    contigs_data = mio.read_contig_data(
-        "tests_data/outdir/contig_data_final.txt"
-    )
-    hq_contigs = mtq.extract_hq_contigs(bin_summary, contigs_data)
-    assert hq_contigs == {"NODE_3_length_540571_cov_9.303447": "MetaTOR_3_1"}
+# def test_extract_hq_contigs():
+#     bin_summary = mio.read_bin_summary("tests_data/outdir/bin_summary.txt")
+#     contigs_data = mio.read_contig_data(
+#         "tests_data/outdir/contig_data_final.txt"
+#     )
+#     hq_contigs = mtq.extract_hq_contigs(bin_summary, contigs_data)
+#     assert hq_contigs == {"NODE_3_length_540571_cov_9.303447": "MetaTOR_3_1"}
 
 
 def test_extract_pairs():
@@ -35,12 +35,12 @@ def test_extract_pairs():
 
 def test_hic_quality():
     contigs = {
-        "NODE_522": "MetaTOR_1_1",
-        "NODE_1814": "MetaTOR_1_1",
-        "NODE_2398": "MetaTOR_1_1",
-        "NODE_1404": "MetaTOR_1_2",
-        "NODE_2100": "MetaTOR_1_2",
-        "NODE_2210": "MetaTOR_1_2",
+        "NODE_522": "MetaTOR_00001_00001",
+        "NODE_1814": "MetaTOR_00001_00001",
+        "NODE_2398": "MetaTOR_00001_00001",
+        "NODE_1404": "MetaTOR_00001_00002",
+        "NODE_2100": "MetaTOR_00001_00002",
+        "NODE_2210": "MetaTOR_00001_00002",
     }
     (
         n_religated,
