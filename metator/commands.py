@@ -563,13 +563,6 @@ class Validation(AbstractCommand):
         overlapping_parameter = int(self.args["--overlap"]) / 100
         resolution_parameter = float(self.args["--res-param"])
 
-        # Check checkM availabilitys
-        if not mio.check_checkm():
-            logger.error(
-                "CheckM is not in the path. Could not make the iterations"
-            )
-            raise NameError
-
         # Check correct algorithm value
         if self.args["--algorithm"] not in ["louvain", "leiden", "spinglass"]:
             logger.error(
@@ -696,8 +689,8 @@ class Pipeline(AbstractCommand):
                                 alignement. [Default: 1]
         -T, --tmpdir=DIR       Temporary directory. Default to current
                                 directory. [Default: ./tmp]
-        -v, --skip-validation   If  enables do not do the validation step which
-                                have an high memory usage (checkM ~ 40G)
+        -v, --skip-validation   If  enables do not do the recursive step which
+                                used miComplete.
     """
 
     def execute(self):
@@ -836,13 +829,6 @@ class Pipeline(AbstractCommand):
                         final_fasta_dir,
                     )
                     raise ValueError
-
-            # Check checkM availability
-            if not mio.check_checkm():
-                logger.error(
-                    "CheckM is not in the path. Could not make the iterations"
-                )
-                raise NameError
 
         # Manage start point.
         if self.args["--start"] == "fastq":
