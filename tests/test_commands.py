@@ -105,4 +105,4 @@ def test_pipeline():
     proc.execute()
 
 
-shutil.rmtree("tests_data/out_test")
+# shutil.rmtree("tests_data/out_test")
