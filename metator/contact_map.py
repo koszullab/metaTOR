@@ -95,7 +95,7 @@ class MetatorObject:
         try:
             contigs_data[self.object]
         except KeyError:
-            logger.error('The object that you gave is not in the table.')
+            logger.error("The object that you gave is not in the table.")
             raise ValueError
         self.contigs = list(
             contigs_data["Name"][contigs_data[self.object] == self.name]
@@ -202,9 +202,9 @@ class MetatorObject:
             Path to the output directory where to write the new fasta file.
         """
         # Create a fasta ouput file.
-        self.fasta = join(out_dir, f'{self.name}.fa')
+        self.fasta = join(out_dir, f"{self.name}.fa")
         # Write a contigs used by pyfastx extract.
-        contigs_list = join(tmp_dir,  f'{self.name}.txt')
+        contigs_list = join(tmp_dir, f"{self.name}.txt")
         with open(contigs_list, "w") as file:
             for contig_name in self.contigs:
                 file.write("%s\n" % contig_name)
@@ -244,8 +244,7 @@ def extract_pairs(metator_data):
         for contig_id, contig in enumerate(metator_data.contigs):
             output_pairs.write(
                 "#chromsize: {0} {1}\n".format(
-                    contig,
-                    metator_data.contigs_size[contig_id],
+                    contig, metator_data.contigs_size[contig_id],
                 )
             )
         for pairs_file in metator_data.pairs_files:
