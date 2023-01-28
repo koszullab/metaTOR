@@ -8,7 +8,6 @@ networkx
 numpy
 pandas
 pyfastx
-pyhmmer 
 pypairix
 pysam
 requests

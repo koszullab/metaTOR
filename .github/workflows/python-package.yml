@@ -22,7 +22,7 @@ jobs:
     - name: Load apt packages
       run: |
         sudo apt-get update
-        sudo apt-get -y install git make g++ bowtie2 samtools
+        sudo apt-get -y install git make g++ bowtie2 samtools hmmer
     
     - name: Set up ${{ matrix.python-version }}
       uses: actions/setup-python@v2
@@ -40,7 +40,7 @@ jobs:
       run: |
         cd external 
         tar -xzf louvain-generic.tar.gz
-        cd  gen-louvain
+        cd gen-louvain
         make
         cd ../..
     
