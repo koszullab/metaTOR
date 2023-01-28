@@ -209,7 +209,7 @@ def test_remove_isolates():
     assert partition2 == partition
 
 
-def test_spinglass_partition():
+# def test_spinglass_partition():
     # Test spinglass partition.
     # network = nx.read_edgelist(
     #     network_file, nodetype=int, data=(("weight", float),)
