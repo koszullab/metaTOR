@@ -22,7 +22,7 @@ jobs:
     - name: Load apt packages
       run: |
         sudo apt-get update
-        sudo apt-get -y install git make g++ bowtie2 samtools hmmer
+        sudo apt-get -y install git make g++ bowtie2 samtools hmmer prodigal
     
     - name: Set up ${{ matrix.python-version }}
       uses: actions/setup-python@v2

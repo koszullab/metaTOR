@@ -781,7 +781,7 @@ def spinglass_partition(
         as values.
     """
     # Partition the network using spingalss algorithm.
-    coms = algorithms.spinglass(subnetwork, spins=spins)
+    coms = algorithms.spinglass(subnetwork, spins)
 
     # Extract the clusters.
     output_partition = {}
