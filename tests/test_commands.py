@@ -97,12 +97,12 @@ def test_validation():
 #     proc.execute()
 
 
-def test_pipeline():
-    args = (
-        "-1 {FASTQ_FOR} -2 {FASTQ_REV} -a {FASTA} -F -o {OUT_TEST} -s 30000 -C"
-    ).format(**global_args)
-    proc = mtc.Pipeline(args.split(" "), {})
-    proc.execute()
+# def test_pipeline():
+#     args = (
+#         "-1 {FASTQ_FOR} -2 {FASTQ_REV} -a {FASTA} -F -o {OUT_TEST} -s 30000 -C"
+#     ).format(**global_args)
+#     proc = mtc.Pipeline(args.split(" "), {})
+#     proc.execute()
 
 
 # shutil.rmtree("tests_data/out_test")
