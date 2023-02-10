@@ -99,7 +99,7 @@ def test_validation():
 
 def test_pipeline():
     args = (
-        "-1 {FASTQ_FOR} -2 {FASTQ_REV} -a {FASTA_INDEX} -F -o {OUT_TEST} -s 30000 -C"
+        "-1 {FASTQ_FOR} -2 {FASTQ_REV} -a {FASTA} -F -o {OUT_TEST} -s 30000 -C"
     ).format(**global_args)
     proc = mtc.Pipeline(args.split(" "), {})
     proc.execute()
