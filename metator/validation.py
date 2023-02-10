@@ -229,10 +229,7 @@ def merge_micomplete(out_bact105, out_arch131, outfile):
 
 
 def micomplete_compare_bins(
-    recursive_micomplete_file,
-    bin_summary,
-    parent_dict,
-    step,
+    recursive_micomplete_file, bin_summary, parent_dict, step,
 ):
     """Compare the completness and contamination of the bins from the first step
     and from the recursive step. If the recursive step decrease the completion
@@ -262,10 +259,7 @@ def micomplete_compare_bins(
 
     # Load the miComplete summary
     micomplete_recursive_summary = pd.read_csv(
-        recursive_micomplete_file,
-        sep="\t",
-        comment="#",
-        index_col=0,
+        recursive_micomplete_file, sep="\t", comment="#", index_col=0,
     ).iloc[:, :13]
 
     bin_summary_tab = pd.DataFrame.from_dict(bin_summary, orient="index")
@@ -453,6 +447,8 @@ def recursive_clustering(
     # Put iterations to on eif spinglass partition used.
     if algorithm == "spinglass":
         iterations = 1
+        logger.error("Spinglass is no longer maintained.")
+        raise ValueError
 
     # Check bin_id to decontaminate.
     bin_ids = []
@@ -497,15 +493,12 @@ def recursive_clustering(
 
         # Compute the Hamming distance between core bins.
         hamming_distance = mtp.get_hamming_distance(
-            recursive_bins_iterations,
-            threads,
+            recursive_bins_iterations, threads,
         )
 
         # Defined overlapping bins according to the threshold
         recursive_bins = mtp.defined_overlapping_bins(
-            overlapping_parameter,
-            hamming_distance,
-            recursive_core_bins,
+            overlapping_parameter, hamming_distance, recursive_core_bins,
         )
 
         # update bin data and generate fasta
@@ -600,10 +593,7 @@ def recursive_clustering_worker(
     )
 
     # Compute spin prediction on the completion/contamination values.
-    spin = max(
-        2,
-        int(1 + float(bin_summary[bin_id]["Weighted redundancy"])),
-    )
+    spin = max(2, int(1 + float(bin_summary[bin_id]["Weighted redundancy"])),)
     # Partition the subnetwork.
 
     output_partition = mtp.algo_partition(
@@ -698,9 +688,7 @@ def recursive_decontamination(
 
     # Launch miComplete
     micomplete_quality(
-        input_fasta_dir,
-        overlapping_micomplete_file,
-        threads,
+        input_fasta_dir, overlapping_micomplete_file, threads,
     )
 
     # Load network:
@@ -783,17 +771,12 @@ def recursive_decontamination(
             )
 
             micomplete_quality(
-                recursive_fasta_dir_step,
-                recursive_micomplete_file,
-                threads,
+                recursive_fasta_dir_step, recursive_micomplete_file, threads,
             )
 
             # Compare
             bin_summary, contamination = micomplete_compare_bins(
-                recursive_micomplete_file,
-                bin_summary,
-                parent_dict,
-                step,
+                recursive_micomplete_file, bin_summary, parent_dict, step,
             )
 
         # Keep overlapping bin information
@@ -1007,10 +990,7 @@ def write_bins_contigs(bin_summary, contigs_data, outfile):
                     binned = True
 
                 if binned:
-                    final_bin = "MetaTOR_{0}_{1}".format(
-                        over_id,
-                        rec_id,
-                    )
+                    final_bin = "MetaTOR_{0}_{1}".format(over_id, rec_id,)
                     contigs_data.loc[i, "Final_bin"] = final_bin
                     f.write(
                         "{0}\t{1}\n".format(

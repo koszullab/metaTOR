@@ -20,8 +20,10 @@ Core functions to partition the network are:
     - louvain_iterations_cpp
     - partition
     - remove_isolates
-    - spinglass_partition
     - update_contigs_data
+
+Deprecated Spinglass functions:
+    - spinglass_partition
 """
 
 import metator.io as mio
@@ -30,7 +32,8 @@ import numpy as np
 import os
 import pandas as pd
 import subprocess as sp
-from cdlib import algorithms
+
+# from cdlib import algorithms
 from functools import partial
 from metator.log import logger
 from os.path import join
@@ -69,7 +72,8 @@ def algo_partition(
     tmp_dir : str
         Path to the temporary directory. [Default: current directory]
     spin : int
-        Number of final cluster if spinglass algorithm chosen. [Default: 2]
+        Deprecated. Number of final cluster if spinglass algorithm chosen.
+        [Default: 2]
 
     Returns:
     --------
@@ -95,11 +99,11 @@ def algo_partition(
             tmpdir,
             LOUVAIN_PATH,
         )
-    elif algorithm == "spinglass":
-        output_partition = spinglass_partition(
-            network,
-            spins=spin,
-        )
+    # elif algorithm == "spinglass":
+    #     output_partition = spinglass_partition(
+    #         network,
+    #         spins=spin,
+    #     )
     else:
         logger.error(
             'algorithm should be either "louvain", "leiden", or "spinglass"'
@@ -759,39 +763,6 @@ def remove_isolates(output_partition, network_file):
     return output_partition
 
 
-def spinglass_partition(
-    subnetwork,
-    spins=2,
-):
-    """Use spinglass function from cdlib to partition the network.
-
-    This function is only used in the validation step as it will take a long
-    time to run on a large network.
-
-    Parameters:
-    -----------
-    subnetwork : networkx.classes.graph.Graph
-        Network of interaction of a contaminated bins.
-    spins : int
-        Number of expected MAGs in the contaminated bins.
-
-    Returns:
-    dict:
-        Dictionnary with the id of the contig as key and the clustering result
-        as values.
-    """
-    # Partition the network using spingalss algorithm.
-    coms = algorithms.spinglass(subnetwork, spins)
-
-    # Extract the clusters.
-    output_partition = {}
-    for ids, list_contigs in enumerate(coms.communities):
-        for contig in list_contigs:
-            output_partition[contig] = str(ids)
-
-    return output_partition
-
-
 def update_contigs_data(
     contig_data_file, core_bins_contigs, overlapping_bins, outdir
 ):
@@ -870,3 +841,39 @@ def update_contigs_data(
     contigs_data.to_csv(contig_data_file_2, sep="\t", header=True, index=False)
 
     return contigs_data, contig_data_file_2
+
+
+# Deprecated Spinglass functions:
+
+
+def spinglass_partition(
+    subnetwork,
+    spins=2,
+):
+    """Use spinglass function from cdlib to partition the network.
+
+    This function is only used in the validation step as it will take a long
+    time to run on a large network.
+
+    Parameters:
+    -----------
+    subnetwork : networkx.classes.graph.Graph
+        Network of interaction of a contaminated bins.
+    spins : int
+        Number of expected MAGs in the contaminated bins.
+
+    Returns:
+    dict:
+        Dictionnary with the id of the contig as key and the clustering result
+        as values.
+    """
+    # Partition the network using spingalss algorithm.
+    # coms = algorithms.spinglass(subnetwork, spins)
+
+    # Extract the clusters.
+    # output_partition = {}
+    # for ids, list_contigs in enumerate(coms.communities):
+    #     for contig in list_contigs:
+    #         output_partition[contig] = str(ids)
+
+    # return output_partition
