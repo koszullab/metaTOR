@@ -51,13 +51,14 @@ def extract_hq_contigs(bin_summary, contigs_data):
             (bin_summary["Weighted redundancy"] < 1.1),
         )
     ]
+    n_mags = len(hq_mags)
     # Extract contigs bigger than 100kb.
     large_contigs = contigs_data.index[contigs_data["Size"] > 100_000]
     # Build dictionnary of large contigs in HQ MAgs.
     for contig in large_contigs:
         if contigs_data.loc[contig, "Final_bin"] in hq_mags:
             hq_contigs[contig] = contigs_data.loc[contig, "Final_bin"]
-    return hq_contigs
+    return hq_contigs, n_mags
 
 
 def extract_pairs(pairs_files, out_file, contigs, contigs_data):
@@ -137,6 +138,7 @@ def extract_pairs(pairs_files, out_file, contigs, contigs_data):
 
 def hic_quality(
     contigs,
+    n_mags,
     pairs,
     pairs_idx,
     fasta,
@@ -156,6 +158,8 @@ def hic_quality(
     contigs : dict
         Dictionnary with the list of contigs as keys and the final MAGs as
         values.
+    n_mags : int
+        Number of MAGs selected as high-quality.
     pairs : str
         Path to the pairs file whith mapping positions of the reads.
     pairs_idx : str
@@ -248,7 +252,9 @@ def hic_quality(
                 else:
                     n_inter_mags += 1
     rat_info = 100 * n_informative / (n_intra_mags + n_inter_mags)
-    noise = 100 * n_inter_mags / (n_intra_mags + n_inter_mags)
+    noise = (100 * n_inter_mags / (n_intra_mags + n_inter_mags)) / (
+        n_mags * (n_mags - 1)
+    )
     logger.info(f"Religated ratio: {100 * n_religated / n_intra_contigs:.2f}%.")
     logger.info(f"Loop ratio: {100 * n_loops / n_intra_contigs:.2f}%.")
     logger.info(f"Weirds ratio: {100 * n_weirds / n_intra_contigs:.2f}%.")
@@ -324,7 +330,7 @@ def quality_check(
     pairs_idx = join(tmp_dir, f"{prefix}_idx.pairs")
 
     # Extract high quality contigs.
-    hq_contigs = extract_hq_contigs(bin_summary, contigs_data)
+    hq_contigs, n_mags = extract_hq_contigs(bin_summary, contigs_data)
     # Extract pairs
     n_pairs = extract_pairs(
         pairs_files, pairs, list(hq_contigs.keys()), contigs_data
@@ -333,6 +339,7 @@ def quality_check(
     # Estimate HiC quality.
     _ = hic_quality(
         hq_contigs,
+        n_mags,
         pairs,
         pairs_idx,
         fasta_file,
