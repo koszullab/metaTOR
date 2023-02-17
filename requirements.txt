@@ -11,6 +11,6 @@ pyfastx
 pypairix
 pysam
 requests
+scikit-learn
 scipy
 seaborn
-scikit-learn

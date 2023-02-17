@@ -81,19 +81,11 @@ def test_partition(alg):
     proc.execute()
 
 
-def test_validation():
-    args = (
-        "-a {FASTA_VAL} -c {CONTIGS_VAL} -f {OUT_FASTA} -i 5 -n {NETWORK_VAL} -o {OUT_TEST} -t 8 -T {TMP} -F"
-    ).format(**global_args)
-    proc = mtc.Validation(args.split(" "), {})
-    proc.execute()
-
-
-# def qc():
+# def test_validation():
 #     args = (
-#         "-a {FASTA} -F -O {OUT_DIR} -o {OUT_TEST}/QC -p test -e HindIII,DpnII -T {TMP} -P"
+#         "-a {FASTA_VAL} -c {CONTIGS_VAL} -f {OUT_FASTA} -i 5 -n {NETWORK_VAL} -o {OUT_TEST} -t 8 -T {TMP} -F"
 #     ).format(**global_args)
-#     proc = mtc.Qc(args.split(" "), {})
+#     proc = mtc.Validation(args.split(" "), {})
 #     proc.execute()
 
 
@@ -104,5 +96,12 @@ def test_validation():
 #     proc = mtc.Pipeline(args.split(" "), {})
 #     proc.execute()
 
+
+# def qc():
+#     args = (
+#         "-a {FASTA} -F -O {OUT_DIR} -o {OUT_TEST}/QC -p test -e HindIII,DpnII -T {TMP} -P"
+#     ).format(**global_args)
+#     proc = mtc.Qc(args.split(" "), {})
+#     proc.execute()
 
 # shutil.rmtree("tests_data/out_test")

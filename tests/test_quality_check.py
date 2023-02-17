@@ -51,6 +51,7 @@ def test_hic_quality():
         n_inter_mags,
     ) = mtq.hic_quality(
         contigs,
+        2,
         "tests_data/outdir/alignment_large.pairs",
         "tests_data/outdir/alignment_large.pairs.idx",
         "tests_data/assembly.fa",

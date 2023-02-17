@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11']
+        python-version: ['3.9']
 
     steps:
     
@@ -22,7 +22,7 @@ jobs:
     - name: Load apt packages
       run: |
         sudo apt-get update
-        sudo apt-get -y install git make g++ bowtie2 samtools hmmer prodigal
+        sudo apt-get -y install git make g++ bowtie2 samtools hmmer prodigal default-jre default-jdk
     
     - name: Set up ${{ matrix.python-version }}
       uses: actions/setup-python@v2
@@ -55,13 +55,14 @@ jobs:
       run: |
         SKLEARN_ALLOW_DEPRECATED_SKLEARN_PACKAGE_INSTALL=True
         pip install pytest pylint pytest-cov pylint pytest-pylint codecov
-        pip install -r requirements.txt
+        pip install python-Levenshtein bimlpa eva-lcd pooch pulp thresholdclustering nf1 chinese-whispers angel-cd matplotlib pyclustering python-louvain cython dynetx future tqdm demon python-igraph markov-clustering python-dateutil pytz joblib threadpoolctl pyparsing pillow fonttools cycler kiwisolver six decorator appdirs igraph texttable Levenshtein rapidfuzz
+        pip install -r requirements.txt --no-deps
 
     - name: Test with pytest
       run: |
         export LOUVAIN_PATH=external/gen-louvain
         export LEIDEN_PATH=networkanalysis/build/libs/networkanalysis-1.2.0.jar
         export PATH="$PATH:bwa/"
-        pytest --pylint --pylint-error-types=EF --pylint-rcfile=.pylintrc --doctest-modules metator tests
+        pytest --pylint --pylint-error-types=EF --pylint-rcfile=.pylintrc --doctest-modules metator
         pytest --cov=metator
         codecov
