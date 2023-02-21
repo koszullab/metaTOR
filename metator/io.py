@@ -151,29 +151,32 @@ def check_louvain_cpp(louvain_path):
     # Check convert:
     try:
         convert = sp.check_output(
-            "{0} --help".format(convert), stderr=sp.STDOUT, shell=True
+            f"{convert} --help", stderr=sp.STDOUT, shell=True
         )
     except sp.CalledProcessError:
         logger.error("Cannot find the 'convert' function from Louvain path.")
         return False
+        raise ImportError
 
     # Check louvain:
     try:
         louvain = sp.check_output(
-            "{0} --help".format(louvain), stderr=sp.STDOUT, shell=True
+            f"{louvain} --help", stderr=sp.STDOUT, shell=True
         )
     except sp.CalledProcessError:
         logger.error("Cannot find the 'louvain' function from Louvain path.")
         return False
+        raise ImportError
 
     # Check hierarchy:
     try:
         hierarchy = sp.check_output(
-            "{0} --help".format(hierarchy), stderr=sp.STDOUT, shell=True
+            f"{hierarchy} --help", stderr=sp.STDOUT, shell=True
         )
     except sp.CalledProcessError:
         logger.error("Cannot find the convert_net function from Louvain path.")
         return False
+        raise ImportError
 
     return True
 
@@ -193,6 +196,7 @@ def check_pairix():
         logger.error(
             "Cannot find 'pairix' in your path please install it or add it in your path."
         )
+        raise ImportError
         return False
     return True
 
@@ -212,6 +216,7 @@ def check_pairtools():
         logger.error(
             "Cannot find 'pairtools' in your path please install it or add it in your path."
         )
+        raise ImportError
         return False
     return True
 

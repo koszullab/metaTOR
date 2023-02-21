@@ -22,7 +22,7 @@ jobs:
     - name: Load apt packages
       run: |
         sudo apt-get update
-        sudo apt-get -y install git make g++ bowtie2 samtools hmmer prodigal default-jre default-jdk
+        sudo apt-get -y install git make g++ bowtie2 samtools hmmer prodigal default-jre default-jdk zlib1g-dev
     
     - name: Set up ${{ matrix.python-version }}
       uses: actions/setup-python@v2
@@ -49,20 +49,28 @@ jobs:
         git clone https://github.com/vtraag/networkanalysis.git
         cd networkanalysis
         ./gradlew build
-        cd ../
-
+        cd ..
+      
+    - name: Install pairix
+      run: |
+        git clone https://github.com/4dn-dcic/pairix
+        cd pairix
+        make
+        rm -r test
+        cd ..
+    
     - name: Install pytest and dependencies
       run: |
-        SKLEARN_ALLOW_DEPRECATED_SKLEARN_PACKAGE_INSTALL=True
-        pip install pytest pylint pytest-cov pylint pytest-pylint codecov
-        pip install python-Levenshtein bimlpa eva-lcd pooch pulp thresholdclustering nf1 chinese-whispers angel-cd matplotlib pyclustering python-louvain cython dynetx future tqdm demon python-igraph markov-clustering python-dateutil pytz joblib threadpoolctl pyparsing pillow fonttools cycler kiwisolver six decorator appdirs igraph texttable Levenshtein rapidfuzz
-        pip install -r requirements.txt --no-deps
+        pip install --user pytest pylint pytest-cov pylint pytest-pylint codecov
+        pip install --user python-Levenshtein bimlpa eva-lcd pooch pulp thresholdclustering nf1 chinese-whispers angel-cd matplotlib pyclustering python-louvain cython dynetx future tqdm demon python-igraph markov-clustering python-dateutil pytz joblib threadpoolctl pyparsing pillow fonttools cycler kiwisolver six decorator appdirs igraph texttable Levenshtein rapidfuzz pysam click pyyaml bioframe
+        pip install --user -r requirements.txt --no-deps
 
     - name: Test with pytest
       run: |
         export LOUVAIN_PATH=external/gen-louvain
         export LEIDEN_PATH=networkanalysis/build/libs/networkanalysis-1.2.0.jar
-        export PATH="$PATH:bwa/"
+        PWD=$(pwd)
+        export PATH="$PATH:$PWD/bwa:$PWD/pairix/bin/:$PWD/pairix/util:$PWD/pairix/util/bam2pairs:/root/.local/bin"
         pytest --pylint --pylint-error-types=EF --pylint-rcfile=.pylintrc --doctest-modules metator
         pytest --cov=metator
         codecov

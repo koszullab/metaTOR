@@ -5,6 +5,7 @@
 import metator.commands as mtc
 import pytest
 import shutil
+import os
 
 
 # Use global variables for input files
@@ -103,5 +104,18 @@ def test_partition(alg):
 #     ).format(**global_args)
 #     proc = mtc.Qc(args.split(" "), {})
 #     proc.execute()
+
+
+def test_pairs():
+    pairs1 = "{OUT_TEST}/align1.pairs".format(**global_args)
+    pairs2 = "{OUT_TEST}/align2.pairs".format(**global_args)
+    pairs = "{PAIRS}".format(**global_args)
+    os.makedirs("{OUT_TEST}".format(**global_args), exist_ok=True)
+    shutil.copyfile(pairs, pairs1)
+    shutil.copyfile(pairs, pairs2)
+    args = f"-rF {pairs1} {pairs2}"
+    proc = mtc.Pairs(args.split(" "), {})
+    proc.execute()
+
 
 # shutil.rmtree("tests_data/out_test")
