@@ -8,9 +8,12 @@ This mdoule contains all core I/O functions:
     - check_fasta_index
     - check_is_fasta
     - check_louvain_cpp
+    - check_pairix
+    - check_pairtools
     - generate_fasta_index
     - generate_temp_dir
     - get_restriction_site
+    - get_pairs_data
     - process_ligation_sites
     - read_bin_summary
     - read_compressed
@@ -18,6 +21,7 @@ This mdoule contains all core I/O functions:
     - read_results_checkm
     - retrieve_fasta
     - sort_pairs
+    - sort_pairs_pairtools
     - write_bin_summary
 """
 
@@ -28,6 +32,7 @@ import numpy as np
 import os
 import pandas as pd
 import pathlib
+import pypairix
 import re
 import subprocess as sp
 import zipfile
@@ -173,6 +178,44 @@ def check_louvain_cpp(louvain_path):
     return True
 
 
+def check_pairix():
+    """
+    Function to test if pairix is in the path.
+
+    Returns:
+    --------
+    bool:
+        True if pairix found in the path, False otherwise.
+    """
+    try:
+        pairix = sp.check_output("pairix --help", stderr=sp.STDOUT, shell=True)
+    except sp.CalledProcessError:
+        logger.error(
+            "Cannot find 'pairix' in your path please install it or add it in your path."
+        )
+        return False
+    return True
+
+
+def check_pairtools():
+    """
+    Function to test if pairtools is in the path.
+
+    Returns:
+    --------
+    bool:
+        True if pairtools found in the path, False otherwise.
+    """
+    try:
+        pairix = sp.check_output("pairtools", stderr=sp.STDOUT, shell=True)
+    except sp.CalledProcessError:
+        logger.error(
+            "Cannot find 'pairtools' in your path please install it or add it in your path."
+        )
+        return False
+    return True
+
+
 def generate_fasta_index(fasta, aligner, outdir):
     """Generate fasta index.
 
@@ -232,6 +275,36 @@ def generate_temp_dir(path):
             "Make sure you have write permission.".format(path)
         )
     return full_path
+
+
+def get_pairs_data(pairfile, threads=1, remove=False, force=False):
+    """Extract pairs data from pypairix indexed pairs file. If no pypairix
+    indexed found, sort pairs files using pairtools executable.
+
+    Parameters
+    ----------
+    pairfile : str
+        Path to the pairfile to extract data.
+    threads : int
+        Number of threads to use to sort pairs if necessary. [Default: 1]
+    remove : bool
+        If set to true, it will remove the unsorted pair file. [Default: False]
+    force : bool
+        If set overwrite existing files. [Default: False]
+
+    Returns
+    -------
+    str :
+        Path to the sorted and indexed pair file.
+    """
+    # Check if pairix index exists, generate it otherwise.
+    try:
+        pairs_data = pypairix.open(pairfile)
+    except pypairix.PairixError:
+        logger.warning("No pairix index found. Iterates on the pairs.")
+        pairfile = sort_pairs_pairtools(pairfile, threads, remove, force)
+        pairs_data = pypairix.open(pairfile)
+    return pairs_data
 
 
 def get_restriction_site(enzyme):
@@ -594,6 +667,67 @@ def sort_pairs(in_file, out_file, tmp_dir=None, threads=1, buffer="2G"):
             sort_cmd.append("--parallel={0}".format(threads))
         sort_proc = sp.Popen(sort_cmd, stdin=grep_proc.stdout, stdout=output)
         sort_proc.communicate()
+
+
+def sort_pairs_pairtools(pairfile, threads=1, remove=False, force=False):
+    """Sort pairs files using pairtools executable. Pairix only works with
+    compressed pair files. So we use bgzip to compress them.
+
+    Parameters
+    ----------
+    pairfile : str
+        Path to the pairfile to sort, compress and index.
+    threads : int
+        Number of threads to use. [Default: 1]
+    remove : bool
+        If set to true, it will remove the unsorted pair file. [Default: False]
+    force : bool
+        If set overwrite existing files. [Default: False]
+
+    Returns
+    -------
+    str :
+        Path to the sorted and indexed pair file.
+    """
+    # Extract basename of the file.
+    basename = os.path.splitext(pairfile)[0]
+
+    # Test if pairix and pairtools are installed and in the path.
+    _ = check_pairix()
+    _ = check_pairtools()
+
+    # Set the force parameter and delete files or raise an error accodringly.
+    if force:
+        force = " -f"
+        if os.path.isfile(f"{basename}_sorted.pairs"):
+            os.remove(f"{basename}_sorted.pairs")
+    else:
+        force = ""
+        if os.path.isfile(f"{basename}_sorted.pairs") or os.path.isfile(
+            f"{basename}_sorted.pairs.gz"
+        ):
+            logger.error(
+                f"The {basename}_sorted.pairs exists. Do not overwrite existing, use --force to overwrite or use another location."
+            )
+            raise ValueError
+
+    # Sort pairs using pairtools.
+    cmd = f"set -eu ; pairtools sort {pairfile} --nproc {threads} -o {basename}_sorted.pairs"
+    process = sp.Popen(cmd, shell=True)
+    _out, _err = process.communicate()
+    # Compressed pairs.
+    cmd = f"set -eu ; bgzip {basename}_sorted.pairs -@ {threads}{force}"
+    process = sp.Popen(cmd, shell=True)
+    _out, _err = process.communicate()
+    # Indexed pairs.
+    cmd = f"set -eu ;  pairix{force} {basename}_sorted.pairs.gz"
+    process = sp.Popen(cmd, shell=True)
+    _out, _err = process.communicate()
+
+    # Remove original pairfile if remove setup.
+    if remove:
+        os.remove(pairfile)
+    return f"{basename}_sorted.pairs.gz"
 
 
 def write_bin_summary(bin_summary, bin_summary_file):

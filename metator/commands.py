@@ -1257,6 +1257,39 @@ class Contactmap(AbstractCommand):
             os.remove(self.args["--assembly"] + ".fxi")
 
 
+class Pairs(AbstractCommand):
+    """Sort and pairs files for faster assess to the data.
+
+    Sort the pairs file using pairtools. Compress them using bgzip. Index them
+    using pairix.
+
+    usage:
+        pairs [--force] [--remove] [--threads=1] <pairsfile>...
+
+    arguments:
+        pairsfile           File(s) containing pairs information.
+
+    options:
+        -F, --force         Write files even if the output files already exists.
+        -r, --remove        Remove the input file at the end to keep only the
+                            sorted, compressed and indexed pairs file.
+        -t, --threads=INT   Numbers of thread to allocate. [Default: 1]
+    """
+
+    def execute(self):
+        # Iterates on pairfiles given.
+        pairsfiles = self.args["<pairsfile>"]
+        for pairsfile in pairsfiles:
+            logger.info(f"Processing {pairsfile}...")
+            # Run the sort/compress/index command.
+            _ = mio.sort_pairs_pairtools(
+                pairsfile,
+                threads=int(self.args["--threads"]),
+                remove=self.args["--remove"],
+                force=self.args["--force"],
+            )
+
+
 def generate_log_header(log_path, cmd, args):
     mtl.set_file_handler(log_path, formatter=logging.Formatter(""))
     logger.info(f"## MetaTOR: v{__version__} log file")

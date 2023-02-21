@@ -6,6 +6,7 @@ looseversion
 micomplete
 networkx
 numpy
+pairtools
 pandas
 pyfastx
 pypairix
