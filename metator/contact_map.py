@@ -244,11 +244,12 @@ def extract_pairs(metator_data):
         for contig_id, contig in enumerate(metator_data.contigs):
             output_pairs.write(
                 "#chromsize: {0} {1}\n".format(
-                    contig, metator_data.contigs_size[contig_id],
+                    contig,
+                    metator_data.contigs_size[contig_id],
                 )
             )
         for pairs_file in metator_data.pairs_files:
-            # Check if the pairix index exist
+            # Check if the pairix index exist.
             try:
                 pairs_data = pypairix.open(pairs_file)
                 pypairix_index = True
@@ -272,6 +273,7 @@ def extract_pairs(metator_data):
                             1,
                         )
                         for pairs_line in pairs_lines:
+                            pairs_line = pairs_line[:7]
                             n_pairs += 1
                             output_pairs.write("\t".join(pairs_line) + "\n")
             # else Iterates on the input pairs file (take much longer than with
@@ -284,7 +286,7 @@ def extract_pairs(metator_data):
                             continue
                         # Split the line on the tabulation and check if both contigs
                         # are in the bin.
-                        pairs = pairs_line.split("\t")
+                        pairs = pairs_line.split("\t")[:7]
                         if (
                             pairs[1] in metator_data.contigs
                             and pairs[3] in metator_data.contigs
