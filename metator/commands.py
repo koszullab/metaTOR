@@ -29,13 +29,14 @@ import os
 import shutil
 import time
 import metator.align as mta
+import metator.contact_map as mtc
 import metator.io as mio
 import metator.log as mtl
+import metator.quality_check as mtq
 import metator.network as mtn
 import metator.partition as mtp
+import metator.scaffold as mts
 import metator.validation as mtv
-import metator.quality_check as mtq
-import metator.contact_map as mtc
 from docopt import docopt
 from metator.log import logger
 from metator.version import __version__
@@ -1255,6 +1256,67 @@ class Contactmap(AbstractCommand):
             shutil.rmtree(tmp_dir)
             # Delete pyfastx index:
             os.remove(self.args["--assembly"] + ".fxi")
+
+
+class Scaffold(AbstractCommand):
+    """Scaffold a bin from metator.
+
+    Use the pairs to build a scaffold from the binned contigs. The scaffolding
+    is based on contact between the edges of the contigs. There are normalized
+    based on intra contacts of the contigs except for the small contigs where
+    a low score is given.
+
+    usage:
+        scaffold --bin-name=STR --input-fasta=FILE [--junctions=STR]
+        [--out-fasta=FILE] [--out-frags=FILE] [--threads=1] [--threshold=0.1]
+        [--window-size=5000] <pairsfile>...
+
+    arguments:
+        pairsfile               File(s) containing pairs information.
+
+    options:
+        -b, --bin-name=STR      Name of the bin to scaffold.
+        -i, --input-fasta=FILE  Path to the input fasta.
+        -j, --junctions=STR     Sequences to use as junction between contigs.
+        -o, --out-fasta=FILE    Path to write the output fasta. Default in the
+                                current directory: '"$bin_name"_scaffolded.fa'.
+        -O, --out-frags=FILE    Path to write the fragments information. Default
+                                in the current directory:
+                                '"$bin_name"_info_frags.txt'.
+        -t, --threads=INT       Numbers of threads to allocate if pairs need to
+                                be sorted. [Default: 1]
+        -T, --threshold=FLOAT   Threshold score to consider an association
+                                between two contigs. [Default 0.1]
+        -w, --window-size=INT   Size of the window in base pair to use as edge
+                                window to scaffold. [Default: 5000]
+    """
+
+    def execute(self):
+        # TODO
+        # Adapt to be able to launch on multiple bins ? May be just do a tuto.
+
+        # Create output files:
+        if self.args["--out-fasta"] is None:
+            out_fasta = join(".", f'{self.args["--bin-name"]}_scaffolded.fa')
+        else:
+            out_fasta = self.args["--out-fasta"]
+        if self.args["--out-frags"] is None:
+            out_info = join(".", f'{self.args["--bin-name"]}_info_frags.txt')
+        else:
+            out_info = self.args["--out-frags"]
+
+        # Get the scaffolds
+        mts.get_scaffolds(
+            self.args["--bin-name"],
+            self.args["--input-fasta"],
+            self.args["<pairsfile>"],
+            out_fasta,
+            out_info,
+            threshold=float(self.args["--threshold"]),
+            threads=int(self.args["--threads"]),
+            window_size=int(self.args["--window-size"]),
+            junctions=self.args["--junctions"],
+        )
 
 
 class Pairs(AbstractCommand):
