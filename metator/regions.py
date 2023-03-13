@@ -91,7 +91,7 @@ class Contig:
 
     def __repr__(self) -> str:
         sign = "-" if self.is_reverse else "+"
-        return f"{self.chrom}:{self.start}-{self.end}:{sign}"
+        return f"{self.name}:{self.start}-{self.end}:{sign}"
 
     def __hash__(self) -> int:
         return hash(str(self))
@@ -102,9 +102,9 @@ class Contig:
     def intersect(self, other: Contig) -> int:
         """Return the length of intersection with another contigment. If there is
         no intersection, returns 0."""
-        same_chrom = self.chrom == other.chrom
+        same_contig = self.name == other.name
         separate = (self.start > other.end) or (self.end < other.start)
-        if same_chrom and not separate:
+        if same_contig and not separate:
             overlap_start = max(self.start, other.start)
             overlap_end = min(self.end, other.end)
             return overlap_end - overlap_start
@@ -131,20 +131,6 @@ class Contig:
     def flip(self):
         """Change contigment's sign."""
         self.is_reverse = not self.is_reverse
-
-    def merge(self, other: Contig) -> Optional[Contig]:
-        """Merge two contigments with adjacent genomic positions. If contigments
-        cannot be merged (e.g. because they are not adjacent), returns None."""
-        compat_chroms = self.chrom == other.chrom
-        compat_signs = self.is_reverse != other.is_reverse
-        compat_coords = (self.start == other.end) or (other.start == self.end)
-        if compat_chroms and compat_signs and compat_coords:
-            start = min(self.start, other.start)
-            end = min(self.end, other.end)
-            contig = Contig(self.chrom, start, end, self.is_reverse)
-        else:
-            contig = None
-        return contig
 
 
 class BreakPoint:
@@ -192,7 +178,7 @@ class BreakPoint:
     @staticmethod
     def _check_pos_at_contig_end(pos: Position, contig: Contig) -> bool:
         """Check whether a position is at the correct end of a contig."""
-        right_chrom = pos.chrom == contig.chrom
+        right_contig = pos.contig == contig.name
         if pos.has_sign():
             if pos.sign:
                 if contig.is_reverse:
@@ -206,7 +192,7 @@ class BreakPoint:
                     right_pos = pos.coord == contig.start
         else:
             right_pos = pos.coord in [contig.start, contig.end]
-        return right_chrom & right_pos
+        return right_contig & right_pos
 
     @property
     def contig1(self):
@@ -252,7 +238,7 @@ class BreakPoint:
         contigment of self should overlap the first contigment of other."""
         both_contigs = self.has_contigs() and other.has_contigs()
         both_signs = self.has_signs() and other.has_signs()
-        compat_chroms = self.pos2.chrom == other.pos1.chrom
+        compat_contigs = self.pos2.contig == other.pos1.contig
         if not (both_contigs and both_signs):
             raise ValueError(
                 "Cannot connect breakpoints without contigment or sign information."
@@ -262,7 +248,7 @@ class BreakPoint:
             if self.intersect(other) >= min_intersect:
                 compat_coords = True
 
-        return compat_chroms & compat_coords
+        return compat_contigs & compat_coords
 
     def intersect(self, other: BreakPoint) -> int:
         """Amount of overlap between two breakpoint's contigments"""
@@ -323,7 +309,7 @@ class Bin:
         bin."""
         # Memorize whether contigs have changed to avoid recomputing the same
         # values.
-        contig_hash = hash(tuple(self.contig))
+        contig_hash = hash(tuple(self.contigs))
         try:
             if self._contig_hash == contig_hash:
                 changed = False
@@ -351,8 +337,7 @@ class Bin:
         return (contig_id, (bounds[contig_id], bounds[contig_id + 1]))
 
     def get_contigs_between(self, start: int, end: int) -> List[Contig]:
-        """Returns a list of the contigs between 2 positions in the
-        chromosome."""
+        """Returns a list of the contigs between 2 positions in the bin."""
         result = []
         bounds = self.boundaries
         if start < 0 or end > bounds[-1]:
@@ -434,9 +419,9 @@ class Bin:
         self.contigs = [contig for contig in self.contigs if len(contig)]
 
     def insert(self, position: int, contig_ins: Contig):
-        """Updates contigs by inserting a sequence in the chromosome."""
+        """Updates contigs by inserting a sequence in the bin."""
         bounds = self.boundaries
-        # Append after the end of chromosome
+        # Append after the end of bin.
         if position == len(self):
             contig_id = len(bounds)
         else:
@@ -462,7 +447,7 @@ class Bin:
         self.breakpoints.append(bp)
 
     def invert(self, start: int, end: int):
-        """Updates contigs by inverting a portion of the chromosome.
+        """Updates contigs by inverting a portion of the bin.
         The interval is 0-based and right open [start;end[."""
         s_contig_id, (s_contig_start, _) = self.get_contig_bounds(start)
         e_contig_id, (e_contig_start, _) = self.get_contig_bounds(end - 1)
@@ -560,8 +545,8 @@ class Bin:
         self.clean_contigs()
         for contig_id in range(0, len(self.contigs) - 1):
             contig1, contig2 = self.contigs[contig_id : contig_id + 2]
-            p1 = Position(contig1.chrom, contig1.end, not contig1.is_reverse)
-            p2 = Position(contig2.chrom, contig2.start, contig2.is_reverse)
+            p1 = Position(contig1.bin, contig1.end, not contig1.is_reverse)
+            p2 = Position(contig2.bin, contig2.start, contig2.is_reverse)
             breakpoint = BreakPoint(p1, p2)
             breakpoint.contig1 = contig1
             breakpoint.contig2 = contig2
@@ -589,7 +574,7 @@ class Scaffold:
 
     def __len__(self) -> int:
         """Length defined as the length of all contigs"""
-        return np.sum([len(contig) for contig in self.contigs])
+        return np.abs(np.sum([len(contig) for contig in self.contigs]))
 
     def clean_contigs(self):
         """Purge 0-length contigs."""
