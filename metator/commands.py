@@ -1048,8 +1048,8 @@ class Qc(AbstractCommand):
                                 HpaII,MluCI.
         -n, --no-clean-up       If enabled intermediary files will be kept.
         -O, --metator-dir=DIR   Output directory from metator pipeline. If set
-                                bin summary, contigds data and bin summary will
-                                be found automatically.
+                                contigs data and bin summary will be found
+                                automatically.
         -o, --outdir=DIR        Directory to save output plots and log.
         -p, --prefix=STR        Name of the sample to add on plot and files.
         -P, --plot              If enable display some plots.
