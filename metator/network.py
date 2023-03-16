@@ -470,9 +470,8 @@ def precompute_network(
             out_files_list.append(out_file_sample)
 
             # Read the alignment_file and build pairs for the network
-            with open(aligment_file, "r") as pairs, open(
-                out_file_sample, "w"
-            ) as pre_net_sample:
+            pairs = mio.read_compressed(aligment_file)
+            with open(out_file_sample, "w") as pre_net_sample:
                 for pair in pairs:
                     # Ignore header lines
                     if pair.startswith("#"):
