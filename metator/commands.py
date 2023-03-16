@@ -612,11 +612,11 @@ class Pipeline(AbstractCommand):
         pipeline --assembly=FILE [--forward=STR] [--reverse=STR]
         [--algorithm=louvain] [--aligner=bowtie2] [--aligner-mode=normal]
         [--cluster-matrix] [--contigs=FILE] [--depth=FILE] [--edge=0]
-        [--enzyme=STR] [--force] [--iterations=100] [--rec-iter=10]
-        [--network=FILE] [--no-clean-up] [--normalization=empirical_hit]
-        [--outdir=DIR] [--overlap=80] [--rec-overlap=90]  [--min-quality=30]
-        [--res-param=1.0] [--size=500000] [--start=fastq] [--threads=1]
-        [--tmpdir=DIR] [--skip-validation]
+        [--enzyme=STR] [--force] [--iterations=100] [--rec-iter=10] 
+        [--junctions=NNNNN] [--network=FILE] [--no-clean-up]
+        [--normalization=empirical_hit] [--outdir=DIR] [--overlap=80]
+        [--rec-overlap=90]  [--min-quality=30] [--res-param=1.0]
+        [--size=500000] [--start=fastq] [--threads=1] [--tmpdir=DIR]
 
     options:
         -1, --forward=STR       Fastq file or list of Fastq separated by a comma
@@ -660,6 +660,8 @@ class Pipeline(AbstractCommand):
                                 partition step. [Default: 100]
         -j, --rec-iter=INT      Number of iterations of Louvain for the
                                 recursive step. [Default: 10]
+        -J, --junctions=STR     Sequences to use as junction between contigs. 
+                                [Default: NNNNN]
         -n, --network=FILE      Path to the file containing the network
                                 information from the meta HiC experiment compute
                                 in network function previously.
@@ -690,8 +692,6 @@ class Pipeline(AbstractCommand):
                                 alignement. [Default: 1]
         -T, --tmpdir=DIR       Temporary directory. Default to current
                                 directory. [Default: ./tmp]
-        -v, --skip-validation   If  enables do not do the recursive step which
-                                used miComplete.
     """
 
     def execute(self):
@@ -803,33 +803,48 @@ class Pipeline(AbstractCommand):
             raise ValueError
 
         # Sanity check for validation
-        if not self.args["--skip-validation"]:
-            recursive_fasta_dir = join(self.args["--outdir"], "recursive_bin")
-            if not exists(recursive_fasta_dir):
+        recursive_fasta_dir = join(self.args["--outdir"], "recursive_bin")
+        if not exists(recursive_fasta_dir):
+            os.makedirs(recursive_fasta_dir)
+        else:
+            if self.args["--force"]:
+                shutil.rmtree(recursive_fasta_dir)
                 os.makedirs(recursive_fasta_dir)
             else:
-                if self.args["--force"]:
-                    shutil.rmtree(recursive_fasta_dir)
-                    os.makedirs(recursive_fasta_dir)
-                else:
-                    logger.error(
-                        "%s already existed. Remove directory or use -F argument to overwrite it",
-                        recursive_fasta_dir,
-                    )
-                    raise ValueError
-            final_fasta_dir = join(self.args["--outdir"], "final_bin")
-            if not exists(final_fasta_dir):
+                logger.error(
+                    "%s already existed. Remove directory or use -F argument to overwrite it",
+                    recursive_fasta_dir,
+                )
+                raise ValueError
+        final_fasta_dir = join(self.args["--outdir"], "final_bin_unscaffold")
+        if not exists(final_fasta_dir):
+            os.makedirs(final_fasta_dir)
+        else:
+            if self.args["--force"]:
+                shutil.rmtree(final_fasta_dir)
                 os.makedirs(final_fasta_dir)
             else:
-                if self.args["--force"]:
-                    shutil.rmtree(final_fasta_dir)
-                    os.makedirs(final_fasta_dir)
-                else:
-                    logger.error(
-                        "%s already existed. Remove directory or use -F argument to overwrite it.",
-                        final_fasta_dir,
-                    )
-                    raise ValueError
+                logger.error(
+                    "%s already existed. Remove directory or use -F argument to overwrite it.",
+                    final_fasta_dir,
+                )
+                raise ValueError
+        
+        # Sanity check for scaffolding
+        scaffold_fasta_dir = join(self.args["--outdir"], "scaffold_bin")
+        if not exists(scaffold_fasta_dir):
+            os.makedirs(scaffold_fasta_dir)
+        else:
+            if self.args["--force"]:
+                shutil.rmtree(scaffold_fasta_dir)
+                os.makedirs(scaffold_fasta_dir)
+            else:
+                logger.error(
+                    "%s already existed. Remove directory or use -F argument to overwrite it.",
+                    scaffold_fasta_dir,
+                )
+                raise ValueError
+
 
         # Manage start point.
         if self.args["--start"] == "fastq":
@@ -869,15 +884,12 @@ class Pipeline(AbstractCommand):
             logger.info(f"Normalization: {self.args['--normalization']}")
         logger.info(f"Aligner algorithm: {self.args['--aligner']}")
         logger.info(f"Partition algorithm: {self.args['--algorithm']}")
-        logger.info(f"Partition iterations: {iterations}%s", iterations)
+        logger.info(f"Partition iterations: {iterations}")
         logger.info(f"Overlapping parameter: {overlapping_parameter}")
-        if not self.args["--skip-validation"]:
-            logger.info(
-                f"Recursive partition iterations: {recursive_iterations}"
-            )
-            logger.info(
-                f"Recursive overlapping parameter: {recursive_overlapping_parameter}\n"
-            )
+        logger.info(f"Recursive partition iterations: {recursive_iterations}")
+        logger.info(
+            f"Recursive overlapping parameter: {recursive_overlapping_parameter}\n"
+        )
 
         # Extract index and genome file
         assembly = self.args["--assembly"]
@@ -969,47 +981,77 @@ class Pipeline(AbstractCommand):
             )
             os.remove(contig_data_network_file)
 
-        # Launch validation if desired.
-        if not self.args["--skip-validation"]:
-            clustering_matrix_recursive_file = mtv.recursive_decontamination(
-                self.args["--algorithm"],
-                fasta,
-                self.args["--cluster-matrix"],
-                contigs_data_file,
-                final_fasta_dir,
-                overlapping_fasta_dir,
-                recursive_iterations,
-                network_file,
-                self.args["--outdir"],
-                recursive_overlapping_parameter,
-                recursive_fasta_dir,
-                resolution_parameter,
-                size,
-                tmp_dir,
-                threads,
-            )
+        # Launch validation.
+        clustering_matrix_recursive_file = mtv.recursive_decontamination(
+            self.args["--algorithm"],
+            fasta,
+            self.args["--cluster-matrix"],
+            contigs_data_file,
+            final_fasta_dir,
+            overlapping_fasta_dir,
+            recursive_iterations,
+            network_file,
+            self.args["--outdir"],
+            recursive_overlapping_parameter,
+            recursive_fasta_dir,
+            resolution_parameter,
+            size,
+            tmp_dir,
+            threads,
+        )
 
-            if self.args["--cluster-matrix"]:
-                # Make the sum with the partiton clustering matrix and save it.
-                clustering_matrix = load_npz(
-                    clustering_matrix_partition_file + ".npz"
-                )
-                clustering_matrix_recursive = load_npz(
-                    clustering_matrix_recursive_file + ".npz"
-                )
-                clustering_matrix = (
-                    (clustering_matrix + clustering_matrix_recursive) / 2
-                ).tocoo()
-                clustering_matrix_file = join(
-                    self.args["--outdir"], "clustering_matrix"
-                )
-                save_npz(clustering_matrix_file, clustering_matrix)
-
-            # Remove contig_data_partition file
-            contig_data_partition_file = join(
-                self.args["--outdir"], "contig_data_partition.txt"
+        if self.args["--cluster-matrix"]:
+            # Make the sum with the partiton clustering matrix and save it.
+            clustering_matrix = load_npz(
+                clustering_matrix_partition_file + ".npz"
             )
-            os.remove(contig_data_partition_file)
+            clustering_matrix_recursive = load_npz(
+                clustering_matrix_recursive_file + ".npz"
+            )
+            clustering_matrix = (
+                (clustering_matrix + clustering_matrix_recursive) / 2
+            ).tocoo()
+            clustering_matrix_file = join(
+                self.args["--outdir"], "clustering_matrix"
+            )
+            save_npz(clustering_matrix_file, clustering_matrix)
+
+        # Remove contig_data_partition file
+        contig_data_partition_file = join(
+            self.args["--outdir"], "contig_data_partition.txt"
+        )
+        os.remove(contig_data_partition_file)
+
+        # Sort and index the pairs
+        logger.info('Sort and index pairs file...')
+        pairfiles_sorted = []
+        for pairsfile in alignment_files:
+            logger.info(f"Processing {pairsfile}...")
+            # Run the sort/compress/index command.
+            pairfile_sorted = mio.sort_pairs_pairtools(
+                pairsfile,
+                threads=int(self.args["--threads"]),
+                remove=True,
+                force=self.args["--force"],
+            )
+            pairfiles_sorted.append(pairfile_sorted)
+
+        # Launch the scaffold
+        bin_summary = mio.read_bin_summary(
+            join(self.args["--outdir"]), "bin_summary.txt"
+        )
+        for bin_name in bin_summary.index:
+            mts.get_scaffolds(
+                bin_name,
+                join(final_fasta_dir, f"{bin_name}.fa"),
+                pairfiles_sorted,
+                join(scaffold_fasta_dir, f"{bin_name}_scaffolded.fa"),
+                join(scaffold_fasta_dir, f"{bin_name}_info_frags.txt"),
+                threshold=0.05,
+                threads=int(self.args["--threads"]),
+                window_size=5000,
+                junctions=self.args["--junctions"],
+            )
 
         # Delete pyfastx index:
         os.remove(fasta + ".fxi")
@@ -1267,7 +1309,7 @@ class Scaffold(AbstractCommand):
     a low score is given.
 
     usage:
-        scaffold --bin-name=STR --input-fasta=FILE [--junctions=STR]
+        scaffold --bin-name=STR --input-fasta=FILE [--junctions=NNNNN]
         [--out-fasta=FILE] [--out-frags=FILE] [--threads=1] [--threshold=0.1]
         [--window-size=5000] <pairsfile>...
 
@@ -1278,6 +1320,7 @@ class Scaffold(AbstractCommand):
         -b, --bin-name=STR      Name of the bin to scaffold.
         -i, --input-fasta=FILE  Path to the input fasta.
         -j, --junctions=STR     Sequences to use as junction between contigs.
+                                [Default: NNNNN]
         -o, --out-fasta=FILE    Path to write the output fasta. Default in the
                                 current directory: '"$bin_name"_scaffolded.fa'.
         -O, --out-frags=FILE    Path to write the fragments information. Default
@@ -1291,9 +1334,11 @@ class Scaffold(AbstractCommand):
                                 window to scaffold. [Default: 5000]
     """
 
-    def execute(self):
-        # TODO
-        # Adapt to be able to launch on multiple bins ? May be just do a tuto.
+    def execute(self):        
+        # Generate log
+        now = time.strftime("%Y%m%d%H%M%S")
+        log_file = join(self.args["--outdir"], (f"metator_pipeline_{now}.log"))
+        generate_log_header(log_file, cmd="scaffold", args=self.args)
 
         # Create output files:
         if self.args["--out-fasta"] is None:
@@ -1318,6 +1363,8 @@ class Scaffold(AbstractCommand):
             junctions=self.args["--junctions"],
         )
 
+        generate_log_footer(log_file)
+
 
 class Pairs(AbstractCommand):
     """Sort and pairs files for faster assess to the data.
@@ -1339,6 +1386,10 @@ class Pairs(AbstractCommand):
     """
 
     def execute(self):
+        # Generate log
+        now = time.strftime("%Y%m%d%H%M%S")
+        log_file = join(self.args["--outdir"], (f"metator_pipeline_{now}.log"))
+        generate_log_header(log_file, cmd="pairs", args=self.args)
         # Iterates on pairfiles given.
         pairsfiles = self.args["<pairsfile>"]
         for pairsfile in pairsfiles:
@@ -1350,6 +1401,7 @@ class Pairs(AbstractCommand):
                 remove=self.args["--remove"],
                 force=self.args["--force"],
             )
+        generate_log_footer(log_file)
 
 
 def generate_log_header(log_path, cmd, args):

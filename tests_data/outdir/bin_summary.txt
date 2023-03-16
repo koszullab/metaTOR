@@ -1,4 +1,4 @@
-        Length  GC-content      Present Markers Completeness    Redundancy      Weighted completeness   Weighted redundancy     Contigs N50   L50      N90     L90     CDs     HiC_abundance
-MetaTOR_66_0    1513026.00      33.62   85.00   0.81    1.18    0.72    1.24    1656.00 1135.00 388.00  434.00  1234.00 2653.00 0.0597
-MetaTOR_37_0    1681556.00      38.44   77.00   0.73    1.13    0.67    1.18    1364.00 1624.00 334.00  619.00  990.00  2600.00 0.0075
-MetaTOR_14_0    1543324.00      43.89   41.00   0.39    1.20    0.55    1.12    2312.00 742.00  676.00  367.00  1846.00 3223.00 0.0357
+	Length	GC-content	Present	Markers	Completeness	Redundancy	Weighted	completeness	Weighted	redundancy	Contigs	N50	L50	N90	L90	CDs	HiC_abundance
+MetaTOR_66_0	1513026.00	33.62	85.00	0.81	1.18	0.72	1.24	1656.00	1135.00	388.00	434.00	1234.00	2653.00	0.0597
+MetaTOR_37_0	1681556.00	38.44	77.00	0.73	1.13	0.67	1.18	1364.00	1624.00	334.00	619.00	990.00	2600.00	0.0075
+MetaTOR_14_0	1543324.00	43.89	41.00	0.39	1.20	0.55	1.12	2312.00	742.00	676.00	367.00	1846.00	3223.00	0.0357
