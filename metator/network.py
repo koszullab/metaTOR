@@ -402,9 +402,9 @@ def normalize_pair(contig_data, pair, n_occ, normalization):
                 contig_data[pair[1]]["length"] * contig_data[pair[1]]["RS"]
             )
         )
-        # If no read mapped from Shotgun libraries could be equal to zero.
-        if factor == 0:
-            return 0
+    # If no read mapped from Shotgun libraries could be equal to zero.
+    if factor == 0:
+        return 0
 
     return n_occ / factor
 
