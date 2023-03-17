@@ -187,7 +187,7 @@ def hic_quality(
     """
     # Cut the genome on restriction sites to assess quality of the reads.
     restrict_table = {}
-    for record in SeqIO.parse(hio.read_compressed(fasta), "fasta"):
+    for record in SeqIO.parse(mio.read_compressed(fasta), "fasta"):
         # Get chromosome restriction table
         restrict_table[record.id] = hcd.get_restriction_table(
             record.seq, enzyme, circular=False

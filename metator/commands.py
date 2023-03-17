@@ -612,7 +612,7 @@ class Pipeline(AbstractCommand):
         pipeline --assembly=FILE [--forward=STR] [--reverse=STR]
         [--algorithm=louvain] [--aligner=bowtie2] [--aligner-mode=normal]
         [--cluster-matrix] [--contigs=FILE] [--depth=FILE] [--edge=0]
-        [--enzyme=STR] [--force] [--iterations=100] [--rec-iter=10] 
+        [--enzyme=STR] [--force] [--iterations=100] [--rec-iter=10]
         [--junctions=NNNNN] [--network=FILE] [--no-clean-up]
         [--normalization=empirical_hit] [--outdir=DIR] [--overlap=80]
         [--rec-overlap=90]  [--min-quality=30] [--res-param=1.0]
@@ -660,7 +660,7 @@ class Pipeline(AbstractCommand):
                                 partition step. [Default: 100]
         -j, --rec-iter=INT      Number of iterations of Louvain for the
                                 recursive step. [Default: 10]
-        -J, --junctions=STR     Sequences to use as junction between contigs. 
+        -J, --junctions=STR     Sequences to use as junction between contigs.
                                 [Default: NNNNN]
         -n, --network=FILE      Path to the file containing the network
                                 information from the meta HiC experiment compute
@@ -829,7 +829,7 @@ class Pipeline(AbstractCommand):
                     final_fasta_dir,
                 )
                 raise ValueError
-        
+
         # Sanity check for scaffolding
         scaffold_fasta_dir = join(self.args["--outdir"], "scaffold_bin")
         if not exists(scaffold_fasta_dir):
@@ -844,7 +844,6 @@ class Pipeline(AbstractCommand):
                     scaffold_fasta_dir,
                 )
                 raise ValueError
-
 
         # Manage start point.
         if self.args["--start"] == "fastq":
@@ -1023,7 +1022,7 @@ class Pipeline(AbstractCommand):
         os.remove(contig_data_partition_file)
 
         # Sort and index the pairs
-        logger.info('Sort and index pairs file...')
+        logger.info("Sort and index pairs file...")
         pairfiles_sorted = []
         for pairsfile in alignment_files:
             logger.info(f"Processing {pairsfile}...")
@@ -1038,7 +1037,7 @@ class Pipeline(AbstractCommand):
 
         # Launch the scaffold
         bin_summary = mio.read_bin_summary(
-            join(self.args["--outdir"]), "bin_summary.txt"
+            join(self.args["--outdir"], "bin_summary.txt")
         )
         for bin_name in bin_summary.index:
             mts.get_scaffolds(
@@ -1334,10 +1333,10 @@ class Scaffold(AbstractCommand):
                                 window to scaffold. [Default: 5000]
     """
 
-    def execute(self):        
+    def execute(self):
         # Generate log
         now = time.strftime("%Y%m%d%H%M%S")
-        log_file = join(self.args["--outdir"], (f"metator_pipeline_{now}.log"))
+        log_file = f"metator_scaffold_{now}.log"
         generate_log_header(log_file, cmd="scaffold", args=self.args)
 
         # Create output files:
@@ -1388,7 +1387,7 @@ class Pairs(AbstractCommand):
     def execute(self):
         # Generate log
         now = time.strftime("%Y%m%d%H%M%S")
-        log_file = join(self.args["--outdir"], (f"metator_pipeline_{now}.log"))
+        log_file = f"metator_pairs_{now}.log"
         generate_log_header(log_file, cmd="pairs", args=self.args)
         # Iterates on pairfiles given.
         pairsfiles = self.args["<pairsfile>"]
