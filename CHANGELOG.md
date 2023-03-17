@@ -3,7 +3,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.2.0] - 2023-03-16
+## [1.2.0] - 2023-03-17
 - Remove the skip validation option.
 - Use miComplete instead of checkM for the recursive step.
 - Make multiple recursive step if necessary. 
