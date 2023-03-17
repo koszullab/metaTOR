@@ -1021,20 +1021,6 @@ class Pipeline(AbstractCommand):
         )
         os.remove(contig_data_partition_file)
 
-        # Sort and index the pairs
-        logger.info("Sort and index pairs file...")
-        pairfiles_sorted = []
-        for pairsfile in alignment_files:
-            logger.info(f"Processing {pairsfile}...")
-            # Run the sort/compress/index command.
-            pairfile_sorted = mio.sort_pairs_pairtools(
-                pairsfile,
-                threads=int(self.args["--threads"]),
-                remove=True,
-                force=self.args["--force"],
-            )
-            pairfiles_sorted.append(pairfile_sorted)
-
         # Launch the scaffold
         bin_summary = mio.read_bin_summary(
             join(self.args["--outdir"], "bin_summary.txt")
@@ -1043,7 +1029,7 @@ class Pipeline(AbstractCommand):
             mts.get_scaffolds(
                 bin_name,
                 join(final_fasta_dir, f"{bin_name}.fa"),
-                pairfiles_sorted,
+                alignment_files,
                 join(scaffold_fasta_dir, f"{bin_name}_scaffolded.fa"),
                 join(scaffold_fasta_dir, f"{bin_name}_info_frags.txt"),
                 threshold=0.05,
@@ -1057,6 +1043,9 @@ class Pipeline(AbstractCommand):
         # Delete the temporary folder.
         if not self.args["--no-clean-up"]:
             shutil.rmtree(tmp_dir)
+            if start < 3:
+                for pair_file in alignment_files:
+                    os.remove(pair_file)
 
         generate_log_footer(log_file)
 
