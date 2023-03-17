@@ -3,6 +3,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2023-03-16
+- Remove the skip validation option.
+- Use miComplete instead of checkM for the recursive step.
+- Make multiple recursive step if necessary. 
+- Sort pairs and do the scaffolding in the pipeline module.
+- Add QC, pairs and scaffold modules.
+- Correct pairs indexed loading.
+- Add option to remove reads mapping at the edges of the contigs.
+- Add possibility to used compressed pairs as input.
+- Parallelization of the recursive step.
+- Change bin id to make them sortable.
+- Correct reads extraction bugs for contact map module.
+- Correct bugs from cutsite mapping mode.
+- Remove Looseversion sorting Warning.
+- Update requirements file.
+- Change output plot colors.
+- Add tests for QC module.
+- Update tests of network, partition and validation modules.
+- Update documentation.
+
 ## [1.1.6] - 2022-10-06
 - Add iterative and cutsite alignment mode.
 

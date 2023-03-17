@@ -28,8 +28,8 @@ CLASSIFIERS = [
 name = "metator"
 
 MAJOR = 1
-MINOR = 1
-MAINTENANCE = 6
+MINOR = 2
+MAINTENANCE = 0
 VERSION = "{}.{}.{}".format(MAJOR, MINOR, MAINTENANCE)
 
 LICENSE = "GPLv3"
