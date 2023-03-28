@@ -24,6 +24,9 @@ The subcommands are:
     qc          Generates some quality check on the output of metator.
     contactmap  Generates a HiC contact map from one metaTOR object from the
                 final ouptut of metaTOR.
+    scaffold    Scaffold a metator bin based on pairs files.
+    pairs       Sort the pairs file using pairtools. Compress them using bgzip.
+                Index them using pairix.
 """
 
 from docopt import docopt
