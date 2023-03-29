@@ -686,6 +686,8 @@ class Pipeline(AbstractCommand):
                                 alignement. [Default: 1]
         -T, --tmpdir=DIR        Temporary directory. Default to current
                                 directory. [Default: ./tmp]
+        -v, --scaffold          If enables, it will sacffold the genomes at the
+                                end.
     """
 
     def execute(self):
@@ -825,19 +827,20 @@ class Pipeline(AbstractCommand):
                 raise ValueError
 
         # Sanity check for scaffolding
-        scaffold_fasta_dir = join(self.args["--outdir"], "scaffold_bin")
-        if not exists(scaffold_fasta_dir):
-            os.makedirs(scaffold_fasta_dir)
-        else:
-            if self.args["--force"]:
-                shutil.rmtree(scaffold_fasta_dir)
+        if self.args["--scaffold"]:
+            scaffold_fasta_dir = join(self.args["--outdir"], "scaffold_bin")
+            if not exists(scaffold_fasta_dir):
                 os.makedirs(scaffold_fasta_dir)
             else:
-                logger.error(
-                    "%s already existed. Remove directory or use -F argument to overwrite it.",
-                    scaffold_fasta_dir,
-                )
-                raise ValueError
+                if self.args["--force"]:
+                    shutil.rmtree(scaffold_fasta_dir)
+                    os.makedirs(scaffold_fasta_dir)
+                else:
+                    logger.error(
+                        "%s already existed. Remove directory or use -F argument to overwrite it.",
+                        scaffold_fasta_dir,
+                    )
+                    raise ValueError
 
         # Manage start point.
         if self.args["--start"] == "fastq":
@@ -1008,18 +1011,19 @@ class Pipeline(AbstractCommand):
         os.remove(contig_data_partition_file)
 
         # Launch the scaffold
-        bin_summary = mio.read_bin_summary(
-            join(self.args["--outdir"], "bin_summary.txt")
-        )
-        task = partial(
-            mts.parallel_scaffold,
-            final_fasta_dir=final_fasta_dir,
-            alignment_files=alignment_files,
-            scaffold_fasta_dir=scaffold_fasta_dir,
-            junctions=self.args["--junctions"],
-        )
-        pool = mp.Pool(processes=int(self.args["--threads"]))
-        pool.map(task, bin_summary.index)
+        if self.args["--scaffold"]:
+            bin_summary = mio.read_bin_summary(
+                join(self.args["--outdir"], "bin_summary.txt")
+            )
+            task = partial(
+                mts.parallel_scaffold,
+                final_fasta_dir=final_fasta_dir,
+                alignment_files=alignment_files,
+                scaffold_fasta_dir=scaffold_fasta_dir,
+                junctions=self.args["--junctions"],
+            )
+            pool = mp.Pool(processes=int(self.args["--threads"]))
+            pool.map(task, bin_summary.index)
 
         # Delete pyfastx index:
         os.remove(fasta + ".fxi")
