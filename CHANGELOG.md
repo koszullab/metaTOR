@@ -3,6 +3,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.1] - 2023-03-29
+- Make scaffolding optional in pipeline.
+- Remove the option to start with network file.
+- Allow parallel scaffolding at the end of the pipeline.
+- Force pairix index used in the contact map module.
+- Change pairs from option to arguments to handle easier multiple files as 
+arguments.
+- Debug scaffold module default parameters.
+- Update docs.
+
 ## [1.2.0] - 2023-03-17
 - Remove the skip validation option.
 - Use miComplete instead of checkM for the recursive step.
