@@ -25,6 +25,7 @@ NotImplementedError
 """
 
 import logging
+import multiprocessing as mp
 import os
 import shutil
 import time
@@ -38,6 +39,7 @@ import metator.partition as mtp
 import metator.scaffold as mts
 import metator.validation as mtv
 from docopt import docopt
+from functools import partial
 from metator.log import logger
 from metator.version import __version__
 from os.path import exists, dirname, join
@@ -690,7 +692,7 @@ class Pipeline(AbstractCommand):
                                 pair, or network. [Default: fastq]
         -t, --threads=INT       Number of parallel threads allocated for the
                                 alignement. [Default: 1]
-        -T, --tmpdir=DIR       Temporary directory. Default to current
+        -T, --tmpdir=DIR        Temporary directory. Default to current
                                 directory. [Default: ./tmp]
     """
 
@@ -1025,18 +1027,15 @@ class Pipeline(AbstractCommand):
         bin_summary = mio.read_bin_summary(
             join(self.args["--outdir"], "bin_summary.txt")
         )
-        for bin_name in bin_summary.index:
-            mts.get_scaffolds(
-                bin_name,
-                join(final_fasta_dir, f"{bin_name}.fa"),
-                alignment_files,
-                join(scaffold_fasta_dir, f"{bin_name}_scaffolded.fa"),
-                join(scaffold_fasta_dir, f"{bin_name}_info_frags.txt"),
-                threshold=0.05,
-                threads=int(self.args["--threads"]),
-                window_size=5000,
-                junctions=self.args["--junctions"],
-            )
+        task = partial(
+            mts.parallel_scaffold,
+            final_fasta_dir=final_fasta_dir,
+            alignment_files=alignment_files,
+            scaffold_fasta_dir=scaffold_fasta_dir,
+            junctions=self.args["--junctions"],
+        )
+        pool = mp.Pool(processes=int(self.args["--threads"]))
+        pool.map(task, bin_summary.index)
 
         # Delete pyfastx index:
         os.remove(fasta + ".fxi")
@@ -1298,7 +1297,7 @@ class Scaffold(AbstractCommand):
 
     usage:
         scaffold --bin-name=STR --input-fasta=FILE [--junctions=NNNNN]
-        [--out-fasta=FILE] [--out-frags=FILE] [--threads=1] [--threshold=0.1]
+        [--out-fasta=FILE] [--out-frags=FILE] [--threads=1] [--threshold=0.05]
         [--window-size=5000] <pairsfile>...
 
     arguments:
@@ -1317,7 +1316,7 @@ class Scaffold(AbstractCommand):
         -t, --threads=INT       Numbers of threads to allocate if pairs need to
                                 be sorted. [Default: 1]
         -T, --threshold=FLOAT   Threshold score to consider an association
-                                between two contigs. [Default 0.1]
+                                between two contigs. [Default: 0.05]
         -w, --window-size=INT   Size of the window in base pair to use as edge
                                 window to scaffold. [Default: 5000]
     """

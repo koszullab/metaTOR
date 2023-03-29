@@ -310,7 +310,7 @@ def get_pairs_data(pairfile, threads=1, remove=False, force=False):
             pairfile_sorted = f"{os.path.splitext(pairfile)[0]}_sorted.pairs.gz"
             pairs_data = pypairix.open(pairfile_sorted)
         except pypairix.PairixError:
-            logger.warning("No pairix index found. Iterates on the pairs.")
+            logger.warning("No pairix index found. Build the index.")
             pairfile = sort_pairs_pairtools(pairfile, threads, remove, force)
             pairs_data = pypairix.open(pairfile)
     return pairs_data

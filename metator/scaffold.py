@@ -7,6 +7,7 @@ General fonctions and classes to reorganize and scaffold genomes.
 
 Function in this module:
     - get_scaffolds
+    - parallel_scaffold
     - write_info_frags
     - write_scaffolds_fasta
 
@@ -22,7 +23,9 @@ import numpy as np
 import pypairix
 import pyfastx
 from metator.regions import Bin, Scaffold
+from metator.log import logger
 from typing import List, Optional
+from os.path import join
 import warnings
 import sys
 from io import StringIO
@@ -86,6 +89,46 @@ def get_scaffolds(
         junctions = ""
     write_info_frags(scaffolds, out_info)
     write_scaffolds_fasta(scaffolds, out_fasta, fasta, junctions)
+
+
+def parallel_scaffold(
+    bin_name,
+    final_fasta_dir,
+    alignment_files,
+    scaffold_fasta_dir,
+    junctions,
+):
+    """
+    Task function for parallel worker to scaffold the a bin.
+
+    Parameters
+    ----------
+    bin_name : str
+        Name of the bin
+    final_fasta_dir : str
+        Folder path to the fasta sequences of the bin contigs.
+    alignment_files : str
+        List of path to the pair file to pair file. If not sorted and indexed it
+        will be sorted and indexed.
+    scaffold_fasta_dir : str
+        Folder path to write the fasta and table output.
+    out_info : str
+        Path to write the info frags file.
+    junctions : Optional[str]
+        Sequence to put between two contigs. [Default: None]
+    """
+    logger.info(f"Scaffolding {bin_name}...")
+    get_scaffolds(
+        bin_name,
+        join(final_fasta_dir, f"{bin_name}.fa"),
+        alignment_files,
+        join(scaffold_fasta_dir, f"{bin_name}_scaffolded.fa"),
+        join(scaffold_fasta_dir, f"{bin_name}_info_frags.txt"),
+        threshold=0.05,
+        threads=1,
+        window_size=5000,
+        junctions=junctions,
+    )
 
 
 def write_info_frags(scaffolds: List[Scaffold], outfile: str):
