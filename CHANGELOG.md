@@ -4,6 +4,9 @@
 All notable changes to this project will be documented in this file.
 
 ## [1.2.1] - 2023-03-29
+- Repair the pipeline module.
+
+## [1.2.1] - 2023-03-29
 - Make scaffolding optional in pipeline.
 - Remove the option to start with network file.
 - Allow parallel scaffolding at the end of the pipeline.
