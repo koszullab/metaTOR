@@ -613,9 +613,8 @@ class Pipeline(AbstractCommand):
     usage:
         pipeline --assembly=FILE [--forward=STR] [--reverse=STR]
         [--algorithm=louvain] [--aligner=bowtie2] [--aligner-mode=normal]
-        [--cluster-matrix] [--contigs=FILE] [--depth=FILE] [--edge=0]
-        [--enzyme=STR] [--force] [--iterations=100] [--rec-iter=10]
-        [--junctions=NNNNN] [--network=FILE] [--no-clean-up]
+        [--cluster-matrix] [--depth=FILE] [--edge=0] [--enzyme=STR] [--force]
+        [--iterations=100] [--rec-iter=10] [--junctions=NNNNN] [--no-clean-up]
         [--normalization=empirical_hit] [--outdir=DIR] [--overlap=80]
         [--rec-overlap=90]  [--min-quality=30] [--res-param=1.0]
         [--size=500000] [--start=fastq] [--threads=1] [--tmpdir=DIR]
@@ -641,10 +640,6 @@ class Pipeline(AbstractCommand):
                                 "bowtie2". [Default: bowtie2]
         -B, --aligner-mode=STR  Mode of alignment from hicstuff. Either normal,
                                 iterative or cutsite. [Default: normal]
-        -c, --contigs=FILE      The path to the file containing the data ofthe
-                                contigs (ID, Name, Length, GC content, Hit,
-                                Coverage, Restriction site). Required if start
-                                network.
         -C, --cluster-matrix    If enabled, save the clustering matrix.
         -d, --depth=FILE        The depth.txt file from the shotgun reads used
                                 to made the assembly computed by
@@ -664,9 +659,6 @@ class Pipeline(AbstractCommand):
                                 recursive step. [Default: 10]
         -J, --junctions=STR     Sequences to use as junction between contigs.
                                 [Default: NNNNN]
-        -n, --network=FILE      Path to the file containing the network
-                                information from the meta HiC experiment compute
-                                in network function previously.
         -N, --no-clean-up       Do not remove temporary files.
         -m, --normalization=STR If None, do not normalized the count of a
                                 contact by the geometric mean of the coverage of
@@ -688,8 +680,8 @@ class Pipeline(AbstractCommand):
                                 algorithm. [Default: 1.0]
         -s, --size=INT          Threshold size to keep bins in base pair.
                                 [Default: 500000]
-        -S, --start=STR         Start stage of the pipeline. Either fastq, bam
-                                pair, or network. [Default: fastq]
+        -S, --start=STR         Start stage of the pipeline. Either fastq, bam,
+                                or pair. [Default: fastq]
         -t, --threads=INT       Number of parallel threads allocated for the
                                 alignement. [Default: 1]
         -T, --tmpdir=DIR        Temporary directory. Default to current
@@ -854,12 +846,8 @@ class Pipeline(AbstractCommand):
             start = 2
         elif self.args["--start"] == "pair":
             start = 3
-        elif self.args["--start"] == "network":
-            start = 4
         else:
-            logger.error(
-                "Start argument should be 'fastq', 'bam', 'pair' or 'network'."
-            )
+            logger.error("Start argument should be 'fastq', 'bam', or 'pair'.")
             raise ValueError
 
         # Check if forward and reverse reads are given for fastq and bam start.
@@ -913,50 +901,46 @@ class Pipeline(AbstractCommand):
             fasta = mio.retrieve_fasta(index, self.args["--aligner"], tmp_dir)
 
         # Run the whole workflow
-        if start <= 3:
-            if start <= 2:
-                # Align pair-end reads with bowtie2
-                alignment_files, contig_data, hit_data = mta.get_contact_pairs(
-                    self.args["--forward"],
-                    self.args["--reverse"],
-                    index,
-                    fasta,
-                    self.args["--aligner"],
-                    self.args["--aligner-mode"],
-                    min_qual,
-                    self.args["--start"],
-                    self.args["--depth"],
-                    self.args["--enzyme"],
-                    self.args["--outdir"],
-                    tmp_dir,
-                    self.args["--threads"],
-                )
-            else:
-                alignment_files = self.args["--forward"].split(",")
-                nb_alignment = len(alignment_files)
-                contig_data, hit_data = mtn.create_contig_data(
-                    fasta,
-                    nb_alignment,
-                    self.args["--depth"],
-                    self.args["--enzyme"],
-                )
-            # Build the network
-            network_file, contigs_data_file = mtn.alignment_to_contacts(
-                alignment_files,
-                contig_data,
-                edge,
-                hit_data,
+        if start <= 2:
+            # Align pair-end reads with bowtie2
+            alignment_files, contig_data, hit_data = mta.get_contact_pairs(
+                self.args["--forward"],
+                self.args["--reverse"],
+                index,
+                fasta,
+                self.args["--aligner"],
+                self.args["--aligner-mode"],
+                min_qual,
+                self.args["--start"],
+                self.args["--depth"],
+                self.args["--enzyme"],
                 self.args["--outdir"],
-                "network.txt",
-                "contig_data_network.txt",
                 tmp_dir,
                 self.args["--threads"],
-                self.args["--normalization"],
-                False,
             )
         else:
-            contigs_data_file = self.args["--contigs"]
-            network_file = self.args["--network"]
+            alignment_files = self.args["--forward"].split(",")
+            nb_alignment = len(alignment_files)
+            contig_data, hit_data = mtn.create_contig_data(
+                fasta,
+                nb_alignment,
+                self.args["--depth"],
+                self.args["--enzyme"],
+            )
+        # Build the network
+        network_file, contigs_data_file = mtn.alignment_to_contacts(
+            alignment_files,
+            contig_data,
+            edge,
+            hit_data,
+            self.args["--outdir"],
+            "network.txt",
+            "contig_data_network.txt",
+            tmp_dir,
+            self.args["--threads"],
+            self.args["--normalization"],
+            False,
+        )
 
         # Partition the network
         clustering_matrix_partition_file, contigs_data_file = mtp.partition(
