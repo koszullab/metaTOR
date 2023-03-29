@@ -16,6 +16,7 @@ Core function to build the network are:
 
 
 import hicstuff.pipeline as hcp
+import metator.io as mio
 from metator.log import logger
 from os.path import join
 import pandas as pd
@@ -59,15 +60,14 @@ class MetatorObject:
             the whole or the extracted contigs of one bin.
         contig_data_file : str
             Path to the contig_data_final.txt file form MetaTOR output.
-        pairs : str
-            Path of the ".pairs" file. If more than one is given, files should
-            be separated by a comma.
+        pairs : List of str
+            List of path of the ".pairs" file.
         min_size : int
             Size threshold used to filter contigs. Default: 5000.
         """
         self.assembly = assembly
         self.contigs_data = contig_data_file
-        self.pairs_files = pairs.split(",")
+        self.pairs_files = pairs
         self.min_size = min_size
         self.set_metator_object(metator_object, name)
         self.contigs = None
@@ -250,49 +250,24 @@ def extract_pairs(metator_data):
             )
         for pairs_file in metator_data.pairs_files:
             # Check if the pairix index exist.
-            try:
-                pairs_data = pypairix.open(pairs_file)
-                pypairix_index = True
-            except pypairix.PairixError:
-                logger.warning("No pairix index found. Iterates on the pairs.")
-                pypairix_index = False
+            pairs_data = mio.get_pairs_data(pairs_file)
             # Need a sorted (chr1 chr2 pos1 pos2) pair file indexed with pairix.
-            if pypairix_index:
-                for contig_id1, contig in enumerate(metator_data.contigs):
-                    # Only need to retrieve the upper triangle.
-                    for contig_id2 in range(
-                        contig_id1, len(metator_data.contigs)
-                    ):
-                        pairs_lines = pairs_data.query2D(
-                            contig,
-                            0,
-                            metator_data.contigs_size[contig_id1],
-                            metator_data.contigs[contig_id2],
-                            0,
-                            metator_data.contigs_size[contig_id2],
-                            1,
-                        )
-                        for pairs_line in pairs_lines:
-                            pairs_line = pairs_line[:7]
-                            n_pairs += 1
-                            output_pairs.write("\t".join(pairs_line) + "\n")
-            # else Iterates on the input pairs file (take much longer than with
-            # the index).
-            else:
-                with open(pairs_file, "r") as input_pairs:
-                    for pairs_line in input_pairs:
-                        # Ignore header lines.
-                        if pairs_line.startswith("#"):
-                            continue
-                        # Split the line on the tabulation and check if both contigs
-                        # are in the bin.
-                        pairs = pairs_line.split("\t")[:7]
-                        if (
-                            pairs[1] in metator_data.contigs
-                            and pairs[3] in metator_data.contigs
-                        ):
-                            n_pairs += 1
-                            output_pairs.write(pairs_line)
+            for contig_id1, contig in enumerate(metator_data.contigs):
+                # Only need to retrieve the upper triangle.
+                for contig_id2 in range(contig_id1, len(metator_data.contigs)):
+                    pairs_lines = pairs_data.query2D(
+                        contig,
+                        0,
+                        metator_data.contigs_size[contig_id1],
+                        metator_data.contigs[contig_id2],
+                        0,
+                        metator_data.contigs_size[contig_id2],
+                        1,
+                    )
+                    for pairs_line in pairs_lines:
+                        pairs_line = pairs_line[:7]
+                        n_pairs += 1
+                        output_pairs.write("\t".join(pairs_line) + "\n")
     return n_pairs
 
 

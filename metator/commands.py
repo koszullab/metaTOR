@@ -1203,10 +1203,13 @@ class Contactmap(AbstractCommand):
     using the output.
 
     usage:
-        contactmap --assembly=FILE --contig-data=FILE --enzyme=STR --name=STR --pairs=FILE
+        contactmap --assembly=FILE --contig-data=FILE --enzyme=STR --name=STR
         [--filter] [--force] [--mat-fmt=graal] [--min-size=5000]
         [--no-clean-up] [--object=final_bin] [--outdir=DIR] [--pcr-dup]
-        [--tmpdir=DIR] [--threads=1]
+        [--tmpdir=DIR] [--threads=1] <pairsfile>...
+
+    argument:
+        pairsfile               File(s) containing pairs information.
 
     options:
         -a, --assembly=FILE     Path to the fasta file containing the contigs of
@@ -1220,8 +1223,6 @@ class Contactmap(AbstractCommand):
         -n, --name=STR          Name of the metator or its numerical ID for the
                                 core bin, overlapping bin or recursive bin
                                 objects. Example: "NODE_1", "MetaTOR_1_0" or 8.
-        -p, --pairs=FILE        Path of the ".pairs" file. If more than one is
-                                given, files should be separated by a comma.
         -D, --pcr-dup,          Filter out PCR duplicates based on read
                                 positions.
         -f, --filter            Filter out spurious 3C events (loops and uncuts)
@@ -1268,7 +1269,7 @@ class Contactmap(AbstractCommand):
             self.args["--contig-data"],
             self.args["--enzyme"],
             self.args["--name"],
-            self.args["--pairs"],
+            self.args["<pairsfile>"],
             self.args["--outdir"],
             tmp_dir,
             self.args["--filter"],
