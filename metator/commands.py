@@ -617,7 +617,8 @@ class Pipeline(AbstractCommand):
         [--iterations=100] [--rec-iter=10] [--junctions=NNNNN] [--no-clean-up]
         [--normalization=empirical_hit] [--outdir=DIR] [--overlap=80]
         [--rec-overlap=90]  [--min-quality=30] [--res-param=1.0]
-        [--size=500000] [--start=fastq] [--threads=1] [--tmpdir=DIR]
+        [--size=500000] [--start=fastq] [--scaffold] [--threads=1]
+        [--tmpdir=DIR]
 
     options:
         -1, --forward=STR       Fastq file or list of Fastq separated by a comma
