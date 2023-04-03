@@ -3,7 +3,13 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.2.1] - 2023-03-29
+## [1.2.3] - 2023-04-03
+- Modify pairs option as an argument for QC module.
+- Correct bug if only one MAG corrected in the recursive step.
+- Correct figures to work with miComplete output.
+- Improve quality check metrics based on mock community results.
+- Update QC tests.
+## [1.2.2] - 2023-03-29
 - Repair the pipeline module.
 
 ## [1.2.1] - 2023-03-29
