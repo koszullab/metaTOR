@@ -30,7 +30,7 @@ def test_extract_pairs():
         "NODE_2398",
     ]
     n_pairs = mtq.extract_pairs(pairs_files, out_file, contigs, contigs_data)
-    assert n_pairs == 1345
+    assert n_pairs == 1310
 
 
 def test_hic_quality():
@@ -46,7 +46,8 @@ def test_hic_quality():
         n_religated,
         n_loops,
         n_weirds,
-        n_informative,
+        n_informative_intra,
+        n_informative_inter,
         n_intra_mags,
         n_inter_mags,
     ) = mtq.hic_quality(
@@ -65,9 +66,10 @@ def test_hic_quality():
     assert n_religated == 1
     assert n_loops == 1
     assert n_weirds == 394
-    assert n_informative == 911
-    assert n_intra_mags == 1307
-    assert n_inter_mags == 38
+    assert n_informative_intra == 882
+    assert n_informative_inter == 15
+    assert n_intra_mags == 1293
+    assert n_inter_mags == 17
     os.remove("tests_data/outdir/alignment_large.pairs")
     os.remove("tests_data/outdir/alignment_large.pairs.idx")
 
