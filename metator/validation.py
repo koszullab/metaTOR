@@ -305,7 +305,11 @@ def micomplete_compare_bins(
                 bin_summary_tab.loc[overlapping_bin, "Weighted completeness"]
             )
             if (max_rec > (over / 1.3)) & (max_rec > 0.5):
-                for rec_id in bin_summary_tab.loc[overlapping_bin, "rec_id"]:
+                rec_ids = bin_summary_tab.loc[overlapping_bin, "rec_id"]
+                # Case of only one bin.
+                if isinstance(rec_ids, str):
+                    rec_ids = [rec_ids]
+                for rec_id in rec_ids:
                     bin_summary[rec_id] = micomplete_recursive_summary.loc[
                         rec_id, :"CDs"
                     ].to_dict()
@@ -465,7 +469,7 @@ def recursive_clustering(
             recursive = bin_summary[bin_id]["recursive"]
             if recursive:
                 if completness >= 0.4:
-                    if (conta - 1) / completness >= 0.05:
+                    if (conta - 1) / completness >= 0.1:
                         bin_ids.append(bin_id)
         except KeyError:
             continue
