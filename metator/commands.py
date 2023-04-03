@@ -1051,7 +1051,10 @@ class Qc(AbstractCommand):
     usage:
         qc --assembly=FILE --enzyme=STR [--bin-summary=FILE]
         [--contig-data=FILE] [--metator-dir=DIR] [--no-clean-up] [--outdir=DIR]
-        [--pairs=FILE] [--prefix=STR] [--plot] [--threshold=STR] [--tmpdir=DIR]
+        [--prefix=STR] [--plot] [--threshold=STR] [--tmpdir=DIR] <pairsfile>...
+
+    arguments:
+        pairsfile           File(s) containing pairs information.
 
     options:
         -a, --assembly=FILE     Path to the fasta file containing the contigs of
@@ -1071,8 +1074,6 @@ class Qc(AbstractCommand):
         -o, --outdir=DIR        Directory to save output plots and log.
         -p, --prefix=STR        Name of the sample to add on plot and files.
         -P, --plot              If enable display some plots.
-        -r, --pairs=FILE        Path of the ".pairs" file. If more than one is
-                                given, files should be separated by a comma.
         -t, --threshold=STR     Hicstuff religation and loop thresholds.
                                 Two integers seperated by a coma.
         -T, --tmpdir=DIR        Temporary directory to save pairs files
@@ -1104,23 +1105,6 @@ class Qc(AbstractCommand):
             metator_dir = self.args["--metator-dir"]
         else:
             metator_dir = "."
-        if self.args["--pairs"]:
-            pairs_files = self.args["--pairs"].split(",")
-        else:
-            pairs_files = [
-                join(metator_dir, file)
-                for file in filter(
-                    lambda x: "pairs" in x, os.listdir(metator_dir)
-                )
-            ]
-            if len(pairs_files) == 0:
-                logger.error(
-                    "Please give a pairs file, or the ouput directory of metator, or launch this command from the output directory of metator."
-                )
-                logger.error(
-                    "You can also check that a pairs file is present in metator output directory"
-                )
-                raise FileNotFoundError
         if self.args["--bin-summary"]:
             bin_summary_file = self.args["--bin-summary"]
         else:
@@ -1161,7 +1145,7 @@ class Qc(AbstractCommand):
             contig_data_file,
             bin_summary_file,
             self.args["--assembly"],
-            pairs_files,
+            self.args["<pairsfile>"],
             self.args["--outdir"],
             tmp_dir,
             prefix,
