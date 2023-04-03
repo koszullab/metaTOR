@@ -121,14 +121,14 @@ def figures_bins_distribution(bin_summary, out_file):
     ax.tick_params(axis="both", which="both", length=0)
     plt.box(on=None)
     plt.scatter(
-        y=bin_summary["Weighted completeness"],
+        y=bin_summary["Weighted completeness"] * 100,
         x=range(len(bin_summary)),
         color="r",
         label="Completion",
         s=2.5,
     )
     plt.scatter(
-        y=bin_summary["Weighted redundancy"],
+        y=bin_summary["Weighted redundancy"] * 100 - 100,
         x=range(len(bin_summary)),
         color="k",
         label="Contamination",
@@ -152,6 +152,7 @@ def figures_bins_distribution(bin_summary, out_file):
     )
     # Save the file
     plt.savefig(out_file, dpi=200, bbox_inches="tight")
+    plt.close()
 
 
 def figures_bins_size_distribution(
@@ -188,17 +189,17 @@ def figures_bins_size_distribution(
         completness = float(bin_summary.loc[i, "Weighted completeness"])
         contamination = float(bin_summary.loc[i, "Weighted redundancy"])
         size = int(bin_summary.loc[i, "Length"])
-        if completness >= 50:
-            if contamination > 10:
+        if completness >= 0.5:
+            if contamination > 1.1:
                 mags_summary.loc[3, "bins"] += 1
                 mags_summary.loc[3, "size"] += size
                 bin_summary.loc[i, "MAG_quality"] = "Contaminated"
             else:
-                if completness >= 90 and contamination <= 5:
+                if completness >= 0.9 and contamination <= 1.05:
                     mags_summary.loc[0, "bins"] += 1
                     mags_summary.loc[0, "size"] += size
                     bin_summary.loc[i, "MAG_quality"] = "HQ"
-                elif completness >= 70:
+                elif completness >= 0.7:
                     mags_summary.loc[1, "bins"] += 1
                     mags_summary.loc[1, "size"] += size
                     bin_summary.loc[i, "MAG_quality"] = "MQ"
@@ -276,6 +277,7 @@ def figures_bins_size_distribution(
     plt.title("Size proportion of bins depending on their quality")
     # Save the file
     plt.savefig(out_file, dpi=200, bbox_inches="tight")
+    plt.close()
     return bin_summary
 
 
@@ -285,7 +287,8 @@ def figure_camembert_quality(
     n_religated,
     n_loops,
     n_weirds,
-    n_informative,
+    n_informative_intra,
+    n_informative_inter,
     n_intra_mags,
     n_inter_mags,
     uncut_thr,
@@ -297,7 +300,14 @@ def figure_camembert_quality(
     plt.figure(2, figsize=(6, 6))
     # The slices will be ordered and plotted counter-clockwise.
     total = n_inter_mags + n_intra_mags
-    fracs = [n_religated, n_loops, n_weirds, n_informative, n_inter_mags]
+    fracs = [
+        n_religated,
+        n_loops,
+        n_weirds,
+        n_informative_intra,
+        n_informative_inter,
+        n_inter_mags,
+    ]
     # Format labels to include event names and proportion
     labels = list(
         map(
@@ -306,12 +316,13 @@ def figure_camembert_quality(
                 ("Religated", n_religated),
                 ("Loops", n_loops),
                 ("Weirds", n_weirds),
-                ("Informative intra", n_informative),
+                ("Informative intracontigs", n_informative_intra),
+                ("Informative intercontigs", n_informative_inter),
                 ("Noise inter", n_inter_mags),
             ],
         )
     )
-    colors = ["#D55E00", "#E69F00", "#999999", "#6096fd", "#cc0000"]
+    colors = ["#D55E00", "#E69F00", "#999999", "#103b6f", "#6096fd", "#cc0000"]
     patches, _ = plt.pie(fracs, colors=colors, startangle=90)
     plt.legend(
         patches,
@@ -339,7 +350,7 @@ def figure_camembert_quality(
     plt.text(
         -1.5,
         -1.2,
-        f"Total number of reads in the estimation: {total / 1_000_00:.3f} millions reads",
+        f"Total number of reads in the estimation: {total / 1_000_000:.2f} millions reads",
         fontdict=None,
     )
     noise = 100 * n_inter_mags / (n_intra_mags + n_inter_mags)
@@ -349,7 +360,11 @@ def figure_camembert_quality(
         f"Estimated noise signal = {noise:.2f}%",
         fontdict=None,
     )
-    informative = 100 * n_informative / (n_intra_mags + n_inter_mags)
+    informative = (
+        100
+        * (n_informative_intra + n_informative_inter)
+        / (n_intra_mags + n_inter_mags)
+    )
     plt.text(
         -1.5,
         -1.4,
@@ -357,6 +372,7 @@ def figure_camembert_quality(
         fontdict=None,
     )
     plt.savefig(out_file)
+    plt.close()
 
 
 def figures_mags_GC_boxplots(contigs_data, out_file):
@@ -413,6 +429,7 @@ def figures_mags_GC_boxplots(contigs_data, out_file):
     boxplot.legend(handles, labels)
     # Save the file.
     plt.savefig(out_file, dpi=200, bbox_inches="tight")
+    plt.close()
 
 
 def figures_mags_HiC_cov_boxplots(contigs_data, out_file):
@@ -472,6 +489,7 @@ def figures_mags_HiC_cov_boxplots(contigs_data, out_file):
     boxplot.legend(handles, labels)
     # Save the file.
     plt.savefig(out_file, dpi=200, bbox_inches="tight")
+    plt.close()
 
 
 def figures_mags_SG_cov_boxplots(contigs_data, out_file):
@@ -529,6 +547,7 @@ def figures_mags_SG_cov_boxplots(contigs_data, out_file):
     boxplot.legend(handles, labels)
     # Save the file.
     plt.savefig(out_file, dpi=200, bbox_inches="tight")
+    plt.close()
 
 
 def generates_frags_network(contig_data, bin_summary, bin_size):
@@ -624,6 +643,7 @@ def network_heatmap(matrix, out_file=None, mag_starts=None):
     # Save or show the file.
     if out_file:
         plt.savefig(out_file, bbox_inches="tight", pad_inches=0.0, dpi=2000)
+        plt.close()
     else:
         plt.show()
 
