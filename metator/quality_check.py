@@ -47,11 +47,12 @@ def extract_hq_contigs(bin_summary, contigs_data):
     # Extract high quality MAGs.
     hq_mags = bin_summary.index[
         np.logical_and(
-            (bin_summary["Weighted completeness"] > 0.9),
+            (bin_summary["Weighted completeness"] > 0.7),
             (bin_summary["Weighted redundancy"] < 1.1),
         )
     ]
     n_mags = len(hq_mags)
+    print(n_mags)
     # Extract contigs bigger than 100kb.
     large_contigs = contigs_data.index[contigs_data["Size"] > 100_000]
     # Build dictionnary of large contigs in HQ MAgs.
@@ -94,44 +95,22 @@ def extract_pairs(pairs_files, out_file, contigs, contigs_data):
                 )
             )
         for pairs_file in pairs_files:
-            # Check if the pairix index exist
-            try:
-                pairs_data = pypairix.open(pairs_file)
-                pypairix_index = True
-            except pypairix.PairixError:
-                logger.warning("No pairix index found. Iterates on the pairs.")
-                pypairix_index = False
-            # Need a sorted (chr1 chr2 pos1 pos2) pair file indexed with pairix.
-            if pypairix_index:
-                for contig_id1, contig1 in enumerate(contigs):
-                    # Only need to retrieve the upper triangle.
-                    for contig2 in contigs[contig_id1:]:
-                        pairs_lines = pairs_data.query2D(
-                            contig1,
-                            0,
-                            contigs_data.loc[contig1, "Size"],
-                            contig2,
-                            0,
-                            contigs_data.loc[contig2, "Size"],
-                            1,
-                        )
-                        for pairs_line in pairs_lines:
-                            n_pairs += 1
-                            output_pairs.write("\t".join(pairs_line) + "\n")
-            # else Iterates on the input pairs file (take much longer than with
-            # the index).
-            else:
-                with open(pairs_file, "r") as input_pairs:
-                    for pairs_line in input_pairs:
-                        # Ignore header lines.
-                        if pairs_line.startswith("#"):
-                            continue
-                        # Split the line on the tabulation and check if both contigs
-                        # are in the bin.
-                        pairs = pairs_line.split("\t")
-                        if pairs[1] in contigs and pairs[3] in contigs:
-                            n_pairs += 1
-                            output_pairs.write(pairs_line)
+            pairs_data = mio.get_pairs_data(pairs_file)
+            for contig_id1, contig1 in enumerate(contigs):
+                # Only need to retrieve the upper triangle.
+                for contig2 in contigs[contig_id1:]:
+                    pairs_lines = pairs_data.query2D(
+                        contig1,
+                        0,
+                        contigs_data.loc[contig1, "Size"],
+                        contig2,
+                        0,
+                        contigs_data.loc[contig2, "Size"],
+                        1,
+                    )
+                    for pairs_line in pairs_lines:
+                        n_pairs += 1
+                        output_pairs.write("\t".join(pairs_line[:7]) + "\n")
     logger.info(f"{n_pairs} have been extracted.")
     return n_pairs
 
@@ -219,7 +198,8 @@ def hic_quality(
     n_religated = 0
     n_loops = 0
     n_weirds = 0
-    n_informative = 0
+    n_informative_intra = 0
+    n_informative_inter = 0
     n_intra_contigs = 0
     n_intra_mags = 0
     n_inter_mags = 0
@@ -244,22 +224,28 @@ def hic_quality(
                 elif p["nsites"] <= uncut_thr and p["type"] == "+-":
                     n_religated += 1
                 else:
-                    n_informative += 1
+                    n_informative_intra += 1
             else:
                 if contigs[p["chr1"]] == contigs[p["chr2"]]:
                     n_intra_mags += 1
-                    n_informative += 1
+                    n_informative_inter += 1
                 else:
                     n_inter_mags += 1
-    rat_info = 100 * n_informative / (n_intra_mags + n_inter_mags)
-    noise = (100 * n_inter_mags / (n_intra_mags + n_inter_mags)) / (
-        n_mags * (n_mags - 1)
+    rat_info = (
+        100
+        * (n_informative_intra + n_informative_inter)
+        / (n_intra_mags + n_inter_mags)
     )
-    logger.info(f"Religated ratio: {100 * n_religated / n_intra_contigs:.2f}%.")
-    logger.info(f"Loop ratio: {100 * n_loops / n_intra_contigs:.2f}%.")
-    logger.info(f"Weirds ratio: {100 * n_weirds / n_intra_contigs:.2f}%.")
+    noise_ratio = 100 * n_inter_mags / (n_inter_mags + n_intra_mags)
+    noise_score = (n_inter_mags / (n_mags * (n_mags - 1) * 0.5)) / (
+        n_intra_mags / n_mags + n_inter_mags / (n_mags * (n_mags - 1) * 0.5)
+    )
+    logger.info(f"Religated ratio: {100 * n_religated / n_intra_mags:.2f}%.")
+    logger.info(f"Loop ratio: {100 * n_loops / n_intra_mags:.2f}%.")
+    logger.info(f"Weirds ratio: {100 * n_weirds / n_intra_mags:.2f}%.")
     logger.info(f"Informative contacts estimation: {rat_info:.2f}%.")
-    logger.info(f"Noise estimation: {noise:.2f}%.")
+    logger.info(f"Noise contact ratio: {noise_ratio:.2f}%")
+    logger.info(f"Noise score: {noise_score:.2E}")
 
     if plot:
         mtf.figure_camembert_quality(
@@ -268,7 +254,8 @@ def hic_quality(
             n_religated,
             n_loops,
             n_weirds,
-            n_informative,
+            n_informative_intra,
+            n_informative_inter,
             n_intra_mags,
             n_inter_mags,
             uncut_thr,
@@ -278,7 +265,8 @@ def hic_quality(
         n_religated,
         n_loops,
         n_weirds,
-        n_informative,
+        n_informative_intra,
+        n_informative_inter,
         n_intra_mags,
         n_inter_mags,
     )
@@ -318,7 +306,6 @@ def quality_check(
     bin_summary = mio.read_bin_summary(bin_summary_file)
 
     # Define temporary and output files.
-    print(plot)
     if plot:
         plot_event = join(out_dir, f"{prefix}_event.pdf")
         plot_cam = join(out_dir, f"{prefix}_camembert_plot.pdf")
