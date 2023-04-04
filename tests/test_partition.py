@@ -147,7 +147,13 @@ def test_generate_fasta():
     tmp_dir = "tmp_partition_fasta"
     os.makedirs(tmp_dir, exist_ok=True)
     mtp.generate_fasta(
-        assembly, overlapping_bins, contigs_data, 50_000, tmp_dir, tmp_dir
+        assembly,
+        overlapping_bins,
+        contigs_data,
+        50_000,
+        tmp_dir,
+        tmp_dir,
+        "MetaTOR",
     )
     assert len(os.listdir(tmp_dir)) == 10
     shutil.rmtree(tmp_dir)

@@ -355,8 +355,8 @@ class Partition(AbstractCommand):
     usage:
         partition  --assembly=FILE --contigs=FILE --network=FILE
         [--algorithm=louvain] [--cluster-matrix] [--force] [--iterations=100]
-        [--no-clean-up] [--outdir=DIR] [--overlap=80] [--res-param=1.0]
-        [--size=500000] [--threads=1] [--tmpdir=DIR]
+        [--no-clean-up] [--outdir=DIR] [--overlap=80] [--prefix=STR]
+        [--res-param=1.0] [--size=500000] [--threads=1] [--tmpdir=DIR]
 
     options:
         -a, --assembly=FILE     The path to the assembly fasta file used to do
@@ -378,6 +378,8 @@ class Partition(AbstractCommand):
                                 Default to current directory. [Default: ./]
         -O, --overlap=INT       Hamming distance threshold to use to merge bins
                                 (percentage). [Default: 80]
+        -p, --prefix=STR        Prefix to use for fasta files. By default just
+                                'metator_', otherwise 'STR_metator_'.
         -r, --res-param=FLOAT   Resolution paramter to use for Leiden algorithm.
                                 [Default: 1.0]
         -s, --size=INT          Threshold size to keep bins in base pair.
@@ -432,6 +434,12 @@ class Partition(AbstractCommand):
             logger.error('algorithm should be either "louvain" or "leiden"')
             raise ValueError
 
+        # Create prefix.
+        if not self.args["--prefix"]:
+            prefix = "metator"
+        else:
+            prefix = f"{self.args['--prefix']}_metator"
+
         # Partition the network
         _clustering_matrix_file, _contigs_data_file = mtp.partition(
             self.args["--algorithm"],
@@ -447,6 +455,7 @@ class Partition(AbstractCommand):
             size,
             tmp_dir,
             threads,
+            prefix,
         )
 
         # Delete pyfastx index:
@@ -473,8 +482,8 @@ class Validation(AbstractCommand):
     usage:
         validation --assembly=FILE --contigs=FILE --fasta=DIR --network=FILE
         [--algorithm=louvain] [--cluster-matrix] [--force] [--iterations=10]
-        [--no-clean-up] [--outdir=DIR] [--overlap=90] [--res-param=1.0]
-        [--size=500000] [--threads=1] [--tmpdir=DIR]
+        [--no-clean-up] [--outdir=DIR] [--overlap=90] [--prefix=STR]
+        [--res-param=1.0] [--size=500000] [--threads=1] [--tmpdir=DIR]
 
     options:
         -a, --assembly=FILE     The path to the assembly fasta file used to do
@@ -498,6 +507,8 @@ class Validation(AbstractCommand):
                                 Default to current directory. [Default: ./]
         -O, --overlap=INT       Hamming distance threshold to use to merge bins
                                 (percentage). [Default: 90]
+        -p, --prefix=STR        Prefix to use for fasta files. By default just
+                                'metator_', otherwise 'STR_metator_'.
         -r, --res-param=FLOAT   Resolution paramter to use for Leiden
                                 algorithm. [Default: 1.0]
         -s, --size=INT          Threshold size to keep bins in base pair.
@@ -573,6 +584,12 @@ class Validation(AbstractCommand):
             )
             raise ValueError
 
+        # Create prefix.
+        if not self.args["--prefix"]:
+            prefix = "metator"
+        else:
+            prefix = f"{self.args['--prefix']}_metator"
+
         _clustering_matrix_file = mtv.recursive_decontamination(
             self.args["--algorithm"],
             self.args["--assembly"],
@@ -589,6 +606,7 @@ class Validation(AbstractCommand):
             size,
             tmp_dir,
             threads,
+            prefix,
         )
 
         # Delete pyfastx index:
@@ -616,7 +634,7 @@ class Pipeline(AbstractCommand):
         [--cluster-matrix] [--depth=FILE] [--edge=0] [--enzyme=STR] [--force]
         [--iterations=100] [--rec-iter=10] [--junctions=NNNNN] [--no-clean-up]
         [--normalization=empirical_hit] [--outdir=DIR] [--overlap=80]
-        [--rec-overlap=90]  [--min-quality=30] [--res-param=1.0]
+        [--prefix=STR] [--rec-overlap=90]  [--min-quality=30] [--res-param=1.0]
         [--size=500000] [--start=fastq] [--scaffold] [--threads=1]
         [--tmpdir=DIR]
 
@@ -672,6 +690,8 @@ class Pipeline(AbstractCommand):
                                 directory.
         -O, --overlap=INT       Hamming distance threshold to use to merge bins
                                 for the first step (percentage). [Default: 80]
+        -p, --prefix=STR        Prefix to use for fasta files. By default just
+                                'metator_', otherwise 'STR_metator_'.
         -P, --rec-overlap=INT   Hamming distance threshold to use to merge bins
                                 for the recursive step (percentage).
                                 [Default: 90]
@@ -843,6 +863,12 @@ class Pipeline(AbstractCommand):
                     )
                     raise ValueError
 
+        # Create prefix.
+        if not self.args["--prefix"]:
+            prefix = "metator"
+        else:
+            prefix = f"{self.args['--prefix']}_metator"
+
         # Manage start point.
         if self.args["--start"] == "fastq":
             start = 1
@@ -961,6 +987,7 @@ class Pipeline(AbstractCommand):
             size,
             tmp_dir,
             threads,
+            prefix,
         )
 
         # remove contig_data_network if not an input
@@ -987,6 +1014,7 @@ class Pipeline(AbstractCommand):
             size,
             tmp_dir,
             threads,
+            prefix,
         )
 
         if self.args["--cluster-matrix"]:

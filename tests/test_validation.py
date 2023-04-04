@@ -121,6 +121,7 @@ def test_update_contigs_data_recursive():
         500000,
         contamination,
         parent_dict,
+        "MetaTOR",
     )
     assert contamination
     assert len(np.unique(contig_data.Recursive_bin_ID)) > 1
@@ -131,7 +132,7 @@ def test_update_contigs_data_recursive():
 def test_write_bins_contigs():
     binning_file = "tmp_binning.txt"
     contig_data = mtv.write_bins_contigs(
-        bin_summary, contigs_data, binning_file
+        bin_summary, contigs_data, binning_file, "MetaTOR"
     )
     print(np.unique(list(contig_data["Final_bin"])))
     assert len(np.unique(list(contig_data["Final_bin"]))) == 2
@@ -151,6 +152,7 @@ def test_checkm_compare_bins():
         overlapping_taxonomy_file="tests_data/outdir_checkM/overlapping_checkm_taxonomy.txt",
         recursive_checkm_file="tests_data/outdir_checkM/recursif_checkm_results.txt",
         recursive_taxonomy_file="tests_data/outdir_checkM/recursif_checkm_taxonomy.txt",
+        prefix="MetaTOR",
     )
     over = mio.read_results_checkm(
         "tests_data/outdir_checkM/overlapping_checkm_results.txt",

@@ -282,7 +282,7 @@ def detect_core_bins(output_partition, iterations):
 
 
 def generate_fasta(
-    assembly, overlapping_bins, contigs_data, size, output_dir, tmpdir
+    assembly, overlapping_bins, contigs_data, size, output_dir, tmpdir, prefix
 ):
     """Generate the fasta files of each bins from the assembly.
 
@@ -304,6 +304,8 @@ def generate_fasta(
     tmpdir : str
         Path to the temporary directory to write the temporary contigs list
         files.
+    prefix : str
+        Sample prefix to use.
     """
 
     nb_bins = 0
@@ -326,9 +328,9 @@ def generate_fasta(
                     contigs_data.loc[contig_id - 1, "Name"]
                 )
             # Define the output file.
-            output_file = join(output_dir, f"MetaTOR_{bin_id:05d}_{0:05d}.fa")
+            output_file = join(output_dir, f"{prefix}_{bin_id:05d}_{0:05d}.fa")
             # Create the fasta file.
-            contigs_file = join(tmpdir, f"MetaTOR_{bin_id:05d}_{0:05d}.txt")
+            contigs_file = join(tmpdir, f"{prefix}_{bin_id:05d}_{0:05d}.txt")
             with open(contigs_file, "w") as f:
                 for contig_name in list_contigs_name:
                     f.write("%s\n" % contig_name)
@@ -600,6 +602,7 @@ def partition(
     size,
     temp_directory,
     threads,
+    prefix,
 ):
     """Function to call the others functions to partition the network.
 
@@ -634,6 +637,8 @@ def partition(
         Path to the directory used to write temporary files.
     threads : int
         Number of threads to use.
+    prefix : str
+        Sample prefix to use.
 
     Returns:
     --------
@@ -713,6 +718,7 @@ def partition(
         size,
         fasta_dir,
         temp_directory_bins,
+        prefix,
     )
 
     if cluster_matrix:

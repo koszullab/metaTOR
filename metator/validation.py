@@ -392,6 +392,7 @@ def recursive_clustering(
     cluster_matrix,
     size,
     threads,
+    prefix,
 ):
     """Function to run recursive iterations on contaminated bins in order to try
     to improve the quality of the bins using Louvain or Leiden algorthm.
@@ -427,6 +428,8 @@ def recursive_clustering(
         Size threshodl in base pairs of the bins.
     threads : int
         Number of threads to use.
+    prefix : str
+        Sample prefix to use.
 
     Returns:
     --------
@@ -529,6 +532,7 @@ def recursive_clustering(
             size,
             contamination,
             parent_dict,
+            prefix,
         )
 
         # Build the clustering matrix of the subnetwork and add it.
@@ -588,8 +592,8 @@ def recursive_clustering_worker(
 
     logger.info("Bin in progress: {0}".format(bin_id))
     subnetwork_file = join(tmpdir_subnetwork, "subnetwork_" + bin_id + ".txt")
-    over_bin_id = str(bin_id.split("_")[1])
-    rec_bin_id = str(bin_id.split("_")[2])
+    over_bin_id = str(bin_id.split("_")[-2])
+    rec_bin_id = str(bin_id.split("_")[-1])
 
     # Extract contigs
     mask = (contigs_data["Overlapping_bin_ID"] == over_bin_id) & (
@@ -642,6 +646,7 @@ def recursive_decontamination(
     size,
     temp_directory,
     threads,
+    prefix,
 ):
     """Function to validate bins do the recursive decontamination using Louvain
     or Leiden algorithm
@@ -683,6 +688,8 @@ def recursive_decontamination(
         Path to the directory used to write temporary files.
     threads : int
         Number of threads to use.
+    prefix : str
+        Sample prefix to use.
 
     Returns:
     --------
@@ -774,6 +781,7 @@ def recursive_decontamination(
             cluster_matrix,
             size,
             threads,
+            prefix,
         )
 
         # Put back the info log
@@ -828,7 +836,9 @@ def recursive_decontamination(
 
     # Write relevant bins/contigs information for anvio.
     binning_file = join(outdir, "binning.txt")
-    contigs_data = write_bins_contigs(bin_summary, contigs_data, binning_file)
+    contigs_data = write_bins_contigs(
+        bin_summary, contigs_data, binning_file, prefix
+    )
 
     # Compute the abundance of the mags.
     bin_summary = get_bin_coverage(bin_summary, contigs_data)
@@ -859,6 +869,7 @@ def update_contigs_data_recursive(
     size,
     contamination,
     parent_dict,
+    prefix,
 ):
     """Update the data of the bin according to the recursive step and generated
     their fasta.
@@ -885,6 +896,8 @@ def update_contigs_data_recursive(
         True if one bin has already been generated, false otherwise.
     parent_dict : dict
         Dictionnary with recursive bin_id as key and parent bin as values.
+    prefix : str
+        Sample prefix to use.
 
     Returns:
     --------
@@ -939,18 +952,18 @@ def update_contigs_data_recursive(
                 contigs_data.loc[recursive_bin[0], "Overlapping_bin_ID"]
             )
             output_file = join(
-                outdir, f"MetaTOR_{oc_id:05d}_{rec_final_id:05d}.fa"
+                outdir, f"{prefix}_{oc_id:05d}_{rec_final_id:05d}.fa"
             )
 
             # Update bin_summary:
-            parent_dict[f"MetaTOR_{oc_id:05d}_{rec_final_id:05d}"] = bin_id
+            parent_dict[f"{prefix}_{oc_id:05d}_{rec_final_id:05d}"] = bin_id
 
             # Retrieve names of the contigs
             list_contigs = list(contigs_data.loc[recursive_bin, "Name"])
 
             # Generate the fasta
             contigs_file = join(
-                tmpdir, f"MetaTOR_{oc_id:05d}_{rec_final_id:05d}.txt"
+                tmpdir, f"{prefix}_{oc_id:05d}_{rec_final_id:05d}.txt"
             )
             with open(contigs_file, "w") as f:
                 for contig in list_contigs:
@@ -967,7 +980,7 @@ def update_contigs_data_recursive(
     return contamination, contigs_data, parent_dict
 
 
-def write_bins_contigs(bin_summary, contigs_data, outfile):
+def write_bins_contigs(bin_summary, contigs_data, outfile, prefix):
     """Function to write a table with the nodes kept in the bins and their bin
     id. The file is adapted to be added in anvio.
 
@@ -979,6 +992,8 @@ def write_bins_contigs(bin_summary, contigs_data, outfile):
         Dataframe with the contigs informations.
     outfile : str
         Path where to write the output file.
+    prefix : str
+        Sample prefix to use.
 
     Returns:
     --------
@@ -989,8 +1004,8 @@ def write_bins_contigs(bin_summary, contigs_data, outfile):
     # Create a list with the id of the bins
     list_bin_id = dict()
     for bin_name in bin_summary:
-        over_id = bin_name.split("_")[1]
-        rec_id = bin_name.split("_")[2]
+        over_id = bin_name.split("_")[-2]
+        rec_id = bin_name.split("_")[-1]
         try:
             list_bin_id[over_id].append(rec_id)
         except KeyError:
@@ -1013,10 +1028,7 @@ def write_bins_contigs(bin_summary, contigs_data, outfile):
                     binned = True
 
                 if binned:
-                    final_bin = "MetaTOR_{0}_{1}".format(
-                        over_id,
-                        rec_id,
-                    )
+                    final_bin = f"{prefix}_{over_id}_{rec_id}"
                     contigs_data.loc[i, "Final_bin"] = final_bin
                     f.write(
                         "{0}\t{1}\n".format(
@@ -1095,6 +1107,7 @@ def checkm_compare_bins(
     overlapping_taxonomy_file,
     recursive_checkm_file,
     recursive_taxonomy_file,
+    prefix,
 ):
     """Compare the completness and contamination of the bins from the first step
     and from the recursive step. If the recursive step decrease the completion
@@ -1112,6 +1125,8 @@ def checkm_compare_bins(
         Path to the checkm summary from the recursive step.
     recursive_taxonomy_file : str
         path to the recursive checkm taxonomy results file.
+    prefix : str
+        Sample prefix to use.
 
     Returns:
     --------
@@ -1133,7 +1148,7 @@ def checkm_compare_bins(
     # Retrieve maximum completness of the recursive bins.
     for recursive_bin in checkm_summary_recursive:
         overlapping_bin = "_".join(
-            ["MetaTOR", recursive_bin.split("_")[1], "0"]
+            [f"{prefix}", recursive_bin.split("_")[-2], "00000"]
         )
         try:
             checkm_summary_overlapping[overlapping_bin][
