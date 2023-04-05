@@ -52,7 +52,6 @@ def extract_hq_contigs(bin_summary, contigs_data):
         )
     ]
     n_mags = len(hq_mags)
-    print(n_mags)
     # Extract contigs bigger than 100kb.
     large_contigs = contigs_data.index[contigs_data["Size"] > 100_000]
     # Build dictionnary of large contigs in HQ MAgs.
