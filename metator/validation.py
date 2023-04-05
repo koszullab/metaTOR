@@ -374,7 +374,10 @@ def micomplete_quality(fasta_dir, outfile, threads):
     os.remove(tmp_seq_tab)
     os.remove(out_bact105)
     os.remove(out_arch131)
-    os.remove("miComplete.log")
+    try:
+        os.remove("miComplete.log")
+    except FileNotFoundError:
+        pass
 
 
 def recursive_clustering(
