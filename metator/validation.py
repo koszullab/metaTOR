@@ -13,6 +13,7 @@ the original bin.
 
 
 Functions in this module:
+    - correct_final_bin
     - get_bin_coverage
     - give_results_info
     - merge_micomplete
@@ -39,12 +40,37 @@ import networkx as nx
 import numpy as np
 import os
 import pandas as pd
+import pyfastx
 import shutil
 import subprocess as sp
 from functools import partial
 from metator.log import logger
 from os.path import join
 from scipy import sparse
+
+
+def correct_final_bin(contigs_data, final_fasta_dir, bin_summary):
+    """Function to compute the coverage of each bin.
+
+    Parameters:
+    -----------
+    bin_summary : dict
+        Dictionnary with the informations of the final bins kept by MetaTOR.
+    contigs_data : pandas.core.frame.DataFrame
+        Dataframe with the contigs informations.
+
+    Returns:
+    --------
+    pandas.core.frame.DataFrame
+        Dataframe with the contigs informations.
+    """
+    contigs_data.set_index("Name", inplace=True)
+    for bin_name in bin_summary:
+        fasta_file = join(final_fasta_dir, f"{bin_name}.fa")
+        fasta = pyfastx.Fasta(fasta_file)
+        for seq in fasta:
+            contigs_data.loc[seq.name]["Final_bin"] = bin_name
+    return contigs_data
 
 
 def get_bin_coverage(bin_summary, contigs_data):
@@ -304,7 +330,7 @@ def micomplete_compare_bins(
             over = float(
                 bin_summary_tab.loc[overlapping_bin, "Weighted completeness"]
             )
-            if (max_rec > (over / 1.3)) & (max_rec > 0.5):
+            if (max_rec - 0.4) > ((over - 0.4) / 1.6):
                 rec_ids = bin_summary_tab.loc[overlapping_bin, "rec_id"]
                 # Case of only one bin.
                 if isinstance(rec_ids, str):
@@ -474,15 +500,15 @@ def recursive_clustering(
             conta = float(bin_summary[bin_id]["Weighted redundancy"])
             recursive = bin_summary[bin_id]["recursive"]
             if recursive:
-                if completness >= 0.4:
-                    if (conta - 1) / completness >= 0.1:
+                if completness >= 0.33:
+                    if (conta - 1) / completness >= 0.05:
                         bin_ids.append(bin_id)
         except KeyError:
             continue
 
     # Iterate on cmicomplete summary to find conatminated bins:
     pool = multiprocessing.Pool(processes=threads)
-    output_partitions = pool.map(
+    output_partitions = map(
         partial(
             recursive_clustering_worker,
             bin_summary=bin_summary,
@@ -850,10 +876,13 @@ def recursive_decontamination(
     bin_summary_file = join(outdir, "bin_summary.txt")
     mio.write_bin_summary(bin_summary, bin_summary_file)
 
+    # Correct final bin value in contigs data
+    contigs_data = correct_final_bin(contigs_data, final_fasta_dir, bin_summary)
+
     # Write the new file
     contig_data_file_final = join(outdir, "contig_data_final.txt")
     contigs_data.to_csv(
-        contig_data_file_final, sep="\t", header=True, index=False
+        contig_data_file_final, sep="\t", header=True, index=True
     )
 
     # Plot some figures of contigs distribution inside bins:
@@ -1151,7 +1180,7 @@ def checkm_compare_bins(
     # Retrieve maximum completness of the recursive bins.
     for recursive_bin in checkm_summary_recursive:
         overlapping_bin = "_".join(
-            [f"{prefix}", recursive_bin.split("_")[-2], "00000"]
+            [f"{prefix}", recursive_bin.split("_")[-2], "0"]
         )
         try:
             checkm_summary_overlapping[overlapping_bin][
