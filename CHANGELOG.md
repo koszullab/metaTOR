@@ -3,6 +3,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.5] - 2023-04-05
+- Remove recursive parallel which seems to failed in some case.
+- Correct bug of contigs data final bin value from multiple recursive steps.
+- Add exception to avoid error while mutliple metator are started from the same 
+working directory.
+
 ## [1.2.4] - 2023-04-04
 - Add a prefix option for fasta files.
 
