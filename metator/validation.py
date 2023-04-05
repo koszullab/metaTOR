@@ -507,19 +507,21 @@ def recursive_clustering(
             continue
 
     # Iterate on cmicomplete summary to find conatminated bins:
-    pool = multiprocessing.Pool(processes=threads)
-    output_partitions = map(
-        partial(
-            recursive_clustering_worker,
-            bin_summary=bin_summary,
-            tmpdir=tmpdir,
-            network=network,
-            algorithm=algorithm,
-            iterations=iterations,
-            resolution_parameter=resolution_parameter,
-            contigs_data=contigs_data,
-        ),
-        bin_ids,
+    # pool = multiprocessing.Pool(processes=threads)
+    output_partitions = list(
+        map(
+            partial(
+                recursive_clustering_worker,
+                bin_summary=bin_summary,
+                tmpdir=tmpdir,
+                network=network,
+                algorithm=algorithm,
+                iterations=iterations,
+                resolution_parameter=resolution_parameter,
+                contigs_data=contigs_data,
+            ),
+            bin_ids,
+        )
     )
 
     parent_dict = dict()
