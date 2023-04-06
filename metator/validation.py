@@ -64,12 +64,13 @@ def correct_final_bin(contigs_data, final_fasta_dir, bin_summary):
     pandas.core.frame.DataFrame
         Dataframe with the contigs informations.
     """
-    contigs_data = contigs_data.set_index("Name")
+    contigs_data = contigs_data.set_index("Name", drop=False)
     for bin_name in bin_summary:
         fasta_file = join(final_fasta_dir, f"{bin_name}.fa")
         fasta = pyfastx.Fasta(fasta_file)
         for seq in fasta:
             contigs_data.loc[seq.name, "Final_bin"] = bin_name
+    contigs_data = contigs_data.reset_index(drop=True)
     return contigs_data
 
 
