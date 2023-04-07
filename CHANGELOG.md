@@ -3,7 +3,10 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.2.5] - 2023-04-05
+## [1.2.7] - 2023-04-07
+- Correct bug during final plot generation.
+
+## [1.2.6] - 2023-04-05
 - Correct bug of contigs data final bin value from multiple recursive steps.
 
 ## [1.2.5] - 2023-04-05
