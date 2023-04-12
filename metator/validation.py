@@ -866,6 +866,9 @@ def recursive_decontamination(
     # Return some values of efficiency of the binning.
     give_results_info(bin_summary)
 
+    # Correct final bin value in contigs data
+    contigs_data = correct_final_bin(contigs_data, final_fasta_dir, bin_summary)
+
     # Write relevant bins/contigs information for anvio.
     binning_file = join(outdir, "binning.txt")
     contigs_data = write_bins_contigs(
@@ -878,9 +881,6 @@ def recursive_decontamination(
     # Save bin information in final file
     bin_summary_file = join(outdir, "bin_summary.txt")
     mio.write_bin_summary(bin_summary, bin_summary_file)
-
-    # Correct final bin value in contigs data
-    contigs_data = correct_final_bin(contigs_data, final_fasta_dir, bin_summary)
 
     # Write the new file
     contig_data_file_final = join(outdir, "contig_data_final.txt")
