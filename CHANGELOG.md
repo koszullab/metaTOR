@@ -3,6 +3,9 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.8] - 2023-04-12
+- Correct issue with anvio binning file.
+
 ## [1.2.7] - 2023-04-07
 - Correct bug during final plot generation.
 
