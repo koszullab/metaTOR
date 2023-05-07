@@ -324,7 +324,7 @@ class Scaffolder:
         return self.score_matrice_norm
 
     def build_graph(self):
-        """Transform score matrix in graph. Each represnts a breakpoint and can
+        """Transform score matrix in graph. Each represents a breakpoint and can
         have only two edges."""
         # Test whether the matrix have been normalized or already resolved.
         try:

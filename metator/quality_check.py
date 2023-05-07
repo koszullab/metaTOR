@@ -48,7 +48,7 @@ def extract_hq_contigs(bin_summary, contigs_data):
     hq_mags = bin_summary.index[
         np.logical_and(
             (bin_summary["Weighted completeness"] > 0.7),
-            (bin_summary["Weighted redundancy"] < 1.1),
+            (bin_summary["Weighted redundancy"] < 1.15),
         )
     ]
     n_mags = len(hq_mags)
@@ -239,10 +239,12 @@ def hic_quality(
     noise_score = (n_inter_mags / (n_mags * (n_mags - 1) * 0.5)) / (
         n_intra_mags / n_mags + n_inter_mags / (n_mags * (n_mags - 1) * 0.5)
     )
+    logger.info(f"Number of MAGs: {n_mags}")
     logger.info(f"Religated ratio: {100 * n_religated / n_intra_mags:.2f}%.")
     logger.info(f"Loop ratio: {100 * n_loops / n_intra_mags:.2f}%.")
     logger.info(f"Weirds ratio: {100 * n_weirds / n_intra_mags:.2f}%.")
     logger.info(f"Informative contacts estimation: {rat_info:.2f}%.")
+    logger.info(f"Ratio inter/intra contigs: {n_informative_inter / (n_informative_intra + n_informative_inter):.2f}%.")
     logger.info(f"Noise contact ratio: {noise_ratio:.2f}%")
     logger.info(f"Noise score: {noise_score:.2E}")
 

@@ -2,6 +2,8 @@
 test.out
 tests_data/assembly.fa.fxi
 tests_data/outdir/cam.pdf
+nohup.out
+codecov*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
