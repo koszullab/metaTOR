@@ -175,10 +175,7 @@ def compute_network(
 
     # Sort the the pre-network file
     mio.sort_pairs(
-        pre_network_file,
-        tmp_file,
-        tmp_dir=tmp_dir,
-        threads=n_cpus,
+        pre_network_file, tmp_file, tmp_dir=tmp_dir, threads=n_cpus,
     )
 
     # Set the variables used in the loop

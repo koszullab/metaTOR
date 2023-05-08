@@ -244,8 +244,7 @@ def extract_pairs(metator_data):
         for contig_id, contig in enumerate(metator_data.contigs):
             output_pairs.write(
                 "#chromsize: {0} {1}\n".format(
-                    contig,
-                    metator_data.contigs_size[contig_id],
+                    contig, metator_data.contigs_size[contig_id],
                 )
             )
         for pairs_file in metator_data.pairs_files:

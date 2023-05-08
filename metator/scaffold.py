@@ -74,12 +74,7 @@ def get_scaffolds(
     pairs_data = []
     for pair_file in pair_files:
         pairs_data.append(mio.get_pairs_data(pair_file, threads))
-    scaffolder = Scaffolder(
-        bin,
-        pairs_data,
-        window_size,
-        threshold,
-    )
+    scaffolder = Scaffolder(bin, pairs_data, window_size, threshold,)
     scaffolder.get_matrix()
     scaffolder.get_normalize_values()
     scaffolder.normalize_matrix()
@@ -92,11 +87,7 @@ def get_scaffolds(
 
 
 def parallel_scaffold(
-    bin_name,
-    final_fasta_dir,
-    alignment_files,
-    scaffold_fasta_dir,
-    junctions,
+    bin_name, final_fasta_dir, alignment_files, scaffold_fasta_dir, junctions,
 ):
     """
     Task function for parallel worker to scaffold the a bin.

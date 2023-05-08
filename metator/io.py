@@ -376,10 +376,7 @@ def micomplete_results_to_dict(micomplete_file):
     """
     # Read table.
     micomplete_summary = pd.read_csv(
-        micomplete_file,
-        sep="\t",
-        comment="#",
-        index_col=0,
+        micomplete_file, sep="\t", comment="#", index_col=0,
     ).iloc[:, :13]
 
     # Transform to dictionnary.

@@ -269,9 +269,7 @@ def figures_bins_size_distribution(
     plt.text(
         -1.5,
         -1.5,
-        "Bins threshold: {0}kb".format(
-            round(threshold / 1000, 2),
-        ),
+        "Bins threshold: {0}kb".format(round(threshold / 1000, 2),),
         fontdict=None,
     )
     plt.title("Size proportion of bins depending on their quality")
@@ -325,10 +323,7 @@ def figure_camembert_quality(
     colors = ["#D55E00", "#E69F00", "#999999", "#103b6f", "#6096fd", "#cc0000"]
     patches, _ = plt.pie(fracs, colors=colors, startangle=90)
     plt.legend(
-        patches,
-        labels,
-        loc="upper left",
-        bbox_to_anchor=(-0.1, 1.0),
+        patches, labels, loc="upper left", bbox_to_anchor=(-0.1, 1.0),
     )
     if prefix:
         plt.title(
@@ -336,16 +331,10 @@ def figure_camembert_quality(
             bbox={"facecolor": "1.0", "pad": 5},
         )
     plt.text(
-        0.3,
-        1.15,
-        "Threshold Uncuts = " + str(uncut_thr),
-        fontdict=None,
+        0.3, 1.15, "Threshold Uncuts = " + str(uncut_thr), fontdict=None,
     )
     plt.text(
-        0.3,
-        1.05,
-        "Threshold Loops = " + str(loop_thr),
-        fontdict=None,
+        0.3, 1.05, "Threshold Loops = " + str(loop_thr), fontdict=None,
     )
     plt.text(
         -1.5,
@@ -355,10 +344,7 @@ def figure_camembert_quality(
     )
     noise = 100 * n_inter_mags / (n_intra_mags + n_inter_mags)
     plt.text(
-        -1.5,
-        -1.3,
-        f"Estimated noise signal = {noise:.2f}%",
-        fontdict=None,
+        -1.5, -1.3, f"Estimated noise signal = {noise:.2f}%", fontdict=None,
     )
     informative = (
         100
@@ -366,10 +352,7 @@ def figure_camembert_quality(
         / (n_intra_mags + n_inter_mags)
     )
     plt.text(
-        -1.5,
-        -1.4,
-        f"Informative reads = {informative:.2f}%",
-        fontdict=None,
+        -1.5, -1.4, f"Informative reads = {informative:.2f}%", fontdict=None,
     )
     plt.savefig(out_file)
     plt.close()

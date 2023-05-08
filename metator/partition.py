@@ -85,19 +85,12 @@ def algo_partition(
     if algorithm == "leiden":
         LEIDEN_PATH = os.environ["LEIDEN_PATH"]
         output_partition = leiden_iterations_java(
-            network_file,
-            iterations,
-            resolution_parameter,
-            tmpdir,
-            LEIDEN_PATH,
+            network_file, iterations, resolution_parameter, tmpdir, LEIDEN_PATH,
         )
     elif algorithm == "louvain":
         LOUVAIN_PATH = os.environ["LOUVAIN_PATH"]
         output_partition = louvain_iterations_cpp(
-            network_file,
-            iterations,
-            tmpdir,
-            LOUVAIN_PATH,
+            network_file, iterations, tmpdir, LOUVAIN_PATH,
         )
     # elif algorithm == "spinglass":
     #     output_partition = spinglass_partition(
@@ -161,9 +154,7 @@ def build_clustering_matrix(core_bins_contigs, hamming_distance, N):
 
 
 def defined_overlapping_bins(
-    overlap,
-    hamming_distance,
-    core_bins_contigs,
+    overlap, hamming_distance, core_bins_contigs,
 ):
     """This function extract the overlapped bins
 
@@ -399,8 +390,7 @@ def get_hamming_distance(core_bins_iterations, threads):
     pool = multiprocessing.Pool(processes=threads)
     res = pool.map(
         partial(
-            get_distances_splitmat,
-            core_bins_iterations=core_bins_iterations,
+            get_distances_splitmat, core_bins_iterations=core_bins_iterations,
         ),
         split_core_bins,
     )
@@ -671,10 +661,7 @@ def partition(
     elif algorithm == "louvain":
         LOUVAIN_PATH = os.environ["LOUVAIN_PATH"]
         output_partition = louvain_iterations_cpp(
-            network_file,
-            iterations,
-            temp_directory_clustering,
-            LOUVAIN_PATH,
+            network_file, iterations, temp_directory_clustering, LOUVAIN_PATH,
         )
     else:
         logger.error('algorithm should be either "louvain" or "leiden"')
@@ -682,32 +669,23 @@ def partition(
 
     # Detect core bins
     logger.info("Detect core bins:")
-    (
-        core_bins_contigs,
-        core_bins_iterations,
-    ) = detect_core_bins(output_partition, iterations)
+    (core_bins_contigs, core_bins_iterations,) = detect_core_bins(
+        output_partition, iterations
+    )
 
     # Compute the Hamming distance between core bins.
     logger.info("Detect overlapping bins:")
-    hamming_distance = get_hamming_distance(
-        core_bins_iterations,
-        threads,
-    )
+    hamming_distance = get_hamming_distance(core_bins_iterations, threads,)
 
     # Defined overlapping bins according to the threshold
     overlapping_bins = defined_overlapping_bins(
-        overlapping_parameter,
-        hamming_distance,
-        core_bins_contigs,
+        overlapping_parameter, hamming_distance, core_bins_contigs,
     )
 
     # Update the contigs_data_file.
     logger.info("Extract bins:")
     contigs_data, contigs_data_file = update_contigs_data(
-        contig_data_file,
-        core_bins_contigs,
-        overlapping_bins,
-        outdir,
+        contig_data_file, core_bins_contigs, overlapping_bins, outdir,
     )
 
     # Generate Fasta file
@@ -853,8 +831,7 @@ def update_contigs_data(
 
 
 def spinglass_partition(
-    subnetwork,
-    spins=2,
+    subnetwork, spins=2,
 ):
     """Use spinglass function from cdlib to partition the network.
 

@@ -78,9 +78,7 @@ class Contig:
     # None means unscaffolded.
     scaffold: Optional[str] = field(default=None, compare=False)
 
-    def __post_init__(
-        self,
-    ):
+    def __post_init__(self,):
         if self.end < self.start:
             raise ValueError("end cannot be smaller than start.")
         if self.start < 0:
@@ -147,10 +145,7 @@ class BreakPoint:
     """
 
     def __init__(
-        self,
-        pos1: Position,
-        pos2: Position,
-        type: str = "UNK",
+        self, pos1: Position, pos2: Position, type: str = "UNK",
     ):
 
         # Properties are use to set/get contigments instead
@@ -345,13 +340,13 @@ class Bin:
                 f"Coordinate out of bounds: {self.bin_name}:{start}-{end}"
             )
 
-        contig_id_left, (
-            start_bound_left,
-            end_bound_left,
+        (
+            contig_id_left,
+            (start_bound_left, end_bound_left,),
         ) = self.get_contig_bounds(start)
-        contig_id_right, (
-            start_bound_right,
-            end_bound_right,
+        (
+            contig_id_right,
+            (start_bound_right, end_bound_right,),
         ) = self.get_contig_bounds(end)
 
         # If the start and end falls in the same contig
@@ -437,10 +432,7 @@ class Bin:
             for contig in [contig_r, contig_ins, contig_l]:
                 self.contigs.insert(contig_id, contig)
         bp = BreakPoint(
-            Position(
-                self.bin_name,
-                contig_ins.start,
-            ),
+            Position(self.bin_name, contig_ins.start,),
             Position(self.bin_name, contig_ins.end),
             "INS",
         )
