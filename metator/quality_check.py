@@ -89,8 +89,7 @@ def extract_pairs(pairs_files, out_file, contigs, contigs_data):
         for contig in contigs:
             output_pairs.write(
                 "#chromsize: {0} {1}\n".format(
-                    contig,
-                    contigs_data.loc[contig, "Size"],
+                    contig, contigs_data.loc[contig, "Size"],
                 )
             )
         for pairs_file in pairs_files:
@@ -236,15 +235,20 @@ def hic_quality(
         / (n_intra_mags + n_inter_mags)
     )
     noise_ratio = 100 * n_inter_mags / (n_inter_mags + n_intra_mags)
-    noise_score = (n_inter_mags / (n_mags * (n_mags - 1) * 0.5)) / (
-        n_intra_mags / n_mags + n_inter_mags / (n_mags * (n_mags - 1) * 0.5)
-    )
+    if n_mags > 1:
+        noise_score = (n_inter_mags / (n_mags * (n_mags - 1) * 0.5)) / (
+            n_intra_mags / n_mags + n_inter_mags / (n_mags * (n_mags - 1) * 0.5)
+        )
+    else:
+        noise_score = 0
     logger.info(f"Number of MAGs: {n_mags}")
     logger.info(f"Religated ratio: {100 * n_religated / n_intra_mags:.2f}%.")
     logger.info(f"Loop ratio: {100 * n_loops / n_intra_mags:.2f}%.")
     logger.info(f"Weirds ratio: {100 * n_weirds / n_intra_mags:.2f}%.")
     logger.info(f"Informative contacts estimation: {rat_info:.2f}%.")
-    logger.info(f"Ratio inter/intra contigs: {n_informative_inter / (n_informative_intra + n_informative_inter):.2f}%.")
+    logger.info(
+        f"Ratio inter/intra contigs: {n_informative_inter / (n_informative_intra + n_informative_inter):.2f}%."
+    )
     logger.info(f"Noise contact ratio: {noise_ratio:.2f}%")
     logger.info(f"Noise score: {noise_score:.2E}")
 
@@ -325,19 +329,22 @@ def quality_check(
     )
 
     # Estimate HiC quality.
-    _ = hic_quality(
-        hq_contigs,
-        n_mags,
-        pairs,
-        pairs_idx,
-        fasta_file,
-        enzyme,
-        prefix=prefix,
-        plot=plot,
-        plot_event=plot_event,
-        plot_cam=plot_cam,
-        threshold=threshold,
-    )
+    if n_pairs > 0:
+        _ = hic_quality(
+            hq_contigs,
+            n_mags,
+            pairs,
+            pairs_idx,
+            fasta_file,
+            enzyme,
+            prefix=prefix,
+            plot=plot,
+            plot_event=plot_event,
+            plot_cam=plot_cam,
+            threshold=threshold,
+        )
+    else:
+        logger.info("No MAGs have been found.")
     # Plot normalised contact map.
     # plot_contact_map()
     return 0
