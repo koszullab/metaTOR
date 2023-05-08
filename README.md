@@ -54,6 +54,14 @@ or, to use the latest version:
    pip3 install -e git+https://github.com/koszullab/metator.git@master#egg=metator
 ```
 
+### Using conda
+
+```sh
+conda create -n metator -y --log-level warning -f metator.yaml
+```
+
+### Louvain or Leiden dependency
+
 In order to use Louvain or Leiden it's necessary to set a global variable `LOUVAIN_PATH` and `LEIDEN_PATH` depending on which algorithm you wan to use with the absolute path where the executable are.
 
 For Louvain algorithm in the directory where you have the archive file (available in the external directory of this repository):

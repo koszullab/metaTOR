@@ -7,6 +7,10 @@ on:
   push:
   pull_request:
 
+defaults:
+  run:
+    shell: bash -l {0}
+
 jobs:
   build:
 
@@ -17,24 +21,21 @@ jobs:
 
     steps:
     
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
+
+
+
+    - name: Install Conda environment from metator.yaml
+      uses: mamba-org/provision-with-micromamba@main
+      with:
+        environment-file: metator.yaml
+        extra-specs: |
+          python=${{ matrix.python-version }}
 
     - name: Load apt packages
       run: |
         sudo apt-get update
-        sudo apt-get -y install git make g++ bowtie2 samtools hmmer prodigal default-jre default-jdk zlib1g-dev
-    
-    - name: Set up ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
-      with:
-        python-version: ${{ matrix.python-version }}
-    
-    - name: Install bwa
-      run: |
-        git clone https://github.com/lh3/bwa.git
-        cd bwa
-        make
-        cd ..
+        sudo apt-get -y install git make g++ default-jre default-jdk zlib1g-dev
 
     - name: Install Louvain
       run: |
@@ -50,23 +51,10 @@ jobs:
         cd networkanalysis
         ./gradlew build
         cd ..
-      
-    - name: Install pairix
-      run: |
-        git clone https://github.com/4dn-dcic/pairix
-        cd pairix
-        make
-        rm -r test
-        cd ..
-    
-    - name: Install pytest and dependencies
-      run: |
-        pip install --user pytest pylint pytest-cov pylint pytest-pylint codecov
-        pip install --user python-Levenshtein bimlpa eva-lcd pooch pulp thresholdclustering nf1 chinese-whispers angel-cd matplotlib pyclustering python-louvain cython dynetx future tqdm demon python-igraph markov-clustering python-dateutil pytz joblib threadpoolctl pyparsing pillow fonttools cycler kiwisolver six decorator appdirs igraph texttable Levenshtein rapidfuzz pysam click pyyaml bioframe
-        pip install --user -r requirements.txt --no-deps
 
     - name: Test with pytest
       run: |
+        micromamba activate metator
         export LOUVAIN_PATH=external/gen-louvain
         export LEIDEN_PATH=networkanalysis/build/libs/networkanalysis-1.2.0.jar
         PWD=$(pwd)
