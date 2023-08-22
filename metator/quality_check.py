@@ -229,12 +229,17 @@ def hic_quality(
                     n_informative_inter += 1
                 else:
                     n_inter_mags += 1
-    rat_info = (
-        100
-        * (n_informative_intra + n_informative_inter)
-        / (n_intra_mags + n_inter_mags)
-    )
-    noise_ratio = 100 * n_inter_mags / (n_inter_mags + n_intra_mags)
+    if n_intra_mags + n_inter_mags > 0:
+        rat_info = (
+            100
+            * (n_informative_intra + n_informative_inter)
+            / (n_intra_mags + n_inter_mags)
+        )
+        noise_ratio = 100 * n_inter_mags / (n_inter_mags + n_intra_mags)
+    else:
+        logger.warning("No pairs have benn extracted. All scores set to 0.")
+        rat_info = 0
+        noise_ratio = 0
     if n_mags > 1:
         noise_score = (n_inter_mags / (n_mags * (n_mags - 1) * 0.5)) / (
             n_intra_mags / n_mags + n_inter_mags / (n_mags * (n_mags - 1) * 0.5)
