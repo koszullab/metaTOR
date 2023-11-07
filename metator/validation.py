@@ -370,7 +370,7 @@ def micomplete_quality(fasta_dir, outfile, threads):
         for fasta in list_fasta:
             tab.write(f"{fasta}\tfna\n")
 
-    # Create two temporary output for archae and bacteria.
+    # Create two temporary output for archaea and bacteria.
     out_bact105 = join(fasta_dir, "micomplete_bact105.tsv")
     out_arch131 = join(fasta_dir, "micomplete_arch131.tsv")
 
@@ -419,7 +419,7 @@ def recursive_clustering(
     prefix,
 ):
     """Function to run recursive iterations on contaminated bins in order to try
-    to improve the quality of the bins using Louvain or Leiden algorthm.
+    to improve the quality of the bins using Louvain or Leiden algorithm.
 
     Parameters:
     -----------
@@ -441,7 +441,7 @@ def recursive_clustering(
     tmpdir : str
         Path the temp directory.
     bin_summary : dict
-        Dictionnary containing iinformation about the bins.
+        Dictionary containing information about the bins.
     contigs_data : pandas.DataFrame
         Table with all the data from the contigs.
     network : str

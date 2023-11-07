@@ -697,7 +697,7 @@ class Pipeline(AbstractCommand):
                                 [Default: 90]
         -q, --min-quality=INT   Threshold of quality necessary to considered a
                                 read properly aligned. [Default: 30]
-        -r, --res-param=FLOAT   Resolution paramter to use for Leiden
+        -r, --res-param=FLOAT   Resolution parameter to use for Leiden
                                 algorithm. [Default: 1.0]
         -s, --size=INT          Threshold size to keep bins in base pair.
                                 [Default: 500000]
@@ -707,7 +707,7 @@ class Pipeline(AbstractCommand):
                                 alignement. [Default: 1]
         -T, --tmpdir=DIR        Temporary directory. Default to current
                                 directory. [Default: ./tmp]
-        -v, --scaffold          If enables, it will sacffold the genomes at the
+        -v, --scaffold          If enables, it will scaffold the genomes at the
                                 end.
     """
 
@@ -1018,7 +1018,7 @@ class Pipeline(AbstractCommand):
         )
 
         if self.args["--cluster-matrix"]:
-            # Make the sum with the partiton clustering matrix and save it.
+            # Make the sum with the partition clustering matrix and save it.
             clustering_matrix = load_npz(
                 clustering_matrix_partition_file + ".npz"
             )

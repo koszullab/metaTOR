@@ -51,7 +51,7 @@ def alignment_to_contacts(
     alignment_files : list of str
         List of path to the alignment file(s) used as input.
     contig_data : dict
-        Dictionnary of the all the contigs from the assembly, the contigs names
+        Dictionary of the all the contigs from the assembly, the contigs names
         are the keys to the data of the contig available with the following
         keys: "id", "length", "GC", "hit", "coverage". Coverage still at 0 and
         need to be updated later.
@@ -59,7 +59,7 @@ def alignment_to_contacts(
         Distance of the edge region in base pair on the contigs where the
         mapping reads are not considered as inter contigs.
     hit_data : dict:
-        Dictionnary for hit information on each contigs.
+        Dictionary for hit information on each contigs.
     out_dir : str
         The output directory to write the network and chunk data into.
     output_file_network : str, optional
@@ -153,12 +153,12 @@ def compute_network(
     Parameters:
     -----------
     pre_network_file  : str
-        Path of the input file (prenetwork file, output from teh precompute
+        Path of the input file (prenetwork file, output from the precompute
         network function)
     network_file : str
         Path of the output file (network file).
     contig_data : dict
-        Dictionnary of the all the contigs from the assembly, the contigs names
+        Dictionary of the all the contigs from the assembly, the contigs names
         are the keys to the data of the contig available with the following
         keys: "id", "length", "GC", "hit", "coverage", "RS".
     tmp_dir : str
@@ -179,18 +179,18 @@ def compute_network(
     )
 
     # Set the variables used in the loop
-    n_occ = 1  # Number of occurences of each frag combination
+    n_occ = 1  # Number of occurrences of each frag combination
     n_nonzero = 1  # Total number of nonzero matrix entries
     n_pairs = 0  # Total number of pairs entered in the matrix
 
     # Read the sorted pairs
-    with open(tmp_file, "r") as pairs, open(network_file, "w") as net:
+    with open(pre_network_file, "r") as pairs, open(network_file, "w") as net:
         pairs_reader = csv.reader(pairs, delimiter="\t")
         prev_pair = next(pairs_reader)
         for pair in pairs_reader:
             # Extract the contig names and their id
             curr_pair = pair
-            # Increment number of occurences for fragment pair
+            # Increment number of occurrences for fragment pair
             if prev_pair == curr_pair:
                 n_occ += 1
             # Write previous pair and start a new one
@@ -269,12 +269,12 @@ def create_contig_data(assembly, nb_alignment=1, depth_file=None, enzyme=None):
     Returns:
     --------
     dict:
-        Dictionnary of the all the contigs from the assembly, the contigs names
+        Dictionary of the all the contigs from the assembly, the contigs names
         are the keys to the data of the contig available with the following
         keys: "id", "length", "GC", "hit", "coverage", "RS". Hit is set to 0 and
         need to be updated later.
     dict:
-        Dictionnary for hit information on each contigs.
+        Dictionary for hit information on each contigs.
     """
 
     # Create a contig data dictionnary from the assembly file
@@ -416,7 +416,7 @@ def precompute_network(
     self_contacts=False,
 ):
     """Write a file with only the contig id separated by a tabulation and count
-    the contacts by contigs to be able to compute directlty the normalized
+    the contacts by contigs to be able to compute directly the normalized
     network.
 
     Parameters:
@@ -424,7 +424,7 @@ def precompute_network(
     alignment_files : list of str
         List of path to the alignment file(s).
     contig_data : dict
-        Dictionnary of the all the contigs from the assembly, the contigs names
+        Dictionary of the all the contigs from the assembly, the contigs names
         are the keys to the data of the contig available with the following
         keys: "id", "length", "GC", "hit", "coverage". Coverage still at 0 and
         need to be updated later.
@@ -432,7 +432,7 @@ def precompute_network(
         Distance of the edge region in base pair on the contigs where the
         mapping reads are not considered as inter contigs.
     hit_data : dict
-        Dictionnary with the count of hits for each aligment file.
+        Dictionary with the count of hits for each alignment file.
     out_file : str
         Path to the write the output_file which will be necessary to compute the
         network.
@@ -445,7 +445,7 @@ def precompute_network(
     Return:
     -------
     dict:
-        Dictionnary of the all the contigs from the assembly, the contigs names
+        Dictionary of the all the contigs from the assembly, the contigs names
         are the keys to the data of the contig available with the following
         keys: "id", "length", "GC", "hit", "coverage" "RS". Coverage still at 0
         and need to be updated later.
@@ -459,7 +459,7 @@ def precompute_network(
     with open(out_file, "w") as pre_net:
 
         # Iterates on the alignment files
-        for i, aligment_file in enumerate(alignment_files):
+        for i, alignment_file in enumerate(alignment_files):
 
             all_contacts_temp = 0
             inter_contacts_temp = 0
@@ -467,7 +467,7 @@ def precompute_network(
             out_files_list.append(out_file_sample)
 
             # Read the alignment_file and build pairs for the network
-            pairs = mio.read_compressed(aligment_file)
+            pairs = mio.read_compressed(alignment_file)
             with open(out_file_sample, "w") as pre_net_sample:
                 for pair in pairs:
                     # Ignore header lines
@@ -553,7 +553,7 @@ def precompute_network(
             # Count contacts and return sample informations.
             all_contacts += all_contacts_temp
             inter_contacts += inter_contacts_temp
-            logger.info(f"Information of {basename(aligment_file)}:")
+            logger.info(f"Information of {basename(alignment_file)}:")
             logger.info(f"{all_contacts_temp} contacts in the library.")
             logger.info(
                 f"{inter_contacts_temp} contacts inter-contigs in the library."
@@ -582,11 +582,11 @@ def write_contig_data(contig_data, output_path):
     Parameters:
     -----------
     contig_data : dict
-        Dictionnary of the all the contigs from the assembly, the contigs names
+        Dictionary of the all the contigs from the assembly, the contigs names
         are the keys to the data of the contig available with the following
         keys: "id", "length", "GC", "hit", "coverage", "RS".
     output_path : str
-        Path to the output file where the data from the dictionnary will be
+        Path to the output file where the data from the dictionary will be
         written
     """
 
@@ -615,10 +615,10 @@ def write_hit_data(hit_data, output_path):
     Parameters:
     -----------
     hit_data : dict
-        Dictionnary of the all the contigs from the assembly, the contigs names
+        Dictionary of the all the contigs from the assembly, the contigs names
         are the keys to a list of hits from each alignment files separately.
     output_path : str
-        Path to the output file where the data from the dictionnary will be
+        Path to the output file where the data from the dictionary will be
         written.
     """
 

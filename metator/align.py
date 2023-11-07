@@ -24,6 +24,7 @@ import subprocess as sp
 import hicstuff.cutsite as hcc
 import hicstuff.io as hio
 import hicstuff.iteralign as hci
+import metator.io as mio
 import metator.network as mtn
 from metator.log import logger
 from os.path import join
@@ -218,7 +219,6 @@ def get_contact_pairs(
             rev_in = None
         name = "alignment_" + str(i)
         out_file = join(out_dir, "alignment_" + str(i) + ".pairs")
-        out_file_list.append(out_file)
 
         # Align if necessary
         if start == "fastq":
@@ -312,16 +312,25 @@ def get_contact_pairs(
             n_pairs = merge_alignment(
                 alignment_temp_for, alignment_temp_rev, contig_data, out_file
             )
-            logger.info(f"{n_pairs} pairs aligned.\n")
-            total_aligned_pairs += n_pairs
 
         # Case where a bam file from bwa is given as input.
         if aligner == "bwa":
             n_pairs = process_bwa_bamfile(
                 alignment, min_qual, contig_data, out_file
             )
-            logger.info(f"{n_pairs} pairs aligned.\n")
-            total_aligned_pairs += n_pairs
+
+        logger.info(f"{n_pairs} pairs aligned.\n")
+        total_aligned_pairs += n_pairs
+
+    # Sort pairs.
+    logger.info(f"Sort and indexed {out_file}")
+    out_file = mio.sort_pairs_pairtools(
+        out_file,
+        threads=n_cpu,
+        remove=True,
+        force=True
+    )
+    out_file_list.append(out_file)
 
     if len(out_file_list) > 1:
         logger.info(f"TOTAL PAIRS MAPPED: {total_aligned_pairs}\n")
@@ -346,7 +355,7 @@ def merge_alignment(forward_aligned, reverse_aligned, contig_data, out_file):
         the alignment. With five columns: ReadID, Contig, Position_start,
         Position_end, strand.
     contig_data : dict
-        Dictionnary of the all the contigs from the assembly, the contigs names
+        Dictionary of the all the contigs from the assembly, the contigs names
         are the keys to the data of the contig available with the following
         keys: "id", "length", "GC", "hit", "coverage". Coverage still at 0 and
         need to be updated later.
