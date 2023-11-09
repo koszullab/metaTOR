@@ -27,6 +27,10 @@ The subcommands are:
     scaffold    Scaffold a metator bin based on pairs files.
     pairs       Sort the pairs file using pairtools. Compress them using bgzip.
                 Index them using pairix.
+    host        Detect bacterial host from a metaHiC network binned by metaTOR
+                given a annotated MGE list.
+    mge         Build MGE MAGs based on metagenomic binning using metabat2
+                or pairs from the metaHiC data.
 """
 
 from docopt import docopt

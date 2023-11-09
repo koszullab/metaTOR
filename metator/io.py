@@ -12,8 +12,12 @@ This mdoule contains all core I/O functions:
     - check_pairtools
     - generate_fasta_index
     - generate_temp_dir
-    - get_restriction_site
     - get_pairs_data
+    - get_restriction_site
+    - import_anvio_binning
+    - import_contig_data_mges
+    - import_network
+    - import_mges_contigs
     - process_ligation_sites
     - read_bin_summary
     - read_compressed
@@ -23,11 +27,13 @@ This mdoule contains all core I/O functions:
     - sort_pairs
     - sort_pairs_pairtools
     - write_bin_summary
+    - write_mge_data
 """
 
 import bz2
 import gzip
 import io
+import networkx as nx
 import numpy as np
 import os
 import pandas as pd
@@ -357,6 +363,107 @@ def get_restriction_site(enzyme):
     # Build the regex for all retsriction sites.
     pattern = "|".join(sorted(list(set(restriction_list))))
     return pattern
+
+
+def import_anvio_binning(binning_file):
+    """Import Anvio binning file.
+
+    Parameters:
+    -----------
+    binning_file : str
+        Path to the binning file from anvio to import.
+
+    Returns:
+    --------
+    dict:
+        Dictionnary with contig name as keys and bin name as value.
+    """
+    binning_result = {}
+    with open(binning_file, "r") as binning:
+        for line in binning:
+            line = line.split()
+            # Remove the split name add by anvio
+            binning_result[line[0].split("_split")[0]] = line[1]
+    return binning_result
+
+
+def import_contig_data_mges(contig_data_file, binning_result, mges_list):
+    """Import contigs data.
+
+    Parameters:
+    -----------
+    contig_data_file : str
+        Path to the contigs data file from MetaTOR.
+    binning_result : dict
+        Dictionnary with contig name as keys and bin name as value.
+    mges_list : list
+        List of the mges contigs names.
+
+    Returns:
+    --------
+    pandas.DataFrame:
+        Table with the contig information given with more column with the given
+        anvio binning and the mge annotation.
+    list
+        List of the mge contigs ID.
+    """
+    contig_data = pd.read_csv(contig_data_file, sep="\t")
+    contig_data["Binned"] = False
+    contig_data["Final_bin"] = "ND"
+    contig_data["MGE"] = False
+    mges_list_id = []
+    for i in contig_data.index:
+        if contig_data.loc[i, "Name"] in mges_list:
+            contig_data.loc[i, "MGE"] = True
+            mges_list_id.append(contig_data.index[i])
+        try:
+            contig_data.loc[i, "Final_bin"] = binning_result[
+                contig_data.loc[i, "Name"]
+            ]
+            contig_data.loc[i, "Binned"] = True
+        except KeyError:
+            continue
+    return contig_data, mges_list_id
+
+
+def import_network(network_file):
+    """Import MetaTOR network file.
+
+    Parameters:
+    -----------
+    network_file : str
+        Path to the network file to import.
+
+    Returns:
+    --------
+    networkx.classes.graph.Graph:
+        Network as networkx class.
+    """
+    network = nx.read_edgelist(
+        network_file, nodetype=int, data=(("weight", float),)
+    )
+    return network
+
+
+def import_mges_contigs(mges_file):
+    """Import list of mges contigs.
+
+    Parameters:
+    -----------
+    mges_file : str
+        Path to the mges file which contains the list of mges contigs. One
+        contig per line.
+
+    Returns:
+    --------
+    list:
+        List of the mges contigs names.
+    """
+    mges_list = []
+    with open(mges_file, "r") as mges:
+        for contig in mges:
+            mges_list.append(contig.split()[0])
+    return mges_list
 
 
 def micomplete_results_to_dict(micomplete_file):
@@ -763,3 +870,25 @@ def write_bin_summary(bin_summary, bin_summary_file):
 
     # Write the file.
     bin_summary.to_csv(bin_summary_file, sep="\t", float_format="%.2f")
+
+
+def write_mge_data(mge_data, out_file):
+    """Write mge binning information.
+
+    Parameters:
+    -----------
+    mges_data : pandas.DataFrame
+        Table with the mge binning information.
+    out_file : str
+        Path to write the mge data information.
+    """
+
+    # Drop the mge id column which is the concatenation of the two previous
+    # ones.
+    try:
+        mge_data.drop("tmp", inplace=True, axis=1)
+    except KeyError:
+        pass
+
+    # Write the data frame
+    mge_data.to_csv(out_file, sep="\t", index=False, float_format="%.2f")

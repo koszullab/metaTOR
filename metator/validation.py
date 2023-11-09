@@ -449,7 +449,7 @@ def recursive_clustering(
     cluster_matrix : bool
         If True, build the clustering matrix and save it.
     size : int
-        Size threshodl in base pairs of the bins.
+        Size threshold in base pairs of the bins.
     threads : int
         Number of threads to use.
     prefix : str

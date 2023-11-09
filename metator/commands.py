@@ -6,10 +6,14 @@
 This module contains all classes related to metaTOR commands:
     - network
     - partition
-    - pipeline
     - validation
-    - qualitycheck
+    - pipeline
+    - qc
     - contactmap
+    - scaffold
+    - pairs    
+    - host
+    - binning
 
 Note
 ----
@@ -31,8 +35,10 @@ import shutil
 import time
 import metator.align as mta
 import metator.contact_map as mtc
+import metator.host as mth
 import metator.io as mio
 import metator.log as mtl
+import metator.mge as mtm
 import metator.quality_check as mtq
 import metator.network as mtn
 import metator.partition as mtp
@@ -1391,6 +1397,174 @@ class Pairs(AbstractCommand):
                 force=self.args["--force"],
             )
         generate_log_footer(log_file)
+
+
+
+class Host(AbstractCommand):
+    """Detect host of mge annotated contigs.
+
+    It will return an output file with the mges information from MetaTOR
+    binning with the added information from the anvio binning and the detected
+    bacterial MAG host of the mges.
+
+    usage:
+        host --network=FILE --binning=FILE --mges=FILE --contig-data=FILE
+        [--outfile=FILE] [--threshold=0.1]
+
+    options:
+        -b, --binning=FILE      Path to the anvio binning file.
+        -c, --contig-data=FILE  Path to the MetaTOR contig data file.
+        -m, --mges=FILE       Path to the file with mges contigs list.
+        -n, --network=FILE      Path to the network file.
+        -o, --outfile=FILE      Path where to write the output file.
+        -t, --threshold=FLOAT   Threshold to consider an association with a MAG.
+                                [Default: 0.1]
+    """
+
+    def execute(self):
+        # Defined the output file if none are given
+        if not self.args["--outfile"]:
+            self.args["--outfile"] = "./mges_data_host.tsv"
+
+        # Import the files
+        binning_result = mio.import_anvio_binning(self.args["--binning"])
+        mges_list = mio.import_mges_contigs(self.args["--mges"])
+        contig_data, mges_list_id = mio.import_contig_data_mges(
+            self.args["--contig-data"], binning_result, mges_list
+        )
+        network = mio.import_network(self.args["--network"])
+
+        # Run the host detection
+        mth.host_detection(
+            network,
+            contig_data,
+            mges_list,
+            mges_list_id,
+            self.args["--outfile"],
+            self.args["--threshold"],
+        )
+
+
+
+
+class Mge(AbstractCommand):
+    """Bin mges contigs.
+
+    Bin the mge contigs in mges MAGs using the bacterial host detection from
+    MetaVir and the metagenomic binning base on sequences and coverage from
+    metabat2.
+
+    The results are then checked using checkV and some plots are displayed to
+    viusalize them. It will return the updated mges data, the mges fasta,
+    the detailed ouputs of checKV and the plots.
+
+    The mge fasta will contain one entry by mge MAG, with 180 "N" spacers
+    between contigs.
+
+    usage:
+        binning --network=FILE --binning=FILE --mges=FILE --contigs-data=FILE --fasta=FILE
+        [--checkv-db=DIR] [--depth=FILE] [--method=pairs] [--no-clean-up]
+        [--outdir=DIR] [--pairs=STR] [--plot] [--random] [--threads=1]
+        [--tmpdir=DIR] [--threshold-bin=0.8] [--threshold-asso=0.1]
+
+    options:
+        -b, --binning=FILE      Path to the anvio binning file.
+        -c, --contigs-data=FILE  Path to the MetaTOR contig data file.
+        --checkv-db=DIR         Directory where the checkV database is stored.
+                                By default the CHECKVDB environment variable is
+                                used.
+        -d, --depth=FILE        Path to the depth file from metabat2 script:
+                                jgi_summarize_bam_contig_depths.
+        -f, --fasta=FILE        Path to the fasta file with tha mge contigs
+                                sequences.
+        -m, --mges=FILE       Path to the file with mges contigs list.
+        -M, --method=STR        Method for the binning. Either 'metabat' or
+                                'pairs' [Default: pairs].
+        -n, --network=FILE      Path to the network file.
+        -N, --no-clean-up       If enabled, remove the temporary files.
+        -o, --outdir=DIR        Path to the output directory where the output
+                                will be written. Default current directory.
+        -q, --pairs=STR         Path of the pairs file separated by a comma.
+        -p, --plot              If enable, make summary plots.
+        -r, --random            If enable, make a random binning.
+        -s, --threshold-bin=FLOAT       Threshold to use for binning. 
+                                        [Default: 0.8]
+        -S, --threshold-asso=FLOAT      Threshold to use for association. If 
+                                several MAGs have value higher than this ratio 
+                                of total contatcs several association are 
+                                considered. [Default: 0.1]
+        -t, --threads=INT       Number of threads to use for checkV.
+                                [Default: 1]
+        -T, --tmpdir=DIR        Path to temporary directory. [Default: ./tmp]
+    """
+
+    def execute(self):
+        # Defined the temporary directory.
+        if not self.args["--tmpdir"]:
+            self.args["--tmpdir"] = "./tmp"
+        tmp_dir = mio.generate_temp_dir(self.args["--tmpdir"])
+        # Defined the output directory and output file names.
+        if not self.args["--outdir"]:
+            self.args["--outdir"] = "."
+        os.makedirs(self.args["--outdir"], exist_ok=True)
+
+        # Set remove tmp for checkV.
+        if not self.args["--no-clean-up"]:
+            remove_tmp = True
+        else:
+            remove_tmp = False
+
+        # Set checkV database path
+        if not self.args["--checkv-db"]:
+            self.args["--checkv-db"] = os.getenv("CHECKVD")
+
+        # Sanity check
+        if self.args["--method"] == "pairs" and not self.args["--pairs"]:
+            logger.error("Pair file is necessary if method is pairs.")
+            raise ValueError
+
+        if self.args["--method"] == "metabat" and not self.args["--depth"]:
+            logger.error("Depth file is necessary if method is metabat.")
+            raise ValueError
+
+        pairs_files = self.args["--pairs"]
+        if pairs_files:
+            pairs_files = pairs_files.split(",")
+
+        # Import the files
+        binning_result = mio.import_anvio_binning(self.args["--binning"])
+        mges_list = mio.import_mges_contigs(self.args["--mges"])
+        contigs_data, mges_list_id = mio.import_contig_data_mges(
+            self.args["--contigs-data"], binning_result, mges_list
+        )
+        network = mio.import_network(self.args["--network"])
+
+        # Run the mges binning
+        mtm.mge_binning(
+            checkv_db=self.args["--checkv-db"],
+            depth_file=self.args["--depth"],
+            fasta_mges_contigs=self.args["--fasta"],
+            network=network,
+            contigs_data=contigs_data,
+            mges_list_id=mges_list_id,
+            out_dir=self.args["--outdir"],
+            pairs_files=pairs_files,
+            tmp_dir=tmp_dir,
+            threshold_bin=float(self.args["--threshold-bin"]),
+            threshold_asso=float(self.args["--threshold-asso"]),
+            association=True,
+            plot=self.args["--plot"],
+            remove_tmp=remove_tmp,
+            threads=int(self.args["--threads"]),
+            method=self.args["--method"],
+            random=self.args["--random"],
+        )
+
+        # Delete the temporary folder.
+        if remove_tmp:
+            shutil.rmtree(tmp_dir)
+            # Delete pyfastx index:
+            os.remove(self.args["--fasta"] + ".fxi")
 
 
 def generate_log_header(log_path, cmd, args):
