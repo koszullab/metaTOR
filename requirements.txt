@@ -1,5 +1,6 @@
 biopython
 cdlib
+checkv
 docopt
 hicstuff
 looseversion
