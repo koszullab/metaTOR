@@ -3,6 +3,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.1] - 2023-11-20
+- Switch pairs as an argument for `metator mge`.
+- Correct bug in QC.
+-Add checkV in the requirements.
+
 ## [1.3.0] - 2023-11-09
 - Merge MetaVIR (https://github.com/ABignaud/MetaVir) module to MetaTOR.
 - Automatic generation of the compressed and sorted pairs files in the main 
