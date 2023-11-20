@@ -1462,10 +1462,13 @@ class Mge(AbstractCommand):
     between contigs.
 
     usage:
-        binning --network=FILE --binning=FILE --mges=FILE --contigs-data=FILE --fasta=FILE
+        mge --network=FILE --binning=FILE --mges=FILE --contigs-data=FILE --fasta=FILE
         [--checkv-db=DIR] [--depth=FILE] [--method=pairs] [--no-clean-up]
-        [--outdir=DIR] [--pairs=STR] [--plot] [--random] [--threads=1]
-        [--tmpdir=DIR] [--threshold-bin=0.8] [--threshold-asso=0.1]
+        [--outdir=DIR] [--plot] [--random] [--threads=1] [--tmpdir=DIR] 
+        [--threshold-bin=0.8] [--threshold-asso=0.1] <pairsfile>...
+
+    arguments:
+        pairsfile               File(s) containing pairs information.
 
     options:
         -b, --binning=FILE      Path to the anvio binning file.
@@ -1477,14 +1480,13 @@ class Mge(AbstractCommand):
                                 jgi_summarize_bam_contig_depths.
         -f, --fasta=FILE        Path to the fasta file with tha mge contigs
                                 sequences.
-        -m, --mges=FILE       Path to the file with mges contigs list.
+        -m, --mges=FILE         Path to the file with mges contigs list.
         -M, --method=STR        Method for the binning. Either 'metabat' or
                                 'pairs' [Default: pairs].
         -n, --network=FILE      Path to the network file.
         -N, --no-clean-up       If enabled, remove the temporary files.
         -o, --outdir=DIR        Path to the output directory where the output
                                 will be written. Default current directory.
-        -q, --pairs=STR         Path of the pairs file separated by a comma.
         -p, --plot              If enable, make summary plots.
         -r, --random            If enable, make a random binning.
         -s, --threshold-bin=FLOAT       Threshold to use for binning. 
@@ -1519,17 +1521,11 @@ class Mge(AbstractCommand):
             self.args["--checkv-db"] = os.getenv("CHECKVD")
 
         # Sanity check
-        if self.args["--method"] == "pairs" and not self.args["--pairs"]:
-            logger.error("Pair file is necessary if method is pairs.")
-            raise ValueError
-
         if self.args["--method"] == "metabat" and not self.args["--depth"]:
             logger.error("Depth file is necessary if method is metabat.")
             raise ValueError
 
-        pairs_files = self.args["--pairs"]
-        if pairs_files:
-            pairs_files = pairs_files.split(",")
+        pairs_files = self.args["<pairsfile>"]
 
         # Import the files
         binning_result = mio.import_anvio_binning(self.args["--binning"])
