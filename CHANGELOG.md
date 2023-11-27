@@ -3,10 +3,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.2] - 2023-11-27
+- Add log files for all modules.
+
 ## [1.3.1] - 2023-11-20
 - Switch pairs as an argument for `metator mge`.
 - Correct bug in QC.
--Add checkV in the requirements.
+- Add checkV in the requirements.
 
 ## [1.3.0] - 2023-11-09
 - Merge MetaVIR (https://github.com/ABignaud/MetaVir) module to MetaTOR.
