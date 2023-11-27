@@ -1259,6 +1259,11 @@ class Contactmap(AbstractCommand):
 
     def execute(self):
 
+        # Enable file logging
+        now = time.strftime("%Y%m%d%H%M%S")
+        log_file = join(self.args["--outdir"], (f"metator_contactmap_{now}.log"))
+        generate_log_header(log_file, cmd="contactmap", args=self.args)
+
         # Defined the temporary directory.
         if not self.args["--tmpdir"]:
             self.args["--tmpdir"] = "./tmp"
@@ -1294,6 +1299,7 @@ class Contactmap(AbstractCommand):
             # Delete pyfastx index:
             os.remove(self.args["--assembly"] + ".fxi")
 
+        generate_log_footer(log_file)
 
 class Scaffold(AbstractCommand):
     """Scaffold a bin from metator.
@@ -1330,6 +1336,7 @@ class Scaffold(AbstractCommand):
     """
 
     def execute(self):
+
         # Generate log
         now = time.strftime("%Y%m%d%H%M%S")
         log_file = f"metator_scaffold_{now}.log"
@@ -1381,10 +1388,12 @@ class Pairs(AbstractCommand):
     """
 
     def execute(self):
+
         # Generate log
         now = time.strftime("%Y%m%d%H%M%S")
         log_file = f"metator_pairs_{now}.log"
         generate_log_header(log_file, cmd="pairs", args=self.args)
+
         # Iterates on pairfiles given.
         pairsfiles = self.args["<pairsfile>"]
         for pairsfile in pairsfiles:
@@ -1396,6 +1405,7 @@ class Pairs(AbstractCommand):
                 remove=self.args["--remove"],
                 force=self.args["--force"],
             )
+
         generate_log_footer(log_file)
 
 
@@ -1422,6 +1432,12 @@ class Host(AbstractCommand):
     """
 
     def execute(self):
+
+        # Generate log
+        now = time.strftime("%Y%m%d%H%M%S")
+        log_file = f"metator_host_{now}.log"
+        generate_log_header(log_file, cmd="host", args=self.args)
+
         # Defined the output file if none are given
         if not self.args["--outfile"]:
             self.args["--outfile"] = "./mges_data_host.tsv"
@@ -1444,6 +1460,7 @@ class Host(AbstractCommand):
             self.args["--threshold"],
         )
 
+        generate_log_footer(log_file)
 
 
 
@@ -1501,6 +1518,12 @@ class Mge(AbstractCommand):
     """
 
     def execute(self):
+
+        # Generate log
+        now = time.strftime("%Y%m%d%H%M%S")
+        log_file = f"metator_mge_{now}.log"
+        generate_log_header(log_file, cmd="mge", args=self.args)
+
         # Defined the temporary directory.
         if not self.args["--tmpdir"]:
             self.args["--tmpdir"] = "./tmp"
@@ -1562,6 +1585,7 @@ class Mge(AbstractCommand):
             # Delete pyfastx index:
             os.remove(self.args["--fasta"] + ".fxi")
 
+        generate_log_footer(log_file)
 
 def generate_log_header(log_path, cmd, args):
     mtl.set_file_handler(log_path, formatter=logging.Formatter(""))
