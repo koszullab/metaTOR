@@ -36,7 +36,7 @@ Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that
 
 ### Requirements
 
-* Python 3.6 or later is required.
+* Python `3.8` to `3.10` or later is required.
 * The following librairies are required but will be automatically installed with the pip installation: `numpy`, `scipy`, `sklearn`, `pandas`, `docopt`, `networkx` `biopython` `pyfastx`, `pysam`, `micomplete` and `pairix`.
 * The following software should be installed separately if you used the pip installation:
   * [bowtie2](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml)
