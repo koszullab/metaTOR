@@ -4,7 +4,7 @@ checkv
 docopt
 hicstuff
 looseversion
-micomplete
+micomplete==1.1.1
 networkx
 numpy
 pairtools

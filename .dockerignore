@@ -1,7 +1,10 @@
 *
+Dockerfile*
+.dockerignore
 !metator/*
 !setup.py
 !setup.cfg
+!metator.yaml
 !requirements.txt
 !MANIFEST.in
 !README.md

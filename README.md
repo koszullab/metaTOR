@@ -37,7 +37,7 @@ Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that
 ### Requirements
 
 * Python 3.6 or later is required.
-* The following librairies are required but will be automatically installed with the pip installation: `numpy`, `scipy`, `sklearn`, `pandas`, `docopt`, `networkx` `biopython` `pyfastx` and `pysam`.
+* The following librairies are required but will be automatically installed with the pip installation: `numpy`, `scipy`, `sklearn`, `pandas`, `docopt`, `networkx` `biopython` `pyfastx`, `pysam`, `micomplete` and `pairix`.
 * The following software should be installed separately if you used the pip installation:
   * [bowtie2](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml)
   * [samtools](http://www.htslib.org/)
@@ -45,8 +45,6 @@ Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that
         implementation).
   * [networkanalysis](https://github.com/vtraag/networkanalysis) (not
     necessary only if you want to use Leiden algorithm to partition the network)
-  * [micomplete](https://bitbucket.org/evolegiolab/micomplete/src/master/)
-  * [pairix](https://github.com/4dn-dcic/pairix) (not necessary if you do not use metator contact map)
 
 ### Using pip
 
