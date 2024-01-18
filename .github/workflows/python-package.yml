@@ -48,7 +48,7 @@ jobs:
       with:
           environment-file: metator.yaml
           generate-run-shell: true
-          extra-specs: |
+          create-args: >-
             python=${{ matrix.python-version }}
 
     - name: Test with pytest
