@@ -17,14 +17,20 @@ Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that
 
 ## Table of contents
 
-* [Installation](#Installation)
-  * [Requirements](#Requirements)
-  * [Using pip](#Using-pip)
-  * [Using docker container](#Using-docker-container)
-* [Usage](#Usage)
-* [Output files](#Output-files)
-* [References](#References)
-* [Contact](#Contact)
+1. [MetaTOR](#metator)
+   1. [Table of contents](#table-of-contents)
+   2. [Installation](#installation)
+      1. [Requirements](#requirements)
+      2. [Using pip](#using-pip)
+      3. [Using conda](#using-conda)
+      4. [Louvain or Leiden dependency](#louvain-or-leiden-dependency)
+      5. [Using docker container](#using-docker-container)
+   3. [Usage](#usage)
+   4. [Output files](#output-files)
+   5. [References](#references)
+   6. [Contact](#contact)
+      1. [Authors](#authors)
+      2. [Research lab](#research-lab)
 
 ## Installation
 
@@ -45,13 +51,13 @@ Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that
 ### Using pip
 
 ```sh
-   pip3 install metator
+pip3 install metator
 ```
 
 or, to use the latest version:
 
 ```sh
-   pip3 install -e git+https://github.com/koszullab/metator.git@master#egg=metator
+pip3 install -e git+https://github.com/koszullab/metator.git@master#egg=metator
 ```
 
 ### Using conda
@@ -85,13 +91,13 @@ export LEIDEN_PATH=/networkanalysis_repository_path/build/libs/networkanalysis-1
 A dockerfile is also available if that is of interest. You may fetch the image by running the following:
 
 ```sh
-    docker pull koszullab/metator
+docker pull koszullab/metator
 ```
 
 ## Usage
 
 ```sh
-    metator {network|partition|validation|pipeline} [parameters]
+metator {network|partition|validation|pipeline} [parameters]
 ```
 
 A metaTOR command takes the form `metator action --param1 arg1 --param2
