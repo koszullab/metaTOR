@@ -7,6 +7,7 @@ dependencies:
   - requests
   - pip
   - git
+  - biopython=1.80
   - bowtie2=2.5.1
   - bwa=0.7.17
   - samtools=1.17
@@ -15,17 +16,15 @@ dependencies:
   - pysam=0.21.0
   - pairix=0.3.7
   - pairtools=1.0.2
+  - pyfastx==0.8.4
+  - cooler==0.9.1
+  - pandas==1.5.3
+  - hicstuff
   - pip:
-    - pyfastx==0.8.4
     - micomplete==1.1.1
-    - cooler==0.9.1
-    - pandas==1.5.3
-    - git+https://github.com/koszullab/hicstuff.git
     - metator
     - pytest
     - pylint
-    - pytest-cov
-    - pylint
-    - pytest-pylint
     - codecov
-    
+    - pytest-cov
+    - pytest-pylint

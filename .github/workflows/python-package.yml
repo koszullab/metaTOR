@@ -17,20 +17,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.9']
+        python-version: ['3.8', '3.9', '3.10']
 
     steps:
     
     - uses: actions/checkout@v3
-
-
-
-    - name: Install Conda environment from metator.yaml
-      uses: mamba-org/provision-with-micromamba@main
-      with:
-        environment-file: metator.yaml
-        extra-specs: |
-          python=${{ matrix.python-version }}
 
     - name: Load apt packages
       run: |
@@ -52,13 +43,19 @@ jobs:
         ./gradlew build
         cd ..
 
+    - name: Install Conda environment from metator.yaml
+      uses: mamba-org/setup-micromamba@v1
+      with:
+          environment-file: metator.yaml
+          generate-run-shell: true
+          create-args: >-
+            python=${{ matrix.python-version }}
+
     - name: Test with pytest
       run: |
         micromamba activate metator
         export LOUVAIN_PATH=external/gen-louvain
         export LEIDEN_PATH=networkanalysis/build/libs/networkanalysis-1.2.0.jar
-        PWD=$(pwd)
-        export PATH="$PATH:$PWD/bwa:$PWD/pairix/bin/:$PWD/pairix/util:$PWD/pairix/util/bam2pairs:/root/.local/bin"
         pytest --pylint --pylint-error-types=EF --pylint-rcfile=.pylintrc --doctest-modules metator
         pytest --cov=metator
         codecov

@@ -1,60 +1,39 @@
 # syntax=docker/dockerfile:1
 
-FROM adoptopenjdk/openjdk12
+FROM mambaorg/micromamba:latest
 
 LABEL Name=metator Version=1.3.2
 
-WORKDIR /app
-COPY ./ /app
+COPY --chown=$MAMBA_USER:$MAMBA_USER . ./
 
 # Install 3rd party packages
-RUN \
-    apt-get update && \
-    apt-get install -y --no-install-recommends git make g++ curl
-
-# Install miniconda to /miniconda
-RUN curl -LO http://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
-RUN bash Miniconda3-latest-Linux-x86_64.sh -p /miniconda -b
-RUN rm Miniconda3-latest-Linux-x86_64.sh
-ENV PATH=/miniconda/bin:${PATH}
-RUN conda update -y conda
-RUN conda config --add channels bioconda
-
-# # Get 3rd party package
-RUN conda install -c conda-forge -y python=3.8\
-    pip \
-    bowtie2 \
-    samtools \
-    pairix \
-    checkm-genome && conda clean -afy
-
-# Install bwa
-RUN git clone https://github.com/lh3/bwa.git && \
-    cd bwa && \
-    make &&\
-    cd /app
-ENV PATH="$PATH:/app/bwa"
+USER root
+RUN apt update && \
+    apt install -y --no-install-recommends git make g++ curl default-jre default-jdk zlib1g-dev
 
 # Install Louvain 
-RUN cd /app/external && \
+RUN cd ./external && \
     tar -xzf louvain-generic.tar.gz && \
     cd gen-louvain && \
     make && \
-    cd /app
-ENV LOUVAIN_PATH=/app/external/gen-louvain
+    cd ../
+ENV LOUVAIN_PATH=./external/gen-louvain
 
 # Install Leiden through Network analysis repo
 RUN git clone https://github.com/vtraag/networkanalysis.git && \
-    cd /app/networkanalysis && \
+    cd ./networkanalysis && \
     ./gradlew build && \
-    cd /app
-ENV LEIDEN_PATH=/app/networkanalysis/build/libs/networkanalysis-1.2.0.jar
+    cd ../
+ENV LEIDEN_PATH=$(pwd)/networkanalysis/build/libs/networkanalysis-1.2.0.jar
 
-
-# Install python dependencies
-RUN pip3 install -Ur requirements.txt
+## Install dependencies
+USER mambauser
+RUN micromamba install -y -n base --file metator.yaml && \
+    micromamba install -y -n base pip && \
+    micromamba clean --all --yes
 
 # Install metator
-RUN pip3 install .
+RUN micromamba run -n base python3 -m pip install -e .
 
-ENTRYPOINT ["metator"]
+WORKDIR /home/mambauser/
+ENTRYPOINT [ "/bin/bash" ]

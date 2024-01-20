@@ -4,6 +4,7 @@ tests_data/assembly.fa.fxi
 tests_data/outdir/cam.pdf
 nohup.out
 codecov*
+!.codecov.yml
 
 # vscode
 .vscode

@@ -1,10 +1,10 @@
-biopython
+biopython==1.80
 cdlib
 checkv
 docopt
 hicstuff
 looseversion
-micomplete
+micomplete==1.1.1
 networkx
 numpy
 pairtools
