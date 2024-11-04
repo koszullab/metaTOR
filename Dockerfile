@@ -2,7 +2,7 @@
 
 FROM mambaorg/micromamba:latest
 
-LABEL Name=metator Version=1.3.2
+LABEL Name=metator Version=1.3.3
 
 COPY --chown=$MAMBA_USER:$MAMBA_USER . ./
 

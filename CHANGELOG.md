@@ -3,6 +3,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.3] - 2023-11-27
+- Improve ci.
+- Add pairix as requirements.
+- Correct pipeline bug.
+
 ## [1.3.2] - 2023-11-27
 - Add log files for all modules.
 
