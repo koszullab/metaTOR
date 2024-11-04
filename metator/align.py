@@ -322,15 +322,15 @@ def get_contact_pairs(
         logger.info(f"{n_pairs} pairs aligned.\n")
         total_aligned_pairs += n_pairs
 
-    # Sort pairs.
-    logger.info(f"Sort and indexed {out_file}")
-    out_file = mio.sort_pairs_pairtools(
-        out_file,
-        threads=n_cpu,
-        remove=True,
-        force=True
-    )
-    out_file_list.append(out_file)
+        # Sort pairs.
+        logger.info(f"Sort and indexed {out_file}")
+        out_file = mio.sort_pairs_pairtools(
+            out_file,
+            threads=n_cpu,
+            remove=True,
+            force=True
+        )
+        out_file_list.append(out_file)
 
     if len(out_file_list) > 1:
         logger.info(f"TOTAL PAIRS MAPPED: {total_aligned_pairs}\n")

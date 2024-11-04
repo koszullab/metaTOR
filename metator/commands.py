@@ -1369,7 +1369,7 @@ class Scaffold(AbstractCommand):
 
 
 class Pairs(AbstractCommand):
-    """Sort and pairs files for faster assess to the data.
+    """Sort, compress and index pairs files for faster assess to the data.
 
     Sort the pairs file using pairtools. Compress them using bgzip. Index them
     using pairix.
