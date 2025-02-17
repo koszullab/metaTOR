@@ -1,0 +1,193 @@
+[build-system]
+requires = ["hatchling", "hatch-build-scripts"]
+build-backend = "hatchling.build"
+
+[project]
+name = "metator"
+version = "1.3.4"
+description = "A pipeline for binning metagenomic datasets from metaHiC data."
+readme = "README.md"
+requires-python = ">=3.8,<3.11"
+license = { text = "GNU General Public License v3 (GPLv3)" }
+
+authors = [
+    {name = "Amaury Bignaud", email = "amaury.bignaud@pasteur.fr"}, 
+    {name = "Jacques Serizay", email = "jacques.serizay@pasteur.fr"},
+]
+keywords = [
+    "metagenomics",
+    "bioinformatics"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Visualization",
+    "Operating System :: Unix",
+]
+dependencies = [
+    "hicstuff",
+    "networkx",
+    "checkv",
+    "micomplete==1.1.1",
+    "biopython==1.80",
+    # "pairix",
+    "pypairix",
+    "pairtools",
+    "pyfastx",
+    "pysam",
+    "scikit-learn",
+    "scipy",
+    "numpy",
+    "pandas",
+    "seaborn",
+    "requests",
+    "looseversion",
+    "docopt"
+]
+
+[project.optional-dependencies]
+test = [
+    "coverage[toml]",
+    "isort",
+    "pytest",
+    "pytest-cov",
+    "pytest-pylint",
+    "pytest-order",
+    "codecov",
+    "pylint",
+    "ruff",
+]
+docs = [
+    'autodoc',
+    'sphinx-autoapi',
+    "autodocsumm",
+    "sphinxcontrib-napoleon",
+    "m2r",
+    "recommonmark",
+    "Sphinx>=1.6",
+    "sphinx-autobuild",
+    "sphinx-click",
+    "furo",
+    "pydata-sphinx-theme",
+    "sphinx-rtd-theme",
+    "myst-parser",
+    "nbsphinx",
+    "lxml[html_clean]",
+]
+dev = [
+    "metator[test,docs]",
+    "hatch",
+    "hatch-build-scripts", 
+    "pre-commit",
+    "mypy",
+    "black",
+    "twine",
+    "ipython"
+]
+
+[project.urls]
+homepage = "https://github.com/koszullab/metator"
+documentation = "https://github.com/koszullab/metator"
+repository = "https://github.com/koszullab/metator"
+changelog = "https://github.com/koszullab/metator/blob/devel/CHANGELOG.md"
+
+[project.scripts]
+metator = "metator.main:main"
+
+[tool.hatch.version]
+path = "src/metator/version.py"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.envs.default.scripts]
+
+fix = "ruff check --fix src tests"
+lint = "ruff check src tests"
+test = "pytest ."
+docs = "sphinx-autobuild docs docs/_build/html"
+
+[tool.hatch.envs.test]
+features = ["dev"]
+
+[[tool.hatch.envs.test.matrix]]
+python = ["3.8", "3.9", "3.10"]
+
+[tool.black]
+line-length = 130
+target-version = ['py39']
+
+[tool.ruff]
+line-length = 130
+src = ["src"]
+exclude = [
+    "bench/*",
+    ".venv",
+    "__main__.py",
+]
+lint.ignore = ["E402", "I001"]
+lint.extend-select = [
+    "B",  # bugbear
+    "E",  # style errors
+    "F",  # pyflakes
+    "I",  # isort
+    "RUF", # ruff-specific rules
+    # "UP", # pyupgrade
+    "W",  # style  warnings
+]
+lint.isort.known-first-party = ["metator"]
+
+[tool.pytest.ini_options]
+markers = ["order: mark test to run in a specific order"]
+minversion = "7"
+log_cli_level = "INFO"
+xfail_strict = true
+addopts = [
+    "-ra",
+    "--strict-config",
+    "--strict-markers",
+    "--cov=metator",
+    "--cov-config=pyproject.toml",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-report=xml",
+]
+filterwarnings = ["ignore::PendingDeprecationWarning"]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["metator"]
+
+omit = []
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "return NotImplemented",
+    "raise NotImplementedError"
+]
+
+[tool.tox]
+legacy_tox_ini = """
+[tox]
+envlist =
+    py38
+
+[testenv]
+install_command = pip install -U {opts} {packages}
+deps =
+    .[dev,docs]
+commands =
+    pytest                           ### Run unit tests
+    make -C docs html                ### Compile docs
+    ruff check src tests --fix       ### Compile docs
+    # sybil --check docs/              ### Execute code chunks in docs
+allowlist_externals =
+    make
+"""
