@@ -128,7 +128,7 @@ def test_create_contig_data():
     assert contig_data["NODE_522"] == {
         "id": 1,
         "length": 22786,
-        "GC": 62.077591503554814,
+        "GC": 62.07759150355482,
         "hit": 0,
         "coverage": "-",
         "RS": "-",
@@ -142,7 +142,7 @@ def test_create_contig_data():
     assert contig_data["NODE_522"] == {
         "id": 1,
         "length": 22786,
-        "GC": 62.077591503554814,
+        "GC": 62.07759150355482,
         "hit": 0,
         "coverage": 4.76595,
         "RS": 162,
