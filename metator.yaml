@@ -4,9 +4,6 @@ channels:
   - bioconda
   - defaults
 dependencies:
-  - requests
-  - pip
-  - git
   - networkx==3.4
   - checkv==1.0.3
   - biopython==1.80
@@ -16,7 +13,6 @@ dependencies:
   - prodigal==2.6.3
   - hmmer==3.3.2
   - pysam==0.21.0
-  - pairix==0.3.8
   - pairtools=1.0.2
   - pyfastx==0.8.4
   - cooler==0.9.1
