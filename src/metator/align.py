@@ -88,10 +88,7 @@ def align(
             read_len=20,
         )
         st.rmtree(iter_tmp_dir)
-        sp.call(
-            "samtools sort -n -@ {n_cpu} -o {bam} {tmp}".format(n_cpu=n_cpu, tmp=tmp_bam, bam=bam_out),
-            shell=True,
-        )
+        pysam.sort("-n", "-@", str(n_cpu), "-o", bam_out, tmp_bam)
 
     else:
         # Align the reads on the reference genome with the chosen aligner.
@@ -107,17 +104,18 @@ def align(
         elif aligner == "bowtie2":
             cmd = ("bowtie2 -x {idx} -p {cpus} --very-sensitive-local {fq} --no-unal").format(**map_args)
 
-        # Write the outputfile in a temporary bam file.
-        map_process = sp.Popen(cmd, shell=True, stdout=sp.PIPE, stderr=sp.PIPE)
-        sort_process = sp.Popen(
-            "samtools sort -n -@ {cpus} -o {bam}".format(**map_args),
-            shell=True,
-            stdin=map_process.stdout,
-        )
-        _out, _err = sort_process.communicate()
-        mapping_values = map_process.stderr.read()
-        for line in mapping_values.split(b"\n"):
-            logger.info(f"{line.decode('utf-8')}")
+        iter_tmp_dir = hio.generate_temp_dir(tmp_dir)
+        tmp_bam = join(iter_tmp_dir, "tmp.bam")
+        with open(tmp_bam, "wb") as tmp:
+            map_process = sp.Popen(cmd, shell=True, stdout=tmp, stderr=sp.PIPE)
+            mapping_values = map_process.stderr.read()
+            # Log the map_process stderr (mapping stats)
+            for line in mapping_values.split(b"\n"):
+                logger.info(f"{line.decode('utf-8')}")
+
+        # Sort the bam file
+        pysam.sort("-n", "-@", str(n_cpu), "-o", bam_out, tmp_bam)
+
     return 0
 
 
@@ -243,7 +241,7 @@ def get_contact_pairs(
 
                 # Align the forward reads
                 logger.info(f"Alignment of {for_in}:")
-                align(for_in, index, aligner, alignment_for, n_cpu, iterative)
+                align(for_in, index, aligner, alignment_for, n_cpu, tmp_dir, iterative)
 
                 # Align the reverse reads
                 logger.info(f"Alignment of  {rev_in}:")

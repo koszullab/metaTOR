@@ -9,7 +9,6 @@ dependencies:
   - biopython==1.80
   - bowtie2==2.5.1
   - bwa==0.7.17
-  - samtools==1.17
   - prodigal==2.6.3
   - hmmer==3.3.2
   - pysam==0.21.0
