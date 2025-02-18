@@ -133,6 +133,9 @@ venv.bak/
 dmypy.json
 nf-metator.sif
 
-# Louvain and Leiden installation
-external/gen-louvain/
-networkanalysis
+# Artifacts installation
+artifacts/
+gen-louvain/
+networkanalysis/
+pairix/
+bowtie2/

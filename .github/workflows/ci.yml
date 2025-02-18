@@ -1,0 +1,51 @@
+name: Test and Doc
+
+on:
+  push:
+  pull_request:
+
+defaults:
+  run:
+    shell: bash -l {0}
+
+permissions:
+  contents: write
+
+
+jobs:
+  Test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        python-version: [ "3.10" ]
+        include:
+          - os: ubuntu-latest
+          # - os: windows-latest
+          # - os: macos-latest
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    
+      - uses: actions/checkout@v4
+
+      - name: ⚙️ Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: 🐍 Install Conda environment from metator.yaml
+        uses: mamba-org/setup-micromamba@v1
+        with:
+            environment-file: metator.yaml
+            generate-run-shell: true
+            create-args: >-
+              python=${{ matrix.python-version }}
+
+      - name: 📦 Install package and [dev] deps
+        run: |
+          micromamba run -n metator pip install -e .[dev]
+
+      - name: 🧪 Run tests on ${{ matrix.os }}
+        run: |
+          micromamba run -n metator ruff check . --select=E9,F63,F7,F82
+          micromamba run -n metator pytest --cov --cov-report=xml

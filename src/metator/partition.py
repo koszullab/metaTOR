@@ -39,6 +39,7 @@ from metator.log import logger
 from os.path import join
 from scipy import sparse
 from sklearn import metrics
+from . import LEIDEN_PATH, LOUVAIN_PATH
 
 
 def algo_partition(
@@ -83,14 +84,19 @@ def algo_partition(
     """
     # Launch the write partition algorithm
     if algorithm == "leiden":
-        LEIDEN_PATH = os.environ["LEIDEN_PATH"]
         output_partition = leiden_iterations_java(
-            network_file, iterations, resolution_parameter, tmpdir, LEIDEN_PATH,
+            network_file,
+            iterations,
+            resolution_parameter,
+            tmpdir,
+            LEIDEN_PATH,
         )
     elif algorithm == "louvain":
-        LOUVAIN_PATH = os.environ["LOUVAIN_PATH"]
         output_partition = louvain_iterations_cpp(
-            network_file, iterations, tmpdir, LOUVAIN_PATH,
+            network_file,
+            iterations,
+            tmpdir,
+            LOUVAIN_PATH,
         )
     # elif algorithm == "spinglass":
     #     output_partition = spinglass_partition(
@@ -98,9 +104,7 @@ def algo_partition(
     #         spins=spin,
     #     )
     else:
-        logger.error(
-            'algorithm should be either "louvain", "leiden", or "spinglass"'
-        )
+        logger.error('algorithm should be either "louvain", "leiden", or "spinglass"')
         raise ValueError
     return output_partition
 
@@ -650,7 +654,6 @@ def partition(
     # Perform the iterations of Louvain or Leiden to partition the network.
     logger.info("Start iterations:")
     if algorithm == "leiden":
-        LEIDEN_PATH = os.environ["LEIDEN_PATH"]
         output_partition = leiden_iterations_java(
             network_file,
             iterations,
@@ -659,9 +662,11 @@ def partition(
             LEIDEN_PATH,
         )
     elif algorithm == "louvain":
-        LOUVAIN_PATH = os.environ["LOUVAIN_PATH"]
         output_partition = louvain_iterations_cpp(
-            network_file, iterations, temp_directory_clustering, LOUVAIN_PATH,
+            network_file,
+            iterations,
+            temp_directory_clustering,
+            LOUVAIN_PATH,
         )
     else:
         logger.error('algorithm should be either "louvain" or "leiden"')

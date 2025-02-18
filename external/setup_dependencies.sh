@@ -1,0 +1,42 @@
+#!/bin/bash
+
+## Purge existing artifacts (required for local rebuild)
+rm -rf artifacts/ gen-louvain/ pairix/ bowtie2/ networkanalysis/
+
+## Install louvain
+tar -k -xzf louvain-generic.tar.gz
+cd gen-louvain
+make
+cd ..
+
+## Install leiden
+# wget "https://github-registry-files.githubusercontent.com/153760626/0f40f180-3ed3-11ee-916e-23eb9928c186?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAVCODYLSA53PQK4ZA%2F20250218%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20250218T134441Z&X-Amz-Expires=300&X-Amz-Signature=065d9dec2e31375461b33db29c5e6261b54eca2ec2e44c6460a3138586f86b89&X-Amz-SignedHeaders=host&response-content-disposition=filename%3Dnetworkanalysis-1.3.0.jar&response-content-type=application%2Foctet-stream" -O networkanalysis-1.3.0.jar
+mkdir -p networkanalysis/build/libs/
+cp networkanalysis-1.3.0.jar networkanalysis/build/libs/
+
+## Install pairix
+# wget https://github.com/4dn-dcic/pairix/archive/refs/tags/0.3.9.zip -O pairix-0.3.9.zip
+# zip -d pairix-0.3.9.zip "pairix-0.3.9/samples/*"
+unzip pairix-0.3.9.zip
+mv pairix-0.3.9 pairix
+cd pairix
+make
+chmod +x bin/pairix
+cd ..
+
+# ## Install bowtie2
+# wget https://sourceforge.net/projects/bowtie-bio/files/bowtie2/2.5.1/bowtie2-2.5.1-source.zip/download -O bowtie2-2.5.1-source.zip
+# zip -d bowtie2-2.5.1-source.zip "bowtie2-2.5.1/example/*"
+# unzip bowtie2-2.5.1-source.zip
+# mv bowtie2-2.5.1/ bowtie2
+# cd bowtie2
+# make
+# cd ..
+
+## Move artifacts to the correct location
+mkdir -p artifacts/networkanalysis/build artifacts/pairix/bin artifacts/pairix/util artifacts/bowtie2/bin
+mv gen-louvain/ artifacts/
+mv networkanalysis/build artifacts/networkanalysis/
+mv pairix/bin artifacts/pairix/
+mv pairix/util artifacts/pairix/
+# mv bowtie2/bowtie2* artifacts/bowtie2/bin/

@@ -7,24 +7,25 @@ dependencies:
   - requests
   - pip
   - git
-  - biopython=1.80
-  - bowtie2=2.5.1
-  - bwa=0.7.17
-  - samtools=1.17
-  - prodigal=2.6.3
-  - hmmer=3.3.2
-  - pysam=0.21.0
-  - pairix=0.3.7
+  - networkx==3.4
+  - checkv==1.0.3
+  - biopython==1.80
+  - bowtie2==2.5.1
+  - bwa==0.7.17
+  - samtools==1.17
+  - prodigal==2.6.3
+  - hmmer==3.3.2
+  - pysam==0.21.0
+  - pairix==0.3.8
   - pairtools=1.0.2
   - pyfastx==0.8.4
   - cooler==0.9.1
+  - numpy==1.26.4
   - pandas==1.5.3
-  - hicstuff
+  - scikit-learn==1.6.1
+  - scipy==1.15.2
+  - seaborn==0.13.2
+  - hicstuff==3.2.4
   - pip:
     - micomplete==1.1.1
-    - metator
-    - pytest
-    - pylint
-    - codecov
-    - pytest-cov
-    - pytest-pylint
+    # - metator

@@ -1,13 +1,14 @@
 # Test for partition module
 
+import os
 import metator.io as mio
 import metator.partition as mtp
 import networkx as nx
 import numpy as np
-import os
 import pandas as pd
 import pytest
 import shutil
+from . import LEIDEN_PATH, LOUVAIN_PATH
 
 assembly = "tests_data/assembly.fa"
 network_file = "tests_data/outdir/network.txt"
@@ -15,15 +16,12 @@ iterations = 5
 resolution_parameter = 0.9
 spins = 2
 threads = 8
-LEIDEN_PATH = os.environ["LEIDEN_PATH"]
-LOUVAIN_PATH = os.environ["LOUVAIN_PATH"]
+
 overlapping_parameter = 0.6
 
 tmp_dir = "tmp_partition_clustering"
 os.makedirs(tmp_dir, exist_ok=True)
-partition = mtp.louvain_iterations_cpp(
-    network_file, iterations, tmp_dir, LOUVAIN_PATH
-)
+partition = mtp.louvain_iterations_cpp(network_file, iterations, tmp_dir, LOUVAIN_PATH)
 shutil.rmtree(tmp_dir)
 
 contigs_data = pd.read_csv(

@@ -47,6 +47,7 @@ from Bio.Restriction import RestrictionBatch
 from metator.log import logger
 from os.path import join, exists, isfile
 from random import getrandbits
+from . import PAIRIX_PATH
 
 
 def check_checkm():
@@ -197,11 +198,9 @@ def check_pairix():
         True if pairix found in the path, False otherwise.
     """
     try:
-        pairix = sp.check_output("pairix --help", stderr=sp.STDOUT, shell=True)
+        pairix = sp.check_output(f"{PAIRIX_PATH} --help", stderr=sp.STDOUT, shell=True)
     except sp.CalledProcessError:
-        logger.error(
-            "Cannot find 'pairix' in your path please install it or add it in your path."
-        )
+        logger.error("Cannot find 'pairix' in your path please install it or add it in your path.")
         raise ImportError
         return False
     return True
@@ -217,11 +216,9 @@ def check_pairtools():
         True if pairtools found in the path, False otherwise.
     """
     try:
-        pairix = sp.check_output("pairtools", stderr=sp.STDOUT, shell=True)
+        pairtools = sp.check_output("pairtools", stderr=sp.STDOUT, shell=True)
     except sp.CalledProcessError:
-        logger.error(
-            "Cannot find 'pairtools' in your path please install it or add it in your path."
-        )
+        logger.error("Cannot find 'pairtools' in your path please install it or add it in your path.")
         raise ImportError
         return False
     return True
@@ -833,7 +830,7 @@ def sort_pairs_pairtools(pairfile, threads=1, remove=False, force=False):
     process = sp.Popen(cmd, shell=True)
     _out, _err = process.communicate()
     # Indexed pairs.
-    cmd = f"set -eu ;  pairix{force} {basename}_sorted.pairs.gz"
+    cmd = f"set -eu ;  {PAIRIX_PATH}{force} {basename}_sorted.pairs.gz"
     process = sp.Popen(cmd, shell=True)
     _out, _err = process.communicate()
 

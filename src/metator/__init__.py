@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-
+import importlib.util
+from pathlib import Path
+import os
 from .version import __version__ as version
 from . import *
 
@@ -21,3 +23,9 @@ __maintainer__ = "Amaury Bignaud"
 __email__ = "amaury.bignaud@pasteur.fr"
 __status__ = "Alpha"
 __version__ = version
+__metator_source__ = os.path.dirname(importlib.util.find_spec("metator").origin)  # type: ignore
+__metator_root__ = os.path.abspath(os.path.join(__metator_source__, "../../"))
+__leiden_dir__ = Path(__metator_root__, "external", "artifacts", "networkanalysis", "build", "libs")
+LEIDEN_PATH = str(next(__leiden_dir__.glob("networkanalysis-1.3.0*.jar")))
+LOUVAIN_PATH = str(Path(__metator_root__, "external", "artifacts", "gen-louvain"))
+PAIRIX_PATH = str(Path(__metator_root__, "external", "artifacts", "pairix", "bin", "pairix"))
