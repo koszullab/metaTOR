@@ -54,7 +54,7 @@ before installing `metator`:
 
 ```sh
 # Install bowtie2, sameools, hmmer, prodigal and java-jdk:
-sudo apt update && sudo apt install bowtie samtools hmmer prodigal default-jdk
+sudo apt update && sudo apt install bowtie2 samtools hmmer prodigal default-jdk
 
 # Also install pairix:
 wget https://github.com/4dn-dcic/pairix/archive/refs/tags/0.3.9.zip -O pairix-0.3.9.zip
