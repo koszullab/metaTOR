@@ -34,10 +34,10 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: 🛠️ Install Bowtie2
+      - name: 🛠️ Install system dependencies
         run: |
           sudo apt-get update && 
-          sudo apt-get install -y make g++ default-jre default-jdk zlib1g-dev &&
+          sudo apt-get install -y default-jre default-jdk &&
           sudo apt-get install -y bowtie2 bwa hmmer prodigal
 
       - name: 📦 Install package

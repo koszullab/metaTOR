@@ -39,6 +39,7 @@ import os
 import pandas as pd
 import pathlib
 import pypairix
+import pairtools
 import re
 import subprocess as sp
 import zipfile
@@ -47,6 +48,7 @@ from Bio.Restriction import RestrictionBatch
 from metator.log import logger
 from os.path import join, exists, isfile
 from random import getrandbits
+from packaging.version import Version
 from . import PAIRIX_PATH
 
 
@@ -62,9 +64,7 @@ def check_checkm():
     try:
         checkm = sp.check_output("checkm", stderr=sp.STDOUT, shell=True)
     except sp.CalledProcessError:
-        logger.error(
-            "Cannot find 'checkm' in your path please install it or add it in your path."
-        )
+        logger.error("Cannot find 'checkm' in your path please install it or add it in your path.")
         return False
     return True
 
@@ -96,11 +96,7 @@ def check_fasta_index(ref, mode="bowtie2"):
     elif mode == "bwa":
         refdir = str(ref.parent)
         refdir_files = os.listdir(refdir)
-        bwa_idx_files = [
-            join(refdir, f)
-            for f in refdir_files
-            if re.search(r".*\.(sa|pac|bwt|ann|amb)$", f)
-        ]
+        bwa_idx_files = [join(refdir, f) for f in refdir_files if re.search(r".*\.(sa|pac|bwt|ann|amb)$", f)]
         index = None if len(bwa_idx_files) < 5 else bwa_idx_files
     else:
         index = [ref]
@@ -157,9 +153,7 @@ def check_louvain_cpp(louvain_path):
 
     # Check convert:
     try:
-        convert = sp.check_output(
-            f"{convert} --help", stderr=sp.STDOUT, shell=True
-        )
+        convert = sp.check_output(f"{convert} --help", stderr=sp.STDOUT, shell=True)
     except sp.CalledProcessError:
         logger.error("Cannot find the 'convert' function from Louvain path.")
         return False
@@ -167,9 +161,7 @@ def check_louvain_cpp(louvain_path):
 
     # Check louvain:
     try:
-        louvain = sp.check_output(
-            f"{louvain} --help", stderr=sp.STDOUT, shell=True
-        )
+        louvain = sp.check_output(f"{louvain} --help", stderr=sp.STDOUT, shell=True)
     except sp.CalledProcessError:
         logger.error("Cannot find the 'louvain' function from Louvain path.")
         return False
@@ -177,9 +169,7 @@ def check_louvain_cpp(louvain_path):
 
     # Check hierarchy:
     try:
-        hierarchy = sp.check_output(
-            f"{hierarchy} --help", stderr=sp.STDOUT, shell=True
-        )
+        hierarchy = sp.check_output(f"{hierarchy} --help", stderr=sp.STDOUT, shell=True)
     except sp.CalledProcessError:
         logger.error("Cannot find the convert_net function from Louvain path.")
         return False
@@ -219,7 +209,7 @@ def check_pairtools():
         pairtools = sp.check_output("pairtools", stderr=sp.STDOUT, shell=True)
     except sp.CalledProcessError:
         logger.error("Cannot find 'pairtools' in your path please install it or add it in your path.")
-        raise ImportError
+        raise sp.CalledProcessError
         return False
     return True
 
@@ -279,8 +269,7 @@ def generate_temp_dir(path):
         os.makedirs(full_path)
     except PermissionError:
         raise PermissionError(
-            "The temporary directory cannot be created in {}. "
-            "Make sure you have write permission.".format(path)
+            "The temporary directory cannot be created in {}. " "Make sure you have write permission.".format(path)
         )
     return full_path
 
@@ -414,9 +403,7 @@ def import_contig_data_mges(contig_data_file, binning_result, mges_list):
             contig_data.loc[i, "MGE"] = True
             mges_list_id.append(contig_data.index[i])
         try:
-            contig_data.loc[i, "Final_bin"] = binning_result[
-                contig_data.loc[i, "Name"]
-            ]
+            contig_data.loc[i, "Final_bin"] = binning_result[contig_data.loc[i, "Name"]]
             contig_data.loc[i, "Binned"] = True
         except KeyError:
             continue
@@ -436,9 +423,7 @@ def import_network(network_file):
     networkx.classes.graph.Graph:
         Network as networkx class.
     """
-    network = nx.read_edgelist(
-        network_file, nodetype=int, data=(("weight", float),)
-    )
+    network = nx.read_edgelist(network_file, nodetype=int, data=(("weight", float),))
     return network
 
 
@@ -480,7 +465,10 @@ def micomplete_results_to_dict(micomplete_file):
     """
     # Read table.
     micomplete_summary = pd.read_csv(
-        micomplete_file, sep="\t", comment="#", index_col=0,
+        micomplete_file,
+        sep="\t",
+        comment="#",
+        index_col=0,
     ).iloc[:, :13]
 
     # Transform to dictionnary.
@@ -552,9 +540,7 @@ def read_compressed(filename):
     elif comp == "zip":
         zip_arch = zipfile.ZipFile(filename, "r")
         if len(zip_arch.namelist()) > 1:
-            raise IOError(
-                "Only a single fastq file must be in the zip archive."
-            )
+            raise IOError("Only a single fastq file must be in the zip archive.")
         else:
             # ZipFile opens as bytes by default, using io to read as text
             zip_content = zip_arch.open(zip_arch.namelist()[0], "r")
@@ -671,14 +657,10 @@ def retrieve_fasta(in_file, aligner, tmpdir):
                     if check_is_fasta(in_file + ".fasta"):
                         fasta = in_file + ".fasta"
                 else:
-                    logger.error(
-                        "If you give bwa index, please make sure the fasta exists with the same prefix."
-                    )
+                    logger.error("If you give bwa index, please make sure the fasta exists with the same prefix.")
                     raise ValueError
         else:
-            logger.error(
-                "Please give as a reference a bowtie2 index or a fasta."
-            )
+            logger.error("Please give as a reference a bowtie2 index or a fasta.")
             raise ValueError
     return fasta
 
@@ -703,9 +685,7 @@ def save_sparse_matrix(s_mat, path):
     np.savetxt(
         path,
         sparse_arr,
-        header="{nrows}\t{ncols}\t{nonzero}".format(
-            nrows=s_mat.shape[0], ncols=s_mat.shape[1], nonzero=s_mat.nnz
-        ),
+        header="{nrows}\t{ncols}\t{nonzero}".format(nrows=s_mat.shape[0], ncols=s_mat.shape[1], nonzero=s_mat.nnz),
         comments="",
         fmt=["%i", "%i", "%1.3f"],
         delimiter="\t",
@@ -741,30 +721,20 @@ def sort_pairs(in_file, out_file, tmp_dir=None, threads=1, buffer="2G"):
     # Check if UNIX sort version supports parallelism
     parallel_ok = True
     sort_ver = sp.Popen(["sort", "--version"], stdout=sp.PIPE)
-    sort_ver = (
-        sort_ver.communicate()[0]
-        .decode()
-        .split("\n")[0]
-        .split(" ")[-1]
-        .split(".")
-    )
+    sort_ver = sort_ver.communicate()[0].decode().split("\n")[0].split(" ")[-1].split(".")
     # If so, specify threads, otherwise don't mention it in the command line
     try:
         sort_ver = list(map(int, sort_ver))
         if sort_ver[0] < 8 or (sort_ver[0] == 8 and sort_ver[1] < 23):
             logger.warning(
                 "GNU sort version is {0} but >8.23 is required for parallel "
-                "sort. Sorting on a single thread.".format(
-                    ".".join(map(str, sort_ver))
-                )
+                "sort. Sorting on a single thread.".format(".".join(map(str, sort_ver)))
             )
             parallel_ok = False
     # BSD sort has a different format and will throw error upon parsing. It does
     # not support parallel processes anyway.
     except ValueError:
-        logger.warning(
-            "Using BSD sort instead of GNU sort, sorting on a single thread."
-        )
+        logger.warning("Using BSD sort instead of GNU sort, sorting on a single thread.")
         parallel_ok = False
 
     # Sort pairs and append to file.
@@ -813,9 +783,7 @@ def sort_pairs_pairtools(pairfile, threads=1, remove=False, force=False):
             os.remove(f"{basename}_sorted.pairs")
     else:
         force = ""
-        if os.path.isfile(f"{basename}_sorted.pairs") or os.path.isfile(
-            f"{basename}_sorted.pairs.gz"
-        ):
+        if os.path.isfile(f"{basename}_sorted.pairs") or os.path.isfile(f"{basename}_sorted.pairs.gz"):
             logger.error(
                 f"The {basename}_sorted.pairs exists. Do not overwrite existing, use --force to overwrite or use another location."
             )
@@ -823,6 +791,9 @@ def sort_pairs_pairtools(pairfile, threads=1, remove=False, force=False):
 
     # Sort pairs using pairtools.
     cmd = f"set -eu ; pairtools sort {pairfile} --nproc {threads} -o {basename}_sorted.pairs"
+    if Version(pairtools.__version__) >= Version("1.1.0"):
+        logger.info("pairtools version >= 1.1.0. Use new options.")
+        cmd = cmd + " --c1 chr1 --c2 chr2 --p1 pos1 --p2 pos2 --pt strand1"
     process = sp.Popen(cmd, shell=True)
     _out, _err = process.communicate()
     # Compressed pairs.
@@ -855,13 +826,9 @@ def write_bin_summary(bin_summary, bin_summary_file):
     bin_summary = pd.DataFrame.from_dict(bin_summary, orient="index")
 
     # Change float format of the coverage.
-    bin_summary["HiC_abundance"] = bin_summary["HiC_abundance"].map(
-        lambda x: "%.4f" % x
-    )
+    bin_summary["HiC_abundance"] = bin_summary["HiC_abundance"].map(lambda x: "%.4f" % x)
     try:
-        bin_summary["SG_abundance"] = bin_summary["SG_abundance"].map(
-            lambda x: "%.4f" % x
-        )
+        bin_summary["SG_abundance"] = bin_summary["SG_abundance"].map(lambda x: "%.4f" % x)
     except KeyError:
         pass
 

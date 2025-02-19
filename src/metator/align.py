@@ -303,7 +303,7 @@ def get_contact_pairs(
         total_aligned_pairs += n_pairs
 
         # Sort pairs.
-        logger.info(f"Sort and indexed {out_file}")
+        logger.info(f"Sort and index {out_file}")
         out_file = mio.sort_pairs_pairtools(out_file, threads=n_cpu, remove=True, force=True)
         out_file_list.append(out_file)
 
