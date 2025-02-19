@@ -30,14 +30,16 @@ Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that
 
 ### Requirements
 
-* Python `3.8` to `3.10` is required.
-* The following non-pythonic librairies are required and are embedded when installing `metator` with pip: [`louvain 0.3`](https://sourceforge.net/projects/louvain/files/GenericLouvain/), [`leiden 1.3.0`](https://github.com/CWTSLeiden/networkanalysis) and [`pairix 0.3.9`](https://github.com/4dn-dcic/pairix).
+* Python `3.9` to `3.11` is required.
 * If `metator` is installed with `pip`, the following dependencies should also be locally installed and available in the `$PATH`:
     * [`bowtie2`](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml) or `bwa`
+    * `pairix`
     * `samtools`
     * `hmmer`
     * `prodigal`
     * `bgzip` 
+    * `java`
+* The following non-pythonic librairies are **embedded** when installing `metator` with `pip`: [`louvain 0.3`](https://sourceforge.net/projects/louvain/files/GenericLouvain/), [`leiden 1.3.0`](https://github.com/CWTSLeiden/networkanalysis) and [`pairix 0.3.9`](https://github.com/4dn-dcic/pairix).
 
 ### Using pip
 

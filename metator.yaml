@@ -4,24 +4,28 @@ channels:
   - bioconda
   - defaults
 dependencies:
-  - hicstuff==3.2.4
-  - networkx==3.4
-  - checkv==1.0.3
-  - biopython==1.80
-  - pysam==0.21.0
-  - pairtools=1.0.2
-  - pyfastx==0.8.4
-  - cooler==0.9.1
-  - numpy==1.26.4
-  - pandas==1.5.3
-  - scikit-learn==1.6.1
-  - scipy==1.15.2
-  - seaborn==0.13.2
-  - bowtie2==2.5.1
-  - bwa==0.7.17
-  - samtools==1.17
-  - prodigal==2.6.3
-  - hmmer==3.3.2
+  - python<3.12
+  - hicstuff
+  - networkx
+  - checkv
+  - biopython
+  - pysam
+  - pairtools
+  - pairix
+  - pyfastx
+  - cooler
+  - numpy
+  - pandas
+  - scikit-learn
+  - scipy
+  - seaborn
+  - bowtie2
+  - bwa
+  - samtools
+  - prodigal
+  - hmmer
+  - gcc
+  - java-jdk
   - pip:
     - micomplete==1.1.1
-    # - metator
+    - metator

@@ -11,7 +11,6 @@ defaults:
 permissions:
   contents: write
 
-
 jobs:
   Test:
     strategy:
@@ -29,22 +28,24 @@ jobs:
     
       - uses: actions/checkout@v4
 
-      - name: ⚙️ Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - name: 🛠️ Install Python ${{ matrix.python-version }} and deps with micromamba
+        uses: mamba-org/setup-micromamba@v1
         with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: 🛠️ Install system dependencies
-        run: |
-          sudo apt-get update && 
-          sudo apt-get install -y default-jre default-jdk &&
-          sudo apt-get install -y bowtie2 bwa hmmer prodigal
+            environment-file: metator.yaml
+            init-shell: bash
+            cache-environment: true
+            post-cleanup: 'none'
+            generate-run-shell: true
+            create-args: >-
+              python=${{ matrix.python-version }}
 
       - name: 📦 Install package
         run: |
           pip install .[test]
+        shell: micromamba-shell {0}
 
-      - name: 🧪 Run tests on ${{ matrix.os }}
+      - name: 🧪 Run tests with Python ${{ matrix.python-version }} 
         run: |
           ruff check . --select=E9,F63,F7,F82
           pytest --cov --cov-report=xml
+        shell: micromamba-shell {0}
