@@ -15,9 +15,10 @@ permissions:
 jobs:
   Test:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        python-version: [ "3.10" ]
+        python-version: [ "3.9", "3.10", "3.11" ]
         include:
           - os: ubuntu-latest
           # - os: windows-latest
@@ -33,19 +34,17 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: 🐍 Install Conda environment from metator.yaml
-        uses: mamba-org/setup-micromamba@v1
-        with:
-            environment-file: metator.yaml
-            generate-run-shell: true
-            create-args: >-
-              python=${{ matrix.python-version }}
-
-      - name: 📦 Install package and [dev] deps
+      - name: 🛠️ Install Bowtie2
         run: |
-          micromamba run -n metator pip install -e .[dev]
+          sudo apt-get update && 
+          sudo apt-get install -y make g++ default-jre default-jdk zlib1g-dev &&
+          sudo apt-get install -y bowtie2 bwa hmmer prodigal
+
+      - name: 📦 Install package
+        run: |
+          pip install .[test]
 
       - name: 🧪 Run tests on ${{ matrix.os }}
         run: |
-          micromamba run -n metator ruff check . --select=E9,F63,F7,F82
-          micromamba run -n metator pytest --cov --cov-report=xml
+          ruff check . --select=E9,F63,F7,F82
+          pytest --cov --cov-report=xml

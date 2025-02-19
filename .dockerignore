@@ -1,11 +1,9 @@
 *
 Dockerfile*
 .dockerignore
-!metator/*
-!setup.py
-!setup.cfg
+!src/*
+!external/*
 !metator.yaml
-!requirements.txt
+!pyproject.toml
 !MANIFEST.in
 !README.md
-!external
