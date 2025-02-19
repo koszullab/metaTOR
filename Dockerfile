@@ -1,6 +1,6 @@
 FROM mambaorg/micromamba:latest
 
-LABEL Name=metator Version=1.3.3
+LABEL Name=metator Version=1.3.4
 
 COPY --chown=$MAMBA_USER:$MAMBA_USER . ./
 
