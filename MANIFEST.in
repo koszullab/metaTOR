@@ -1,4 +1,4 @@
-include requirements.txt
 include README.md
+include external/artifacts/*
 recursive-exclude test_data *
 recursive-exclude tests *

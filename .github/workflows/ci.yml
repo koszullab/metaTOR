@@ -1,0 +1,51 @@
+name: Test and Doc
+
+on:
+  push:
+  pull_request:
+
+defaults:
+  run:
+    shell: bash -l {0}
+
+permissions:
+  contents: write
+
+jobs:
+  Test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: [ "3.9", "3.10", "3.11" ]
+        include:
+          - os: ubuntu-latest
+          # - os: windows-latest
+          # - os: macos-latest
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    
+      - uses: actions/checkout@v4
+
+      - name: 🛠️ Install Python ${{ matrix.python-version }} and deps with micromamba
+        uses: mamba-org/setup-micromamba@v1
+        with:
+            environment-file: metator.yaml
+            init-shell: bash
+            cache-environment: false
+            post-cleanup: 'none'
+            generate-run-shell: true
+            create-args: >-
+              python=${{ matrix.python-version }}
+
+      - name: 📦 Install package
+        run: |
+          pip install .[test]
+        shell: micromamba-shell {0}
+
+      - name: 🧪 Run tests with Python ${{ matrix.python-version }} 
+        run: |
+          ruff check . --select=E9,F63,F7,F82
+          pytest --cov --cov-report=xml
+        shell: micromamba-shell {0}

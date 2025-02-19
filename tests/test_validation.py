@@ -18,9 +18,7 @@ fasta_dir = "tests_data/outdir_validation/overlapping_bin"
 arch_output = "tests_data/outdir_validation/tmp_micomplete/arch131.tsv"
 bact_output = "tests_data/outdir_validation/tmp_micomplete/bact105.tsv"
 assembly = "tests_data/outdir_validation/assembly_val.fa"
-bin_summary = mio.micomplete_results_to_dict(
-    "tests_data/outdir_validation/overlapping_micomplete_results.txt"
-)
+bin_summary = mio.micomplete_results_to_dict("tests_data/outdir_validation/overlapping_micomplete_results.txt")
 iterations = 5
 resolution_parameter = 1.0
 contigs_data = pd.read_csv(
@@ -44,13 +42,10 @@ fileObj.close()
 
 def test_get_bin_coverage():
     bin_info = mtv.get_bin_coverage(bin_summary, contigs_data)
-    assert bin_info["MetaTOR_00002_00000"]["HiC_abundance"] == pytest.approx(
-        49.72, abs=1e-2
-    )
+    assert bin_info["MetaTOR_00002_00000"]["HiC_abundance"] == pytest.approx(49.72, abs=1e-2)
 
 
-def test_give_results_info():
-    ...
+def test_give_results_info(): ...
 
 
 def test_merge_micomplete():
@@ -62,8 +57,7 @@ def test_merge_micomplete():
     os.remove(out_file)
 
 
-def test_micomplete_compare_bins():
-    ...
+def test_micomplete_compare_bins(): ...
 
 
 def test_micomplete_quality():
@@ -75,8 +69,7 @@ def test_micomplete_quality():
     os.remove(out_file)
 
 
-def test_recursive_clustering():
-    ...
+def test_recursive_clustering(): ...
 
 
 def test_recursive_clustering_worker():
@@ -98,8 +91,7 @@ def test_recursive_clustering_worker():
     shutil.rmtree(tmp_dir)
 
 
-def test_recursive_decontamination():
-    ...
+def test_recursive_decontamination(): ...
 
 
 def test_update_contigs_data_recursive():
@@ -131,9 +123,7 @@ def test_update_contigs_data_recursive():
 
 def test_write_bins_contigs():
     binning_file = "tmp_binning.txt"
-    contig_data = mtv.write_bins_contigs(
-        bin_summary, contigs_data, binning_file, "MetaTOR"
-    )
+    contig_data = mtv.write_bins_contigs(bin_summary, contigs_data, binning_file, "MetaTOR")
     print(np.unique(list(contig_data["Final_bin"])))
     assert len(np.unique(list(contig_data["Final_bin"]))) == 2
     os.remove(binning_file)

@@ -88,12 +88,7 @@ def align(
             read_len=20,
         )
         st.rmtree(iter_tmp_dir)
-        sp.call(
-            "samtools sort -n -@ {n_cpu} -o {bam} {tmp}".format(
-                n_cpu=n_cpu, tmp=tmp_bam, bam=bam_out
-            ),
-            shell=True,
-        )
+        pysam.sort("-n", "-@", str(n_cpu), "-o", bam_out, tmp_bam)
 
     else:
         # Align the reads on the reference genome with the chosen aligner.
@@ -105,25 +100,22 @@ def align(
             "fq_rev": fq_in_2,
         }
         if aligner == "bwa":
-            cmd = "bwa mem -5SP -t {cpus} {idx} {fq} {fq_rev}".format(
-                **map_args
-            )
+            cmd = "bwa mem -5SP -t {cpus} {idx} {fq} {fq_rev}".format(**map_args)
         elif aligner == "bowtie2":
-            cmd = (
-                "bowtie2 -x {idx} -p {cpus} --very-sensitive-local {fq} --no-unal"
-            ).format(**map_args)
+            cmd = ("bowtie2 -x {idx} -p {cpus} --very-sensitive-local {fq} --no-unal").format(**map_args)
 
-        # Write the outputfile in a temporary bam file.
-        map_process = sp.Popen(cmd, shell=True, stdout=sp.PIPE, stderr=sp.PIPE)
-        sort_process = sp.Popen(
-            "samtools sort -n -@ {cpus} -o {bam}".format(**map_args),
-            shell=True,
-            stdin=map_process.stdout,
-        )
-        _out, _err = sort_process.communicate()
-        mapping_values = map_process.stderr.read()
-        for line in mapping_values.split(b"\n"):
-            logger.info(f"{line.decode('utf-8')}")
+        iter_tmp_dir = hio.generate_temp_dir(tmp_dir)
+        tmp_bam = join(iter_tmp_dir, "tmp.bam")
+        with open(tmp_bam, "wb") as tmp:
+            map_process = sp.Popen(cmd, shell=True, stdout=tmp, stderr=sp.PIPE)
+            mapping_values = map_process.stderr.read()
+            # Log the map_process stderr (mapping stats)
+            for line in mapping_values.split(b"\n"):
+                logger.info(f"{line.decode('utf-8')}")
+
+        # Sort the bam file
+        pysam.sort("-n", "-@", str(n_cpu), "-o", bam_out, tmp_bam)
+
     return 0
 
 
@@ -207,9 +199,7 @@ def get_contact_pairs(
 
     # Create the contig data dictionnary and hit from each alignments
     nb_alignment = len(for_list)
-    contig_data, hit_data = mtn.create_contig_data(
-        assembly, nb_alignment, depth_file, enzyme
-    )
+    contig_data, hit_data = mtn.create_contig_data(assembly, nb_alignment, depth_file, enzyme)
 
     for i in range(len(for_list)):
         for_in = for_list[i]
@@ -251,7 +241,7 @@ def get_contact_pairs(
 
                 # Align the forward reads
                 logger.info(f"Alignment of {for_in}:")
-                align(for_in, index, aligner, alignment_for, n_cpu, iterative)
+                align(for_in, index, aligner, alignment_for, n_cpu, tmp_dir, iterative)
 
                 # Align the reverse reads
                 logger.info(f"Alignment of  {rev_in}:")
@@ -297,39 +287,24 @@ def get_contact_pairs(
 
             # Filters the aligned and non aligned reads from the forward and
             # reverse bam files.
-            aligned_reads_for = process_bamfile(
-                alignment_for, min_qual, alignment_temp_for
-            )
-            aligned_reads_rev = process_bamfile(
-                alignment_rev, min_qual, alignment_temp_rev
-            )
-            logger.info(
-                f"{aligned_reads_for} forward reads aligned and {aligned_reads_rev} reverse reads aligned."
-            )
+            aligned_reads_for = process_bamfile(alignment_for, min_qual, alignment_temp_for)
+            aligned_reads_rev = process_bamfile(alignment_rev, min_qual, alignment_temp_rev)
+            logger.info(f"{aligned_reads_for} forward reads aligned and {aligned_reads_rev} reverse reads aligned.")
 
             # Merge alignement to create a pairs file
             logger.info("Merging the pairs:")
-            n_pairs = merge_alignment(
-                alignment_temp_for, alignment_temp_rev, contig_data, out_file
-            )
+            n_pairs = merge_alignment(alignment_temp_for, alignment_temp_rev, contig_data, out_file)
 
         # Case where a bam file from bwa is given as input.
         if aligner == "bwa":
-            n_pairs = process_bwa_bamfile(
-                alignment, min_qual, contig_data, out_file
-            )
+            n_pairs = process_bwa_bamfile(alignment, min_qual, contig_data, out_file)
 
         logger.info(f"{n_pairs} pairs aligned.\n")
         total_aligned_pairs += n_pairs
 
         # Sort pairs.
-        logger.info(f"Sort and indexed {out_file}")
-        out_file = mio.sort_pairs_pairtools(
-            out_file,
-            threads=n_cpu,
-            remove=True,
-            force=True
-        )
+        logger.info(f"Sort and index {out_file}")
+        out_file = mio.sort_pairs_pairtools(out_file, threads=n_cpu, remove=True, force=True)
         out_file_list.append(out_file)
 
     if len(out_file_list) > 1:
@@ -371,9 +346,7 @@ def merge_alignment(forward_aligned, reverse_aligned, contig_data, out_file):
     """
 
     # Open files for reading and writing.
-    with open(forward_aligned, "r") as for_file, open(
-        reverse_aligned, "r"
-    ) as rev_file, open(out_file, "w") as merged:
+    with open(forward_aligned, "r") as for_file, open(reverse_aligned, "r") as rev_file, open(out_file, "w") as merged:
         for_bam = csv.reader(for_file, delimiter="\t")
         rev_bam = csv.reader(rev_file, delimiter="\t")
 
@@ -388,11 +361,7 @@ def merge_alignment(forward_aligned, reverse_aligned, contig_data, out_file):
         merged.write("#sorted: readID\n")
         merged.write("#shape: upper triangle\n")
         for contig in contig_data:
-            merged.write(
-                "#chromsize: {0} {1}\n".format(
-                    contig, contig_data[contig]["length"]
-                )
-            )
+            merged.write("#chromsize: {0} {1}\n".format(contig, contig_data[contig]["length"]))
 
         # Loop while at least one end of one end is reached. It's possible to
         # advance like that as the two tsv files are sorted on the id of the
@@ -403,40 +372,17 @@ def merge_alignment(forward_aligned, reverse_aligned, contig_data, out_file):
                 # Write read ID
                 merged.write(for_read[0] + "\t")
                 # Pairs are 1-based so we have to add 1 to 0 based bam position
-                for_position = (
-                    for_read[1] + "\t" + str(int(for_read[2]) + 1) + "\t"
-                )
-                rev_position = (
-                    rev_read[1] + "\t" + str(int(rev_read[2]) + 1) + "\t"
-                )
+                for_position = for_read[1] + "\t" + str(int(for_read[2]) + 1) + "\t"
+                rev_position = rev_read[1] + "\t" + str(int(rev_read[2]) + 1) + "\t"
 
                 # Have upper triangle shape
-                if (
-                    (
-                        for_read[1] == rev_read[1]
-                        and int(for_read[2]) <= int(rev_read[2])
-                    )
-                    or contig_data[for_read[1]]["id"]
-                    < contig_data[rev_read[1]]["id"]
-                ):
+                if (for_read[1] == rev_read[1] and int(for_read[2]) <= int(rev_read[2])) or contig_data[for_read[1]][
+                    "id"
+                ] < contig_data[rev_read[1]]["id"]:
 
-                    merged.write(
-                        for_position
-                        + rev_position
-                        + for_read[3]
-                        + "\t"
-                        + rev_read[3]
-                        + "\n"
-                    )
+                    merged.write(for_position + rev_position + for_read[3] + "\t" + rev_read[3] + "\n")
                 else:
-                    merged.write(
-                        rev_position
-                        + for_position
-                        + rev_read[3]
-                        + "\t"
-                        + for_read[3]
-                        + "\n"
-                    )
+                    merged.write(rev_position + for_position + rev_read[3] + "\t" + for_read[3] + "\n")
                 n_pairs += 1
                 try:
                     for_read = next(for_bam)
@@ -504,29 +450,11 @@ def process_bamfile(alignment, min_qual, filtered_out):
                 # Check Mapping (0 or 16 flags are kept only)
                 if r.flag == 0:
                     aligned_reads += 1
-                    read = str(
-                        r.query_name
-                        + "\t"
-                        + r.reference_name
-                        + "\t"
-                        + str(r.reference_start)
-                        + "\t"
-                        + "+"
-                        + "\n"
-                    )
+                    read = str(r.query_name + "\t" + r.reference_name + "\t" + str(r.reference_start) + "\t" + "+" + "\n")
                     f.write(read)
                 elif r.flag == 16:
                     aligned_reads += 1
-                    read = str(
-                        r.query_name
-                        + "\t"
-                        + r.reference_name
-                        + "\t"
-                        + str(r.reference_start)
-                        + "\t"
-                        + "-"
-                        + "\n"
-                    )
+                    read = str(r.query_name + "\t" + r.reference_name + "\t" + str(r.reference_start) + "\t" + "-" + "\n")
                     f.write(read)
     temp_bam.close()
 
@@ -575,11 +503,7 @@ def process_bwa_bamfile(alignment, min_qual, contig_data, out_file):
         merged.write("#sorted: readID\n")
         merged.write("#shape: upper triangle\n")
         for contig in contig_data:
-            merged.write(
-                "#chromsize: {0} {1}\n".format(
-                    contig, contig_data[contig]["length"]
-                )
-            )
+            merged.write("#chromsize: {0} {1}\n".format(contig, contig_data[contig]["length"]))
 
         # Loop until the end of the file. Read the reads by two as the forward
         # and reverse reads should be interleaved.
@@ -593,10 +517,7 @@ def process_bwa_bamfile(alignment, min_qual, contig_data, out_file):
                     rev_read = next(temp_bam)
 
                 # Check mapping quality
-                if (
-                    for_read.mapping_quality >= min_qual
-                    and rev_read.mapping_quality >= min_qual
-                ):
+                if for_read.mapping_quality >= min_qual and rev_read.mapping_quality >= min_qual:
 
                     # Check flag
                     if not (for_read.is_unmapped or rev_read.is_unmapped):
@@ -604,9 +525,7 @@ def process_bwa_bamfile(alignment, min_qual, contig_data, out_file):
 
                         # Safety check (forward and reverse are the same reads)
                         if for_read.query_name != rev_read.query_name:
-                            logger.error(
-                                f"Reads should be paired - {for_read.query_name}\t{rev_read.query_name}"
-                            )
+                            logger.error(f"Reads should be paired - {for_read.query_name}\t{rev_read.query_name}")
                             raise ValueError
 
                         # Define pairs value.
@@ -624,9 +543,7 @@ def process_bwa_bamfile(alignment, min_qual, contig_data, out_file):
 
                         # Modify order to have an upper triangle and write
                         # the pair.
-                        if (contig1 == contig2 and pos1 <= pos2) or contig_data[
-                            contig1
-                        ]["id"] < contig_data[contig2]["id"]:
+                        if (contig1 == contig2 and pos1 <= pos2) or contig_data[contig1]["id"] < contig_data[contig2]["id"]:
                             merged.write(
                                 "\t".join(
                                     [

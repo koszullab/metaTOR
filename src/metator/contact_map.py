@@ -97,12 +97,8 @@ class MetatorObject:
         except KeyError:
             logger.error("The object that you gave is not in the table.")
             raise ValueError
-        self.contigs = list(
-            contigs_data["Name"][contigs_data[self.object] == self.name]
-        )
-        self.contigs_size = list(
-            contigs_data["Size"][contigs_data[self.object] == self.name]
-        )
+        self.contigs = list(contigs_data["Name"][contigs_data[self.object] == self.name])
+        self.contigs_size = list(contigs_data["Size"][contigs_data[self.object] == self.name])
 
     def set_large_contigs(self):
         """Method to keep only contigs bigger than the threshold given to remove
@@ -114,9 +110,7 @@ class MetatorObject:
             if value >= self.min_size:
                 self.large_contigs.append(self.contigs[index])
         self.contigs = self.large_contigs
-        self.contigs_size = [
-            size for size in self.contigs_size if size >= self.min_size
-        ]
+        self.contigs_size = [size for size in self.contigs_size if size >= self.min_size]
 
     def set_metator_object(self, metator_object, name):
         """Method to get the metator object and name of the object usable for
@@ -176,9 +170,7 @@ class MetatorObject:
                     )
                     raise ValueError from object_no_exist
                 if int(self.name) <= 0:
-                    logger.error(
-                        "A recursive bin should have an id bigger than 0."
-                    )
+                    logger.error("A recursive bin should have an id bigger than 0.")
         elif metator_object == "final_bin":
             self.object = "Final_bin"
             self.name = name
@@ -209,9 +201,7 @@ class MetatorObject:
             for contig_name in self.contigs:
                 file.write("%s\n" % contig_name)
         # Extract contigs from the fastq.
-        cmd = "pyfastx extract {0} -l {1} > {2}".format(
-            self.assembly, contigs_list, self.fasta
-        )
+        cmd = "pyfastx extract {0} -l {1} > {2}".format(self.assembly, contigs_list, self.fasta)
         process = sp.Popen(cmd, shell=True)
         process.communicate()
 
@@ -238,13 +228,12 @@ def extract_pairs(metator_data):
     with open(output_file, "w") as output_pairs:
         # Write the header of the output pairs
         output_pairs.write("## pairs format v1.0\n")
-        output_pairs.write(
-            "#columns: readID chr1 pos1 chr2 pos2 strand1 strand2\n"
-        )
+        output_pairs.write("#columns: readID chr1 pos1 chr2 pos2 strand1 strand2\n")
         for contig_id, contig in enumerate(metator_data.contigs):
             output_pairs.write(
                 "#chromsize: {0} {1}\n".format(
-                    contig, metator_data.contigs_size[contig_id],
+                    contig,
+                    metator_data.contigs_size[contig_id],
                 )
             )
         for pairs_file in metator_data.pairs_files:
@@ -335,9 +324,7 @@ def generate_contact_map(
 
     # Extract bin information from metaTOR outdir.
     logger.info("Generate HiC contact map for %s", name)
-    metator_data = MetatorObject(
-        metator_object, name, assembly, contig_data_file, pairs, min_size
-    )
+    metator_data = MetatorObject(metator_object, name, assembly, contig_data_file, pairs, min_size)
     metator_data.set_contigs()
     if min_size > 0:
         metator_data.set_large_contigs()

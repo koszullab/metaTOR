@@ -297,7 +297,7 @@ def create_contig_data(assembly, nb_alignment=1, depth_file=None, enzyme=None):
                 contig_data[contig.id] = {
                     "id": global_id,
                     "length": int(line[1]),
-                    "GC": SeqUtils.GC(contig.seq),
+                    "GC": SeqUtils.gc_fraction(contig.seq)*100,
                     "hit": 0,
                     "coverage": float(line[2]),
                     "RS": (len(re.findall(pattern, str(contig.seq))) + 1)
@@ -315,7 +315,7 @@ def create_contig_data(assembly, nb_alignment=1, depth_file=None, enzyme=None):
             contig_data[contig.id] = {
                 "id": global_id,
                 "length": len(contig.seq),
-                "GC": SeqUtils.GC(contig.seq),
+                "GC": SeqUtils.gc_fraction(contig.seq)*100,
                 "hit": 0,
                 "coverage": "-",
                 "RS": (len(re.findall(pattern, str(contig.seq))) + 1)

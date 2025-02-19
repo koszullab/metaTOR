@@ -3,6 +3,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.4] - 2025-02-19
+- Package now relies on `pyproject.toml` for build configuration with `hatch`. 
+- Binaries for `louvain` and `leiden` clustering algorithms are now embedded in the package.
+- Uses pre-commit hooks for code formatting and linting.
+- Fix deprecated Bio.SeqUtils.GC to Bio.SeqUtils.gc_fraction.
+- `Biopython` is pinned <= 1.80 to work with `micomplete 1.1.1`.
+
 ## [1.3.3] - 2023-11-27
 - Improve ci.
 - Add pairix as requirements.

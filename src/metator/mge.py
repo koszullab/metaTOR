@@ -26,6 +26,7 @@ Core function to partition mges contigs:
 import checkv
 import metator.figures as mtf
 import metator.io as mio
+import networkx
 import numpy as np
 import pandas as pd
 import pypairix
@@ -126,7 +127,7 @@ def build_matrix(
 def build_mge_depth(
     contigs_file: str,
     depth_file: str,
-    mges_data: "pandas.DataFrame",
+    mges_data: pd.DataFrame,
     mge_depth_file: str,
 ):
     """Build mge depth form the whole assembly depth file from metabat script.
@@ -241,8 +242,8 @@ def generate_bin_summary(
 
 
 def generate_mge_bins_metabat(
-    mges_data: "pandas.DataFrame",
-) -> "pandas.DataFrame":
+    mges_data: pd.DataFrame,
+) -> pd.DataFrame:
     """Generates the binning of the mges contigs based on both HiC
     information (host detection) and the coverage and sequences information
     (metabat2 binning).
@@ -293,10 +294,10 @@ def generate_mge_bins_metabat(
 
 
 def generate_mge_bins_pairs(
-    mges_data: "pandas.DataFrame",
+    mges_data: pd.DataFrame,
     pairs_files: List[str],
     threshold: float = 0.8,
-) -> Tuple["pandas.DataFrame", dict]:
+) -> Tuple[pd.DataFrame, dict]:
     """Generates the binning of the mges contigs based on both HiC
     information (host detection) and the coverage and sequences information
     (metabat2 binning).
@@ -397,8 +398,8 @@ def mge_binning(
     checkv_db: str,
     depth_file: str,
     fasta_mges_contigs: str,
-    network: "networkx.classes.graph.Graph",
-    contigs_data: "pandas.DataFrame",
+    network: networkx.classes.graph.Graph,
+    contigs_data: pd.DataFrame,
     mges_list_id: List[int],
     out_dir: str,
     pairs_files: List[str],
@@ -687,7 +688,7 @@ def run_metabat(
     outfile: str,
     mge_depth_file: str,
     temp_fasta: str,
-) -> "pandas.DataFrame":
+) -> pd.DataFrame:
     """Function to launch metabat binning which is based on sequence and
     coverage information.
 
@@ -736,8 +737,8 @@ def run_metabat(
 
 
 def shuffle_mge_bins(
-    mges_data: "pandas.DataFrame",
-) -> Tuple["pandas.DataFrame", dict]:
+    mges_data: pd.DataFrame,
+) -> Tuple[pd.DataFrame, dict]:
     """Function to shuffle id to imitate a random binning with the same bins
     distribution as the one created by Metator MGE.
 
@@ -776,8 +777,8 @@ def shuffle_mge_bins(
 
 
 def update_mge_data(
-    mges_data: "pandas.DataFrame", bins: List[Tuple]
-) -> "pandas.DataFrame":
+    mges_data: pd.DataFrame, bins: List[Tuple]
+) -> pd.DataFrame:
     """Function to update the mge bins data.
 
     Parameters

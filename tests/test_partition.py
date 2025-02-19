@@ -1,13 +1,14 @@
 # Test for partition module
 
+import os
 import metator.io as mio
 import metator.partition as mtp
 import networkx as nx
 import numpy as np
-import os
 import pandas as pd
 import pytest
 import shutil
+from . import LEIDEN_PATH, LOUVAIN_PATH
 
 assembly = "tests_data/assembly.fa"
 network_file = "tests_data/outdir/network.txt"
@@ -15,20 +16,15 @@ iterations = 5
 resolution_parameter = 0.9
 spins = 2
 threads = 8
-LEIDEN_PATH = os.environ["LEIDEN_PATH"]
-LOUVAIN_PATH = os.environ["LOUVAIN_PATH"]
+
 overlapping_parameter = 0.6
 
 tmp_dir = "tmp_partition_clustering"
 os.makedirs(tmp_dir, exist_ok=True)
-partition = mtp.louvain_iterations_cpp(
-    network_file, iterations, tmp_dir, LOUVAIN_PATH
-)
+partition = mtp.louvain_iterations_cpp(network_file, iterations, tmp_dir, LOUVAIN_PATH)
 shutil.rmtree(tmp_dir)
 
-contigs_data = pd.read_csv(
-    "tests_data/outdir/contig_data_partition.txt", sep="\t"
-)
+contigs_data = pd.read_csv("tests_data/outdir/contig_data_partition.txt", sep="\t")
 output_partition = {
     1: "0;13;0;10;5",
     2: "0;6;3;10;5",
@@ -93,9 +89,7 @@ def test_algo_partition():
     # Test algo partition choice.
     tmp_dir = "tmp_partition_partition"
     os.makedirs(tmp_dir, exist_ok=True)
-    network = nx.read_edgelist(
-        network_file, nodetype=int, data=(("weight", float),)
-    )
+    network = nx.read_edgelist(network_file, nodetype=int, data=(("weight", float),))
     subnetwork = network.subgraph(np.arange(1, 5))
     for algorithm in ["louvain", "leiden", "error"]:
         try:
@@ -135,9 +129,7 @@ def test_defined_overlapping_bins():
 
 def test_detect_core_bins():
     # Test core bin detection.
-    cc_contigs, cc_iterations = mtp.detect_core_bins(
-        output_partition, iterations
-    )
+    cc_contigs, cc_iterations = mtp.detect_core_bins(output_partition, iterations)
     assert cc_contigs == core_bins_contigs
     assert (cc_iterations == core_bins_iterations).all().all()
 
@@ -161,9 +153,7 @@ def test_generate_fasta():
 
 def test_get_distances_splitmat():
     # Test hamming distance computation worker.
-    x = mtp.get_distances_splitmat(
-        core_bins_iterations[0:1], core_bins_iterations
-    )
+    x = mtp.get_distances_splitmat(core_bins_iterations[0:1], core_bins_iterations)
     assert np.sum(x.data) == pytest.approx(1.8, abs=1e-5)
     assert x.shape == (8, 1)
     assert x.nnz == 3
@@ -181,9 +171,7 @@ def test_leiden_iterations_java():
     # Test leiden partition.
     tmp_dir = "tmp_partition_clustering"
     os.makedirs(tmp_dir, exist_ok=True)
-    partition = mtp.leiden_iterations_java(
-        network_file, iterations, resolution_parameter, tmp_dir, LEIDEN_PATH
-    )
+    partition = mtp.leiden_iterations_java(network_file, iterations, resolution_parameter, tmp_dir, LEIDEN_PATH)
     _val = int(partition[1].split(";")[0])
     assert len(partition) == 1058
     assert len(partition[1].split(";")) == iterations
@@ -197,8 +185,7 @@ def test_louvain_iterations_cpp():
     assert len(partition[1].split(";")) == iterations
 
 
-def test_partition():
-    ...
+def test_partition(): ...
 
 
 def test_remove_isolates():
@@ -208,9 +195,7 @@ def test_remove_isolates():
         try:
             partition1[i] = partition[i]
         except KeyError:
-            partition1[i] = ";".join(
-                map(str, map(int, np.ones(iterations) * i))
-            )
+            partition1[i] = ";".join(map(str, map(int, np.ones(iterations) * i)))
     partition2 = mtp.remove_isolates(partition1, network_file)
     assert partition2 == partition
 

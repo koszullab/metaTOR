@@ -15,82 +15,79 @@ Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that
   <img src="docs/example/images/metator_logo.png" width="200">
 </p>
 
-## Table of contents
-
-1. [MetaTOR](#metator)
-   1. [Table of contents](#table-of-contents)
-   2. [Installation](#installation)
-      1. [Requirements](#requirements)
-      2. [Using pip](#using-pip)
-      3. [Using conda](#using-conda)
-      4. [Louvain or Leiden dependency](#louvain-or-leiden-dependency)
-      5. [Using docker container](#using-docker-container)
-   3. [Usage](#usage)
-   4. [Output files](#output-files)
-   5. [References](#references)
-   6. [Contact](#contact)
-      1. [Authors](#authors)
-      2. [Research lab](#research-lab)
+1. [Installation](#installation)
+   1. [Using micromamba](#using-micromamba)
+   2. [Using pip](#using-pip)
+2. [Usage](#usage)
+3. [Output files](#output-files)
+4. [References](#references)
+5. [Contact](#contact)
+   1. [Authors](#authors)
+   2. [Research lab](#research-lab)
 
 ## Installation
 
-### Requirements
+### Using micromamba
 
-* Python `3.8` to `3.10` or later is required.
-* The following librairies are required but will be automatically installed with the pip installation: `numpy`, `scipy`, `sklearn`, `pandas`, `docopt`, `networkx` `biopython` `pyfastx`, `pysam`, `micomplete` and `pairix`.
-* The following software should be installed separately if you used the pip installation:
-  * [bowtie2](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml)
-  * [samtools](http://www.htslib.org/)
-  * [louvain](https://sourceforge.net/projects/louvain/) (original
-        implementation).
-  * [networkanalysis](https://github.com/vtraag/networkanalysis) (not
-    necessary only if you want to use Leiden algorithm to partition the network)
+`conda` is the recommended way to install the latest `metator` release:
+
+```sh
+conda create -n metator bioconda::metator
+```
 
 ### Using pip
 
+**Note:** while `metator` is available from Pypi, several additional libraries are 
+not available from Pypi and must be installed separately. Please consider the following 
+before installing `metator`:
+
+* Python `3.9` to `3.11` is required.
+* The following dependencies should also be locally installed and available in the `$PATH`:
+    * [`bowtie2`](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml) or `bwa`
+    * [`pairix`](https://github.com/4dn-dcic/pairix)
+    * [`samtools`](https://www.htslib.org/download/)
+    * [`hmmer`](http://hmmer.org/documentation.html)
+    * [`prodigal`](https://github.com/hyattpd/Prodigal)
+    * [`java`](https://www.oracle.com/java/technologies/downloads/)
+
+* The following non-pythonic librairies are **embedded** when installing `metator` with `pip`: [`louvain 0.3`](https://sourceforge.net/projects/louvain/files/GenericLouvain/) and [`leiden 1.3.0`](https://github.com/CWTSLeiden/networkanalysis).
+
 ```sh
+# Install bowtie2, sameools, hmmer, prodigal and java-jdk:
+sudo apt update && sudo apt install bowtie samtools hmmer prodigal default-jdk
+
+# Also install pairix:
+wget https://github.com/4dn-dcic/pairix/archive/refs/tags/0.3.9.zip -O pairix-0.3.9.zip
+unzip pairix-0.3.9.zip
+mv pairix-0.3.9 ~/.local/lib/pairix
+cd ~/.local/lib/pairix
+make
+chmod +x bin/pairix
+echo 'export PATH=$PATH:~/.local/lib/pairix/bin' >> ~/.bashrc
+
+# Install metator from Pypi
 pip3 install metator
 ```
 
-or, to use the latest version:
+To use the development version:
 
 ```sh
-pip3 install -e git+https://github.com/koszullab/metator.git@master#egg=metator
+# Install bowtie2, sameools, hmmer, prodigal, java-jdk and pairix, see above
+
+git clone https://github.com/koszullab/metator
+cd metator
+pip3 install -e .[dev]
 ```
 
-### Using conda
-
-```sh
-conda create -n metator -y --log-level warning -f metator.yaml
-```
-
-### Louvain or Leiden dependency
-
-In order to use Louvain or Leiden it's necessary to set a global variable `LOUVAIN_PATH` and `LEIDEN_PATH` depending on which algorithm you wan to use with the absolute path where the executable are.
-
-For Louvain algorithm in the directory where you have the archive file (available in the external directory of this repository):
-
-```sh
-YOUR_DIRECTORY=$(pwd)
-tar -xvzf louvain-generic.tar.gz
-cd gen-louvain
-make
-export LOUVAIN_PATH=$YOUR_DIRECTORY/gen-louvain/
-```
-
-For Leiden algorithm, clone the networkanalysis repository from github and build the Java script. Then you can export the Leiden path:
-
-```sh
-export LEIDEN_PATH=/networkanalysis_repository_path/build/libs/networkanalysis-1.2.0.jar
-```
-
+<!-- 
 ### Using docker container
 
 A dockerfile is also available if that is of interest. You may fetch the image by running the following:
 
 ```sh
 docker pull koszullab/metator
-```
+``` 
+-->
 
 ## Usage
 
@@ -211,6 +208,7 @@ This is the summary of the data of the final bins build with all the step of met
 ### Authors
 
 * amaury.bignaud@pasteur.fr
+* jacques.serizay@pasteur.fr
 * lyam.baudry@pasteur.fr
 * thfoutel@pasteur.fr
 * martial.marbouty@pasteur.fr

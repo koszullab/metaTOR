@@ -155,7 +155,7 @@ class Subnetwork:
 def associate_bin(
     bin_contigs: dict,
     network: "networkx.classes.graph.Graph",
-    contig_data: "pandas.DataFrame",
+    contig_data: pd.DataFrame,
     threshold: float,
 ) -> dict:
     """Function to associate one bin to one MAG.
