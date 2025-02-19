@@ -33,7 +33,7 @@ jobs:
         with:
             environment-file: metator.yaml
             init-shell: bash
-            cache-environment: true
+            cache-environment: false
             post-cleanup: 'none'
             generate-run-shell: true
             create-args: >-

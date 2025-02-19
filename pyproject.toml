@@ -34,7 +34,7 @@ dependencies = [
     "hicstuff",
     "networkx",
     "checkv",
-    "biopython==1.80",
+    "biopython<=1.80",
     "pysam",
     "pairtools",
     "pyfastx",
@@ -44,11 +44,18 @@ dependencies = [
     "scikit-learn",
     "scipy",
     "seaborn",
-    "pypairix",
-    "bgzip", 
-    "looseversion",
-    "docopt",
-    "micomplete==1.1.1"
+    "micomplete"
+
+    # NON PIP DEPENDENCIES
+
+    #"bowtie2"
+    #"pairix"
+    #"bwa"
+    #"samtools"
+    #"prodigal"
+    #"hmmer"
+    #"gcc"
+    #"java-jdk"
 ]
 
 [project.optional-dependencies]

@@ -8,10 +8,9 @@ dependencies:
   - hicstuff
   - networkx
   - checkv
-  - biopython
+  - biopython<=1.80
   - pysam
   - pairtools
-  - pairix
   - pyfastx
   - cooler
   - numpy
@@ -20,6 +19,7 @@ dependencies:
   - scipy
   - seaborn
   - bowtie2
+  - pairix
   - bwa
   - samtools
   - prodigal
@@ -27,5 +27,5 @@ dependencies:
   - gcc
   - java-jdk
   - pip:
-    - micomplete==1.1.1
+    - micomplete
     - metator

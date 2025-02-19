@@ -16,9 +16,8 @@ Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that
 </p>
 
 1. [Installation](#installation)
-   1. [Requirements](#requirements)
+   1. [Using micromamba](#using-micromamba)
    2. [Using pip](#using-pip)
-   3. [Using micromamba](#using-micromamba)
 2. [Usage](#usage)
 3. [Output files](#output-files)
 4. [References](#references)
@@ -28,46 +27,56 @@ Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that
 
 ## Installation
 
-### Requirements
+### Using micromamba
 
-* Python `3.9` to `3.11` is required.
-* If `metator` is installed with `pip`, the following dependencies should also be locally installed and available in the `$PATH`:
-    * [`bowtie2`](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml) or `bwa`
-    * `pairix`
-    * `samtools`
-    * `hmmer`
-    * `prodigal`
-    * `bgzip` 
-    * `java`
-* The following non-pythonic librairies are **embedded** when installing `metator` with `pip`: [`louvain 0.3`](https://sourceforge.net/projects/louvain/files/GenericLouvain/), [`leiden 1.3.0`](https://github.com/CWTSLeiden/networkanalysis) and [`pairix 0.3.9`](https://github.com/4dn-dcic/pairix).
+`conda` is the recommended way to install the latest `metator` release:
+
+```sh
+conda create -n metator bioconda::metator
+```
 
 ### Using pip
 
-`pip` is the recommended way to install the latest `metator` release:
+**Note:** while `metator` is available from Pypi, several additional libraries are 
+not available from Pypi and must be installed separately. Please consider the following 
+before installing `metator`:
+
+* Python `3.9` to `3.11` is required.
+* The following dependencies should also be locally installed and available in the `$PATH`:
+    * [`bowtie2`](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml) or `bwa`
+    * [`pairix`](https://github.com/4dn-dcic/pairix)
+    * [`samtools`](https://www.htslib.org/download/)
+    * [`hmmer`](http://hmmer.org/documentation.html)
+    * [`prodigal`](https://github.com/hyattpd/Prodigal)
+    * [`java`](https://www.oracle.com/java/technologies/downloads/)
+
+* The following non-pythonic librairies are **embedded** when installing `metator` with `pip`: [`louvain 0.3`](https://sourceforge.net/projects/louvain/files/GenericLouvain/) and [`leiden 1.3.0`](https://github.com/CWTSLeiden/networkanalysis).
 
 ```sh
+# Install bowtie2, sameools, hmmer, prodigal and java-jdk:
+sudo apt update && sudo apt install bowtie samtools hmmer prodigal default-jdk
+
+# Also install pairix:
+wget https://github.com/4dn-dcic/pairix/archive/refs/tags/0.3.9.zip -O pairix-0.3.9.zip
+unzip pairix-0.3.9.zip
+mv pairix-0.3.9 ~/.local/lib/pairix
+cd ~/.local/lib/pairix
+make
+chmod +x bin/pairix
+echo 'export PATH=$PATH:~/.local/lib/pairix/bin' >> ~/.bashrc
+
+# Install metator from Pypi
 pip3 install metator
-# Also install bowtie2, hmmer and prodigal: 
-# sudo apt update && sudo apt install bowtie2 hmmer prodigal
 ```
 
 To use the development version:
 
 ```sh
+# Install bowtie2, sameools, hmmer, prodigal, java-jdk and pairix, see above
+
 git clone https://github.com/koszullab/metator
 cd metator
 pip3 install -e .[dev]
-# Also install bowtie2, hmmer and prodigal: 
-# sudo apt update && sudo apt install bowtie2 hmmer prodigal
-```
-
-### Using micromamba
-
-If end-users prefer to install `metator` through `conda`, this will take care 
-of all needed dependencies. 
-
-```sh
-conda create -n metator bioconda::metator
 ```
 
 <!-- 
