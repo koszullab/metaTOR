@@ -19,6 +19,8 @@ Core function to build the network are:
 import csv
 import numpy as np
 import re
+from packaging import version
+import Bio
 from Bio import SeqIO
 from Bio import SeqUtils
 from os.path import join, basename
@@ -294,10 +296,14 @@ def create_contig_data(assembly, nb_alignment=1, depth_file=None, enzyme=None):
             line = depth.readline()
             for contig in SeqIO.parse(assembly, "fasta"):
                 line = depth.readline().split("\t")
+                if version.parse(Bio.__version__) >= version.parse("1.80"):
+                    gc_content = int(SeqUtils.gc_fraction(contig.seq) * 100 * 10**13) / 10**13
+                else:
+                    gc_content = int(SeqUtils.GC(contig.seq) * 10**13) / 10**13
                 contig_data[contig.id] = {
                     "id": global_id,
                     "length": int(line[1]),
-                    "GC": SeqUtils.gc_fraction(contig.seq)*100,
+                    "GC": gc_content,
                     "hit": 0,
                     "coverage": float(line[2]),
                     "RS": (len(re.findall(pattern, str(contig.seq))) + 1)
@@ -312,10 +318,14 @@ def create_contig_data(assembly, nb_alignment=1, depth_file=None, enzyme=None):
                 global_id += 1
     else:
         for contig in SeqIO.parse(assembly, "fasta"):
+            if version.parse(Bio.__version__) >= version.parse("1.80"):
+                gc_content = int(SeqUtils.gc_fraction(contig.seq) * 100 * 10**13) / 10**13
+            else:
+                gc_content = int(SeqUtils.GC(contig.seq) * 10**13) / 10**13
             contig_data[contig.id] = {
                 "id": global_id,
                 "length": len(contig.seq),
-                "GC": SeqUtils.gc_fraction(contig.seq)*100,
+                "GC": gc_content,
                 "hit": 0,
                 "coverage": "-",
                 "RS": (len(re.findall(pattern, str(contig.seq))) + 1)
