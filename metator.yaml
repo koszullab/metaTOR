@@ -8,7 +8,7 @@ dependencies:
   - hicstuff
   - networkx
   - checkv
-  - biopython<=1.80
+  - biopython
   - pysam
   - pairtools
   - pyfastx
