@@ -4,7 +4,6 @@
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/metator.svg)
 [![Build Status](https://github.com/koszullab/metator/actions/workflows/ci.yml/badge.svg)](https://github.com/koszullab/metaTOR/actions)
 [![codecov](https://codecov.io/gh/koszullab/metator/branch/master/graph/badge.svg)](https://codecov.io/gh/koszullab/metator)
-<!-- [![Docker Cloud Build Status](https://img.shields.io/docker/cloud/build/koszullab/metator)](https://hub.docker.com/r/koszullab/metator) -->
 [![Read the docs](https://readthedocs.org/projects/metator/badge)](https://metator.readthedocs.io)
 [![License: GPLv3](https://img.shields.io/badge/License-GPL%203-0298c3.svg)](https://opensource.org/licenses/bo-3.0)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black)
@@ -44,7 +43,6 @@ before installing `metator`:
 * Python `3.9` to `3.11` is required.
 * The following dependencies should also be locally installed and available in the `$PATH`:
     * [`bowtie2`](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml) or `bwa`
-    * [`pairix`](https://github.com/4dn-dcic/pairix)
     * [`samtools`](https://www.htslib.org/download/)
     * [`hmmer`](http://hmmer.org/documentation.html)
     * [`prodigal`](https://github.com/hyattpd/Prodigal)
@@ -53,17 +51,8 @@ before installing `metator`:
 * The following non-pythonic librairies are **embedded** when installing `metator` with `pip`: [`louvain 0.3`](https://sourceforge.net/projects/louvain/files/GenericLouvain/) and [`leiden 1.3.0`](https://github.com/CWTSLeiden/networkanalysis).
 
 ```sh
-# Install bowtie2, sameools, hmmer, prodigal and java-jdk:
+# Install bowtie2, samtools, hmmer, prodigal and java-jdk:
 sudo apt update && sudo apt install bowtie2 samtools hmmer prodigal default-jdk
-
-# Also install pairix:
-wget https://github.com/4dn-dcic/pairix/archive/refs/tags/0.3.9.zip -O pairix-0.3.9.zip
-unzip pairix-0.3.9.zip
-mv pairix-0.3.9 ~/.local/lib/pairix
-cd ~/.local/lib/pairix
-make
-chmod +x bin/pairix
-echo 'export PATH=$PATH:~/.local/lib/pairix/bin' >> ~/.bashrc
 
 # Install metator from Pypi
 pip3 install metator
@@ -72,7 +61,7 @@ pip3 install metator
 To use the development version:
 
 ```sh
-# Install bowtie2, sameools, hmmer, prodigal, java-jdk and pairix, see above
+# Install bowtie2, sameools, hmmer, prodigal, java-jdk, see above
 
 git clone https://github.com/koszullab/metator
 cd metator

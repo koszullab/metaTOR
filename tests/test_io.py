@@ -22,8 +22,8 @@ def test_check_louvain_cpp():
     assert test
 
 
-def test_check_pairix():
-    test = mio.check_pairix()
+def test_check_pypairix():
+    test = mio.check_pypairix()
     assert test
 
 

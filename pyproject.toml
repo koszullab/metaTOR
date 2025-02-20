@@ -45,11 +45,11 @@ dependencies = [
     "scipy",
     "seaborn",
     "looseversion",
-    "micomplete"
+    "micomplete",
+    "pypairix"
 
     # NON PIP DEPENDENCIES
     #"bowtie2"
-    #"pairix"
     #"bwa"
     #"samtools"
     #"prodigal"

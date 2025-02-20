@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ## Purge existing artifacts (required for local rebuild)
-rm -rf artifacts/ gen-louvain/ pairix/ bowtie2/ networkanalysis/
+rm -rf artifacts/ gen-louvain/ bowtie2/ networkanalysis/
 
 ## Install louvain
 tar -k -xzf louvain-generic.tar.gz
@@ -14,16 +14,6 @@ cd ..
 mkdir -p networkanalysis/build/libs/
 cp networkanalysis-1.3.0.jar networkanalysis/build/libs/
 
-## Install pairix
-# wget https://github.com/4dn-dcic/pairix/archive/refs/tags/0.3.9.zip -O pairix-0.3.9.zip
-# zip -d pairix-0.3.9.zip "pairix-0.3.9/samples/*"
-# unzip pairix-0.3.9.zip
-# mv pairix-0.3.9 pairix
-# cd pairix
-# make
-# chmod +x bin/pairix
-# cd ..
-
 # ## Install bowtie2
 # wget https://sourceforge.net/projects/bowtie-bio/files/bowtie2/2.5.1/bowtie2-2.5.1-source.zip/download -O bowtie2-2.5.1-source.zip
 # zip -d bowtie2-2.5.1-source.zip "bowtie2-2.5.1/example/*"
@@ -34,10 +24,9 @@ cp networkanalysis-1.3.0.jar networkanalysis/build/libs/
 # cd ..
 
 ## Move artifacts to the correct location
-mkdir -p artifacts/networkanalysis/build artifacts/pairix artifacts/bowtie2/bin
+mkdir -p artifacts/networkanalysis/build artifacts/bowtie2/bin
 mv gen-louvain/ artifacts/
 mv networkanalysis/build artifacts/networkanalysis/
-# mv pairix/* artifacts/pairix/
 # mv bowtie2/bowtie2* artifacts/bowtie2/bin/
 
-rm -rf gen-louvain/ pairix/ bowtie2/ networkanalysis/
+rm -rf gen-louvain/ bowtie2/ networkanalysis/

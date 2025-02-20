@@ -68,14 +68,14 @@ def build_matrix(
     mat = np.zeros((n, n))
     # Write one pair file for all the ones given.
     for pairs_file in pairs_files:
-        # Check if the pairix index exist
+        # Check if the pypairix index exist
         try:
             pairs_data = pypairix.open(pairs_file)
             pypairix_index = True
         except pypairix.PairixError:
-            logger.warning("No pairix index found. Iterates on the pairs.")
+            logger.warning("No pypairix index found. Iterates on the pairs.")
             pypairix_index = False
-        # Need a sorted (chr1 chr2 pos1 pos2) pair file indexed with pairix.
+        # Need a sorted (chr1 chr2 pos1 pos2) pair file indexed with pypairix.
         if pypairix_index:
             for i, contig in enumerate(contigs):
                 # Only need to retrieve the upper triangle.
