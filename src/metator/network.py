@@ -296,10 +296,10 @@ def create_contig_data(assembly, nb_alignment=1, depth_file=None, enzyme=None):
             line = depth.readline()
             for contig in SeqIO.parse(assembly, "fasta"):
                 line = depth.readline().split("\t")
-                if version.parse(Bio.__version__) >= version.parse("1.82"):
-                    gc_content = SeqUtils.gc_fraction(contig.seq)*100
+                if version.parse(Bio.__version__) >= version.parse("1.80"):
+                    gc_content = int(SeqUtils.gc_fraction(contig.seq) * 100 * 10**13) / 10**13
                 else:
-                    gc_content = SeqUtils.GC(contig.seq)
+                    gc_content = int(SeqUtils.GC(contig.seq) * 10**13) / 10**13
                 contig_data[contig.id] = {
                     "id": global_id,
                     "length": int(line[1]),
@@ -318,10 +318,10 @@ def create_contig_data(assembly, nb_alignment=1, depth_file=None, enzyme=None):
                 global_id += 1
     else:
         for contig in SeqIO.parse(assembly, "fasta"):
-            if version.parse(Bio.__version__) >= version.parse("1.82"):
-                gc_content = SeqUtils.gc_fraction(contig.seq)*100
+            if version.parse(Bio.__version__) >= version.parse("1.80"):
+                gc_content = int(SeqUtils.gc_fraction(contig.seq) * 100 * 10**13) / 10**13
             else:
-                gc_content = SeqUtils.GC(contig.seq)
+                gc_content = int(SeqUtils.GC(contig.seq) * 10**13) / 10**13
             contig_data[contig.id] = {
                 "id": global_id,
                 "length": len(contig.seq),
