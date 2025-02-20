@@ -44,18 +44,17 @@ dependencies = [
     "scikit-learn",
     "scipy",
     "seaborn",
+    "looseversion",
     "micomplete"
 
     # NON PIP DEPENDENCIES
-
     #"bowtie2"
     #"pairix"
     #"bwa"
     #"samtools"
     #"prodigal"
     #"hmmer"
-    #"gcc"
-    #"java-jdk"
+    #"openjdk"
 ]
 
 [project.optional-dependencies]
@@ -90,6 +89,7 @@ docs = [
 dev = [
     "metator[test,docs]",
     "hatch",
+    "hatchling", 
     "hatch-build-scripts", 
     "pre-commit",
     "mypy",

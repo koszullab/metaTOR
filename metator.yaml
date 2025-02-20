@@ -18,6 +18,7 @@ dependencies:
   - scikit-learn
   - scipy
   - seaborn
+  - looseversion
   - bowtie2
   - pairix
   - bwa
