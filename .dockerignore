@@ -1,9 +1,0 @@
-*
-Dockerfile*
-.dockerignore
-!src/*
-!external/*
-!metator.yaml
-!pyproject.toml
-!MANIFEST.in
-!README.md

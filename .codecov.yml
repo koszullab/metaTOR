@@ -4,6 +4,6 @@ coverage:
       default:
         target: auto
         threshold: 1%
-        if_ci_failed: ignore #success, failure, error, ignore
+        if_ci_failed: error #success, failure, error, ignore
         informational: false
         only_pulls: false

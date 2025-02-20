@@ -68,16 +68,6 @@ cd metator
 pip3 install -e .[dev]
 ```
 
-<!-- 
-### Using docker container
-
-A dockerfile is also available if that is of interest. You may fetch the image by running the following:
-
-```sh
-docker pull koszullab/metator
-``` 
--->
-
 ## Usage
 
 ```sh
