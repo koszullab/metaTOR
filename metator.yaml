@@ -27,6 +27,6 @@ dependencies:
   - hmmer
   - gcc
   - java-jdk
+  - micomplete
   - pip:
-    - micomplete
     - metator
