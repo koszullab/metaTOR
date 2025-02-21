@@ -15,18 +15,20 @@ Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that
 </p>
 
 1. [Installation](#installation)
-   1. [Using micromamba](#using-micromamba)
-   2. [Using pip](#using-pip)
+   1. [With conda](#with-conda)
+   2. [With pip](#with-pip)
+   3. [Development version](#development-version)
 2. [Usage](#usage)
 3. [Output files](#output-files)
-4. [References](#references)
-5. [Contact](#contact)
+4. [Contributions](#contributions)
+5. [References](#references)
+6. [Contact](#contact)
    1. [Authors](#authors)
    2. [Research lab](#research-lab)
 
 ## Installation
 
-### Using micromamba
+### With conda
 
 `conda` is the recommended way to install the latest `metator` release:
 
@@ -34,7 +36,7 @@ Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that
 conda create -n metator bioconda::metator
 ```
 
-### Using pip
+### With pip
 
 **Note:** while `metator` is available from Pypi, several additional libraries are 
 not available from Pypi and must be installed separately. Please consider the following 
@@ -50,6 +52,9 @@ before installing `metator`:
 
 * The following non-pythonic librairies are **embedded** when installing `metator` with `pip`: [`louvain 0.3`](https://sourceforge.net/projects/louvain/files/GenericLouvain/) and [`leiden 1.3.0`](https://github.com/CWTSLeiden/networkanalysis).
 
+**Warning:** note that if you install `metator` with `pip`, this may upgrade/downgrade 
+versions of the above dependencies and may cause conflicts with other softwares.
+
 ```sh
 # Install bowtie2, samtools, hmmer, prodigal and java-jdk:
 sudo apt update && sudo apt install bowtie2 samtools hmmer prodigal default-jdk
@@ -58,11 +63,11 @@ sudo apt update && sudo apt install bowtie2 samtools hmmer prodigal default-jdk
 pip3 install metator
 ```
 
-To use the development version:
+### Development version 
+
+You can upgrade `metator` version to the development version as follows: 
 
 ```sh
-# Install bowtie2, sameools, hmmer, prodigal, java-jdk, see above
-
 git clone https://github.com/koszullab/metator
 cd metator
 pip3 install -e .[dev]
@@ -175,6 +180,10 @@ This is the summary of the data of the final bins build with all the step of met
 |MetaTOR_8_1|o__Clostridiales|68.29|2.46|1431612|15|116129|291620|26.36|87.97|k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales|146.46719755483332|
 |MetaTOR_8_2|o__Clostridiales|58.42|2.01|1396934|58|41290|174682|28.89|83.70|k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales|22.252416224710686|
 |MetaTOR_8_3|o__Clostridiales|49.37|0.94|1420821|82|33095|89964|30.29|83.24|k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales;f__Peptostreptococcaceae_3;g__Clostridium_3|44.27369196532141|
+
+## Contributions 
+
+We welcome contributions to the project. Please refer to the [CONTRIBUTING.md](CONTRIBUTING.md) file for more information.
 
 ## References
 

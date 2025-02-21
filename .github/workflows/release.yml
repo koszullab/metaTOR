@@ -60,7 +60,6 @@ jobs:
   Release:
 
     needs: Test
-    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
 
     steps:
