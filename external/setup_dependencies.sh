@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ## Purge existing artifacts (required for local rebuild)
-rm -rf artifacts/ gen-louvain/ bowtie2/ networkanalysis/
+rm -rf ../bin/ gen-louvain/ bowtie2/ networkanalysis/
 
 ## Install louvain
 tar -k -xzf louvain-generic.tar.gz
@@ -24,9 +24,12 @@ cp networkanalysis-1.3.0.jar networkanalysis/build/libs/
 # cd ..
 
 ## Move artifacts to the correct location
-mkdir -p artifacts/networkanalysis/build artifacts/bowtie2/bin
-mv gen-louvain/ artifacts/
-mv networkanalysis/build artifacts/networkanalysis/
-# mv bowtie2/bowtie2* artifacts/bowtie2/bin/
+mkdir -p ../bin/
+mv gen-louvain/louvain ../bin/
+mv gen-louvain/convert ../bin/
+mv gen-louvain/hierarchy ../bin/
+mv gen-louvain/matrix ../bin/
+mv networkanalysis/build/libs/networkanalysis-1.3.0.jar ../bin/networkanalysis-1.3.0.jar
+# mv bowtie2/bowtie2* ../bin/bowtie2/bin/
 
 rm -rf gen-louvain/ bowtie2/ networkanalysis/

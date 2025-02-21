@@ -114,13 +114,13 @@ path = "src/metator/version.py"
 allow-direct-references = true
 
 [[tool.hatch.build.hooks.build-scripts.scripts]]
-out_dir = "external/artifacts/"
+out_dir = "bin/"
 work_dir = "external"
 commands = ["bash setup_dependencies.sh"]
 artifacts = []
 
 [tool.hatch.build.force-include]
-"external/artifacts" = "metator/external/artifacts"
+"bin" = "metator/bin"
 
 [tool.black]
 line-length = 130
