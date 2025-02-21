@@ -1,7 +1,12 @@
-
 # Change Log
 
 All notable changes to this project will be documented in this file.
+
+## [1.3.6] - 2025-02-21
+- Prepare for bioconda release.
+- Only rely on python `pypairix` package (installable from pip). 
+- Binaries are now put into `./bin` instead of `./external/artifacts/`. 
+- micomplete is now avaible from `bioconda`. 
 
 ## [1.3.4] - 2025-02-19
 - Package now relies on `pyproject.toml` for build configuration with `hatch`. 
