@@ -1,11 +1,12 @@
 #!/bin/bash
 
 ## Purge existing artifacts (required for local rebuild)
-rm -rf ../bin/ gen-louvain/ bowtie2/ networkanalysis/
+rm -rf ../bin/ gen-louvain/ networkanalysis/
 
 ## Install louvain
 tar -k -xzf louvain-generic.tar.gz
 cd gen-louvain
+sed -i 's/^CXX=g++/#&/' Makefile
 make
 cd ..
 
@@ -14,15 +15,6 @@ cd ..
 mkdir -p networkanalysis/build/libs/
 cp networkanalysis-1.3.0.jar networkanalysis/build/libs/
 
-# ## Install bowtie2
-# wget https://sourceforge.net/projects/bowtie-bio/files/bowtie2/2.5.1/bowtie2-2.5.1-source.zip/download -O bowtie2-2.5.1-source.zip
-# zip -d bowtie2-2.5.1-source.zip "bowtie2-2.5.1/example/*"
-# unzip bowtie2-2.5.1-source.zip
-# mv bowtie2-2.5.1/ bowtie2
-# cd bowtie2
-# make
-# cd ..
-
 ## Move artifacts to the correct location
 mkdir -p ../bin/
 mv gen-louvain/louvain ../bin/
@@ -30,6 +22,5 @@ mv gen-louvain/convert ../bin/
 mv gen-louvain/hierarchy ../bin/
 mv gen-louvain/matrix ../bin/
 mv networkanalysis/build/libs/networkanalysis-1.3.0.jar ../bin/networkanalysis-1.3.0.jar
-# mv bowtie2/bowtie2* ../bin/bowtie2/bin/
 
-rm -rf gen-louvain/ bowtie2/ networkanalysis/
+rm -rf gen-louvain/ networkanalysis/
