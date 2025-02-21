@@ -8,7 +8,7 @@ This mdoule contains all core I/O functions:
     - check_fasta_index
     - check_is_fasta
     - check_louvain_cpp
-    - check_pairix
+    - check_pypairix
     - check_pairtools
     - generate_fasta_index
     - generate_temp_dir
@@ -48,6 +48,7 @@ from Bio.Restriction import RestrictionBatch
 from metator.log import logger
 from os.path import join, exists, isfile
 from random import getrandbits
+from packaging import version
 from packaging.version import Version
 
 
@@ -177,21 +178,20 @@ def check_louvain_cpp(louvain_path):
     return True
 
 
-def check_pairix():
+def check_pypairix():
     """
-    Function to test if pairix is in the path.
+    Function to test if pypairix is available.
 
     Returns:
     --------
     bool:
-        True if pairix found in the path, False otherwise.
+        True if pypairix is available.
     """
     try:
-        pairix = sp.check_output(f"pairix --help", stderr=sp.STDOUT, shell=True)
-    except sp.CalledProcessError:
-        logger.error("Cannot find 'pairix' in your path please install it or add it in your path.")
-        raise ImportError
-        return False
+        v = version.parse(pypairix.__version__)
+    except AttributeError:
+        logger.error("Cannot find 'pypairix' installed.")
+        raise AttributeError
     return True
 
 
@@ -293,7 +293,7 @@ def get_pairs_data(pairfile, threads=1, remove=False, force=False):
     str :
         Path to the sorted and indexed pair file.
     """
-    # Check if pairix index exists, generate it otherwise.
+    # Check if pypairix index exists, generate it otherwise.
     try:
         pairs_data = pypairix.open(pairfile)
     except pypairix.PairixError:
@@ -301,7 +301,7 @@ def get_pairs_data(pairfile, threads=1, remove=False, force=False):
             pairfile_sorted = f"{os.path.splitext(pairfile)[0]}_sorted.pairs.gz"
             pairs_data = pypairix.open(pairfile_sorted)
         except pypairix.PairixError:
-            logger.warning("No pairix index found. Build the index.")
+            logger.warning("No pypairix index found. Build the index.")
             pairfile = sort_pairs_pairtools(pairfile, threads, remove, force)
             pairs_data = pypairix.open(pairfile)
     return pairs_data
@@ -771,8 +771,8 @@ def sort_pairs_pairtools(pairfile, threads=1, remove=False, force=False):
     # Extract basename of the file.
     basename = os.path.splitext(pairfile)[0]
 
-    # Test if pairix and pairtools are installed and in the path.
-    _ = check_pairix()
+    # Test if pypairix and pairtools are installed and in the path.
+    _ = check_pypairix()
     _ = check_pairtools()
 
     # Set the force parameter and delete files or raise an error accodringly.
@@ -800,9 +800,8 @@ def sort_pairs_pairtools(pairfile, threads=1, remove=False, force=False):
     process = sp.Popen(cmd, shell=True)
     _out, _err = process.communicate()
     # Indexed pairs.
-    cmd = f"set -eu ; pairix{force} {basename}_sorted.pairs.gz"
-    process = sp.Popen(cmd, shell=True)
-    _out, _err = process.communicate()
+    force_pypairix = 1 if force else 0
+    pypairix.build_index(f"{basename}_sorted.pairs.gz", force=force_pypairix)
 
     # Remove original pairfile if remove setup.
     if remove:

@@ -26,7 +26,7 @@ The subcommands are:
                 final ouptut of metaTOR.
     scaffold    Scaffold a metator bin based on pairs files.
     pairs       Sort the pairs file using pairtools. Compress them using bgzip.
-                Index them using pairix.
+                Index them using pypairix.
     host        Detect bacterial host from a metaHiC network binned by metaTOR
                 given a annotated MGE list.
     mge         Build MGE MAGs based on metagenomic binning using metabat2

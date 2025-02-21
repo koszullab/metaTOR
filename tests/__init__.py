@@ -18,6 +18,6 @@ __metator_source__ = os.path.dirname(importlib.util.find_spec("metator").origin)
 __metator_root__ = __metator_source__
 if is_editable_install():
     __metator_root__ = os.path.abspath(os.path.join(__metator_source__, "../../"))
-__leiden_dir__ = Path(__metator_root__, "external", "artifacts", "networkanalysis", "build", "libs")
-LEIDEN_PATH = str(next(__leiden_dir__.glob("networkanalysis-1.3.0*.jar")))
-LOUVAIN_PATH = str(Path(__metator_root__, "external", "artifacts", "gen-louvain"))
+__bin_dir__ = Path(__metator_root__, "bin")
+LEIDEN_PATH = str(next(__bin_dir__.glob("networkanalysis-1.3.0*.jar")))
+LOUVAIN_PATH = str(__bin_dir__)

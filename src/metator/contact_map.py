@@ -237,9 +237,9 @@ def extract_pairs(metator_data):
                 )
             )
         for pairs_file in metator_data.pairs_files:
-            # Check if the pairix index exist.
+            # Check if the pypairix index exist.
             pairs_data = mio.get_pairs_data(pairs_file)
-            # Need a sorted (chr1 chr2 pos1 pos2) pair file indexed with pairix.
+            # Need a sorted (chr1 chr2 pos1 pos2) pair file indexed with pypairix.
             for contig_id1, contig in enumerate(metator_data.contigs):
                 # Only need to retrieve the upper triangle.
                 for contig_id2 in range(contig_id1, len(metator_data.contigs)):

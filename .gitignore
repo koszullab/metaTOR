@@ -140,3 +140,4 @@ gen-louvain/
 networkanalysis/
 pairix/
 bowtie2/
+bin/

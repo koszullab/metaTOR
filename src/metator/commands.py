@@ -1372,7 +1372,7 @@ class Pairs(AbstractCommand):
     """Sort, compress and index pairs files for faster assess to the data.
 
     Sort the pairs file using pairtools. Compress them using bgzip. Index them
-    using pairix.
+    using pypairix.
 
     usage:
         pairs [--force] [--remove] [--threads=1] <pairsfile>...
