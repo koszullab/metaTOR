@@ -1,9 +1,13 @@
-name: Test and Doc
+name: Release
+
+env:
+  py: "3.11"
 
 on:
   push:
-  pull_request:
-  
+    tags:
+      - 'v*.*.*'
+
 defaults:
   run:
     shell: bash -l {0}
@@ -12,7 +16,7 @@ permissions:
   contents: write
 
 jobs:
-  
+
   Test:
     strategy:
       fail-fast: false
@@ -52,3 +56,37 @@ jobs:
           pytest --cov --cov-report=xml
           codecov
         shell: micromamba-shell {0}
+
+  Release:
+
+    needs: Test
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+
+    steps:
+    
+      - name: 🧾 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🔍 Check version
+        run: |
+          tag_version=${GITHUB_REF#refs/tags/v}
+          pkg_version=$(grep -Po '(?<=^version = ")[^"]*' pyproject.toml)
+          if [ "$tag_version" != "$pkg_version" ]; then
+            echo "Version mismatch: tag version ($tag_version) does not match pyproject.toml version ($pkg_version)"
+            exit 1
+          fi
+
+      - name: 🧳 Create zip archive
+        run: zip -r metator-${{ github.ref_name }}.zip .
+
+      - name: 🧳 Create tar.gz archive
+        run: tar -czvf metator-${{ github.ref_name }}.tar.gz .
+
+      - name: 📦 Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            metator-${{ github.ref_name }}.zip
+            metator-${{ github.ref_name }}.tar.gz
+            
