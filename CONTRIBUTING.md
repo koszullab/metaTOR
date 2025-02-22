@@ -38,6 +38,15 @@ Unit tests are automatically run on GitHub for all pull requests.
 
 Pull requests are welcome, once changes have been tested and pass all CI checks. Please make sure to include tests for any new functionality. 
 
+## Versioning
+
+- We follow [conventional commits](https://www.conventionalcommits.org/en/v1.0.0/) for versioning this project.
+- We use [semantic versioning](https://semver.org) for this project.
+- Whenever a version bump is needed, the maintainer will bump the version in [pyproject.toml](./pyproject.toml), and tag the commit. This will trigger: 
+  - A new release on Github; 
+  - Propagation of this release on PyPI; 
+  - A new Docker image on [ghcr.io/koszullab/metator](https://ghcr.io/koszullab/metator).
+
 ## Acknowledgments
 
 This document is based off of the [guidelines from the sparse project](https://github.com/pydata/sparse/blob/master/docs/contributing.rst).
