@@ -81,7 +81,6 @@ jobs:
       - name: 📦 Create GitHub release
         uses: softprops/action-gh-release@v2
       
-
   Deploy:
 
     needs: Test
@@ -112,6 +111,7 @@ jobs:
 
   Containerize:
 
+    needs: Test
     runs-on: ubuntu-latest
 
     permissions:
@@ -142,7 +142,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository_owner }}/metator
           tags: |
-            ${{ github.ref }}
+            type=raw,value=${{ github.ref_name }}
             type=raw,value=py-${{ env.py }}
             type=raw,value=latest
 

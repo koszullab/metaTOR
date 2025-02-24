@@ -46,6 +46,14 @@ jobs:
           pip install .[test]
         shell: micromamba-shell {0}
 
+      - name: ✅ Check that package functions work
+        run: |
+          metator --help
+          metator --version
+          $(python -c "from metator import LOUVAIN_PATH; print(LOUVAIN_PATH)")/louvain -h
+          java -cp $(python -c "from metator import LEIDEN_PATH; print(LEIDEN_PATH)") -h
+        shell: micromamba-shell {0}
+
       - name: 🧪 Run tests with Python ${{ matrix.python-version }} 
         run: |
           ruff check . --select=E9,F63,F7,F82
