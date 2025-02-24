@@ -5,28 +5,10 @@ channels:
   - defaults
 dependencies:
   - python<3.13
-  - hicstuff
-  - networkx
-  - checkv
-  - biopython
-  - pysam
-  - pairtools
-  - pyfastx
-  - cooler
-  - numpy
-  - pandas
-  - scikit-learn
-  - scipy
-  - seaborn
-  - looseversion
+  - micomplete
   - bowtie2
-  - pairix
   - bwa
   - samtools
   - prodigal
   - hmmer
-  - gcc
-  - java-jdk
-  - micomplete
-  - pip:
-    - metator
+  - openjdk
