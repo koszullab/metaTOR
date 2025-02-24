@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
-"""Abstract command classes for metaTOR
+"""Abstract command classes for metator
 
-This module contains all classes related to metaTOR commands:
+This module contains all classes related to metator commands:
     - network
     - partition
     - validation
@@ -55,7 +55,7 @@ from scipy.sparse import save_npz, load_npz
 class AbstractCommand:
     """Abstract base command class
 
-    Base class for the commands from which other metaTOR commands derive.
+    Base class for the commands from which other metator commands derive.
     """
 
     def __init__(self, command_args, global_args):
@@ -1200,7 +1200,7 @@ class Contactmap(AbstractCommand):
     contig data file and a fasta file containing the contigs of interest.
 
     Generates the Hi-C matrix of one MetaTOR object form the pair alignment file
-    of metaTOR. MetaTOR object integrated are contigs, and core, overlapping,
+    of metator. MetaTOR object integrated are contigs, and core, overlapping,
     recursive, final or personalized bins. For the personalized bins you should
     add a column in the contig_data_final.txt file with a header called "Other".
 

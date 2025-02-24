@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
-"""Basic logging setup for metaTOR
+"""Basic logging setup for metator
 
 Basic logging setup with three main handlers (stdout, log file and optionally
 texting with the right API). By default the log file is disabled, but can be

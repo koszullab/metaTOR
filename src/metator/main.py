@@ -22,12 +22,12 @@ The subcommands are:
     validation  Validates bins using CheckM and make a recursive partition to
                 try to decontaminate them.
     qc          Generates some quality check on the output of metator.
-    contactmap  Generates a HiC contact map from one metaTOR object from the
-                final ouptut of metaTOR.
+    contactmap  Generates a HiC contact map from one metator object from the
+                final ouptut of metator.
     scaffold    Scaffold a metator bin based on pairs files.
     pairs       Sort the pairs file using pairtools. Compress them using bgzip.
                 Index them using pypairix.
-    host        Detect bacterial host from a metaHiC network binned by metaTOR
+    host        Detect bacterial host from a metaHiC network binned by metator
                 given a annotated MGE list.
     mge         Build MGE MAGs based on metagenomic binning using metabat2
                 or pairs from the metaHiC data.

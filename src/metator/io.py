@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""Core tools to build I/O for metaTOR
+"""Core tools to build I/O for metator
 
 This mdoule contains all core I/O functions:
     - check_checkm

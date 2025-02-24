@@ -4,19 +4,23 @@ In this notebook we will give an example on how to run MetaTOR [[1]](#References
 
 ## Table of contents
 
-* [Input data](#Input-data)
-* [A.Quick start](#A-Quick-start)
-  * [1. Simplest command](#1-Simplest-command)
-  * [2. Main output files](#2-Main-output-files)
-* [B. A multiple modules pipeline](#B-A-multiple-modules-pipeline)
-  * [1. Choose your starting point](#1-Choose-your-starting-point)
-  * [2. Skip the validation module](#2-Skipthe-validation-module)
-  * [3. Launch the modules separately](#3-Launch-the-modules-separately)
-* [C. Advanced parameters](#C-Advanced-parameters)
-  * [1. Digestion site](#1-Digestion-site)
-  * [2. Binning parameters](#2-Binning-parameters)
-* [D. Analysing the output](#D-Analysing-the-output)
-* [References](#References)
+1. [Table of contents](#table-of-contents)
+2. [Input data](#input-data)
+3. [A. Quick start](#a-quick-start)
+   1. [1. Simplest command](#1-simplest-command)
+   2. [2. Main output files](#2-main-output-files)
+4. [B. A multiple modules pipeline](#b-a-multiple-modules-pipeline)
+   1. [1. Choose your starting point](#1-choose-your-starting-point)
+   2. [2. Skip the validation module](#2-skip-the-validation-module)
+   3. [3. Launch the modules separately](#3-launch-the-modules-separately)
+5. [C. Advanced parameters](#c-advanced-parameters)
+   1. [1. Digestion site](#1-digestion-site)
+   2. [2. Binning parameters](#2-binning-parameters)
+      1. [a. Alignment](#a-alignment)
+      2. [b. Network normalization](#b-network-normalization)
+      3. [c. Partition parameters](#c-partition-parameters)
+6. [D. Analysing the output](#d-analysing-the-output)
+7. [References](#references)
 
 ## Input data
 
@@ -48,7 +52,7 @@ For Spades assembly we advise to set a minimum contig length threshold of 500bp 
 
 ### 1. Simplest command
 
-The simplest way to run metaTOR consist to run the full pipeline in one command with the default parameters:
+The simplest way to run metator consist to run the full pipeline in one command with the default parameters:
 
 ```sh
 metator pipeline -1 hic_reads_for.fastq.gz -2 hic_reads_rev.fastq.gz -a assembly.fa -o metator_folder --threads 16
@@ -102,7 +106,7 @@ INFO :: Others bins: 17 Total Size: 22937158
 
 ### 2. Main output files
 
-The Software will give you the output in the metator folder, the full description of the output are available in the [README](https://github.com/koszullab/metaTOR/blob/master/README.md). The main output file is the final_bin directory with one fasta for each final bin. Moreover, in the bin summary file, see example below, you will find all informations known by the algorithm on the MAGs.
+The Software will give you the output in the metator folder, the full description of the output are available in the [README](https://github.com/koszullab/metator/blob/master/README.md). The main output file is the final_bin directory with one fasta for each final bin. Moreover, in the bin summary file, see example below, you will find all informations known by the algorithm on the MAGs.
 
 ||lineage|completness|contamination|size|contigs|N50|longest_contig|GC|coding_density|taxonomy|HiC_Coverage|
 |:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
@@ -128,7 +132,7 @@ This command will take some time as the Software will run all the steps with thi
 
 ![metator_pipeline_figures](images/metator_figures_modules.png)
 
-One of the longest step is the alignemnent of the reads and the computation of the pairs file. Moreover, currently metaTOR use only bowtie2 to do the alignment with the --very-sensitive-local parameters to align the reads. You may already have a bam or a pairs file from another anlysis, or just want to use another aligner software, or different parameters of bowtie2. That's why it's possible to start at different stage with the `--start` parameter. There are four possible start:
+One of the longest step is the alignemnent of the reads and the computation of the pairs file. Moreover, currently metator use only bowtie2 to do the alignment with the --very-sensitive-local parameters to align the reads. You may already have a bam or a pairs file from another anlysis, or just want to use another aligner software, or different parameters of bowtie2. That's why it's possible to start at different stage with the `--start` parameter. There are four possible start:
 
 * **fastq**: The default one with HiC forward and reverse reads fastq files (with this start it's possible to give the fasta or the bowtie2 index).
 
@@ -156,7 +160,7 @@ metator pipeline -n network.txt -a assembly.fa -S network
 
 ### 2. Skip the validation module
 
-The recursif binning of metaTOR used checkM to check the contamination of the MAGs and apply a recursif clustering of the contigs in the contaminated MAGs. This step is a key step to clean the obtained MAG automatically. However, checkM needs a 40G memory usage. If you do not want to launch it you could skip the validation process and so the recursive binning of metaTOR:
+The recursif binning of metator used checkM to check the contamination of the MAGs and apply a recursif clustering of the contigs in the contaminated MAGs. This step is a key step to clean the obtained MAG automatically. However, checkM needs a 40G memory usage. If you do not want to launch it you could skip the validation process and so the recursive binning of metator:
 
 ```sh
 metator pipeline -1 hic_reads_for.fastq.gz -2 hic_reads_rev.fastq.gz -a assembly_bowtie2_index -v
@@ -206,7 +210,7 @@ The normalization of metaHiC network is an important question. Currently, the de
 # Build a network without normalization:
 metator network -1 for.bam -2 rev.bam -a assembly.fa -n None
 # Make your own network normalized (you just have to modify the third column of the network.txt file).
-# Run the metaTOR pipleine at start stage network:
+# Run the metator pipleine at start stage network:
 metator pipeline -n network_with_your_own_normalization.txt -a assembly.fa -S network
 ```
 

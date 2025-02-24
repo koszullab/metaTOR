@@ -25,7 +25,7 @@ class Subnetwork:
 
     def __init__(self, subnetwork, threshold):
         """Initialize nodes list and their weights (number of hits with the
-        associated contigs normalized by metaTOR).
+        associated contigs normalized by metator).
 
         Parameters:
         -----------

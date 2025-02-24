@@ -82,7 +82,7 @@ class MetatorObject:
         Returns:
         --------
         pandas.core.frame.DataFrame
-            Table with informations from metaTOR binning for each contigs.
+            Table with informations from metator binning for each contigs.
         """
         contigs_data = pd.read_csv(self.contigs_data, sep="\t")
         return contigs_data
@@ -213,7 +213,7 @@ def extract_pairs(metator_data):
     -----------
     metator_data : object from class MetatorObject
         Object of the class MetatorObject. It should have the parameters contigs
-        and the output pairs file of the metaTOR object set.
+        and the output pairs file of the metator object set.
 
     Returns:
     --------
@@ -322,7 +322,7 @@ def generate_contact_map(
         Numbers of threads to use. Default: 1.
     """
 
-    # Extract bin information from metaTOR outdir.
+    # Extract bin information from metator outdir.
     logger.info("Generate HiC contact map for %s", name)
     metator_data = MetatorObject(metator_object, name, assembly, contig_data_file, pairs, min_size)
     metator_data.set_contigs()

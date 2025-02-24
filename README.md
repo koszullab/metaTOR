@@ -2,7 +2,7 @@
 
 [![PyPI version](https://badge.fury.io/py/metator.svg)](https://badge.fury.io/py/metator)
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/metator.svg)
-[![Build Status](https://github.com/koszullab/metator/actions/workflows/ci.yml/badge.svg)](https://github.com/koszullab/metaTOR/actions)
+[![Build Status](https://github.com/koszullab/metator/actions/workflows/ci.yml/badge.svg)](https://github.com/koszullab/metator/actions)
 [![codecov](https://codecov.io/gh/koszullab/metator/branch/master/graph/badge.svg)](https://codecov.io/gh/koszullab/metator)
 [![Read the docs](https://readthedocs.org/projects/metator/badge)](https://metator.readthedocs.io)
 [![License: GPLv3](https://img.shields.io/badge/License-GPL%203-0298c3.svg)](https://opensource.org/licenses/bo-3.0)
@@ -79,10 +79,10 @@ pip3 install -e .[dev]
 metator {network|partition|validation|pipeline} [parameters]
 ```
 
-A metaTOR command takes the form `metator action --param1 arg1 --param2
+A metator command takes the form `metator action --param1 arg1 --param2
 arg2 #etc.`
 
-There are three actions/steps in the metaTOR pipeline, which must be run in the
+There are three actions/steps in the metator pipeline, which must be run in the
 following order:
 
 * `network` : Generate metaHiC contigs network from fastq reads or bam files and normalize it.
@@ -93,13 +93,13 @@ following order:
 There are a number of other, optional, miscellaneous actions:
 
 * `pipeline` : Run all three of the above actions sequentially or only some of them depending on the arguments given. This can take a while.
-* `contactmap` : Generates a contact map from one bin from the final ouptut of metaTOR.
+* `contactmap` : Generates a contact map from one bin from the final ouptut of metator.
 
 * `version` : display current version number.
 
 * `help` : display help message.
 
-A tutorial is available [here](docs/example/metator_tutorial.md) to explain how to use metaTOR. More advanced tutorials to analyze the output files are also available:
+A tutorial is available [here](docs/example/metator_tutorial.md) to explain how to use metator. More advanced tutorials to analyze the output files are also available:
 
 * [Anvio](https://merenlab.org/software/anvio/) manual curation of the contaminated bins. Available [here](docs/example/manual_curation_of_metator_MAGs.md).
 * Visualization and scaffolding of the MAGs with the contactmap modules of MetaTOR. Available [here](docs/example/MAG_visualization_and_scaffolding.md).
@@ -173,7 +173,7 @@ Files from [checkM](https://github.com/Ecogenomics/CheckM) output. Two types of 
 This is a tsv file with two columns: the contig name and the final were the contig is. It only contains contigs which are binned. It could be use a an input to import a binning results in anvio.
 
 **Bin summary file**
-This is the summary of the data of the final bins build with all the step of metaTOR. The HiC coverage is the number of contacts (intra and inter contigs) per kilobase in the whole bin. The Shotgun coverage is the mean coverage normalized by the size of the shotgun reads from the depth file.
+This is the summary of the data of the final bins build with all the step of metator. The HiC coverage is the number of contacts (intra and inter contigs) per kilobase in the whole bin. The Shotgun coverage is the mean coverage normalized by the size of the shotgun reads from the depth file.
 
 ||lineage|completness|contamination|size|contigs|N50|longest_contig|GC|coding_density|taxonomy|Coverage|
 |:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|

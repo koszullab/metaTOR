@@ -4,26 +4,28 @@ The goal of this tutorial is to show how to build the HiC contact map of a MAG f
 
 ## Table of contents
 
-* [Requirements](#Requirements)
-* [Input data](#Input-data)
-* [A. Build the HiC contact map](#A-Build-the-HiC-contact-map)
-* [B. Visualization of the contact map](#B-Visualization-of-the-contact-map)
-* [C. Scaffolding of the contact map](#C-Scaffolding-of-the-contact-map)
-* [References](#References)
+1. [Table of contents](#table-of-contents)
+2. [Requirements](#requirements)
+3. [Input data](#input-data)
+4. [A. Build the HiC contact map](#a-build-the-hic-contact-map)
+   1. [Using pairix index](#using-pairix-index)
+5. [B. Visualization of the contact map](#b-visualization-of-the-contact-map)
+6. [C. Scaffolding of the contact map](#c-scaffolding-of-the-contact-map)
+7. [References](#references)
 
 ## Requirements
 
-* [MetaTOR](https://github.com/koszullab/metaTOR) [[1]](#References)
+* [metator](https://github.com/koszullab/metator) [[1]](#References)
 * [Pairix](https://github.com/4dn-dcic/pairix)
 * [Instagraal](https://github.com/koszullab/instaGRAAL) [[2]](#References) if you want to try to scaffold your MAG. The installation could be tricky so we recommend to install it with docker which is a one step installation.
 
 ## Input data
 
-As input data we will use the output of the [metaTOR (v1.1.2) tutorial](metator_tutorial.md) based on  the metaHiC sample from [Marbouty *et al.*, eLife, 2021](https://elifesciences.org/articles/60608). The accession number of the fastq sequences is SRR13435231 and the assembly accession number is ASM1314648v1 in the BioProject PRJNA627086 on the NCBI database. To have more contacts in the map we also use the MluCI library (SRR13435230) made on the same sample.
+As input data we will use the output of the [metator (v1.1.2) tutorial](metator_tutorial.md) based on  the metaHiC sample from [Marbouty *et al.*, eLife, 2021](https://elifesciences.org/articles/60608). The accession number of the fastq sequences is SRR13435231 and the assembly accession number is ASM1314648v1 in the BioProject PRJNA627086 on the NCBI database. To have more contacts in the map we also use the MluCI library (SRR13435230) made on the same sample.
 
 ## A. Build the HiC contact map
 
-MetaTOR have a conatct map module since the verison 1.1.0. This module allow to build the contact map of a contig or a bin using MetaTOR output files and [hicstuff](https://github.com/koszullab/metaTOR) [[3]](#References). The module extract the pairs of the metator object and build the contact map using hicstuff.
+MetaTOR have a conatct map module since the verison 1.1.0. This module allow to build the contact map of a contig or a bin using MetaTOR output files and [hicstuff](https://github.com/koszullab/metator) [[3]](#References). The module extract the pairs of the metator object and build the contact map using hicstuff.
 
 As an example we will display the MetaTOR_18_10 MAG which is a high quality MAG with a high HiC coverage:
 
@@ -65,7 +67,7 @@ mkdir -p contact_map
 metator contactmap -a ../assembly.fa -c contig_data_final.txt -e HpaII -n $bin -p alignment_0.pairs,alignment_1.pairs -DfF -s 5000 -o contact_map/$bin/ -m cool
 ```
 
-**Note**: Here we show to give an example using a Final bin, but you could put others "metaTOR object": contigs, core bins, overlpping bin, recursive bin or others. For the contigs it's possible to give both the id or the name. For the "other" object, you need to add a column in the contig data file call "Others" with whatever clustering you want. It could be another such as anvio binning (see tutorial [here](manual_curation_of_metator_MAGs.md)).
+**Note**: Here we show to give an example using a Final bin, but you could put others "metator object": contigs, core bins, overlpping bin, recursive bin or others. For the contigs it's possible to give both the id or the name. For the "other" object, you need to add a column in the contig data file call "Others" with whatever clustering you want. It could be another such as anvio binning (see tutorial [here](manual_curation_of_metator_MAGs.md)).
 
 ### Using pairix index
 
@@ -138,7 +140,7 @@ For the MetaTOR_57_3, instagraal manage to build a nice scaffold with a nice cir
 
 The second example, MetaTOR_18_10, presents a recurrent issue of instagraal. Indeed, bacterial chromosome have often a "secondary diagonal". This signal will perturbate proximity ligation signal model of instagraal causing a lot of translocation along the diagonal that we called "stair syndrome". As in the previous step, a manual step allows to reconstruct the genome without all this translocation.
 
-To conclude, instagraal can build nice scaffolds of the high quality MAGs with high HiC coverage and the majority contigs bigger than 5kb from the metaTOR binning. However, to build a more perfect scaffold a final manual step is still necessary.
+To conclude, instagraal can build nice scaffolds of the high quality MAGs with high HiC coverage and the majority contigs bigger than 5kb from the metator binning. However, to build a more perfect scaffold a final manual step is still necessary.
 
 ## References
 

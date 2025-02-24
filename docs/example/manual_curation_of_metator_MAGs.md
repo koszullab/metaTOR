@@ -1,6 +1,6 @@
 # Manual curation of the contaminated MetaTOR MAGs with anvio
 
-The anvio [[1]](#References) manual curation of the MAGs is a step which is time consuming. However, it has very good performance to remove the residual contamination from metaTOR [[2]](#References) MAGs. Indeed, if you choose to have a 500bp threshold size, small contigs allow to recover more complete MAGs, but they will also increase the noise and the contamination. Anvio is an anlysis and visualization platform, the general tutorial for metagenomic workflow is available [here](https://merenlab.org/2016/06/22/anvio-tutorial-v2/). Its manual curation is based on a clustering of both the coverage and the sequence of the contigs. As anvio is based on differential coverage across sample, you should put all your different libraries separated and you can use both shotgun and HiC libraries. Here we will just show the result with two different HiC libraries.
+The anvio [[1]](#References) manual curation of the MAGs is a step which is time consuming. However, it has very good performance to remove the residual contamination from metator [[2]](#References) MAGs. Indeed, if you choose to have a 500bp threshold size, small contigs allow to recover more complete MAGs, but they will also increase the noise and the contamination. Anvio is an anlysis and visualization platform, the general tutorial for metagenomic workflow is available [here](https://merenlab.org/2016/06/22/anvio-tutorial-v2/). Its manual curation is based on a clustering of both the coverage and the sequence of the contigs. As anvio is based on differential coverage across sample, you should put all your different libraries separated and you can use both shotgun and HiC libraries. Here we will just show the result with two different HiC libraries.
 
 ## Table of contents
 
@@ -14,11 +14,11 @@ The anvio [[1]](#References) manual curation of the MAGs is a step which is time
 ## Requirements
 
 * [Anvio](https://merenlab.org/software/anvio/) (version 7)
-* [pyfastx](https://github.com/lmdu/pyfastx) (version 0.8.4). If you have used metaTOR, it's already installed as it's a dependance of metaTOR.
+* [pyfastx](https://github.com/lmdu/pyfastx) (version 0.8.4). If you have used metator, it's already installed as it's a dependance of metator.
 
 ## Input data
 
-As input data we will use the output of the [metaTOR (v1.1.1) tutorial](https://github.com/koszullab/metaTOR/blob/master/example/metator_tutorial.md) based on  the metaHiC sample from [Marbouty *et al.*, eLife, 2021](https://elifesciences.org/articles/60608). The accession number of the fastq sequences is SRR13435231 and the assembly accession number is ASM1314648v1 in the BioProject PRJNA627086 on the NCBI database. To have more contacts in the map we also use the MluCI library (SRR13435230) made on the same sample.
+As input data we will use the output of the [metator (v1.1.1) tutorial](https://github.com/koszullab/metator/blob/master/example/metator_tutorial.md) based on  the metaHiC sample from [Marbouty *et al.*, eLife, 2021](https://elifesciences.org/articles/60608). The accession number of the fastq sequences is SRR13435231 and the assembly accession number is ASM1314648v1 in the BioProject PRJNA627086 on the NCBI database. To have more contacts in the map we also use the MluCI library (SRR13435230) made on the same sample.
 
 ## A. Build anvio database
 
@@ -37,7 +37,7 @@ Anvio needs to have simple fasta sequence name. First make sure your fasta have 
 Once our fasta is ready, we can build the anvio database. The -L 0 means that we do not want to split our contisg and -n is the name of our project.
 
 ```sh
-anvi-gen-contigs-database -f anvio/bin_contigs.fa -o anvio/bin_contigs.db -n metaTOR_tutorial -L 0 -T 16
+anvi-gen-contigs-database -f anvio/bin_contigs.fa -o anvio/bin_contigs.db -n metator_tutorial -L 0 -T 16
 ```
 
 ### Runs the hmm profiles and definde the taxonomy with anvio
@@ -154,7 +154,7 @@ Here it's two examples of the manual cleaning. In the first one, we present an e
 
 ### Export the new binning
 
-Once you are done your manual refinement and are happy with you could export it in a two column text file similar as the `binning.txt` file from metaTOR.
+Once you are done your manual refinement and are happy with you could export it in a two column text file similar as the `binning.txt` file from metator.
 
 ```sh
 anvi-export-collection -p anvio/HiC/PROFILE.db -C METATOR -O anvio/anvio_binning
@@ -162,7 +162,7 @@ anvi-export-collection -p anvio/HiC/PROFILE.db -C METATOR -O anvio/anvio_binning
 
 ### Output analysis
 
-From the new clustering, it's possible to build new fasta sequence for each new bin and check the qualities of the new MAGs with checkM. These are metaTOR figures with the old and new bins to compare the quality of the binning before and after the manual curation. Below is an example on how to generate the figures. The scripts here are availabl ein the github repository at `docs/example/scripts/`.
+From the new clustering, it's possible to build new fasta sequence for each new bin and check the qualities of the new MAGs with checkM. These are metator figures with the old and new bins to compare the quality of the binning before and after the manual curation. Below is an example on how to generate the figures. The scripts here are availabl ein the github repository at `docs/example/scripts/`.
 
 ```sh
 python3 ./anvio_extract_fasta.py anvio/anvio_binning.txt tmp_dir anvio/fasta assembly.fa
