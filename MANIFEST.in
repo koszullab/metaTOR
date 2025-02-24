@@ -1,4 +1,0 @@
-include README.md
-include bin/*
-recursive-exclude test_data *
-recursive-exclude tests *
