@@ -1,10 +1,10 @@
 # MetaTOR
 
-[![PyPI version](https://badge.fury.io/py/metator.svg)](https://badge.fury.io/py/metator)
+[![Bioconda](https://img.shields.io/conda/vn/bioconda/metator?color=blue)](https://anaconda.org/bioconda/metator)
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/metator.svg)
 [![Build Status](https://github.com/koszullab/metator/actions/workflows/ci.yml/badge.svg)](https://github.com/koszullab/metator/actions)
 [![codecov](https://codecov.io/gh/koszullab/metator/branch/master/graph/badge.svg)](https://codecov.io/gh/koszullab/metator)
-[![Read the docs](https://readthedocs.org/projects/metator/badge)](https://metator.readthedocs.io)
+<!-- [![Read the docs](https://readthedocs.org/projects/metator/badge)](https://metator.readthedocs.io) -->
 [![License: GPLv3](https://img.shields.io/badge/License-GPL%203-0298c3.svg)](https://opensource.org/licenses/bo-3.0)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black)
 
@@ -38,7 +38,7 @@ conda create -n metator bioconda::metator
 
 ### With pip
 
-**Note:** while `metator` is available from Pypi, several additional libraries are 
+**Note:** although `metator` itself is available from Pypi, several additional libraries are 
 not available from Pypi and must be installed separately. Please consider the following 
 before installing `metator`:
 
@@ -65,7 +65,7 @@ pip3 install metator
 
 ### Development version 
 
-You can upgrade `metator` version to the development version as follows: 
+You can use `metator` development version as follows: 
 
 ```sh
 git clone https://github.com/koszullab/metator
