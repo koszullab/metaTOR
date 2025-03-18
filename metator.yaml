@@ -2,8 +2,10 @@ name: metator
 channels:
   - conda-forge
   - bioconda
-  - defaults
+  - nodefaults
 dependencies:
+  - gcc
+  - zlib
   - python<3.13
   - micomplete
   - bowtie2
