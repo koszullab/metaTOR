@@ -748,7 +748,7 @@ def sort_pairs(in_file, out_file, tmp_dir=None, threads=1, buffer="2G"):
         sort_proc.communicate()
 
 
-def sort_pairs_pairtools(pairfile, threads=1, remove=False, force=False):
+def sort_pairs_pairtools(pairfile, threads=1, remove=False, force=False, tmp_dir=".'"):
     """Sort pairs files using pairtools executable. Pairix only works with
     compressed pair files. So we use bgzip to compress them.
 
@@ -762,6 +762,8 @@ def sort_pairs_pairtools(pairfile, threads=1, remove=False, force=False):
         If set to true, it will remove the unsorted pair file. [Default: False]
     force : bool
         If set overwrite existing files. [Default: False]
+    tmp_dir : str
+        Path to the temporary directory to write the temporary files. [Default: "."]
 
     Returns
     -------
@@ -789,7 +791,7 @@ def sort_pairs_pairtools(pairfile, threads=1, remove=False, force=False):
             raise ValueError
 
     # Sort pairs using pairtools.
-    cmd = f"set -eu ; pairtools sort {pairfile} --nproc {threads} -o {basename}_sorted.pairs"
+    cmd = f"set -eu ; pairtools sort {pairfile} --nproc {threads} -o {basename}_sorted.pairs --tmpdir {tmp_dir}"
     if Version(pairtools.__version__) >= Version("1.1.0"):
         logger.debug("pairtools version >= 1.1.0. Use new options.")
         cmd = cmd + " --c1 chr1 --c2 chr2 --p1 pos1 --p2 pos2 --pt strand1"

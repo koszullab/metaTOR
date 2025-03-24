@@ -304,7 +304,7 @@ def get_contact_pairs(
 
         # Sort pairs.
         logger.info(f"Sort and index {out_file}")
-        out_file = mio.sort_pairs_pairtools(out_file, threads=n_cpu, remove=True, force=True)
+        out_file = mio.sort_pairs_pairtools(out_file, threads=n_cpu, remove=True, force=True, tmp_dir=tmp_dir)
         out_file_list.append(out_file)
 
     if len(out_file_list) > 1:
