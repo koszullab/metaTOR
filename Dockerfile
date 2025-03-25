@@ -7,13 +7,17 @@ LABEL Name=metator Version=$PKG_VERSION
 
 COPY --chown=$MAMBA_USER:$MAMBA_USER . ./
 
+# Install ps
+USER root
+RUN apt-get update && apt-get install -y procps
+
 # Install the package
+USER mambauser
 RUN micromamba install -y -n base --file metator.yaml python=$PY_VERSION && \
     micromamba run -n base pip install . && \
     micromamba clean --all --yes && \
     rm -rf /home/mambauser/.cache && \
     rm -rf ./*
 
-USER mambauser
 WORKDIR /home/mambauser/
 ENTRYPOINT [ "/usr/local/bin/_entrypoint.sh" ]
