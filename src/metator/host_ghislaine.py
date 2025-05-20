@@ -108,7 +108,7 @@ def map_contigs_to_mags(mags: dict) -> dict:
     Iterates through a dictionary of MAG objects and associates each contig with the name of the MAG it belongs to.
 
     Args:
-    - mags (dict): Dictionary in the form {mag_name: mag_object}, where each mag_object has a get_contigs() method
+    - mags (dict): Dictionary in the form {mag_name: mag_object}, where each mag_object has a `contigs` attribute
       that returns a dictionary of contigs.
 
     Returns:
@@ -124,7 +124,7 @@ def build_contig_graph(network_data: pd.DataFrame) -> nx.Graph:
     """
     Builds an undirected interaction graph from a DataFrame containing contig pairs and interaction signals.
 
-    Each row of the DataFrame should contain two contigs and a signal value representing the interaction strength.
+    Each row of the DataFrame should contain two contig IDs and a signal value representing the interaction strength.
     The function constructs a NetworkX graph where each contig is a node, and each edge is weighted by the signal.
 
     Args:
@@ -136,54 +136,30 @@ def build_contig_graph(network_data: pd.DataFrame) -> nx.Graph:
     logger.info("Creating contigs contacts graph...")
 
     G = nx.Graph()
+    edges = [[int(u), int(v), w] for u, v, w in zip(network_data["contig1"], network_data["contig2"], network_data["signal"])]
+    G.add_weighted_edges_from(edges)
     logger.info(f"Contigs graph has {G.number_of_nodes()} nodes and {G.number_of_edges()} edges.")
     return G
 
 
-def evaluate_experience_noise(
-    network_data,
-    mags,
-    completeness_data,
-    inter_output_file="inter_mag_interactions.txt",
-    intra_output_file="intra_mag_interactions.txt",
-    image_file="mags_interactions_by_quality.png",
-):
+def estimate_noise(mags, network_data) -> pd.DataFrame:
     """
     Evaluates inter- and intra-MAG interaction signals from a contig interaction graph and
     MAG quality data, in order to detect potential noise or assembly artifacts.
 
     Parameters
     ----------
-    network_data : pandas.DataFrame
-        DataFrame containing the contig interaction graph, with columns "contig1", "contig2", and "signal".
-
     mags : dict
         Dictionary where keys are MAG names and values are objects representing MAGs. Each object must have
-        a `get_contigs()` method that returns a dictionary of contigs.
+        a `contigs` attribute that returns a dictionary of contigs.
 
-    completeness_data : pandas.DataFrame
-        DataFrame containing completeness and contamination data for each MAG,
-        with at least the columns "Mag" (MAG name), "Completeness", and "Redundancy".
-
-    inter_output_file : str, optional
-        Name of the output text file for average inter-MAG interaction signals. Default is "inter_mag_interactions.txt".
-
-    intra_output_file : str, optional
-        Name of the output text file for average intra-MAG interaction signals. Default is "intra_mag_interactions.txt".
-
-    image_file : str, optional
-        Name of the image file for plotting MAG interaction signals by quality.
-        This parameter is declared but not currently used in the function. Default is "mags_interactions_by_quality.png".
-
-    Side Effects
-    ------------
-    - Writes inter-MAG average signals to a text file.
-    - Writes intra-MAG average signals to a text file.
-    - Adds inter-MAG interaction signal information to each MAG object using its `add_inter_signal()` method, if available.
+    network_data : pd.DataFrame
+        DataFrame containing interaction data with columns ['contig1', 'contig2', 'signal'].
 
     Returns
     -------
-    None
+    pd.DataFrame
+        DataFrame containing the average intra- and inter-MAG interaction signals for each MAG.
 
     Notes
     -----
@@ -196,173 +172,70 @@ def evaluate_experience_noise(
     """
     logger.info("Calculating the backgroung noise of the experience.")
 
-    # Construction of the contigs graph
-    logger.info("Construction of the interaction's graph...")
-
-    G = build_interaction_graph(network_data)
-
+    # Get contigs <-> MAG mapping
     contig_to_mag = map_contigs_to_mags(mags)
+    contig_to_mag_df = pd.DataFrame({"contig": list(contig_to_mag.keys()), "MAG": list(contig_to_mag.values())})
+
+    # Merge network data with contig to MAG mapping
+    mags_df = (
+        network_data.merge(contig_to_mag_df, left_on="contig1", right_on="contig", how="left")
+        .rename(columns={"MAG": "MAG1"})[["contig1", "contig2", "signal", "MAG1"]]
+        .merge(contig_to_mag_df, left_on="contig2", right_on="contig", how="left")
+        .rename(columns={"MAG": "MAG2"})[["MAG1", "MAG2", "contig1", "contig2", "signal"]]
+    )
+
+    # Define intra/inter contacts
+    mags_df["type"] = np.where(mags_df["MAG1"] == mags_df["MAG2"], "intra", "inter")
+
+    # Remove rows with NaN values
+    mags_df = mags_df.dropna(subset=["MAG1", "MAG2"])
+
+    ###################### INTRA-MAG INTERACTIONS COMPUTATION #################
+    for _, mag in mags.items():
+        intra_signals = mags_df.query("(MAG1 == @mag.name or MAG2 == @mag.name) and type == 'intra'")["signal"]
+        mag.intra_signal = np.mean(intra_signals)
+        if np.isnan(mag.intra_signal):
+            mag.intra_signal = 0.0
 
     ########### INTER-MAG INTERACTIONS COMPUTATION #################
-    # Caculate inter-MAGs signals
-    inter_mag_signals = {}
-    for contig1, contig2, data in G.edges(data=True):
-        signal = data["weight"]
-        mag1 = contig_to_mag.get(contig1)
-        mag2 = contig_to_mag.get(contig2)
-        if mag1 and mag2 and mag1 != mag2:
-            key = tuple(sorted([mag1, mag2]))
-            inter_mag_signals.setdefault(key, []).append(signal)
-            mags[mag1].add_inter_signal(mag2, signal)
-            mags[mag2].add_inter_signal(mag1, signal)
-    logger.info(f"{len(inter_mag_signals)} paires of MAGs have inter-MAG interactions.")
+    def get_other_mag(row, target_mag):
+        if row["MAG1"] == target_mag:
+            return row["MAG2"]
+        else:
+            return row["MAG1"]
 
-    # Write in the text file
-    logger.info(f"Writting inter-MAG signals results in {inter_output_file}")
-    with open(inter_output_file, "w") as f:
-        f.write("MAG1\tMAG2\tinter-MAG mean signal\n")
-        for (mag1, mag2), signals in inter_mag_signals.items():
-            mean_signal = sum(signals) / len(signals) if signals else 0
+    for _, mag in mags.items():
+        subset = ((mags_df["MAG1"] == mag.name) | (mags_df["MAG2"] == mag.name)) & (mags_df["type"] == "inter")
+        if subset.sum() == 0:
+            mag.inter_signals = 0
+            continue
+        else:
+            df_inters = mags_df.copy()[subset]
+            df_inters.loc[:, "mag0"] = mag.name
+            df_inters.loc[:, "mag"] = df_inters.apply(get_other_mag, axis=1, target_mag=mag.name)
+            scores = list(
+                (
+                    df_inters.groupby(["mag0", "mag"])["signal"]
+                    .mean()
+                    .reset_index()
+                    .rename(columns={"mag0": "MAG1", "mag": "MAG2"})
+                    .sort_values("MAG2")
+                )["signal"]
+            )
+            while len(scores) < (len(mags) - 1):
+                scores.append(0)
+            mag.inter_signals = scores
 
-            f.write(f"{mag1:<24}\t{mag2:<24}\t{mean_signal:.6f}\n")
-
-    # Construction of a  dataframe for analyses
-    all_mag_pairs = list(combinations(mags.keys(), 2))
-    rows = []
-
-    for mag1, mag2 in all_mag_pairs:
-        key = tuple(sorted([mag1, mag2]))
-        signals = inter_mag_signals.get(key, [])
-        mean_signal = sum(signals) / len(signals) if signals else 0
-        comp1 = completeness_data[completeness_data["Unnamed: 0"] == mag1]
-        comp2 = completeness_data[completeness_data["Unnamed: 0"] == mag2]
-
-        c1 = comp1["Completeness"].values[0] if not comp1.empty else np.nan
-        c2 = comp2["Completeness"].values[0] if not comp2.empty else np.nan
-        r1 = comp1["Redundancy"].values[0] if not comp1.empty else np.nan
-        r2 = comp2["Redundancy"].values[0] if not comp2.empty else np.nan
-
-        rows.append(
-            {
-                "MAG1": mag1,
-                "MAG2": mag2,
-                "Total_Signal": mean_signal,
-                "Completeness1": c1,
-                "Completeness2": c2,
-                "Contamination1": r1,
-                "Contamination2": r2,
-            }
-        )
-
-    inter_df = pd.DataFrame(rows)
-
-    # Calculation of the mean of  Completeness/Contamination of two MAGs
-    inter_df["Completeness"] = inter_df[["Completeness1", "Completeness2"]].mean(axis=1)
-    inter_df["Contamination"] = inter_df[["Contamination1", "Contamination2"]].mean(axis=1)
-
-    def classify_mag(row):
-        c, r = row["Completeness"], row["Contamination"]
-        if pd.isna(c) or pd.isna(r):
-            return "Unknown"
-        elif r > 1.1:
-            return "Contaminated"
-        elif c > 0.9 and r <= 1.05:
-            return "Complete"
-        elif c > 0.9 and r < 1.1 and r > 1.05:
-            return "HQ"
-        elif c > 0.7 and r < 1.1:
-            return "MQ"
-        elif c > 0.5 and r < 1.1:
-            return "LQ"
-        elif c < 0.5 and r < 1.1:
-            return "PQ"
-
-    inter_df["MAG_Quality"] = inter_df.apply(classify_mag, axis=1)
-
-    print(inter_df.head())
-    # Log Transformation and normalisation
-    inter_df["Log_Signal"] = np.log10(inter_df["Total_Signal"].replace(0, np.nan))
-    inter_df["Log_Signal"] = inter_df["Log_Signal"].fillna(-10)
-    inter_df["Normalized_Log"] = (inter_df["Log_Signal"] - inter_df["Log_Signal"].min()) / (
-        inter_df["Log_Signal"].max() - inter_df["Log_Signal"].min()
-    )
-
-    ######################INTRA-MAG INTERACTIONS COMPUTATION#################
-    intra_mag_means = []
-    mag_names = []
-    completeness_list = []
-    contamination_list = []
-    logger.info(f"Writting intra-MAG signals results in {intra_output_file}")
-    with open(intra_output_file, "w") as f:
-        f.write("MAG\tIntra-MAG mean interaction\n")
-        for mag_name, mag in mags.items():
-            intra_signals = []
-            contigs = set(mag.get_contigs().values())
-            for contig1, contig2 in combinations(contigs, 2):
-                if G.has_edge(contig1, contig2):
-                    intra_signals.append(G[contig1][contig2]["weight"])
-            mean_signal = sum(intra_signals) / len(intra_signals) if intra_signals else 0
-
-            intra_mag_means.append(mean_signal)
-            mag_names.append(mag_name)
-            f.write(f"{mag_name:<24}\t{mean_signal:.6f}\n")
-            mag.intra_signals = intra_signals
-
-            comp_info = completeness_data[completeness_data["Unnamed: 0"] == mag_name]
-            if not comp_info.empty:
-                completeness_list.append(comp_info["Completeness"].values[0])
-                contamination_list.append(comp_info["Redundancy"].values[0])
-            else:
-                completeness_list.append(np.nan)
-                contamination_list.append(np.nan)
-
-    intra_df = pd.DataFrame(
+    ###################### SUMMARY #################
+    combined_df = pd.DataFrame(
         {
-            "MAG": mag_names,
-            "Intra_MAG_signal": intra_mag_means,
-            "Completeness": completeness_list,
-            "Contamination": contamination_list,
+            "MAG": [mag.name for mag in mags.values()],
+            "intra": [mag.intra_signal for mag in mags.values()],
+            "inter": [mag.inter_signals for mag in mags.values()],
         }
     )
-
-    intra_df["MAG_Quality"] = intra_df.apply(classify_mag, axis=1)
-    # Log10 normalisation
-    intra_df["Log_Mean"] = np.log10(intra_df["Intra_MAG_signal"] + 1e-10)
-    min_val = intra_df["Log_Mean"].min()
-    max_val = intra_df["Log_Mean"].max()
-    intra_df["Normalized_Log"] = (intra_df["Log_Mean"] - min_val) / (max_val - min_val)
-    # Adding a  "Type" column to the dataframe
-    intra_df["Type"] = "Intra"
-    inter_df["Type"] = "Inter"
-    # Harmonisation of the columns
-    inter_df_plot = inter_df[["MAG_Quality", "Normalized_Log", "Type"]]
-    intra_df_plot = intra_df[["MAG_Quality", "Normalized_Log", "Type"]]
-    # Concatenate both intra and inter dataframes
-    combined_df = pd.concat([intra_df_plot, inter_df_plot], ignore_index=True)
-
-    # Plotting the  boxplots and the violin plot
-    fig, axes = plt.subplots(2, 1, figsize=(16, 16))
-    # Boxplot
-    sns.boxplot(data=combined_df, x="MAG_Quality", y="Normalized_Log", hue="Type", ax=axes[0])
-    axes[0].set_title("Grouped Boxplots -  Normalised Signal")
-
-    # Violin plot
-    sns.violinplot(
-        data=combined_df, x="MAG_Quality", y="Normalized_Log", hue="Type", split=True, inner="quart", palette="Set2", ax=axes[1]
-    )
-    axes[1].set_title("Violin Plot - Normalised Signal")
-
-    # Ajustements finaux
-    for ax in axes:
-
-        ax.set_xlabel("MAGs Quality")
-        ax.set_ylabel("log10 normalised Signal")
-
-    plt.legend(title="Interaction Type")
-    plt.tight_layout()
-    plt.savefig(image_file)
-    plt.close(fig)
-    return image_file
+    combined_df["inter_mean"] = combined_df["inter"].apply(lambda x: np.mean(x))
+    return combined_df
 
 
 def compute_mge_mag_interactions(
@@ -395,7 +268,7 @@ def compute_mge_mag_interactions(
 
     G = build_interaction_graph(network_data)
 
-    contig_to_mag = map_contigs_to_mags(mags)
+    contig_to_mag = map_contigs_to_mags({**mags, **mge_mags})
 
     interaction_results = []
 
@@ -450,7 +323,7 @@ def compute_mge_mag_interactions(
         axes[1].hist(percentage_counts, bins=bins, edgecolor="black", align="left")
         axes[1].set_xlabel("Taux d'association")
         axes[1].set_ylabel("Fréquence")
-        axes[1].set_title("Distribution des taux d'association des MGEMAGs à leur MAGs")
+        axes[1].set_title("Distribution des taux d'association des MgeMags à leur MAGs")
 
         plt.tight_layout()
         fig.savefig(image_file)
@@ -470,18 +343,44 @@ def annotate_hosts(
     # Loading data and instantiating objects.
     logger.info("Loading data and instantiating objects...")
     mags, mge_mags = create_bins(contig_data)
+
+    # Evaluate background noise
+    mags_summary = bin_summary.copy()
+
+    # Evaluate background noise
+    logger.info("Evaluating the background noise of the experience...")
+    mags_df = estimate_noise(mags, network_data)
+    mags_summary = mags_summary.merge(mags_df, on="MAG", how="left")
+
+    # Parse contigs-level network
+    G = build_contig_graph(network_data)
+
+    # Compute MGE-MAG to MAG interactions
+    logger.info("Computing mgeMAG and MAG interactions and association of the mge to it host...")
+    compute_mge_mag_interactions(
         network_data,
+        mge_mags,
         mags,
+        interaction_threshold=interaction_threshold,
+        min_interacting_contigs=min_interacting_contigs,
+    )
     logger.info("Association terminated!!!")
 
 
-# Call to the main function
+# Call to the main function `annotate_hosts`
 if __name__ == "__main__":
-    # data loading
-    network_data_file = "../host_test/network_7.txt"
-    contig_data_file = "../host_test/contig_data_final_reformated.txt"
-    completeness_data_file = "../host_test/bin_summary.txt"
+
+    network_data_file = "network_1.txt"
+    contig_data_file = "contig_data_final_reformated.txt"
+    bin_summary_file = "bin_summary.txt"
     interaction_threshold = 10
     min_interacting_contigs = 5
-    # calling main
-    main(contig_data_file, network_data_file, completeness_data_file, interaction_threshold, min_interacting_contigs)
+
+    # Load data
+    contig_data = pd.read_csv(contig_data_file, sep="\t")
+    bin_summary = pd.read_csv(bin_summary_file, sep="\t", comment="#")
+    bin_summary.columns = ["MAG"] + list(bin_summary.columns[1:])
+    network_data = pd.read_csv(network_data_file, sep="\t", names=["contig1", "contig2", "signal"])
+
+    # Run the main function
+    annotate_hosts(contig_data, network_data, bin_summary, interaction_threshold, min_interacting_contigs)
