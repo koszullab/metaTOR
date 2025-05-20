@@ -23,6 +23,8 @@ Main functions and methods include:
 # import checkv
 # import metator.figures as mtf
 # import metator.io as mio
+from collections import Counter
+from typing import Literal
 import networkx as nx
 import matplotlib.pyplot as plt
 
@@ -41,6 +43,7 @@ class Bin:
 
     def __init__(self, name):
         self.name: str = name
+        self.info: dict = {}
         self.contigs: dict = {}
         self.completeness: float = None
         self.contamination: float = None
@@ -226,16 +229,120 @@ def estimate_noise(mags, network_data) -> pd.DataFrame:
                 scores.append(0)
             mag.inter_signals = scores
 
-    ###################### SUMMARY #################
-    combined_df = pd.DataFrame(
+    return mags
+
+
+def plot_mag_noise(mags, image_file="background_noise.png") -> None:
+    """
+    Plots the background noise of MAG interactions.
+
+    Args:
+        mags (dict): Dictionary of MAG objects.
+        image_file (str): Path to save the plot image.
+
+    Returns:
+        None
+    """
+    logger.info("Plotting background noise...")
+
+    intra_signals = pd.DataFrame(
         {
             "MAG": [mag.name for mag in mags.values()],
-            "intra": [mag.intra_signal for mag in mags.values()],
-            "inter": [mag.inter_signals for mag in mags.values()],
+            "type": ["intra"] * len(mags),
+            "quality": [mag.quality for mag in mags.values()],
+            "signal": [mag.intra_signal for mag in mags.values()],
         }
     )
-    combined_df["inter_mean"] = combined_df["inter"].apply(lambda x: np.mean(x))
-    return combined_df
+    intra_signals["log_signal"] = np.log10(intra_signals["signal"] + 1e-10)
+    min_val = intra_signals["log_signal"].min()
+    max_val = intra_signals["log_signal"].max()
+    intra_signals["norm_log"] = (intra_signals["log_signal"] - min_val) / (max_val - min_val)
+
+    inter_signals = pd.DataFrame(
+        {
+            "MAG": [mag.name for mag in mags.values()],
+            "type": ["inter"] * len(mags),
+            "quality": [mag.quality for mag in mags.values()],
+            "signal": [mag.inter_signals for mag in mags.values()],
+        }
+    ).explode("signal")
+    inter_signals["signal"] = inter_signals["signal"].astype(float)
+    inter_signals["log_signal"] = np.log10(inter_signals["signal"] + 1e-10)
+    min_val = inter_signals["log_signal"].min()
+    max_val = inter_signals["log_signal"].max()
+    inter_signals["norm_log"] = (inter_signals["log_signal"] - min_val) / (max_val - min_val)
+
+    # Create a DataFrame for plotting
+    data = pd.concat([intra_signals, inter_signals], ignore_index=True)
+
+    # Plotting a split violin plot; each violin show distribution of intra (left) and inter (right) signals, per quality
+    plt.figure(figsize=(12, 6))
+    sns.violinplot(x="quality", y="log_signal", hue="type", data=data, split=True, inner="quartile")
+    plt.xlabel("MAG Quality")
+    plt.ylabel("Interaction Signal (log scale)")
+    plt.title("Distribution of Intra- and Inter-MAG Interaction Signals")
+    plt.legend(title="Interaction Type")
+    plt.tight_layout()
+    plt.savefig(image_file)
+
+
+def classify_mags(mags, bin_summary) -> dict:
+    """
+    Classifies MAGs based on their completeness and contamination values.
+
+    Args:
+        mags (dict): Dictionary of MAG objects.
+        bin_summary (pd.DataFrame): DataFrame containing MAG quality metrics.
+
+    Returns:
+        dict: Updated dictionary of MAG objects with quality classifications.
+    """
+    logger.info("Classifying MAGs based on their completeness and contamination values...")
+
+    def classify_mag(
+        mag,
+    ) -> (
+        None
+        | Literal["Unknown"]
+        | Literal["Contaminated"]
+        | Literal["Complete"]
+        | Literal["HQ"]
+        | Literal["MQ"]
+        | Literal["LQ"]
+        | Literal["PQ"]
+    ):
+        c, r = mag.completeness, mag.contamination
+        if pd.isna(c) or pd.isna(r):
+            return "Unknown"
+        elif r > 1.1:
+            return "Contaminated"
+        elif c > 0.9 and r <= 1.05:
+            return "Complete"
+        elif c > 0.9 and r < 1.1 and r > 1.05:
+            return "HQ"
+        elif c > 0.7 and r < 1.1:
+            return "MQ"
+        elif c > 0.5 and r < 1.1:
+            return "LQ"
+        elif c < 0.5 and r < 1.1:
+            return "PQ"
+
+    for mag in mags.values():
+        if mag.name in bin_summary["MAG"].values:
+            mag_data = bin_summary[bin_summary["MAG"] == mag.name].iloc[0]
+            mag.info = dict(mag_data)
+            mag.completeness = mag_data["Completeness"]
+            mag.contamination = mag_data["Redundancy"]
+            mag.quality = classify_mag(mag)
+        else:
+            logger.warning(f"Warning: {mag.name} not found in bin summary.")
+
+    quals = [x.quality for x in mags.values()]
+    cnts = Counter(quals)
+    for value, count in cnts.items():
+        print(f"{value} MAGs: {count}")
+
+    return mags
 
 
 def compute_mge_mag_interactions(
@@ -343,14 +450,15 @@ def annotate_hosts(
     # Loading data and instantiating objects.
     logger.info("Loading data and instantiating objects...")
     mags, mge_mags = create_bins(contig_data)
-
-    # Evaluate background noise
-    mags_summary = bin_summary.copy()
+    mags = classify_mags(mags, bin_summary)
 
     # Evaluate background noise
     logger.info("Evaluating the background noise of the experience...")
-    mags_df = estimate_noise(mags, network_data)
-    mags_summary = mags_summary.merge(mags_df, on="MAG", how="left")
+    mags = estimate_noise(mags, network_data)
+
+    # Plot background noise
+    logger.info("Plotting background noise...")
+    plot_mag_noise(mags, image_file="background_noise.png")
 
     # Parse contigs-level network
     G = build_contig_graph(network_data)
