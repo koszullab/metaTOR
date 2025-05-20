@@ -63,6 +63,13 @@ class Mag(Bin):
 
     def __init__(self, name):
         super().__init__(name)
+        self.mges: dict = {}
+
+    def add_mge(self, mge_name, mge_mag) -> None:
+        self.mges[mge_name] = mge_mag
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}('{self.name}', {len(self.contigs)} contigs, {len(self.mges)} MGEs)"
 
 
 class MgeMag(Bin):
@@ -70,6 +77,13 @@ class MgeMag(Bin):
 
     def __init__(self, name):
         super().__init__(name)
+        self.hosts: dict = {}
+
+    def add_host(self, mag_name, mag) -> None:
+        self.hosts[mag_name] = mag
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}('{self.name}', {len(self.contigs)} contigs, {len(self.hosts)} hosts)"
 
 
 def create_bins(contig_data: pd.DataFrame) -> tuple[dict, dict]:
@@ -347,12 +361,12 @@ def classify_mags(mags, bin_summary) -> dict:
 
 def compute_mge_mag_interactions(
     network_data,
-    mge_mags,
     mags,
-    output_file="mge_mag_interactions.txt",
-    image_file="mge_mag_histogram.png",
+    mge_mags,
     interaction_threshold=10.0,
     min_interacting_contigs=5,
+    output_file="mge_mag_interactions.txt",
+    image_file="mge_mag_histogram.png",
 ):
     """
     Computes interactions between contigs from mgeMAGs and those from MAGs,
@@ -373,18 +387,16 @@ def compute_mge_mag_interactions(
     - image_file (str): Name of the saved image file.
     """
 
-    G = build_interaction_graph(network_data)
+    G = build_contig_graph(network_data)
 
-    contig_to_mag = map_contigs_to_mags({**mags, **mge_mags})
+    contig_to_mag = map_contigs_to_mags(mags)
 
     interaction_results = []
 
-    for mgemag_name, mgemag_obj in mge_mags.items():
-        mgemag_contigs = set(mgemag_obj.contigs.values())
+    for mgemag in mge_mags.values():
         interaction_signals = {}
         interacting_contigs_by_mag = {}
-
-        for contig1 in mgemag_contigs:
+        for contig1 in mgemag.contigs.values():
             if contig1 in G:
                 for contig2 in G.neighbors(contig1):
                     if contig2 in contig_to_mag:
@@ -400,7 +412,7 @@ def compute_mge_mag_interactions(
             if percent_signal >= interaction_threshold:
                 interacting_contig_count = len(interacting_contigs_by_mag[mag_name])
                 if interacting_contig_count >= min_interacting_contigs:
-                    interaction_results.append((mgemag_name, mag_name, signal_sum, percent_signal, interacting_contig_count))
+                    interaction_results.append((mgemag.name, mag_name, signal_sum, percent_signal, interacting_contig_count))
 
     with open(output_file, "w") as f:
         f.write("mgeMAG\tMAG\tTotal Signal\t% of signal\tInteracting Contigs\n")
@@ -436,7 +448,24 @@ def compute_mge_mag_interactions(
         fig.savefig(image_file)
         plt.close(fig)
 
-    return image_file
+    for res in interaction_results:
+        mge_name, mag_name, _, _, _ = res
+        mge_mags[mge_name].add_host(mag_name=mag_name, mag=mags[mag_name])
+        mags[mag_name].add_mge(mge_name=mge_name, mge_mag=mge_mags[mge_name])
+
+    print(f"MAGs with: 0  MGEs: {len([x for x in mags.values() if len(x.mges) == 0])}")
+    print(f"           1  MGEs: {len([x for x in mags.values() if len(x.mges) == 1])}")
+    print(f"           2  MGEs: {len([x for x in mags.values() if len(x.mges) == 2])}")
+    print(f"           3+ MGEs: {len([x for x in mags.values() if len(x.mges) >= 3])}")
+    print("---")
+    print(f"MGEs with: 0  hosts: {len([x for x in mge_mags.values() if len(x.hosts) == 0])}")
+    print(f"           1  hosts: {len([x for x in mge_mags.values() if len(x.hosts) == 1])}")
+    print(f"           2  hosts: {len([x for x in mge_mags.values() if len(x.hosts) == 2])}")
+    print(f"           3  hosts: {len([x for x in mge_mags.values() if len(x.hosts) == 3])}")
+    print(f"           4  hosts: {len([x for x in mge_mags.values() if len(x.hosts) == 4])}")
+    print(f"           5+ hosts: {len([x for x in mge_mags.values() if len(x.hosts) >= 5])}")
+    
+    return mags, mge_mags
 
 
 def annotate_hosts(
@@ -460,19 +489,18 @@ def annotate_hosts(
     logger.info("Plotting background noise...")
     plot_mag_noise(mags, image_file="background_noise.png")
 
-    # Parse contigs-level network
-    G = build_contig_graph(network_data)
-
-    # Compute MGE-MAG to MAG interactions
-    logger.info("Computing mgeMAG and MAG interactions and association of the mge to it host...")
-    compute_mge_mag_interactions(
+    # Associate each MGE to their most likely MAG(s)
+    logger.info("Computing mgeMAG and MAG interactions and associate each MGE to potential host(s)...")
+    mags, mge_mags = compute_mge_mag_interactions(
         network_data,
-        mge_mags,
         mags,
+        mge_mags,
         interaction_threshold=interaction_threshold,
         min_interacting_contigs=min_interacting_contigs,
     )
-    logger.info("Association terminated!!!")
+    logger.info("Association finished!!!")
+
+    return mags, mge_mags
 
 
 # Call to the main function `annotate_hosts`
@@ -491,4 +519,4 @@ if __name__ == "__main__":
     network_data = pd.read_csv(network_data_file, sep="\t", names=["contig1", "contig2", "signal"])
 
     # Run the main function
-    annotate_hosts(contig_data, network_data, bin_summary, interaction_threshold, min_interacting_contigs)
+    mags, mge_mags = annotate_hosts(contig_data, network_data, bin_summary, interaction_threshold, min_interacting_contigs)
