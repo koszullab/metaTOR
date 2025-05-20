@@ -69,7 +69,7 @@ class MgeMag(Bin):
         super().__init__(name)
 
 
-def create_bin(contig_data):
+def create_bins(contig_data: pd.DataFrame) -> tuple[dict, dict]:
     """
     Creates MGE-MAGs from contig data.
 
@@ -77,26 +77,26 @@ def create_bin(contig_data):
         contig_data (pd.DataFrame): DataFrame containing information about contigs.
 
     Returns:
-        dict: A dictionary mapping MGE-MAG names to their corresponding MGEMAG objects.
+        dict: A dictionary mapping MGE-MAG names to their corresponding MgeMag objects.
     """
 
     mags = {}
     mge_mags = {}
-    logger.info("Intantiating bins (MAGs and MGE-MAGs)...")
+    logger.info("Instantiating bins (MAGs and MGE-MAGs)...")
 
     for _, row in contig_data.iterrows():
         contig_id, contig_name, bin_name = row["ID"], row["Name"], row["Final_bin"]
 
         if bin_name.startswith("MetaTOR_MGE_"):  # Identify MGE-MAGs
             if bin_name not in mge_mags:
-                mge_mags[bin_name] = MGEMAG(bin_name)  # create a new MGE-MAG
+                mge_mags[bin_name] = MgeMag(bin_name)  # create a new MGE-MAG
             mge_mags[bin_name].add_contig(contig_name, contig_id)
 
         elif bin_name.startswith("metator_"):
             if bin_name not in mags:
-                mags[bin_name] = MAG(bin_name)  # create a new MGE-MAG
+                mags[bin_name] = Mag(bin_name)  # create a new MGE-MAG
             mags[bin_name].add_contig(contig_name, contig_id)
-    logger.info(f"{len(mags)} MAGs and {len(mge_mags)} MGE-MAGs have been created.")
+    logger.info(f"{len(mags)} MAGs and {len(mge_mags)} MGE-MAGs have been parsed.")
 
     return mags, mge_mags
 
@@ -115,12 +115,12 @@ def map_contigs_to_mags(mags: dict) -> dict:
     - contig_to_mag (dict): Dictionary mapping each contig ID to its corresponding MAG name.
     """
     contig_to_mag = {contig: mag_name for mag_name, mag_obj in mags.items() for contig in mag_obj.contigs.values()}
-    logger.info(f"{len(contig_to_mag)} contigs mapped to their MAGs.")
+    logger.info(f"{len(contig_to_mag)} contigs mapped to {len(mags)} MAGs.")
 
     return contig_to_mag
 
 
-def build_interaction_graph(network_data: pd.DataFrame) -> nx.Graph:
+def build_contig_graph(network_data: pd.DataFrame) -> nx.Graph:
     """
     Builds an undirected interaction graph from a DataFrame containing contig pairs and interaction signals.
 
@@ -136,11 +136,7 @@ def build_interaction_graph(network_data: pd.DataFrame) -> nx.Graph:
     logger.info("Creating contigs contacts graph...")
 
     G = nx.Graph()
-    for _, row in network_data.iterrows():
-        contig1, contig2, signal = int(row["contig1"]), int(row["contig2"]), row["signal"]
-        G.add_edge(contig1, contig2, weight=signal)
-    logger.info(f"Graph created with {G.number_of_nodes()} nodes et {G.number_of_edges()} edges.")
-
+    logger.info(f"Contigs graph has {G.number_of_nodes()} nodes and {G.number_of_edges()} edges.")
     return G
 
 
@@ -463,31 +459,20 @@ def compute_mge_mag_interactions(
     return image_file
 
 
-def main(
-    contig_data_file, network_data_file, completeness_data_file, interaction_threshold, min_interacting_contigs
-):  # contig_data_file = contig_data_final_reformarted, network_data_file = network_{0...}.txt, completeness_data_file = "bin_summary.txt
+def annotate_hosts(
+    contig_data: pd.DataFrame,
+    network_data: pd.DataFrame,
+    bin_summary: pd.DataFrame,
+    interaction_threshold: int,
+    min_interacting_contigs: int,
+) -> None:
 
     # Loading data and instantiating objects.
-    print("Loading data and instantiating objects...")
-    contig_data = pd.read_csv(contig_data_file, sep="\t")
-    completeness_data = pd.read_csv(completeness_data_file, sep="\t")
-    network_data = pd.read_csv(network_data_file, sep="\t", names=["contig1", "contig2", "signal"])
-    mags, mge_mags = create_bin(contig_data)
-
-    # Evaluation of intra- and inter-MAG interactions.
-    print("Evaluating of the background noise of the experience...")
-    evaluate_experience_noise(
+    logger.info("Loading data and instantiating objects...")
+    mags, mge_mags = create_bins(contig_data)
         network_data,
         mags,
-        completeness_data,
-        inter_output_file="inter_mag_interactions.txt",
-        intra_output_file="intra_mag_interactions.txt",
-        image_file="mags_interactions_by_quality.png",
-    )
-    print("Evaluation terminated!!!")
-    print("Computing mgeMAG and MAG interactions and association of the mge to it host...")
-    compute_mge_mag_interactions(network_data, mge_mags, mags, interaction_threshold=10.0, min_interacting_contigs=5)
-    print("Association terminated!!!")
+    logger.info("Association terminated!!!")
 
 
 # Call to the main function
