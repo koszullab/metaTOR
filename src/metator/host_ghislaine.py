@@ -3,8 +3,8 @@
 """
 This module is used to detect and associate an MGE with its bacterial MAG host.
 
-It defines two main classes, `MAG` and `MGEMAG`, along with their methods.
-Starting from a `MAG` or `MGEMAG` object, the module retrieves all contigs belonging to a given MAG or MGE-MAG based on binning results.
+It defines two main classes, `MAG` and `MgeMag`, along with their methods.
+Starting from a `MAG` or `MgeMag` object, the module retrieves all contigs belonging to a given MAG or MGE-MAG based on binning results.
 
 The module allows evaluation of background noise by calculating intra- and inter-MAG interaction signals, as well as interactions between MGE-MAGs and MAGs. This helps identify the host MAG for a given MGE-MAG.
 
@@ -12,9 +12,6 @@ Main functions and methods include:
     - Class methods:
         - `__init__()`: Initializes a MAG or MGE-MAG object.
         - `add_contig()`: Adds a contig to a MAG or MGE-MAG.
-        - `get_contigs()`: Retrieves contigs from a MAG or MGE-MAG.
-        - `add_intra_signal()`: Adds an intra-MAG interaction signal.
-        - `add_inter_signal()`: Adds an inter-MAG interaction signal.
         - `has_contig()`: Checks if a MAG or MGE-MAG contains a specific contig.
         - `list_all_mags()` and `list_all_mge_mags()`: List all existing MAG and MGE-MAG objects.
     - `create_mags()` and `create_mge_mags()`: Instantiate MAG and MGE-MAG objects from input data.
@@ -26,92 +23,50 @@ Main functions and methods include:
 # import checkv
 # import metator.figures as mtf
 # import metator.io as mio
-import networkx as nx  # type: ignore
-import matplotlib.pyplot as plt  # type: ignore
+import networkx as nx
+import matplotlib.pyplot as plt
 
 # import pypairix
-# from metator.log import logger
-from os.path import join
-import pandas as pd  # type: ignore
-import numpy as np  # type: ignore
-import seaborn as sns  # type: ignore
-from itertools import combinations
+from metator.log import logger
+import pandas as pd
+import numpy as np
+import seaborn as sns
 import math
 
-import logging
 
-# Configuration du logger
-logging.basicConfig(
-    level=logging.INFO,  # Ou DEBUG pour plus de détails
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler("mags_mge_analysis.log"), logging.StreamHandler()],
-)
-
-logger = logging.getLogger(__name__)
-
-
-#################### MAG CLASS AND FUNCTIONS ########################################################################
-#####################################################################################################################
-###################################################################################################################
 class Bin:
     """
     Classe de base représentant un ensemble de contigs appartenant à un même groupe (ex: MAG ou MGE-MAG).
     """
 
     def __init__(self, name):
-        self.name = name
-        self.contigs = {}
-        self.intra_signal = []
-        self.inter_signal = {}
+        self.name: str = name
+        self.contigs: dict = {}
+        self.completeness: float = None
+        self.contamination: float = None
+        self.quality: str = None
+        self.intra_signal: float = None
+        self.inter_signals: dict = {}
 
-    def add_contig(self, contig_name, contig):
+    def add_contig(self, contig_name, contig) -> None:
         self.contigs[contig_name] = contig
 
-    def get_contigs(self):
-        return self.contigs
-
-    def add_intra_signal(self, signal):
-        self.intra_signal.append(signal)
-
-    def get_intra_signal(self):
-        return self.intra_signal
-
-    def add_inter_signal(self, partner, signal):
-        self.inter_signal.setdefault(partner, []).append(signal)
-
-    def get_inter_signal(self):
-        return self.inter_signal
-
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{self.__class__.__name__}('{self.name}', {len(self.contigs)} contigs)"
 
 
-class MAG(Bin):
+class Mag(Bin):
     """Représente un MAG (Metagenome-Assembled Genome). Hérite de Bin."""
 
-    all_mags = {}
-
     def __init__(self, name):
         super().__init__(name)
-        MAG.all_mags[name] = self
-
-    @classmethod
-    def list_all_mags(cls):
-        return [(mag_name, mag_obj.contigs) for mag_name, mag_obj in cls.all_mags.items()]
 
 
-class MGEMAG(Bin):
+class MgeMag(Bin):
     """Représente un MGE-MAG (intégrant des éléments génétiques mobiles). Hérite de Bin."""
 
-    all_mge_mags = {}
-
     def __init__(self, name):
         super().__init__(name)
-        MGEMAG.all_mge_mags[name] = self
-
-    @classmethod
-    def list_all_mge_mags(cls):
-        return [(mge_name, mge_obj.contigs) for mge_name, mge_obj in cls.all_mge_mags.items()]
 
 
 def create_bin(contig_data):
@@ -146,11 +101,6 @@ def create_bin(contig_data):
     return mags, mge_mags
 
 
-###########################  OTHER FUNCTIONS ########################################################
-#####################################################################################################
-#####################################################################################################
-
-
 def map_contigs_to_mags(mags: dict) -> dict:
     """
     Creates a mapping from each contig to its corresponding MAG name.
@@ -164,7 +114,7 @@ def map_contigs_to_mags(mags: dict) -> dict:
     Returns:
     - contig_to_mag (dict): Dictionary mapping each contig ID to its corresponding MAG name.
     """
-    contig_to_mag = {contig: mag_name for mag_name, mag_obj in mags.items() for contig in mag_obj.get_contigs().values()}
+    contig_to_mag = {contig: mag_name for mag_name, mag_obj in mags.items() for contig in mag_obj.contigs.values()}
     logger.info(f"{len(contig_to_mag)} contigs mapped to their MAGs.")
 
     return contig_to_mag
@@ -454,7 +404,7 @@ def compute_mge_mag_interactions(
     interaction_results = []
 
     for mgemag_name, mgemag_obj in mge_mags.items():
-        mgemag_contigs = set(mgemag_obj.get_contigs().values())
+        mgemag_contigs = set(mgemag_obj.contigs.values())
         interaction_signals = {}
         interacting_contigs_by_mag = {}
 
