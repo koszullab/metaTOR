@@ -391,7 +391,7 @@ def mge_binning(
     tmp_dir: str,
     threshold_bin: float = 0.8,
     threshold_asso: float = 0.1,
-    association: bool = True,
+    association: bool = False,
     plot: bool = False,
     remove_tmp: bool = True,
     threads: int = 1,

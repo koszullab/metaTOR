@@ -1571,7 +1571,7 @@ class Mge(AbstractCommand):
             tmp_dir=tmp_dir,
             threshold_bin=float(self.args["--threshold-bin"]),
             threshold_asso=float(self.args["--threshold-asso"]),
-            association=True,
+            association=False,
             plot=self.args["--plot"],
             remove_tmp=remove_tmp,
             threads=int(self.args["--threads"]),
