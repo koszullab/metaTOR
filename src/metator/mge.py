@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
-"""Module with the mges binning functions. 
+"""Module with the mges binning functions.
 
-It generates mges bins from the contigs annotated as mges based on the 
-metaHiC pairs or from the metabat2 clusterization based on the sequence and 
-shotgun co-abundance information. 
+It generates mges bins from the contigs annotated as mges based on the
+metaHiC pairs or from the metabat2 clusterization based on the sequence and
+shotgun co-abundance information.
 
 Core function to partition mges contigs:
     - build_matrix
@@ -38,9 +38,7 @@ import shutil
 from typing import List, Tuple
 
 
-def build_matrix(
-    contigs: List[str], contigs_size: List[int], pairs_files: List[str]
-) -> "np.ndarray":
+def build_matrix(contigs: List[str], contigs_size: List[int], pairs_files: List[str]) -> "np.ndarray":
     """Function to extract the pairs from a set of contigs from pairs files. Run
     faster if the files are indexed. The contacts are stored in a raw matrix of
     contacts between the list of given contigs. The contacts beloz 1kb are
@@ -170,9 +168,7 @@ def build_mge_depth(
     mge_depth.to_csv(mge_depth_file, sep="\t", index=False)
 
 
-def generate_bin_summary(
-    contigs_data: "pd.DataFrame", mge_bins: dict, outfile: str
-) -> "pd.DataFrame":
+def generate_bin_summary(contigs_data: "pd.DataFrame", mge_bins: dict, outfile: str) -> "pd.DataFrame":
     """Function to generate and write the mge binning summary.
 
     Parameters
@@ -209,24 +205,19 @@ def generate_bin_summary(
     for bin_id in mge_bins.keys():
         summary.loc[bin_id, "BinName"] = f"MetaTOR_MGE_{bin_id:05d}"
         contigs = mge_bins[bin_id]["Contigs"]
-        summary.loc[bin_id, "ContigsNumber"] = f'{len(contigs):1d}'
+        summary.loc[bin_id, "ContigsNumber"] = f"{len(contigs):1d}"
         summary.loc[bin_id, "Contigs"] = ",".join(contigs)
         summary.loc[bin_id, "BinningScore"] = mge_bins[bin_id]["Score"]
         summary.loc[bin_id, "MetagenomicBin"] = mge_bins[bin_id]["Bin"]
-        summary.loc[bin_id, "AssociationScore"] = mge_bins[bin_id][
-            "AssociationScore"
-        ]
+        summary.loc[bin_id, "AssociationScore"] = mge_bins[bin_id]["AssociationScore"]
         summary.loc[bin_id, "AssociatedBins"] = mge_bins[bin_id]["BinList"]
         length, hit, gc = 0, 0, 0
         for contig in contigs:
             length += contigs_data.loc[contig, "Size"]
             hit += contigs_data.loc[contig, "Hit"]
-            gc += (
-                contigs_data.loc[contig, "GC_content"]
-                * contigs_data.loc[contig, "Size"]
-            )
-        summary.loc[bin_id, "BinLength"] = f'{length:1d}'
-        summary.loc[bin_id, "Hit"] = f'{hit:1d}'
+            gc += contigs_data.loc[contig, "GC_content"] * contigs_data.loc[contig, "Size"]
+        summary.loc[bin_id, "BinLength"] = f"{length:1d}"
+        summary.loc[bin_id, "Hit"] = f"{hit:1d}"
         summary.loc[bin_id, "GC"] = gc / length
 
     # Write the summary.
@@ -264,9 +255,7 @@ def generate_mge_bins_metabat(
     """
 
     # Creates an unique ID for each future bin.
-    mges_data["tmp"] = (
-        mges_data.Host + "___" + list(map(str, mges_data.Metabat_bin))
-    )
+    mges_data["tmp"] = mges_data.Host + "___" + list(map(str, mges_data.Metabat_bin))
 
     # Create a new column with the bin id information added.
     bins_ids = {}
@@ -279,9 +268,7 @@ def generate_mge_bins_metabat(
         try:
             bin_id_old = bins_ids[mge_id]
             mges_data.loc[contig, "MetaTOR_MGE_bin"] = bin_id_old
-            mge_bins[bin_id_old]["Contig"].append(
-                mges_data.loc[contig, "Name"]
-            )
+            mge_bins[bin_id_old]["Contig"].append(mges_data.loc[contig, "Name"])
         # Increment the bin id if it's the first time the mge id have been
         # seen.
         except KeyError:
@@ -338,9 +325,7 @@ def generate_mge_bins_pairs(
     return mges_data, mge_bins
 
 
-def generate_mges_fasta(
-    fasta: str, mge_bins: dict, out_file: str, tmp_dir: str
-):
+def generate_mges_fasta(fasta: str, mge_bins: dict, out_file: str, tmp_dir: str):
     """Generate the fasta file with one sequence entry for each bin. The
     sequences are generated like that to be accepted by checkV as one virus. In
     the sequences 180 "N" spacers are added between two contigs.
@@ -404,8 +389,8 @@ def mge_binning(
     out_dir: str,
     pairs_files: List[str],
     tmp_dir: str,
-    threshold_bin: float = .8,
-    threshold_asso: float = .1,
+    threshold_bin: float = 0.8,
+    threshold_asso: float = 0.1,
     association: bool = True,
     plot: bool = False,
     remove_tmp: bool = True,
@@ -471,9 +456,7 @@ def mge_binning(
     checkv_dir_contigs = join(out_dir, "checkV_contigs")
     checkv_dir_bins = join(out_dir, "checkV_bins")
     figure_file_pie = join(out_dir, "pie_mge_bins_size_distribution.png")
-    figure_file_bar_size = join(
-        out_dir, "barplot_mge_bins_size_distribution.png"
-    )
+    figure_file_bar_size = join(out_dir, "barplot_mge_bins_size_distribution.png")
     # figure_file_bar_nb = join(
     #     out_dir, "barplot_mge_bins_numbers_distribution.png"
     # )
@@ -486,20 +469,14 @@ def mge_binning(
             for contig_name in list(mges_data.Name):
                 f.write("%s\n" % contig_name)
         # Extract fasta to have sequences at the same order as the depth file.
-        cmd = "pyfastx extract {0} -l {1} > {2}".format(
-            fasta_mges_contigs, contigs_file, temp_fasta
-        )
+        cmd = "pyfastx extract {0} -l {1} > {2}".format(fasta_mges_contigs, contigs_file, temp_fasta)
         process = sp.Popen(cmd, shell=True)
         process.communicate()
-        mges_data, mge_bins = generate_mge_bins_pairs(
-            mges_data, pairs_files, threshold_bin
-        )
+        mges_data, mge_bins = generate_mge_bins_pairs(mges_data, pairs_files, threshold_bin)
 
     if method == "metabat":
         # Launch metabat binning.
-        build_mge_depth(
-            contigs_file, depth_file, mges_data, mge_depth_file
-        )
+        build_mge_depth(contigs_file, depth_file, mges_data, mge_depth_file)
         metabat = run_metabat(
             contigs_file,
             fasta_mges_contigs,
@@ -517,16 +494,12 @@ def mge_binning(
         mges_data, mge_bins = shuffle_mge_bins(mges_data)
 
     # Generate fasta for checkV quality check.
-    generate_mges_fasta(
-        fasta_mges_contigs, mge_bins, fasta_mges_bins, tmp_dir
-    )
+    generate_mges_fasta(fasta_mges_contigs, mge_bins, fasta_mges_bins, tmp_dir)
 
     # Associate a MGE to its host.
     for bin_id in mge_bins:
         if association:
-            mge_bins[bin_id] = mth.associate_bin(
-                mge_bins[bin_id], network, contigs_data, threshold_asso
-            )
+            mge_bins[bin_id] = mth.associate_bin(mge_bins[bin_id], network, contigs_data, threshold_asso)
         else:
             mge_bins[bin_id]["Bin"] = "None"
             mge_bins[bin_id]["AssociationScore"] = np.nan
@@ -536,20 +509,12 @@ def mge_binning(
 
     # Run checkV on mge contigs and bins.
     if plot:
-        run_checkv(
-            checkv_db, temp_fasta, checkv_dir_contigs, remove_tmp, threads
-        )
-        run_checkv(
-            checkv_db, fasta_mges_bins, checkv_dir_bins, remove_tmp, threads
-        )
+        run_checkv(checkv_db, temp_fasta, checkv_dir_contigs, remove_tmp, threads)
+        run_checkv(checkv_db, fasta_mges_bins, checkv_dir_bins, remove_tmp, threads)
 
         # Plot figures
-        checkv_summary_contigs = pd.read_csv(
-            join(checkv_dir_contigs, "quality_summary.tsv"), sep="\t"
-        )
-        checkv_summary_bins = pd.read_csv(
-            join(checkv_dir_bins, "quality_summary.tsv"), sep="\t"
-        )
+        checkv_summary_contigs = pd.read_csv(join(checkv_dir_contigs, "quality_summary.tsv"), sep="\t")
+        checkv_summary_bins = pd.read_csv(join(checkv_dir_bins, "quality_summary.tsv"), sep="\t")
         mtf.pie_bins_size_distribution(checkv_summary_bins, figure_file_pie)
         mtf.barplot_bins_size(
             ["Contigs", "Bins"],
@@ -563,7 +528,7 @@ def mge_binning(
         # )
 
 
-def resolve_matrix(mat: "np.ndarray", threshold: float = .8) -> List[Tuple]:
+def resolve_matrix(mat: "np.ndarray", threshold: float = 0.8) -> List[Tuple]:
     """Main function to bin mges contigs.
 
     From the marix of contacts associates the contigs with a lot of
@@ -609,9 +574,7 @@ def resolve_matrix(mat: "np.ndarray", threshold: float = .8) -> List[Tuple]:
         try:
             i, j = map(int, np.where(mat == maxi))
         except TypeError:
-            i, j = map(
-                int, [np.where(mat == maxi)[0][0], np.where(mat == maxi)[1][0]]
-            )
+            i, j = map(int, [np.where(mat == maxi)[0][0], np.where(mat == maxi)[1][0]])
 
         # Compute the sum of the count to create the merge vector.
         a = mat0[i, :] + mat0[:, i] + mat0[j, :] + mat0[:, j]
@@ -643,9 +606,7 @@ def resolve_matrix(mat: "np.ndarray", threshold: float = .8) -> List[Tuple]:
     return bins
 
 
-def run_checkv(
-    checkv_db: str, fasta: str, out_dir: str, remove_tmp: bool, threads: int
-):
+def run_checkv(checkv_db: str, fasta: str, out_dir: str, remove_tmp: bool, threads: int):
     """Function to launch end to end workflow from checkV.
 
     Parameters:
@@ -715,24 +676,18 @@ def run_metabat(
     """
 
     # Extract fasta to have sequences at the same order as the depth file.
-    cmd = "pyfastx extract {0} -l {1} > {2}".format(
-        input_fasta, contigs_file, temp_fasta
-    )
+    cmd = "pyfastx extract {0} -l {1} > {2}".format(input_fasta, contigs_file, temp_fasta)
     process = sp.Popen(cmd, shell=True)
     process.communicate()
 
     # Run metabat2 without the bin output with no limit of bin size and save
     # cluster information in the output file.
-    cmd = "metabat2 -i {0} -a {1} -o {2} -s 0 --saveCls --noBinOut".format(
-        temp_fasta, mge_depth_file, outfile
-    )
+    cmd = "metabat2 -i {0} -a {1} -o {2} -s 0 --saveCls --noBinOut".format(temp_fasta, mge_depth_file, outfile)
     process = sp.Popen(cmd, shell=True)
     process.communicate()
 
     # Import metabat result as a pandas dataframe and return it.
-    metabat = pd.read_csv(
-        outfile, sep="\t", index_col=False, names=["Name", "Metabat_bin"]
-    )
+    metabat = pd.read_csv(outfile, sep="\t", index_col=False, names=["Name", "Metabat_bin"])
     return metabat
 
 
@@ -776,9 +731,7 @@ def shuffle_mge_bins(
     return mges_data, mges_bins
 
 
-def update_mge_data(
-    mges_data: pd.DataFrame, bins: List[Tuple]
-) -> pd.DataFrame:
+def update_mge_data(mges_data: pd.DataFrame, bins: List[Tuple]) -> pd.DataFrame:
     """Function to update the mge bins data.
 
     Parameters
@@ -796,24 +749,20 @@ def update_mge_data(
         Dictionary of the mge bins.
     """
     # Initiation
-    mges_data["MetaTOR_MGE_bin"] = 0
-    mges_data["MetaTOR_MGE_Score"] = 0
+    mges_data["MetaTOR_MGE_bin"] = 0.0
+    mges_data["MetaTOR_MGE_Score"] = 0.0
     bin_id = 0
     mge_bins = {}
     mges_data.set_index(np.arange(len(mges_data)), inplace=True)
     for contig_tuple in bins:
         i, j, score = contig_tuple
         # If no existing bin, creates one.
-        if (mges_data.loc[i, "MetaTOR_MGE_bin"] == 0) and (
-            mges_data.loc[j, "MetaTOR_MGE_bin"] == 0
-        ):
+        if (mges_data.loc[i, "MetaTOR_MGE_bin"] == 0) and (mges_data.loc[j, "MetaTOR_MGE_bin"] == 0):
             bin_id += 1
             current_bin = bin_id
             current_score = score
         # If one existing bin, append it.
-        elif (mges_data.loc[i, "MetaTOR_MGE_bin"] == 0) or (
-            mges_data.loc[j, "MetaTOR_MGE_bin"] == 0
-        ):
+        elif (mges_data.loc[i, "MetaTOR_MGE_bin"] == 0) or (mges_data.loc[j, "MetaTOR_MGE_bin"] == 0):
             current_bin = max(
                 mges_data.loc[i, "MetaTOR_MGE_bin"],
                 mges_data.loc[j, "MetaTOR_MGE_bin"],
@@ -860,9 +809,7 @@ def update_mge_data(
         else:
             curr_bin = mges_data.loc[k, "MetaTOR_MGE_bin"]
             try:
-                mge_bins[curr_bin]["Contigs"].append(
-                    mges_data.loc[k, "Name"]
-                )
+                mge_bins[curr_bin]["Contigs"].append(mges_data.loc[k, "Name"])
                 mge_bins[curr_bin]["Score"] = min(
                     mge_bins[curr_bin]["Score"],
                     mges_data.loc[k, "MetaTOR_MGE_Score"],
