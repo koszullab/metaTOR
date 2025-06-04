@@ -1330,7 +1330,8 @@ class Pairs(AbstractCommand):
         generate_log_footer(log_file)
 
 
-class Host(AbstractCommand):
+
+class Host_legacy(AbstractCommand):
     """Detect host of mge annotated contigs.
 
     It will return an output file with the mges information from MetaTOR
@@ -1463,6 +1464,65 @@ class Mge(AbstractCommand):
 
         generate_log_footer(log_file)
 
+
+
+class Host(AbstractCommand):
+    """associate mges to hosts.
+
+    This association is based on interactions between the contigs of MGEs and those of MAGs. 
+     We consider an interaction to be valid when the MGE interacts with at least five different contigs of a MAG, 
+    from which we infer that the MAG is the bacterial host of this mobile genetic element.
+
+
+    usage:
+        host --network=FILE --binning=FILE --contigs-data=FILE 
+        [--threshold-asso=10] [--interact-contig=5] [--outdir=DIR]
+
+    arguments:
+
+    options:
+        -b, --binning=FILE       Path to the anvio binning file.
+        -c, --contigs-data=FILE  Path to the MetaTOR contig data file filled with MGEs and MAGs.
+        -n, --network=FILE      Path to the network file. (Ex : network_0.txt)
+        -i, --interact-contig=INTEGER       Threshold to use for interaction validation. If an MGE interact with a number of contigs of a MAG greater then or equal to
+                                          this treshold, then this interactions are valid [Default: 5]
+                                        
+        -a, --threshold-asso=INTEGER     Threshold to use for association result sorting. We will 
+                                        retain only the MGE-MAG pairs whose association rate is greater than or equal to this threshold.  [Default: 10]
+        -o, --outdir=DIR        Path to the output directory where the output
+                                will be written. Default current directory.
+    """
+
+    def execute(self):
+
+        # Generate log
+        now = time.strftime("%Y%m%d%H%M%S")
+        log_file = f"metator_host_{now}.log"
+        generate_log_header(log_file, cmd="host", args=self.args)
+
+        # Defined the output directory and output file names.
+        if not self.args["--outdir"]:
+             self.args["--outdir"] = "."
+        os.makedirs(self.args["--outdir"], exist_ok=True)
+
+        # Import the files
+        contig_data = mio.load_contig_data(self.args["--contigs-data"])
+        network_data = mio.load_network_data(self.args["--network"])
+        bin_summary = mio.load_binning_data(self.args["--binning"])
+        #network = mio.import_network(self.args["--network"])
+
+
+        
+        # Run the mges binning
+        mth.annotate_hosts(
+            contig_data=contig_data,
+            network_data=network_data,
+            bin_summary=bin_summary,
+            interaction_threshold=int(self.args["--threshold-asso"]),
+            min_interacting_contigs=int(self.args["--interact-contig"])
+        )
+       
+        generate_log_footer(log_file)
 
 def generate_log_header(log_path, cmd, args):
     mtl.set_file_handler(log_path, formatter=logging.Formatter(""))
