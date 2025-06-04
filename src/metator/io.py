@@ -856,3 +856,50 @@ def write_mge_data(mge_data, out_file):
 
     # Write the data frame
     mge_data.to_csv(out_file, sep="\t", index=False, float_format="%.2f")
+
+
+def load_network_data(network_data_file):
+    """Import MetaTOR network file.
+
+    Parameters:
+    -----------
+    network_file : str
+        Path to the network file to import.
+
+    Returns:
+    --------
+    network_data : Dataframe
+    """
+    network_data = pd.read_csv(network_data_file, sep="\t", names=["contig1", "contig2", "signal"])
+    return network_data
+
+def load_contig_data(contig_data_file):
+    """Import MetaTOR contig data file.
+
+    Parameters:
+    -----------
+    network_file : str
+        Path to the network file to import.
+
+    Returns:
+    --------
+    contig_data : Dataframe
+    """
+    contig_data = pd.read_csv(contig_data_file, sep="\t")
+    return contig_data
+
+def load_binning_data(bin_summary_file):
+    """Import MetaTOR binning file.
+
+    Parameters:
+    -----------
+    network_file : str
+        Path to the network file to import.
+
+    Returns:
+    --------
+    bin_summary : Dataframe
+    """
+    bin_summary = pd.read_csv(bin_summary_file, sep="\t", comment="#")
+    bin_summary.columns = ["MAG"] + list(bin_summary.columns[1:])
+    return bin_summary

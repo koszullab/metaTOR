@@ -187,7 +187,7 @@ def estimate_noise(mags, network_data) -> pd.DataFrame:
     - Groups MAG pairs by quality (e.g., HQ-HQ, HQ-MQ, HQ-contaminated).
     - Applies log transformation and normalization to the interaction signals for downstream analysis.
     """
-    logger.info("Calculating the backgroung noise of the experience.")
+    logger.info("Computing the background noise of the experience.")
 
     # Get contigs <-> MAG mapping
     contig_to_mag = map_contigs_to_mags(mags)
@@ -288,17 +288,28 @@ def plot_mag_noise(mags, image_file="background_noise.png") -> None:
 
     # Create a DataFrame for plotting
     data = pd.concat([intra_signals, inter_signals], ignore_index=True)
-
-    # Plotting a split violin plot; each violin show distribution of intra (left) and inter (right) signals, per quality
-    plt.figure(figsize=(12, 6))
-    sns.violinplot(x="quality", y="log_signal", hue="type", data=data, split=True, inner="quartile")
-    plt.xlabel("MAG Quality")
-    plt.ylabel("Interaction Signal (log scale)")
+   
+    
+    # Plotting a split violin and boxplots plot; each violin show distribution of intra (left) and inter (right) signals, per quality
+    #plt.figure(figsize=(12, 6))
+    fig, axes = plt.subplots(2, 1, figsize=(16, 16))
     plt.title("Distribution of Intra- and Inter-MAG Interaction Signals")
     plt.legend(title="Interaction Type")
+    # Boxplot
+    sns.boxplot(data=data, x="quality", y="norm_log", hue="type", ax=axes[0])
+    axes[0].set_title("Grouped Boxplots -  Normalised Log Signal")
+
+    sns.violinplot(data=data, x="quality", y="norm_log", hue="type", split=True, inner="quartile", ax=axes[1])
+    axes[1].set_title("Violin Plot - Normalised Log Signal")
+    plt.legend(title="Interaction Type")
+    for ax in axes:
+        ax.set_xlabel("MAGs Quality")
+        ax.set_ylabel("Normalised interaction Signal (log scale)")
+    
+    
     plt.tight_layout()
     plt.savefig(image_file)
-
+    plt.close(fig)
 
 def classify_mags(mags, bin_summary) -> dict:
     """
@@ -330,15 +341,15 @@ def classify_mags(mags, bin_summary) -> dict:
             return "Unknown"
         elif r > 1.1:
             return "Contaminated"
-        elif c > 0.9 and r <= 1.05:
+        elif c > 0.9 and r < 1.05:
             return "Complete"
-        elif c > 0.9 and r < 1.1 and r > 1.05:
+        elif c > 0.9 and r < 1.1 and r >= 1.05:
             return "HQ"
-        elif c > 0.7 and r < 1.1:
+        elif c > 0.7 and r <= 1.1:
             return "MQ"
-        elif c > 0.5 and r < 1.1:
+        elif c > 0.5 and r <= 1.1:
             return "LQ"
-        elif c < 0.5 and r < 1.1:
+        elif c <= 0.5 and r <= 1.1:
             return "PQ"
 
     for mag in mags.values():
@@ -415,7 +426,7 @@ def compute_mge_mag_interactions(
                     interaction_results.append((mgemag.name, mag_name, signal_sum, percent_signal, interacting_contig_count))
 
     with open(output_file, "w") as f:
-        f.write("mgeMAG\tMAG\tTotal Signal\t% of signal\tInteracting Contigs\n")
+        f.write("MGE\tMAG\tTotal Signal\tSignal rate\tInteracting Contigs\n")
         for res in interaction_results:
             mge_name, mag_name, signal_sum, percent_signal, contig_count = res
             f.write(f"{mge_name:<24}\t{mag_name:<24}\t{signal_sum:.6f}\t{percent_signal:.2f}\t{contig_count}\n")
@@ -433,16 +444,16 @@ def compute_mge_mag_interactions(
             edgecolor="black",
         )
         axes[0].set_xscale("log")
-        axes[0].set_xlabel("mge-MAG total interaction Signal  (log scale)")
+        axes[0].set_xlabel("MGE-MAG total interaction Signal  (log scale)")
         axes[0].set_ylabel("Frequences")
-        axes[0].set_title(f"Signaux Distribution (\u2265 {interaction_threshold}%)")
+        axes[0].set_title(f"Signal Distribution with threshold = (\u2265 {interaction_threshold}%)")
 
-        # Histogramm of interaction percentage
+        # Histogramm of interaction rate
         bins = range(1, math.ceil(max(percentage_counts)) + 1 + 1)  # +2 pour être équivalent à +2 dans ta ligne
         axes[1].hist(percentage_counts, bins=bins, edgecolor="black", align="left")
-        axes[1].set_xlabel("Taux d'association")
-        axes[1].set_ylabel("Fréquence")
-        axes[1].set_title("Distribution des taux d'association des MgeMags à leur MAGs")
+        axes[1].set_xlabel("Association Rate")
+        axes[1].set_ylabel("Frequence")
+        axes[1].set_title("Distribution of association rates of MgeMags with their MAGs.")
 
         plt.tight_layout()
         fig.savefig(image_file)
@@ -473,7 +484,7 @@ def annotate_hosts(
     network_data: pd.DataFrame,
     bin_summary: pd.DataFrame,
     interaction_threshold: int,
-    min_interacting_contigs: int,
+    min_interacting_contigs: int
 ) -> None:
 
     # Loading data and instantiating objects.
@@ -490,7 +501,7 @@ def annotate_hosts(
     plot_mag_noise(mags, image_file="background_noise.png")
 
     # Associate each MGE to their most likely MAG(s)
-    logger.info("Computing mgeMAG and MAG interactions and associate each MGE to potential host(s)...")
+    logger.info("Computing MEG and MAG interactions and associate each MGE to potential host(s)...")
     mags, mge_mags = compute_mge_mag_interactions(
         network_data,
         mags,
@@ -498,25 +509,6 @@ def annotate_hosts(
         interaction_threshold=interaction_threshold,
         min_interacting_contigs=min_interacting_contigs,
     )
-    logger.info("Association finished!!!")
+    logger.info("Host association done !!!")
 
     return mags, mge_mags
-
-
-# Call to the main function `annotate_hosts`
-if __name__ == "__main__":
-
-    network_data_file = "network_1.txt"
-    contig_data_file = "contig_data_final_reformated.txt"
-    bin_summary_file = "bin_summary.txt"
-    interaction_threshold = 10
-    min_interacting_contigs = 5
-
-    # Load data
-    contig_data = pd.read_csv(contig_data_file, sep="\t")
-    bin_summary = pd.read_csv(bin_summary_file, sep="\t", comment="#")
-    bin_summary.columns = ["MAG"] + list(bin_summary.columns[1:])
-    network_data = pd.read_csv(network_data_file, sep="\t", names=["contig1", "contig2", "signal"])
-
-    # Run the main function
-    mags, mge_mags = annotate_hosts(contig_data, network_data, bin_summary, interaction_threshold, min_interacting_contigs)
