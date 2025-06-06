@@ -9,7 +9,6 @@ This mdoule contains all core I/O functions:
     - check_is_fasta
     - check_louvain_cpp
     - check_pypairix
-    - check_pairtools
     - generate_fasta_index
     - generate_temp_dir
     - get_pairs_data
@@ -192,24 +191,6 @@ def check_pypairix():
     except AttributeError:
         logger.error("Cannot find 'pypairix' installed.")
         raise AttributeError
-    return True
-
-
-def check_pairtools():
-    """
-    Function to test if pairtools is in the path.
-
-    Returns:
-    --------
-    bool:
-        True if pairtools found in the path, False otherwise.
-    """
-    try:
-        pairtools = sp.check_output("pairtools", stderr=sp.STDOUT, shell=True)
-    except sp.CalledProcessError:
-        logger.error("Cannot find 'pairtools' in your path please install it or add it in your path.")
-        raise ImportError
-        return False
     return True
 
 
@@ -748,7 +729,7 @@ def sort_pairs(in_file, out_file, tmp_dir=None, threads=1, buffer="2G"):
         sort_proc.communicate()
 
 
-def sort_pairs_pairtools(pairfile, threads=1, remove=False, force=False, tmp_dir=".'"):
+def sort_pairs_pairtools(pairfile, threads=1, remove=False, force=False, tmp_dir="."):
     """Sort pairs files using pairtools executable. Pairix only works with
     compressed pair files. So we use bgzip to compress them.
 
@@ -775,7 +756,6 @@ def sort_pairs_pairtools(pairfile, threads=1, remove=False, force=False, tmp_dir
 
     # Test if pypairix and pairtools are installed and in the path.
     _ = check_pypairix()
-    _ = check_pairtools()
 
     # Set the force parameter and delete files or raise an error accodringly.
     if force:

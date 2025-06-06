@@ -43,7 +43,7 @@ jobs:
 
       - name: 📦 Install package
         run: |
-          pip install .[test]
+          pip install -e .[test]
         shell: micromamba-shell {0}
 
       - name: ✅ Check that package functions work
@@ -58,5 +58,9 @@ jobs:
         run: |
           ruff check . --select=E9,F63,F7,F82
           pytest --cov --cov-report=xml
-          codecov
+        shell: micromamba-shell {0}
+
+      - name: 🛌 Compute coverage with codecov
+        run: |
+          codecov -t ${{ secrets.CODECOV_TOKEN }}
         shell: micromamba-shell {0}
