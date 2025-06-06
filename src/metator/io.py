@@ -748,7 +748,7 @@ def sort_pairs(in_file, out_file, tmp_dir=None, threads=1, buffer="2G"):
         sort_proc.communicate()
 
 
-def sort_pairs_pairtools(pairfile, threads=1, remove=False, force=False, tmp_dir=".'"):
+def sort_pairs_pairtools(pairfile, threads=1, remove=False, force=False, tmp_dir="."):
     """Sort pairs files using pairtools executable. Pairix only works with
     compressed pair files. So we use bgzip to compress them.
 
