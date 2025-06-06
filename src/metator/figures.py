@@ -880,7 +880,7 @@ def plot_figures(out_dir, contigs_data, bin_summary, threshold):
     pairs_files = []
     list_files = os.listdir(out_dir)
     for file in list_files:
-        if re.search("\.pairs$", file):
+        if re.search(".pairs.gz$", file):
             pairs_files.append(join(out_dir, file))
 
     # Plot heatmap with a binning of 50kb.
