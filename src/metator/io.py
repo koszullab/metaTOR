@@ -208,7 +208,6 @@ def check_pairtools():
         pairtools = sp.check_output("pairtools", stderr=sp.STDOUT, shell=True)
     except sp.CalledProcessError:
         logger.error("Cannot find 'pairtools' in your path please install it or add it in your path.")
-        raise ImportError
         return False
     return True
 
