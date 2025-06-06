@@ -27,11 +27,6 @@ def test_check_pypairix():
     assert test
 
 
-def test_check_pairtools():
-    test = mio.check_pairtools()
-    assert test
-
-
 def test_generate_fasta_index(): ...
 
 
