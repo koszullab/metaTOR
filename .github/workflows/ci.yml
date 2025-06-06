@@ -58,5 +58,9 @@ jobs:
         run: |
           ruff check . --select=E9,F63,F7,F82
           pytest --cov --cov-report=xml
+        shell: micromamba-shell {0}
+
+      - name: 🛌 Compute coverage with codecov
+        run: |
           codecov
         shell: micromamba-shell {0}
