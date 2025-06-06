@@ -58,7 +58,7 @@ jobs:
 
       - name: 🛌 Compute coverage with codecov
         run: |
-          codecov
+          codecov -t ${{ secrets.CODECOV_TOKEN }}
         shell: micromamba-shell {0}
 
   Release:
