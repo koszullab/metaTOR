@@ -47,7 +47,7 @@ jobs:
 
       - name: 📦 Install package
         run: |
-          pip install .[test]
+          pip install -e .[test]
         shell: micromamba-shell {0}
 
       - name: 🧪 Run tests with Python ${{ matrix.python-version }} 
