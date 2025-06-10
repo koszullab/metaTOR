@@ -1388,18 +1388,16 @@ class Mge(AbstractCommand):
     MetaVir and the metagenomic binning base on sequences and coverage from
     metabat2.
 
-    The results are then checked using checkV and some plots are displayed to
-    viusalize them. It will return the updated mges data, the mges fasta,
-    the detailed ouputs of checKV and the plots.
+    Command will return the updated mges data and the mges fasta.
 
     The mge fasta will contain one entry by mge MAG, with 180 "N" spacers
     between contigs.
 
     usage:
         mge --network=FILE --binning=FILE --mges=FILE --contigs-data=FILE --fasta=FILE
-        [--checkv-db=DIR] [--depth=FILE] [--method=pairs] [--no-clean-up]
-        [--outdir=DIR] [--plot] [--random] [--threads=1] [--tmpdir=DIR] 
-        [--threshold-bin=0.8] [--threshold-asso=0.1] <pairsfile>...
+        [--depth=FILE] [--method=pairs] [--no-clean-up]
+        [--outdir=DIR] [--random] [--threads=1] [--tmpdir=DIR]
+        [--threshold-bin=0.8] <pairsfile>...
 
     arguments:
         pairsfile               File(s) containing pairs information.
@@ -1407,9 +1405,6 @@ class Mge(AbstractCommand):
     options:
         -b, --binning=FILE      Path to the anvio binning file.
         -c, --contigs-data=FILE  Path to the MetaTOR contig data file.
-        --checkv-db=DIR         Directory where the checkV database is stored.
-                                By default the CHECKVDB environment variable is
-                                used.
         -d, --depth=FILE        Path to the depth file from metabat2 script:
                                 jgi_summarize_bam_contig_depths.
         -f, --fasta=FILE        Path to the fasta file with tha mge contigs
@@ -1421,16 +1416,9 @@ class Mge(AbstractCommand):
         -N, --no-clean-up       If enabled, remove the temporary files.
         -o, --outdir=DIR        Path to the output directory where the output
                                 will be written. Default current directory.
-        -p, --plot              If enable, make summary plots.
         -r, --random            If enable, make a random binning.
-        -s, --threshold-bin=FLOAT       Threshold to use for binning. 
+        -s, --threshold-bin=FLOAT       Threshold to use for binning.
                                         [Default: 0.8]
-        -S, --threshold-asso=FLOAT      Threshold to use for association. If 
-                                several MAGs have value higher than this ratio 
-                                of total contatcs several association are 
-                                considered. [Default: 0.1]
-        -t, --threads=INT       Number of threads to use for checkV.
-                                [Default: 1]
         -T, --tmpdir=DIR        Path to temporary directory. [Default: ./tmp]
     """
 
@@ -1445,20 +1433,17 @@ class Mge(AbstractCommand):
         if not self.args["--tmpdir"]:
             self.args["--tmpdir"] = "./tmp"
         tmp_dir = mio.generate_temp_dir(self.args["--tmpdir"])
+
         # Defined the output directory and output file names.
         if not self.args["--outdir"]:
             self.args["--outdir"] = "."
         os.makedirs(self.args["--outdir"], exist_ok=True)
 
-        # Set remove tmp for checkV.
+        # Set remove tmp
         if not self.args["--no-clean-up"]:
             remove_tmp = True
         else:
             remove_tmp = False
-
-        # Set checkV database path
-        if not self.args["--checkv-db"]:
-            self.args["--checkv-db"] = os.getenv("CHECKVD")
 
         # Sanity check
         if self.args["--method"] == "metabat" and not self.args["--depth"]:
@@ -1470,28 +1455,18 @@ class Mge(AbstractCommand):
         # Import the files
         binning_result = mio.import_anvio_binning(self.args["--binning"])
         mges_list = mio.import_mges_contigs(self.args["--mges"])
-        contigs_data, mges_list_id = mio.import_contig_data_mges(
-            self.args["--contigs-data"], binning_result, mges_list
-        )
-        network = mio.import_network(self.args["--network"])
+        contigs_data, mges_list_id = mio.import_contig_data_mges(self.args["--contigs-data"], binning_result, mges_list)
 
         # Run the mges binning
         mtm.mge_binning(
-            checkv_db=self.args["--checkv-db"],
             depth_file=self.args["--depth"],
             fasta_mges_contigs=self.args["--fasta"],
-            network=network,
             contigs_data=contigs_data,
             mges_list_id=mges_list_id,
             out_dir=self.args["--outdir"],
             pairs_files=pairs_files,
             tmp_dir=tmp_dir,
             threshold_bin=float(self.args["--threshold-bin"]),
-            threshold_asso=float(self.args["--threshold-asso"]),
-            association=False,
-            plot=self.args["--plot"],
-            remove_tmp=remove_tmp,
-            threads=int(self.args["--threads"]),
             method=self.args["--method"],
             random=self.args["--random"],
         )
@@ -1504,13 +1479,12 @@ class Mge(AbstractCommand):
 
         generate_log_footer(log_file)
 
+
 def generate_log_header(log_path, cmd, args):
     mtl.set_file_handler(log_path, formatter=logging.Formatter(""))
     logger.info(f"## MetaTOR: v{__version__} log file")
     logger.info(f"## date: {time.strftime('%Y-%m-%d %H:%M:%S')}")
-    logger.info(
-        f"## Command used: metator {cmd} {' '.join(f'{key} {value}' for key, value in args.items())}"
-    )
+    logger.info(f"## Command used: metator {cmd} {' '.join(f'{key} {value}' for key, value in args.items())}")
     logger.info("\n---\n")
     mtl.set_file_handler(log_path, formatter=mtl.logfile_formatter)
 
