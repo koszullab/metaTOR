@@ -1392,21 +1392,18 @@ class Mge(AbstractCommand):
     between contigs.
 
     usage:
-        mge --network=FILE --binning=FILE --mges=FILE --contigs-data=FILE --fasta=FILE
-        [--depth=FILE] [--method=pairs] [--no-clean-up]
-        [--outdir=DIR] [--random] [--threads=1] [--tmpdir=DIR]
+        mge --contigs=FILE --assembly=FILE --binning=FILE --mges=FILE
+        [--no-clean-up] [--outdir=DIR] [--random] [--tmpdir=DIR]
         [--threshold-bin=0.8] <pairsfile>...
 
     arguments:
         pairsfile               File(s) containing pairs information.
 
     options:
+        -c, --contigs=FILE      Path to the MetaTOR contig data file.
+        -a, --assembly=FILE     Path to the assembly fasta file.
         -b, --binning=FILE      Path to the anvio binning file.
-        -c, --contigs-data=FILE  Path to the MetaTOR contig data file.
-        -f, --fasta=FILE        Path to the fasta file with tha mge contigs
-                                sequences.
-        -m, --mges=FILE         Path to the file with mges contigs list.
-        -n, --network=FILE      Path to the network file.
+        -m, --mges=FILE         Path to the file listing MGE-containing contigs.
         -N, --no-clean-up       If enabled, remove the temporary files.
         -o, --outdir=DIR        Path to the output directory where the output
                                 will be written. Default current directory.
@@ -1439,17 +1436,16 @@ class Mge(AbstractCommand):
         else:
             remove_tmp = False
 
-
         pairs_files = self.args["<pairsfile>"]
 
         # Import the files
         binning_result = mio.import_anvio_binning(self.args["--binning"])
         mges_list = mio.import_mges_contigs(self.args["--mges"])
-        contigs_data, mges_list_id = mio.import_contig_data_mges(self.args["--contigs-data"], binning_result, mges_list)
+        contigs_data, mges_list_id = mio.import_contig_data_mges(self.args["--contigs"], binning_result, mges_list)
 
         # Run the mges binning
         mtm.mge_binning(
-            fasta_mges_contigs=self.args["--fasta"],
+            fasta_mges_contigs=self.args["--assembly"],
             contigs_data=contigs_data,
             mges_list_id=mges_list_id,
             out_dir=self.args["--outdir"],
@@ -1463,7 +1459,7 @@ class Mge(AbstractCommand):
         if remove_tmp:
             shutil.rmtree(tmp_dir)
             # Delete pyfastx index:
-            os.remove(self.args["--fasta"] + ".fxi")
+            os.remove(self.args["--assembly"] + ".fxi")
 
         generate_log_footer(log_file)
 
