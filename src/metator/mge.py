@@ -749,7 +749,7 @@ def update_mge_data(mges_data: pd.DataFrame, bins: List[Tuple]) -> pd.DataFrame:
         Dictionary of the mge bins.
     """
     # Initiation
-    mges_data["MetaTOR_MGE_bin"] = 0.0
+    mges_data["MetaTOR_MGE_bin"] = 0
     mges_data["MetaTOR_MGE_Score"] = 0.0
     bin_id = 0
     mge_bins = {}
