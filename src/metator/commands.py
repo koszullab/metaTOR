@@ -11,7 +11,7 @@ This module contains all classes related to metator commands:
     - qc
     - contactmap
     - scaffold
-    - pairs    
+    - pairs
     - host
     - binning
 
@@ -74,9 +74,7 @@ class AbstractCommand:
         # Get complete output filename and prevent overwriting unless force is
         # enabled
         if not force and os.path.exists(path):
-            raise IOError(
-                "Output file already exists. Use --force to overwrite"
-            )
+            raise IOError("Output file already exists. Use --force to overwrite")
         if dirname(path):
             os.makedirs(dirname(path), exist_ok=True)
 
@@ -181,11 +179,7 @@ class Network(AbstractCommand):
 
         # Check if forward and reverse arguments are given:
         if (
-            self.args["--start"] == "fastq"
-            or (
-                self.args["--start"] == "bam"
-                and self.args["--aligner"] == "bowtie2"
-            )
+            self.args["--start"] == "fastq" or (self.args["--start"] == "bam" and self.args["--aligner"] == "bowtie2")
         ) and not self.args["--reverse"]:
             logger.error(
                 "Forward and reverse arguments are necessary for fastq with %s start and %s aligner.",
@@ -205,17 +199,10 @@ class Network(AbstractCommand):
             "iterative",
             "cutsite",
         ]:
-            logger.error(
-                'Aligner mode should be either "normal", "iterative" or "cutsite".'
-            )
+            logger.error('Aligner mode should be either "normal", "iterative" or "cutsite".')
             raise ValueError
-        if (
-            self.args["--aligner-mode"] == "cutsite"
-            and not self.args["--enzyme"]
-        ):
-            logger.warning(
-                "cutsite mode required an enzyme. Iterative mode will be use instead."
-            )
+        if self.args["--aligner-mode"] == "cutsite" and not self.args["--enzyme"]:
+            logger.warning("cutsite mode required an enzyme. Iterative mode will be use instead.")
             self.args["--aligner-mode"] = "iterative"
 
         # Check correct algorithm value.
@@ -235,27 +222,15 @@ class Network(AbstractCommand):
             )
             raise ValueError
         enzyme_required = ["RS", "theoritical_hit"]
-        if (
-            self.args["--normalization"] in enzyme_required
-            and not self.args["--enzyme"]
-        ):
-            logger.error(
-                'For "RS" and "theoritical_hit" normalization, enzyme is required.'
-            )
+        if self.args["--normalization"] in enzyme_required and not self.args["--enzyme"]:
+            logger.error('For "RS" and "theoritical_hit" normalization, enzyme is required.')
             raise ValueError
         depth_required = ["abundance", "theoritical_hit"]
-        if (
-            self.args["--normalization"] in depth_required
-            and not self.args["--depth"]
-        ):
-            logger.error(
-                'For "abundance" and "theoritical_hit" normalization, depth is required.'
-            )
+        if self.args["--normalization"] in depth_required and not self.args["--depth"]:
+            logger.error('For "abundance" and "theoritical_hit" normalization, depth is required.')
             raise ValueError
         if self.args["--start"] not in ["fastq", "bam", "pair", "network"]:
-            logger.error(
-                "Start argument should be 'fastq', 'bam', 'pair' or 'network'."
-            )
+            logger.error("Start argument should be 'fastq', 'bam', 'pair' or 'network'.")
             raise ValueError
         # Extract index and genome file
         assembly = self.args["--assembly"]
@@ -267,9 +242,7 @@ class Network(AbstractCommand):
                 fasta = assembly
                 # If start at bam could skip the index generation.
                 if self.args["--start"] == "fastq":
-                    index = mio.generate_fasta_index(
-                        fasta, self.args["--aligner"], tmp_dir
-                    )
+                    index = mio.generate_fasta_index(fasta, self.args["--aligner"], tmp_dir)
             else:
                 logger.error(
                     "Please give as assembly argument a %s index or a fasta.",
@@ -571,9 +544,7 @@ class Validation(AbstractCommand):
 
         # Enable file logging
         now = time.strftime("%Y%m%d%H%M%S")
-        log_file = join(
-            self.args["--outdir"], (f"metator_validation_{now}.log")
-        )
+        log_file = join(self.args["--outdir"], (f"metator_validation_{now}.log"))
         generate_log_header(log_file, cmd="validation", args=self.args)
 
         # Transform numeric variable as numeric
@@ -585,9 +556,7 @@ class Validation(AbstractCommand):
 
         # Check correct algorithm value
         if self.args["--algorithm"] not in ["louvain", "leiden", "spinglass"]:
-            logger.error(
-                'algorithm should be either "louvain", "leiden" or "spinglass.'
-            )
+            logger.error('algorithm should be either "louvain", "leiden" or "spinglass.')
             raise ValueError
 
         # Create prefix.
@@ -772,24 +741,15 @@ class Pipeline(AbstractCommand):
             "iterative",
             "cutsite",
         ]:
-            logger.error(
-                'Aligner mode should be either "normal", "iterative" or "cutsite".'
-            )
+            logger.error('Aligner mode should be either "normal", "iterative" or "cutsite".')
             raise ValueError
-        if (
-            self.args["--aligner-mode"] == "cutsite"
-            and not self.args["--enzyme"]
-        ):
-            logger.warning(
-                "cutsite mode required an enzyme. Iterative mode will be use instead."
-            )
+        if self.args["--aligner-mode"] == "cutsite" and not self.args["--enzyme"]:
+            logger.warning("cutsite mode required an enzyme. Iterative mode will be use instead.")
             self.args["--aligner-mode"] = "iterative"
 
         # Check correct algorithm value.
         if self.args["--algorithm"] not in ["louvain", "leiden", "spinglass"]:
-            logger.error(
-                'algorithm should be either "louvain", "leiden" or "spinglass.'
-            )
+            logger.error('algorithm should be either "louvain", "leiden" or "spinglass.')
             raise ValueError
 
         # Check if normalization in the list of possible normalization.
@@ -807,22 +767,12 @@ class Pipeline(AbstractCommand):
             )
             raise ValueError
         enzyme_required = ["RS", "theoritical_hit"]
-        if (
-            self.args["--normalization"] in enzyme_required
-            and not self.args["--enzyme"]
-        ):
-            logger.error(
-                'For "RS" and "theoritical_hit" normalization, enzyme is required.'
-            )
+        if self.args["--normalization"] in enzyme_required and not self.args["--enzyme"]:
+            logger.error('For "RS" and "theoritical_hit" normalization, enzyme is required.')
             raise ValueError
         depth_required = ["abundance", "theoritical_hit"]
-        if (
-            self.args["--normalization"] in depth_required
-            and not self.args["--depth"]
-        ):
-            logger.error(
-                'For "abundance" and "theoritical_hit" normalization, depth is required.'
-            )
+        if self.args["--normalization"] in depth_required and not self.args["--depth"]:
+            logger.error('For "abundance" and "theoritical_hit" normalization, depth is required.')
             raise ValueError
 
         # Sanity check for validation
@@ -888,11 +838,7 @@ class Pipeline(AbstractCommand):
 
         # Check if forward and reverse reads are given for fastq and bam start.
         if (
-            self.args["--start"] == "fastq"
-            or (
-                self.args["--start"] == "bam"
-                and self.args["--aligner"] == "bowtie2"
-            )
+            self.args["--start"] == "fastq" or (self.args["--start"] == "bam" and self.args["--aligner"] == "bowtie2")
         ) and not self.args["--reverse"]:
             logger.error(
                 "Forward and reverse arguments are necessary for fastq with %s start and %s aligner.",
@@ -912,9 +858,7 @@ class Pipeline(AbstractCommand):
         logger.info(f"Partition iterations: {iterations}")
         logger.info(f"Overlapping parameter: {overlapping_parameter}")
         logger.info(f"Recursive partition iterations: {recursive_iterations}")
-        logger.info(
-            f"Recursive overlapping parameter: {recursive_overlapping_parameter}\n"
-        )
+        logger.info(f"Recursive overlapping parameter: {recursive_overlapping_parameter}\n")
 
         # Extract index and genome file
         assembly = self.args["--assembly"]
@@ -925,13 +869,9 @@ class Pipeline(AbstractCommand):
             if mio.check_is_fasta(assembly):
                 fasta = assembly
                 if start == 1:
-                    index = mio.generate_fasta_index(
-                        fasta, self.args["--aligner"], tmp_dir
-                    )
+                    index = mio.generate_fasta_index(fasta, self.args["--aligner"], tmp_dir)
             else:
-                logger.error(
-                    "Please give as assembly argument a bowtie2 index or a fasta."
-                )
+                logger.error("Please give as assembly argument a bowtie2 index or a fasta.")
                 raise ValueError
         else:
             fasta = mio.retrieve_fasta(index, self.args["--aligner"], tmp_dir)
@@ -998,9 +938,7 @@ class Pipeline(AbstractCommand):
 
         # remove contig_data_network if not an input
         if start <= 2:
-            contig_data_network_file = join(
-                self.args["--outdir"], "contig_data_network.txt"
-            )
+            contig_data_network_file = join(self.args["--outdir"], "contig_data_network.txt")
             os.remove(contig_data_network_file)
 
         # Launch validation.
@@ -1025,31 +963,19 @@ class Pipeline(AbstractCommand):
 
         if self.args["--cluster-matrix"]:
             # Make the sum with the partition clustering matrix and save it.
-            clustering_matrix = load_npz(
-                clustering_matrix_partition_file + ".npz"
-            )
-            clustering_matrix_recursive = load_npz(
-                clustering_matrix_recursive_file + ".npz"
-            )
-            clustering_matrix = (
-                (clustering_matrix + clustering_matrix_recursive) / 2
-            ).tocoo()
-            clustering_matrix_file = join(
-                self.args["--outdir"], "clustering_matrix"
-            )
+            clustering_matrix = load_npz(clustering_matrix_partition_file + ".npz")
+            clustering_matrix_recursive = load_npz(clustering_matrix_recursive_file + ".npz")
+            clustering_matrix = ((clustering_matrix + clustering_matrix_recursive) / 2).tocoo()
+            clustering_matrix_file = join(self.args["--outdir"], "clustering_matrix")
             save_npz(clustering_matrix_file, clustering_matrix)
 
         # Remove contig_data_partition file
-        contig_data_partition_file = join(
-            self.args["--outdir"], "contig_data_partition.txt"
-        )
+        contig_data_partition_file = join(self.args["--outdir"], "contig_data_partition.txt")
         os.remove(contig_data_partition_file)
 
         # Launch the scaffold
         if self.args["--scaffold"]:
-            bin_summary = mio.read_bin_summary(
-                join(self.args["--outdir"], "bin_summary.txt")
-            )
+            bin_summary = mio.read_bin_summary(join(self.args["--outdir"], "bin_summary.txt"))
             task = partial(
                 mts.parallel_scaffold,
                 final_fasta_dir=final_fasta_dir,
@@ -1147,9 +1073,7 @@ class Qc(AbstractCommand):
                 logger.error(
                     "Please give a bin summary file, or the ouput directory of metator or launch this command from the output directory of metator."
                 )
-                logger.error(
-                    "You can also check that a bin_summary.txt is present in metator output directory"
-                )
+                logger.error("You can also check that a bin_summary.txt is present in metator output directory")
                 raise FileNotFoundError
         if self.args["--contig-data"]:
             contig_data_file = self.args["--contig-data"]
@@ -1159,9 +1083,7 @@ class Qc(AbstractCommand):
                 logger.error(
                     "Please give a contig data file, or the ouput directory of metator or launch this command from the output directory of metator."
                 )
-                logger.error(
-                    "You can also check that a contig_data_final.txt is present in metator output directory"
-                )
+                logger.error("You can also check that a contig_data_final.txt is present in metator output directory")
                 raise FileNotFoundError
 
         # Set parameters.
@@ -1271,9 +1193,7 @@ class Contactmap(AbstractCommand):
 
         # Defined the output directory and output file names.
         if not self.args["--outdir"]:
-            self.args["--outdir"] = join(
-                ".", "contact_map_" + self.args["--name"]
-            )
+            self.args["--outdir"] = join(".", "contact_map_" + self.args["--name"])
         os.makedirs(self.args["--outdir"], exist_ok=True)
 
         mtc.generate_contact_map(
@@ -1300,6 +1220,7 @@ class Contactmap(AbstractCommand):
             os.remove(self.args["--assembly"] + ".fxi")
 
         generate_log_footer(log_file)
+
 
 class Scaffold(AbstractCommand):
     """Scaffold a bin from metator.
@@ -1409,7 +1330,6 @@ class Pairs(AbstractCommand):
         generate_log_footer(log_file)
 
 
-
 class Host(AbstractCommand):
     """Detect host of mge annotated contigs.
 
@@ -1445,9 +1365,7 @@ class Host(AbstractCommand):
         # Import the files
         binning_result = mio.import_anvio_binning(self.args["--binning"])
         mges_list = mio.import_mges_contigs(self.args["--mges"])
-        contig_data, mges_list_id = mio.import_contig_data_mges(
-            self.args["--contig-data"], binning_result, mges_list
-        )
+        contig_data, mges_list_id = mio.import_contig_data_mges(self.args["--contig-data"], binning_result, mges_list)
         network = mio.import_network(self.args["--network"])
 
         # Run the host detection
@@ -1461,7 +1379,6 @@ class Host(AbstractCommand):
         )
 
         generate_log_footer(log_file)
-
 
 
 class Mge(AbstractCommand):
