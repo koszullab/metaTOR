@@ -1384,9 +1384,7 @@ class Host(AbstractCommand):
 class Mge(AbstractCommand):
     """Bin mges contigs.
 
-    Bin the mge contigs in mges MAGs using the bacterial host detection from
-    MetaVir and the metagenomic binning base on sequences and coverage from
-    metabat2.
+    Bin the mge contigs in mges MAGs using pairs, host MAG sequence and information.
 
     Command will return the updated mges data and the mges fasta.
 
@@ -1405,13 +1403,9 @@ class Mge(AbstractCommand):
     options:
         -b, --binning=FILE      Path to the anvio binning file.
         -c, --contigs-data=FILE  Path to the MetaTOR contig data file.
-        -d, --depth=FILE        Path to the depth file from metabat2 script:
-                                jgi_summarize_bam_contig_depths.
         -f, --fasta=FILE        Path to the fasta file with tha mge contigs
                                 sequences.
         -m, --mges=FILE         Path to the file with mges contigs list.
-        -M, --method=STR        Method for the binning. Either 'metabat' or
-                                'pairs' [Default: pairs].
         -n, --network=FILE      Path to the network file.
         -N, --no-clean-up       If enabled, remove the temporary files.
         -o, --outdir=DIR        Path to the output directory where the output
@@ -1445,10 +1439,6 @@ class Mge(AbstractCommand):
         else:
             remove_tmp = False
 
-        # Sanity check
-        if self.args["--method"] == "metabat" and not self.args["--depth"]:
-            logger.error("Depth file is necessary if method is metabat.")
-            raise ValueError
 
         pairs_files = self.args["<pairsfile>"]
 
@@ -1459,7 +1449,6 @@ class Mge(AbstractCommand):
 
         # Run the mges binning
         mtm.mge_binning(
-            depth_file=self.args["--depth"],
             fasta_mges_contigs=self.args["--fasta"],
             contigs_data=contigs_data,
             mges_list_id=mges_list_id,
@@ -1467,7 +1456,6 @@ class Mge(AbstractCommand):
             pairs_files=pairs_files,
             tmp_dir=tmp_dir,
             threshold_bin=float(self.args["--threshold-bin"]),
-            method=self.args["--method"],
             random=self.args["--random"],
         )
 
