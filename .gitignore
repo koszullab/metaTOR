@@ -1,5 +1,6 @@
 # Test
 test.out
+tests_data/subset.assembly.fa.fxi
 tests_data/assembly.fa.fxi
 tests_data/outdir/cam.pdf
 nohup.out
