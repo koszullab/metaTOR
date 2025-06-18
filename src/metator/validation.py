@@ -293,7 +293,7 @@ def micomplete_compare_bins(
 
     # Create new columns for recursive values
     bin_summary_tab["max_rec_completness"] = np.nan
-    bin_summary_tab["rec_id"] = np.nan
+    bin_summary_tab["rec_id"] = str(np.nan)
 
     # Retrieve maximum completness of the recursive bins.
     for recursive_bin in micomplete_recursive_summary.index:
@@ -771,6 +771,7 @@ def recursive_decontamination(
     logger.info("Starts recursive decontamition step:")
 
     while contamination == True:
+        logger.info(f"------------------ Recursive step {step} started. --------------------- ")
         # Create fasta dir.
         recursive_fasta_dir_step = join(recursive_fasta_dir, f"step_{step}")
         os.makedirs(recursive_fasta_dir_step, exist_ok=True)
@@ -835,6 +836,9 @@ def recursive_decontamination(
             contamination = False
 
     # Create fasta directory and copy final bins.
+    if not os.path.exists(final_fasta_dir):
+        os.makedirs(final_fasta_dir)
+    
     for bin_name in bin_summary:
         dst = join(final_fasta_dir, bin_name + ".fa")
         step = bin_summary[bin_name]["step"]

@@ -61,7 +61,7 @@ def test_sort_pairs(): ...
 
 
 def test_sort_pairs_pairtools():
-    pairfile = "tests_data/outdir/alignment.pairs"
+    pairfile = "tests_data/alignment.pairs"
     tmp_dir = "tests_data/out_test_io"
     os.makedirs(tmp_dir, exist_ok=True)
     test_file = os.path.join(tmp_dir, "test.pairs")

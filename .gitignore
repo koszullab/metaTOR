@@ -1,5 +1,6 @@
 # Test
 test.out
+tests_data/subset.assembly.fa.fxi
 tests_data/assembly.fa.fxi
 tests_data/outdir/cam.pdf
 nohup.out
@@ -63,6 +64,8 @@ tmp/
 tests_data/tmp
 tests_data/out_test
 tests_data/outdir/plot/
+tests_data/outdir_pipeline/
+data/
 
 # Translations
 *.mo

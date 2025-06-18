@@ -4,37 +4,27 @@
 """Module with the mges binning functions.
 
 It generates mges bins from the contigs annotated as mges based on the
-metaHiC pairs or from the metabat2 clusterization based on the sequence and
+metaHiC pairs clusterization based on the sequence and
 shotgun co-abundance information.
 
 Core function to partition mges contigs:
     - build_matrix
-    - build_mge_depth
     - generate_bin_summary
-    - generate_mges_bins_metabat
     - generate_mges_bins_pairs
     - generate_mges_fasta
     - mge_binning
     - resolve_matrix
-    - run_checkv
-    - run_metabat
     - shuffle_mge_bins
     - update_mge_data
 """
 
 
-import checkv
-import metator.figures as mtf
-import metator.io as mio
-import networkx
 import numpy as np
 import pandas as pd
 import pypairix
 import subprocess as sp
 from metator.log import logger
-import metator.host as mth
 from os.path import join
-import shutil
 from typing import List, Tuple
 
 
@@ -122,52 +112,6 @@ def build_matrix(contigs: List[str], contigs_size: List[int], pairs_files: List[
     return mat
 
 
-def build_mge_depth(
-    contigs_file: str,
-    depth_file: str,
-    mges_data: pd.DataFrame,
-    mge_depth_file: str,
-):
-    """Build mge depth form the whole assembly depth file from metabat script.
-
-    Parameters:
-    -----------
-    contigs_file : str
-        Path to the temporary file containing the list of the mge contigs name
-        in the same order as the depth file will be written.
-    depth_file : str
-        Path to the whole depth file from Metabat2 script.
-    mges_data : pandas.DataFrame
-        Table with the mge contig names as index and the detected bacterial
-        bins as column.
-    mge_depth_file : str
-        Path to write the depth file with only the mge contigs depth.
-    """
-
-    # Import the whole depth file as dataframe.
-    whole_depth = pd.read_csv(depth_file, sep="\t")
-
-    # Extract contigs name list.
-    mge_list = list(mges_data.Name)
-
-    # Extract line of the mge contigs
-    mask = []
-    for i in whole_depth.contigName:
-        if i in mge_list:
-            mask.append(True)
-        else:
-            mask.append(False)
-    mge_depth = whole_depth.loc[mask]
-
-    # Write the contigs list as the same order as the depth file.
-    with open(contigs_file, "w") as f:
-        for contig_name in mge_depth.contigName:
-            f.write("%s\n" % contig_name)
-
-    # Write mges depth file to use metabat2.
-    mge_depth.to_csv(mge_depth_file, sep="\t", index=False)
-
-
 def generate_bin_summary(contigs_data: "pd.DataFrame", mge_bins: dict, outfile: str) -> "pd.DataFrame":
     """Function to generate and write the mge binning summary.
 
@@ -199,25 +143,26 @@ def generate_bin_summary(contigs_data: "pd.DataFrame", mge_bins: dict, outfile: 
         "AssociationScore": pd.Series(dtype="float"),
         "AssociatedBins": pd.Series(dtype="str"),
     }
+
     summary = pd.DataFrame(cols, index=mge_bins.keys())
     contigs_data.set_index("Name", drop=False, inplace=True)
     # Iterates on the bins to fill the table.
     for bin_id in mge_bins.keys():
         summary.loc[bin_id, "BinName"] = f"MetaTOR_MGE_{bin_id:05d}"
         contigs = mge_bins[bin_id]["Contigs"]
-        summary.loc[bin_id, "ContigsNumber"] = f"{len(contigs):1d}"
+        summary.loc[bin_id, "ContigsNumber"] = int(f"{len(contigs):1d}")
         summary.loc[bin_id, "Contigs"] = ",".join(contigs)
         summary.loc[bin_id, "BinningScore"] = mge_bins[bin_id]["Score"]
-        summary.loc[bin_id, "MetagenomicBin"] = mge_bins[bin_id]["Bin"]
-        summary.loc[bin_id, "AssociationScore"] = mge_bins[bin_id]["AssociationScore"]
-        summary.loc[bin_id, "AssociatedBins"] = mge_bins[bin_id]["BinList"]
+        summary.loc[bin_id, "MetagenomicBin"] = "None"
+        summary.loc[bin_id, "AssociationScore"] = np.nan
+        summary.loc[bin_id, "AssociatedBins"] = "NA"
         length, hit, gc = 0, 0, 0
         for contig in contigs:
             length += contigs_data.loc[contig, "Size"]
             hit += contigs_data.loc[contig, "Hit"]
             gc += contigs_data.loc[contig, "GC_content"] * contigs_data.loc[contig, "Size"]
-        summary.loc[bin_id, "BinLength"] = f"{length:1d}"
-        summary.loc[bin_id, "Hit"] = f"{hit:1d}"
+        summary.loc[bin_id, "BinLength"] = int(f"{length:1d}")
+        summary.loc[bin_id, "Hit"] = int(f"{hit:1d}")
         summary.loc[bin_id, "GC"] = gc / length
 
     # Write the summary.
@@ -232,68 +177,18 @@ def generate_bin_summary(contigs_data: "pd.DataFrame", mge_bins: dict, outfile: 
     return summary
 
 
-def generate_mge_bins_metabat(
-    mges_data: pd.DataFrame,
-) -> pd.DataFrame:
-    """Generates the binning of the mges contigs based on both HiC
-    information (host detection) and the coverage and sequences information
-    (metabat2 binning).
-
-    Parameters:
-    -----------
-    mges_data : pandas.DataFrame
-        Table with the contigs name as index and with information from both
-        host detected from metator host and cluster form metabat2.
-
-    Returns:
-    --------
-    pandas.DataFrame:
-        Input table with the mge bin id column added.
-    dict:
-        Dictionary with the mge bin id as key and the list of the contigs
-        name as value.
-    """
-
-    # Creates an unique ID for each future bin.
-    mges_data["tmp"] = mges_data.Host + "___" + list(map(str, mges_data.Metabat_bin))
-
-    # Create a new column with the bin id information added.
-    bins_ids = {}
-    mge_bins = {}
-    mges_data["MetaTOR_MGE_bin"] = 0
-    bin_id = 0
-    for contig in mges_data.index:
-        mge_id = mges_data.loc[contig, "tmp"]
-        # Test if the mge id have been already seen.
-        try:
-            bin_id_old = bins_ids[mge_id]
-            mges_data.loc[contig, "MetaTOR_MGE_bin"] = bin_id_old
-            mge_bins[bin_id_old]["Contig"].append(mges_data.loc[contig, "Name"])
-        # Increment the bin id if it's the first time the mge id have been
-        # seen.
-        except KeyError:
-            bin_id += 1
-            bins_ids[mge_id] = bin_id
-            mges_data.loc[contig, "MetaTOR_MGE_bin"] = bin_id
-            mge_bins[bin_id]["Contig"] = [mges_data.loc[contig, "Name"]]
-            mge_bins[bin_id]["Score"] = np.nan
-    return mges_data, mge_bins
-
-
 def generate_mge_bins_pairs(
     mges_data: pd.DataFrame,
     pairs_files: List[str],
     threshold: float = 0.8,
 ) -> Tuple[pd.DataFrame, dict]:
-    """Generates the binning of the mges contigs based on both HiC
-    information (host detection) and the coverage and sequences information
-    (metabat2 binning).
+    """Generates the binning of the mges contigs based on HiC pairs.
 
     Parameters:
     -----------
     mges_data : pandas.DataFrame
-        Table with the contigs name as index and with information from both
-        host detected from metator host and cluster form metabat2.
+        Table with the contigs name as index and with information from
+        metator partition or validation.
     pairs_file : List of str
         List of the path of the pairs file from the alignment. If possible index
         them first using pypairix.
@@ -327,7 +222,7 @@ def generate_mge_bins_pairs(
 
 def generate_mges_fasta(fasta: str, mge_bins: dict, out_file: str, tmp_dir: str):
     """Generate the fasta file with one sequence entry for each bin. The
-    sequences are generated like that to be accepted by checkV as one virus. In
+    sequences are generated like that to be accepted by QC tools as one MgeMAG. In
     the sequences 180 "N" spacers are added between two contigs.
 
     Parameters:
@@ -363,7 +258,7 @@ def generate_mges_fasta(fasta: str, mge_bins: dict, out_file: str, tmp_dir: str)
             process = sp.Popen(cmd, shell=True)
             process.communicate()
 
-            # Concatenated the fasta in one sequence entry for checkV with 180
+            # Concatenated the fasta in one sequence entry with 180
             # "N" spacer between contigs.
             with open(temp_file, "r") as tmp:
                 start = True
@@ -378,24 +273,17 @@ def generate_mges_fasta(fasta: str, mge_bins: dict, out_file: str, tmp_dir: str)
                         out.write(line)
     logger.info(f"{nb_bins} bins have been extracted")
 
+    return mge_bins
+
 
 def mge_binning(
-    checkv_db: str,
-    depth_file: str,
     fasta_mges_contigs: str,
-    network: networkx.classes.graph.Graph,
     contigs_data: pd.DataFrame,
     mges_list_id: List[int],
     out_dir: str,
     pairs_files: List[str],
     tmp_dir: str,
     threshold_bin: float = 0.8,
-    threshold_asso: float = 0.1,
-    association: bool = False,
-    plot: bool = False,
-    remove_tmp: bool = True,
-    threads: int = 1,
-    method: str = "pairs",
     random: bool = False,
 ):
     """Main function to bin mges contigs.
@@ -405,15 +293,9 @@ def mge_binning(
 
     Parameters:
     -----------
-    checkv_db : str
-        Path to the directory of the reference database.
-    depth_file : str
-        Path to depth file of the whole metagenome from metabat script.
     fasta_mges_contigs : str
         Path to the fasta containing the mges sequences. It could contain
         other sequences.
-    network : networkx.classes.graph.Graph
-        MetaTOR network of the HiC data.
     contigs_data : pandas.DataFrame
         Table with the contig name as keys and with the values of the
         contig id the associated bin name, and either if the contig is binned
@@ -430,102 +312,38 @@ def mge_binning(
         Path to temporary directory for intermediate files.
     threshold_bin : float
         Threshold of score to bin contigs. [Default: .8]
-    association : bool
-        Either to associate bin with a MAG or not. [Default: True]
-    plot : bool
-        If True make some summary plots.
-    remove_tmp : bool
-        If enabled, remove temporary files of checkV.
-    threshold_bin_asso : float
-        Threshold to consider an association.
-    threads : int
-        Number of threads to use for checkV.
-    method : str
-        Method for the mge binning. Either 'pairs', 'metabat'.
     random : bool
         If enabled, make a random shuffling of the bins.
     """
 
     # Create output and temporary files.
-    mge_depth_file = join(tmp_dir, "mge_depth.txt")
     contigs_file = join(tmp_dir, "mge_contigs.txt")
     temp_fasta = join(tmp_dir, "mges.fa")
-    metabat_output = join(tmp_dir, "metabat_mges_binning.tsv")
     mge_data_file = join(out_dir, "mges_bin_summary.tsv")
     fasta_mges_bins = join(out_dir, "mges_binned.fa")
-    checkv_dir_contigs = join(out_dir, "checkV_contigs")
-    checkv_dir_bins = join(out_dir, "checkV_bins")
-    figure_file_pie = join(out_dir, "pie_mge_bins_size_distribution.png")
-    figure_file_bar_size = join(out_dir, "barplot_mge_bins_size_distribution.png")
-    # figure_file_bar_nb = join(
-    #     out_dir, "barplot_mge_bins_numbers_distribution.png"
-    # )
 
-    # Import host data from the previous step.
+    # Import contigs data from `metator partition/validation`.
     mges_data = pd.DataFrame(contigs_data.loc[mges_list_id, :])
 
-    if method == "pairs":
-        with open(contigs_file, "w") as f:
-            for contig_name in list(mges_data.Name):
-                f.write("%s\n" % contig_name)
-        # Extract fasta to have sequences at the same order as the depth file.
-        cmd = "pyfastx extract {0} -l {1} > {2}".format(fasta_mges_contigs, contigs_file, temp_fasta)
-        process = sp.Popen(cmd, shell=True)
-        process.communicate()
-        mges_data, mge_bins = generate_mge_bins_pairs(mges_data, pairs_files, threshold_bin)
+    with open(contigs_file, "w") as f:
+        for contig_name in list(mges_data.Name):
+            f.write("%s\n" % contig_name)
 
-    if method == "metabat":
-        # Launch metabat binning.
-        build_mge_depth(contigs_file, depth_file, mges_data, mge_depth_file)
-        metabat = run_metabat(
-            contigs_file,
-            fasta_mges_contigs,
-            metabat_output,
-            mge_depth_file,
-            temp_fasta,
-        )
-
-        # Make binning based on both metabat binning and host detection.
-        mges_data = mges_data.merge(metabat)
-        mges_data, mge_bins = generate_mge_bins_metabat(mges_data)
+    # Extract fasta to have sequences at the same order as the depth file.
+    cmd = "pyfastx extract {0} -l {1} > {2}".format(fasta_mges_contigs, contigs_file, temp_fasta)
+    process = sp.Popen(cmd, shell=True)
+    process.communicate()
+    mges_data, mge_bins = generate_mge_bins_pairs(mges_data, pairs_files, threshold_bin)
 
     if random:
         # Shuffle to simulate random bins. Uncomment to do it
         mges_data, mge_bins = shuffle_mge_bins(mges_data)
 
-    # Generate fasta for checkV quality check.
-    generate_mges_fasta(fasta_mges_contigs, mge_bins, fasta_mges_bins, tmp_dir)
-
-    # Associate a MGE to its host.
-    for bin_id in mge_bins:
-        if association:
-            mge_bins[bin_id] = mth.associate_bin(mge_bins[bin_id], network, contigs_data, threshold_asso)
-        else:
-            mge_bins[bin_id]["Bin"] = "None"
-            mge_bins[bin_id]["AssociationScore"] = np.nan
-            mge_bins[bin_id]["BinList"] = "NA"
+    # Generate MGE fasta (one sequence per mgeMAG, with 180bp "N" as spacers).
+    mge_bins = generate_mges_fasta(fasta_mges_contigs, mge_bins, fasta_mges_bins, tmp_dir)
 
     summary = generate_bin_summary(mges_data, mge_bins, mge_data_file)
-
-    # Run checkV on mge contigs and bins.
-    if plot:
-        run_checkv(checkv_db, temp_fasta, checkv_dir_contigs, remove_tmp, threads)
-        run_checkv(checkv_db, fasta_mges_bins, checkv_dir_bins, remove_tmp, threads)
-
-        # Plot figures
-        checkv_summary_contigs = pd.read_csv(join(checkv_dir_contigs, "quality_summary.tsv"), sep="\t")
-        checkv_summary_bins = pd.read_csv(join(checkv_dir_bins, "quality_summary.tsv"), sep="\t")
-        mtf.pie_bins_size_distribution(checkv_summary_bins, figure_file_pie)
-        mtf.barplot_bins_size(
-            ["Contigs", "Bins"],
-            [checkv_summary_contigs, checkv_summary_bins],
-            figure_file_bar_size,
-        )
-        # mtf.barplot_bins_number(
-        #     ["Contigs", "Bins"],
-        #     [checkv_summary_contigs, checkv_summary_bins],
-        #     figure_file_bar_nb,
-        # )
+    return summary
 
 
 def resolve_matrix(mat: "np.ndarray", threshold: float = 0.8) -> List[Tuple]:
@@ -550,7 +368,7 @@ def resolve_matrix(mat: "np.ndarray", threshold: float = 0.8) -> List[Tuple]:
         List of the Tuple of the associated bins.
     """
 
-    bins = []
+    bins: list = []
     n = len(mat)
     # Save a copy of the initial matrix to keep the intra initial values.
     mat0 = np.copy(mat)
@@ -606,91 +424,6 @@ def resolve_matrix(mat: "np.ndarray", threshold: float = 0.8) -> List[Tuple]:
     return bins
 
 
-def run_checkv(checkv_db: str, fasta: str, out_dir: str, remove_tmp: bool, threads: int):
-    """Function to launch end to end workflow from checkV.
-
-    Parameters:
-    -----------
-    checkv_db : str
-        Path to the directory of the reference database.
-    fasta : str
-        Path to the fasta of mges sequences to check.
-    out_dir : str
-        Path to the checkV output directory where the results of checkV will be
-        written.
-    remove_tmp : bool
-        If True, remove temporary files from checkV.
-    threads : int
-        Number of threads to use to launch checkV.
-    """
-
-    # Defined checkV arguments.
-    checkv_args = {
-        "db": checkv_db,
-        "input": fasta,
-        "output": out_dir,
-        "quiet": True,
-        "remove_tmp": False,
-        "restart": True,
-        "threads": threads,
-    }
-    # Run checkV.
-    checkv.modules.end_to_end.main(checkv_args)
-
-    # Remove temporary directory if required. This is done separately as it
-    # raises an error in checkV.
-    if remove_tmp:
-        shutil.rmtree(join(out_dir, "tmp"))
-
-
-def run_metabat(
-    contigs_file: str,
-    input_fasta: str,
-    outfile: str,
-    mge_depth_file: str,
-    temp_fasta: str,
-) -> pd.DataFrame:
-    """Function to launch metabat binning which is based on sequence and
-    coverage information.
-
-    Parameters:
-    -----------
-    contigs_file : str
-        Path to the file with the list of the mges contigs in the same order
-        as the depth file.
-    input_fasta : str
-        Path to the fasta containing the mges sequences. It could have more
-        sequences.
-    outfile : str
-        Path to write the clustering results of metabat.
-    mge_depth_file : str
-        Path to the depth information of the mges file.
-    temp_fasta : str
-        Path to write a temporary fasta with the mges sequences in the same
-        order as the depth file.
-
-    Returns:
-    --------
-    pandas.DataFrame:
-        Table with the mge contigs name as index and clustering result column.
-    """
-
-    # Extract fasta to have sequences at the same order as the depth file.
-    cmd = "pyfastx extract {0} -l {1} > {2}".format(input_fasta, contigs_file, temp_fasta)
-    process = sp.Popen(cmd, shell=True)
-    process.communicate()
-
-    # Run metabat2 without the bin output with no limit of bin size and save
-    # cluster information in the output file.
-    cmd = "metabat2 -i {0} -a {1} -o {2} -s 0 --saveCls --noBinOut".format(temp_fasta, mge_depth_file, outfile)
-    process = sp.Popen(cmd, shell=True)
-    process.communicate()
-
-    # Import metabat result as a pandas dataframe and return it.
-    metabat = pd.read_csv(outfile, sep="\t", index_col=False, names=["Name", "Metabat_bin"])
-    return metabat
-
-
 def shuffle_mge_bins(
     mges_data: pd.DataFrame,
 ) -> Tuple[pd.DataFrame, dict]:
@@ -700,9 +433,8 @@ def shuffle_mge_bins(
     Parameters:
     -----------
     mges_data : pandas.DataFrame
-        Table with the contigs name as index and with information from both
-        host detected from metator host and cluster form metabat2 and with mge
-        bins id.
+        Table with the contigs name as index and with information from
+        metator partition or validation.
 
     Returns:
     --------
@@ -718,7 +450,7 @@ def shuffle_mge_bins(
     shuffle_ids = np.random.permutation(mges_bin_ids)
     mges_data["shuffle"] = shuffle_ids
 
-    mges_bins = {}
+    mges_bins: dict = {}
     # Shuffle mges bins according to the shuffle dataframe.
     for index in mges_data.index:
         contig = mges_data.loc[index, "Name"]
@@ -749,10 +481,10 @@ def update_mge_data(mges_data: pd.DataFrame, bins: List[Tuple]) -> pd.DataFrame:
         Dictionary of the mge bins.
     """
     # Initiation
-    mges_data["MetaTOR_MGE_bin"] = 0.0
+    mges_data["MetaTOR_MGE_bin"] = 0
     mges_data["MetaTOR_MGE_Score"] = 0.0
     bin_id = 0
-    mge_bins = {}
+    mge_bins: dict = {}
     mges_data.set_index(np.arange(len(mges_data)), inplace=True)
     for contig_tuple in bins:
         i, j, score = contig_tuple

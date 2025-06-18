@@ -2,31 +2,37 @@
 # Commands are simply run to test crashes.
 
 
+from pathlib import Path
 import metator.commands as mtc
 import pytest
 import shutil
 import os
 
 
-# Use global variables for input files
+# Use global variables for temporary tmp/out folders
+@pytest.fixture(scope="session")
+def tmp_dir(tmp_path_factory):
+    p = tmp_path_factory.mktemp("tmp")
+    os.makedirs(p, exist_ok=True)
+    return str(p)
+
+
 global_args = {
-    "BAM_FOR": "tests_data/outdir/alignment_0_for.bam",
-    "BAM_REV": "tests_data/outdir/alignment_0_rev.bam",
+    "BAM_FOR": "tests_data/alignment_0_for.bam",
+    "BAM_REV": "tests_data/alignment_0_rev.bam",
     "DEPTH": "tests_data/depth.txt",
     "FASTA": "tests_data/assembly.fa",
-    "FASTA_VAL": "tests_data/outdir_validation/assembly_val.fa",
     "FASTQ_FOR": "tests_data/for_paired.fq.gz",
     "FASTQ_REV": "tests_data/rev_paired.fq.gz",
     "FASTA_INDEX": "tests_data/assembly",
-    "NETWORK": "tests_data/outdir/network.txt",
-    "NETWORK_VAL": "tests_data/outdir_validation/network.txt",
-    "CONTIGS": "tests_data/outdir/contig_data_network.txt",
-    "CONTIGS_VAL": "tests_data/outdir_validation/contig_data_final.txt",
-    "OUT_FASTA": "tests_data/outdir_validation/overlapping_bin",
-    "OUT_TEST": "tests_data/out_test",
-    "OUT_DIR": "tests_data/outdir",
-    "PAIRS": "tests_data/outdir/alignment.pairs",
-    "TMP": "tests_data/tmp/",
+    "PAIRS": "tests_data/alignment.pairs",
+    "NETWORK": "tests_data/network.txt",
+    "CONTIGS": "tests_data/contig_data_network.txt",
+    "CONTIGS_PARTITION": "tests_data/contig_data_partition.txt",
+    "OVERLAPPING_BINS": "tests_data/overlapping_bin/",
+    "SUBSET_FASTA": "tests_data/subset.assembly.fa",
+    "SUBSET_PAIRS": "tests_data/subset.pairs.gz",
+    "SUBSET_MGES": "tests_data/subset.mges.txt",
 }
 NORMALIZE = (
     "norm",
@@ -38,84 +44,139 @@ MODE = ("mode", ["normal", "iterative", "cutsite"])
 
 
 @pytest.mark.parametrize(*ALIGNER)
-def test_network(aligner):
+def test_network1(aligner, tmp_path):
     args = "-1 {FASTQ_FOR} -2 {FASTQ_REV} -a {FASTA} -b {0} -o {OUT_TEST} -T {TMP}".format(
         aligner,
+        TMP=Path(tmp_path, "tmp"),
+        OUT_TEST=Path(tmp_path, "out_test"),
         **global_args,
     )
     proc = mtc.Network(args.split(" "), {})
     proc.execute()
 
 
-def test_network2():
+def test_network2(tmp_path):
     args = "-1 {BAM_FOR} -2 {BAM_REV} -a {FASTA_INDEX} -d {DEPTH} -E 500 -o {OUT_TEST} -T {TMP} -S bam -N".format(
-        **global_args
+        TMP=Path(tmp_path, "tmp"),
+        OUT_TEST=Path(tmp_path, "out_test"),
+        **global_args,
     )
     proc = mtc.Network(args.split(" "), {})
     proc.execute()
 
 
 @pytest.mark.parametrize(*NORMALIZE)
-def test_network3(norm):
+def test_network3(norm, tmp_path):
     args = "-1 {PAIRS} -a {FASTA} -d {DEPTH} -o {OUT_TEST} -T {TMP} -n {0} -e HindIII,DpnII -S pair".format(
-        norm, **global_args
+        norm,
+        TMP=Path(tmp_path, "tmp"),
+        OUT_TEST=Path(tmp_path, "out_test"),
+        **global_args,
     )
     proc = mtc.Network(args.split(" "), {})
     proc.execute()
 
 
 @pytest.mark.parametrize(*MODE)
-def test_network4(mode):
+def test_network4(mode, tmp_path):
     args = "-1 {FASTQ_FOR} -2 {FASTQ_REV} -a {FASTA} -o {OUT_TEST} -T {TMP} -B {0} -t 4 -e HindIII,DpnII".format(
-        mode, **global_args
+        mode,
+        TMP=Path(tmp_path, "tmp"),
+        OUT_TEST=Path(tmp_path, "out_test"),
+        **global_args,
     )
     proc = mtc.Network(args.split(" "), {})
     proc.execute()
 
 
 @pytest.mark.parametrize(*ALGORITHM)
-def test_partition(alg):
+def test_partition(alg, tmp_path):
     args = (
-        "-a {FASTA} -c {CONTIGS} -i 5 -n {NETWORK} -o {OUT_TEST} -s 30000 -t 8 -T {TMP} -A {0} -FC"
-    ).format(alg, **global_args)
+        "-a {SUBSET_FASTA} -c {CONTIGS} -i 5 -n {NETWORK} -o {OUT_TEST} -s 30000 -t 8 -T {TMP} -A {0} -FC --no-clean-up"
+    ).format(
+        alg,
+        TMP=Path(tmp_path, "tmp"),
+        OUT_TEST=Path(tmp_path, "out_test"),
+        **global_args,
+    )
+    print("CLI command:\nmetator partition", *args.split(" "))
+
     proc = mtc.Partition(args.split(" "), {})
     proc.execute()
 
 
-# def test_validation():
-#     args = (
-#         "-a {FASTA_VAL} -c {CONTIGS_VAL} -f {OUT_FASTA} -i 5 -n {NETWORK_VAL} -o {OUT_TEST} -t 8 -T {TMP} -F"
-#     ).format(**global_args)
-#     proc = mtc.Validation(args.split(" "), {})
-#     proc.execute()
+def test_validation(tmp_path):
+    args = (
+        "-a {SUBSET_FASTA} -c {CONTIGS_PARTITION} -f {OVERLAPPING_BINS} -i 5 -n {NETWORK} -o {OUT_TEST} -t 8 -T {TMP} -F --no-clean-up"
+    ).format(
+        TMP=Path(tmp_path, "tmp"),
+        OUT_TEST=Path(tmp_path, "out_test"),
+        **global_args,
+    )
+    print("CLI command:\nmetator validation", *args.split(" "))
+
+    proc = mtc.Validation(args.split(" "), {})
+    proc.execute()
 
 
-# def test_pipeline():
-#     args = (
-#         "-1 {FASTQ_FOR} -2 {FASTQ_REV} -a {FASTA} -F -o {OUT_TEST} -s 30000 -C"
-#     ).format(**global_args)
-#     proc = mtc.Pipeline(args.split(" "), {})
-#     proc.execute()
+def test_network_partition_validation(tmp_dir):
+    tmp = Path(tmp_dir, "tmp")
+    out = Path(tmp_dir, "out_test")
+    args = "-1 {SUBSET_PAIRS} -a {SUBSET_FASTA} -o {OUT_TEST} -T {TMP} -e HindIII,DpnII -S pair --no-clean-up".format(
+        TMP=tmp,
+        OUT_TEST=out,
+        **global_args,
+    )
+    print("CLI command:\nmetator network", *args.split(" "))
+    proc = mtc.Network(args.split(" "), {})
+    proc.execute()
+
+    args = (
+        "-a {SUBSET_FASTA} -c {OUT_TEST}/contig_data_network.txt -i 5 -n {OUT_TEST}/network.txt -o {OUT_TEST} -s 30000 -t 8 -T {TMP} -FC --no-clean-up"
+    ).format(
+        TMP=tmp,
+        OUT_TEST=out,
+        **global_args,
+    )
+    print("CLI command:\nmetator partition", *args.split(" "))
+    proc = mtc.Partition(args.split(" "), {})
+    proc.execute()
+
+    args = (
+        "-a {SUBSET_FASTA} -c {OUT_TEST}/contig_data_partition.txt -f {OUT_TEST}/overlapping_bin/ -i 5 -n {OUT_TEST}/network.txt -o {OUT_TEST} -t 8 -T {TMP} -F --no-clean-up"
+    ).format(
+        TMP=tmp,
+        OUT_TEST=out,
+        **global_args,
+    )
+    print("CLI command:\nmetator validation", *args.split(" "))
+    proc = mtc.Validation(args.split(" "), {})
+    proc.execute()
 
 
-# def qc():
-#     args = (
-#         "-a {FASTA} -F -O {OUT_DIR} -o {OUT_TEST}/QC -p test -e HindIII,DpnII -T {TMP} -P"
-#     ).format(**global_args)
-#     proc = mtc.Qc(args.split(" "), {})
-#     proc.execute()
+def test_pipeline(tmp_path):
+    """Test the metator pipeline command with subset data."""
+    args = (
+        "-1 {SUBSET_PAIRS} -a {SUBSET_FASTA} -F -o {OUT_TEST} -s 30000 -S pair -e HindIII,DpnII --no-clean-up -T {TMP}"
+    ).format(
+        TMP=Path(tmp_path, "tmp"),
+        OUT_TEST=Path(tmp_path, "out_test"),
+        **global_args,
+    )
+    print("CLI command:\n", "metator pipeline", *args.split(" "))
+
+    proc = mtc.Pipeline(args.split(" "), {})
+    proc.execute()
 
 
-def test_pairs():
-    pairs1 = "{OUT_TEST}/align1.pairs".format(**global_args)
-    pairs2 = "{OUT_TEST}/align2.pairs".format(**global_args)
+def test_pairs(tmp_path):
+    OUT_TEST = Path(tmp_path, "out_test")
+    os.makedirs(OUT_TEST, exist_ok=True)
+    pairs1 = f"{OUT_TEST}/align1.pairs"
+    pairs2 = f"{OUT_TEST}/align2.pairs"
     pairs = "{PAIRS}".format(**global_args)
-    os.makedirs("{OUT_TEST}".format(**global_args), exist_ok=True)
     shutil.copyfile(pairs, pairs1)
     shutil.copyfile(pairs, pairs2)
     args = f"-rF {pairs1} {pairs2}"
     proc = mtc.Pairs(args.split(" "), {})
     proc.execute()
-
-
-# shutil.rmtree("tests_data/out_test")

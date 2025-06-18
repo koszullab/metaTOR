@@ -11,7 +11,7 @@ from os.path import join
 
 assembly = "tests_data/assembly.fa"
 depth_file = "tests_data/depth.txt"
-alignment_file = "tests_data/outdir/alignment.pairs"
+alignment_file = "tests_data/alignment.pairs"
 contigs_data = {
     "NODE_1": {
         "id": 1,
