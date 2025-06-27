@@ -883,3 +883,20 @@ def load_binning_data(bin_summary_file):
     bin_summary = pd.read_csv(bin_summary_file, sep="\t", comment="#")
     bin_summary.columns = ["MAG"] + list(bin_summary.columns[1:])
     return bin_summary
+
+
+
+def load_mges_bin_data(mges_bin_summary_file):
+    """Import MetaTOR binning file.
+
+    Parameters:
+    -----------
+    network_file : str
+        Path to the network file to import.
+
+    Returns:
+    --------
+    bin_summary : Dataframe
+    """
+    mges_bin_summary = pd.read_csv(mges_bin_summary_file, sep="\t", dtype=str)
+    return mges_bin_summary

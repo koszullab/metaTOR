@@ -1475,22 +1475,23 @@ class Host(AbstractCommand):
 
 
     usage:
-        host --network=FILE --binning=FILE --contigs-data=FILE 
+        host --network=FILE --binning=FILE --contigs-data=FILE  --mges-bin-data=FILE
         [--threshold-asso=10] [--interact-contig=5] [--outdir=DIR]
 
     arguments:
 
     options:
-        -b, --binning=FILE       Path to the anvio binning file.
-        -c, --contigs-data=FILE  Path to the MetaTOR contig data file filled with MGEs and MAGs.
+        -b, --binning=FILE       Path to the MetaTOR binning summary file.
+        -c, --contigs-data=FILE  Path to the MetaTOR contig data final file from  MetaTOR validation.
+        -m, --mges-bin-data=FILE  Path to the MetaTOR mge result file named mges_bin_summary.tsv
         -n, --network=FILE      Path to the network file. (Ex : network_0.txt)
         -i, --interact-contig=INTEGER       Threshold to use for interaction validation. If an MGE interact with a number of contigs of a MAG greater then or equal to
                                           this treshold, then this interactions are valid [Default: 5]
                                         
         -a, --threshold-asso=INTEGER     Threshold to use for association result sorting. We will 
                                         retain only the MGE-MAG pairs whose association rate is greater than or equal to this threshold.  [Default: 10]
-        -o, --outdir=DIR        Path to the output directory where the output
-                                will be written. Default current directory.
+        
+                                        
     """
 
     def execute(self):
@@ -1509,7 +1510,7 @@ class Host(AbstractCommand):
         contig_data = mio.load_contig_data(self.args["--contigs-data"])
         network_data = mio.load_network_data(self.args["--network"])
         bin_summary = mio.load_binning_data(self.args["--binning"])
-        #network = mio.import_network(self.args["--network"])
+        mges_bin_summary = mio.load_mges_bin_data(self.args["--mges-bin-data"])
 
 
         
@@ -1518,6 +1519,7 @@ class Host(AbstractCommand):
             contig_data=contig_data,
             network_data=network_data,
             bin_summary=bin_summary,
+            mges_bin_summary=mges_bin_summary,
             interaction_threshold=int(self.args["--threshold-asso"]),
             min_interacting_contigs=int(self.args["--interact-contig"])
         )
