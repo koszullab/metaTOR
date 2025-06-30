@@ -32,6 +32,8 @@ import pandas as pd
 import numpy as np
 import seaborn as sns
 import math
+from typing import Unionfrom typing import Union
+
 
 
 class Bin:
@@ -376,26 +378,15 @@ def classify_mags(mags, bin_summary) -> dict:
     """
     logger.info("Classifying MAGs based on their completeness and contamination values...")
 
-    def classify_mag(
-        mag,
-    ) -> (
-        None
-        | Literal["Unknown"]
-        | Literal["Contaminated"]
-        | Literal["Complete"]
-        | Literal["HQ"]
-        | Literal["MQ"]
-        | Literal["LQ"]
-        | Literal["PQ"]
-    ):
+    def classify_mag( mag,) -> Union[str, None]:
         c, r = mag.completeness, mag.contamination
         if pd.isna(c) or pd.isna(r):
             return "Unknown"
-        elif r > 1.1:
-            return "Contaminated"
+        elif r > 1.1:from typing import Union
+
         elif c > 0.9 and r < 1.05:
             return "Complete"
-        elif c > 0.9 and r < 1.1 and r >= 1.05:
+        elif c > 0.9 and 1.05 <= r < 1.1:
             return "HQ"
         elif c > 0.7 and r <= 1.1:
             return "MQ"
