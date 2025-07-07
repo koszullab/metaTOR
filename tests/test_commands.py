@@ -35,6 +35,7 @@ global_args = {
     "SUBSET_MGES": "tests_data/subset.mges.txt",
     "OUT_PIPELINE": "tests_data/outdir_pipeline",
     "HOSTMAG_FASTA": "tests_data/outdir_pipeline/metator_00005_00000.fa",
+    "HOST_DATA": "tests_data/host_test_data",
 }
 NORMALIZE = (
     "norm",
@@ -212,6 +213,21 @@ def test_scaffold(tmp_path):
     print("CLI command:\n", "metator scaffold", *args.split(" "))
 
     proc = mtc.Scaffold(args.split(" "), {})
+    proc.execute()
+
+
+def test_host(tmp_path):
+    """Test the metator host command with subset data."""
+    os.makedirs(Path(tmp_path, "out_test"), exist_ok=True)
+    args = (
+        "--network {HOST_DATA}/network_0.txt --binning {HOST_DATA}/bin_summary.txt --contigs-data {HOST_DATA}/contig_data_final.txt --mges-bin-data {HOST_DATA}/mges_bin_summary.tsv --outdir {OUT_TEST}"
+    ).format(
+        OUT_TEST=Path(tmp_path, "out_test"),
+        **global_args,
+    )
+    print("CLI command:\n", "metator host", *args.split(" "))
+
+    proc = mtc.Host(args.split(" "), {})
     proc.execute()
 
 
