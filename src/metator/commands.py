@@ -1011,7 +1011,9 @@ class Qc(AbstractCommand):
     usage:
         qc --assembly=FILE --enzyme=STR [--bin-summary=FILE]
         [--contig-data=FILE] [--metator-dir=DIR] [--no-clean-up] [--outdir=DIR]
-        [--prefix=STR] [--plot] [--threshold=STR] [--tmpdir=DIR] <pairsfile>...
+        [--prefix=STR] [--plot] [--threshold=STR] [--tmpdir=DIR]
+        [--completeness=FLOAT] [--redundancy=FLOAT]
+        <pairsfile>...
 
     arguments:
         pairsfile           File(s) containing pairs information.
@@ -1022,6 +1024,8 @@ class Qc(AbstractCommand):
                                 contigs of one bin.
         -b, --bin-summary=FILE  Path to the bin_summary.txt file from MetaTOR
                                 output.
+        -C, --completeness=FLOAT  Minimum completeness of the bins to consider
+                                them as high quality. [Default: 0.7]
         -c, --contig-data=FILE  Path to the contig_data_final.txt file from
                                 MetaTOR output.
         -e, --enzyme=STR        The list of restriction enzyme used to digest
@@ -1034,6 +1038,8 @@ class Qc(AbstractCommand):
         -o, --outdir=DIR        Directory to save output plots and log.
         -p, --prefix=STR        Name of the sample to add on plot and files.
         -P, --plot              If enable display some plots.
+        -R, --redundancy=FLOAT  Minimum redundancy of the bins to consider
+                                them as high quality. [Default: 1.15]
         -t, --threshold=STR     Hicstuff religation and loop thresholds.
                                 Two integers seperated by a coma.
         -T, --tmpdir=DIR        Temporary directory to save pairs files
@@ -1095,6 +1101,14 @@ class Qc(AbstractCommand):
             self.args["--enzyme"] = self.args["--enzyme"].split(",")
         if self.args["--threshold"]:
             self.args["--threshold"] = self.args["--threshold"].split(",")
+        if len(self.args["--completeness"]) == 0:
+            self.args["--completeness"] = 0.7
+        else:
+            self.args["--completeness"] = float(self.args["--completeness"])
+        if len(self.args["--redundancy"]) == 0:
+            self.args["--redundancy"] = 1.15
+        else:
+            self.args["--redundancy"] = float(self.args["--redundancy"])
 
         # Launch quality check
         mtq.quality_check(
@@ -1108,6 +1122,8 @@ class Qc(AbstractCommand):
             self.args["--plot"],
             enzyme=self.args["--enzyme"],
             threshold=self.args["--threshold"],
+            completeness_threshold=self.args["--completeness"],
+            redundancy_threshold=self.args["--redundancy"],
         )
 
         # Delete the temporary folder.
