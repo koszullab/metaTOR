@@ -1598,22 +1598,23 @@ class Host(AbstractCommand):
 
 
     usage:
-        host --network=FILE --binning=FILE --contigs-data=FILE  --mges-bin-data=FILE
-        [--threshold-asso=10] [--interact-contig=5] [--outdir=DIR]
+        host --network=FILE --bin-summary=FILE --contigs-data=FILE  --mges-bin-data=FILE
+        [--threshold-asso=10] [--interact-contig=5] [--outdir=DIR] [--force]
 
     arguments:
 
     options:
-        -b, --binning=FILE       Path to the MetaTOR binning summary file.
-        -c, --contigs-data=FILE  Path to the MetaTOR contig data final file from  MetaTOR validation.
-        -m, --mges-bin-data=FILE  Path to the MetaTOR mge result file named mges_bin_summary.tsv
-        -n, --network=FILE      Path to the network file. (Ex : network_0.txt)
-        -i, --interact-contig=INTEGER       Threshold to use for interaction validation. If an MGE interact with a number of contigs of a MAG greater then or equal to
-                                          this treshold, then this interactions are valid [Default: 5]
-                                        
         -a, --threshold-asso=INTEGER     Threshold to use for association result sorting. We will 
                                         retain only the MGE-MAG pairs whose association rate is greater than or equal to this threshold.  [Default: 10]
-        
+        -B, --bin-summary=FILE       Path to the MetaTOR binning summary file from  MetaTOR validation.
+        -c, --contigs-data=FILE  Path to the MetaTOR contig data final file from  MetaTOR validation.
+        -i, --interact-contig=INTEGER       Threshold to use for interaction validation. If an MGE interact with a number of contigs of a MAG greater than or equal to
+                                          this threshold, then this interactions are valid [Default: 5]
+        -m, --mges-bin-data=FILE  Path to the MetaTOR mge result file named mges_bin_summary.tsv
+        -n, --network=FILE      Path to the network file. (Ex : network_0.txt) from  MetaTOR binning.
+                                        
+        -o, --outdir=DIR        Output directory for results. [Default: .]
+        -F, --force             Force overwrite if output directory already exists.
                                         
     """
 
@@ -1621,18 +1622,21 @@ class Host(AbstractCommand):
 
         # Generate log
         now = time.strftime("%Y%m%d%H%M%S")
-        log_file = f"metator_host_{now}.log"
+        outdir = self.args.get("--outdir") or "."
+        force = self.args.get("--force")
+        # Create output directory or handle existing
+        if os.path.exists(outdir):
+            if not force:
+                raise FileExistsError(f"Output directory '{outdir}' already exists. Use --force to overwrite.")
+        else:
+            os.makedirs(outdir, exist_ok=True)
+        log_file = os.path.join(outdir, f"metator_host_{now}.log")
         generate_log_header(log_file, cmd="host", args=self.args)
-
-        # Defined the output directory and output file names.
-        if not self.args["--outdir"]:
-             self.args["--outdir"] = "."
-        os.makedirs(self.args["--outdir"], exist_ok=True)
-
+        
         # Import the files
         contig_data = mio.load_contig_data(self.args["--contigs-data"])
         network_data = mio.load_network_data(self.args["--network"])
-        bin_summary = mio.load_binning_data(self.args["--binning"])
+        bin_summary = mio.load_binning_data(self.args["--bin-summary"])
         mges_bin_summary = mio.load_mges_bin_data(self.args["--mges-bin-data"])
 
 
@@ -1644,7 +1648,8 @@ class Host(AbstractCommand):
             bin_summary=bin_summary,
             mges_bin_summary=mges_bin_summary,
             interaction_threshold=int(self.args["--threshold-asso"]),
-            min_interacting_contigs=int(self.args["--interact-contig"])
+            min_interacting_contigs=int(self.args["--interact-contig"]),
+            outdir=outdir
         )
        
         generate_log_footer(log_file)
