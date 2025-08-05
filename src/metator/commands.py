@@ -1596,7 +1596,6 @@ class Host(AbstractCommand):
      We consider an interaction to be valid when the MGE interacts with at least five different contigs of a MAG, 
     from which we infer that the MAG is the bacterial host of this mobile genetic element.
 
-
     usage:
         host --network=FILE --bin-summary=FILE --contigs-data=FILE  --mges-bin-data=FILE
         [--threshold-asso=10] [--interact-contig=5] [--outdir=DIR] [--force]
@@ -1604,17 +1603,17 @@ class Host(AbstractCommand):
     arguments:
 
     options:
-        -a, --threshold-asso=INTEGER     Threshold to use for association result sorting. We will 
+        -a, --threshold-asso=INTEGER    Threshold to use for association result sorting. We will 
                                         retain only the MGE-MAG pairs whose association rate is greater than or equal to this threshold.  [Default: 10]
-        -B, --bin-summary=FILE       Path to the MetaTOR binning summary file from  MetaTOR validation.
-        -c, --contigs-data=FILE  Path to the MetaTOR contig data final file from  MetaTOR validation.
-        -i, --interact-contig=INTEGER       Threshold to use for interaction validation. If an MGE interact with a number of contigs of a MAG greater than or equal to
-                                          this threshold, then this interactions are valid [Default: 5]
-        -m, --mges-bin-data=FILE  Path to the MetaTOR mge result file named mges_bin_summary.tsv
-        -n, --network=FILE      Path to the network file. (Ex : network_0.txt) from  MetaTOR binning.
+        -B, --bin-summary=FILE          Path to the MetaTOR binning summary file from  MetaTOR validation.
+        -c, --contigs-data=FILE         Path to the MetaTOR contig data final file from  MetaTOR validation.
+        -i, --interact-contig=INTEGER   Threshold to use for interaction validation. If an MGE interact with a number of contigs of a MAG greater than or equal to
+                                        this threshold, then this interactions are valid [Default: 5]
+        -m, --mges-bin-data=FILE        Path to the MetaTOR mge result file named mges_bin_summary.tsv
+        -n, --network=FILE              Path to the network file. (Ex : network_0.txt) from  MetaTOR binning.
                                         
-        -o, --outdir=DIR        Output directory for results. [Default: .]
-        -F, --force             Force overwrite if output directory already exists.
+        -o, --outdir=DIR                Output directory for results. [Default: .]
+        -F, --force                     Force overwrite if output directory already exists.
                                         
     """
 
