@@ -874,12 +874,12 @@ def load_network_data(network_data_file):
     return network_data
 
 def load_contig_data(contig_data_file):
-    """Import MetaTOR contig data file.
+    """Import MetaTOR mge contig data file.
 
     Parameters:
     -----------
-    network_file : str
-        Path to the network file to import.
+    contig_data_file : str
+        Path to the contig_data_final from MetaTOR mge file to import.
 
     Returns:
     --------
@@ -906,17 +906,17 @@ def load_binning_data(bin_summary_file):
 
 
 
-def load_mges_bin_data(mges_bin_summary_file):
-    """Import MetaTOR binning file.
+# def load_mges_bin_data(mges_bin_summary_file):
+#     """Import MetaTOR binning file.
 
-    Parameters:
-    -----------
-    network_file : str
-        Path to the network file to import.
+#     Parameters:
+#     -----------
+#     network_file : str
+#         Path to the network file to import.
 
-    Returns:
-    --------
-    bin_summary : Dataframe
-    """
-    mges_bin_summary = pd.read_csv(mges_bin_summary_file, sep="\t", dtype=str)
-    return mges_bin_summary
+#     Returns:
+#     --------
+#     bin_summary : Dataframe
+#     """
+#     mges_bin_summary = pd.read_csv(mges_bin_summary_file, sep="\t", dtype=str)
+#     return mges_bin_summary

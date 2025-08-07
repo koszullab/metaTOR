@@ -92,142 +92,52 @@ class MgeMag(Bin):
         return f"{self.__class__.__name__}('{self.name}', {len(self.contigs)} contigs, {len(self.hosts)} hosts)"
 
 
-def update_final_bin_with_mge_legacy(contig_data: pd.DataFrame, mges_bin_summary: pd.DataFrame) -> pd.DataFrame :
-    """
-    Updates the 'Final_bin' column of df1 by replacing 'ND' values or metator_ MAGs with the corresponding MGEs (from df2), if available.
+# def update_final_bin_with_mge(contig_data: pd.DataFrame, mges_bin_summary: pd.DataFrame) -> pd.DataFrame:
+#     """
+#     Updates the 'Final_bin' column of contig_data by replacing 'ND' values or MAGs containing 'metator_'
+#     with the corresponding MGEs (from mges_bin_summary), if available.
 
-    Args:
+#     Args:
+#         contig_data (pd.DataFrame): DataFrame containing at least the columns ['Name', 'Final_bin']
+#         mges_bin_summary (pd.DataFrame): DataFrame containing the columns ['Contigs', 'BinName']
 
-        contig_data (pd.DataFrame): DataFrame containing at least the columns ['Name', 'Final_bin']
+#     Returns:
+#         pd.DataFrame: An updated copy of contig_data with the 'Final_bin' column modified when applicable
+#     """
 
-        mges_bin_summary (pd.DataFrame): DataFrame containing the columns ['Contigs', 'BinName']
+#     contig_data = contig_data.copy()
+#     mges_bin = mges_bin_summary.copy()
 
-    Returns:
+#     # Construire dictionnaire contig → MGE
+#     mges_bin = mges_bin.assign(Contigs=mges_bin["Contigs"].str.split(",")).explode("Contigs")
+#     mges_bin["Contigs"] = mges_bin["Contigs"].str.strip()
+#     contig_to_mge = dict(zip(mges_bin["Contigs"], mges_bin["BinName"]))
 
-        pd.DataFrame: An updated copy of df1 with the 'Final_bin' column modified when applicable
-    """
+#     def update(row):
+#         name = row.get("Name")
+#         final_bin = row.get("Final_bin")
+#         mge = contig_to_mge.get(name)
 
-    contig_data = contig_data.copy()
-    mges_bin = mges_bin_summary.copy()
+#         if pd.isna(final_bin):
+#             final_bin = "ND"  # pour traiter aussi les NaN
 
-    # Construire dictionnaire contig → MGE
-    mges_bin = mges_bin.assign(Contigs=mges_bin["Contigs"].str.split(",")).explode("Contigs")
-    mges_bin["Contigs"] = mges_bin["Contigs"].str.strip()
-    contig_to_mge = dict(zip(mges_bin["Contigs"], mges_bin["BinName"]))
+#         if final_bin == "ND" and mge:
+#             return mge
+#         elif isinstance(final_bin, str) and "metator_" in final_bin and mge:
+#             return mge
+#         else:
+#             return final_bin
 
-    def update(row):
-        name = row.get("Name")
-        final_bin = row.get("Final_bin")
-        mge = contig_to_mge.get(name)
-
-        if pd.isna(final_bin):
-            final_bin = "ND"  # pour que les NaN soient aussi traités comme "ND"
-
-        if final_bin == "ND" and mge:
-            return mge
-        elif isinstance(final_bin, str) and final_bin.startswith("metator_") and mge:
-            return mge
-        else:
-            return final_bin
-
-    contig_data["Final_bin"] = contig_data.apply(update, axis=1)
-    return contig_data
-
-def update_final_bin_with_mge_lagacy2(
-    contig_data: pd.DataFrame,
-    mges_bin_summary: pd.DataFrame
-) -> tuple[pd.DataFrame, list[str]]:
-    """
-    Updates the 'Final_bin' column of contig_data1 by replacing 'ND' values with
-    the corresponding MGEs (from mges_bin_summary), if available.
-    Also returns the list of contigs already assigned to a MAG and found in a MGE.
-
-    Args:
-        contig_data1 (pd.DataFrame): DataFrame containing at least ['Name', 'Final_bin']
-        mges_bin_summary (pd.DataFrame): DataFrame with ['Contigs', 'BinName']
-
-    Returns:
-        tuple:
-            - pd.DataFrame: Updated contig_data
-            - list[str]: List of contigs assigned both to a MAG and present in MGE binning
-    """
-
-    contig_data = contig_data.copy()
-    mges_bin = mges_bin_summary.copy()
-
-    # Construire dictionnaire contig → MGE
-    mges_bin = mges_bin.assign(Contigs=mges_bin["Contigs"].str.split(",")).explode("Contigs")
-    mges_bin["Contigs"] = mges_bin["Contigs"].str.strip()
-    contig_to_mge = dict(zip(mges_bin["Contigs"], mges_bin["BinName"]))
-
-    # Liste pour suivre les contigs ambigus
-    ambiguous_contigs = []
-
-    def update(row):
-        name = row.get("Name")
-        final_bin = row.get("Final_bin")
-        mge = contig_to_mge.get(name)
-
-        if pd.isna(final_bin) or final_bin == "ND":
-            return mge if mge else final_bin
-        elif isinstance(final_bin, str) and final_bin.startswith("metator_") and mge:
-            ambiguous_contigs.append(name)
-            return final_bin  # on ne modifie pas, mais on signale
-        else:
-            return final_bin
-
-    contig_data["Final_bin"] = contig_data.apply(update, axis=1)
-
-   
-    return contig_data
+#     contig_data["Final_bin"] = contig_data.apply(update, axis=1)
+#     return contig_data
 
 
-def update_final_bin_with_mge(contig_data: pd.DataFrame, mges_bin_summary: pd.DataFrame) -> pd.DataFrame:
-    """
-    Updates the 'Final_bin' column of contig_data by replacing 'ND' values or MAGs containing 'metator_'
-    with the corresponding MGEs (from mges_bin_summary), if available.
-
-    Args:
-        contig_data (pd.DataFrame): DataFrame containing at least the columns ['Name', 'Final_bin']
-        mges_bin_summary (pd.DataFrame): DataFrame containing the columns ['Contigs', 'BinName']
-
-    Returns:
-        pd.DataFrame: An updated copy of contig_data with the 'Final_bin' column modified when applicable
-    """
-
-    contig_data = contig_data.copy()
-    mges_bin = mges_bin_summary.copy()
-
-    # Construire dictionnaire contig → MGE
-    mges_bin = mges_bin.assign(Contigs=mges_bin["Contigs"].str.split(",")).explode("Contigs")
-    mges_bin["Contigs"] = mges_bin["Contigs"].str.strip()
-    contig_to_mge = dict(zip(mges_bin["Contigs"], mges_bin["BinName"]))
-
-    def update(row):
-        name = row.get("Name")
-        final_bin = row.get("Final_bin")
-        mge = contig_to_mge.get(name)
-
-        if pd.isna(final_bin):
-            final_bin = "ND"  # pour traiter aussi les NaN
-
-        if final_bin == "ND" and mge:
-            return mge
-        elif isinstance(final_bin, str) and "metator_" in final_bin and mge:
-            return mge
-        else:
-            return final_bin
-
-    contig_data["Final_bin"] = contig_data.apply(update, axis=1)
-    return contig_data
-
-
-def create_bins(contig_data: pd.DataFrame, mges_bin_summary: pd.DataFrame) -> tuple[dict, dict]:
+def create_bins(contig_data: pd.DataFrame) -> tuple[dict, dict]:
     """
     Creates MGE-MAGs from contig data.
 
     Args:
-        contig_data (pd.DataFrame): DataFrame containing information about contigs.
+        contig_data (pd.DataFrame): DataFrame containing information about contigs mags et mges.
 
     Returns:
         dict: A dictionary mapping MGE-MAG names to their corresponding MgeMag objects.
@@ -237,7 +147,7 @@ def create_bins(contig_data: pd.DataFrame, mges_bin_summary: pd.DataFrame) -> tu
     mge_mags = {}
     # Loading data and updating the contig_data_final  to a full version with MAGs and MGEs
     logger.info("Loading data and generating the contig_data")
-    contig_data = update_final_bin_with_mge(contig_data, mges_bin_summary)
+    #contig_data = update_final_bin_with_mge(contig_data, mges_bin_summary)
 
     for _, row in contig_data.iterrows():
         contig_id, contig_name, bin_name = row["ID"], row["Name"], row["Final_bin"]
@@ -495,7 +405,7 @@ def estimate_noise(mags, network_data):
     logger.info(f"Moyenne intra-MAG : {mean_intra:.8f}")
     logger.info(f"Moyenne inter-MAG : {mean_inter:.8f}")
 
-    return mags, mean_inter, sparse_matrix, mag_names
+    return mags, mean_inter, sparse_matrix
 
 def plot_mag_noise_legacy(mags, image_file: str = "background_noise.png") -> None:
 
@@ -568,7 +478,7 @@ def plot_mag_noise_legacy(mags, image_file: str = "background_noise.png") -> Non
     plt.savefig(image_file)
     plt.close(fig)
 
-def plot_mag_noise(sparse_matrix, mag_names, prefix="mag_interactions", matrix_file="inter_mag_matrix.tsv"):
+def plot_mag_noise(sparse_matrix, prefix="mag_interactions"):
     """
     Visualizes the MAG interaction sparse matrix:
     - Boxplot of intra- vs inter-MAG signals (log10 transformed)
@@ -626,28 +536,6 @@ def plot_mag_noise(sparse_matrix, mag_names, prefix="mag_interactions", matrix_f
     plt.close()
     logger.info(f"Boxplot saved in : {prefix}_boxplot.png")
 
-    # # --- HEATMAP ---
-    # dense_matrix = sparse_matrix.toarray()
-    # matrix_log = np.log10(dense_matrix + epsilon) # matrix_log = np.log10(dense_matrix + epsilon)
-    # df_matrix = pd.DataFrame(matrix_log, index=mag_names, columns=mag_names)
-    # plt.figure(figsize=(30, 30))
-    # sns.heatmap(df_matrix, cmap="viridis", square=True, cbar_kws={"label": "log10(Signal)"})
-    # plt.title("MAG-MAG log10 interactions Heatmap", fontsize=15)
-    # plt.text(0, 1.02, f"Intra-mag mean signal = {mean_intra:.8f}", ha='left', va='bottom', transform=plt.gca().transAxes, fontsize=13)
-    # plt.text(1, 1.02, f"Inter-mag mean signal = {mean_inter:.8f}", ha='right', va='bottom', transform=plt.gca().transAxes, fontsize=13)
-    # plt.xlabel("MAG")
-    # plt.ylabel("MAG")
-    # plt.tight_layout()
-    # plt.savefig(f"{prefix}_heatmap.png")
-    # plt.close()
-    # logger.info(f"Heatmap saved in : {prefix}_heatmap.png")
-
-    
-    # df_export = pd.DataFrame(dense_matrix, index=mag_names, columns=mag_names)
-    # with open(matrix_file, "w") as f:
-    #     f.write(f"# intra-MAG mean: {mean_intra:.4f}\tinter-MAG mean: {mean_inter:.4f}\n")
-    #     df_export.to_csv(f, sep="\t")
-    # logger.info(f"Interaction matrix saved in: {matrix_file}")
 
 def classify_mags_legacy(mags, bin_summary) -> dict:
     """
@@ -738,85 +626,77 @@ def classify_mags(mags, bin_summary, plot_prefix: str = None) -> dict:
         else:
             logger.warning(f"Warning: {mag.name} not found in bin summary.")
 
-    # Statistiques
-    quals = [x.quality for x in mags.values()]
-    cnts = Counter(quals)
-    for value, count in cnts.items():
-        print(f"{value} MAGs: {count}")
+    #     df_qual = pd.DataFrame(cnts.items(), columns=["Quality", "Count"]).sort_values("Count", ascending=False)
 
-    # Plot
-    if plot_prefix:
-        df_qual = pd.DataFrame(cnts.items(), columns=["Quality", "Count"]).sort_values("Count", ascending=False)
+    #     plt.figure(figsize=(10, 6))
+    #     ax = sns.barplot(x="Quality", y="Count", data=df_qual)
 
-        plt.figure(figsize=(10, 6))
-        ax = sns.barplot(x="Quality", y="Count", data=df_qual)
+    #     # Ajouter les valeurs exactes au-dessus des barres
+    #     for p in ax.patches:
+    #         height = p.get_height()
+    #         ax.text(
+    #             p.get_x() + p.get_width() / 2,
+    #             height,
+    #             f"{int(height)}",
+    #             ha="center",
+    #             va="bottom",
+    #             fontsize=11
+    #         )
 
-        # Ajouter les valeurs exactes au-dessus des barres
-        for p in ax.patches:
-            height = p.get_height()
-            ax.text(
-                p.get_x() + p.get_width() / 2,
-                height,
-                f"{int(height)}",
-                ha="center",
-                va="bottom",
-                fontsize=11
-            )
+    #     plt.title("Distribution of MAG quality categories")
+    #     plt.xlabel("MAG quality")
+    #     plt.ylabel("Number of MAGs")
+    #     plt.tight_layout()
 
-        plt.title("Distribution of MAG quality categories")
-        plt.xlabel("MAG quality")
-        plt.ylabel("Number of MAGs")
-        plt.tight_layout()
+    #     # Créer le dossier si nécessaire
+    #     os.makedirs(os.path.dirname(plot_prefix), exist_ok=True)
+    #     plt.savefig(f"{plot_prefix}_mag_quality_distribution.png")
+    #     plt.close()
+    # # Nouveau plot : MAGs qui passent les filtres (c > 0.5 et r < 1.1)
+    # if plot_prefix:
+    #     passes = 0
+    #     fails = 0
+    #     for mag in mags.values():
+    #         if hasattr(mag, "completeness") and hasattr(mag, "contamination"):
+    #             if mag.completeness > 0.5 and mag.contamination < 1.1:
+    #                 passes += 1
+    #             else:
+    #                 fails += 1
 
-        # Créer le dossier si nécessaire
-        os.makedirs(os.path.dirname(plot_prefix), exist_ok=True)
-        plt.savefig(f"{plot_prefix}_mag_quality_distribution.png")
-        plt.close()
-    # Nouveau plot : MAGs qui passent les filtres (c > 0.5 et r < 1.1)
-    if plot_prefix:
-        passes = 0
-        fails = 0
-        for mag in mags.values():
-            if hasattr(mag, "completeness") and hasattr(mag, "contamination"):
-                if mag.completeness > 0.5 and mag.contamination < 1.1:
-                    passes += 1
-                else:
-                    fails += 1
+    #     df_filter = pd.DataFrame({
+    #         "Filter": ["Valids", "Others"],
+    #         "Count": [passes, fails]
+    #     })
 
-        df_filter = pd.DataFrame({
-            "Filter": ["Valids", "Others"],
-            "Count": [passes, fails]
-        })
-
-        plt.figure(figsize=(10, 7))
-        ax = sns.barplot(
-                    x="Filter",
-                    y="Count",
-                    hue="Filter",
-                    data=df_filter,
-                    palette={"Valids": "green", "Others": "red"},
-                    legend=False
-                )
+    #     plt.figure(figsize=(10, 7))
+    #     ax = sns.barplot(
+    #                 x="Filter",
+    #                 y="Count",
+    #                 hue="Filter",
+    #                 data=df_filter,
+    #                 palette={"Valids": "green", "Others": "red"},
+    #                 legend=False
+    #             )
 
 
-        # Ajouter le nombre sur chaque barre
-        for p in ax.patches:
-            height = p.get_height()
-            ax.text(
-                p.get_x() + p.get_width() / 2,
-                height,
-                f"{int(height)}",
-                ha="center",
-                va="bottom",
-                fontsize=11
-            )
+    #     # Ajouter le nombre sur chaque barre
+    #     for p in ax.patches:
+    #         height = p.get_height()
+    #         ax.text(
+    #             p.get_x() + p.get_width() / 2,
+    #             height,
+    #             f"{int(height)}",
+    #             ha="center",
+    #             va="bottom",
+    #             fontsize=11
+    #         )
 
-        plt.title("MAGs with completeness > 50% and contamination < 1.1 Vs Others")
-        plt.xlabel("Status")
-        plt.ylabel("Number of MAGs")
-        plt.tight_layout()
-        plt.savefig(f"{plot_prefix}_HQ_mag_vs_others.png")
-        plt.close()
+    #     plt.title("MAGs with completeness > 50% and contamination < 1.1 Vs Others")
+    #     plt.xlabel("Status")
+    #     plt.ylabel("Number of MAGs")
+    #     plt.tight_layout()
+    #     plt.savefig(f"{plot_prefix}_HQ_mag_vs_others.png")
+    #     plt.close()
     return mags
 
 def compute_mge_mag_interactions(  
@@ -883,13 +763,11 @@ def compute_mge_mag_interactions(
 
 
     df = pd.DataFrame(interaction_results, columns=["MGE", "MAG", "Signal", "Percentage", "Contigs"])
-    df["MAG"]=df["MAG"].astype(str)
-    df["MGE"]=df["MGE"].astype(str)
     if not df.empty:
         # Boxplot: Raw vs Filtered Signals
         df_all = pd.DataFrame({
             "Signal": all_signals + list(df["Signal"]),
-            "Type": ["All"] * len(all_signals) + ["Filtered"] * len(df["Signal"])
+            "Type": ["All interactions"] * len(all_signals) + ["Validated interactions"] * len(df["Signal"])
         })
         plt.figure(figsize=(10, 7))
         sns.boxplot(data=df_all, x="Type", y="Signal", showfliers=False)
@@ -897,75 +775,52 @@ def compute_mge_mag_interactions(
         plt.title("Log10-scaled distribution of MGE-MAG interaction signals")
         plt.ylabel("Signal")
         plt.tight_layout()
-        plt.savefig(f"{plot_prefix}_boxplot_signal_filtered.png")
+        plt.savefig(f"{plot_prefix}_boxplot_interaction_signal.png")
         plt.close()
 
-        # Combined Histogram: MAGs per MGE & MGEs per MAG
+        # # Combined Histogram: MAGs per MGE & MGEs per MAG
         
-        mag_count = df["MGE"].value_counts()
-        mge_count = df["MAG"].value_counts()
+        # mag_count = df["MGE"].value_counts()
+        # mge_count = df["MAG"].value_counts()
 
-        fig, axs = plt.subplots(1, 2, figsize=(16, 8))
+        # fig, axs = plt.subplots(1, 2, figsize=(16, 8))
 
-        sns.countplot(x=mag_count.values, ax=axs[0])
-        axs[0].set_title("Number of MAGs linked to each MGE")
-        axs[0].set_xlabel("Number of MAGs")
-        axs[0].set_ylabel("Number of MGEs")
+        # sns.countplot(x=mag_count.values, ax=axs[0])
+        # axs[0].set_title("Number of MGE per Host")
+        # axs[0].set_xlabel("Number of MAGs")
+        # axs[0].set_ylabel("Number of MGEs")
 
-        sns.countplot(x=mge_count.values, ax=axs[1])
-        axs[1].set_title("Number of MGEs linked to each MAG")
-        axs[1].set_xlabel("Number of MGEs")
-        axs[1].set_ylabel("Number of MAGs")
+        # sns.countplot(x=mge_count.values, ax=axs[1])
+        # axs[1].set_title("Number of MGEs per MAG")
+        # axs[1].set_xlabel("Number of MGEs")
+        # axs[1].set_ylabel("Number of MAGs")
+
+        # plt.tight_layout()
+        # plt.savefig(f"{plot_prefix}_counts_summary.png")
+        # plt.close()
+                # Histogrammes : Nombre de MGEs par MAG et nombre de MAGs par MGE
+
+        mges_per_mag = df.groupby("MAG")["MGE"].nunique()
+        mags_per_mge = df.groupby("MGE")["MAG"].nunique()
+
+        fig, axs = plt.subplots(1, 2, figsize=(16, 6))
+
+        sns.histplot(mges_per_mag, bins=30, ax=axs[0])
+        axs[0].set_title("Number of MGEs per MAG (host)")
+        axs[0].set_xlabel("Number of MGEs")
+        axs[0].set_ylabel("Number of MAGs")
+
+        sns.histplot(mags_per_mge, bins=30, ax=axs[1])
+        axs[1].set_title("Number of MAGs (hosts) per MGE")
+        axs[1].set_xlabel("Number of MAGs")
+        axs[1].set_ylabel("Number of MGEs")
 
         plt.tight_layout()
         plt.savefig(f"{plot_prefix}_counts_summary.png")
         plt.close()
 
-        # Optional Heatmap if matrix is not too sparse or large
-        if len(df["MGE"].unique()) <= 100 and len(df["MAG"].unique()) <= 100:
-            heatmap_matrix = df.pivot(index="MGE", columns="MAG", values="Signal").fillna(0)
-            plt.figure(figsize=(max(16, 1 * heatmap_matrix.shape[1]), max(16, 1 * heatmap_matrix.shape[0])))
-            sns.heatmap(np.log10(heatmap_matrix + 1e-6), cmap="viridis", cbar_kws={"label": "log10(Signal)"})
-            plt.title("Heatmap of MGE-MAG association signals (log10 scale)")
-            plt.xlabel("MAG")
-            plt.ylabel("MGE")
-            plt.tight_layout()
-            plt.savefig(f"{plot_prefix}_heatmap.png")
-            plt.close()
 
-            # --- HEATMAP automatique si taille raisonnable ---
-        if df.shape[0] > 0 and df["MGE"].nunique() <= 100 and df["MAG"].nunique() <= 100:
-            pivot = df.pivot(index="MGE", columns="MAG", values="Signal").fillna(0)
-            
-            # Log10 transformation
-            pivot_log = np.log10(pivot + 1e-6)
-
-            # Tri par somme décroissante
-            mge_order = pivot_log.sum(axis=1).sort_values(ascending=False).index
-            mag_order = pivot_log.sum(axis=0).sort_values(ascending=False).index
-            pivot_log_sorted = pivot_log.loc[mge_order, mag_order]
-
-            plt.figure(figsize=(min(1 * len(mag_order), 18), min(1 * len(mge_order), 18)))
-            sns.heatmap(pivot_log_sorted, cmap="viridis", cbar_kws={"label": "log10(Signal)"})
-            plt.title("Heatmap log10 des signaux MGE–MAG (triés)")
-            plt.xlabel("MAG")
-            plt.ylabel("MGE")
-            plt.tight_layout()
-            plt.savefig(f"{plot_prefix}_heatmap.png")
-            plt.close()
-
-            # --- Heatmap avec clustering (facultatif mais informatif) ---
-            sns.clustermap(
-                pivot_log,
-                cmap="viridis",
-                figsize=(min(1 * pivot_log.shape[1], 25), min(1 * pivot_log.shape[0], 25)),
-                cbar_kws={"label": "log10(Signal)"},
-                metric="euclidean",
-                method="average"
-            )
-            plt.savefig(f"{plot_prefix}_heatmap_clustermap.png")
-            plt.close()
-
+ 
     for res in interaction_results:
         mge_name, mag_name, _, _, _ = res
         mge_mags[mge_name].add_host(mag_name=mag_name, mag=mags[mag_name])
@@ -990,7 +845,6 @@ def annotate_hosts(
     contig_data: pd.DataFrame,
     network_data: pd.DataFrame,
     bin_summary: pd.DataFrame,
-    mges_bin_summary: pd.DataFrame,
     interaction_threshold: int,
     min_interacting_contigs: int,
     outdir
@@ -999,16 +853,16 @@ def annotate_hosts(
     
     # Instantiating objects.
     logger.info("Instantiating objects...")
-    mags, mge_mags = create_bins(contig_data, mges_bin_summary)
+    mags, mge_mags = create_bins(contig_data)
     mags = classify_mags(mags, bin_summary, plot_prefix =os.path.join(outdir, "plot"))
 
     # Evaluate background noise
     logger.info("Evaluating the background noise of the experience...")
-    mags, mean_inter, interactions_matrix, mag_names = estimate_noise(mags, network_data)
+    mags, mean_inter, interactions_matrix = estimate_noise(mags, network_data)
 
     # Plot background noise
     #logger.info("Plotting background noise...")
-    plot_mag_noise(interactions_matrix, mag_names, prefix=os.path.join(outdir, "mag_interactions"), matrix_file=os.path.join(outdir, "inter_mag_matrix.tsv") )
+    plot_mag_noise(interactions_matrix, prefix=os.path.join(outdir, "mag_interactions") )
 
     # Associate each MGE to their most likely MAG(s)
     logger.info("Computing MGE and MAG interactions and associate each MGE to potential host(s)...")

@@ -203,9 +203,11 @@ def generate_bin_summary(contigs_data: "pd.DataFrame", mge_bins: dict, outfile: 
     contigs_data.set_index("Name", drop=False, inplace=True)
     # Iterates on the bins to fill the table.
     for bin_id in mge_bins.keys():
-        summary.loc[bin_id, "BinName"] = f"MetaTOR_MGE_{bin_id:05d}"
+        summary.loc[bin_id, "BinName"] = f"MetaTOR_MGE_{int(bin_id):05d}"
         contigs = mge_bins[bin_id]["Contigs"]
-        summary.loc[bin_id, "ContigsNumber"] = f"{len(contigs):1d}"
+        #summary.loc[bin_id, "ContigsNumber"] = f"{len(contigs):1d}"
+        summary["ContigsNumber"] = summary["ContigsNumber"].astype(str)
+        summary.loc[bin_id, "ContigsNumber"] = f"{len(contigs):d}"
         summary.loc[bin_id, "Contigs"] = ",".join(contigs)
         summary.loc[bin_id, "BinningScore"] = mge_bins[bin_id]["Score"]
         summary.loc[bin_id, "MetagenomicBin"] = mge_bins[bin_id]["Bin"]
@@ -216,9 +218,14 @@ def generate_bin_summary(contigs_data: "pd.DataFrame", mge_bins: dict, outfile: 
             length += contigs_data.loc[contig, "Size"]
             hit += contigs_data.loc[contig, "Hit"]
             gc += contigs_data.loc[contig, "GC_content"] * contigs_data.loc[contig, "Size"]
-        summary.loc[bin_id, "BinLength"] = f"{length:1d}"
-        summary.loc[bin_id, "Hit"] = f"{hit:1d}"
-        summary.loc[bin_id, "GC"] = gc / length
+        # summary.loc[bin_id, "BinLength"] = f"{length:1d}"
+        # summary.loc[bin_id, "Hit"] = f"{hit:1d}"
+        # summary.loc[bin_id, "GC"] = gc / length
+        summary["BinLength"] = summary["BinLength"].astype(str)
+        summary["Hit"] = summary["Hit"].astype(str)
+        summary.loc[bin_id, "BinLength"] = f"{length:d}"
+        summary.loc[bin_id, "Hit"] = f"{hit:d}"
+
 
     # Write the summary.
     summary.to_csv(
@@ -354,8 +361,8 @@ def generate_mges_fasta(fasta: str, mge_bins: dict, out_file: str, tmp_dir: str)
             list_contigs_name = mge_bins[bin_id]["Contigs"]
             nb_bins += 1
             # Create a temporary fasta file.
-            contigs_file = join(tmp_dir, f"MetaTOR_MGE_{bin_id:05d}.txt")
-            temp_file = join(tmp_dir, f"MetaTOR_MGE_{bin_id:05d}.fa")
+            contigs_file = join(tmp_dir, f"MetaTOR_MGE_{int(bin_id):05d}.txt")
+            temp_file = join(tmp_dir, f"MetaTOR_MGE_{int(bin_id):05d}.fa")
             with open(contigs_file, "w") as f:
                 for contig_name in list_contigs_name:
                     f.write("%s\n" % contig_name)
@@ -371,13 +378,61 @@ def generate_mges_fasta(fasta: str, mge_bins: dict, out_file: str, tmp_dir: str)
                     if line.startswith(">"):
                         if start:
                             start = False
-                            out.write((f">MetaTOR_MGE_{bin_id:05d}\n"))
+                            out.write((f">MetaTOR_MGE_{int(bin_id):05d}\n"))
                         else:
                             out.write("N" * 200)
                     else:
                         out.write(line)
     logger.info(f"{nb_bins} bins have been extracted")
 
+def update_final_bin_with_mge(contig_data: pd.DataFrame, mges_bin_summary: pd.DataFrame, outfile: str) -> pd.DataFrame:
+    """
+    Updates the 'Final_bin' column of contig_data by replacing 'ND' values or MAGs containing 'metator_'
+    with the corresponding MGEs (from mges_bin_summary), if available.
+
+    Args:
+        contig_data (pd.DataFrame): DataFrame containing at least the columns ['Name', 'Final_bin']
+        mges_bin_summary (pd.DataFrame): DataFrame containing the columns ['Contigs', 'BinName']
+
+    Returns:
+        pd.DataFrame: An updated copy of contig_data with the 'Final_bin' column modified when applicable
+    """
+
+    contig_data = contig_data.copy()
+    mges_bin = mges_bin_summary.copy()
+
+    # Construire dictionnaire contig → MGE
+    # mges_bin = mges_bin.assign(Contigs=mges_bin["Contigs"].str.split(",")).explode("Contigs")
+    # mges_bin["Contigs"] = mges_bin["Contigs"].str.strip()
+    mges_bin["Contigs"] = mges_bin["Contigs"].astype(str)
+    mges_bin = mges_bin.assign(Contigs=mges_bin["Contigs"].str.split(",")).explode("Contigs")
+
+    contig_to_mge = dict(zip(mges_bin["Contigs"], mges_bin["BinName"]))
+
+    def update(row):
+        name = row.get("Name")
+        final_bin = row.get("Final_bin")
+        mge = contig_to_mge.get(name)
+
+        if pd.isna(final_bin):
+            final_bin = "ND"  # pour traiter aussi les NaN
+
+        if final_bin == "ND" and mge:
+            return mge
+        elif isinstance(final_bin, str) and "metator_" in final_bin and mge:
+            return mge
+        else:
+            return final_bin
+
+    contig_data["Final_bin"] = contig_data.apply(update, axis=1)
+    # Write the contig_data_file.
+    contig_data.to_csv(
+        outfile,
+        sep="\t",
+        header=True,
+        index=False,
+    )
+    return contig_data
 
 def mge_binning(
     checkv_db: str,
@@ -460,7 +515,7 @@ def mge_binning(
     # figure_file_bar_nb = join(
     #     out_dir, "barplot_mge_bins_numbers_distribution.png"
     # )
-
+    final_contig_file = join(out_dir, "contig_data_final.tsv")
     # Import host data from the previous step.
     mges_data = pd.DataFrame(contigs_data.loc[mges_list_id, :])
 
@@ -506,6 +561,15 @@ def mge_binning(
             mge_bins[bin_id]["BinList"] = "NA"
 
     summary = generate_bin_summary(mges_data, mge_bins, mge_data_file)
+    
+    ###Attempt to add the MGEs to `contig_data_final` and return it as output from the `mge` module.
+
+    
+    updated_contig_data = update_final_bin_with_mge(contigs_data, summary, final_contig_file)
+    #updated_contig_data.to_csv(final_contig_file, sep="\t", index=False)
+    print(f"[INFO] Final contig annotation with MGEs saved to: {final_contig_file}")
+
+    ##########
 
     # Run checkV on mge contigs and bins.
     if plot:
