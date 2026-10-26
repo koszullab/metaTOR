@@ -12,7 +12,6 @@ This module contains all classes related to metator commands:
     - contactmap
     - scaffold
     - pairs
-    - host
     - binning
 
 Note
@@ -35,7 +34,6 @@ import shutil
 import time
 import metator.align as mta
 import metator.contact_map as mtc
-import metator.host as mth
 import metator.io as mio
 import metator.log as mtl
 import metator.mge as mtm
@@ -1326,57 +1324,6 @@ class Pairs(AbstractCommand):
                 remove=self.args["--remove"],
                 force=self.args["--force"],
             )
-
-        generate_log_footer(log_file)
-
-
-class Host(AbstractCommand):
-    """Detect host of mge annotated contigs.
-
-    It will return an output file with the mges information from MetaTOR
-    binning with the added information from the anvio binning and the detected
-    bacterial MAG host of the mges.
-
-    usage:
-        host --network=FILE --binning=FILE --mges=FILE --contig-data=FILE
-        [--outfile=FILE] [--threshold=0.1]
-
-    options:
-        -b, --binning=FILE      Path to the anvio binning file.
-        -c, --contig-data=FILE  Path to the MetaTOR contig data file.
-        -m, --mges=FILE       Path to the file with mges contigs list.
-        -n, --network=FILE      Path to the network file.
-        -o, --outfile=FILE      Path where to write the output file.
-        -t, --threshold=FLOAT   Threshold to consider an association with a MAG.
-                                [Default: 0.1]
-    """
-
-    def execute(self):
-
-        # Generate log
-        now = time.strftime("%Y%m%d%H%M%S")
-        log_file = f"metator_host_{now}.log"
-        generate_log_header(log_file, cmd="host", args=self.args)
-
-        # Defined the output file if none are given
-        if not self.args["--outfile"]:
-            self.args["--outfile"] = "./mges_data_host.tsv"
-
-        # Import the files
-        binning_result = mio.import_anvio_binning(self.args["--binning"])
-        mges_list = mio.import_mges_contigs(self.args["--mges"])
-        contig_data, mges_list_id = mio.import_contig_data_mges(self.args["--contig-data"], binning_result, mges_list)
-        network = mio.import_network(self.args["--network"])
-
-        # Run the host detection
-        mth.host_detection(
-            network,
-            contig_data,
-            mges_list,
-            mges_list_id,
-            self.args["--outfile"],
-            self.args["--threshold"],
-        )
 
         generate_log_footer(log_file)
 

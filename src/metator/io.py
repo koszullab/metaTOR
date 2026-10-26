@@ -15,7 +15,6 @@ This mdoule contains all core I/O functions:
     - get_restriction_site
     - import_anvio_binning
     - import_contig_data_mges
-    - import_network
     - import_mges_contigs
     - process_ligation_sites
     - read_bin_summary
@@ -32,7 +31,6 @@ This mdoule contains all core I/O functions:
 import bz2
 import gzip
 import io
-import networkx as nx
 import numpy as np
 import os
 import pandas as pd
@@ -390,23 +388,6 @@ def import_contig_data_mges(contig_data_file, binning_result, mges_list):
         except KeyError:
             continue
     return contig_data, mges_list_id
-
-
-def import_network(network_file):
-    """Import MetaTOR network file.
-
-    Parameters:
-    -----------
-    network_file : str
-        Path to the network file to import.
-
-    Returns:
-    --------
-    networkx.classes.graph.Graph:
-        Network as networkx class.
-    """
-    network = nx.read_edgelist(network_file, nodetype=int, data=(("weight", float),))
-    return network
 
 
 def import_mges_contigs(mges_file):
