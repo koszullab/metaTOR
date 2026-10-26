@@ -751,8 +751,8 @@ def recursive_decontamination(
 
     # Add new coulumns for recursive information.
     contigs_data["Recursive_bin_ID"] = f"{0:05d}"
-    contigs_data["Recursive_bin_contigs"] = "-"
-    contigs_data["Recursive_bin_size"] = "-"
+    contigs_data["Recursive_bin_contigs"] = pd.Series("-", index=contigs_data.index, dtype=object)
+    contigs_data["Recursive_bin_size"] = pd.Series("-", index=contigs_data.index, dtype=object)
     contigs_data["Final_bin"] = "ND"
 
     # Load miComplete result:

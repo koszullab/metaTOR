@@ -145,7 +145,7 @@ def generate_bin_summary(contigs_data: "pd.DataFrame", mge_bins: dict, outfile: 
     }
 
     summary = pd.DataFrame(cols, index=mge_bins.keys())
-    contigs_data.set_index("Name", drop=False, inplace=True)
+    contigs_data = contigs_data.set_index("Name", drop=False)
     # Iterates on the bins to fill the table.
     for bin_id in mge_bins.keys():
         summary.loc[bin_id, "BinName"] = f"MetaTOR_MGE_{bin_id:05d}"
@@ -485,7 +485,7 @@ def update_mge_data(mges_data: pd.DataFrame, bins: List[Tuple]) -> pd.DataFrame:
     mges_data["MetaTOR_MGE_Score"] = 0.0
     bin_id = 0
     mge_bins: dict = {}
-    mges_data.set_index(np.arange(len(mges_data)), inplace=True)
+    mges_data = mges_data.set_index(np.arange(len(mges_data)))
     for contig_tuple in bins:
         i, j, score = contig_tuple
         # If no existing bin, creates one.
