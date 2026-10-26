@@ -429,6 +429,10 @@ def leiden_iterations_java(
         Dictionnary with the id of the contig as key and the list of the results
         of each iterations separated by a semicolon as values.
     """
+    if not os.path.isfile(leiden_path):
+        logger.error(f"Leiden jar not found: {leiden_path}")
+        raise FileNotFoundError(leiden_path)
+
     output_partition = dict()
 
     # Run the iterations of Leiden
