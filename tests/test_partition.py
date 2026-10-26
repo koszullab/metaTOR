@@ -3,12 +3,10 @@
 import os
 import metator.io as mio
 import metator.partition as mtp
-import networkx as nx
 import numpy as np
 import pandas as pd
 import pytest
 import shutil
-from . import LEIDEN_PATH, LOUVAIN_PATH
 
 assembly = "tests_data/assembly.fa"
 network_file = "tests_data/outdir/network.txt"
@@ -19,10 +17,7 @@ threads = 8
 
 overlapping_parameter = 0.6
 
-tmp_dir = "tmp_partition_clustering"
-os.makedirs(tmp_dir, exist_ok=True)
-partition = mtp.louvain_iterations_cpp(network_file, iterations, tmp_dir, LOUVAIN_PATH)
-shutil.rmtree(tmp_dir)
+partition = mtp.louvain_iterations(network_file, iterations)
 
 contigs_data = pd.read_csv("tests_data/outdir/contig_data_partition.txt", sep="\t")
 output_partition = {
@@ -87,24 +82,12 @@ cols = [
 
 def test_algo_partition():
     # Test algo partition choice.
-    tmp_dir = "tmp_partition_partition"
-    os.makedirs(tmp_dir, exist_ok=True)
-    network = nx.read_edgelist(network_file, nodetype=int, data=(("weight", float),))
-    subnetwork = network.subgraph(np.arange(1, 5))
     for algorithm in ["louvain", "leiden", "error"]:
         try:
-            mtp.algo_partition(
-                algorithm,
-                network_file,
-                subnetwork,
-                iterations,
-                resolution_parameter,
-                tmp_dir,
-                spins,
-            )
+            partition = mtp.algo_partition(algorithm, network_file, iterations, resolution_parameter)
+            assert len(partition) == 1058
         except ValueError:
             assert algorithm == "error"
-    shutil.rmtree(tmp_dir)
 
 
 def test_build_clustering_matrix():
@@ -167,18 +150,15 @@ def test_get_hamming_distance():
     assert hamming_distance.nnz == 22
 
 
-def test_leiden_iterations_java():
+def test_leiden_iterations():
     # Test leiden partition.
-    tmp_dir = "tmp_partition_clustering"
-    os.makedirs(tmp_dir, exist_ok=True)
-    partition = mtp.leiden_iterations_java(network_file, iterations, resolution_parameter, tmp_dir, LEIDEN_PATH)
+    partition = mtp.leiden_iterations(network_file, iterations, resolution_parameter)
     _val = int(partition[1].split(";")[0])
     assert len(partition) == 1058
     assert len(partition[1].split(";")) == iterations
-    shutil.rmtree(tmp_dir)
 
 
-def test_louvain_iterations_cpp():
+def test_louvain_iterations():
     # Test louvain partition.
     _val = int(partition[1].split(";")[0])
     assert len(partition) == 1058
@@ -188,16 +168,11 @@ def test_louvain_iterations_cpp():
 def test_partition(): ...
 
 
-def test_remove_isolates():
-    # Test isolate removing from partition.
-    partition1 = dict()
-    for i in range(1, 1219):
-        try:
-            partition1[i] = partition[i]
-        except KeyError:
-            partition1[i] = ";".join(map(str, map(int, np.ones(iterations) * i)))
-    partition2 = mtp.remove_isolates(partition1, network_file)
-    assert partition2 == partition
+def test_read_network():
+    network, contigs = mtp.read_network(network_file)
+    assert network.vcount() == len(contigs) == 1058
+    assert network.ecount() == 13415
+    assert network.is_weighted()
 
 
 # def test_spinglass_partition():

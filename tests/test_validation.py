@@ -77,7 +77,6 @@ def test_recursive_clustering_worker():
     os.makedirs(tmp_dir, exist_ok=True)
     partition = mtv.recursive_clustering_worker(
         "MetaTOR_00002_00000",
-        bin_summary,
         tmp_dir,
         network,
         "louvain",

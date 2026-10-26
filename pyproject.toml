@@ -32,6 +32,7 @@ classifiers = [
 ]
 dependencies = [
     "hicstuff",
+    "igraph",
     "networkx",
     "checkv",
     "biopython<=1.80",

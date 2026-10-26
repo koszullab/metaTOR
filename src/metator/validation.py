@@ -507,7 +507,6 @@ def recursive_clustering(
         map(
             partial(
                 recursive_clustering_worker,
-                bin_summary=bin_summary,
                 tmpdir=tmpdir,
                 network=network,
                 algorithm=algorithm,
@@ -578,7 +577,6 @@ def recursive_clustering(
 
 def recursive_clustering_worker(
     bin_id,
-    bin_summary,
     tmpdir,
     network,
     algorithm,
@@ -590,13 +588,10 @@ def recursive_clustering_worker(
 
     Parameters:
     -----------
-    bin_summary : dict
-        Dictionnary of the output of micomplete as values and the bin id as
-        keys.
     tmpdir : str
         Path the temp directory.
     algorithm : str
-        Algorithm to use, either louvain, leiden or spinglass.
+        Algorithm to use, either louvain or leiden.
     network : networkx.classes.graph.Graph
         Network of contigs from HiC librairies.
     iterations : int
@@ -610,8 +605,6 @@ def recursive_clustering_worker(
     # Create temporary folders.
     tmpdir_subnetwork = join(tmpdir, "recursive_bins", bin_id)
     os.makedirs(tmpdir_subnetwork, exist_ok=True)
-    tmpdir_clustering = join(tmpdir, "recursive_clustering", bin_id)
-    os.makedirs(tmpdir_clustering, exist_ok=True)
 
     logger.info("Bin in progress: {0}".format(bin_id))
     subnetwork_file = join(tmpdir_subnetwork, "subnetwork_" + bin_id + ".txt")
@@ -632,18 +625,12 @@ def recursive_clustering_worker(
         subnetwork, subnetwork_file, delimiter="\t", data=["weight"]
     )
 
-    # Compute spin prediction on the completion/contamination values.
-    spin = max(2, int(1 + float(bin_summary[bin_id]["Weighted redundancy"])),)
     # Partition the subnetwork.
-
     output_partition = mtp.algo_partition(
         algorithm,
         subnetwork_file,
-        subnetwork,
         iterations,
         resolution_parameter,
-        tmpdir_clustering,
-        spin,
     )
     logger.info("Output partition done for {0}.".format(bin_id))
 
