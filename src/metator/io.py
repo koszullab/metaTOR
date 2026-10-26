@@ -39,7 +39,9 @@ import pandas as pd
 import pathlib
 import pypairix
 import pairtools
+import pysam
 import re
+import shutil
 import subprocess as sp
 import zipfile
 from Bio import SeqIO
@@ -731,7 +733,8 @@ def sort_pairs(in_file, out_file, tmp_dir=None, threads=1, buffer="2G"):
 
 def sort_pairs_pairtools(pairfile, threads=1, remove=False, force=False, tmp_dir="."):
     """Sort pairs files using pairtools executable. Pairix only works with
-    compressed pair files. So we use bgzip to compress them.
+    compressed pair files. So we use bgzip (or pysam if bgzip is not in the
+    path) to compress them.
 
     Parameters
     ----------
@@ -753,42 +756,42 @@ def sort_pairs_pairtools(pairfile, threads=1, remove=False, force=False, tmp_dir
     """
     # Extract basename of the file.
     basename = os.path.splitext(pairfile)[0]
+    sorted_pairs = f"{basename}_sorted.pairs"
 
-    # Test if pypairix and pairtools are installed and in the path.
+    # Test if pypairix is installed.
     _ = check_pypairix()
 
-    # Set the force parameter and delete files or raise an error accodringly.
+    # Delete existing files or raise an error accordingly.
     if force:
-        force = " -f"
-        if os.path.isfile(f"{basename}_sorted.pairs"):
-            os.remove(f"{basename}_sorted.pairs")
-    else:
-        force = ""
-        if os.path.isfile(f"{basename}_sorted.pairs") or os.path.isfile(f"{basename}_sorted.pairs.gz"):
-            logger.error(
-                f"The {basename}_sorted.pairs exists. Do not overwrite existing, use --force to overwrite or use another location."
-            )
-            raise ValueError
+        if os.path.isfile(sorted_pairs):
+            os.remove(sorted_pairs)
+    elif os.path.isfile(sorted_pairs) or os.path.isfile(f"{sorted_pairs}.gz"):
+        logger.error(
+            f"The {sorted_pairs} exists. Do not overwrite existing, use --force to overwrite or use another location."
+        )
+        raise ValueError
 
     # Sort pairs using pairtools.
-    cmd = f"set -eu ; pairtools sort {pairfile} --nproc {threads} -o {basename}_sorted.pairs --tmpdir {tmp_dir}"
+    cmd = ["pairtools", "sort", pairfile, "--nproc", str(threads), "-o", sorted_pairs, "--tmpdir", tmp_dir]
     if Version(pairtools.__version__) >= Version("1.1.0"):
         logger.debug("pairtools version >= 1.1.0. Use new options.")
-        cmd = cmd + " --c1 chr1 --c2 chr2 --p1 pos1 --p2 pos2 --pt strand1"
-    process = sp.Popen(cmd, shell=True)
-    _out, _err = process.communicate()
-    # Compressed pairs.
-    cmd = f"set -eu ; bgzip {basename}_sorted.pairs -@ {threads}{force}"
-    process = sp.Popen(cmd, shell=True)
-    _out, _err = process.communicate()
-    # Indexed pairs.
-    force_pypairix = 1 if force else 0
-    pypairix.build_index(f"{basename}_sorted.pairs.gz", force=force_pypairix)
+        cmd += ["--c1", "chr1", "--c2", "chr2", "--p1", "pos1", "--p2", "pos2", "--pt", "strand1"]
+    sp.run(cmd, check=True)
+
+    # Compress pairs.
+    if shutil.which("bgzip"):
+        sp.run(["bgzip", "-f", "-@", str(threads), sorted_pairs], check=True)
+    else:
+        pysam.tabix_compress(sorted_pairs, f"{sorted_pairs}.gz", force=True)
+        os.remove(sorted_pairs)
+
+    # Index pairs.
+    pypairix.build_index(f"{sorted_pairs}.gz", force=1 if force else 0)
 
     # Remove original pairfile if remove setup.
     if remove:
         os.remove(pairfile)
-    return f"{basename}_sorted.pairs.gz"
+    return f"{sorted_pairs}.gz"
 
 
 def write_bin_summary(bin_summary, bin_summary_file):
