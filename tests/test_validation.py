@@ -30,6 +30,8 @@ contigs_data = pd.read_csv(
 contigs_data["index"] = contigs_data["ID"] - 1
 contigs_data = contigs_data.set_index("index")
 contigs_data["Recursive_bin_ID"] = f"{0:05d}"
+contigs_data["Recursive_bin_contigs"] = pd.Series("-", index=contigs_data.index, dtype=object)
+contigs_data["Recursive_bin_size"] = pd.Series("-", index=contigs_data.index, dtype=object)
 network = nx.read_edgelist(
     "tests_data/outdir_validation/network.txt",
     nodetype=int,

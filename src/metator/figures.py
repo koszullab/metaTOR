@@ -945,5 +945,4 @@ def reindex_df(dataframe, weight_col):
         Table expanded with new index.
     """
     dataframe = dataframe.reindex(dataframe.index.repeat(dataframe[weight_col]))
-    dataframe.reset_index(drop=True, inplace=True)
-    return dataframe
+    return dataframe.reset_index(drop=True)
