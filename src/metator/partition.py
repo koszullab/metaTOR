@@ -429,6 +429,10 @@ def leiden_iterations_java(
         Dictionnary with the id of the contig as key and the list of the results
         of each iterations separated by a semicolon as values.
     """
+    if not os.path.isfile(leiden_path):
+        logger.error(f"Leiden jar not found: {leiden_path}")
+        raise FileNotFoundError(leiden_path)
+
     output_partition = dict()
 
     # Run the iterations of Leiden
@@ -789,13 +793,16 @@ def update_contigs_data(
         contig_data_file, sep="\t", header=0, index_col=False
     )
 
-    # Add new empty columns
-    contigs_data["Core_bin_ID"] = "-"
-    contigs_data["Core_bin_contigs"] = "-"
-    contigs_data["Core_bin_size"] = "-"
-    contigs_data["Overlapping_bin_ID"] = "-"
-    contigs_data["Overlapping_bin_contigs"] = "-"
-    contigs_data["Overlapping_bin_size"] = "-"
+    # Add new empty columns. Use object dtype as they will mix "-" and ints.
+    for col in [
+        "Core_bin_ID",
+        "Core_bin_contigs",
+        "Core_bin_size",
+        "Overlapping_bin_ID",
+        "Overlapping_bin_contigs",
+        "Overlapping_bin_size",
+    ]:
+        contigs_data[col] = pd.Series("-", index=contigs_data.index, dtype=object)
 
     # Add core bin information
     for i in core_bins_contigs:
