@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling", "hatch-build-scripts"]
+requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
@@ -55,7 +55,6 @@ dependencies = [
     #"samtools"
     #"prodigal"
     #"hmmer"
-    #"openjdk"
 ]
 
 [project.optional-dependencies]
@@ -91,7 +90,6 @@ dev = [
     "metator[test,docs]",
     "hatch",
     "hatchling", 
-    "hatch-build-scripts", 
     "pre-commit",
     "mypy",
     "black",
@@ -113,15 +111,6 @@ path = "src/metator/version.py"
 
 [tool.hatch.metadata]
 allow-direct-references = true
-
-[[tool.hatch.build.hooks.build-scripts.scripts]]
-out_dir = "bin/"
-work_dir = "external"
-commands = ["bash setup_dependencies.sh"]
-artifacts = []
-
-[tool.hatch.build.force-include]
-"bin" = "metator/bin"
 
 [tool.black]
 line-length = 130

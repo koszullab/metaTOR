@@ -5,7 +5,6 @@ import pypairix
 import pytest
 import os
 import shutil
-from . import LOUVAIN_PATH
 
 
 def test_check_checkm(): ...
@@ -15,11 +14,6 @@ def test_check_fasta_index(): ...
 
 
 def test_check_is_fasta(): ...
-
-
-def test_check_louvain_cpp():
-    test = mio.check_louvain_cpp(LOUVAIN_PATH)
-    assert test
 
 
 def test_check_pypairix():

@@ -7,7 +7,6 @@ This mdoule contains all core I/O functions:
     - check_checkm
     - check_fasta_index
     - check_is_fasta
-    - check_louvain_cpp
     - check_pypairix
     - generate_fasta_index
     - generate_temp_dir
@@ -128,53 +127,6 @@ def check_is_fasta(in_file):
         test = False
 
     return test
-
-
-def check_louvain_cpp(louvain_path):
-    """Function to check is the Louvain functions are callable.
-
-    Parameters:
-    -----------
-    louvain_path : str
-        Path of the directory where the Louvain functions are.
-
-    Returns:
-    --------
-    bool:
-        Boolean value describing either the Louvain functions are callable or
-        not.
-    """
-
-    # Look for the path to call the functions:
-    louvain = join(louvain_path, "louvain")
-    convert = join(louvain_path, "convert")
-    hierarchy = join(louvain_path, "hierarchy")
-
-    # Check convert:
-    try:
-        convert = sp.check_output(f"{convert} --help", stderr=sp.STDOUT, shell=True)
-    except sp.CalledProcessError:
-        logger.error("Cannot find the 'convert' function from Louvain path.")
-        return False
-        raise ImportError
-
-    # Check louvain:
-    try:
-        louvain = sp.check_output(f"{louvain} --help", stderr=sp.STDOUT, shell=True)
-    except sp.CalledProcessError:
-        logger.error("Cannot find the 'louvain' function from Louvain path.")
-        return False
-        raise ImportError
-
-    # Check hierarchy:
-    try:
-        hierarchy = sp.check_output(f"{hierarchy} --help", stderr=sp.STDOUT, shell=True)
-    except sp.CalledProcessError:
-        logger.error("Cannot find the convert_net function from Louvain path.")
-        return False
-        raise ImportError
-
-    return True
 
 
 def check_pypairix():

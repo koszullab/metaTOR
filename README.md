@@ -48,16 +48,13 @@ before installing `metator`:
     * [`samtools`](https://www.htslib.org/download/)
     * [`hmmer`](http://hmmer.org/documentation.html)
     * [`prodigal`](https://github.com/hyattpd/Prodigal)
-    * [`java`](https://www.oracle.com/java/technologies/downloads/)
-
-* The following non-pythonic librairies are **embedded** when installing `metator` with `pip`: [`louvain 0.3`](https://sourceforge.net/projects/louvain/files/GenericLouvain/) and [`leiden 1.3.0`](https://github.com/CWTSLeiden/networkanalysis).
 
 **Warning:** note that if you install `metator` with `pip`, this may upgrade/downgrade 
 versions of the above dependencies and may cause conflicts with other softwares.
 
 ```sh
-# Install bowtie2, samtools, hmmer, prodigal and java-jdk:
-sudo apt update && sudo apt install bowtie2 samtools hmmer prodigal default-jdk
+# Install bowtie2, samtools, hmmer and prodigal:
+sudo apt update && sudo apt install bowtie2 samtools hmmer prodigal
 
 # Install metator from Pypi
 pip3 install metator
