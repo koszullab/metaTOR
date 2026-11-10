@@ -64,7 +64,6 @@ tmp/
 tests_data/tmp
 tests_data/out_test
 tests_data/outdir/plot/
-tests_data/outdir_pipeline/
 data/
 
 # Translations

@@ -1011,7 +1011,9 @@ class Qc(AbstractCommand):
     usage:
         qc --assembly=FILE --enzyme=STR [--bin-summary=FILE]
         [--contig-data=FILE] [--metator-dir=DIR] [--no-clean-up] [--outdir=DIR]
-        [--prefix=STR] [--plot] [--threshold=STR] [--tmpdir=DIR] <pairsfile>...
+        [--prefix=STR] [--plot] [--threshold=STR] [--tmpdir=DIR]
+        [--completeness=FLOAT] [--redundancy=FLOAT]
+        <pairsfile>...
 
     arguments:
         pairsfile           File(s) containing pairs information.
@@ -1022,6 +1024,8 @@ class Qc(AbstractCommand):
                                 contigs of one bin.
         -b, --bin-summary=FILE  Path to the bin_summary.txt file from MetaTOR
                                 output.
+        -C, --completeness=FLOAT  Minimum completeness of the bins to consider
+                                them as high quality. [Default: 0.7]
         -c, --contig-data=FILE  Path to the contig_data_final.txt file from
                                 MetaTOR output.
         -e, --enzyme=STR        The list of restriction enzyme used to digest
@@ -1034,6 +1038,8 @@ class Qc(AbstractCommand):
         -o, --outdir=DIR        Directory to save output plots and log.
         -p, --prefix=STR        Name of the sample to add on plot and files.
         -P, --plot              If enable display some plots.
+        -R, --redundancy=FLOAT  Minimum redundancy of the bins to consider
+                                them as high quality. [Default: 1.15]
         -t, --threshold=STR     Hicstuff religation and loop thresholds.
                                 Two integers seperated by a coma.
         -T, --tmpdir=DIR        Temporary directory to save pairs files
@@ -1095,6 +1101,14 @@ class Qc(AbstractCommand):
             self.args["--enzyme"] = self.args["--enzyme"].split(",")
         if self.args["--threshold"]:
             self.args["--threshold"] = self.args["--threshold"].split(",")
+        if len(self.args["--completeness"]) == 0:
+            self.args["--completeness"] = 0.7
+        else:
+            self.args["--completeness"] = float(self.args["--completeness"])
+        if len(self.args["--redundancy"]) == 0:
+            self.args["--redundancy"] = 1.15
+        else:
+            self.args["--redundancy"] = float(self.args["--redundancy"])
 
         # Launch quality check
         mtq.quality_check(
@@ -1108,6 +1122,8 @@ class Qc(AbstractCommand):
             self.args["--plot"],
             enzyme=self.args["--enzyme"],
             threshold=self.args["--threshold"],
+            completeness_threshold=self.args["--completeness"],
+            redundancy_threshold=self.args["--redundancy"],
         )
 
         # Delete the temporary folder.
@@ -1330,7 +1346,8 @@ class Pairs(AbstractCommand):
         generate_log_footer(log_file)
 
 
-class Host(AbstractCommand):
+
+class Host_legacy(AbstractCommand):
     """Detect host of mge annotated contigs.
 
     It will return an output file with the mges information from MetaTOR
@@ -1463,6 +1480,67 @@ class Mge(AbstractCommand):
 
         generate_log_footer(log_file)
 
+
+
+class Host(AbstractCommand):
+    """associate mges to hosts.
+
+    This association is based on interactions between the contigs of MGEs and those of MAGs. 
+     We consider an interaction to be valid when the MGE interacts with at least five different contigs of a MAG, 
+    from which we infer that the MAG is the bacterial host of this mobile genetic element.
+
+
+    usage:
+        host --network=FILE --binning=FILE --contigs-data=FILE  --mges-bin-data=FILE
+        [--threshold-asso=10] [--interact-contig=5] [--outdir=DIR]
+
+    arguments:
+
+    options:
+        -b, --binning=FILE       Path to the MetaTOR binning summary file.
+        -c, --contigs-data=FILE  Path to the MetaTOR contig data final file from  MetaTOR validation.
+        -m, --mges-bin-data=FILE  Path to the MetaTOR mge result file named mges_bin_summary.tsv
+        -n, --network=FILE      Path to the network file. (Ex : network_0.txt)
+        -i, --interact-contig=INTEGER       Threshold to use for interaction validation. If an MGE interact with a number of contigs of a MAG greater then or equal to
+                                          this treshold, then this interactions are valid [Default: 5]
+                                        
+        -a, --threshold-asso=INTEGER     Threshold to use for association result sorting. We will 
+                                        retain only the MGE-MAG pairs whose association rate is greater than or equal to this threshold.  [Default: 10]
+        
+                                        
+    """
+
+    def execute(self):
+
+        # Generate log
+        now = time.strftime("%Y%m%d%H%M%S")
+        log_file = f"metator_host_{now}.log"
+        generate_log_header(log_file, cmd="host", args=self.args)
+
+        # Defined the output directory and output file names.
+        if not self.args["--outdir"]:
+             self.args["--outdir"] = "."
+        os.makedirs(self.args["--outdir"], exist_ok=True)
+
+        # Import the files
+        contig_data = mio.load_contig_data(self.args["--contigs-data"])
+        network_data = mio.load_network_data(self.args["--network"])
+        bin_summary = mio.load_binning_data(self.args["--binning"])
+        mges_bin_summary = mio.load_mges_bin_data(self.args["--mges-bin-data"])
+
+
+        
+        # Run the mges binning
+        mth.annotate_hosts(
+            contig_data=contig_data,
+            network_data=network_data,
+            bin_summary=bin_summary,
+            mges_bin_summary=mges_bin_summary,
+            interaction_threshold=int(self.args["--threshold-asso"]),
+            min_interacting_contigs=int(self.args["--interact-contig"])
+        )
+       
+        generate_log_footer(log_file)
 
 def generate_log_header(log_path, cmd, args):
     mtl.set_file_handler(log_path, formatter=logging.Formatter(""))

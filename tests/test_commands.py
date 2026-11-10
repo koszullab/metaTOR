@@ -33,6 +33,9 @@ global_args = {
     "SUBSET_FASTA": "tests_data/subset.assembly.fa",
     "SUBSET_PAIRS": "tests_data/subset.pairs.gz",
     "SUBSET_MGES": "tests_data/subset.mges.txt",
+    "OUT_PIPELINE": "tests_data/outdir_pipeline",
+    "HOSTMAG_FASTA": "tests_data/outdir_pipeline/metator_00005_00000.fa",
+    "HOST_DATA": "tests_data/host_test_data",
 }
 NORMALIZE = (
     "norm",
@@ -166,6 +169,65 @@ def test_pipeline(tmp_path):
     print("CLI command:\n", "metator pipeline", *args.split(" "))
 
     proc = mtc.Pipeline(args.split(" "), {})
+    proc.execute()
+
+
+def test_qc(tmp_path):
+    """Test the metator qc command with subset data."""
+    args = (
+        "--assembly {SUBSET_FASTA} --enzyme HindIII,DpnII --bin-summary {OUT_PIPELINE}/bin_summary.txt --contig-data {OUT_PIPELINE}/contig_data_final.txt  -o {OUT_TEST} -P -R 1.5 {SUBSET_PAIRS}"
+    ).format(
+        OUT_TEST=Path(tmp_path, "out_test"),
+        **global_args,
+    )
+    print("CLI command:\n", "metator qc", *args.split(" "))
+
+    proc = mtc.Qc(args.split(" "), {})
+    proc.execute()
+
+
+def test_contactmap(tmp_path):
+    """Test the metator contactmap command with subset data."""
+    os.makedirs(Path(tmp_path, "out_test"), exist_ok=True)
+    args = (
+        "--assembly {SUBSET_FASTA} --enzyme HindIII,DpnII --contig-data {OUT_PIPELINE}/contig_data_final.txt --name metator_00005_00000 --filter --mat-fmt cool -o {OUT_TEST} --pcr-dup {SUBSET_PAIRS}"
+    ).format(
+        OUT_TEST=Path(tmp_path, "out_test"),
+        **global_args,
+    )
+    print("CLI command:\n", "metator contactmap", *args.split(" "))
+
+    proc = mtc.Contactmap(args.split(" "), {})
+    proc.execute()
+
+
+def test_scaffold(tmp_path):
+    """Test the metator scaffold command with subset data."""
+    os.makedirs(Path(tmp_path, "out_test"), exist_ok=True)
+    args = (
+        "--bin-name metator_00005_00000 --input-fasta {HOSTMAG_FASTA} --out-fasta {OUT_TEST}/metator_00005_00000_scaffolded.fa --out-frags {OUT_TEST}/metator_00005_00000_scaffolded.frags {SUBSET_PAIRS}"
+    ).format(
+        OUT_TEST=Path(tmp_path, "out_test"),
+        **global_args,
+    )
+    print("CLI command:\n", "metator scaffold", *args.split(" "))
+
+    proc = mtc.Scaffold(args.split(" "), {})
+    proc.execute()
+
+
+def test_host(tmp_path):
+    """Test the metator host command with subset data."""
+    os.makedirs(Path(tmp_path, "out_test"), exist_ok=True)
+    args = (
+        "--network {HOST_DATA}/network_0.txt --binning {HOST_DATA}/bin_summary.txt --contigs-data {HOST_DATA}/contig_data_final.txt --mges-bin-data {HOST_DATA}/mges_bin_summary.tsv --outdir {OUT_TEST}"
+    ).format(
+        OUT_TEST=Path(tmp_path, "out_test"),
+        **global_args,
+    )
+    print("CLI command:\n", "metator host", *args.split(" "))
+
+    proc = mtc.Host(args.split(" "), {})
     proc.execute()
 
 

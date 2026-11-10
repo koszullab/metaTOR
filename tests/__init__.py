@@ -21,3 +21,7 @@ if is_editable_install():
 __bin_dir__ = Path(__metator_root__, "bin")
 LEIDEN_PATH = str(next(__bin_dir__.glob("networkanalysis-1.3.0*.jar")))
 LOUVAIN_PATH = str(__bin_dir__)
+
+
+
+

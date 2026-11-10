@@ -27,18 +27,16 @@ from collections import Counter
 from typing import Literal
 import networkx as nx
 import matplotlib.pyplot as plt
-
-# import pypairix
 from metator.log import logger
 import pandas as pd
 import numpy as np
 import seaborn as sns
 import math
-
+from typing import Union
 
 class Bin:
     """
-    Classe de base représentant un ensemble de contigs appartenant à un même groupe (ex: MAG ou MGE-MAG).
+        Classe de base représentant un ensemble de contigs appartenant à un même groupe (ex: MAG ou MGE-MAG).
     """
 
     def __init__(self, name):
@@ -59,7 +57,9 @@ class Bin:
 
 
 class Mag(Bin):
-    """Représente un MAG (Metagenome-Assembled Genome). Hérite de Bin."""
+    """
+        Représente un MAG (Metagenome-Assembled Genome). Hérite de Bin.
+    """
 
     def __init__(self, name):
         super().__init__(name)
@@ -73,7 +73,9 @@ class Mag(Bin):
 
 
 class MgeMag(Bin):
-    """Représente un MGE-MAG (intégrant des éléments génétiques mobiles). Hérite de Bin."""
+    """
+        Représente un MGE-MAG (intégrant des éléments génétiques mobiles). Hérite de Bin.
+    """
 
     def __init__(self, name):
         super().__init__(name)
@@ -86,7 +88,50 @@ class MgeMag(Bin):
         return f"{self.__class__.__name__}('{self.name}', {len(self.contigs)} contigs, {len(self.hosts)} hosts)"
 
 
-def create_bins(contig_data: pd.DataFrame) -> tuple[dict, dict]:
+def update_final_bin_with_mge(contig_data: pd.DataFrame, mges_bin_summary: pd.DataFrame) -> pd.DataFrame :
+    """
+    Updates the 'Final_bin' column of df1 by replacing 'ND' values or metator_ MAGs with the corresponding MGEs (from df2), if available.
+
+    Args:
+
+        contig_data (pd.DataFrame): DataFrame containing at least the columns ['Name', 'Final_bin']
+
+        mges_bin_summary (pd.DataFrame): DataFrame containing the columns ['Contigs', 'BinName']
+
+    Returns:
+
+        pd.DataFrame: An updated copy of df1 with the 'Final_bin' column modified when applicable
+    """
+
+    contig_data = contig_data.copy()
+    mges_bin = mges_bin_summary.copy()
+
+    # Construire dictionnaire contig → MGE
+    mges_bin = mges_bin.assign(Contigs=mges_bin["Contigs"].str.split(",")).explode("Contigs")
+    mges_bin["Contigs"] = mges_bin["Contigs"].str.strip()
+    contig_to_mge = dict(zip(mges_bin["Contigs"], mges_bin["BinName"]))
+
+    def update(row):
+        name = row.get("Name")
+        final_bin = row.get("Final_bin")
+        mge = contig_to_mge.get(name)
+
+        if pd.isna(final_bin):
+            final_bin = "ND"  # pour que les NaN soient aussi traités comme "ND"
+
+        if final_bin == "ND" and mge:
+            return mge
+        elif isinstance(final_bin, str) and final_bin.startswith("metator_") and mge:
+            return mge
+        else:
+            return final_bin
+
+    contig_data["Final_bin"] = contig_data.apply(update, axis=1)
+    return contig_data
+
+
+
+def create_bins(contig_data: pd.DataFrame, mges_bin_summary: pd.DataFrame) -> tuple[dict, dict]:
     """
     Creates MGE-MAGs from contig data.
 
@@ -99,7 +144,9 @@ def create_bins(contig_data: pd.DataFrame) -> tuple[dict, dict]:
 
     mags = {}
     mge_mags = {}
-    logger.info("Instantiating bins (MAGs and MGE-MAGs)...")
+    # Loading data and updating the contig_data_final  to a full version with MAGs and MGEs
+    logger.info("Loading data and generating the contig_data")
+    contig_data = update_final_bin_with_mge(contig_data, mges_bin_summary)
 
     for _, row in contig_data.iterrows():
         contig_id, contig_name, bin_name = row["ID"], row["Name"], row["Final_bin"]
@@ -139,16 +186,16 @@ def map_contigs_to_mags(mags: dict) -> dict:
 
 def build_contig_graph(network_data: pd.DataFrame) -> nx.Graph:
     """
-    Builds an undirected interaction graph from a DataFrame containing contig pairs and interaction signals.
+        Builds an undirected interaction graph from a DataFrame containing contig pairs and interaction signals.
 
-    Each row of the DataFrame should contain two contig IDs and a signal value representing the interaction strength.
-    The function constructs a NetworkX graph where each contig is a node, and each edge is weighted by the signal.
+        Each row of the DataFrame should contain two contig IDs and a signal value representing the interaction strength.
+        The function constructs a NetworkX graph where each contig is a node, and each edge is weighted by the signal.
 
-    Args:
-    - network_data (pd.DataFrame): DataFrame with columns ['contig1', 'contig2', 'signal'].
+        Args:
+        - network_data (pd.DataFrame): DataFrame with columns ['contig1', 'contig2', 'signal'].
 
-    Returns:
-    - G (nx.Graph): An undirected graph where edges are weighted by the interaction signal.
+        Returns:
+        - G (nx.Graph): An undirected graph where edges are weighted by the interaction signal.
     """
     logger.info("Creating contigs contacts graph...")
 
@@ -161,33 +208,33 @@ def build_contig_graph(network_data: pd.DataFrame) -> nx.Graph:
 
 def estimate_noise(mags, network_data) -> pd.DataFrame:
     """
-    Evaluates inter- and intra-MAG interaction signals from a contig interaction graph and
-    MAG quality data, in order to detect potential noise or assembly artifacts.
+        Evaluates inter- and intra-MAG interaction signals from a contig interaction graph and
+        MAG quality data, in order to detect potential noise or assembly artifacts.
 
-    Parameters
-    ----------
-    mags : dict
-        Dictionary where keys are MAG names and values are objects representing MAGs. Each object must have
-        a `contigs` attribute that returns a dictionary of contigs.
+        Parameters
+        ----------
+        mags : dict
+            Dictionary where keys are MAG names and values are objects representing MAGs. Each object must have
+            a `contigs` attribute that returns a dictionary of contigs.
 
-    network_data : pd.DataFrame
-        DataFrame containing interaction data with columns ['contig1', 'contig2', 'signal'].
+        network_data : pd.DataFrame
+            DataFrame containing interaction data with columns ['contig1', 'contig2', 'signal'].
 
-    Returns
-    -------
-    pd.DataFrame
-        DataFrame containing the average intra- and inter-MAG interaction signals for each MAG.
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame containing the average intra- and inter-MAG interaction signals for each MAG.
 
-    Notes
-    -----
-    The function:
-    - Builds a graph of contig interactions.
-    - Maps each contig to its corresponding MAG.
-    - Calculates average intra- and inter-MAG interaction signals.
-    - Groups MAG pairs by quality (e.g., HQ-HQ, HQ-MQ, HQ-contaminated).
-    - Applies log transformation and normalization to the interaction signals for downstream analysis.
+        Notes
+        -----
+        The function:
+        - Builds a graph of contig interactions.
+        - Maps each contig to its corresponding MAG.
+        - Calculates average intra- and inter-MAG interaction signals.
+        - Groups MAG pairs by quality (e.g., HQ-HQ, HQ-MQ, HQ-contaminated).
+        - Applies log transformation and normalization to the interaction signals for downstream analysis.
     """
-    logger.info("Calculating the backgroung noise of the experience.")
+    logger.info("Computing the background noise of the experience.")
 
     # Get contigs <-> MAG mapping
     contig_to_mag = map_contigs_to_mags(mags)
@@ -248,14 +295,14 @@ def estimate_noise(mags, network_data) -> pd.DataFrame:
 
 def plot_mag_noise(mags, image_file="background_noise.png") -> None:
     """
-    Plots the background noise of MAG interactions.
+        Plots the background noise of MAG interactions.
 
-    Args:
-        mags (dict): Dictionary of MAG objects.
-        image_file (str): Path to save the plot image.
+        Args:
+            mags (dict): Dictionary of MAG objects.
+            image_file (str): Path to save the plot image.
 
-    Returns:
-        None
+        Returns:
+            None
     """
     logger.info("Plotting background noise...")
 
@@ -267,6 +314,8 @@ def plot_mag_noise(mags, image_file="background_noise.png") -> None:
             "signal": [mag.intra_signal for mag in mags.values()],
         }
     )
+    # Ajoute ce typage ici :
+    intra_signals["signal"] = intra_signals["signal"].astype(float)
     intra_signals["log_signal"] = np.log10(intra_signals["signal"] + 1e-10)
     min_val = intra_signals["log_signal"].min()
     max_val = intra_signals["log_signal"].max()
@@ -288,57 +337,61 @@ def plot_mag_noise(mags, image_file="background_noise.png") -> None:
 
     # Create a DataFrame for plotting
     data = pd.concat([intra_signals, inter_signals], ignore_index=True)
+   
+    
+    # Plotting a split violin and boxplots plot; each violin show distribution of intra (left) and inter (right) signals, per quality
+    #plt.figure(figsize=(12, 6))
+    
+    fig, axes = plt.subplots(2, 1, figsize=(16, 16))
+    #plt.title("Distribution of Intra- and Inter-MAG Interaction Signals")
+    # Boxplot
+    sns.boxplot(data=data, x="quality", y="norm_log", hue="type", ax=axes[0])
+    axes[0].set_title("Grouped Boxplots -  Normalised Log Signal")
+    axes[0].legend(title="Interaction Type")
 
-    # Plotting a split violin plot; each violin show distribution of intra (left) and inter (right) signals, per quality
-    plt.figure(figsize=(12, 6))
-    sns.violinplot(x="quality", y="log_signal", hue="type", data=data, split=True, inner="quartile")
-    plt.xlabel("MAG Quality")
-    plt.ylabel("Interaction Signal (log scale)")
-    plt.title("Distribution of Intra- and Inter-MAG Interaction Signals")
-    plt.legend(title="Interaction Type")
+    sns.violinplot(data=data, x="quality", y="norm_log", hue="type", inner="quartile", ax=axes[1])
+    axes[1].set_title("Violin Plot - Normalised Log Signal")
+    #plt.legend(title="Interaction Type")
+    axes[1].legend(title="Interaction Type")
+
+    for ax in axes:
+        ax.set_xlabel("MAGs Quality")
+        ax.set_ylabel("Normalised interaction Signal (log scale)")
+    
+    
     plt.tight_layout()
     plt.savefig(image_file)
-
+    plt.close(fig)
 
 def classify_mags(mags, bin_summary) -> dict:
     """
-    Classifies MAGs based on their completeness and contamination values.
+        Classifies MAGs based on their completeness and contamination values.
 
-    Args:
-        mags (dict): Dictionary of MAG objects.
-        bin_summary (pd.DataFrame): DataFrame containing MAG quality metrics.
+        Args:
+            mags (dict): Dictionary of MAG objects.
+            bin_summary (pd.DataFrame): DataFrame containing MAG quality metrics.
 
-    Returns:
-        dict: Updated dictionary of MAG objects with quality classifications.
+        Returns:
+            dict: Updated dictionary of MAG objects with quality classifications.
     """
     logger.info("Classifying MAGs based on their completeness and contamination values...")
 
-    def classify_mag(
-        mag,
-    ) -> (
-        None
-        | Literal["Unknown"]
-        | Literal["Contaminated"]
-        | Literal["Complete"]
-        | Literal["HQ"]
-        | Literal["MQ"]
-        | Literal["LQ"]
-        | Literal["PQ"]
-    ):
+    def classify_mag( mag,) -> Union[str, None]:
+        
         c, r = mag.completeness, mag.contamination
         if pd.isna(c) or pd.isna(r):
             return "Unknown"
         elif r > 1.1:
             return "Contaminated"
-        elif c > 0.9 and r <= 1.05:
+        elif c > 0.9 and r < 1.05:
             return "Complete"
-        elif c > 0.9 and r < 1.1 and r > 1.05:
+        elif c > 0.9 and 1.05 <= r < 1.1:
             return "HQ"
-        elif c > 0.7 and r < 1.1:
+        elif c > 0.7 and r <= 1.1:
             return "MQ"
-        elif c > 0.5 and r < 1.1:
+        elif c > 0.5 and r <= 1.1:
             return "LQ"
-        elif c < 0.5 and r < 1.1:
+        elif c <= 0.5 and r <= 1.1:
             return "PQ"
 
     for mag in mags.values():
@@ -359,32 +412,32 @@ def classify_mags(mags, bin_summary) -> dict:
     return mags
 
 
-def compute_mge_mag_interactions(
+def compute_mge_mag_interactions(  
     network_data,
     mags,
     mge_mags,
     interaction_threshold=10.0,
     min_interacting_contigs=5,
-    output_file="mge_mag_interactions.txt",
+    output_file="mge_mag_interactions.tsv",
     image_file="mge_mag_histogram.png",
 ):
     """
-    Computes interactions between contigs from mgeMAGs and those from MAGs,
-    and filters them based on a percentage threshold.
-    Generates two histograms: one showing the total interaction signal (log scale)
-    and another showing the number of MAG contigs interacting with an mgeMAG.
+        Computes interactions between contigs from mgeMAGs and those from MAGs,
+        and filters them based on a percentage threshold.
+        Generates two histograms: one showing the total interaction signal (log scale)
+        and another showing the number of MAG contigs interacting with an mgeMAG.
 
-    Args:
-    - network_data (pd.DataFrame): DataFrame with columns ['contig1', 'contig2', 'signal'].
-    - mge_mags (dict): Dictionary {mgeMAG_name: MAG_object} representing the mgeMAGs.
-    - mags (dict): Dictionary {MAG_name: MAG_object} representing the MAGs.
-    - output_file (str): Name of the output text file.
-    - image_file (str): Name of the output image file for the histograms.
-    - interaction_threshold (float): Threshold (%) to validate an interaction.
-    - min_interacting_contigs (int): Minimum number of MAG contigs interacting with the mgeMAG.
+        Args:
+        - network_data (pd.DataFrame): DataFrame with columns ['contig1', 'contig2', 'signal'].
+        - mge_mags (dict): Dictionary {mgeMAG_name: MAG_object} representing the mgeMAGs.
+        - mags (dict): Dictionary {MAG_name: MAG_object} representing the MAGs.
+        - output_file (str): Name of the output text file.
+        - image_file (str): Name of the output image file for the histograms.
+        - interaction_threshold (float): Threshold (%) to validate an interaction.
+        - min_interacting_contigs (int): Minimum number of MAG contigs interacting with the mgeMAG.
 
-    Returns:
-    - image_file (str): Name of the saved image file.
+        Returns:
+        - image_file (str): Name of the saved image file.
     """
 
     G = build_contig_graph(network_data)
@@ -415,7 +468,7 @@ def compute_mge_mag_interactions(
                     interaction_results.append((mgemag.name, mag_name, signal_sum, percent_signal, interacting_contig_count))
 
     with open(output_file, "w") as f:
-        f.write("mgeMAG\tMAG\tTotal Signal\t% of signal\tInteracting Contigs\n")
+        f.write("MGE\tMAG\tTotal Signal\tSignal rate\tInteracting Contigs\n")
         for res in interaction_results:
             mge_name, mag_name, signal_sum, percent_signal, contig_count = res
             f.write(f"{mge_name:<24}\t{mag_name:<24}\t{signal_sum:.6f}\t{percent_signal:.2f}\t{contig_count}\n")
@@ -433,16 +486,16 @@ def compute_mge_mag_interactions(
             edgecolor="black",
         )
         axes[0].set_xscale("log")
-        axes[0].set_xlabel("mge-MAG total interaction Signal  (log scale)")
+        axes[0].set_xlabel("MGE-MAG total interaction Signal  (log scale)")
         axes[0].set_ylabel("Frequences")
-        axes[0].set_title(f"Signaux Distribution (\u2265 {interaction_threshold}%)")
+        axes[0].set_title(f"Signal Distribution with threshold = (\u2265 {interaction_threshold}%)")
 
-        # Histogramm of interaction percentage
+        # Histogramm of interaction rate
         bins = range(1, math.ceil(max(percentage_counts)) + 1 + 1)  # +2 pour être équivalent à +2 dans ta ligne
         axes[1].hist(percentage_counts, bins=bins, edgecolor="black", align="left")
-        axes[1].set_xlabel("Taux d'association")
-        axes[1].set_ylabel("Fréquence")
-        axes[1].set_title("Distribution des taux d'association des MgeMags à leur MAGs")
+        axes[1].set_xlabel("Association Rate")
+        axes[1].set_ylabel("Frequence")
+        axes[1].set_title("Distribution of association rates of MgeMags with their MAGs.")
 
         plt.tight_layout()
         fig.savefig(image_file)
@@ -468,17 +521,19 @@ def compute_mge_mag_interactions(
     return mags, mge_mags
 
 
-def annotate_hosts(
+def annotate_hosts(                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            
     contig_data: pd.DataFrame,
     network_data: pd.DataFrame,
     bin_summary: pd.DataFrame,
+    mges_bin_summary: pd.DataFrame,
     interaction_threshold: int,
-    min_interacting_contigs: int,
+    min_interacting_contigs: int
 ) -> None:
 
-    # Loading data and instantiating objects.
-    logger.info("Loading data and instantiating objects...")
-    mags, mge_mags = create_bins(contig_data)
+    
+    # Instantiating objects.
+    logger.info("Instantiating objects...")
+    mags, mge_mags = create_bins(contig_data, mges_bin_summary)
     mags = classify_mags(mags, bin_summary)
 
     # Evaluate background noise
@@ -486,11 +541,11 @@ def annotate_hosts(
     mags = estimate_noise(mags, network_data)
 
     # Plot background noise
-    logger.info("Plotting background noise...")
+    #logger.info("Plotting background noise...")
     plot_mag_noise(mags, image_file="background_noise.png")
 
     # Associate each MGE to their most likely MAG(s)
-    logger.info("Computing mgeMAG and MAG interactions and associate each MGE to potential host(s)...")
+    logger.info("Computing MGE and MAG interactions and associate each MGE to potential host(s)...")
     mags, mge_mags = compute_mge_mag_interactions(
         network_data,
         mags,
@@ -498,25 +553,6 @@ def annotate_hosts(
         interaction_threshold=interaction_threshold,
         min_interacting_contigs=min_interacting_contigs,
     )
-    logger.info("Association finished!!!")
+    logger.info("Host association done !!!")
 
     return mags, mge_mags
-
-
-# Call to the main function `annotate_hosts`
-if __name__ == "__main__":
-
-    network_data_file = "network_1.txt"
-    contig_data_file = "contig_data_final_reformated.txt"
-    bin_summary_file = "bin_summary.txt"
-    interaction_threshold = 10
-    min_interacting_contigs = 5
-
-    # Load data
-    contig_data = pd.read_csv(contig_data_file, sep="\t")
-    bin_summary = pd.read_csv(bin_summary_file, sep="\t", comment="#")
-    bin_summary.columns = ["MAG"] + list(bin_summary.columns[1:])
-    network_data = pd.read_csv(network_data_file, sep="\t", names=["contig1", "contig2", "signal"])
-
-    # Run the main function
-    mags, mge_mags = annotate_hosts(contig_data, network_data, bin_summary, interaction_threshold, min_interacting_contigs)
