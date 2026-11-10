@@ -162,20 +162,17 @@ The clustering matrix files are at the `.npz` format which is a compresed foramt
 
 It's possible to read them in python using the `scipy.sparse.load_npz()` function. If the users wants a tsv file instead, he or she could load the matrix in python using load_npz and make sure to transform the matrix in the `scipy.sparse.coo_matrix` function and used the function from metator `metator.io.save_sparse_matrix` to save it as tsv file.
 
-**CheckM results**
-Files from [checkM](https://github.com/Ecogenomics/CheckM) output. Two types of files one with the main results of checkM `checkm_results.txt` and one with the taxonomy  `checkm_taxonomy.txt` for both the partition and the recurisve bins.
-
 **binning.txt file**
 This is a tsv file with two columns: the contig name and the final were the contig is. It only contains contigs which are binned. It could be use a an input to import a binning results in anvio.
 
 **Bin summary file**
-This is the summary of the data of the final bins build with all the step of metator. The HiC coverage is the number of contacts (intra and inter contigs) per kilobase in the whole bin. The Shotgun coverage is the mean coverage normalized by the size of the shotgun reads from the depth file.
+This is the summary of the data of the final bins build with all the step of metator (GC content, number of contigs, N50, HiC abundancy ...). It also contains the data from the final miComplete evaluation (Present Markers, Completeness, Redundancy, Weighted completeness	and Weighted redundancy).
 
-||lineage|completness|contamination|size|contigs|N50|longest_contig|GC|coding_density|taxonomy|Coverage|
+||Length|GC-content|Present Markers|Completeness|Redundancy|Weighted completeness|Weighted redundancy|Contigs|N50|L50|N90|L90|CDs|recursive|step|parent|HiC_abundance
 |:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-|MetaTOR_8_1|o__Clostridiales|68.29|2.46|1431612|15|116129|291620|26.36|87.97|k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales|146.46719755483332|
-|MetaTOR_8_2|o__Clostridiales|58.42|2.01|1396934|58|41290|174682|28.89|83.70|k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales|22.252416224710686|
-|MetaTOR_8_3|o__Clostridiales|49.37|0.94|1420821|82|33095|89964|30.29|83.24|k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales;f__Peptostreptococcaceae_3;g__Clostridium_3|44.27369196532141|
+metator_00031_00000|6169839.00|57.47|103.00|0.98|1.01|0.98|1.02|153.00|287729.00|8.00|40103.00|27.00|5707.00|False|0||3.3423
+metator_00001_00000|4695682.00|42.58|103.00|0.98|1.03|0.99|1.08|326.00|71792.00|22.00|13441.00|85.00|4141.00|False|0||1.9909
+metator_00030_00001|5094713.00|45.69|105.00|1.00|1.10|1.00|1.13|44.00|428652.00|5.00|99776.00|15.00|4726.00|False|1|metator_00030_00000|0.3708
 
 ## Contributions 
 
