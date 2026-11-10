@@ -104,7 +104,7 @@ A tutorial is available [here](docs/example/metator_tutorial.md) to explain how 
 
 Principle of MetaTOR pipeline:
 
-![metator_pipeline](docs/example/images/metator_figure.png)
+![metator_pipeline](docs/example/images/pipeline.png)
 
 ## Output files
 
@@ -114,15 +114,13 @@ The output files will be in the ouput directory given as parmater or in working 
 | - | :-: | :-: | :-: | :-: | :-: |
 | alignment_N_for.bam |Bam file of the forward alignment |X|||X|
 | alignment_N_rev.bam |Bam file of the reverse alignment|X|||X|
-| alignment_N.pairs |Pairs of the merge alignment|X|||X|
+| alignment_N.pairs.pgz |Pairs of the merge alignment|X|||X|
 | network.txt |Normalized network of the metaHiC library|X|||X|
 | contig_data_network.txt |Information on contigs after network step|X||||
 | clustering_matrix_partition.txt |Matrix of clustering from the partition iterations||X|||
 | contig_data_partition.txt |Information on contigs after partition step||X|||
-| overlapping_checkm_results.txt |CheckM results summary file from the partition step|||X|X|
-| overlapping_checkm_taxonomy.txt |CheckM taxonomy file from the partition step|||X|X|
-| recursive_checkm_results.txt |CheckM results summary file from the recursive step|||X|X|
-| recursive_checkm_taxonomy.txt |CheckM taxonomy file from the recursive step|||X|X|
+| overlapping_micomplete_results.txt |miComplete results summary file from the partition step|||X|X|
+| recursive_micomplete_stepN.txt |miComplete results summary file from the recursive step N|||X|X|
 | clustering_matrix_validation.txt |Matrix of clustering from the recursive iterations|||X||
 | clustering_matrix.txt |Matrix of clustering from the partition and recursive iterations||||X|
 | contig_data_final.txt |Information on contigs after whole pipeline|||X|X|
