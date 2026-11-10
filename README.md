@@ -76,7 +76,7 @@ pip3 install -e .[dev]
 ## Usage
 
 ```sh
-metator {network|partition|validation|pipeline} [parameters]
+metator {network|partition|validation|pipeline|qc|contactmap|pairs|mge} [parameters]
 ```
 
 A metator command takes the form `metator action --param1 arg1 --param2
@@ -87,22 +87,20 @@ following order:
 
 * `network` : Generate metaHiC contigs network from fastq reads or bam files and normalize it.
 * `partition` : Perform the Louvain or Leiden community detection algorithm many times to bin contigs according to the metaHiC signal between contigs.
-
-* `validation` : Use CheckM to validate the bins, then do a recursive decontamination step to remove contamination.
+* `validation` : Use miComplete to validate the bins, then do a recursive decontamination step to remove contamination.
 
 There are a number of other, optional, miscellaneous actions:
 
 * `pipeline` : Run all three of the above actions sequentially or only some of them depending on the arguments given. This can take a while.
 * `contactmap` : Generates a contact map from one bin from the final ouptut of metator.
-
+* `qc` : Generates some quality check on the input/output of metator.
 * `version` : display current version number.
-
 * `help` : display help message.
 
 A tutorial is available [here](docs/example/metator_tutorial.md) to explain how to use metator. More advanced tutorials to analyze the output files are also available:
 
 * [Anvio](https://merenlab.org/software/anvio/) manual curation of the contaminated bins. Available [here](docs/example/manual_curation_of_metator_MAGs.md).
-* Visualization and scaffolding of the MAGs with the contactmap modules of MetaTOR. Available [here](docs/example/MAG_visualization_and_scaffolding.md).
+* Visualization of the MAGs with the contactmap modules of MetaTOR. Available [here](docs/example/MAG_visualization_and_scaffolding.md).
 
 Principle of MetaTOR pipeline:
 
