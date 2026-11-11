@@ -671,8 +671,8 @@ def sort_pairs(in_file, out_file, tmp_dir=None, threads=1, buffer="2G"):
         logger.warning("Using BSD sort instead of GNU sort, sorting on a single thread.")
         parallel_ok = False
 
-    # Sort pairs and append to file.
-    with open(out_file, "a") as output:
+    # Sort pairs into a fresh output file.
+    with open(out_file, "w") as output:
         grep_proc = sp.Popen(["grep", "-v", "^#", in_file], stdout=sp.PIPE)
         sort_cmd = ["sort", "-S %s" % buffer] + ["-k1,1V", "-k2,2V"]
         if tmp_dir is not None:

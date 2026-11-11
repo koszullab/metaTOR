@@ -175,81 +175,50 @@ def compute_network(
         normalization.
     """
 
-    # Sort the the pre-network file
+    # Sort the pre-network so that identical contig pairs are adjacent.
     mio.sort_pairs(
         pre_network_file, tmp_file, tmp_dir=tmp_dir, threads=n_cpus,
     )
 
-    # Set the variables used in the loop
-    n_occ = 1  # Number of occurrences of each frag combination
-    n_nonzero = 1  # Total number of nonzero matrix entries
-    n_pairs = 0  # Total number of pairs entered in the matrix
-
-    # Read the sorted pairs
-    with open(pre_network_file, "r") as pairs, open(network_file, "w") as net:
-        pairs_reader = csv.reader(pairs, delimiter="\t")
-        prev_pair = next(pairs_reader)
-        for pair in pairs_reader:
-            # Extract the contig names and their id
-            curr_pair = pair
-            # Increment number of occurrences for fragment pair
-            if prev_pair == curr_pair:
+    # Count each contig pair from the sorted file: with several libraries, or
+    # pairs not grouped by contig, the unsorted file repeats a pair in separate
+    # runs, which wrote the same edge on several lines.
+    with open(tmp_file, "r") as pairs, open(network_file, "w") as net:
+        prev_pair, n_occ = None, 0
+        for pair in csv.reader(pairs, delimiter="\t"):
+            if pair == prev_pair:
                 n_occ += 1
-            # Write previous pair and start a new one
-            else:
-                if n_occ > 0:
+                continue
+            if prev_pair is not None:
+                write_edge(net, contig_data, prev_pair, n_occ, normalization)
+            prev_pair, n_occ = pair, 1
+        if prev_pair is not None:
+            write_edge(net, contig_data, prev_pair, n_occ, normalization)
 
-                    # Normalisation using the geometric mean of the coverage
-                    if normalization != "None":
-                        effective_count = normalize_pair(
-                            contig_data, prev_pair, n_occ, normalization
-                        )
-                    else:
-                        effective_count = n_occ
 
-                    # Write the line in the file
-                    net.write(
-                        "\t".join(
-                            map(
-                                str,
-                                [
-                                    contig_data[prev_pair[0]]["id"],
-                                    contig_data[prev_pair[1]]["id"],
-                                    effective_count,
-                                ],
-                            )
-                        )
-                        + "\n"
-                    )
-                # Reset the values for the next pair
-                prev_pair = curr_pair
-                n_pairs += n_occ
-                n_occ = 1
-                n_nonzero += 1
+def write_edge(net, contig_data, pair, n_occ, normalization):
+    """Write one network edge: the two contig ids and the contact weight.
 
-        # Write the last value
-        if normalization != "None":
-            effective_count = normalize_pair(
-                contig_data, prev_pair, n_occ, normalization
-            )
-        else:
-            effective_count = n_occ
-
-        net.write(
-            "\t".join(
-                map(
-                    str,
-                    [
-                        contig_data[curr_pair[0]]["id"],
-                        contig_data[curr_pair[1]]["id"],
-                        effective_count,
-                    ],
-                )
-            )
-            + "\n"
-        )
-        n_nonzero += 1
-        n_pairs += n_occ
+    Parameters:
+    -----------
+    net : file object
+        Open network file.
+    contig_data : dict
+        Dictionary of the all the contigs from the assembly, the contigs names
+        are the keys to the data of the contig available with the following
+        keys: "id", "length", "GC", "hit", "coverage", "RS".
+    pair : list of str
+        Names of the two contigs.
+    n_occ : int
+        Contact count between the two contigs.
+    normalization : str
+        Mode of normalization to use, or "None".
+    """
+    if normalization != "None":
+        weight = normalize_pair(contig_data, pair, n_occ, normalization)
+    else:
+        weight = n_occ
+    net.write(f"{contig_data[pair[0]]['id']}\t{contig_data[pair[1]]['id']}\t{weight}\n")
 
 
 def create_contig_data(assembly, nb_alignment=1, depth_file=None, enzyme=None):
