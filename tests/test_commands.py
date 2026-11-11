@@ -216,3 +216,12 @@ def test_default_tmpdir_is_tidied(tmp_path, monkeypatch):
     (tmp_path / "tmp" / "mine.txt").write_text("x")
     mtc.Network(args, {}).execute()
     assert [p.name for p in (tmp_path / "tmp").iterdir()] == ["mine.txt"]
+
+
+def test_invalid_prefix_is_rejected(tmp_path):
+    """miComplete drops dots from bin names, so a dotted --prefix is refused."""
+    args = (
+        "-a {SUBSET_FASTA} -c {CONTIGS} -n {NETWORK} -o {OUT} -T {TMP} -p my.sample"
+    ).format(OUT=tmp_path / "out", TMP=tmp_path / "tmp", **global_args)
+    with pytest.raises(ValueError, match="Invalid --prefix"):
+        mtc.Partition(args.split(" "), {}).execute()

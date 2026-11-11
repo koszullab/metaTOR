@@ -99,13 +99,17 @@ def test_micomplete_compare_bins_keeps_parent_over_worse_children(tmp_path):
     assert not contamination
 
 
-def test_micomplete_quality():
-    out_file = "tmp_micomplete.csv"
-    mtv.micomplete_quality(fasta_dir, out_file, threads)
-    data = pd.read_csv(out_file, sep="\t", comment="#", index_col=0)
+def test_micomplete_quality(tmp_path, monkeypatch):
+    bins = os.path.abspath(fasta_dir)
+    before = sorted(os.listdir(bins))
+    monkeypatch.chdir(tmp_path)
+    mtv.micomplete_quality(bins, "results.tsv", threads)
+    data = pd.read_csv("results.tsv", sep="\t", comment="#", index_col=0)
     assert len(data) == 2
     assert len(data.columns) == 14
-    os.remove(out_file)
+    # miComplete's intermediate files are left neither here nor next to the bins.
+    assert os.listdir(tmp_path) == ["results.tsv"]
+    assert sorted(os.listdir(bins)) == before
 
 
 def test_recursive_clustering(): ...

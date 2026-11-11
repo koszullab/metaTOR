@@ -43,6 +43,7 @@ import pandas as pd
 import pyfastx
 import shutil
 import subprocess as sp
+import tempfile
 from functools import partial
 from metator.log import logger
 from os.path import join
@@ -342,45 +343,35 @@ def micomplete_quality(fasta_dir, outfile, threads):
     threads : int
         Numbers of threads to use for miComplete.
     """
-    # Prepare input table for micomplete.
-    list_fasta = filter(
-        lambda x: ".fa" in x,
-        [join(fasta_dir, path) for path in os.listdir(fasta_dir)],
+    # miComplete writes its intermediate files to the current directory, named
+    # after each fasta: run it in a private directory, removed afterwards, so
+    # that runs started from the same directory cannot clobber each other.
+    fasta_dir = os.path.abspath(fasta_dir)
+    workdir = tempfile.mkdtemp(
+        prefix="micomplete_", dir=os.path.dirname(os.path.abspath(outfile))
     )
-    tmp_seq_tab = join(fasta_dir, "micomplete_seq.tsv")
+    tmp_seq_tab = join(workdir, "micomplete_seq.tsv")
     with open(tmp_seq_tab, "w") as tab:
-        for fasta in list_fasta:
-            tab.write(f"{fasta}\tfna\n")
+        for path in sorted(os.listdir(fasta_dir)):
+            if path.endswith((".fa", ".fasta", ".fna")):
+                tab.write(f"{join(fasta_dir, path)}\tfna\n")
 
-    # Create two temporary output for archaea and bacteria.
-    out_bact105 = join(fasta_dir, "micomplete_bact105.tsv")
-    out_arch131 = join(fasta_dir, "micomplete_arch131.tsv")
-
-    # Launch miComplete using subprocess for bacteria.
-    cmd = f"miComplete {tmp_seq_tab} --hmms Bact105 --weights Bact105 --threads {threads} --outfile {out_bact105}"
-    process = sp.Popen(cmd, shell=True)
-    out, err = process.communicate()
-
-    # Launch miComplete using subprocess for archaea.
-    cmd = f"miComplete {tmp_seq_tab} --hmms Arch131 --weights Arch131 --threads {threads} --outfile {out_arch131}"
-    process = sp.Popen(cmd, shell=True)
-    out, err = process.communicate()
+    # Run miComplete with the bacterial and the archaeal marker sets.
+    out_bact105 = join(workdir, "micomplete_bact105.tsv")
+    out_arch131 = join(workdir, "micomplete_arch131.tsv")
+    for markers, out in (("Bact105", out_bact105), ("Arch131", out_arch131)):
+        cmd = [
+            "miComplete", tmp_seq_tab,
+            "--hmms", markers,
+            "--weights", markers,
+            "--threads", str(threads),
+            "--outfile", out,
+        ]  # fmt: skip
+        sp.run(cmd, cwd=workdir, check=True)
 
     # Merge bacteria and archaea
     merge_micomplete(out_bact105, out_arch131, outfile)
-
-    # Remove micomplete temporary files.
-    for path in filter(lambda x: ".fa" in x, os.listdir(fasta_dir)):
-        name = path.split(".")[0]
-        os.remove(f"{name}_prodigal.faa")
-        os.remove(f"{name}.tblout")
-    os.remove(tmp_seq_tab)
-    os.remove(out_bact105)
-    os.remove(out_arch131)
-    try:
-        os.remove("miComplete.log")
-    except FileNotFoundError:
-        pass
+    shutil.rmtree(workdir)
 
 
 def recursive_clustering(

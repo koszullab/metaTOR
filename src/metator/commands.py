@@ -31,6 +31,7 @@ NotImplementedError
 import logging
 import multiprocessing as mp
 import os
+import re
 import shutil
 import time
 import metator.align as mta
@@ -77,6 +78,23 @@ class AbstractCommand:
             raise IOError("Output file already exists. Use --force to overwrite")
         if dirname(path):
             os.makedirs(dirname(path), exist_ok=True)
+
+    def bin_prefix(self):
+        """Prefix of the bin names: "metator" or "<--prefix>_metator".
+
+        Bin names become fasta file names that miComplete renames (it drops
+        every dot), so only letters, digits, "_" and "-" are accepted.
+        """
+        user_prefix = self.args.get("--prefix")
+        if not user_prefix:
+            return "metator"
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", user_prefix):
+            logger.error(
+                "--prefix may only contain letters, digits, '_' and '-': %r",
+                user_prefix,
+            )
+            raise ValueError(f"Invalid --prefix: {user_prefix!r}")
+        return f"{user_prefix}_metator"
 
     def make_tmp_dir(self):
         """Create this run's private temporary directory inside --tmpdir.
@@ -430,10 +448,7 @@ class Partition(AbstractCommand):
             raise ValueError
 
         # Create prefix.
-        if not self.args["--prefix"]:
-            prefix = "metator"
-        else:
-            prefix = f"{self.args['--prefix']}_metator"
+        prefix = self.bin_prefix()
 
         # Partition the network
         _clustering_matrix_file, _contigs_data_file = mtp.partition(
@@ -572,10 +587,7 @@ class Validation(AbstractCommand):
             raise ValueError
 
         # Create prefix.
-        if not self.args["--prefix"]:
-            prefix = "metator"
-        else:
-            prefix = f"{self.args['--prefix']}_metator"
+        prefix = self.bin_prefix()
 
         _clustering_matrix_file = mtv.recursive_decontamination(
             self.args["--algorithm"],
@@ -828,10 +840,7 @@ class Pipeline(AbstractCommand):
                     raise ValueError
 
         # Create prefix.
-        if not self.args["--prefix"]:
-            prefix = "metator"
-        else:
-            prefix = f"{self.args['--prefix']}_metator"
+        prefix = self.bin_prefix()
 
         # Manage start point.
         if self.args["--start"] == "fastq":
