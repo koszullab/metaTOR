@@ -212,7 +212,6 @@ def get_contact_pairs(
 
         # Align if necessary
         if start == "fastq":
-
             iterative = False
 
             # Digest reads if necessary.
@@ -379,7 +378,6 @@ def merge_alignment(forward_aligned, reverse_aligned, contig_data, out_file):
                 if (for_read[1] == rev_read[1] and int(for_read[2]) <= int(rev_read[2])) or contig_data[for_read[1]][
                     "id"
                 ] < contig_data[rev_read[1]]["id"]:
-
                     merged.write(for_position + rev_position + for_read[3] + "\t" + rev_read[3] + "\n")
                 else:
                     merged.write(rev_position + for_position + rev_read[3] + "\t" + for_read[3] + "\n")
@@ -496,7 +494,6 @@ def process_bwa_bamfile(alignment, min_qual, contig_data, out_file):
     pysam.set_verbosity(save)
 
     with open(out_file, "w") as merged:
-
         # Write header of the pairs file.
         merged.write("## pairs format v1.0\n")
         merged.write("#columns: readID chr1 pos1 chr2 pos2 strand1 strand2\n")
@@ -518,7 +515,6 @@ def process_bwa_bamfile(alignment, min_qual, contig_data, out_file):
 
                 # Check mapping quality
                 if for_read.mapping_quality >= min_qual and rev_read.mapping_quality >= min_qual:
-
                     # Check flag
                     if not (for_read.is_unmapped or rev_read.is_unmapped):
                         n_pairs += 1

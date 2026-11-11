@@ -18,7 +18,6 @@ Core function to partition mges contigs:
     - update_mge_data
 """
 
-
 import numpy as np
 import pandas as pd
 import pypairix

@@ -129,7 +129,9 @@ def build_clustering_matrix(core_bins_contigs, hamming_distance, N):
 
 
 def defined_overlapping_bins(
-    overlap, hamming_distance, core_bins_contigs,
+    overlap,
+    hamming_distance,
+    core_bins_contigs,
 ):
     """This function extract the overlapped bins
 
@@ -163,9 +165,7 @@ def defined_overlapping_bins(
     # python give a float not really equal to the true value
     # (i.e. 0.1 -> 0.09999999999999998)
     connections = hamming_distance >= (overlap - 1e-10)
-    overlapping_bins_id = sparse.csgraph.connected_components(
-        connections, directed=False
-    )[1]
+    overlapping_bins_id = sparse.csgraph.connected_components(connections, directed=False)[1]
 
     # Create a dictionnary of the overlapped bins (ID from the previous file)
     # with the ID of their contigs as value
@@ -236,18 +236,14 @@ def detect_core_bins(output_partition, iterations):
             core_bins_contigs[core_bins[value]].append(key)
 
     # Transform the array in a dataframe
-    core_bins_iterations = pd.DataFrame(
-        np.array(core_bins_rows, dtype=int).reshape(-1, iterations)
-    )
+    core_bins_iterations = pd.DataFrame(np.array(core_bins_rows, dtype=int).reshape(-1, iterations))
 
     logger.info(f"{len(core_bins)} core bins were found.")
 
     return core_bins_contigs, core_bins_iterations
 
 
-def generate_fasta(
-    assembly, overlapping_bins, contigs_data, size, output_dir, tmpdir, prefix
-):
+def generate_fasta(assembly, overlapping_bins, contigs_data, size, output_dir, tmpdir, prefix):
     """Generate the fasta files of each bins from the assembly.
 
     Parameters:
@@ -281,16 +277,12 @@ def generate_fasta(
         list_contigs_id = overlapping_bins[bin_id]
         list_contigs_name = []
         # Test if the bin is bigger than the size threshold given.
-        length_bin = int(
-            contigs_data.loc[list_contigs_id[0] - 1, "Overlapping_bin_size"]
-        )
+        length_bin = int(contigs_data.loc[list_contigs_id[0] - 1, "Overlapping_bin_size"])
         if length_bin >= size:
             nb_bins += 1
             length_bins += length_bin
             for contig_id in list_contigs_id:
-                list_contigs_name.append(
-                    contigs_data.loc[contig_id - 1, "Name"]
-                )
+                list_contigs_name.append(contigs_data.loc[contig_id - 1, "Name"])
             # Define the output file.
             output_file = join(output_dir, f"{prefix}_{bin_id:05d}_{0:05d}.fa")
             # Create the fasta file.
@@ -298,15 +290,11 @@ def generate_fasta(
             with open(contigs_file, "w") as f:
                 for contig_name in list_contigs_name:
                     f.write("%s\n" % contig_name)
-            cmd = "pyfastx extract {0} -l {1} > {2}".format(
-                assembly, contigs_file, output_file
-            )
+            cmd = "pyfastx extract {0} -l {1} > {2}".format(assembly, contigs_file, output_file)
             process = sp.Popen(cmd, shell=True)
             process.communicate()
     logger.info(f"{nb_bins} bins have been extracted")
-    logger.info(
-        f"Total size of the extracted bins: {round(length_bins / 10**6, 3)}Mb"
-    )
+    logger.info(f"Total size of the extracted bins: {round(length_bins / 10**6, 3)}Mb")
 
 
 def get_distances_splitmat(bins, core_bins_iterations):
@@ -328,12 +316,7 @@ def get_distances_splitmat(bins, core_bins_iterations):
         matrix of the distance of the possible pairs from the slice of the table
         and the table itself.
     """
-    x = sparse.csr_matrix(
-        1
-        - metrics.pairwise_distances(
-            core_bins_iterations, bins.values, metric="hamming"
-        )
-    )
+    x = sparse.csr_matrix(1 - metrics.pairwise_distances(core_bins_iterations, bins.values, metric="hamming"))
     return x
 
 
@@ -363,7 +346,8 @@ def get_hamming_distance(core_bins_iterations, threads):
     pool = multiprocessing.Pool(processes=threads)
     res = pool.map(
         partial(
-            get_distances_splitmat, core_bins_iterations=core_bins_iterations,
+            get_distances_splitmat,
+            core_bins_iterations=core_bins_iterations,
         ),
         split_core_bins,
     )
@@ -424,10 +408,7 @@ def louvain_iterations(network_file, iterations):
         of each iterations separated by a semicolon as values.
     """
     network, contigs = read_network(network_file)
-    memberships = [
-        network.community_multilevel(weights="weight").membership
-        for _ in range(iterations)
-    ]
+    memberships = [network.community_multilevel(weights="weight").membership for _ in range(iterations)]
     return merge_iterations(contigs, memberships)
 
 
@@ -448,10 +429,7 @@ def merge_iterations(contigs, memberships):
         of each iterations separated by a semicolon as values.
     """
     memberships = np.array(memberships).T
-    return {
-        int(contig): ";".join(map(str, clusters))
-        for contig, clusters in zip(contigs, memberships)
-    }
+    return {int(contig): ";".join(map(str, clusters)) for contig, clusters in zip(contigs, memberships)}
 
 
 def partition(
@@ -523,29 +501,36 @@ def partition(
 
     # Perform the iterations of Louvain or Leiden to partition the network.
     logger.info("Start iterations:")
-    output_partition = algo_partition(
-        algorithm, network_file, iterations, resolution_parameter
-    )
+    output_partition = algo_partition(algorithm, network_file, iterations, resolution_parameter)
 
     # Detect core bins
     logger.info("Detect core bins:")
-    (core_bins_contigs, core_bins_iterations,) = detect_core_bins(
-        output_partition, iterations
-    )
+    (
+        core_bins_contigs,
+        core_bins_iterations,
+    ) = detect_core_bins(output_partition, iterations)
 
     # Compute the Hamming distance between core bins.
     logger.info("Detect overlapping bins:")
-    hamming_distance = get_hamming_distance(core_bins_iterations, threads,)
+    hamming_distance = get_hamming_distance(
+        core_bins_iterations,
+        threads,
+    )
 
     # Defined overlapping bins according to the threshold
     overlapping_bins = defined_overlapping_bins(
-        overlapping_parameter, hamming_distance, core_bins_contigs,
+        overlapping_parameter,
+        hamming_distance,
+        core_bins_contigs,
     )
 
     # Update the contigs_data_file.
     logger.info("Extract bins:")
     contigs_data, contigs_data_file = update_contigs_data(
-        contig_data_file, core_bins_contigs, overlapping_bins, outdir,
+        contig_data_file,
+        core_bins_contigs,
+        overlapping_bins,
+        outdir,
     )
 
     # Generate Fasta file
@@ -562,9 +547,7 @@ def partition(
     if cluster_matrix:
         # Build clustering matrix and save it.
         logger.info("Build  clustering matrix")
-        clustering_matrix = build_clustering_matrix(
-            core_bins_contigs, hamming_distance, len(contigs_data.ID)
-        )
+        clustering_matrix = build_clustering_matrix(core_bins_contigs, hamming_distance, len(contigs_data.ID))
         # Save the clustering matrix
         clustering_matrix_file = join(outdir, "clustering_matrix_partition")
         sparse.save_npz(clustering_matrix_file, clustering_matrix)
@@ -591,12 +574,8 @@ def read_network(network_file):
     numpy.ndarray:
         Contig ids of the vertices.
     """
-    edges = pd.read_csv(
-        network_file, sep="\t", header=None, names=["contig1", "contig2", "weight"]
-    )
-    contigs, vertices = np.unique(
-        edges[["contig1", "contig2"]].to_numpy().ravel(), return_inverse=True
-    )
+    edges = pd.read_csv(network_file, sep="\t", header=None, names=["contig1", "contig2", "weight"])
+    contigs, vertices = np.unique(edges[["contig1", "contig2"]].to_numpy().ravel(), return_inverse=True)
     network = ig.Graph(
         n=len(contigs),
         edges=vertices.reshape(-1, 2).tolist(),
@@ -605,9 +584,7 @@ def read_network(network_file):
     return network, contigs
 
 
-def update_contigs_data(
-    contig_data_file, core_bins_contigs, overlapping_bins, outdir
-):
+def update_contigs_data(contig_data_file, core_bins_contigs, overlapping_bins, outdir):
     """Add bin information in the contigs data file.
 
     This function allow to update the contigs data file which were created
@@ -638,9 +615,7 @@ def update_contigs_data(
     """
 
     # Read the table
-    contigs_data = pd.read_csv(
-        contig_data_file, sep="\t", header=0, index_col=False
-    )
+    contigs_data = pd.read_csv(contig_data_file, sep="\t", header=0, index_col=False)
 
     # Add new empty columns. Use object dtype as they will mix "-" and ints.
     for col in [
@@ -674,12 +649,8 @@ def update_contigs_data(
         overlapping_bin_length = sum(overlapping_bin_data.Size)
         # Write the new information
         contigs_data.loc[overlapping_bin, "Overlapping_bin_ID"] = f"{i:05d}"
-        contigs_data.loc[
-            overlapping_bin, "Overlapping_bin_contigs"
-        ] = overlapping_bin_contigs_number
-        contigs_data.loc[
-            overlapping_bin, "Overlapping_bin_size"
-        ] = overlapping_bin_length
+        contigs_data.loc[overlapping_bin, "Overlapping_bin_contigs"] = overlapping_bin_contigs_number
+        contigs_data.loc[overlapping_bin, "Overlapping_bin_size"] = overlapping_bin_length
 
     # Write the new file
     contig_data_file_2 = join(outdir, "contig_data_partition.txt")
@@ -692,7 +663,8 @@ def update_contigs_data(
 
 
 def spinglass_partition(
-    subnetwork, spins=2,
+    subnetwork,
+    spins=2,
 ):
     """Use spinglass function from cdlib to partition the network.
 

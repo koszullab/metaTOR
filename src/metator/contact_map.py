@@ -14,7 +14,6 @@ Core function to build the network are:
     - generate_contact_map
 """
 
-
 import hicstuff.pipeline as hcp
 import metator.io as mio
 from metator.log import logger

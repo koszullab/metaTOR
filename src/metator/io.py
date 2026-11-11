@@ -204,7 +204,7 @@ def generate_temp_dir(path):
         os.makedirs(full_path)
     except PermissionError:
         raise PermissionError(
-            "The temporary directory cannot be created in {}. " "Make sure you have write permission.".format(path)
+            "The temporary directory cannot be created in {}. Make sure you have write permission.".format(path)
         ) from None
     return full_path
 
@@ -277,7 +277,6 @@ def get_restriction_site(enzyme):
 
     # Iterates on the enzymes.
     for enz in rb:
-
         # Extract restriction sites and look for cut sites.
         restriction_list.append(enz.site.replace("N", "."))
 
@@ -662,8 +661,9 @@ def sort_pairs(in_file, out_file, tmp_dir=None, threads=1, buffer="2G"):
         sort_ver = list(map(int, sort_ver))
         if sort_ver[0] < 8 or (sort_ver[0] == 8 and sort_ver[1] < 23):
             logger.warning(
-                "GNU sort version is {0} but >8.23 is required for parallel "
-                "sort. Sorting on a single thread.".format(".".join(map(str, sort_ver)))
+                "GNU sort version is {0} but >8.23 is required for parallel sort. Sorting on a single thread.".format(
+                    ".".join(map(str, sort_ver))
+                )
             )
             parallel_ok = False
     # BSD sort has a different format and will throw error upon parsing. It does
@@ -719,9 +719,7 @@ def sort_pairs_pairtools(pairfile, threads=1, remove=False, force=False, tmp_dir
         if os.path.isfile(sorted_pairs):
             os.remove(sorted_pairs)
     elif os.path.isfile(sorted_pairs) or os.path.isfile(f"{sorted_pairs}.gz"):
-        logger.error(
-            f"The {sorted_pairs} exists. Do not overwrite existing, use --force to overwrite or use another location."
-        )
+        logger.error(f"The {sorted_pairs} exists. Do not overwrite existing, use --force to overwrite or use another location.")
         raise ValueError
 
     # Sort pairs using pairtools.

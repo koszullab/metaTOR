@@ -24,9 +24,7 @@ logging.captureWarnings(True)
 logger = logging.getLogger("metator_logger")
 logger.setLevel(CURRENT_LOG_LEVEL)
 
-logfile_formatter = logging.Formatter(
-    "%(asctime)s :: %(levelname)s :: %(message)s", datefmt="%Y-%m-%d,%H:%M:%S"
-)
+logfile_formatter = logging.Formatter("%(asctime)s :: %(levelname)s :: %(message)s", datefmt="%Y-%m-%d,%H:%M:%S")
 stdout_formatter = logging.Formatter("%(levelname)s :: %(message)s")
 text_formatter = logging.Formatter("%(message)s")
 

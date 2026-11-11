@@ -316,7 +316,14 @@ def classify_mags(mags, bin_summary) -> dict:
     def classify_mag(
         mag,
     ) -> (
-        Literal["Unknown"] | Literal["Contaminated"] | Literal["Complete"] | Literal["HQ"] | Literal["MQ"] | Literal["LQ"] | Literal["PQ"] | None
+        Literal["Unknown"]
+        | Literal["Contaminated"]
+        | Literal["Complete"]
+        | Literal["HQ"]
+        | Literal["MQ"]
+        | Literal["LQ"]
+        | Literal["PQ"]
+        | None
     ):
         c, r = mag.completeness, mag.contamination
         if pd.isna(c) or pd.isna(r):
@@ -498,7 +505,6 @@ def annotate_hosts(
 
 # Call to the main function `annotate_hosts`
 if __name__ == "__main__":
-
     network_data_file = "network_1.txt"
     contig_data_file = "contig_data_final_reformated.txt"
     bin_summary_file = "bin_summary.txt"

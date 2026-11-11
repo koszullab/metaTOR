@@ -145,9 +145,7 @@ def test_compute_network():
     assert len(network) == len(expected)
     by_id = {data["id"]: data for data in contig_data.values()}
     for a, b, weight in network.itertuples(index=False):
-        factor = np.sqrt(
-            by_id[a]["hit"] / by_id[a]["length"] * by_id[b]["hit"] / by_id[b]["length"]
-        )
+        factor = np.sqrt(by_id[a]["hit"] / by_id[a]["length"] * by_id[b]["hit"] / by_id[b]["length"])
         assert weight == pytest.approx(expected[(a, b)] / factor, rel=1e-6)
     shutil.rmtree(tmp_dir)
 
@@ -189,9 +187,7 @@ def test_create_contig_data():
     }
     assert hit_data["NODE_114957"] == {"id": 643, "hit": [0, 0, 0]}
     # Case with depth file.
-    contig_data, hit_data = mtn.create_contig_data(
-        assembly, 1, depth_file, "DpnII"
-    )
+    contig_data, hit_data = mtn.create_contig_data(assembly, 1, depth_file, "DpnII")
     assert len(contig_data) == 1219
     assert contig_data["NODE_522"] == {
         "id": 1,
@@ -206,25 +202,13 @@ def test_create_contig_data():
 
 def test_normalize_pair():
     # Test for edges normalisation methods.
-    length = mtn.normalize_pair(
-        contigs_data, ("NODE_1", "NODE_6"), 52, "length"
-    )
-    abundance = mtn.normalize_pair(
-        contigs_data, ("NODE_1", "NODE_8"), 2004, "abundance"
-    )
-    abundance_null = mtn.normalize_pair(
-        contigs_data, ("NODE_1", "NODE_10"), 275, "abundance"
-    )
+    length = mtn.normalize_pair(contigs_data, ("NODE_1", "NODE_6"), 52, "length")
+    abundance = mtn.normalize_pair(contigs_data, ("NODE_1", "NODE_8"), 2004, "abundance")
+    abundance_null = mtn.normalize_pair(contigs_data, ("NODE_1", "NODE_10"), 275, "abundance")
     RS = mtn.normalize_pair(contigs_data, ("NODE_6", "NODE_8"), 800, "RS")
-    EH = mtn.normalize_pair(
-        contigs_data, ("NODE_8", "NODE_1"), 2022, "empirical_hit"
-    )
-    TH = mtn.normalize_pair(
-        contigs_data, ("NODE_6", "NODE_8"), 3333, "theoritical_hit"
-    )
-    TH_null = mtn.normalize_pair(
-        contigs_data, ("NODE_1", "NODE_8"), 2004, "theoritical_hit"
-    )
+    EH = mtn.normalize_pair(contigs_data, ("NODE_8", "NODE_1"), 2022, "empirical_hit")
+    TH = mtn.normalize_pair(contigs_data, ("NODE_6", "NODE_8"), 3333, "theoritical_hit")
+    TH_null = mtn.normalize_pair(contigs_data, ("NODE_1", "NODE_8"), 2004, "theoritical_hit")
     assert length == pytest.approx(71.77, abs=1e-2)
     assert abundance == pytest.approx(31.61, abs=1e-2)
     assert abundance_null == 0

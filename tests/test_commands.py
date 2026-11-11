@@ -220,9 +220,9 @@ def test_default_tmpdir_is_tidied(tmp_path, monkeypatch):
 
 def test_invalid_prefix_is_rejected(tmp_path):
     """miComplete drops dots from bin names, so a dotted --prefix is refused."""
-    args = (
-        "-a {SUBSET_FASTA} -c {CONTIGS} -n {NETWORK} -o {OUT} -T {TMP} -p my.sample"
-    ).format(OUT=tmp_path / "out", TMP=tmp_path / "tmp", **global_args)
+    args = ("-a {SUBSET_FASTA} -c {CONTIGS} -n {NETWORK} -o {OUT} -T {TMP} -p my.sample").format(
+        OUT=tmp_path / "out", TMP=tmp_path / "tmp", **global_args
+    )
     with pytest.raises(ValueError, match="Invalid --prefix"):
         mtc.Partition(args.split(" "), {}).execute()
 
@@ -234,9 +234,8 @@ def test_spinglass_is_rejected_before_any_work(tmp_path, monkeypatch):
         raise AssertionError("recursive decontamination should not start")
 
     monkeypatch.setattr(mtc.mtv, "recursive_decontamination", not_reached)
-    args = (
-        "-a {SUBSET_FASTA} -c {CONTIGS_PARTITION} -f {OVERLAPPING_BINS} -n {NETWORK} "
-        "-o {OUT} -T {TMP} -A spinglass"
-    ).format(OUT=tmp_path / "out", TMP=tmp_path / "tmp", **global_args)
+    args = ("-a {SUBSET_FASTA} -c {CONTIGS_PARTITION} -f {OVERLAPPING_BINS} -n {NETWORK} -o {OUT} -T {TMP} -A spinglass").format(
+        OUT=tmp_path / "out", TMP=tmp_path / "tmp", **global_args
+    )
     with pytest.raises(ValueError):
         mtc.Validation(args.split(" "), {}).execute()

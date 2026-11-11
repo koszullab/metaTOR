@@ -18,4 +18,3 @@ __maintainer__ = "Amaury Bignaud"
 __email__ = "amaury.bignaud@pasteur.fr"
 __status__ = "Alpha"
 __version__ = version
-

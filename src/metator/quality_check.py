@@ -81,13 +81,12 @@ def extract_pairs(pairs_files, out_file, contigs, contigs_data):
     with open(out_file, "w") as output_pairs:
         # Write the header of the output pairs
         output_pairs.write("## pairs format v1.0\n")
-        output_pairs.write(
-            "#columns: readID chr1 pos1 chr2 pos2 strand1 strand2\n"
-        )
+        output_pairs.write("#columns: readID chr1 pos1 chr2 pos2 strand1 strand2\n")
         for contig in contigs:
             output_pairs.write(
                 "#chromsize: {0} {1}\n".format(
-                    contig, contigs_data.loc[contig, "Size"],
+                    contig,
+                    contigs_data.loc[contig, "Size"],
                 )
             )
         for pairs_file in pairs_files:
@@ -164,9 +163,7 @@ def hic_quality(
     restrict_table = {}
     for record in SeqIO.parse(mio.read_compressed(fasta), "fasta"):
         # Get chromosome restriction table
-        restrict_table[record.id] = hcd.get_restriction_table(
-            record.seq, enzyme, circular=False
-        )
+        restrict_table[record.id] = hcd.get_restriction_table(record.seq, enzyme, circular=False)
 
     # Add fragment index to pairs (readID, chr1, pos1, chr2,
     # pos2, strand1, strand2, frag1, frag2)
@@ -185,11 +182,7 @@ def hic_quality(
             fig_path=plot_event,
             prefix=prefix,
         )
-        logger.info(
-            "Filtering with thresholds: uncuts={0} loops={1}".format(
-                uncut_thr, loop_thr
-            )
-        )
+        logger.info("Filtering with thresholds: uncuts={0} loops={1}".format(uncut_thr, loop_thr))
     # Filter reads and save metrics on informative reads
     n_religated = 0
     n_loops = 0
@@ -228,11 +221,7 @@ def hic_quality(
                 else:
                     n_inter_mags += 1
     if n_intra_mags + n_inter_mags > 0:
-        rat_info = (
-            100
-            * (n_informative_intra + n_informative_inter)
-            / (n_intra_mags + n_inter_mags)
-        )
+        rat_info = 100 * (n_informative_intra + n_informative_inter) / (n_intra_mags + n_inter_mags)
         noise_ratio = 100 * n_inter_mags / (n_inter_mags + n_intra_mags)
     else:
         logger.warning("No pairs have benn extracted. All scores set to 0.")
@@ -249,9 +238,7 @@ def hic_quality(
     logger.info(f"Loop ratio: {100 * n_loops / n_intra_mags:.2f}%.")
     logger.info(f"Weirds ratio: {100 * n_weirds / n_intra_mags:.2f}%.")
     logger.info(f"Informative contacts estimation: {rat_info:.2f}%.")
-    logger.info(
-        f"Ratio inter/intra contigs: {n_informative_inter / (n_informative_intra + n_informative_inter):.2f}%."
-    )
+    logger.info(f"Ratio inter/intra contigs: {n_informative_inter / (n_informative_intra + n_informative_inter):.2f}%.")
     logger.info(f"Noise contact ratio: {noise_ratio:.2f}%")
     logger.info(f"Noise score: {noise_score:.2E}")
 
@@ -327,9 +314,7 @@ def quality_check(
     # Extract high quality contigs.
     hq_contigs, n_mags = extract_hq_contigs(bin_summary, contigs_data)
     # Extract pairs
-    n_pairs = extract_pairs(
-        pairs_files, pairs, list(hq_contigs.keys()), contigs_data
-    )
+    n_pairs = extract_pairs(pairs_files, pairs, list(hq_contigs.keys()), contigs_data)
 
     # Estimate HiC quality.
     if n_pairs > 0:

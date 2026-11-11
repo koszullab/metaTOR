@@ -1275,11 +1275,11 @@ class Scaffold(AbstractCommand):
 
         # Create output files:
         if self.args["--out-fasta"] is None:
-            out_fasta = join(".", f'{self.args["--bin-name"]}_scaffolded.fa')
+            out_fasta = join(".", f"{self.args['--bin-name']}_scaffolded.fa")
         else:
             out_fasta = self.args["--out-fasta"]
         if self.args["--out-frags"] is None:
-            out_info = join(".", f'{self.args["--bin-name"]}_info_frags.txt')
+            out_info = join(".", f"{self.args['--bin-name']}_info_frags.txt")
         else:
             out_info = self.args["--out-frags"]
 
