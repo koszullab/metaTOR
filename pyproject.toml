@@ -60,17 +60,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = [
-    "coverage[toml]",
-    "isort",
-    "pytest",
-    "pytest-cov",
-    "pytest-pylint",
-    "pytest-order",
-    "codecov",
-    "pylint",
-    "ruff",
-]
 docs = [
     'autodoc',
     'sphinx-autoapi',
@@ -88,15 +77,16 @@ docs = [
     "nbsphinx",
     "lxml[html_clean]",
 ]
+
+[dependency-groups]
+# Installed by `uv sync`; never published as package metadata.
 dev = [
-    "metator[test,docs]",
-    "hatch",
-    "hatchling", 
-    "pre-commit",
-    "mypy",
-    "black",
-    "twine",
-    "ipython"
+    "bump-my-version>=0.28",
+    "pre-commit>=3",
+    "pytest>=8",
+    "pytest-cov>=5",
+    "ruff>=0.8",
+    "ty>=0.0.38",
 ]
 
 [project.urls]
@@ -120,10 +110,6 @@ exclude = [
     "/docs/example/images",
 ]
 
-[tool.black]
-line-length = 130
-target-version = ['py310']
-
 [tool.ruff]
 line-length = 130
 src = ["src"]
@@ -133,7 +119,8 @@ exclude = [
     "__main__.py",
 ]
 lint.ignore = ["E402", "I001"]
-lint.extend-select = [
+# An explicit list: ruff upgrades must not change the rule set.
+lint.select = [
     "B",  # bugbear
     "E",  # style errors
     "F",  # pyflakes
@@ -145,7 +132,6 @@ lint.extend-select = [
 lint.isort.known-first-party = ["metator"]
 
 [tool.pytest.ini_options]
-markers = ["order: mark test to run in a specific order"]
 minversion = "7"
 log_cli_level = "INFO"
 xfail_strict = true
@@ -173,6 +159,10 @@ exclude_lines = [
     "return NotImplemented",
     "raise NotImplementedError"
 ]
+
+[tool.ty.analysis]
+# C extensions that ship no type information.
+allowed-unresolved-imports = ["pypairix", "pyfastx"]
 
 [tool.bumpversion]
 # src/metator/version.py is the single source of truth for the version; this
