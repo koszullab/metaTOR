@@ -73,7 +73,7 @@ pip3 install -e .[dev]
 ## Usage
 
 ```sh
-metator {network|partition|validation|pipeline} [parameters]
+metator {network|partition|validation|pipeline|qc|contactmap|pairs|mge} [parameters]
 ```
 
 A metator command takes the form `metator action --param1 arg1 --param2
@@ -84,28 +84,27 @@ following order:
 
 * `network` : Generate metaHiC contigs network from fastq reads or bam files and normalize it.
 * `partition` : Perform the Louvain or Leiden community detection algorithm many times to bin contigs according to the metaHiC signal between contigs.
-
-* `validation` : Use CheckM to validate the bins, then do a recursive decontamination step to remove contamination.
+* `validation` : Use miComplete to validate the bins, then do a recursive decontamination step to remove contamination.
 
 There are a number of other, optional, miscellaneous actions:
 
 * `pipeline` : Run all three of the above actions sequentially or only some of them depending on the arguments given. This can take a while.
+* `mge` : Perform the binning over mge contigs. A specific section is dedicated to this tool below.
 * `contactmap` : Generates a contact map from one bin from the final ouptut of metator.
-
+* `qc` : Generates some quality check on the input/output of metator.
 * `version` : display current version number.
-
 * `help` : display help message.
 
 A tutorial is available [here](docs/example/metator_tutorial.md) to explain how to use metator. More advanced tutorials to analyze the output files are also available:
 
 * [Anvio](https://merenlab.org/software/anvio/) manual curation of the contaminated bins. Available [here](docs/example/manual_curation_of_metator_MAGs.md).
-* Visualization and scaffolding of the MAGs with the contactmap modules of MetaTOR. Available [here](docs/example/MAG_visualization_and_scaffolding.md).
+* Visualization of the MAGs with the contactmap modules of MetaTOR. Available [here](docs/example/MAG_visualization_and_scaffolding.md).
 
-Principle of MetaTOR pipeline:
+### Principle of MetaTOR pipeline:
 
-![metator_pipeline](docs/example/images/metator_figure.png)
+![pipeline](docs/example/images/pipeline.png)
 
-## Output files
+### Output files
 
 The output files will be in the ouput directory given as parmater or in working directory if no paramater were given. Depending on the command used, different files will be in the ouptut:
 
@@ -113,15 +112,13 @@ The output files will be in the ouput directory given as parmater or in working 
 | - | :-: | :-: | :-: | :-: | :-: |
 | alignment_N_for.bam |Bam file of the forward alignment |X|||X|
 | alignment_N_rev.bam |Bam file of the reverse alignment|X|||X|
-| alignment_N.pairs |Pairs of the merge alignment|X|||X|
+| alignment_N.pairs.pgz |Pairs of the merge alignment|X|||X|
 | network.txt |Normalized network of the metaHiC library|X|||X|
 | contig_data_network.txt |Information on contigs after network step|X||||
 | clustering_matrix_partition.txt |Matrix of clustering from the partition iterations||X|||
 | contig_data_partition.txt |Information on contigs after partition step||X|||
-| overlapping_checkm_results.txt |CheckM results summary file from the partition step|||X|X|
-| overlapping_checkm_taxonomy.txt |CheckM taxonomy file from the partition step|||X|X|
-| recursive_checkm_results.txt |CheckM results summary file from the recursive step|||X|X|
-| recursive_checkm_taxonomy.txt |CheckM taxonomy file from the recursive step|||X|X|
+| overlapping_micomplete_results.txt |miComplete results summary file from the partition step|||X|X|
+| recursive_micomplete_stepN.txt |miComplete results summary file from the recursive step N|||X|X|
 | clustering_matrix_validation.txt |Matrix of clustering from the recursive iterations|||X||
 | clustering_matrix.txt |Matrix of clustering from the partition and recursive iterations||||X|
 | contig_data_final.txt |Information on contigs after whole pipeline|||X|X|
@@ -163,20 +160,43 @@ The clustering matrix files are at the `.npz` format which is a compresed foramt
 
 It's possible to read them in python using the `scipy.sparse.load_npz()` function. If the users wants a tsv file instead, he or she could load the matrix in python using load_npz and make sure to transform the matrix in the `scipy.sparse.coo_matrix` function and used the function from metator `metator.io.save_sparse_matrix` to save it as tsv file.
 
-**CheckM results**
-Files from [checkM](https://github.com/Ecogenomics/CheckM) output. Two types of files one with the main results of checkM `checkm_results.txt` and one with the taxonomy  `checkm_taxonomy.txt` for both the partition and the recurisve bins.
-
 **binning.txt file**
 This is a tsv file with two columns: the contig name and the final were the contig is. It only contains contigs which are binned. It could be use a an input to import a binning results in anvio.
 
 **Bin summary file**
-This is the summary of the data of the final bins build with all the step of metator. The HiC coverage is the number of contacts (intra and inter contigs) per kilobase in the whole bin. The Shotgun coverage is the mean coverage normalized by the size of the shotgun reads from the depth file.
+This is the summary of the data of the final bins build with all the step of metator (GC content, number of contigs, N50, HiC abundancy ...). It also contains the data from the final miComplete evaluation (Present Markers, Completeness, Redundancy, Weighted completeness	and Weighted redundancy).
 
-||lineage|completness|contamination|size|contigs|N50|longest_contig|GC|coding_density|taxonomy|Coverage|
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-|MetaTOR_8_1|o__Clostridiales|68.29|2.46|1431612|15|116129|291620|26.36|87.97|k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales|146.46719755483332|
-|MetaTOR_8_2|o__Clostridiales|58.42|2.01|1396934|58|41290|174682|28.89|83.70|k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales|22.252416224710686|
-|MetaTOR_8_3|o__Clostridiales|49.37|0.94|1420821|82|33095|89964|30.29|83.24|k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales;f__Peptostreptococcaceae_3;g__Clostridium_3|44.27369196532141|
+||Length|GC-content|Present_Markers|Completeness|Redundancy|Weighted_completeness|Weighted_redundancy|Contigs|N50|L50|N90|L90|CDs|recursive|step|parent|HiC_abundance|
+|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+|metator_00031_00000|6169839.00|57.47|103.00|0.98|1.01|0.98|1.02|153.00|287729.00|8.00|40103.00|27.00|5707.00|False|0||3.3423|
+|metator_00001_00000|4695682.00|42.58|103.00|0.98|1.03|0.99|1.08|326.00|71792.00|22.00|13441.00|85.00|4141.00|False|0||1.9909|
+|metator_00030_00001|5094713.00|45.69|105.00|1.00|1.10|1.00|1.13|44.00|428652.00|5.00|99776.00|15.00|4726.00|False|1|metator_00030_00000|0.3708|
+
+### metator mge
+
+#### principle of mge binning
+
+![pipeline](docs/example/images/metator_mge.png)
+
+#### usage
+
+`metator mge` : given a list of contigs previously identified as MGE, this command will bin the specific given contigs and return a fasta files as well as a summary file. 
+
+#### output
+
+**mges_binned.fa**
+fasta file of the mge obtained after the binning step.
+
+**mges_bin_summary.tsv**
+
+This is the summary of the data of the final mge bins build with the specific command mge.
+
+|BinName|BinLength|GC|Hit|BinningScore|ContigsNumber|Contigs|MetagenomicBin|AssociationScore|AssociatedBins|
+|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+|MetaTOR_MGE_00064|30610.00|68.93|18383.00|1.20|2.00|NODE_8199_len_17842,NODE_10116_len_12768|None|NA|NA|
+|MetaTOR_MGE_00105|23587.00|37.36|2662.00|NA|1.00|NODE_10949_len_23587|None|NA|NA|
+|MetaTOR_MGE_00106|2872.00|64.48|10.00|NA|1.00|NODE_10953_len_2872|None|NA|NA|
+
 
 ## Contributions 
 
@@ -184,20 +204,22 @@ We welcome contributions to the project. Please refer to the [CONTRIBUTING.md](C
 
 ## References
 
-* [Metagenomic chromosome conformation capture (meta3C) unveils the diversity of chromosome organization in microorganisms](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4381813/), Martial Marbouty, Axel Cournac, Jean-François Flot, Hervé Marie-Nelly, Julien Mozziconacci, and Romain Koszul, eLife, 2014
-* [Meta3C analysis of a mouse gut microbiome](https://www.biorxiv.org/content/early/2015/12/17/034793), Martial Marbouty, Lyam Baudry, Axel Cournac, Romain Koszul, 2015
-* [Scaffolding bacterial genomes and probing host-virus interactions in gut microbiome by proximity ligation (chromosome capture) assay](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5315449/), Martial Marbouty, Lyam Baudry, Axel Cournac, and Romain Koszul, Science Advances, 2017
+* [Metagenomic chromosome conformation capture (meta3C) unveils the diversity of chromosome organization in microorganisms](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4381813/), Martial Marbouty, Axel Cournac, Jean-François Flot, Hervé Marie-Nelly, Julien Mozziconacci, and Romain Koszul. eLife, 2014.
+* [Scaffolding bacterial genomes and probing host-virus interactions in gut microbiome by proximity ligation (chromosome capture) assay](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5315449/), Martial Marbouty, Lyam Baudry, Axel Cournac, and Romain Koszul. Science Advances, 2017.
+* [MetaHiC phage-bacteria infection network reveals active cycling phages of the healthy human gut](https://elifesciences.org/articles/60608), Martial Marbouty, Agnès Thierry, Gaël A Millot, Romain Koszul. eLife, 2021.
+* [Phages with a broad host range are common across ecosystems](https://hal.science/pasteur-05269627), Amaury Bignaud, Devon Conti, Agnès Thierry, Jacques Serizay, Karine Labadie, Julie Poulain, Olivia Cheny, Maritrini Colón-González, Laurent Debarbieux, Marianna Guerrero-Osornio, Sophie Helaine, Peter Hill, Gwenaelle Le Tinier, Gael A Millot, Lucia Morales, Andrés Parada, Nadia Riera, Gregorio Iraola, Romain Koszul & Martial Marbouty.
+Nature Microbiology, 2025
 
 ## Contact
 
 ### Authors
 
-* amaury.bignaud@pasteur.fr
+* martial.marbouty@pasteur.fr
 * jacques.serizay@pasteur.fr
+* romain.koszul@pasteur.fr
+* amaury.bignaud@pasteur.fr
 * lyam.baudry@pasteur.fr
 * thfoutel@pasteur.fr
-* martial.marbouty@pasteur.fr
-* romain.koszul@pasteur.fr
 
 ### Research lab
 
