@@ -8,28 +8,39 @@ We follow the [fork and pull model](https://help.github.com/articles/about-colla
 
 This project has a number of requirements for all code contributed.
 
+* We use [uv](https://docs.astral.sh/uv/) to manage the development environment; `uv.lock` pins every dependency.
 * We use [pytest](https://docs.pytest.org/en/latest) for unit tests.
-* We use [Black](https://black.readthedocs.io/en/stable/) for code formatting.
-* We use [mypy](http://mypy-lang.org) for static type checking. 
+* We use [ruff](https://docs.astral.sh/ruff/) for linting and code formatting.
+* We use [ty](https://docs.astral.sh/ty/) for static type checking (advisory for now).
 
-We strongly enforce continuous integration (CI) on all pull requests. This includes running unit tests, code coverage, code style checks, and static type checks. We use [Github Actions](.github/workflows/ci.yml) for this purpose. 
+[CI](.github/workflows/ci.yml) runs on every push and pull request: lock-file check, ruff, ty, and the test suite on each supported Python version from `uv.lock`, plus a job that re-resolves to the newest dependency releases (also run weekly).
 
 ## Setting up Your Development Environment
 
-After forking and cloning the repository, install in "editable" (i.e. development) mode using the `-e` option:
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/), and the non-Python tools metator calls (uv cannot install them):
 
 ```sh
-git clone https://github.com/koszullab/metator.git
-cd metator
-pip install -e .[dev]
+sudo apt install bowtie2 bwa samtools hmmer prodigal   # or: brew install bowtie2 bwa samtools hmmer prodigal
+```
+
+Then, after forking and cloning the repository:
+
+```sh
+git clone https://github.com/koszullab/metaTOR.git
+cd metaTOR
+uv sync                       # Python 3.11 (.python-version) + dev tools, metator in editable mode
+uv run pre-commit install     # optional: ruff on every commit
 ```
 
 ## Running/Adding Unit Tests
 
-We use [pytest](https://docs.pytest.org/en/latest) as our unit testing framework. Once you've configured your environment, you can just `cd` to the root of your repository and run
+From the root of the repository:
 
 ```sh
-pytest
+uv run pytest                     # tests, with coverage
+uv run ruff check src tests       # lint
+uv run ruff format src tests      # format
+uv run ty check src               # type check
 ```
 
 Unit tests are automatically run on GitHub for all pull requests.
@@ -45,7 +56,7 @@ Pull requests are welcome, once changes have been tested and pass all CI checks.
 - To cut a release, from an up-to-date `master` whose CI is green:
 
   ```sh
-  uvx bump-my-version bump patch   # or minor / major
+  uv run bump-my-version bump patch   # or minor / major
   git push --follow-tags
   ```
 
