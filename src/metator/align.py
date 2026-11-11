@@ -532,8 +532,8 @@ def process_bwa_bamfile(alignment, min_qual, contig_data, out_file):
                         name = for_read.query_name
                         contig1 = for_read.reference_name
                         contig2 = rev_read.reference_name
-                        pos1 = for_read.pos + 1
-                        pos2 = for_read.pos + 1
+                        pos1 = for_read.reference_start + 1
+                        pos2 = rev_read.reference_start + 1
                         strand1 = "+"
                         strand2 = "+"
                         if for_read.is_reverse:
