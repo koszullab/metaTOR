@@ -1196,6 +1196,11 @@ class Contactmap(AbstractCommand):
 
     def execute(self):
 
+        # Defined the output directory first: the log file is written there.
+        if not self.args["--outdir"]:
+            self.args["--outdir"] = join(".", "contact_map_" + self.args["--name"])
+        os.makedirs(self.args["--outdir"], exist_ok=True)
+
         # Enable file logging
         now = time.strftime("%Y%m%d%H%M%S")
         log_file = join(self.args["--outdir"], (f"metator_contactmap_{now}.log"))
@@ -1203,11 +1208,6 @@ class Contactmap(AbstractCommand):
 
         # Private temporary directory inside --tmpdir.
         tmp_dir = self.make_tmp_dir()
-
-        # Defined the output directory and output file names.
-        if not self.args["--outdir"]:
-            self.args["--outdir"] = join(".", "contact_map_" + self.args["--name"])
-        os.makedirs(self.args["--outdir"], exist_ok=True)
 
         mtc.generate_contact_map(
             self.args["--assembly"],

@@ -451,15 +451,13 @@ def shuffle_mge_bins(
     mges_data["shuffle"] = shuffle_ids
 
     mges_bins: dict = {}
-    # Shuffle mges bins according to the shuffle dataframe.
+    # Rebuild the bins from the shuffled ids, in the same shape as the real
+    # binning: {bin id: {"Contigs": [...], "Score": ...}}.
     for index in mges_data.index:
         contig = mges_data.loc[index, "Name"]
         mge_bin_id = mges_data.loc[index, "shuffle"]
-        try:
-            mges_bins[mge_bin_id]["Contig"].append(contig)
-        except KeyError:
-            mges_bins[mge_bin_id]["Contig"] = [contig]
-            mges_bins[mge_bin_id]["Score"] = np.nan
+        mge_bin = mges_bins.setdefault(mge_bin_id, {"Contigs": [], "Score": np.nan})
+        mge_bin["Contigs"].append(contig)
     return mges_data, mges_bins
 
 

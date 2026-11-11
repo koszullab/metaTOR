@@ -97,8 +97,15 @@ class MetatorObject:
         except KeyError:
             logger.error("The object that you gave is not in the table.")
             raise ValueError
-        self.contigs = list(contigs_data["Name"][contigs_data[self.object] == self.name])
-        self.contigs_size = list(contigs_data["Size"][contigs_data[self.object] == self.name])
+        column = contigs_data[self.object]
+        if self.object in ("Core_bin_ID", "Overlapping_bin_ID", "Recursive_bin_ID"):
+            # Bin ids are written zero-padded ("00008") and read back as strings
+            # or integers depending on the column: compare them as numbers.
+            selected = pd.to_numeric(column, errors="coerce") == int(self.name)
+        else:
+            selected = column.astype(str) == str(self.name)
+        self.contigs = list(contigs_data["Name"][selected])
+        self.contigs_size = list(contigs_data["Size"][selected])
 
     def set_large_contigs(self):
         """Method to keep only contigs bigger than the threshold given to remove
