@@ -34,7 +34,6 @@ import logging
 import metator.io as mio
 import metator.figures as mtf
 import metator.partition as mtp
-import micomplete
 import multiprocessing
 import networkx as nx
 import numpy as np
@@ -43,7 +42,9 @@ import pandas as pd
 import pyfastx
 import shutil
 import subprocess as sp
+import sys
 from functools import partial
+from importlib.metadata import version
 from metator.log import logger
 from os.path import join
 from scipy import sparse
@@ -232,7 +233,7 @@ def merge_micomplete(out_bact105, out_arch131, outfile):
     # Write header
     with open(outfile, "w") as out:
         out.write("## miComplete\n")
-        out.write(f"## v{micomplete.__version__}\n")
+        out.write(f"## v{version('micomplete')}\n")
         out.write(f"## Weights: Bact105 and Arch131\n")
         out.write(
             "Name\t{0}\tMarkers\n".format("\t".join(list(arch131.columns)))
@@ -374,15 +375,17 @@ def micomplete_quality(fasta_dir, outfile, threads):
     out_bact105 = join(fasta_dir, "micomplete_bact105.tsv")
     out_arch131 = join(fasta_dir, "micomplete_arch131.tsv")
 
-    # Launch miComplete using subprocess for bacteria.
-    cmd = f"miComplete {tmp_seq_tab} --hmms Bact105 --weights Bact105 --threads {threads} --outfile {out_bact105}"
-    process = sp.Popen(cmd, shell=True)
-    out, err = process.communicate()
-
-    # Launch miComplete using subprocess for archaea.
-    cmd = f"miComplete {tmp_seq_tab} --hmms Arch131 --weights Arch131 --threads {threads} --outfile {out_arch131}"
-    process = sp.Popen(cmd, shell=True)
-    out, err = process.communicate()
+    # Launch miComplete through metator._micomplete, which patches miComplete
+    # to work with recent Biopython (no Bio.SeqUtils.GC) and Python (no
+    # distutils) before running it.
+    for markers, out_file in (("Bact105", out_bact105), ("Arch131", out_arch131)):
+        cmd = [
+            sys.executable, "-m", "metator._micomplete", tmp_seq_tab,
+            "--hmms", markers, "--weights", markers,
+            "--threads", str(threads), "--outfile", out_file,
+        ]
+        process = sp.Popen(cmd)
+        out, err = process.communicate()
 
     # Merge bacteria and archaea
     merge_micomplete(out_bact105, out_arch131, outfile)
