@@ -216,7 +216,7 @@ def detect_core_bins(output_partition, iterations):
     # Create dictionnary for core bins
     core_bins = {}
     core_bins_contigs = {}
-    core_bins_iterations = np.empty((0, iterations), int)
+    core_bins_rows = []
     core_bin_id = 0
     for key, value in output_partition.items():
         if value not in core_bins:
@@ -230,17 +230,15 @@ def detect_core_bins(output_partition, iterations):
             core_bin_id += 1
             # Add a line to compute the array used to compute the distance
             # between two core bins
-            core_bins_iterations = np.append(
-                core_bins_iterations,
-                np.array([list(map(int, value.split(";")))]),
-                axis=0,
-            )
+            core_bins_rows.append(list(map(int, value.split(";"))))
         # If already an entry created for this bin add a contig in the lists.
         else:
             core_bins_contigs[core_bins[value]].append(key)
 
     # Transform the array in a dataframe
-    core_bins_iterations = pd.DataFrame(core_bins_iterations)
+    core_bins_iterations = pd.DataFrame(
+        np.array(core_bins_rows, dtype=int).reshape(-1, iterations)
+    )
 
     logger.info(f"{len(core_bins)} core bins were found.")
 

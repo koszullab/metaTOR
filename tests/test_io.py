@@ -1,16 +1,29 @@
 # Test for io module.
 
 import metator.io as mio
+import numpy as np
 import pypairix
 import pytest
 import os
 import shutil
+from scipy import sparse
 
 
 def test_check_checkm(): ...
 
 
-def test_check_fasta_index(): ...
+def test_check_fasta_index(tmp_path, monkeypatch):
+    """Index basenames keep their leading "../"."""
+    for suffix in ["1.bt2", "2.bt2", "3.bt2", "4.bt2", "rev.1.bt2", "rev.2.bt2"]:
+        (tmp_path / f"idx.{suffix}").touch()
+    for suffix in ["amb", "ann", "bwt", "pac", "sa"]:
+        (tmp_path / f"ref.{suffix}").touch()
+    (tmp_path / "work").mkdir()
+    monkeypatch.chdir(tmp_path / "work")
+    assert mio.check_fasta_index("../idx") == "../idx"
+    assert mio.check_fasta_index(str(tmp_path / "idx")) == str(tmp_path / "idx")
+    assert mio.check_fasta_index("../ref", mode="bwa") == "../ref"
+    assert mio.check_fasta_index("../missing") is None
 
 
 def test_check_is_fasta(): ...
@@ -66,3 +79,8 @@ def test_sort_pairs_pairtools():
 
 
 def test_write_bin_summary(): ...
+
+
+def test_save_sparse_matrix_requires_coo(tmp_path):
+    with pytest.raises(ValueError, match="coo"):
+        mio.save_sparse_matrix(sparse.csr_matrix(np.eye(2)), tmp_path / "matrix.txt")

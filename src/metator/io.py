@@ -103,7 +103,7 @@ def check_fasta_index(ref, mode="bowtie2"):
     if index is not None:
         # Convert the PosixPath objects to strings and get the longest common
         # prefix to obtain index basename (without the dot)
-        index = os.path.commonprefix(list(map(str, index))).strip(".")
+        index = os.path.commonprefix(list(map(str, index))).rstrip(".")
     return index
 
 
@@ -612,7 +612,7 @@ def save_sparse_matrix(s_mat, path):
         File path where the matrix will be stored
     """
     if s_mat.format != "coo":
-        ValueError("Sparse matrix must be in coo format")
+        raise ValueError("Sparse matrix must be in coo format")
     _dtype = s_mat.dtype
     sparse_arr = np.vstack([s_mat.row, s_mat.col, s_mat.data]).T
 

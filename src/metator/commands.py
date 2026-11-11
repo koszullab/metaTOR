@@ -498,8 +498,8 @@ class Validation(AbstractCommand):
     options:
         -a, --assembly=FILE     The path to the assembly fasta file used to do
                                 the alignment.
-        -A, --algorithm=STR     Algorithm to use. Either "louvain", "leiden" or
-                                "spinglass". [Default: louvain]
+        -A, --algorithm=STR     Algorithm to use. Either "louvain" or "leiden".
+                                [Default: louvain]
         -c, --contigs=FILE      The path to the file containing the data of the
                                 contigs from the partition step (13 columns).
         -C, --cluster-matrix    If enabled, save the clustering matrix.
@@ -582,8 +582,8 @@ class Validation(AbstractCommand):
         resolution_parameter = float(self.args["--res-param"])
 
         # Check correct algorithm value
-        if self.args["--algorithm"] not in ["louvain", "leiden", "spinglass"]:
-            logger.error('algorithm should be either "louvain", "leiden" or "spinglass.')
+        if self.args["--algorithm"] not in ["louvain", "leiden"]:
+            logger.error('algorithm should be either "louvain" or "leiden".')
             raise ValueError
 
         # Create prefix.
@@ -650,9 +650,7 @@ class Pipeline(AbstractCommand):
         -a, --assembly=FILE     The initial assembly path acting as the
                                 alignment file's reference genome or the
                                 basename of the bowtie2 index.
-        -A, --algorithm=STR     Algorithm to use. Either "louvain", "leiden" or
-                                "spinglass". If spinglass is chosen, the first
-                                partition will be done using louvain
+        -A, --algorithm=STR     Algorithm to use. Either "louvain" or "leiden".
                                 [Default: louvain]
         -b, --aligner=STR       Aligner algorithm to use. Either "bwa" or
                                 "bowtie2". [Default: bowtie2]
@@ -727,7 +725,6 @@ class Pipeline(AbstractCommand):
                 shutil.rmtree(overlapping_fasta_dir)
                 os.makedirs(overlapping_fasta_dir)
             else:
-                print(self.args["--force"])
                 logger.error(
                     "%s already existed. Remove directory or use -F argument to overwrite it.",
                     overlapping_fasta_dir,
@@ -768,8 +765,8 @@ class Pipeline(AbstractCommand):
             self.args["--aligner-mode"] = "iterative"
 
         # Check correct algorithm value.
-        if self.args["--algorithm"] not in ["louvain", "leiden", "spinglass"]:
-            logger.error('algorithm should be either "louvain", "leiden" or "spinglass.')
+        if self.args["--algorithm"] not in ["louvain", "leiden"]:
+            logger.error('algorithm should be either "louvain" or "leiden".')
             raise ValueError
 
         # Check if normalization in the list of possible normalization.

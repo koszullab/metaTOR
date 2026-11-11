@@ -225,3 +225,18 @@ def test_invalid_prefix_is_rejected(tmp_path):
     ).format(OUT=tmp_path / "out", TMP=tmp_path / "tmp", **global_args)
     with pytest.raises(ValueError, match="Invalid --prefix"):
         mtc.Partition(args.split(" "), {}).execute()
+
+
+def test_spinglass_is_rejected_before_any_work(tmp_path, monkeypatch):
+    """spinglass is gone: refuse it up front, not after miComplete has run."""
+
+    def not_reached(*args, **kwargs):
+        raise AssertionError("recursive decontamination should not start")
+
+    monkeypatch.setattr(mtc.mtv, "recursive_decontamination", not_reached)
+    args = (
+        "-a {SUBSET_FASTA} -c {CONTIGS_PARTITION} -f {OVERLAPPING_BINS} -n {NETWORK} "
+        "-o {OUT} -T {TMP} -A spinglass"
+    ).format(OUT=tmp_path / "out", TMP=tmp_path / "tmp", **global_args)
+    with pytest.raises(ValueError):
+        mtc.Validation(args.split(" "), {}).execute()
