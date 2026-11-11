@@ -17,8 +17,6 @@ threads = 8
 
 overlapping_parameter = 0.6
 
-partition = mtp.louvain_iterations(network_file, iterations)
-
 contigs_data = pd.read_csv("tests_data/outdir/contig_data_partition.txt", sep="\t")
 output_partition = {
     1: "0;13;0;10;5",
@@ -160,6 +158,7 @@ def test_leiden_iterations():
 
 def test_louvain_iterations():
     # Test louvain partition.
+    partition = mtp.louvain_iterations(network_file, iterations)
     _val = int(partition[1].split(";")[0])
     assert len(partition) == 1058
     assert len(partition[1].split(";")) == iterations

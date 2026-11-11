@@ -108,7 +108,7 @@ def test_micomplete_quality(tmp_path, monkeypatch):
     assert len(data) == 2
     assert len(data.columns) == 14
     # miComplete's intermediate files are left neither here nor next to the bins.
-    assert os.listdir(tmp_path) == ["results.tsv"]
+    assert sorted(os.listdir(tmp_path)) == ["results.tsv", "tests_data"]
     assert sorted(os.listdir(bins)) == before
 
 
