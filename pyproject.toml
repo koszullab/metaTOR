@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "metator"
-version = "1.3.10"
+dynamic = ["version"]
 description = "A pipeline for binning metagenomic datasets from metaHiC data."
 readme = "README.md"
 requires-python = ">=3.9,<3.13"
@@ -103,7 +103,7 @@ dev = [
 homepage = "https://github.com/koszullab/metator"
 documentation = "https://github.com/koszullab/metator"
 repository = "https://github.com/koszullab/metator"
-changelog = "https://github.com/koszullab/metator/blob/devel/CHANGELOG.md"
+changelog = "https://github.com/koszullab/metaTOR/blob/master/CHANGELOG.md"
 
 [project.scripts]
 metator = "metator.main:main"
@@ -111,8 +111,14 @@ metator = "metator.main:main"
 [tool.hatch.version]
 path = "src/metator/version.py"
 
-[tool.hatch.metadata]
-allow-direct-references = true
+[tool.hatch.build.targets.sdist]
+# Keep the source distribution small: the test data and documentation images
+# live in the repository only.
+exclude = [
+    "/.github",
+    "/tests_data",
+    "/docs/example/images",
+]
 
 [tool.black]
 line-length = 130
@@ -167,3 +173,24 @@ exclude_lines = [
     "return NotImplemented",
     "raise NotImplementedError"
 ]
+
+[tool.bumpversion]
+# src/metator/version.py is the single source of truth for the version; this
+# current_version is bump-my-version's bookkeeping copy, kept in sync with it.
+current_version = "1.3.10"
+commit = true
+tag = true
+tag_name = "v{new_version}"
+message = "chore(release): v{new_version}"
+allow_dirty = false
+
+[[tool.bumpversion.files]]
+filename = "src/metator/version.py"
+search = '__version__ = "{current_version}"'
+replace = '__version__ = "{new_version}"'
+
+[[tool.bumpversion.files]]
+# Promote the "Unreleased" entries to a dated section and open a fresh one.
+filename = "CHANGELOG.md"
+search = "## Unreleased"
+replace = "## Unreleased\n\n## [{new_version}] - {now:%Y-%m-%d}"

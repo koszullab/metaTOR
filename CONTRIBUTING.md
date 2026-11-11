@@ -38,14 +38,23 @@ Unit tests are automatically run on GitHub for all pull requests.
 
 Pull requests are welcome, once changes have been tested and pass all CI checks. Please make sure to include tests for any new functionality. 
 
-## Versioning
+## Releasing
 
-- We follow [conventional commits](https://www.conventionalcommits.org/en/v1.0.0/) for versioning this project.
-- We use [semantic versioning](https://semver.org) for this project.
-- Whenever a version bump is needed, the maintainer will bump the version in [pyproject.toml](./pyproject.toml), and tag the commit. This will trigger: 
-  - A new release on Github; 
-  - Propagation of this release on PyPI; 
-  - A new Docker image on [ghcr.io/koszullab/metator](https://ghcr.io/koszullab/metator).
+- We follow [conventional commits](https://www.conventionalcommits.org/en/v1.0.0/) and [semantic versioning](https://semver.org).
+- Changelog entries for unreleased changes go under `## Unreleased` in [CHANGELOG.md](./CHANGELOG.md) as they are merged.
+- To cut a release, from an up-to-date `master` whose CI is green:
+
+  ```sh
+  uvx bump-my-version bump patch   # or minor / major
+  git push --follow-tags
+  ```
+
+  [bump-my-version](https://github.com/callowayproject/bump-my-version) (configured in [pyproject.toml](./pyproject.toml)) promotes `## Unreleased` to a dated section, bumps `__version__` in `src/metator/version.py` (the single source of truth for the version), then commits and tags. Pushing the tag triggers [release.yml](.github/workflows/release.yml), which:
+  - checks that the tag matches `__version__`, builds the sdist and wheel, and installs the wheel in a clean environment to check that `metator` runs;
+  - publishes them to PyPI through [trusted publishing](https://docs.pypi.org/trusted-publishers/) (no stored token);
+  - creates the GitHub release with this version's changelog section;
+  - builds the Docker image from the released wheel, checks that it runs and pushes it to [ghcr.io/koszullab/metator](https://ghcr.io/koszullab/metator).
+- Bioconda picks up the new PyPI release automatically, but its recipe lists the run dependencies by hand: when they change, update them in [bioconda-recipes](https://github.com/bioconda/bioconda-recipes/tree/master/recipes/metator).
 
 ## Acknowledgments
 
