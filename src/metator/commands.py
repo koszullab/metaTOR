@@ -78,6 +78,30 @@ class AbstractCommand:
         if dirname(path):
             os.makedirs(dirname(path), exist_ok=True)
 
+    def make_tmp_dir(self):
+        """Create this run's private temporary directory inside --tmpdir.
+
+        --tmpdir may be a directory the user already keeps files in (for
+        example /scratch/$USER), so the run works in a fresh random
+        subdirectory and the clean-up removes only that.
+        """
+        base = self.args.get("--tmpdir") or "./tmp"
+        self._tmp_base_created = not exists(base)
+        self._tmp_dir = mio.generate_temp_dir(base)
+        logger.debug("Temporary directory: %s", self._tmp_dir)
+        return self._tmp_dir
+
+    def remove_tmp_dir(self):
+        """Remove this run's temporary directory.
+
+        --tmpdir itself is removed only if this run created it and nothing
+        else is left in it.
+        """
+        shutil.rmtree(self._tmp_dir)
+        base = dirname(self._tmp_dir)
+        if self._tmp_base_created and not os.listdir(base):
+            os.rmdir(base)
+
 
 class Network(AbstractCommand):
     """Generation of network command
@@ -153,12 +177,8 @@ class Network(AbstractCommand):
 
     def execute(self):
 
-        # Defined the temporary directory.
-        if not self.args["--tmpdir"]:
-            tmp_dir = mio.generate_temp_dir("./tmp")
-        else:
-            tmp_dir = self.args["--tmpdir"]
-            os.makedirs(tmp_dir, exist_ok=True)
+        # Private temporary directory inside --tmpdir.
+        tmp_dir = self.make_tmp_dir()
 
         # Defined the output directory and output file names.
         if not self.args["--outdir"]:
@@ -304,7 +324,7 @@ class Network(AbstractCommand):
 
         # Delete the temporary folder
         if not self.args["--no-clean-up"]:
-            shutil.rmtree(tmp_dir)
+            self.remove_tmp_dir()
 
         generate_log_footer(log_file)
 
@@ -371,12 +391,8 @@ class Partition(AbstractCommand):
 
     def execute(self):
 
-        # Defined the temporary directory.
-        if not self.args["--tmpdir"]:
-            tmp_dir = mio.generate_temp_dir("./tmp")
-        else:
-            tmp_dir = self.args["--tmpdir"]
-            os.makedirs(tmp_dir, exist_ok=True)
+        # Private temporary directory inside --tmpdir.
+        tmp_dir = self.make_tmp_dir()
 
         # Defined the output directory.
         if not self.args["--outdir"]:
@@ -441,7 +457,7 @@ class Partition(AbstractCommand):
         os.remove(self.args["--assembly"] + ".fxi")
         # Delete the temporary folder
         if not self.args["--no-clean-up"]:
-            shutil.rmtree(tmp_dir)
+            self.remove_tmp_dir()
 
         generate_log_footer(log_file)
 
@@ -504,12 +520,8 @@ class Validation(AbstractCommand):
     # new bins. Otherwise go back to the old state.
     def execute(self):
 
-        # Defined the temporary directory.
-        if not self.args["--tmpdir"]:
-            tmp_dir = mio.generate_temp_dir("./tmp")
-        else:
-            tmp_dir = self.args["--tmpdir"]
-            os.makedirs(tmp_dir, exist_ok=True)
+        # Private temporary directory inside --tmpdir.
+        tmp_dir = self.make_tmp_dir()
 
         # Defined the output directory and output file names.
         if not self.args["--outdir"]:
@@ -588,7 +600,7 @@ class Validation(AbstractCommand):
         os.remove(self.args["--assembly"] + ".fxi")
         # Delete the temporary folder
         if not self.args["--no-clean-up"]:
-            shutil.rmtree(tmp_dir)
+            self.remove_tmp_dir()
 
         generate_log_footer(log_file)
 
@@ -688,12 +700,8 @@ class Pipeline(AbstractCommand):
 
     def execute(self):
 
-        # Defined the temporary directory.
-        if not self.args["--tmpdir"]:
-            tmp_dir = mio.generate_temp_dir("./tmp")
-        else:
-            tmp_dir = self.args["--tmpdir"]
-            os.makedirs(tmp_dir, exist_ok=True)
+        # Private temporary directory inside --tmpdir.
+        tmp_dir = self.make_tmp_dir()
 
         # Defined the output directory and output file names.
         if not self.args["--outdir"]:
@@ -990,7 +998,7 @@ class Pipeline(AbstractCommand):
         os.remove(fasta + ".fxi")
         # Delete the temporary folder.
         if not self.args["--no-clean-up"]:
-            shutil.rmtree(tmp_dir)
+            self.remove_tmp_dir()
             if start < 3:
                 for pair_file in alignment_files:
                     os.remove(pair_file)
@@ -1041,10 +1049,8 @@ class Qc(AbstractCommand):
 
     def execute(self):
 
-        # Defined the temporary directory.
-        if not self.args["--tmpdir"]:
-            self.args["--tmpdir"] = "./tmp"
-        tmp_dir = mio.generate_temp_dir(self.args["--tmpdir"])
+        # Private temporary directory inside --tmpdir.
+        tmp_dir = self.make_tmp_dir()
 
         # Set output directory.
         if not self.args["--outdir"]:
@@ -1112,7 +1118,7 @@ class Qc(AbstractCommand):
 
         # Delete the temporary folder.
         if not self.args["--no-clean-up"]:
-            shutil.rmtree(tmp_dir)
+            self.remove_tmp_dir()
 
         generate_log_footer(log_file)
 
@@ -1186,10 +1192,8 @@ class Contactmap(AbstractCommand):
         log_file = join(self.args["--outdir"], (f"metator_contactmap_{now}.log"))
         generate_log_header(log_file, cmd="contactmap", args=self.args)
 
-        # Defined the temporary directory.
-        if not self.args["--tmpdir"]:
-            self.args["--tmpdir"] = "./tmp"
-        tmp_dir = mio.generate_temp_dir(self.args["--tmpdir"])
+        # Private temporary directory inside --tmpdir.
+        tmp_dir = self.make_tmp_dir()
 
         # Defined the output directory and output file names.
         if not self.args["--outdir"]:
@@ -1215,7 +1219,7 @@ class Contactmap(AbstractCommand):
 
         # Delete the temporary folder.
         if not self.args["--no-clean-up"]:
-            shutil.rmtree(tmp_dir)
+            self.remove_tmp_dir()
             # Delete pyfastx index:
             os.remove(self.args["--assembly"] + ".fxi")
 
@@ -1420,10 +1424,8 @@ class Mge(AbstractCommand):
         log_file = f"metator_mge_{now}.log"
         generate_log_header(log_file, cmd="mge", args=self.args)
 
-        # Defined the temporary directory.
-        if not self.args["--tmpdir"]:
-            self.args["--tmpdir"] = "./tmp"
-        tmp_dir = mio.generate_temp_dir(self.args["--tmpdir"])
+        # Private temporary directory inside --tmpdir.
+        tmp_dir = self.make_tmp_dir()
 
         # Defined the output directory and output file names.
         if not self.args["--outdir"]:
@@ -1457,7 +1459,7 @@ class Mge(AbstractCommand):
 
         # Delete the temporary folder.
         if remove_tmp:
-            shutil.rmtree(tmp_dir)
+            self.remove_tmp_dir()
             # Delete pyfastx index:
             os.remove(self.args["--assembly"] + ".fxi")
 

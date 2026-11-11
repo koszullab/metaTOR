@@ -180,3 +180,39 @@ def test_pairs(tmp_path):
     args = f"-rF {pairs1} {pairs2}"
     proc = mtc.Pairs(args.split(" "), {})
     proc.execute()
+
+
+def test_tmpdir_contents_survive(tmp_path):
+    """--tmpdir may already hold the user's files: a run removes only its own."""
+    user_tmp = tmp_path / "scratch"
+    user_tmp.mkdir()
+    keep = user_tmp / "precious.txt"
+    keep.write_text("keep me")
+    args = [
+        "-1", str(Path(global_args["SUBSET_PAIRS"]).resolve()),
+        "-a", str(Path(global_args["SUBSET_FASTA"]).resolve()),
+        "-o", str(tmp_path / "out"),
+        "-T", str(user_tmp),
+        "-S", "pair",
+    ]  # fmt: skip
+    mtc.Network(args, {}).execute()
+    assert keep.read_text() == "keep me"
+    assert list(user_tmp.iterdir()) == [keep]
+
+
+def test_default_tmpdir_is_tidied(tmp_path, monkeypatch):
+    """Without -T, ./tmp is removed if the run created it, kept if it existed."""
+    args = [
+        "-1", str(Path(global_args["SUBSET_PAIRS"]).resolve()),
+        "-a", str(Path(global_args["SUBSET_FASTA"]).resolve()),
+        "-o", "out",
+        "-S", "pair",
+    ]  # fmt: skip
+    monkeypatch.chdir(tmp_path)
+    mtc.Network(args, {}).execute()
+    assert not (tmp_path / "tmp").exists()
+
+    (tmp_path / "tmp").mkdir()
+    (tmp_path / "tmp" / "mine.txt").write_text("x")
+    mtc.Network(args, {}).execute()
+    assert [p.name for p in (tmp_path / "tmp").iterdir()] == ["mine.txt"]
