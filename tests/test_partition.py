@@ -164,24 +164,11 @@ def test_louvain_iterations():
     assert len(partition[1].split(";")) == iterations
 
 
-def test_partition(): ...
-
-
 def test_read_network():
     network, contigs = mtp.read_network(network_file)
     assert network.vcount() == len(contigs) == 1058
     assert network.ecount() == 13415
     assert network.is_weighted()
-
-
-# def test_spinglass_partition():
-# Test spinglass partition.
-# network = nx.read_edgelist(
-#     network_file, nodetype=int, data=(("weight", float),)
-# )
-# subnetwork = network.subgraph(np.arange(1, 5))
-# partition = mtp.spinglass_partition(subnetwork, spins)
-# assert partition == {1: "0", 2: "0", 3: "0", 4: "0"}
 
 
 def test_update_contigs_data():

@@ -11,8 +11,6 @@ import os
 import re
 import shutil
 
-ALGORITHM = ("alg", ["louvain", "leiden", "spinglass"])
-
 threads = 8
 fasta_dir = "tests_data/outdir_validation/overlapping_bin"
 arch_output = "tests_data/outdir_validation/tmp_micomplete/arch131.tsv"
@@ -45,9 +43,6 @@ fileObj.close()
 def test_get_bin_coverage():
     bin_info = mtv.get_bin_coverage(bin_summary, contigs_data)
     assert bin_info["MetaTOR_00002_00000"]["HiC_abundance"] == pytest.approx(49.72, abs=1e-2)
-
-
-def test_give_results_info(): ...
 
 
 def test_merge_micomplete():
@@ -112,9 +107,6 @@ def test_micomplete_quality(tmp_path, monkeypatch):
     assert sorted(os.listdir(bins)) == before
 
 
-def test_recursive_clustering(): ...
-
-
 def test_recursive_clustering_worker():
     tmp_dir = "tmp_partition_validation_1"
     os.makedirs(tmp_dir, exist_ok=True)
@@ -131,9 +123,6 @@ def test_recursive_clustering_worker():
     assert len(partition) == 192
     assert len(partition[716].split(";")) == iterations
     shutil.rmtree(tmp_dir)
-
-
-def test_recursive_decontamination(): ...
 
 
 def test_update_contigs_data_recursive():
@@ -172,9 +161,6 @@ def test_write_bins_contigs():
 
 
 # ChekM deprecated functions.
-def test_checkm():
-    # Not tested as deprecated and too long to test.
-    ...
 
 
 def test_checkm_compare_bins():
@@ -214,31 +200,3 @@ def test_checkm_compare_bins():
         else:
             rec_id.append(int(keys[i].split("_")[1]))
     assert not (set(over_id) & set(rec_id))
-
-
-# @pytest.mark.parametrize(*ALGORITHM)
-# def test_recursive_clustering(alg):
-#     ...
-
-
-#     """Crash test for the partition of contaminated bins."""
-#     os.makedirs("tests_data/out_test/", exist_ok=True)
-#     os.makedirs("tests_data/out_test/tmp/", exist_ok=True)
-#     os.makedirs("tests_data/out_test/recursive_bin/", exist_ok=True)
-#     mtv.recursive_clustering(
-#         assembly="tests_data/assembly.fa",
-#         iterations=5,
-#         overlapping_parameter=0.9,
-#         resolution_parameter=1.0,
-#         outdir="tests_data/out_test/",
-#         recursive_fasta_dir="tests_data/out_test/recursive_bin",
-#         algorithm=alg,
-#         tmpdir="tests_data/out_test/tmp/",
-#         micomplete_file="tests_data/outdir2/overlapping_checkm_results.txt",
-#         contigs_data_file="tests_data/outdir2/contig_data_partition.txt",
-#         network_file="tests_data/outdir2/network.txt",
-#         cluster_matrix=False,
-#         size=1000000,
-#         threads=1,
-#     )
-#     shutil.rmtree("tests_data/out_test/")

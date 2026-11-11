@@ -8,28 +8,11 @@ import pandas as pd
 import pytest
 
 
-def test_figures_bins_distribution():
-    ...
-
-
-def test_figures_bins_size_distribution():
-    ...
-
-
-def test_figures_mags_GC_boxplots():
-    ...
-
-
-def test_figures_mags_HiC_cov_boxplots():
-    ...
-
-
-def test_figures_mags_SG_cov_boxplots():
-    ...
-
-
 def test_reindex_df():
-    ...
+    data = pd.DataFrame({"name": ["a", "b"], "size_weight": [1, 3]})
+    expanded = mtf.reindex_df(data, "size_weight")
+    assert expanded["name"].tolist() == ["a", "b", "b", "b"]
+    assert expanded.index.tolist() == [0, 1, 2, 3]
 
 
 SIZES = {"c1": 120_000, "c2": 80_000, "c3": 100_000, "c4": 60_000}
