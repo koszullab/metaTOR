@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 from .version import __version__ as version
-from . import *
 
 __author__ = "Amaury Bignaud, Jacques Serizay, Lyam Baudry, Théo Foutel-Rodier, Martial Marbouty"
 __copyright__ = "Copyright © 2017-2025, Institut Pasteur, Paris, France"

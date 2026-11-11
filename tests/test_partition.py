@@ -1,7 +1,6 @@
 # Test for partition module
 
 import os
-import metator.io as mio
 import metator.partition as mtp
 import numpy as np
 import pandas as pd

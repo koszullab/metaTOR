@@ -118,7 +118,8 @@ exclude = [
     ".venv",
     "__main__.py",
 ]
-lint.ignore = ["E402", "I001"]
+# E501: ruff format wraps the code; long strings and docstrings are allowed.
+lint.ignore = ["E402", "E501", "I001"]
 # An explicit list: ruff upgrades must not change the rule set.
 lint.select = [
     "B",  # bugbear

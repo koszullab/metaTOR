@@ -3,8 +3,8 @@
 
 """Generates quality metrics from the output of MetaTOR.
 
-General utilities functions to extract high  quality contigs which will be used 
-to estimate the quality of the metaHiC librairies nad generates some plots to 
+General utilities functions to extract high  quality contigs which will be used
+to estimate the quality of the metaHiC librairies nad generates some plots to
 illustrate it.
 
 Core functions to assess the quality:
@@ -16,11 +16,9 @@ Core functions to assess the quality:
 
 import hicstuff.digest as hcd
 import hicstuff.filter as hcf
-import hicstuff.io as hio
 import metator.figures as mtf
 import metator.io as mio
 import numpy as np
-import pypairix
 from Bio import SeqIO
 from metator.log import logger
 from os.path import join

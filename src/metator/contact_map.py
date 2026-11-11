@@ -20,7 +20,6 @@ import metator.io as mio
 from metator.log import logger
 from os.path import join
 import pandas as pd
-import pypairix
 import subprocess as sp
 
 
@@ -96,7 +95,7 @@ class MetatorObject:
             contigs_data[self.object]
         except KeyError:
             logger.error("The object that you gave is not in the table.")
-            raise ValueError
+            raise ValueError from None
         column = contigs_data[self.object]
         if self.object in ("Core_bin_ID", "Overlapping_bin_ID", "Recursive_bin_ID"):
             # Bin ids are written zero-padded ("00008") and read back as strings

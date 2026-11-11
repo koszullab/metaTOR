@@ -811,7 +811,7 @@ def pie_bins_size_distribution(checkv_summary, out_file):
         ),
     ]
     total_size = np.sum(list(mags_summary["size"]))
-    fig, ax = plt.subplots()
+    _fig, _ax = plt.subplots()
     plt.pie(
         mags_summary["size"],
         colors=[

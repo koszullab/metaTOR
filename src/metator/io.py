@@ -62,7 +62,7 @@ def check_checkm():
         True if checkM found in the path, False otherwise.
     """
     try:
-        checkm = sp.check_output("checkm", stderr=sp.STDOUT, shell=True)
+        sp.check_output("checkm", stderr=sp.STDOUT, shell=True)
     except sp.CalledProcessError:
         logger.error("Cannot find 'checkm' in your path please install it or add it in your path.")
         return False
@@ -103,7 +103,8 @@ def check_fasta_index(ref, mode="bowtie2"):
     if index is not None:
         # Convert the PosixPath objects to strings and get the longest common
         # prefix to obtain index basename (without the dot)
-        index = os.path.commonprefix(list(map(str, index))).rstrip(".")
+        # A character-wise prefix is intended: "idx.1.bt2", "idx.rev.1.bt2"... -> "idx."
+        index = os.path.commonprefix(list(map(str, index))).rstrip(".")  # noqa: RUF071
     return index
 
 
@@ -141,10 +142,10 @@ def check_pypairix():
         True if pypairix is available.
     """
     try:
-        v = version.parse(pypairix.__version__)
+        version.parse(pypairix.__version__)
     except AttributeError:
         logger.error("Cannot find 'pypairix' installed.")
-        raise AttributeError
+        raise AttributeError from None
     return True
 
 
@@ -204,7 +205,7 @@ def generate_temp_dir(path):
     except PermissionError:
         raise PermissionError(
             "The temporary directory cannot be created in {}. " "Make sure you have write permission.".format(path)
-        )
+        ) from None
     return full_path
 
 
@@ -674,7 +675,7 @@ def sort_pairs(in_file, out_file, tmp_dir=None, threads=1, buffer="2G"):
     # Sort pairs into a fresh output file.
     with open(out_file, "w") as output:
         grep_proc = sp.Popen(["grep", "-v", "^#", in_file], stdout=sp.PIPE)
-        sort_cmd = ["sort", "-S %s" % buffer] + ["-k1,1V", "-k2,2V"]
+        sort_cmd = ["sort", "-S %s" % buffer, "-k1,1V", "-k2,2V"]
         if tmp_dir is not None:
             sort_cmd.append("--temporary-directory={0}".format(tmp_dir))
         if parallel_ok:

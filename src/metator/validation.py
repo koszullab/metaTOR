@@ -4,10 +4,10 @@
 """Validates bins using miComplete and make a recursive partition to try to
 decontaminate them.
 
-General functions to validate bins completion using miComplete and make 
+General functions to validate bins completion using miComplete and make
 recursive iterations of Louvain or Leiden to try to partition contaminated bins.
 Only bins with more than 50% completion and 5% contamination are subject to the
-recursive step. If the recursive step gave worst results than the first 
+recursive step. If the recursive step gave worst results than the first
 (decrease of the completion with no decrease of the contamination), it will keep
 the original bin.
 
@@ -35,7 +35,6 @@ import metator.io as mio
 import metator.figures as mtf
 import metator.partition as mtp
 import micomplete
-import multiprocessing
 import networkx as nx
 import numpy as np
 import os
@@ -234,7 +233,7 @@ def merge_micomplete(out_bact105, out_arch131, outfile):
     with open(outfile, "w") as out:
         out.write("## miComplete\n")
         out.write(f"## v{micomplete.__version__}\n")
-        out.write(f"## Weights: Bact105 and Arch131\n")
+        out.write("## Weights: Bact105 and Arch131\n")
         out.write(
             "Name\t{0}\tMarkers\n".format("\t".join(list(arch131.columns)))
         )
@@ -730,7 +729,7 @@ def recursive_decontamination(
 
     logger.info("Starts recursive decontamition step:")
 
-    while contamination == True:
+    while contamination:
         logger.info(f"------------------ Recursive step {step} started. --------------------- ")
         # Create fasta dir.
         recursive_fasta_dir_step = join(recursive_fasta_dir, f"step_{step}")
@@ -798,7 +797,7 @@ def recursive_decontamination(
     # Create fasta directory and copy final bins.
     if not os.path.exists(final_fasta_dir):
         os.makedirs(final_fasta_dir)
-    
+
     for bin_name in bin_summary:
         dst = join(final_fasta_dir, bin_name + ".fa")
         step = bin_summary[bin_name]["step"]
@@ -1052,20 +1051,20 @@ def checkm(fasta_dir, outfile, taxonomy_file, tmpdir, threads):
     )
     logger.info(cmd)
     process = sp.Popen(cmd, shell=True)
-    out, err = process.communicate()
+    process.communicate()
 
     # Build taxonomy values of the bins
     cmd = "checkm tree_qa {0} -q -o 1 -f {1}".format(tmpdir, taxonomy_file)
     logger.info(cmd)
     process = sp.Popen(cmd, shell=True)
-    out, err = process.communicate()
+    process.communicate()
 
     # Build lineage marker set
     markers_set = join(tmpdir, "markers.txt")
     cmd = "checkm lineage_set -q {0} {1}".format(tmpdir, markers_set)
     logger.info(cmd)
     process = sp.Popen(cmd, shell=True)
-    out, err = process.communicate()
+    process.communicate()
 
     # Compute the analysis
     cmd = "checkm analyze -q -x fa -t {0} {1} {2} {3}".format(
@@ -1073,13 +1072,13 @@ def checkm(fasta_dir, outfile, taxonomy_file, tmpdir, threads):
     )
     logger.info(cmd)
     process = sp.Popen(cmd, shell=True)
-    out, err = process.communicate()
+    process.communicate()
 
     # Write the summary file
     cmd = "checkm qa -q {0} {1} -o 2 > {2}".format(markers_set, tmpdir, outfile)
     logger.info(cmd)
     process = sp.Popen(cmd, shell=True)
-    out, err = process.communicate()
+    _out, _err = process.communicate()
 
 
 def checkm_compare_bins(

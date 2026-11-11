@@ -1,6 +1,6 @@
 """Structures and methods to represent SV breakpoints and contig. This submodule
-defines a BreakPoint class representing connections between positions on 
-separate contig. Each breakpoint consists of two positions. Each of position is 
+defines a BreakPoint class representing connections between positions on
+separate contig. Each breakpoint consists of two positions. Each of position is
 located on a contigment. Positions have a sign representing what end of a contig
 they're on.
 
@@ -8,7 +8,7 @@ Classes to handle genomic regions:
     - Position
     - Contig
     - Breakpoint
-    - Bin 
+    - Bin
     - Scaffold
 """
 
@@ -46,7 +46,7 @@ class Position:
 
     def has_sign(self) -> bool:
         """Whether sign information is available."""
-        return not self.sign is None
+        return self.sign is not None
 
 
 @dataclass
@@ -342,11 +342,11 @@ class Bin:
 
         (
             contig_id_left,
-            (start_bound_left, end_bound_left,),
+            (start_bound_left, _end_bound_left,),
         ) = self.get_contig_bounds(start)
         (
             contig_id_right,
-            (start_bound_right, end_bound_right,),
+            (start_bound_right, _end_bound_right,),
         ) = self.get_contig_bounds(end)
 
         # If the start and end falls in the same contig
@@ -506,9 +506,6 @@ class Bin:
                 curr_start = self.contigs[contig_id].start
                 self.contigs[contig_id].end = curr_start
 
-            from copy import copy
-
-            ori_end = copy(self.contigs[e_contig_id])
             # Deletion ends in contig, trim left side
             self.contigs[e_contig_id].start = (
                 self.contigs[e_contig_id].end - end_dist

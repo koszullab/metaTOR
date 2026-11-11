@@ -26,9 +26,6 @@ from metator.regions import Bin, Scaffold
 from metator.log import logger
 from typing import List, Optional
 from os.path import join
-import warnings
-import sys
-from io import StringIO
 
 
 def get_scaffolds(
@@ -409,7 +406,7 @@ class Scaffolder:
             # Case of an isolated contigs add it alone as a scaffold.
             # We choose to keep the forward strand of the contig.
             if len(subgraph.nodes) == 2:
-                contig_id = [node for node in subgraph.nodes][0] // 2
+                contig_id = next(iter(subgraph.nodes)) // 2
                 self.bin.contigs[contig_id].is_reverse = False
                 scaffold = Scaffold(
                     scaf_name, [self.bin.contigs[contig_id]], False
@@ -435,7 +432,7 @@ class Scaffolder:
                 else:
                     # Take first contig as a start as it's circular.
                     circular = True
-                    start = list(subgraph.nodes)[0]
+                    start = next(iter(subgraph.nodes))
                     end = start + 1 if start % 2 == 0 else start - 1
                     ordered_nodes[0], ordered_nodes[1] = end, start
                     k = 1

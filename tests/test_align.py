@@ -2,7 +2,6 @@
 
 import metator.align as mta
 import pysam
-import pytest
 
 CONTIG_DATA = {"c1": {"id": 1, "length": 10_000}, "c2": {"id": 2, "length": 20_000}}
 

@@ -106,7 +106,7 @@ def test_compute_network():
     tmp_file_sor = join(tmp_dir, "prenetwork_sorted.txt")
     tmp_file_net = join(tmp_dir, "network.txt")
     contig_data, hit_data = mtn.create_contig_data(assembly, nb_alignment=1)
-    contig_data, out_files_list = mtn.precompute_network(
+    contig_data, _out_files_list = mtn.precompute_network(
         [alignment_file],
         contig_data,
         0,
@@ -201,7 +201,7 @@ def test_create_contig_data():
         "coverage": 4.76595,
         "RS": 162,
     }
-    assert hit_data == None
+    assert hit_data is None
 
 
 def test_normalize_pair():

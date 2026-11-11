@@ -3,7 +3,6 @@
 
 from pathlib import Path
 import metator.commands as mtc
-import pandas as pd
 import pytest
 import os
 
