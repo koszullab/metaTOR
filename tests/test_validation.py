@@ -59,7 +59,44 @@ def test_merge_micomplete():
     os.remove(out_file)
 
 
-def test_micomplete_compare_bins(): ...
+COLS = ["Completeness", "Weighted completeness", "Redundancy", "Weighted redundancy", "CDs"]
+
+
+def _recursive_summary(path, completeness):
+    """Write a miComplete-like table: one row per recursive bin."""
+    with open(path, "w") as table:
+        table.write("Name\t" + "\t".join(COLS) + "\n")
+        for name, value in completeness.items():
+            table.write(f"{name}\t{value}\t{value}\t1.0\t1.0\t100\n")
+    return str(path)
+
+
+def _parent(completeness):
+    values = [completeness, completeness, 1.6, 1.6, 300]
+    return {"P_00001_00000": dict(zip(COLS, values), recursive=True, step=0, parent=None)}
+
+
+def test_micomplete_compare_bins_keeps_every_child(tmp_path):
+    """A parent split into several good bins is replaced by all of them."""
+    children = ["P_00001_00001", "P_00001_00002", "P_00001_00003"]
+    table = _recursive_summary(tmp_path / "rec.tsv", dict.fromkeys(children, 0.9))
+    parents = dict.fromkeys(children, "P_00001_00000")
+    summary, contamination = mtv.micomplete_compare_bins(table, _parent(0.9), parents, 1)
+    assert sorted(summary) == children
+    assert contamination
+    assert all(summary[c]["parent"] == "P_00001_00000" for c in children)
+    assert all(summary[c]["step"] == 1 for c in children)
+
+
+def test_micomplete_compare_bins_keeps_parent_over_worse_children(tmp_path):
+    """Children that lose too much completeness are discarded."""
+    children = ["P_00001_00001", "P_00001_00002"]
+    table = _recursive_summary(tmp_path / "rec.tsv", dict.fromkeys(children, 0.3))
+    parents = dict.fromkeys(children, "P_00001_00000")
+    summary, contamination = mtv.micomplete_compare_bins(table, _parent(0.9), parents, 1)
+    assert list(summary) == ["P_00001_00000"]
+    assert summary["P_00001_00000"]["recursive"] is False
+    assert not contamination
 
 
 def test_micomplete_quality():

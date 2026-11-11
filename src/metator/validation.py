@@ -289,60 +289,42 @@ def micomplete_compare_bins(
         recursive_micomplete_file, sep="\t", comment="#", index_col=0,
     ).iloc[:, :13]
 
-    bin_summary_tab = pd.DataFrame.from_dict(bin_summary, orient="index")
-
-    # Create new columns for recursive values
-    bin_summary_tab["max_rec_completness"] = np.nan
-    bin_summary_tab["rec_id"] = str(np.nan)
-
-    # Retrieve maximum completness of the recursive bins.
+    # Group the recursive bins by parent bin, keeping the best completeness of
+    # each family. Plain dicts: a list stored in a DataFrame cell is silently
+    # turned into a string under pandas >= 3, which kept only the last child.
+    children = {}
+    max_rec_completeness = {}
     for recursive_bin in micomplete_recursive_summary.index:
         parent_bin = parent_dict[recursive_bin]
-        bin_summary_tab.loc[parent_bin, "max_rec_completness"] = max(
-            float(
-                micomplete_recursive_summary.loc[
-                    recursive_bin, "Weighted completeness"
-                ]
-            ),
-            bin_summary_tab.loc[parent_bin, "max_rec_completness"],
+        children.setdefault(parent_bin, []).append(recursive_bin)
+        completeness = float(
+            micomplete_recursive_summary.loc[recursive_bin, "Weighted completeness"]
         )
-        try:
-            bin_summary_tab.loc[parent_bin, "rec_id"].append(recursive_bin)
-        except AttributeError:
-            bin_summary_tab.loc[parent_bin, "rec_id"] = [recursive_bin]
+        max_rec_completeness[parent_bin] = max(
+            completeness, max_rec_completeness.get(parent_bin, completeness)
+        )
 
     # If there are some recursive bins which have not loose too much completion
     # write their information otherwise keep the original bins.
-    for overlapping_bin in bin_summary_tab.index:
-        if np.isnan(
-            bin_summary_tab.loc[overlapping_bin, "max_rec_completness"]
-        ):
+    for overlapping_bin in list(bin_summary):
+        if overlapping_bin not in children:
             bin_summary[overlapping_bin]["recursive"] = False
+            continue
+        max_rec = max_rec_completeness[overlapping_bin]
+        over = float(bin_summary[overlapping_bin]["Weighted completeness"])
+        if (max_rec - 0.4) > ((over - 0.4) / 1.6):
+            for rec_id in children[overlapping_bin]:
+                bin_summary[rec_id] = micomplete_recursive_summary.loc[
+                    rec_id, :"CDs"
+                ].to_dict()
+                bin_summary[rec_id]["recursive"] = True
+                bin_summary[rec_id]["step"] = step
+                bin_summary[rec_id]["parent"] = overlapping_bin
+            # A bin was replaced: run another recursive step.
+            contamination = True
+            bin_summary.pop(overlapping_bin)
         else:
-            max_rec = bin_summary_tab.loc[
-                overlapping_bin, "max_rec_completness"
-            ]
-            over = float(
-                bin_summary_tab.loc[overlapping_bin, "Weighted completeness"]
-            )
-            if (max_rec - 0.4) > ((over - 0.4) / 1.6):
-                rec_ids = bin_summary_tab.loc[overlapping_bin, "rec_id"]
-                # Case of only one bin.
-                if isinstance(rec_ids, str):
-                    rec_ids = [rec_ids]
-                for rec_id in rec_ids:
-                    bin_summary[rec_id] = micomplete_recursive_summary.loc[
-                        rec_id, :"CDs"
-                    ].to_dict()
-                    bin_summary[rec_id]["recursive"] = True
-                    bin_summary[rec_id]["step"] = step
-                    bin_summary[rec_id]["parent"] = overlapping_bin
-                    # If one bin from recursive step contamination set to true
-                    # to continue the while loop.
-                    contamination = True
-                bin_summary.pop(overlapping_bin, "None")
-            else:
-                bin_summary[overlapping_bin]["recursive"] = False
+            bin_summary[overlapping_bin]["recursive"] = False
 
     return bin_summary, contamination
 
