@@ -25,6 +25,7 @@ Core functions to plot the firgures are:
 
 
 import hicstuff.hicstuff as hcs
+import metator.io as mio
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -152,7 +153,8 @@ def build_matrix_network(pairs_files, info_contigs, N, bin_size):
 
     # Iterates on the input pairs file
     for pairs_file in pairs_files:
-        with open(pairs_file, "r") as input_pairs:
+        # The pipeline leaves bgzip-compressed pairs files in its outdir.
+        with mio.read_compressed(pairs_file) as input_pairs:
             for pairs_line in input_pairs:
                 # Ignore header lines.
                 if pairs_line.startswith("#"):
@@ -631,7 +633,7 @@ def figures_mags_SG_cov_boxplots(contigs_data, out_file):
         Path where to write the figure.
     """
     # Sort by decreasing Shotgun coverage.
-    contigs_data = contigs_data.sort_values(by="SG_Coverage", ascending=False)
+    contigs_data = contigs_data.sort_values(by="Shotgun_coverage", ascending=False)
     # Build the palette
     my_pal = {
         "HQ": "#103b6f",
