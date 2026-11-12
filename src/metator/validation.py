@@ -4,10 +4,10 @@
 """Validates bins using miComplete and make a recursive partition to try to
 decontaminate them.
 
-General functions to validate bins completion using miComplete and make 
+General functions to validate bins completion using miComplete and make
 recursive iterations of Louvain or Leiden to try to partition contaminated bins.
 Only bins with more than 50% completion and 5% contamination are subject to the
-recursive step. If the recursive step gave worst results than the first 
+recursive step. If the recursive step gave worst results than the first
 (decrease of the completion with no decrease of the contamination), it will keep
 the original bin.
 
@@ -35,7 +35,6 @@ import metator.io as mio
 import metator.figures as mtf
 import metator.partition as mtp
 import micomplete
-import multiprocessing
 import networkx as nx
 import numpy as np
 import os
@@ -43,6 +42,7 @@ import pandas as pd
 import pyfastx
 import shutil
 import subprocess as sp
+import tempfile
 from functools import partial
 from metator.log import logger
 from os.path import join
@@ -96,37 +96,23 @@ def get_bin_coverage(bin_summary, contigs_data):
     for i in contigs_data.index:
         bin_name = contigs_data.loc[i, "Final_bin"]
         if contigs_data.loc[contigs_data.index[0], "Shotgun_coverage"] != "-":
-            total_sg_hit += (
-                contigs_data.loc[i, "Size"]
-                * contigs_data.loc[i, "Shotgun_coverage"]
-            )
+            total_sg_hit += contigs_data.loc[i, "Size"] * contigs_data.loc[i, "Shotgun_coverage"]
         total_hic_hit += contigs_data.loc[i, "Hit"]
         if bin_name != "ND":
             try:
-                bin_summary[bin_name]["HiC_abundance"] += (
-                    100 * contigs_data.loc[i, "Hit"]
-                )
+                bin_summary[bin_name]["HiC_abundance"] += 100 * contigs_data.loc[i, "Hit"]
             except KeyError:
-                bin_summary[bin_name]["HiC_abundance"] = (
-                    100 * contigs_data.loc[i, "Hit"]
-                )
+                bin_summary[bin_name]["HiC_abundance"] = 100 * contigs_data.loc[i, "Hit"]
 
             # If no depth files were given do not compute the Shotgun coverage.
-            if (
-                contigs_data.loc[contigs_data.index[0], "Shotgun_coverage"]
-                != "-"
-            ):
+            if contigs_data.loc[contigs_data.index[0], "Shotgun_coverage"] != "-":
                 try:
                     bin_summary[bin_name]["SG_abundance"] += (
-                        contigs_data.loc[i, "Size"]
-                        * contigs_data.loc[i, "Shotgun_coverage"]
-                        * 100
+                        contigs_data.loc[i, "Size"] * contigs_data.loc[i, "Shotgun_coverage"] * 100
                     )
                 except KeyError:
                     bin_summary[bin_name]["SG_abundance"] = (
-                        contigs_data.loc[i, "Size"]
-                        * contigs_data.loc[i, "Shotgun_coverage"]
-                        * 100
+                        contigs_data.loc[i, "Size"] * contigs_data.loc[i, "Shotgun_coverage"] * 100
                     )
     for bin_name in bin_summary:
         # Divide the HiC abundance by two as the hit are counted twice.
@@ -167,10 +153,7 @@ def give_results_info(bin_summary):
                 conta_bins += 1
                 total_size_conta_bins += size
             else:
-                if (
-                    completness >= 0.9
-                    and ((contamination - 1) / completness) > 0.05
-                ):
+                if completness >= 0.9 and ((contamination - 1) / completness) > 0.05:
                     HQ += 1
                     total_size_HQ += size
                 elif completness >= 0.7:
@@ -183,30 +166,16 @@ def give_results_info(bin_summary):
             others += 1
             total_size_others += size
     total = HQ + MQ + LQ + conta_bins + others
-    total_size = (
-        total_size_HQ
-        + total_size_MQ
-        + total_size_LQ
-        + total_size_conta_bins
-        + total_size_others
-    )
+    total_size = total_size_HQ + total_size_MQ + total_size_LQ + total_size_conta_bins + total_size_others
 
     # Return info in the logger:
-    logger.info(
-        "{0} bins have been kept after the recursive iterations.".format(total)
-    )
+    logger.info("{0} bins have been kept after the recursive iterations.".format(total))
     logger.info("Total size of the extracted bins: {0}".format(total_size))
     logger.info("HQ MAGs: {0}\tTotal Size: {1}".format(HQ, total_size_HQ))
     logger.info("MQ MAGs: {0}\tTotal Size: {1}".format(MQ, total_size_MQ))
     logger.info("LQ MAGs: {0}\tTotal Size: {1}".format(LQ, total_size_LQ))
-    logger.info(
-        "Contaminated potential MAGs: {0}\tTotal Size: {1}".format(
-            conta_bins, total_size_conta_bins
-        )
-    )
-    logger.info(
-        "Others bins: {0}\tTotal Size: {1}".format(others, total_size_others)
-    )
+    logger.info("Contaminated potential MAGs: {0}\tTotal Size: {1}".format(conta_bins, total_size_conta_bins))
+    logger.info("Others bins: {0}\tTotal Size: {1}".format(others, total_size_others))
 
 
 def merge_micomplete(out_bact105, out_arch131, outfile):
@@ -222,41 +191,27 @@ def merge_micomplete(out_bact105, out_arch131, outfile):
         Final merged output.
     """
     # Reads both files.
-    bact105 = pd.read_csv(out_bact105, sep="\t", comment="#", index_col=0).loc[
-        :, :"CDs"
-    ]
-    arch131 = pd.read_csv(out_arch131, sep="\t", comment="#", index_col=0).loc[
-        :, :"CDs"
-    ]
+    bact105 = pd.read_csv(out_bact105, sep="\t", comment="#", index_col=0).loc[:, :"CDs"]
+    arch131 = pd.read_csv(out_arch131, sep="\t", comment="#", index_col=0).loc[:, :"CDs"]
 
     # Write header
     with open(outfile, "w") as out:
         out.write("## miComplete\n")
         out.write(f"## v{micomplete.__version__}\n")
-        out.write(f"## Weights: Bact105 and Arch131\n")
-        out.write(
-            "Name\t{0}\tMarkers\n".format("\t".join(list(arch131.columns)))
-        )
+        out.write("## Weights: Bact105 and Arch131\n")
+        out.write("Name\t{0}\tMarkers\n".format("\t".join(list(arch131.columns))))
         for bin_id in bact105.index:
-            if (
-                bact105.loc[bin_id, "Weighted completeness"]
-                >= arch131.loc[bin_id, "Weighted completeness"]
-            ):
-                out.write(
-                    "{0}\t{1}\tBacteria\n".format(
-                        bin_id, "\t".join(map(str, list(bact105.loc[bin_id])))
-                    )
-                )
+            if bact105.loc[bin_id, "Weighted completeness"] >= arch131.loc[bin_id, "Weighted completeness"]:
+                out.write("{0}\t{1}\tBacteria\n".format(bin_id, "\t".join(map(str, list(bact105.loc[bin_id])))))
             else:
-                out.write(
-                    "{0}\t{1}\tArchaea\n".format(
-                        bin_id, "\t".join(map(str, list(arch131.loc[bin_id])))
-                    )
-                )
+                out.write("{0}\t{1}\tArchaea\n".format(bin_id, "\t".join(map(str, list(arch131.loc[bin_id])))))
 
 
 def micomplete_compare_bins(
-    recursive_micomplete_file, bin_summary, parent_dict, step,
+    recursive_micomplete_file,
+    bin_summary,
+    parent_dict,
+    step,
 ):
     """Compare the completness and contamination of the bins from the first step
     and from the recursive step. If the recursive step decrease the completion
@@ -286,63 +241,42 @@ def micomplete_compare_bins(
 
     # Load the miComplete summary
     micomplete_recursive_summary = pd.read_csv(
-        recursive_micomplete_file, sep="\t", comment="#", index_col=0,
+        recursive_micomplete_file,
+        sep="\t",
+        comment="#",
+        index_col=0,
     ).iloc[:, :13]
 
-    bin_summary_tab = pd.DataFrame.from_dict(bin_summary, orient="index")
-
-    # Create new columns for recursive values
-    bin_summary_tab["max_rec_completness"] = np.nan
-    bin_summary_tab["rec_id"] = str(np.nan)
-
-    # Retrieve maximum completness of the recursive bins.
+    # Group the recursive bins by parent bin, keeping the best completeness of
+    # each family. Plain dicts: a list stored in a DataFrame cell is silently
+    # turned into a string under pandas >= 3, which kept only the last child.
+    children = {}
+    max_rec_completeness = {}
     for recursive_bin in micomplete_recursive_summary.index:
         parent_bin = parent_dict[recursive_bin]
-        bin_summary_tab.loc[parent_bin, "max_rec_completness"] = max(
-            float(
-                micomplete_recursive_summary.loc[
-                    recursive_bin, "Weighted completeness"
-                ]
-            ),
-            bin_summary_tab.loc[parent_bin, "max_rec_completness"],
-        )
-        try:
-            bin_summary_tab.loc[parent_bin, "rec_id"].append(recursive_bin)
-        except AttributeError:
-            bin_summary_tab.loc[parent_bin, "rec_id"] = [recursive_bin]
+        children.setdefault(parent_bin, []).append(recursive_bin)
+        completeness = float(micomplete_recursive_summary.loc[recursive_bin, "Weighted completeness"])
+        max_rec_completeness[parent_bin] = max(completeness, max_rec_completeness.get(parent_bin, completeness))
 
     # If there are some recursive bins which have not loose too much completion
     # write their information otherwise keep the original bins.
-    for overlapping_bin in bin_summary_tab.index:
-        if np.isnan(
-            bin_summary_tab.loc[overlapping_bin, "max_rec_completness"]
-        ):
+    for overlapping_bin in list(bin_summary):
+        if overlapping_bin not in children:
             bin_summary[overlapping_bin]["recursive"] = False
+            continue
+        max_rec = max_rec_completeness[overlapping_bin]
+        over = float(bin_summary[overlapping_bin]["Weighted completeness"])
+        if (max_rec - 0.4) > ((over - 0.4) / 1.6):
+            for rec_id in children[overlapping_bin]:
+                bin_summary[rec_id] = micomplete_recursive_summary.loc[rec_id, :"CDs"].to_dict()
+                bin_summary[rec_id]["recursive"] = True
+                bin_summary[rec_id]["step"] = step
+                bin_summary[rec_id]["parent"] = overlapping_bin
+            # A bin was replaced: run another recursive step.
+            contamination = True
+            bin_summary.pop(overlapping_bin)
         else:
-            max_rec = bin_summary_tab.loc[
-                overlapping_bin, "max_rec_completness"
-            ]
-            over = float(
-                bin_summary_tab.loc[overlapping_bin, "Weighted completeness"]
-            )
-            if (max_rec - 0.4) > ((over - 0.4) / 1.6):
-                rec_ids = bin_summary_tab.loc[overlapping_bin, "rec_id"]
-                # Case of only one bin.
-                if isinstance(rec_ids, str):
-                    rec_ids = [rec_ids]
-                for rec_id in rec_ids:
-                    bin_summary[rec_id] = micomplete_recursive_summary.loc[
-                        rec_id, :"CDs"
-                    ].to_dict()
-                    bin_summary[rec_id]["recursive"] = True
-                    bin_summary[rec_id]["step"] = step
-                    bin_summary[rec_id]["parent"] = overlapping_bin
-                    # If one bin from recursive step contamination set to true
-                    # to continue the while loop.
-                    contamination = True
-                bin_summary.pop(overlapping_bin, "None")
-            else:
-                bin_summary[overlapping_bin]["recursive"] = False
+            bin_summary[overlapping_bin]["recursive"] = False
 
     return bin_summary, contamination
 
@@ -360,45 +294,33 @@ def micomplete_quality(fasta_dir, outfile, threads):
     threads : int
         Numbers of threads to use for miComplete.
     """
-    # Prepare input table for micomplete.
-    list_fasta = filter(
-        lambda x: ".fa" in x,
-        [join(fasta_dir, path) for path in os.listdir(fasta_dir)],
-    )
-    tmp_seq_tab = join(fasta_dir, "micomplete_seq.tsv")
+    # miComplete writes its intermediate files to the current directory, named
+    # after each fasta: run it in a private directory, removed afterwards, so
+    # that runs started from the same directory cannot clobber each other.
+    fasta_dir = os.path.abspath(fasta_dir)
+    workdir = tempfile.mkdtemp(prefix="micomplete_", dir=os.path.dirname(os.path.abspath(outfile)))
+    tmp_seq_tab = join(workdir, "micomplete_seq.tsv")
     with open(tmp_seq_tab, "w") as tab:
-        for fasta in list_fasta:
-            tab.write(f"{fasta}\tfna\n")
+        for path in sorted(os.listdir(fasta_dir)):
+            if path.endswith((".fa", ".fasta", ".fna")):
+                tab.write(f"{join(fasta_dir, path)}\tfna\n")
 
-    # Create two temporary output for archaea and bacteria.
-    out_bact105 = join(fasta_dir, "micomplete_bact105.tsv")
-    out_arch131 = join(fasta_dir, "micomplete_arch131.tsv")
-
-    # Launch miComplete using subprocess for bacteria.
-    cmd = f"miComplete {tmp_seq_tab} --hmms Bact105 --weights Bact105 --threads {threads} --outfile {out_bact105}"
-    process = sp.Popen(cmd, shell=True)
-    out, err = process.communicate()
-
-    # Launch miComplete using subprocess for archaea.
-    cmd = f"miComplete {tmp_seq_tab} --hmms Arch131 --weights Arch131 --threads {threads} --outfile {out_arch131}"
-    process = sp.Popen(cmd, shell=True)
-    out, err = process.communicate()
+    # Run miComplete with the bacterial and the archaeal marker sets.
+    out_bact105 = join(workdir, "micomplete_bact105.tsv")
+    out_arch131 = join(workdir, "micomplete_arch131.tsv")
+    for markers, out in (("Bact105", out_bact105), ("Arch131", out_arch131)):
+        cmd = [
+            "miComplete", tmp_seq_tab,
+            "--hmms", markers,
+            "--weights", markers,
+            "--threads", str(threads),
+            "--outfile", out,
+        ]  # fmt: skip
+        sp.run(cmd, cwd=workdir, check=True)
 
     # Merge bacteria and archaea
     merge_micomplete(out_bact105, out_arch131, outfile)
-
-    # Remove micomplete temporary files.
-    for path in filter(lambda x: ".fa" in x, os.listdir(fasta_dir)):
-        name = path.split(".")[0]
-        os.remove(f"{name}_prodigal.faa")
-        os.remove(f"{name}.tblout")
-    os.remove(tmp_seq_tab)
-    os.remove(out_bact105)
-    os.remove(out_arch131)
-    try:
-        os.remove("miComplete.log")
-    except FileNotFoundError:
-        pass
+    shutil.rmtree(workdir)
 
 
 def recursive_clustering(
@@ -507,7 +429,6 @@ def recursive_clustering(
         map(
             partial(
                 recursive_clustering_worker,
-                bin_summary=bin_summary,
                 tmpdir=tmpdir,
                 network=network,
                 algorithm=algorithm,
@@ -532,12 +453,15 @@ def recursive_clustering(
 
         # Compute the Hamming distance between core bins.
         hamming_distance = mtp.get_hamming_distance(
-            recursive_bins_iterations, threads,
+            recursive_bins_iterations,
+            threads,
         )
 
         # Defined overlapping bins according to the threshold
         recursive_bins = mtp.defined_overlapping_bins(
-            overlapping_parameter, hamming_distance, recursive_core_bins,
+            overlapping_parameter,
+            hamming_distance,
+            recursive_core_bins,
         )
 
         # update bin data and generate fasta
@@ -560,9 +484,7 @@ def recursive_clustering(
 
         # Build the clustering matrix of the subnetwork and add it.
         if cluster_matrix > 0:
-            clustering_matrix += mtp.build_clustering_matrix(
-                recursive_core_bins, hamming_distance, cluster_matrix
-            )
+            clustering_matrix += mtp.build_clustering_matrix(recursive_core_bins, hamming_distance, cluster_matrix)
 
         logger.info("Recursive step for {0} is done.".format(bin_id))
 
@@ -578,7 +500,6 @@ def recursive_clustering(
 
 def recursive_clustering_worker(
     bin_id,
-    bin_summary,
     tmpdir,
     network,
     algorithm,
@@ -590,13 +511,10 @@ def recursive_clustering_worker(
 
     Parameters:
     -----------
-    bin_summary : dict
-        Dictionnary of the output of micomplete as values and the bin id as
-        keys.
     tmpdir : str
         Path the temp directory.
     algorithm : str
-        Algorithm to use, either louvain, leiden or spinglass.
+        Algorithm to use, either louvain or leiden.
     network : networkx.classes.graph.Graph
         Network of contigs from HiC librairies.
     iterations : int
@@ -610,8 +528,6 @@ def recursive_clustering_worker(
     # Create temporary folders.
     tmpdir_subnetwork = join(tmpdir, "recursive_bins", bin_id)
     os.makedirs(tmpdir_subnetwork, exist_ok=True)
-    tmpdir_clustering = join(tmpdir, "recursive_clustering", bin_id)
-    os.makedirs(tmpdir_clustering, exist_ok=True)
 
     logger.info("Bin in progress: {0}".format(bin_id))
     subnetwork_file = join(tmpdir_subnetwork, "subnetwork_" + bin_id + ".txt")
@@ -619,31 +535,21 @@ def recursive_clustering_worker(
     rec_bin_id = str(bin_id.split("_")[-1])
 
     # Extract contigs
-    mask = (contigs_data["Overlapping_bin_ID"] == over_bin_id) & (
-        contigs_data["Recursive_bin_ID"].apply(str) == rec_bin_id
-    )
+    mask = (contigs_data["Overlapping_bin_ID"] == over_bin_id) & (contigs_data["Recursive_bin_ID"].apply(str) == rec_bin_id)
     list_contigs = list(contigs_data.loc[mask, "ID"])
 
     # Extract subnetwork
     subnetwork = network.subgraph(list_contigs)
 
     # Write the new subnetwork
-    nx.write_edgelist(
-        subnetwork, subnetwork_file, delimiter="\t", data=["weight"]
-    )
+    nx.write_edgelist(subnetwork, subnetwork_file, delimiter="\t", data=["weight"])
 
-    # Compute spin prediction on the completion/contamination values.
-    spin = max(2, int(1 + float(bin_summary[bin_id]["Weighted redundancy"])),)
     # Partition the subnetwork.
-
     output_partition = mtp.algo_partition(
         algorithm,
         subnetwork_file,
-        subnetwork,
         iterations,
         resolution_parameter,
-        tmpdir_clustering,
-        spin,
     )
     logger.info("Output partition done for {0}.".format(bin_id))
 
@@ -723,21 +629,19 @@ def recursive_decontamination(
     os.makedirs(tmpdir_recursive_clustering, exist_ok=True)
 
     # Defined miComplete output file path
-    overlapping_micomplete_file = join(
-        outdir, "overlapping_micomplete_results.txt"
-    )
+    overlapping_micomplete_file = join(outdir, "overlapping_micomplete_results.txt")
 
     logger.info("Lauch miComplete quality check.")
 
     # Launch miComplete
     micomplete_quality(
-        input_fasta_dir, overlapping_micomplete_file, threads,
+        input_fasta_dir,
+        overlapping_micomplete_file,
+        threads,
     )
 
     # Load network:
-    network = nx.read_edgelist(
-        network_file, nodetype=int, data=(("weight", float),)
-    )
+    network = nx.read_edgelist(network_file, nodetype=int, data=(("weight", float),))
 
     # Load contigs data:
     contigs_data = pd.read_csv(
@@ -770,7 +674,7 @@ def recursive_decontamination(
 
     logger.info("Starts recursive decontamition step:")
 
-    while contamination == True:
+    while contamination:
         logger.info(f"------------------ Recursive step {step} started. --------------------- ")
         # Create fasta dir.
         recursive_fasta_dir_step = join(recursive_fasta_dir, f"step_{step}")
@@ -811,24 +715,25 @@ def recursive_decontamination(
         # keep the original bin information.
         if contamination:
             # Run miComplete on the recursive bins.
-            recursive_micomplete_file = join(
-                outdir, f"recursive_micomplete_step_{step}.txt"
-            )
+            recursive_micomplete_file = join(outdir, f"recursive_micomplete_step_{step}.txt")
 
             micomplete_quality(
-                recursive_fasta_dir_step, recursive_micomplete_file, threads,
+                recursive_fasta_dir_step,
+                recursive_micomplete_file,
+                threads,
             )
 
             # Compare
             bin_summary, contamination = micomplete_compare_bins(
-                recursive_micomplete_file, bin_summary, parent_dict, step,
+                recursive_micomplete_file,
+                bin_summary,
+                parent_dict,
+                step,
             )
 
         # Keep overlapping bin information
         else:
-            logger.info(
-                f"No more contaminated bin have been found after {step} steps."
-            )
+            logger.info(f"No more contaminated bin have been found after {step} steps.")
         # Increase count
         logger.info(f"Recursive step {step} done.")
         step += 1
@@ -838,7 +743,7 @@ def recursive_decontamination(
     # Create fasta directory and copy final bins.
     if not os.path.exists(final_fasta_dir):
         os.makedirs(final_fasta_dir)
-    
+
     for bin_name in bin_summary:
         dst = join(final_fasta_dir, bin_name + ".fa")
         step = bin_summary[bin_name]["step"]
@@ -856,9 +761,7 @@ def recursive_decontamination(
 
     # Write relevant bins/contigs information for anvio.
     binning_file = join(outdir, "binning.txt")
-    contigs_data = write_bins_contigs(
-        bin_summary, contigs_data, binning_file, prefix
-    )
+    contigs_data = write_bins_contigs(bin_summary, contigs_data, binning_file, prefix)
 
     # Compute the abundance of the mags.
     bin_summary = get_bin_coverage(bin_summary, contigs_data)
@@ -869,9 +772,7 @@ def recursive_decontamination(
 
     # Write the new file
     contig_data_file_final = join(outdir, "contig_data_final.txt")
-    contigs_data.to_csv(
-        contig_data_file_final, sep="\t", header=True, index=True
-    )
+    contigs_data.to_csv(contig_data_file_final, sep="\t", header=True, index=True)
 
     # Plot some figures of contigs distribution inside bins:
     mtf.plot_figures(outdir, contigs_data, bin_summary, size)
@@ -939,9 +840,7 @@ def update_contigs_data_recursive(
     max_rec_id = max(
         map(
             int,
-            contigs_data[contigs_data.Overlapping_bin_ID == over_id][
-                "Recursive_bin_ID"
-            ],
+            contigs_data[contigs_data.Overlapping_bin_ID == over_id]["Recursive_bin_ID"],
         )
     )
 
@@ -957,23 +856,13 @@ def update_contigs_data_recursive(
             contamination = True
             rec_final_id = max_rec_id + rec_id
             # Write the new information
-            contigs_data.loc[
-                recursive_bin, "Recursive_bin_ID"
-            ] = f"{rec_final_id:05d}"
-            contigs_data.loc[
-                recursive_bin, "Recursive_bin_contigs"
-            ] = recursive_bin_contigs_number
-            contigs_data.loc[
-                recursive_bin, "Recursive_bin_size"
-            ] = recursive_bin_length
+            contigs_data.loc[recursive_bin, "Recursive_bin_ID"] = f"{rec_final_id:05d}"
+            contigs_data.loc[recursive_bin, "Recursive_bin_contigs"] = recursive_bin_contigs_number
+            contigs_data.loc[recursive_bin, "Recursive_bin_size"] = recursive_bin_length
 
             # Defined name of the recursive bin
-            oc_id = int(
-                contigs_data.loc[recursive_bin[0], "Overlapping_bin_ID"]
-            )
-            output_file = join(
-                outdir, f"{prefix}_{oc_id:05d}_{rec_final_id:05d}.fa"
-            )
+            oc_id = int(contigs_data.loc[recursive_bin[0], "Overlapping_bin_ID"])
+            output_file = join(outdir, f"{prefix}_{oc_id:05d}_{rec_final_id:05d}.fa")
 
             # Update bin_summary:
             parent_dict[f"{prefix}_{oc_id:05d}_{rec_final_id:05d}"] = bin_id
@@ -982,15 +871,11 @@ def update_contigs_data_recursive(
             list_contigs = list(contigs_data.loc[recursive_bin, "Name"])
 
             # Generate the fasta
-            contigs_file = join(
-                tmpdir, f"{prefix}_{oc_id:05d}_{rec_final_id:05d}.txt"
-            )
+            contigs_file = join(tmpdir, f"{prefix}_{oc_id:05d}_{rec_final_id:05d}.txt")
             with open(contigs_file, "w") as f:
                 for contig in list_contigs:
                     f.write("{0}\n".format(contig))
-            cmd = "pyfastx extract {0} -l {1} > {2}".format(
-                assembly, contigs_file, output_file
-            )
+            cmd = "pyfastx extract {0} -l {1} > {2}".format(assembly, contigs_file, output_file)
             process = sp.Popen(cmd, shell=True)
             process.communicate()
 
@@ -1050,11 +935,7 @@ def write_bins_contigs(bin_summary, contigs_data, outfile, prefix):
                 if binned:
                     final_bin = f"{prefix}_{over_id}_{rec_id}"
                     contigs_data.loc[i, "Final_bin"] = final_bin
-                    f.write(
-                        "{0}\t{1}\n".format(
-                            contigs_data.loc[i, "Name"], final_bin
-                        )
-                    )
+                    f.write("{0}\t{1}\n".format(contigs_data.loc[i, "Name"], final_bin))
             except KeyError:
                 pass
     return contigs_data
@@ -1087,39 +968,35 @@ def checkm(fasta_dir, outfile, taxonomy_file, tmpdir, threads):
     logger.info("Start CheckM validation.")
 
     # Build CheckM tree
-    cmd = "checkm tree -q -t {0} -x fa {1} {2}".format(
-        threads, fasta_dir, tmpdir
-    )
+    cmd = "checkm tree -q -t {0} -x fa {1} {2}".format(threads, fasta_dir, tmpdir)
     logger.info(cmd)
     process = sp.Popen(cmd, shell=True)
-    out, err = process.communicate()
+    process.communicate()
 
     # Build taxonomy values of the bins
     cmd = "checkm tree_qa {0} -q -o 1 -f {1}".format(tmpdir, taxonomy_file)
     logger.info(cmd)
     process = sp.Popen(cmd, shell=True)
-    out, err = process.communicate()
+    process.communicate()
 
     # Build lineage marker set
     markers_set = join(tmpdir, "markers.txt")
     cmd = "checkm lineage_set -q {0} {1}".format(tmpdir, markers_set)
     logger.info(cmd)
     process = sp.Popen(cmd, shell=True)
-    out, err = process.communicate()
+    process.communicate()
 
     # Compute the analysis
-    cmd = "checkm analyze -q -x fa -t {0} {1} {2} {3}".format(
-        threads, markers_set, fasta_dir, tmpdir
-    )
+    cmd = "checkm analyze -q -x fa -t {0} {1} {2} {3}".format(threads, markers_set, fasta_dir, tmpdir)
     logger.info(cmd)
     process = sp.Popen(cmd, shell=True)
-    out, err = process.communicate()
+    process.communicate()
 
     # Write the summary file
     cmd = "checkm qa -q {0} {1} -o 2 > {2}".format(markers_set, tmpdir, outfile)
     logger.info(cmd)
     process = sp.Popen(cmd, shell=True)
-    out, err = process.communicate()
+    _out, _err = process.communicate()
 
 
 def checkm_compare_bins(
@@ -1155,67 +1032,41 @@ def checkm_compare_bins(
     """
 
     # Load the checkm summary
-    checkm_summary_overlapping = mio.read_results_checkm(
-        overlapping_checkm_file, overlapping_taxonomy_file
-    )
-    checkm_summary_recursive = mio.read_results_checkm(
-        recursive_checkm_file, recursive_taxonomy_file
-    )
+    checkm_summary_overlapping = mio.read_results_checkm(overlapping_checkm_file, overlapping_taxonomy_file)
+    checkm_summary_recursive = mio.read_results_checkm(recursive_checkm_file, recursive_taxonomy_file)
 
     # Prepare a dictionnary for a final summary.
     checkm_summary = dict()
 
     # Retrieve maximum completness of the recursive bins.
     for recursive_bin in checkm_summary_recursive:
-        overlapping_bin = "_".join(
-            [f"{prefix}", recursive_bin.split("_")[-2], "0"]
-        )
+        overlapping_bin = "_".join([f"{prefix}", recursive_bin.split("_")[-2], "0"])
         try:
-            checkm_summary_overlapping[overlapping_bin][
-                "max_rec_completness"
-            ] = max(
+            checkm_summary_overlapping[overlapping_bin]["max_rec_completness"] = max(
                 float(checkm_summary_recursive[recursive_bin]["completness"]),
-                checkm_summary_overlapping[overlapping_bin][
-                    "max_rec_completness"
-                ],
+                checkm_summary_overlapping[overlapping_bin]["max_rec_completness"],
             )
-            checkm_summary_overlapping[overlapping_bin]["rec_id"].append(
-                recursive_bin
-            )
+            checkm_summary_overlapping[overlapping_bin]["rec_id"].append(recursive_bin)
         except KeyError:
-            checkm_summary_overlapping[overlapping_bin][
-                "max_rec_completness"
-            ] = float(checkm_summary_recursive[recursive_bin]["completness"])
-            checkm_summary_overlapping[overlapping_bin]["rec_id"] = [
-                recursive_bin
-            ]
+            checkm_summary_overlapping[overlapping_bin]["max_rec_completness"] = float(
+                checkm_summary_recursive[recursive_bin]["completness"]
+            )
+            checkm_summary_overlapping[overlapping_bin]["rec_id"] = [recursive_bin]
 
     # If there are some recursive bins which have not loose too much completion
     # write their information otherwise keep the original bins.
     for overlapping_bin in checkm_summary_overlapping:
         try:
-            max_rec = checkm_summary_overlapping[overlapping_bin][
-                "max_rec_completness"
-            ]
-            over = float(
-                checkm_summary_overlapping[overlapping_bin]["completness"]
-            )
+            max_rec = checkm_summary_overlapping[overlapping_bin]["max_rec_completness"]
+            over = float(checkm_summary_overlapping[overlapping_bin]["completness"])
             if (max_rec > (over / 2)) & (max_rec > 50):
-                for rec_id in checkm_summary_overlapping[overlapping_bin][
-                    "rec_id"
-                ]:
+                for rec_id in checkm_summary_overlapping[overlapping_bin]["rec_id"]:
                     checkm_summary[rec_id] = checkm_summary_recursive[rec_id]
             else:
-                checkm_summary_overlapping[overlapping_bin].pop(
-                    "max_rec_completness"
-                )
+                checkm_summary_overlapping[overlapping_bin].pop("max_rec_completness")
                 checkm_summary_overlapping[overlapping_bin].pop("rec_id")
-                checkm_summary[overlapping_bin] = checkm_summary_overlapping[
-                    overlapping_bin
-                ]
+                checkm_summary[overlapping_bin] = checkm_summary_overlapping[overlapping_bin]
         except KeyError:
-            checkm_summary[overlapping_bin] = checkm_summary_overlapping[
-                overlapping_bin
-            ]
+            checkm_summary[overlapping_bin] = checkm_summary_overlapping[overlapping_bin]
 
     return checkm_summary

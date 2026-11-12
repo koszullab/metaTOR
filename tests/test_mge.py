@@ -3,7 +3,6 @@
 
 from pathlib import Path
 import metator.commands as mtc
-import pandas as pd
 import pytest
 import os
 
@@ -39,3 +38,11 @@ def test_mge(tmp_dir):
     proc = mtc.Mge(args.split(" "), {})
     proc.execute()
 
+
+def test_mge_random(tmp_path):
+    """--random shuffles the MGE bins and still writes the bins and summary."""
+    args = (
+        "-c {CONTIGS} -a {SUBSET_FASTA} -b {BINNING} -m {SUBSET_MGES} -o {OUT_TEST} --random --threshold-bin 0.5 {SUBSET_PAIRS}"
+    ).format(OUT_TEST=tmp_path / "out", **global_args)
+    mtc.Mge(args.split(" "), {}).execute()
+    assert len(os.listdir(tmp_path / "out")) > 0

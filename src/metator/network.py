@@ -120,9 +120,7 @@ def alignment_to_contacts(
     # Compute sample network
     for i, precompute_network_file_sample in enumerate(out_files_list):
         network_file_sample = join(out_dir, "network_{0}.txt".format(i))
-        pre_network_sorted_file = join(
-            tmp_dir, "tmp_network_sorted_{0}.txt".format(i)
-        )
+        pre_network_sorted_file = join(tmp_dir, "tmp_network_sorted_{0}.txt".format(i))
         compute_network(
             precompute_network_file_sample,
             network_file_sample,
@@ -175,81 +173,53 @@ def compute_network(
         normalization.
     """
 
-    # Sort the the pre-network file
+    # Sort the pre-network so that identical contig pairs are adjacent.
     mio.sort_pairs(
-        pre_network_file, tmp_file, tmp_dir=tmp_dir, threads=n_cpus,
+        pre_network_file,
+        tmp_file,
+        tmp_dir=tmp_dir,
+        threads=n_cpus,
     )
 
-    # Set the variables used in the loop
-    n_occ = 1  # Number of occurrences of each frag combination
-    n_nonzero = 1  # Total number of nonzero matrix entries
-    n_pairs = 0  # Total number of pairs entered in the matrix
-
-    # Read the sorted pairs
-    with open(pre_network_file, "r") as pairs, open(network_file, "w") as net:
-        pairs_reader = csv.reader(pairs, delimiter="\t")
-        prev_pair = next(pairs_reader)
-        for pair in pairs_reader:
-            # Extract the contig names and their id
-            curr_pair = pair
-            # Increment number of occurrences for fragment pair
-            if prev_pair == curr_pair:
+    # Count each contig pair from the sorted file: with several libraries, or
+    # pairs not grouped by contig, the unsorted file repeats a pair in separate
+    # runs, which wrote the same edge on several lines.
+    with open(tmp_file, "r") as pairs, open(network_file, "w") as net:
+        prev_pair, n_occ = None, 0
+        for pair in csv.reader(pairs, delimiter="\t"):
+            if pair == prev_pair:
                 n_occ += 1
-            # Write previous pair and start a new one
-            else:
-                if n_occ > 0:
+                continue
+            if prev_pair is not None:
+                write_edge(net, contig_data, prev_pair, n_occ, normalization)
+            prev_pair, n_occ = pair, 1
+        if prev_pair is not None:
+            write_edge(net, contig_data, prev_pair, n_occ, normalization)
 
-                    # Normalisation using the geometric mean of the coverage
-                    if normalization != "None":
-                        effective_count = normalize_pair(
-                            contig_data, prev_pair, n_occ, normalization
-                        )
-                    else:
-                        effective_count = n_occ
 
-                    # Write the line in the file
-                    net.write(
-                        "\t".join(
-                            map(
-                                str,
-                                [
-                                    contig_data[prev_pair[0]]["id"],
-                                    contig_data[prev_pair[1]]["id"],
-                                    effective_count,
-                                ],
-                            )
-                        )
-                        + "\n"
-                    )
-                # Reset the values for the next pair
-                prev_pair = curr_pair
-                n_pairs += n_occ
-                n_occ = 1
-                n_nonzero += 1
+def write_edge(net, contig_data, pair, n_occ, normalization):
+    """Write one network edge: the two contig ids and the contact weight.
 
-        # Write the last value
-        if normalization != "None":
-            effective_count = normalize_pair(
-                contig_data, prev_pair, n_occ, normalization
-            )
-        else:
-            effective_count = n_occ
-
-        net.write(
-            "\t".join(
-                map(
-                    str,
-                    [
-                        contig_data[curr_pair[0]]["id"],
-                        contig_data[curr_pair[1]]["id"],
-                        effective_count,
-                    ],
-                )
-            )
-            + "\n"
-        )
-        n_nonzero += 1
-        n_pairs += n_occ
+    Parameters:
+    -----------
+    net : file object
+        Open network file.
+    contig_data : dict
+        Dictionary of the all the contigs from the assembly, the contigs names
+        are the keys to the data of the contig available with the following
+        keys: "id", "length", "GC", "hit", "coverage", "RS".
+    pair : list of str
+        Names of the two contigs.
+    n_occ : int
+        Contact count between the two contigs.
+    normalization : str
+        Mode of normalization to use, or "None".
+    """
+    if normalization != "None":
+        weight = normalize_pair(contig_data, pair, n_occ, normalization)
+    else:
+        weight = n_occ
+    net.write(f"{contig_data[pair[0]]['id']}\t{contig_data[pair[1]]['id']}\t{weight}\n")
 
 
 def create_contig_data(assembly, nb_alignment=1, depth_file=None, enzyme=None):
@@ -306,9 +276,7 @@ def create_contig_data(assembly, nb_alignment=1, depth_file=None, enzyme=None):
                     "GC": gc_content,
                     "hit": 0,
                     "coverage": float(line[2]),
-                    "RS": (len(re.findall(pattern, str(contig.seq))) + 1)
-                    if enzyme
-                    else "-",
+                    "RS": (len(re.findall(pattern, str(contig.seq))) + 1) if enzyme else "-",
                 }
                 if nb_alignment > 1:
                     hit_data[contig.id] = {
@@ -328,9 +296,7 @@ def create_contig_data(assembly, nb_alignment=1, depth_file=None, enzyme=None):
                 "GC": gc_content,
                 "hit": 0,
                 "coverage": "-",
-                "RS": (len(re.findall(pattern, str(contig.seq))) + 1)
-                if enzyme
-                else "-",
+                "RS": (len(re.findall(pattern, str(contig.seq))) + 1) if enzyme else "-",
             }
             if nb_alignment > 1:
                 hit_data[contig.id] = {
@@ -367,9 +333,7 @@ def normalize_pair(contig_data, pair, n_occ, normalization):
     # The four first normalizations are normalization by the geometric mean of
     # "coverage".
     if normalization == "abundance":
-        factor = np.sqrt(
-            contig_data[pair[0]]["coverage"] * contig_data[pair[1]]["coverage"]
-        )
+        factor = np.sqrt(contig_data[pair[0]]["coverage"] * contig_data[pair[1]]["coverage"])
         # If no read mapped from Shotgun libraries could be equal to zero.
         if factor == 0:
             return 0
@@ -384,30 +348,21 @@ def normalize_pair(contig_data, pair, n_occ, normalization):
 
     elif normalization == "RS":
         factor = 0.01 * np.sqrt(
-            contig_data[pair[0]]["hit"]
-            / contig_data[pair[0]]["RS"]
-            * contig_data[pair[1]]["hit"]
-            / contig_data[pair[1]]["RS"]
+            contig_data[pair[0]]["hit"] / contig_data[pair[0]]["RS"] * contig_data[pair[1]]["hit"] / contig_data[pair[1]]["RS"]
         )
 
     # The last two normalizations are normalization by geometric means of hits.
     elif normalization == "empirical_hit":
-        factor = np.sqrt(
-            contig_data[pair[0]]["hit"] * contig_data[pair[1]]["hit"]
-        )
+        factor = np.sqrt(contig_data[pair[0]]["hit"] * contig_data[pair[1]]["hit"])
 
     elif normalization == "theoritical_hit":
         factor = np.sqrt(
             contig_data[pair[0]]["coverage"]
             * 10
-            * np.sqrt(
-                contig_data[pair[0]]["length"] * contig_data[pair[0]]["RS"]
-            )
+            * np.sqrt(contig_data[pair[0]]["length"] * contig_data[pair[0]]["RS"])
             * contig_data[pair[1]]["coverage"]
             * 10
-            * np.sqrt(
-                contig_data[pair[1]]["length"] * contig_data[pair[1]]["RS"]
-            )
+            * np.sqrt(contig_data[pair[1]]["length"] * contig_data[pair[1]]["RS"])
         )
     # If no read mapped from Shotgun libraries could be equal to zero.
     if factor == 0:
@@ -467,10 +422,8 @@ def precompute_network(
 
     # Prepare a file to save contact with their global ID
     with open(out_file, "w") as pre_net:
-
         # Iterates on the alignment files
         for i, alignment_file in enumerate(alignment_files):
-
             all_contacts_temp = 0
             inter_contacts_temp = 0
             out_file_sample = join(tmp_dir, "prenetwork" + str(i) + ".txt")
@@ -508,77 +461,42 @@ def precompute_network(
                     # Write all pairs if self contacts.
                     if self_contacts:
                         if id1 == id2:
-                            pre_net.write(
-                                "\t".join(map(str, [contig1, contig2])) + "\n"
-                            )
-                            pre_net_sample.write(
-                                "\t".join(map(str, [contig1, contig2])) + "\n"
-                            )
+                            pre_net.write("\t".join(map(str, [contig1, contig2])) + "\n")
+                            pre_net_sample.write("\t".join(map(str, [contig1, contig2])) + "\n")
                         if id1 < id2:
                             inter_contacts_temp += 1
-                            pre_net.write(
-                                "\t".join(map(str, [contig1, contig2])) + "\n"
-                            )
-                            pre_net_sample.write(
-                                "\t".join(map(str, [contig1, contig2])) + "\n"
-                            )
+                            pre_net.write("\t".join(map(str, [contig1, contig2])) + "\n")
+                            pre_net_sample.write("\t".join(map(str, [contig1, contig2])) + "\n")
                         elif id1 > id2:
                             inter_contacts_temp += 1
-                            pre_net.write(
-                                "\t".join(map(str, [contig2, contig1])) + "\n"
-                            )
-                            pre_net_sample.write(
-                                "\t".join(map(str, [contig2, contig1])) + "\n"
-                            )
+                            pre_net.write("\t".join(map(str, [contig2, contig1])) + "\n")
+                            pre_net_sample.write("\t".join(map(str, [contig2, contig1])) + "\n")
                     # Write only intercontigs pairs with both reads not mapping
                     # on the edges of the contigs (defined by edge).
                     else:
-                        if (
-                            (pos1 > edge)
-                            and (pos2 > edge)
-                            and (len1 - pos1 > edge)
-                            and (len2 - pos2 > edge)
-                        ):
+                        if (pos1 > edge) and (pos2 > edge) and (len1 - pos1 > edge) and (len2 - pos2 > edge):
                             if id1 < id2:
                                 inter_contacts_temp += 1
-                                pre_net.write(
-                                    "\t".join(map(str, [contig1, contig2]))
-                                    + "\n"
-                                )
-                                pre_net_sample.write(
-                                    "\t".join(map(str, [contig1, contig2]))
-                                    + "\n"
-                                )
+                                pre_net.write("\t".join(map(str, [contig1, contig2])) + "\n")
+                                pre_net_sample.write("\t".join(map(str, [contig1, contig2])) + "\n")
                             elif id1 > id2:
                                 inter_contacts_temp += 1
-                                pre_net.write(
-                                    "\t".join(map(str, [contig2, contig1]))
-                                    + "\n"
-                                )
-                                pre_net_sample.write(
-                                    "\t".join(map(str, [contig2, contig1]))
-                                    + "\n"
-                                )
+                                pre_net.write("\t".join(map(str, [contig2, contig1])) + "\n")
+                                pre_net_sample.write("\t".join(map(str, [contig2, contig1])) + "\n")
 
             # Count contacts and return sample informations.
             all_contacts += all_contacts_temp
             inter_contacts += inter_contacts_temp
             logger.info(f"Information of {basename(alignment_file)}:")
             logger.info(f"{all_contacts_temp} contacts in the library.")
-            logger.info(
-                f"{inter_contacts_temp} contacts inter-contigs in the library."
-            )
-            logger.info(
-                f"3D ratio : {inter_contacts_temp / all_contacts_temp}\n"
-            )
+            logger.info(f"{inter_contacts_temp} contacts inter-contigs in the library.")
+            logger.info(f"3D ratio : {inter_contacts_temp / all_contacts_temp}\n")
 
     # Return information about the network
     if len(alignment_files) > 1:
         logger.info("General information:")
         logger.info("{0} contacts in the library.".format(all_contacts))
-        logger.info(
-            "{0} contacts inter-contigs in the library.".format(inter_contacts)
-        )
+        logger.info("{0} contacts inter-contigs in the library.".format(inter_contacts))
         logger.info("3D ratio : {0}\n".format(inter_contacts / all_contacts))
 
     return contig_data, out_files_list
@@ -611,9 +529,7 @@ def write_contig_data(contig_data, output_path):
             GC_content = contig_data[name]["GC"]
             idx = contig_data[name]["id"]
             RS = contig_data[name]["RS"]
-            line = "{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(
-                idx, name, length, GC_content, hit, coverage, RS
-            )
+            line = "{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(idx, name, length, GC_content, hit, coverage, RS)
             contig_data_file_handle.write(line)
 
 

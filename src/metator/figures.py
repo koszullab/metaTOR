@@ -23,8 +23,8 @@ Core functions to plot the firgures are:
     - reindex_df
 """
 
-
 import hicstuff.hicstuff as hcs
+import metator.io as mio
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -152,7 +152,8 @@ def build_matrix_network(pairs_files, info_contigs, N, bin_size):
 
     # Iterates on the input pairs file
     for pairs_file in pairs_files:
-        with open(pairs_file, "r") as input_pairs:
+        # The pipeline leaves bgzip-compressed pairs files in its outdir.
+        with mio.read_compressed(pairs_file) as input_pairs:
             for pairs_line in input_pairs:
                 # Ignore header lines.
                 if pairs_line.startswith("#"):
@@ -163,25 +164,15 @@ def build_matrix_network(pairs_files, info_contigs, N, bin_size):
                 contig1, contig2 = pairs[1], pairs[3]
                 pos1, pos2 = pairs[2], pairs[4]
                 try:
-                    frag1 = (
-                        info_contigs[contig1]["start"]
-                        + (int(pos1) + info_contigs[contig1]["init"])
-                        // bin_size
-                    )
-                    frag2 = (
-                        info_contigs[contig2]["start"]
-                        + (int(pos2) + info_contigs[contig2]["init"])
-                        // bin_size
-                    )
+                    frag1 = info_contigs[contig1]["start"] + (int(pos1) + info_contigs[contig1]["init"]) // bin_size
+                    frag2 = info_contigs[contig2]["start"] + (int(pos2) + info_contigs[contig2]["init"]) // bin_size
                     if frag1 < frag2:
                         matrix[frag1, frag2] += 1
                     elif frag1 > frag2:
                         matrix[frag2, frag1] += 1
                 except KeyError:
                     continue
-    matrix_norm = hcs.normalize_dense(
-        matrix + matrix.T, norm="SCN", iterations=100
-    )
+    matrix_norm = hcs.normalize_dense(matrix + matrix.T, norm="SCN", iterations=100)
     return matrix_norm
 
 
@@ -245,16 +236,10 @@ def figures_bins_distribution(bin_summary, out_file):
         Path where to save the figure.
     """
     # Transform values as float
-    bin_summary["Weighted completeness"] = bin_summary[
-        "Weighted completeness"
-    ].apply(float)
-    bin_summary["Weighted redundancy"] = bin_summary[
-        "Weighted redundancy"
-    ].apply(float)
+    bin_summary["Weighted completeness"] = bin_summary["Weighted completeness"].apply(float)
+    bin_summary["Weighted redundancy"] = bin_summary["Weighted redundancy"].apply(float)
     # Sort the values by decreasing completion.
-    bin_summary = bin_summary.sort_values(
-        by="Weighted completeness", ascending=False
-    )
+    bin_summary = bin_summary.sort_values(by="Weighted completeness", ascending=False)
     # Put the contamination values bigger than 105 to 105.
     mask = bin_summary["Weighted redundancy"] >= 105
     bin_summary.loc[mask, "Weighted redundancy"] = 105
@@ -297,9 +282,7 @@ def figures_bins_distribution(bin_summary, out_file):
     plt.close()
 
 
-def figures_bins_size_distribution(
-    bin_summary, total_size, threshold, out_file
-):
+def figures_bins_size_distribution(bin_summary, total_size, threshold, out_file):
     """Function to plot a camembert of the fraction of size corresponding
     to each quality of bins. We defined 6 categories:
         - High quality MAGs (HQ MAGs): >= 90% completion ; < 5% contamination
@@ -395,23 +378,21 @@ def figures_bins_size_distribution(
     plt.text(
         -1.5,
         -1.2,
-        "Total size of the assembly: {0}Mb".format(
-            round(total_size / 1000000, 2)
-        ),
+        "Total size of the assembly: {0}Mb".format(round(total_size / 1000000, 2)),
         fontdict=None,
     )
     plt.text(
         -1.5,
         -1.35,
-        "Percentage of MAGs: {0}%".format(
-            round(sum(mags_summary["size"][0:3]) / total_size * 100, 2)
-        ),
+        "Percentage of MAGs: {0}%".format(round(sum(mags_summary["size"][0:3]) / total_size * 100, 2)),
         fontdict=None,
     )
     plt.text(
         -1.5,
         -1.5,
-        "Bins threshold: {0}kb".format(round(threshold / 1000, 2),),
+        "Bins threshold: {0}kb".format(
+            round(threshold / 1000, 2),
+        ),
         fontdict=None,
     )
     plt.title("Size proportion of bins depending on their quality")
@@ -465,7 +446,10 @@ def figure_camembert_quality(
     colors = ["#D55E00", "#E69F00", "#999999", "#103b6f", "#6096fd", "#cc0000"]
     patches, _ = plt.pie(fracs, colors=colors, startangle=90)
     plt.legend(
-        patches, labels, loc="upper left", bbox_to_anchor=(-0.1, 1.0),
+        patches,
+        labels,
+        loc="upper left",
+        bbox_to_anchor=(-0.1, 1.0),
     )
     if prefix:
         plt.title(
@@ -473,10 +457,16 @@ def figure_camembert_quality(
             bbox={"facecolor": "1.0", "pad": 5},
         )
     plt.text(
-        0.3, 1.15, "Threshold Uncuts = " + str(uncut_thr), fontdict=None,
+        0.3,
+        1.15,
+        "Threshold Uncuts = " + str(uncut_thr),
+        fontdict=None,
     )
     plt.text(
-        0.3, 1.05, "Threshold Loops = " + str(loop_thr), fontdict=None,
+        0.3,
+        1.05,
+        "Threshold Loops = " + str(loop_thr),
+        fontdict=None,
     )
     plt.text(
         -1.5,
@@ -486,15 +476,17 @@ def figure_camembert_quality(
     )
     noise = 100 * n_inter_mags / (n_intra_mags + n_inter_mags)
     plt.text(
-        -1.5, -1.3, f"Estimated noise signal = {noise:.2f}%", fontdict=None,
+        -1.5,
+        -1.3,
+        f"Estimated noise signal = {noise:.2f}%",
+        fontdict=None,
     )
-    informative = (
-        100
-        * (n_informative_intra + n_informative_inter)
-        / (n_intra_mags + n_inter_mags)
-    )
+    informative = 100 * (n_informative_intra + n_informative_inter) / (n_intra_mags + n_inter_mags)
     plt.text(
-        -1.5, -1.4, f"Informative reads = {informative:.2f}%", fontdict=None,
+        -1.5,
+        -1.4,
+        f"Informative reads = {informative:.2f}%",
+        fontdict=None,
     )
     plt.savefig(out_file)
     plt.close()
@@ -631,7 +623,7 @@ def figures_mags_SG_cov_boxplots(contigs_data, out_file):
         Path where to write the figure.
     """
     # Sort by decreasing Shotgun coverage.
-    contigs_data = contigs_data.sort_values(by="SG_Coverage", ascending=False)
+    contigs_data = contigs_data.sort_values(by="Shotgun_coverage", ascending=False)
     # Build the palette
     my_pal = {
         "HQ": "#103b6f",
@@ -721,12 +713,8 @@ def generates_frags_network(contig_data, bin_summary, bin_size):
                 "init": bin_summary[bin_name]["rest"],
             }
             # Update rest and start position.
-            bin_summary[bin_name]["current"] += (
-                size + bin_summary[bin_name]["rest"]
-            ) // bin_size
-            bin_summary[bin_name]["rest"] = (
-                size + bin_summary[bin_name]["rest"]
-            ) % bin_size
+            bin_summary[bin_name]["current"] += (size + bin_summary[bin_name]["rest"]) // bin_size
+            bin_summary[bin_name]["rest"] = (size + bin_summary[bin_name]["rest"]) % bin_size
 
     return info_contigs, mag_starts, frag_id
 
@@ -809,7 +797,7 @@ def pie_bins_size_distribution(checkv_summary, out_file):
         ),
     ]
     total_size = np.sum(list(mags_summary["size"]))
-    fig, ax = plt.subplots()
+    _fig, _ax = plt.subplots()
     plt.pie(
         mags_summary["size"],
         colors=[
@@ -824,17 +812,13 @@ def pie_bins_size_distribution(checkv_summary, out_file):
     plt.text(
         -1.5,
         -1.2,
-        "Total size of the assembly: {0}Mb".format(
-            round(total_size / 1000000, 2)
-        ),
+        "Total size of the assembly: {0}Mb".format(round(total_size / 1000000, 2)),
         fontdict=None,
     )
     plt.text(
         -1.5,
         -1.35,
-        "Percentage of MGE 50% complete: {0}%".format(
-            round(sum(mags_summary["size"][0:3]) / total_size * 100, 2)
-        ),
+        "Percentage of MGE 50% complete: {0}%".format(round(sum(mags_summary["size"][0:3]) / total_size * 100, 2)),
         fontdict=None,
     )
     plt.title("Size proportion of MGE bins depending on their completness.")
@@ -868,9 +852,7 @@ def plot_figures(out_dir, contigs_data, bin_summary, threshold):
 
     # Create outfiles
     outfile_bins_distribution = join(plot_dir, "bins_distribution.png")
-    outfile_bins_size_distribution = join(
-        plot_dir, "bins_size_distribution.png"
-    )
+    outfile_bins_size_distribution = join(plot_dir, "bins_size_distribution.png")
     outfile_MAGs_GC = join(plot_dir, "MAGs_GC_distribution.png")
     outfile_MAGs_HiC_cov = join(plot_dir, "MAGs_HiC_cov_distribution.png")
     if SG_cov:
@@ -887,9 +869,7 @@ def plot_figures(out_dir, contigs_data, bin_summary, threshold):
     if len(pairs_files) > 0:
         heatmap_file = join(plot_dir, "network_heatmap.png")
         bin_size = 50000
-        info_contigs, mag_starts, N = generates_frags_network(
-            contigs_data, bin_summary, bin_size
-        )
+        info_contigs, mag_starts, N = generates_frags_network(contigs_data, bin_summary, bin_size)
         matrix = build_matrix_network(pairs_files, info_contigs, N, bin_size)
         network_heatmap(matrix, heatmap_file, mag_starts)
     else:
@@ -907,9 +887,7 @@ def plot_figures(out_dir, contigs_data, bin_summary, threshold):
 
     # Plot bin distribution
     figures_bins_distribution(bin_summary, outfile_bins_distribution)
-    bin_summary = figures_bins_size_distribution(
-        bin_summary, total_size, threshold, outfile_bins_size_distribution
-    )
+    bin_summary = figures_bins_size_distribution(bin_summary, total_size, threshold, outfile_bins_size_distribution)
 
     # Remove unbinned contigs.
     contigs_data = contigs_data[contigs_data["Final_bin"] != "ND"]
@@ -917,9 +895,7 @@ def plot_figures(out_dir, contigs_data, bin_summary, threshold):
     min_size = min(contigs_data["Size"])
     contigs_data["size_weight"] = (contigs_data["Size"] / min_size).apply(int)
     # Merge the bin_summary and the contigs data file.
-    contigs_data = pd.merge(
-        contigs_data, bin_summary, left_on="Final_bin", right_on="Bin"
-    )
+    contigs_data = pd.merge(contigs_data, bin_summary, left_on="Final_bin", right_on="Bin")
 
     # Plots the distribution of GC and coverage inside the bins.
     figures_mags_GC_boxplots(contigs_data, outfile_MAGs_GC)
