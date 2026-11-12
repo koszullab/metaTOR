@@ -19,12 +19,12 @@ Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that
    2. [With pip](#with-pip)
    3. [Development version](#development-version)
 2. [Usage](#usage)
-   1. [Principle of MetaTOR pipeline](#principle)
+   1. [Principle of MetaTOR pipeline](#Principle-of-MetaTOR-pipeline)
    2. [Output files](#output-files)
    3. [metator mge](#metator-mge)
-      1. [principle of mge binning](#principle-of-mge-binning)
-      2. [usage](#usage-of-mge)
-      3. [output](#output)
+      1. [Principle of mge binning](#Principle-of-mge-binning)
+      2. [Usage](#usage-of-mge)
+      3. [Output](#output)
 3. [Tutorials](#Tutorials)
 4. [Contributions](#contributions)
 5. [References](#references)
@@ -105,7 +105,7 @@ There are a number of other, optional, miscellaneous actions:
 * `help` : display help message.
 
 
-### Principle of MetaTOR pipeline:
+### Principle of MetaTOR pipeline
 
 ![pipeline](docs/example/images/pipeline.png)
 
@@ -179,15 +179,15 @@ This is the summary of the data of the final bins build with all the step of met
 
 ### metator mge
 
-#### principle of mge binning
+#### Principle of mge binning
 
 ![pipeline](docs/example/images/metator_mge.png)
 
-#### usage of mge
+#### Usage of mge
 
 `metator mge` : given a list of contigs previously identified as MGE, this command will bin the specific given contigs and return a fasta files as well as a summary file. 
 
-#### output
+#### Output
 
 **mges_binned.fa**
 fasta file of the mge obtained after the binning step.
