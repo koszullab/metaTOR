@@ -24,9 +24,10 @@ Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that
    3. [metator mge](#metator_mge)
       1. [Principle of mge binning](#principle_mge)
       2. [output](#output_mge)
-3. [Contributions](#contributions)
-4. [References](#references)
-5. [Contact](#contact)
+3. [Tutorials](#tuto)
+4. [Contributions](#contributions)
+5. [References](#references)
+6. [Contact](#contact)
    1. [Authors](#authors)
    2. [Research lab](#research-lab)
 
@@ -102,10 +103,6 @@ There are a number of other, optional, miscellaneous actions:
 * `version` : display current version number.
 * `help` : display help message.
 
-A tutorial is available [here](docs/example/metator_tutorial.md) to explain how to use metator. More advanced tutorials to analyze the output files are also available:
-
-* [Anvio](https://merenlab.org/software/anvio/) manual curation of the contaminated bins. Available [here](docs/example/manual_curation_of_metator_MAGs.md).
-* Visualization of the MAGs with the contactmap modules of MetaTOR. Available [here](docs/example/MAG_visualization_and_scaffolding.md).
 
 ### Principle of MetaTOR pipeline:
 
@@ -203,6 +200,14 @@ This is the summary of the data of the final mge bins build with the specific co
 |MetaTOR_MGE_00064|30610.00|68.93|18383.00|1.20|2.00|NODE_8199_len_17842,NODE_10116_len_12768|None|NA|NA|
 |MetaTOR_MGE_00105|23587.00|37.36|2662.00|NA|1.00|NODE_10949_len_23587|None|NA|NA|
 |MetaTOR_MGE_00106|2872.00|64.48|10.00|NA|1.00|NODE_10953_len_2872|None|NA|NA|
+
+## Tutorials
+
+different tutorials are available to explain how to use metator:
+
+* metator pipeline: [here](docs/example/metator_tutorial.md)
+* [Anvio](https://merenlab.org/software/anvio/) manual curation of the contaminated bins: [here](docs/example/manual_curation_of_metator_MAGs.md).
+* Visualization of the MAGs with the contactmap modules of MetaTOR: [here](docs/example/MAG_visualization_and_scaffolding.md).
 
 
 ## Contributions 
