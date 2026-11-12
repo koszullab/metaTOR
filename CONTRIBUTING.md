@@ -13,7 +13,7 @@ This project has a number of requirements for all code contributed.
 * We use [ruff](https://docs.astral.sh/ruff/) for linting and code formatting.
 * We use [ty](https://docs.astral.sh/ty/) for static type checking (advisory for now).
 
-[CI](.github/workflows/ci.yml) runs on every push and pull request: lock-file check, ruff, ty, and the test suite on each supported Python version from `uv.lock`, plus a job that re-resolves to the newest dependency releases (also run weekly).
+[CI](.github/workflows/ci.yml) runs on pushes to `master` and on every pull request (and by hand on any branch from the Actions tab): lock-file check, ruff, ty, and the test suite on each supported Python version from `uv.lock`, plus a job that re-resolves to the newest dependency releases (also run weekly).
 
 ## Setting up Your Development Environment
 

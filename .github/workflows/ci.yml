@@ -1,8 +1,12 @@
 name: CI
 
 on:
+  # Other branches are checked through their pull request, or by hand from
+  # the Actions tab (workflow_dispatch).
   push:
+    branches: [master]
   pull_request:
+  workflow_dispatch:
   schedule:
     # Weekly, so that upstream releases (pandas 3, hicstuff 3.2.5...) surface
     # in the latest-dependencies job instead of on the next unrelated push.
