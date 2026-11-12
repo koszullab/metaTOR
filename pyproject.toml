@@ -33,7 +33,7 @@ classifiers = [
 dependencies = [
     "hicstuff",
     "networkx",
-    "biopython<=1.80",
+    "biopython>=1.80",
     "docopt",
     "pysam",
     "pairtools",
