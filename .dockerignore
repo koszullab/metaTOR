@@ -1,0 +1,4 @@
+# The image only needs the conda environment and the built wheel.
+*
+!metator.yaml
+!dist/*.whl

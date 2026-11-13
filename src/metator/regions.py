@@ -1,6 +1,6 @@
 """Structures and methods to represent SV breakpoints and contig. This submodule
-defines a BreakPoint class representing connections between positions on 
-separate contig. Each breakpoint consists of two positions. Each of position is 
+defines a BreakPoint class representing connections between positions on
+separate contig. Each breakpoint consists of two positions. Each of position is
 located on a contigment. Positions have a sign representing what end of a contig
 they're on.
 
@@ -8,7 +8,7 @@ Classes to handle genomic regions:
     - Position
     - Contig
     - Breakpoint
-    - Bin 
+    - Bin
     - Scaffold
 """
 
@@ -46,7 +46,7 @@ class Position:
 
     def has_sign(self) -> bool:
         """Whether sign information is available."""
-        return not self.sign is None
+        return self.sign is not None
 
 
 @dataclass
@@ -78,7 +78,9 @@ class Contig:
     # None means unscaffolded.
     scaffold: Optional[str] = field(default=None, compare=False)
 
-    def __post_init__(self,):
+    def __post_init__(
+        self,
+    ):
         if self.end < self.start:
             raise ValueError("end cannot be smaller than start.")
         if self.start < 0:
@@ -113,9 +115,7 @@ class Contig:
         if rel_pos < 0:
             raise ValueError("Cannot split on negative coord")
         if rel_pos > (self.end - self.start):
-            raise ValueError(
-                f"Cannot split {self} at position {rel_pos}: Beyond contigment end."
-            )
+            raise ValueError(f"Cannot split {self} at position {rel_pos}: Beyond contigment end.")
         left_contig, right_contig = copy.copy(self), copy.copy(self)
         if not self.is_reverse:
             left_contig.end = self.start + rel_pos
@@ -145,7 +145,10 @@ class BreakPoint:
     """
 
     def __init__(
-        self, pos1: Position, pos2: Position, type: str = "UNK",
+        self,
+        pos1: Position,
+        pos2: Position,
+        type: str = "UNK",
     ):
 
         # Properties are use to set/get contigments instead
@@ -199,10 +202,7 @@ class BreakPoint:
         if self._check_pos_at_contig_end(self.pos1, contig):
             self._contig1 = contig
         else:
-            raise ValueError(
-                f"Attempted to set contig1 to {contig} which does not match "
-                f"breakpoint pos1 of {self.pos1}."
-            )
+            raise ValueError(f"Attempted to set contig1 to {contig} which does not match breakpoint pos1 of {self.pos1}.")
 
     @property
     def contig2(self) -> Contig:
@@ -214,10 +214,7 @@ class BreakPoint:
         if self._check_pos_at_contig_end(self.pos2, contig):
             self._contig2 = contig
         else:
-            raise ValueError(
-                f"Attempted to set contig2 to {contig}, which does not match "
-                f"breakpoint pos2 of {self.pos2}."
-            )
+            raise ValueError(f"Attempted to set contig2 to {contig}, which does not match breakpoint pos2 of {self.pos2}.")
 
     def has_signs(self) -> bool:
         """Whether sign information is available"""
@@ -235,9 +232,7 @@ class BreakPoint:
         both_signs = self.has_signs() and other.has_signs()
         compat_contigs = self.pos2.contig == other.pos1.contig
         if not (both_contigs and both_signs):
-            raise ValueError(
-                "Cannot connect breakpoints without contigment or sign information."
-            )
+            raise ValueError("Cannot connect breakpoints without contigment or sign information.")
         compat_coords = False
         if self.pos2.sign != other.pos1.sign:
             if self.intersect(other) >= min_intersect:
@@ -248,9 +243,7 @@ class BreakPoint:
     def intersect(self, other: BreakPoint) -> int:
         """Amount of overlap between two breakpoint's contigments"""
         if not (self.has_contigs() and other.has_contigs()):
-            raise ValueError(
-                "Cannot compute overlap if without contigment information."
-            )
+            raise ValueError("Cannot compute overlap if without contigment information.")
         # TODO: Could use signs to skip some comparisons
         intersect = 0
         for source in [self.contig1, self.contig2]:
@@ -280,14 +273,10 @@ class Bin:
         # list rather than np.array, due to better insert/append performance.
         self.contigs = []
         for seq in self.fasta:
-            self.contigs.append(
-                Contig(seq.name, 0, len(seq), bin=self.bin_name)
-            )
+            self.contigs.append(Contig(seq.name, 0, len(seq), bin=self.bin_name))
 
         # Compute breakpoint positions.
-        self.breakpoints = np.cumsum(
-            [0] + [len(contig) for contig in self.contigs]
-        )
+        self.breakpoints = np.cumsum([0] + [len(contig) for contig in self.contigs])
         self.scaffolds = []
 
     def __len__(self) -> int:
@@ -315,9 +304,7 @@ class Bin:
             self._contig_hash = contig_hash
             changed = True
         if changed:
-            self._bds = np.cumsum(
-                [0] + [len(contig) for contig in self.contigs]
-            )
+            self._bds = np.cumsum([0] + [len(contig) for contig in self.contigs])
         return self._bds
 
     def get_contig_bounds(self, coord: int) -> Tuple[int, Tuple[int, int]]:
@@ -325,9 +312,7 @@ class Bin:
         coordinate falls. Return format is (id, (start, end))."""
         bounds = self.boundaries
         if coord >= bounds[-1]:
-            raise ValueError(
-                f"Coordinate out of bounds: {self.bin_name}:{coord}"
-            )
+            raise ValueError(f"Coordinate out of bounds: {self.bin_name}:{coord}")
         contig_id = max(0, np.searchsorted(bounds, coord, side="right") - 1)
         return (contig_id, (bounds[contig_id], bounds[contig_id + 1]))
 
@@ -336,17 +321,21 @@ class Bin:
         result = []
         bounds = self.boundaries
         if start < 0 or end > bounds[-1]:
-            raise ValueError(
-                f"Coordinate out of bounds: {self.bin_name}:{start}-{end}"
-            )
+            raise ValueError(f"Coordinate out of bounds: {self.bin_name}:{start}-{end}")
 
         (
             contig_id_left,
-            (start_bound_left, end_bound_left,),
+            (
+                start_bound_left,
+                _end_bound_left,
+            ),
         ) = self.get_contig_bounds(start)
         (
             contig_id_right,
-            (start_bound_right, end_bound_right,),
+            (
+                start_bound_right,
+                _end_bound_right,
+            ),
         ) = self.get_contig_bounds(end)
 
         # If the start and end falls in the same contig
@@ -354,10 +343,8 @@ class Bin:
             return [
                 Contig(
                     self.bin_name,
-                    self.contigs[contig_id_left].start
-                    + (start - start_bound_left),
-                    self.contigs[contig_id_left].start
-                    + (end - start_bound_left),
+                    self.contigs[contig_id_left].start + (start - start_bound_left),
+                    self.contigs[contig_id_left].start + (end - start_bound_left),
                     self.contigs[contig_id_left].is_reverse,
                 )
             ]
@@ -426,13 +413,14 @@ class Bin:
             self.contigs.insert(contig_id, contig_ins)
         else:
             # Insertion inside a contig, split it and add contig in between.
-            contig_l, contig_r = self.contigs.pop(contig_id).split(
-                position - contig_start
-            )
+            contig_l, contig_r = self.contigs.pop(contig_id).split(position - contig_start)
             for contig in [contig_r, contig_ins, contig_l]:
                 self.contigs.insert(contig_id, contig)
         bp = BreakPoint(
-            Position(self.bin_name, contig_ins.start,),
+            Position(
+                self.bin_name,
+                contig_ins.start,
+            ),
             Position(self.bin_name, contig_ins.end),
             "INS",
         )
@@ -449,9 +437,7 @@ class Bin:
         # Inversion inside a single contig.: Split it in 3 and invert middle.
         if s_contig_id == e_contig_id:
             inv_size = end - start
-            contig_l, contig_mr = self.contigs.pop(s_contig_id).split(
-                s_start_dist
-            )
+            contig_l, contig_mr = self.contigs.pop(s_contig_id).split(s_start_dist)
             contig_m, contig_r = contig_mr.split(inv_size)
             contig_m.flip()
             for contig in [contig_r, contig_m, contig_l]:
@@ -471,13 +457,9 @@ class Bin:
             # If contigs are contained in the inversion, invert and flip them.
             for contig_id in range(s_contig_id, e_contig_id):
                 self.contigs[contig_id].flip()
-            self.contigs[s_contig_id:e_contig_id] = self.contigs[
-                e_contig_id - 1 : s_contig_id - 1 : -1
-            ]
+            self.contigs[s_contig_id:e_contig_id] = self.contigs[e_contig_id - 1 : s_contig_id - 1 : -1]
         self.clean_contigs()
-        bp = BreakPoint(
-            Position(self.bin_name, start), Position(self.bin_name, end), "INV"
-        )
+        bp = BreakPoint(Position(self.bin_name, start), Position(self.bin_name, end), "INV")
         self.breakpoints.append(bp)
 
     def delete(self, start: int, end: int):
@@ -497,26 +479,17 @@ class Bin:
         # Deletion spans multiple contigs
         else:
             # Deletion starts in contig, end gets trimmed
-            self.contigs[s_contig_id].end = (
-                self.contigs[s_contig_id].start + start_dist
-            )
+            self.contigs[s_contig_id].end = self.contigs[s_contig_id].start + start_dist
 
             # Contigs contained in deletion disappear
             for contig_id in range(s_contig_id + 1, e_contig_id):
                 curr_start = self.contigs[contig_id].start
                 self.contigs[contig_id].end = curr_start
 
-            from copy import copy
-
-            ori_end = copy(self.contigs[e_contig_id])
             # Deletion ends in contig, trim left side
-            self.contigs[e_contig_id].start = (
-                self.contigs[e_contig_id].end - end_dist
-            )
+            self.contigs[e_contig_id].start = self.contigs[e_contig_id].end - end_dist
 
-        bp = BreakPoint(
-            Position(self.bin_name, start), Position(self.bin_name, end), "DEL"
-        )
+        bp = BreakPoint(Position(self.bin_name, start), Position(self.bin_name, end), "DEL")
         self.breakpoints.append(bp)
 
     def get_seq(self, fasta: pyfastx.Fasta) -> Iterator[str]:

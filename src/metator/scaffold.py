@@ -15,7 +15,6 @@ Class to handle the scaffolding:
     Scaffolder
 """
 
-
 from dataclasses import dataclass, field
 import metator.io as mio
 import networkx as nx
@@ -26,9 +25,6 @@ from metator.regions import Bin, Scaffold
 from metator.log import logger
 from typing import List, Optional
 from os.path import join
-import warnings
-import sys
-from io import StringIO
 
 
 def get_scaffolds(
@@ -74,7 +70,12 @@ def get_scaffolds(
     pairs_data = []
     for pair_file in pair_files:
         pairs_data.append(mio.get_pairs_data(pair_file, threads))
-    scaffolder = Scaffolder(bin, pairs_data, window_size, threshold,)
+    scaffolder = Scaffolder(
+        bin,
+        pairs_data,
+        window_size,
+        threshold,
+    )
     scaffolder.get_matrix()
     scaffolder.get_normalize_values()
     scaffolder.normalize_matrix()
@@ -87,7 +88,11 @@ def get_scaffolds(
 
 
 def parallel_scaffold(
-    bin_name, final_fasta_dir, alignment_files, scaffold_fasta_dir, junctions,
+    bin_name,
+    final_fasta_dir,
+    alignment_files,
+    scaffold_fasta_dir,
+    junctions,
 ):
     """
     Task function for parallel worker to scaffold the a bin.
@@ -217,17 +222,9 @@ class Scaffolder:
         self.positions = np.empty(2 * self.length, dtype="S256")
         for i, contig in enumerate(self.bin.contigs):
             # Start/end are defined for small fragments
-            end = (
-                contig.start + self.window_size
-                if len(contig) > self.window_size
-                else len(contig)
-            )
+            end = contig.start + self.window_size if len(contig) > self.window_size else len(contig)
             self.positions[2 * i] = f"{contig.name}:{0}-{end}"
-            start = (
-                contig.end - self.window_size
-                if len(contig) > self.window_size
-                else 0
-            )
+            start = contig.end - self.window_size if len(contig) > self.window_size else 0
             self.positions[2 * i + 1] = f"{contig.name}:{start}-{contig.end}"
 
     def get_matrix(self):
@@ -244,9 +241,7 @@ class Scaffolder:
                         )
                         for _pair in pairs:
                             self.score_matrice[i, j] += 1
-        self.score_matrice = np.triu(
-            self.score_matrice + self.score_matrice.T, k=1
-        )
+        self.score_matrice = np.triu(self.score_matrice + self.score_matrice.T, k=1)
         return self.score_matrice
 
     def get_normalize_values(self):
@@ -275,14 +270,10 @@ class Scaffolder:
 
                 # Extract pairs.
                 for pairs_data_object in self.pairs_data:
-                    pairs = pairs_data_object.querys2D(
-                        f"{query_left_bp1}|{query_right_bp1}", 1
-                    )
+                    pairs = pairs_data_object.querys2D(f"{query_left_bp1}|{query_right_bp1}", 1)
                     for _pair in pairs:
                         self.normalize[2 * i] += 1
-                    pairs = pairs_data_object.querys2D(
-                        f"{query_left_bp2}|{query_right_bp2}", 1
-                    )
+                    pairs = pairs_data_object.querys2D(f"{query_left_bp2}|{query_right_bp2}", 1)
                     for _pair in pairs:
                         self.normalize[2 * i + 1] += 1
 
@@ -306,12 +297,8 @@ class Scaffolder:
         for i in range(self.length * 2):
             for j in range(i + 1, self.length * 2):
                 if (j - i > 2) or (i % 2 == 1):
-                    self.score_matrice_norm[i, j] = self.score_matrice[
-                        i, j
-                    ] / np.sqrt(self.normalize[i] * self.normalize[j])
-        self.score_matrice_norm = (
-            self.score_matrice_norm + self.score_matrice_norm.T
-        )
+                    self.score_matrice_norm[i, j] = self.score_matrice[i, j] / np.sqrt(self.normalize[i] * self.normalize[j])
+        self.score_matrice_norm = self.score_matrice_norm + self.score_matrice_norm.T
         return self.score_matrice_norm
 
     def build_graph(self):
@@ -333,15 +320,7 @@ class Scaffolder:
         while np.max(self.score_matrice_norm) > self.threshold:
             # If one breakpoint have only one possible association. Take it
             # first even if there are better association.
-            if (
-                np.sum(
-                    (
-                        np.sum(self.score_matrice_norm > self.threshold, axis=1)
-                        == 1
-                    )
-                )
-                > 0
-            ):
+            if np.sum((np.sum(self.score_matrice_norm > self.threshold, axis=1) == 1)) > 0:
                 if (
                     np.max(
                         self.score_matrice_norm[
@@ -363,8 +342,7 @@ class Scaffolder:
                             self.score_matrice_norm[
                                 (
                                     np.sum(
-                                        self.score_matrice_norm
-                                        > self.threshold,
+                                        self.score_matrice_norm > self.threshold,
                                         axis=1,
                                     )
                                     == 1
@@ -374,15 +352,10 @@ class Scaffolder:
                         )
                     )
                 else:
-                    row1, col1 = np.where(
-                        self.score_matrice_norm
-                        == np.max(self.score_matrice_norm)
-                    )
+                    row1, col1 = np.where(self.score_matrice_norm == np.max(self.score_matrice_norm))
             # Else take the highest association score
             else:
-                row1, col1 = np.where(
-                    self.score_matrice_norm == np.max(self.score_matrice_norm)
-                )
+                row1, col1 = np.where(self.score_matrice_norm == np.max(self.score_matrice_norm))
             # Always take first indice first if multiple positions found.
             row1 = row1[0]
             col1 = col1[0]
@@ -409,20 +382,14 @@ class Scaffolder:
             # Case of an isolated contigs add it alone as a scaffold.
             # We choose to keep the forward strand of the contig.
             if len(subgraph.nodes) == 2:
-                contig_id = [node for node in subgraph.nodes][0] // 2
+                contig_id = next(iter(subgraph.nodes)) // 2
                 self.bin.contigs[contig_id].is_reverse = False
-                scaffold = Scaffold(
-                    scaf_name, [self.bin.contigs[contig_id]], False
-                )
+                scaffold = Scaffold(scaf_name, [self.bin.contigs[contig_id]], False)
                 self.bin.scaffolds.append(scaffold)
             # Look at dangling residues to search for edges of the scaffold.
             else:
                 ordered_nodes = np.zeros(len(subgraph.nodes))
-                dangling_residues = [
-                    node
-                    for node in subgraph.nodes
-                    if subgraph.degree(node) == 1
-                ]
+                dangling_residues = [node for node in subgraph.nodes if subgraph.degree(node) == 1]
                 # Either two dangling residues (linear)
                 if len(dangling_residues) == 2:
                     circular = False
@@ -435,7 +402,7 @@ class Scaffolder:
                 else:
                     # Take first contig as a start as it's circular.
                     circular = True
-                    start = list(subgraph.nodes)[0]
+                    start = next(iter(subgraph.nodes))
                     end = start + 1 if start % 2 == 0 else start - 1
                     ordered_nodes[0], ordered_nodes[1] = end, start
                     k = 1

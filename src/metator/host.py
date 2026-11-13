@@ -316,14 +316,14 @@ def classify_mags(mags, bin_summary) -> dict:
     def classify_mag(
         mag,
     ) -> (
-        None
-        | Literal["Unknown"]
+        Literal["Unknown"]
         | Literal["Contaminated"]
         | Literal["Complete"]
         | Literal["HQ"]
         | Literal["MQ"]
         | Literal["LQ"]
         | Literal["PQ"]
+        | None
     ):
         c, r = mag.completeness, mag.contamination
         if pd.isna(c) or pd.isna(r):
@@ -464,7 +464,7 @@ def compute_mge_mag_interactions(
     print(f"           3  hosts: {len([x for x in mge_mags.values() if len(x.hosts) == 3])}")
     print(f"           4  hosts: {len([x for x in mge_mags.values() if len(x.hosts) == 4])}")
     print(f"           5+ hosts: {len([x for x in mge_mags.values() if len(x.hosts) >= 5])}")
-    
+
     return mags, mge_mags
 
 
@@ -505,7 +505,6 @@ def annotate_hosts(
 
 # Call to the main function `annotate_hosts`
 if __name__ == "__main__":
-
     network_data_file = "network_1.txt"
     contig_data_file = "contig_data_final_reformated.txt"
     bin_summary_file = "bin_summary.txt"
@@ -515,7 +514,7 @@ if __name__ == "__main__":
     # Load data
     contig_data = pd.read_csv(contig_data_file, sep="\t")
     bin_summary = pd.read_csv(bin_summary_file, sep="\t", comment="#")
-    bin_summary.columns = ["MAG"] + list(bin_summary.columns[1:])
+    bin_summary.columns = ["MAG", *list(bin_summary.columns[1:])]
     network_data = pd.read_csv(network_data_file, sep="\t", names=["contig1", "contig2", "signal"])
 
     # Run the main function
