@@ -200,3 +200,22 @@ def test_checkm_compare_bins():
         else:
             rec_id.append(int(keys[i].split("_")[1]))
     assert not (set(over_id) & set(rec_id))
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="HiC_abundance is halved twice: a fully binned metagenome sums to 50%, while SG_abundance sums to 100%",
+)
+def test_bin_abundances_are_percentages():
+    contigs = pd.DataFrame(
+        {
+            "Final_bin": ["A", "A", "B"],
+            "Size": [100, 200, 300],
+            "Shotgun_coverage": [1.0, 1.0, 2.0],
+            "Hit": [10, 20, 30],
+        }
+    )
+    summary = mtv.get_bin_coverage({"A": {}, "B": {}}, contigs)
+    assert summary["A"]["SG_abundance"] == pytest.approx(100 * 300 / 900)
+    assert sum(b["SG_abundance"] for b in summary.values()) == pytest.approx(100)
+    assert sum(b["HiC_abundance"] for b in summary.values()) == pytest.approx(100)
