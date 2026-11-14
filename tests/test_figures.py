@@ -203,12 +203,14 @@ def test_quality_boxplots(metagenome, tmp_path, saved_figures, qualities):
 
 
 def test_quality_boxplots_skip_unknown_classes_and_missing_values(tmp_path, saved_figures):
+    """Bins of no known quality class are left out, and so are missing and
+    infinite values (seaborn treated both as missing)."""
     data = pd.DataFrame(
         {
-            "Final_bin": ["b1", "b1", "b1", "b2", "b3"],
-            "MAG_quality": ["MQ", "MQ", "MQ", "ND", "LQ"],
-            "size_weight": [1, 2, 1, 1, 1],
-            "value": [1.0, 3.0, np.nan, 5.0, 7.0],
+            "Final_bin": ["b1", "b1", "b1", "b1", "b2", "b3", "b3"],
+            "MAG_quality": ["MQ", "MQ", "MQ", "MQ", "ND", "LQ", "LQ"],
+            "size_weight": [1, 2, 1, 1, 1, 1, 1],
+            "value": [1.0, 3.0, np.nan, np.inf, 5.0, 7.0, -np.inf],
         }
     )
     mtf._quality_boxplots(data, "value", "Value", str(tmp_path / "boxes.png"))

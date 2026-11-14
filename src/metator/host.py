@@ -287,7 +287,8 @@ def plot_mag_noise(mags, image_file="background_noise.png") -> None:
 
     # Create a DataFrame for plotting
     data = pd.concat([intra_signals, inter_signals], ignore_index=True)
-    data = data.dropna(subset=["quality", "log_signal"])
+    # MAGs without a quality and missing or infinite signals are left out.
+    data = data[data["quality"].notna() & np.isfinite(data["log_signal"].to_numpy(dtype=float))]
     qualities = list(pd.unique(data["quality"]))
 
     # Plotting a split violin plot; each violin show distribution of intra (left) and inter (right) signals, per quality

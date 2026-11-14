@@ -376,7 +376,7 @@ def _quality_boxplots(contigs_data, column, ylabel, out_file, log_scale=False):
     The bins are laid out from left to right in their order of first
     appearance in the table, so the caller chooses it by sorting the
     table. Contigs of a bin whose MAG_quality is not a known class are
-    left out.
+    left out, and so are missing and infinite values.
 
     Parameters:
     -----------
@@ -396,6 +396,7 @@ def _quality_boxplots(contigs_data, column, ylabel, out_file, log_scale=False):
     data = data[data["MAG_quality"].isin(MAG_QUALITY_COLOURS)]
     bins = data.groupby("Final_bin", sort=False)
     values = [group[column].dropna().to_numpy(dtype=float) for _, group in bins]
+    values = [box[np.isfinite(box)] for box in values]
     colours = [MAG_QUALITY_COLOURS[group["MAG_quality"].iloc[0]] for _, group in bins]
 
     fig, ax = plt.subplots(figsize=(20, 10))

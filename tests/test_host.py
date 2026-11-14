@@ -208,13 +208,15 @@ def test_plot_mag_noise(binned, tmp_path, saved_figures):
 
 
 def test_plot_mag_noise_leaves_out_missing_values(tmp_path, saved_figures):
-    """MAGs without a quality are left out, and so are missing signals."""
+    """MAGs without a quality are left out, and so are missing and infinite
+    signals (seaborn treated both as missing)."""
     mags = {}
     for name, quality, intra, inter in [
         ("m1", "HQ", 1.0, [0.01, 0.02]),
         ("m2", None, 5.0, [0.5, 0.6]),
         ("m3", "HQ", 2.0, [0.03, 0.01]),
         ("m4", "LQ", 3.0, []),
+        ("m5", "LQ", np.inf, [np.inf]),
     ]:
         mags[name] = mth.Mag(name)
         mags[name].quality, mags[name].intra_signal, mags[name].inter_signals = quality, intra, inter
@@ -228,7 +230,7 @@ def test_plot_mag_noise_leaves_out_missing_values(tmp_path, saved_figures):
 
     assert violins == {(0, "low"): pytest.approx(log(1.0, 2.0)), (0, "high"): pytest.approx(log(0.01, 0.03))}
     assert quartiles.keys() == violins.keys()
-    # LQ: one intra-MAG signal and no inter-MAG signal.
+    # LQ: one finite intra-MAG signal and no finite inter-MAG signal.
     assert lines == {(1, "low"): pytest.approx(log(3.0)[0])}
 
 
