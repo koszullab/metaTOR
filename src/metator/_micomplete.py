@@ -33,11 +33,21 @@ def patch_biopython_gc():
         return
 
     def GC(seq):
-        """GC content in percent, as computed by ``Bio.SeqUtils.GC`` in
-        Biopython <= 1.81: G, C and S are counted, and every character
-        (including ambiguous ones) counts in the length.
+        """GC content in percent, computed as ``Bio.SeqUtils.GC`` did in
+        Biopython <= 1.81 (this is its body): G, C and S are counted in either
+        case, every character (including ambiguous ones) counts in the length,
+        and an empty sequence gives 0.0.
+
+        ``100 * gc_fraction(seq, ambiguous="ignore")`` counts the same
+        characters but divides before multiplying, which can differ in the
+        last bit and so move miComplete's GC-content, rounded to two decimals,
+        by 0.01.
         """
-        return 100.0 * Bio.SeqUtils.gc_fraction(seq, ambiguous="ignore")
+        gc = sum(seq.count(x) for x in ["G", "C", "g", "c", "S", "s"])
+        try:
+            return gc * 100.0 / len(seq)
+        except ZeroDivisionError:
+            return 0.0
 
     Bio.SeqUtils.GC = GC
 
