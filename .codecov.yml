@@ -9,5 +9,5 @@ coverage:
         only_pulls: false
     patch:
       default:
-        target: auto
-        threshold: 80%
+        # The lines a pull request changes must be at least 80% covered.
+        target: 80%
