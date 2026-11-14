@@ -34,7 +34,6 @@ dependencies = [
     "hicstuff",
     "igraph>=0.10.3",
     "biopython>=1.80",
-    "docopt",
     "pysam",
     "pairtools",
     "pyfastx",
@@ -43,7 +42,8 @@ dependencies = [
     "matplotlib>=3.9",
     "scipy",
     "micomplete",
-    "pypairix"
+    "pypairix",
+    "rich-click>=1.9",
 
     # NON PIP DEPENDENCIES
     #"bowtie2"
@@ -90,7 +90,7 @@ repository = "https://github.com/koszullab/metator"
 changelog = "https://github.com/koszullab/metaTOR/blob/master/CHANGELOG.md"
 
 [project.scripts]
-metator = "metator.main:main"
+metator = "metator.cli:cli"
 
 [tool.hatch.version]
 path = "src/metator/version.py"

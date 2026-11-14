@@ -7,7 +7,6 @@ import numpy as np
 import pyfastx
 import pytest
 
-import metator.commands as mtc
 import metator.io as mio
 import metator.scaffold as mts
 from metator.regions import Bin
@@ -107,12 +106,12 @@ def _assert_scaffold_is_the_genome(fasta, community, junction):
     assert seq in genome + genome or seq in synthetic.reverse_complement(genome + genome)
 
 
-def test_scaffold_command(tmp_path):
+def test_scaffold_command(tmp_path, run_cli):
     community = _genome(seed=7, circular=True)
     assembly, pairs = _inputs(community, tmp_path / "inputs")
     out_fasta, out_frags = tmp_path / "scaffold.fa", tmp_path / "frags.txt"
     args = ["-b", "bin", "-i", str(assembly), "-o", str(out_fasta), "-O", str(out_frags), "-j", "NNNNNNNNNN", str(pairs)]
-    mtc.Scaffold(args, {}).execute()
+    run_cli("scaffold", *args)
     _assert_scaffold_is_the_genome(out_fasta, community, "NNNNNNNNNN")
     with open(out_frags) as frags:
         lines = frags.read().splitlines()

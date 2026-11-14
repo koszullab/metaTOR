@@ -5,7 +5,6 @@ import shutil
 from pathlib import Path
 
 import hicstuff.pipeline
-import metator.commands as mtc
 import metator.contact_map as mtcm
 import pandas as pd
 import pytest
@@ -33,7 +32,7 @@ def test_bin_ids_match_zero_padded_ids(metator_object, name, column):
     assert obj.contigs == expected.tolist()
 
 
-def test_contactmap_default_outdir(tmp_path, monkeypatch):
+def test_contactmap_default_outdir(tmp_path, monkeypatch, run_cli):
     """Without --outdir the map goes to ./contact_map_<name>."""
     assembly = tmp_path / "assembly.fa"
     shutil.copy("tests_data/subset.assembly.fa", assembly)
@@ -41,7 +40,7 @@ def test_contactmap_default_outdir(tmp_path, monkeypatch):
     pairs = Path("tests_data/subset.pairs.gz").resolve()
     monkeypatch.chdir(tmp_path)
     args = f"-a {assembly} -c {contig_data} -e DpnII -n 1 -O overlapping_bin -s 0 {pairs}"
-    mtc.Contactmap(args.split(" "), {}).execute()
+    run_cli("contactmap", *args.split(" "))
     outdir = tmp_path / "contact_map_1"
     assert (outdir / "1.fa").stat().st_size > 0
 

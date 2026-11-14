@@ -10,7 +10,6 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-import metator.commands as mtc
 import metator.network as mtn
 import metator.partition as mtp
 from tests import synthetic
@@ -136,7 +135,7 @@ def _partition_with_merged_bin(metagenome, contig_data_file, out_dir, merged):
     return partition_file, fasta_dir
 
 
-def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenome_network, tmp_path, monkeypatch):
+def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenome_network, tmp_path, monkeypatch, run_cli):
     """A bin holding two genomes is reported contaminated by (stub) miComplete:
     the recursive decontamination splits it back into the two genomes."""
     random.seed(0)
@@ -162,7 +161,7 @@ def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenom
         "-t", "1",
         "-F",
     ]  # fmt: skip
-    mtc.Validation(args, {}).execute()
+    run_cli("validation", *args)
     assert not (out / "recursive_bin" / "metator_00009_00000.fa").exists()
 
     # miComplete ran on the partition bins, then on the bins of the first
@@ -188,7 +187,7 @@ def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenom
     assert (out / "plot" / "bins_distribution.png").stat().st_size > 0
 
 
-def test_validation_without_contaminated_bin(metagenome, metagenome_inputs, metagenome_network, tmp_path, monkeypatch):
+def test_validation_without_contaminated_bin(metagenome, metagenome_inputs, metagenome_network, tmp_path, monkeypatch, run_cli):
     monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
     partition_file, fasta_dir = _partition_with_merged_bin(metagenome, metagenome_network["contig_data"], tmp_path, merged=())
     out = tmp_path / "out"
@@ -201,11 +200,11 @@ def test_validation_without_contaminated_bin(metagenome, metagenome_inputs, meta
         "-T", str(tmp_path / "tmp"),
         "-s", "50000",
     ]  # fmt: skip
-    mtc.Validation(args, {}).execute()
+    run_cli("validation", *args)
     assert len(pd.read_csv(out / "bin_summary.txt", sep="\t", index_col=0)) == len(metagenome.genomes)
 
 
-def test_partition_without_bin_above_the_size_threshold(metagenome_inputs, metagenome_network, tmp_path):
+def test_partition_without_bin_above_the_size_threshold(metagenome_inputs, metagenome_network, tmp_path, run_cli):
     args = [
         "-a", str(metagenome_inputs["assembly"]),
         "-c", str(metagenome_network["contig_data"]),
@@ -215,11 +214,11 @@ def test_partition_without_bin_above_the_size_threshold(metagenome_inputs, metag
         "-i", "2",
         "-s", "10000000",
     ]  # fmt: skip
-    mtc.Partition(args, {}).execute()
+    run_cli("partition", *args)
     assert list((tmp_path / "out" / "overlapping_bin").iterdir()) == []
 
 
-def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, metagenome_indexed_pairs, tmp_path, monkeypatch):
+def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, metagenome_indexed_pairs, tmp_path, monkeypatch, run_cli):
     """The whole pipeline from pairs, with stub miComplete and scaffolding."""
     random.seed(0)
     monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
@@ -242,7 +241,7 @@ def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, metagenome
         "-C",
         "--scaffold",
     ]  # fmt: skip
-    mtc.Pipeline(args, {}).execute()
+    run_cli("pipeline", *args)
 
     final = pd.read_csv(out / "contig_data_final.txt", sep="\t")
     truth, found = _genome_labels(final, metagenome, "Final_bin")
