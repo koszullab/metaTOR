@@ -26,7 +26,7 @@ import numpy as np
 import os
 import pandas as pd
 import re
-import seaborn as sns
+from matplotlib.patches import Patch
 from metator.log import logger
 from os.path import join
 
@@ -350,6 +350,93 @@ def figure_camembert_quality(
     plt.close()
 
 
+# Colours and legend labels of the MAG quality classes, in legend order.
+MAG_QUALITY_COLOURS = {
+    "HQ": "#103b6f",
+    "MQ": "#6666ff",
+    "LQ": "#ccccff",
+    "Contaminated": "#ed3139",
+    "Other": "#c0bcbc",
+}
+MAG_QUALITY_LABELS = {
+    "HQ": "HQ MAGs (Completion > 90, Contamination < 5)",
+    "MQ": "MQ MAGs (Completion > 70, Contamination < 10)",
+    "LQ": "LQ MAGs (Completion > 50, Contamination < 10)",
+    "Contaminated": "Contaminated (Completion > 50, Contamination < 10)",
+    "Other": "Other (Completion < 50)",
+}
+# Outlines, whiskers, caps and medians of the boxes.
+BOX_LINE_COLOUR = "0.15"
+
+
+def _quality_boxplots(contigs_data, column, ylabel, out_file, log_scale=False):
+    """Plot one box per bin of a contig value, coloured by the bin quality.
+
+    Each contig counts once per unit of its size weight (see reindex_df).
+    The bins are laid out from left to right in their order of first
+    appearance in the table, so the caller chooses it by sorting the
+    table. Contigs of a bin whose MAG_quality is not a known class are
+    left out.
+
+    Parameters:
+    -----------
+    contigs_data : pandas.DataFrame
+        Table of the binned contigs, with the columns Final_bin,
+        MAG_quality, size_weight and the plotted column.
+    column : str
+        Column of the value to plot.
+    ylabel : str
+        Label of the y axis.
+    out_file : str
+        Path where to write the figure.
+    log_scale : bool
+        Whether to plot the values on a log scale.
+    """
+    data = reindex_df(contigs_data, "size_weight")
+    data = data[data["MAG_quality"].isin(MAG_QUALITY_COLOURS)]
+    bins = data.groupby("Final_bin", sort=False)
+    values = [group[column].dropna().to_numpy(dtype=float) for _, group in bins]
+    colours = [MAG_QUALITY_COLOURS[group["MAG_quality"].iloc[0]] for _, group in bins]
+
+    fig, ax = plt.subplots(figsize=(20, 10))
+    lines = {"color": BOX_LINE_COLOUR, "linewidth": 1.25}
+    boxes = ax.boxplot(
+        values,
+        positions=range(len(values)),
+        widths=1.0,
+        patch_artist=True,
+        boxprops={"edgecolor": BOX_LINE_COLOUR, "linewidth": 1.25},
+        whiskerprops=lines,
+        capprops=lines,
+        medianprops=lines,
+        flierprops={
+            "marker": "o",
+            "markersize": 1.0,
+            "markerfacecolor": "0.5",
+            "markeredgewidth": 0.0,
+        },
+    )
+    for box, colour in zip(boxes["boxes"], colours):
+        box.set_facecolor(colour)
+    if log_scale:
+        ax.set_yscale("log")
+    ax.set(xlabel="", ylabel=ylabel, xticklabels=[])
+    # Every class is in the legend, whether or not a bin has it.
+    ax.legend(
+        handles=[
+            Patch(
+                facecolor=colour,
+                edgecolor=BOX_LINE_COLOUR,
+                linewidth=1.25,
+                label=MAG_QUALITY_LABELS[quality],
+            )
+            for quality, colour in MAG_QUALITY_COLOURS.items()
+        ]
+    )
+    fig.savefig(out_file, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+
+
 def figures_mags_GC_boxplots(contigs_data, out_file):
     """Function to plot barplots GC content of the contigs for each bins. The
     count are weighted by the size of the contigs.
@@ -365,46 +452,7 @@ def figures_mags_GC_boxplots(contigs_data, out_file):
     """
     # Sort by decreasing GC.
     contigs_data = contigs_data.sort_values(by="GC-content", ascending=False)
-    # Build the palette
-    my_pal = {
-        "HQ": "#103b6f",
-        "MQ": "#6666ff",
-        "LQ": "#ccccff",
-        "Contaminated": "#ed3139",
-        "Other": "#c0bcbc",
-    }
-    # Plot the figure.
-    _fig, ax = plt.subplots(figsize=(20, 10))
-    boxplot = sns.boxplot(
-        y="GC_content",
-        x="Final_bin",
-        data=reindex_df(contigs_data, "size_weight"),
-        palette=my_pal,
-        hue="MAG_quality",
-        hue_order=["HQ", "MQ", "LQ", "Contaminated", "Other"],
-        flierprops=dict(
-            markerfacecolor="0.5",
-            markersize=1.0,
-            marker="o",
-            markeredgewidth=0.0,
-        ),
-        linewidth=1.25,
-        width=1.0,
-        dodge=False,
-    )
-    ax.set(xlabel="", ylabel="GC content distribution", xticklabels=[])
-    labels = [
-        "HQ MAGs (Completion > 90, Contamination < 5)",
-        "MQ MAGs (Completion > 70, Contamination < 10)",
-        "LQ MAGs (Completion > 50, Contamination < 10)",
-        "Contaminated (Completion > 50, Contamination < 10)",
-        "Other (Completion < 50)",
-    ]
-    handles, _ = boxplot.get_legend_handles_labels()
-    boxplot.legend(handles, labels)
-    # Save the file.
-    plt.savefig(out_file, dpi=200, bbox_inches="tight")
-    plt.close()
+    _quality_boxplots(contigs_data, "GC_content", "GC content distribution", out_file)
 
 
 def figures_mags_HiC_cov_boxplots(contigs_data, out_file):
@@ -424,47 +472,7 @@ def figures_mags_HiC_cov_boxplots(contigs_data, out_file):
     contigs_data["HiC_cov"] = 100 * contigs_data["Hit"] / contigs_data["Size"]
     # Sort by decreasing HiC coverage.
     contigs_data = contigs_data.sort_values(by="HiC_cov", ascending=False)
-    # Build the palette
-    my_pal = {
-        "HQ": "#103b6f",
-        "MQ": "#6666ff",
-        "LQ": "#ccccff",
-        "Contaminated": "#ed3139",
-        "Other": "#c0bcbc",
-    }
-    # Plot the figure.
-    _fig, ax = plt.subplots(figsize=(20, 10))
-    boxplot = sns.boxplot(
-        y="HiC_cov",
-        x="Final_bin",
-        data=reindex_df(contigs_data, "size_weight"),
-        palette=my_pal,
-        hue="MAG_quality",
-        hue_order=["HQ", "MQ", "LQ", "Contaminated", "Other"],
-        flierprops=dict(
-            markerfacecolor="0.5",
-            markersize=1.0,
-            marker="o",
-            markeredgewidth=0.0,
-        ),
-        linewidth=1.25,
-        width=1.0,
-        dodge=False,
-    )
-    plt.yscale("log")
-    ax.set(xlabel="", ylabel="HiC coverage distribution", xticklabels=[])
-    labels = [
-        "HQ MAGs (Completion > 90, Contamination < 5)",
-        "MQ MAGs (Completion > 70, Contamination < 10)",
-        "LQ MAGs (Completion > 50, Contamination < 10)",
-        "Contaminated (Completion > 50, Contamination < 10)",
-        "Other (Completion < 50)",
-    ]
-    handles, _ = boxplot.get_legend_handles_labels()
-    boxplot.legend(handles, labels)
-    # Save the file.
-    plt.savefig(out_file, dpi=200, bbox_inches="tight")
-    plt.close()
+    _quality_boxplots(contigs_data, "HiC_cov", "HiC coverage distribution", out_file, log_scale=True)
 
 
 def figures_mags_SG_cov_boxplots(contigs_data, out_file):
@@ -482,47 +490,13 @@ def figures_mags_SG_cov_boxplots(contigs_data, out_file):
     """
     # Sort by decreasing Shotgun coverage.
     contigs_data = contigs_data.sort_values(by="Shotgun_coverage", ascending=False)
-    # Build the palette
-    my_pal = {
-        "HQ": "#103b6f",
-        "MQ": "#6666ff",
-        "LQ": "#ccccff",
-        "Contaminated": "#ed3139",
-        "Other": "#c0bcbc",
-    }
-    # Plot the figure.
-    _fig, ax = plt.subplots(figsize=(20, 10))
-    boxplot = sns.boxplot(
-        y="Shotgun_coverage",
-        x="Final_bin",
-        data=reindex_df(contigs_data, "size_weight"),
-        palette=my_pal,
-        hue="MAG_quality",
-        hue_order=["HQ", "MQ", "LQ", "Contaminated", "Other"],
-        flierprops=dict(
-            markerfacecolor="0.5",
-            markersize=1.0,
-            marker="o",
-            markeredgewidth=0.0,
-        ),
-        linewidth=1.25,
-        width=1.0,
-        dodge=False,
+    _quality_boxplots(
+        contigs_data,
+        "Shotgun_coverage",
+        "Assembly coverage distribution",
+        out_file,
+        log_scale=True,
     )
-    plt.yscale("log")
-    ax.set(xlabel="", ylabel="Assembly coverage distribution", xticklabels=[])
-    labels = [
-        "HQ MAGs (Completion > 90, Contamination < 5)",
-        "MQ MAGs (Completion > 70, Contamination < 10)",
-        "LQ MAGs (Completion > 50, Contamination < 10)",
-        "Contaminated (Completion > 50, Contamination < 10)",
-        "Other (Completion < 50)",
-    ]
-    handles, _ = boxplot.get_legend_handles_labels()
-    boxplot.legend(handles, labels)
-    # Save the file.
-    plt.savefig(out_file, dpi=200, bbox_inches="tight")
-    plt.close()
 
 
 def generates_frags_network(contig_data, bin_summary, bin_size):

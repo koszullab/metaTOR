@@ -44,6 +44,26 @@ def _close_figures():
     plt.close("all")
 
 
+@pytest.fixture
+def saved_figures(monkeypatch):
+    """The figures saved during a test, by file name.
+
+    The plotting functions close the figures they save: this keeps them,
+    so that a test can check what they show.
+    """
+    from matplotlib.figure import Figure
+
+    saved = {}
+    savefig = Figure.savefig
+
+    def record(figure, fname, *args, **kwargs):
+        saved[Path(fname).name] = figure
+        return savefig(figure, fname, *args, **kwargs)
+
+    monkeypatch.setattr(Figure, "savefig", record)
+    return saved
+
+
 @pytest.fixture(scope="session")
 def metagenome():
     """The mock community (see tests/synthetic.py) and its ground truth."""
