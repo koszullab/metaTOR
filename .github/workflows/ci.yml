@@ -50,8 +50,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 3.12+ is blocked by micomplete 1.1.1, which needs biopython<=1.80.
-        python-version: ["3.9", "3.10", "3.11"]
+        # Every version pyproject's requires-python allows (>=3.9,<3.13).
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
 

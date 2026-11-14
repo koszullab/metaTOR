@@ -48,7 +48,7 @@ conda create -n metator bioconda::metator
 not available from Pypi and must be installed separately. Please consider the following 
 before installing `metator`:
 
-* Python `3.9` to `3.11` is required.
+* Python `3.9` to `3.12` is required.
 * The following dependencies should also be locally installed and available in the `$PATH`:
     * [`bowtie2`](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml) or `bwa`
     * [`samtools`](https://www.htslib.org/download/)
