@@ -43,7 +43,6 @@ dependencies = [
     "pandas",
     "matplotlib>=3.9",
     "scipy",
-    "seaborn",
     "micomplete",
     "pypairix"
 

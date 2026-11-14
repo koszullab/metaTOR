@@ -23,6 +23,12 @@ All notable changes to this project will be documented in this file.
   it never declared `docopt`, which `hicstuff` stopped providing in 3.2.5.
 - metaTOR no longer depends on `scikit-learn`, `looseversion`,
   `packaging` or `requests`.
+- Figures are drawn with matplotlib alone: metaTOR no longer depends on
+  `seaborn`, whose boxplots pass an argument that matplotlib 3.13
+  removes, and requires `matplotlib` >= 3.9. The MAG GC and coverage
+  boxplots and the background-noise violins show the same data; their
+  colours are no longer muted, and each half violin now stops at the
+  smallest and largest values instead of extending past them.
 
 ### Removed
 - `metator host`, which always failed since 1.3.10: it called
