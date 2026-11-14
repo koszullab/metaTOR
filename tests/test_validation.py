@@ -11,8 +11,6 @@ import os
 import re
 import shutil
 
-ALGORITHM = ("alg", ["louvain", "leiden", "spinglass"])
-
 threads = 8
 fasta_dir = "tests_data/outdir_validation/overlapping_bin"
 arch_output = "tests_data/outdir_validation/tmp_micomplete/arch131.tsv"
@@ -47,9 +45,6 @@ def test_get_bin_coverage():
     assert bin_info["MetaTOR_00002_00000"]["HiC_abundance"] == pytest.approx(49.72, abs=1e-2)
 
 
-def test_give_results_info(): ...
-
-
 def test_merge_micomplete():
     out_file = "tmp_micomplete.csv"
     mtv.merge_micomplete(bact_output, arch_output, out_file)
@@ -59,19 +54,57 @@ def test_merge_micomplete():
     os.remove(out_file)
 
 
-def test_micomplete_compare_bins(): ...
+COLS = ["Completeness", "Weighted completeness", "Redundancy", "Weighted redundancy", "CDs"]
 
 
-def test_micomplete_quality():
-    out_file = "tmp_micomplete.csv"
-    mtv.micomplete_quality(fasta_dir, out_file, threads)
-    data = pd.read_csv(out_file, sep="\t", comment="#", index_col=0)
+def _recursive_summary(path, completeness):
+    """Write a miComplete-like table: one row per recursive bin."""
+    with open(path, "w") as table:
+        table.write("Name\t" + "\t".join(COLS) + "\n")
+        for name, value in completeness.items():
+            table.write(f"{name}\t{value}\t{value}\t1.0\t1.0\t100\n")
+    return str(path)
+
+
+def _parent(completeness):
+    values = [completeness, completeness, 1.6, 1.6, 300]
+    return {"P_00001_00000": dict(zip(COLS, values), recursive=True, step=0, parent=None)}
+
+
+def test_micomplete_compare_bins_keeps_every_child(tmp_path):
+    """A parent split into several good bins is replaced by all of them."""
+    children = ["P_00001_00001", "P_00001_00002", "P_00001_00003"]
+    table = _recursive_summary(tmp_path / "rec.tsv", dict.fromkeys(children, 0.9))
+    parents = dict.fromkeys(children, "P_00001_00000")
+    summary, contamination = mtv.micomplete_compare_bins(table, _parent(0.9), parents, 1)
+    assert sorted(summary) == children
+    assert contamination
+    assert all(summary[c]["parent"] == "P_00001_00000" for c in children)
+    assert all(summary[c]["step"] == 1 for c in children)
+
+
+def test_micomplete_compare_bins_keeps_parent_over_worse_children(tmp_path):
+    """Children that lose too much completeness are discarded."""
+    children = ["P_00001_00001", "P_00001_00002"]
+    table = _recursive_summary(tmp_path / "rec.tsv", dict.fromkeys(children, 0.3))
+    parents = dict.fromkeys(children, "P_00001_00000")
+    summary, contamination = mtv.micomplete_compare_bins(table, _parent(0.9), parents, 1)
+    assert list(summary) == ["P_00001_00000"]
+    assert summary["P_00001_00000"]["recursive"] is False
+    assert not contamination
+
+
+def test_micomplete_quality(tmp_path, monkeypatch):
+    bins = os.path.abspath(fasta_dir)
+    before = sorted(os.listdir(bins))
+    monkeypatch.chdir(tmp_path)
+    mtv.micomplete_quality(bins, "results.tsv", threads)
+    data = pd.read_csv("results.tsv", sep="\t", comment="#", index_col=0)
     assert len(data) == 2
     assert len(data.columns) == 14
-    os.remove(out_file)
-
-
-def test_recursive_clustering(): ...
+    # miComplete's intermediate files are left neither here nor next to the bins.
+    assert sorted(os.listdir(tmp_path)) == ["results.tsv", "tests_data"]
+    assert sorted(os.listdir(bins)) == before
 
 
 def test_recursive_clustering_worker():
@@ -79,7 +112,6 @@ def test_recursive_clustering_worker():
     os.makedirs(tmp_dir, exist_ok=True)
     partition = mtv.recursive_clustering_worker(
         "MetaTOR_00002_00000",
-        bin_summary,
         tmp_dir,
         network,
         "louvain",
@@ -91,9 +123,6 @@ def test_recursive_clustering_worker():
     assert len(partition) == 192
     assert len(partition[716].split(";")) == iterations
     shutil.rmtree(tmp_dir)
-
-
-def test_recursive_decontamination(): ...
 
 
 def test_update_contigs_data_recursive():
@@ -132,9 +161,6 @@ def test_write_bins_contigs():
 
 
 # ChekM deprecated functions.
-def test_checkm():
-    # Not tested as deprecated and too long to test.
-    ...
 
 
 def test_checkm_compare_bins():
@@ -174,31 +200,3 @@ def test_checkm_compare_bins():
         else:
             rec_id.append(int(keys[i].split("_")[1]))
     assert not (set(over_id) & set(rec_id))
-
-
-# @pytest.mark.parametrize(*ALGORITHM)
-# def test_recursive_clustering(alg):
-#     ...
-
-
-#     """Crash test for the partition of contaminated bins."""
-#     os.makedirs("tests_data/out_test/", exist_ok=True)
-#     os.makedirs("tests_data/out_test/tmp/", exist_ok=True)
-#     os.makedirs("tests_data/out_test/recursive_bin/", exist_ok=True)
-#     mtv.recursive_clustering(
-#         assembly="tests_data/assembly.fa",
-#         iterations=5,
-#         overlapping_parameter=0.9,
-#         resolution_parameter=1.0,
-#         outdir="tests_data/out_test/",
-#         recursive_fasta_dir="tests_data/out_test/recursive_bin",
-#         algorithm=alg,
-#         tmpdir="tests_data/out_test/tmp/",
-#         micomplete_file="tests_data/outdir2/overlapping_checkm_results.txt",
-#         contigs_data_file="tests_data/outdir2/contig_data_partition.txt",
-#         network_file="tests_data/outdir2/network.txt",
-#         cluster_matrix=False,
-#         size=1000000,
-#         threads=1,
-#     )
-#     shutil.rmtree("tests_data/out_test/")

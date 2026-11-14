@@ -31,6 +31,7 @@ NotImplementedError
 import logging
 import multiprocessing as mp
 import os
+import re
 import shutil
 import time
 import metator.align as mta
@@ -77,6 +78,47 @@ class AbstractCommand:
             raise IOError("Output file already exists. Use --force to overwrite")
         if dirname(path):
             os.makedirs(dirname(path), exist_ok=True)
+
+    def bin_prefix(self):
+        """Prefix of the bin names: "metator" or "<--prefix>_metator".
+
+        Bin names become fasta file names that miComplete renames (it drops
+        every dot), so only letters, digits, "_" and "-" are accepted.
+        """
+        user_prefix = self.args.get("--prefix")
+        if not user_prefix:
+            return "metator"
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", user_prefix):
+            logger.error(
+                "--prefix may only contain letters, digits, '_' and '-': %r",
+                user_prefix,
+            )
+            raise ValueError(f"Invalid --prefix: {user_prefix!r}")
+        return f"{user_prefix}_metator"
+
+    def make_tmp_dir(self):
+        """Create this run's private temporary directory inside --tmpdir.
+
+        --tmpdir may be a directory the user already keeps files in (for
+        example /scratch/$USER), so the run works in a fresh random
+        subdirectory and the clean-up removes only that.
+        """
+        base = self.args.get("--tmpdir") or "./tmp"
+        self._tmp_base_created = not exists(base)
+        self._tmp_dir = mio.generate_temp_dir(base)
+        logger.debug("Temporary directory: %s", self._tmp_dir)
+        return self._tmp_dir
+
+    def remove_tmp_dir(self):
+        """Remove this run's temporary directory.
+
+        --tmpdir itself is removed only if this run created it and nothing
+        else is left in it.
+        """
+        shutil.rmtree(self._tmp_dir)
+        base = dirname(self._tmp_dir)
+        if self._tmp_base_created and not os.listdir(base):
+            os.rmdir(base)
 
 
 class Network(AbstractCommand):
@@ -153,12 +195,8 @@ class Network(AbstractCommand):
 
     def execute(self):
 
-        # Defined the temporary directory.
-        if not self.args["--tmpdir"]:
-            tmp_dir = mio.generate_temp_dir("./tmp")
-        else:
-            tmp_dir = self.args["--tmpdir"]
-            os.makedirs(tmp_dir, exist_ok=True)
+        # Private temporary directory inside --tmpdir.
+        tmp_dir = self.make_tmp_dir()
 
         # Defined the output directory and output file names.
         if not self.args["--outdir"]:
@@ -304,7 +342,7 @@ class Network(AbstractCommand):
 
         # Delete the temporary folder
         if not self.args["--no-clean-up"]:
-            shutil.rmtree(tmp_dir)
+            self.remove_tmp_dir()
 
         generate_log_footer(log_file)
 
@@ -371,12 +409,8 @@ class Partition(AbstractCommand):
 
     def execute(self):
 
-        # Defined the temporary directory.
-        if not self.args["--tmpdir"]:
-            tmp_dir = mio.generate_temp_dir("./tmp")
-        else:
-            tmp_dir = self.args["--tmpdir"]
-            os.makedirs(tmp_dir, exist_ok=True)
+        # Private temporary directory inside --tmpdir.
+        tmp_dir = self.make_tmp_dir()
 
         # Defined the output directory.
         if not self.args["--outdir"]:
@@ -414,10 +448,7 @@ class Partition(AbstractCommand):
             raise ValueError
 
         # Create prefix.
-        if not self.args["--prefix"]:
-            prefix = "metator"
-        else:
-            prefix = f"{self.args['--prefix']}_metator"
+        prefix = self.bin_prefix()
 
         # Partition the network
         _clustering_matrix_file, _contigs_data_file = mtp.partition(
@@ -441,7 +472,7 @@ class Partition(AbstractCommand):
         os.remove(self.args["--assembly"] + ".fxi")
         # Delete the temporary folder
         if not self.args["--no-clean-up"]:
-            shutil.rmtree(tmp_dir)
+            self.remove_tmp_dir()
 
         generate_log_footer(log_file)
 
@@ -467,8 +498,8 @@ class Validation(AbstractCommand):
     options:
         -a, --assembly=FILE     The path to the assembly fasta file used to do
                                 the alignment.
-        -A, --algorithm=STR     Algorithm to use. Either "louvain", "leiden" or
-                                "spinglass". [Default: louvain]
+        -A, --algorithm=STR     Algorithm to use. Either "louvain" or "leiden".
+                                [Default: louvain]
         -c, --contigs=FILE      The path to the file containing the data of the
                                 contigs from the partition step (13 columns).
         -C, --cluster-matrix    If enabled, save the clustering matrix.
@@ -504,12 +535,8 @@ class Validation(AbstractCommand):
     # new bins. Otherwise go back to the old state.
     def execute(self):
 
-        # Defined the temporary directory.
-        if not self.args["--tmpdir"]:
-            tmp_dir = mio.generate_temp_dir("./tmp")
-        else:
-            tmp_dir = self.args["--tmpdir"]
-            os.makedirs(tmp_dir, exist_ok=True)
+        # Private temporary directory inside --tmpdir.
+        tmp_dir = self.make_tmp_dir()
 
         # Defined the output directory and output file names.
         if not self.args["--outdir"]:
@@ -555,15 +582,12 @@ class Validation(AbstractCommand):
         resolution_parameter = float(self.args["--res-param"])
 
         # Check correct algorithm value
-        if self.args["--algorithm"] not in ["louvain", "leiden", "spinglass"]:
-            logger.error('algorithm should be either "louvain", "leiden" or "spinglass.')
+        if self.args["--algorithm"] not in ["louvain", "leiden"]:
+            logger.error('algorithm should be either "louvain" or "leiden".')
             raise ValueError
 
         # Create prefix.
-        if not self.args["--prefix"]:
-            prefix = "metator"
-        else:
-            prefix = f"{self.args['--prefix']}_metator"
+        prefix = self.bin_prefix()
 
         _clustering_matrix_file = mtv.recursive_decontamination(
             self.args["--algorithm"],
@@ -588,7 +612,7 @@ class Validation(AbstractCommand):
         os.remove(self.args["--assembly"] + ".fxi")
         # Delete the temporary folder
         if not self.args["--no-clean-up"]:
-            shutil.rmtree(tmp_dir)
+            self.remove_tmp_dir()
 
         generate_log_footer(log_file)
 
@@ -626,9 +650,7 @@ class Pipeline(AbstractCommand):
         -a, --assembly=FILE     The initial assembly path acting as the
                                 alignment file's reference genome or the
                                 basename of the bowtie2 index.
-        -A, --algorithm=STR     Algorithm to use. Either "louvain", "leiden" or
-                                "spinglass". If spinglass is chosen, the first
-                                partition will be done using louvain
+        -A, --algorithm=STR     Algorithm to use. Either "louvain" or "leiden".
                                 [Default: louvain]
         -b, --aligner=STR       Aligner algorithm to use. Either "bwa" or
                                 "bowtie2". [Default: bowtie2]
@@ -688,12 +710,8 @@ class Pipeline(AbstractCommand):
 
     def execute(self):
 
-        # Defined the temporary directory.
-        if not self.args["--tmpdir"]:
-            tmp_dir = mio.generate_temp_dir("./tmp")
-        else:
-            tmp_dir = self.args["--tmpdir"]
-            os.makedirs(tmp_dir, exist_ok=True)
+        # Private temporary directory inside --tmpdir.
+        tmp_dir = self.make_tmp_dir()
 
         # Defined the output directory and output file names.
         if not self.args["--outdir"]:
@@ -707,7 +725,6 @@ class Pipeline(AbstractCommand):
                 shutil.rmtree(overlapping_fasta_dir)
                 os.makedirs(overlapping_fasta_dir)
             else:
-                print(self.args["--force"])
                 logger.error(
                     "%s already existed. Remove directory or use -F argument to overwrite it.",
                     overlapping_fasta_dir,
@@ -748,8 +765,8 @@ class Pipeline(AbstractCommand):
             self.args["--aligner-mode"] = "iterative"
 
         # Check correct algorithm value.
-        if self.args["--algorithm"] not in ["louvain", "leiden", "spinglass"]:
-            logger.error('algorithm should be either "louvain", "leiden" or "spinglass.')
+        if self.args["--algorithm"] not in ["louvain", "leiden"]:
+            logger.error('algorithm should be either "louvain" or "leiden".')
             raise ValueError
 
         # Check if normalization in the list of possible normalization.
@@ -820,10 +837,7 @@ class Pipeline(AbstractCommand):
                     raise ValueError
 
         # Create prefix.
-        if not self.args["--prefix"]:
-            prefix = "metator"
-        else:
-            prefix = f"{self.args['--prefix']}_metator"
+        prefix = self.bin_prefix()
 
         # Manage start point.
         if self.args["--start"] == "fastq":
@@ -990,7 +1004,7 @@ class Pipeline(AbstractCommand):
         os.remove(fasta + ".fxi")
         # Delete the temporary folder.
         if not self.args["--no-clean-up"]:
-            shutil.rmtree(tmp_dir)
+            self.remove_tmp_dir()
             if start < 3:
                 for pair_file in alignment_files:
                     os.remove(pair_file)
@@ -1041,10 +1055,8 @@ class Qc(AbstractCommand):
 
     def execute(self):
 
-        # Defined the temporary directory.
-        if not self.args["--tmpdir"]:
-            self.args["--tmpdir"] = "./tmp"
-        tmp_dir = mio.generate_temp_dir(self.args["--tmpdir"])
+        # Private temporary directory inside --tmpdir.
+        tmp_dir = self.make_tmp_dir()
 
         # Set output directory.
         if not self.args["--outdir"]:
@@ -1112,7 +1124,7 @@ class Qc(AbstractCommand):
 
         # Delete the temporary folder.
         if not self.args["--no-clean-up"]:
-            shutil.rmtree(tmp_dir)
+            self.remove_tmp_dir()
 
         generate_log_footer(log_file)
 
@@ -1181,20 +1193,18 @@ class Contactmap(AbstractCommand):
 
     def execute(self):
 
+        # Defined the output directory first: the log file is written there.
+        if not self.args["--outdir"]:
+            self.args["--outdir"] = join(".", "contact_map_" + self.args["--name"])
+        os.makedirs(self.args["--outdir"], exist_ok=True)
+
         # Enable file logging
         now = time.strftime("%Y%m%d%H%M%S")
         log_file = join(self.args["--outdir"], (f"metator_contactmap_{now}.log"))
         generate_log_header(log_file, cmd="contactmap", args=self.args)
 
-        # Defined the temporary directory.
-        if not self.args["--tmpdir"]:
-            self.args["--tmpdir"] = "./tmp"
-        tmp_dir = mio.generate_temp_dir(self.args["--tmpdir"])
-
-        # Defined the output directory and output file names.
-        if not self.args["--outdir"]:
-            self.args["--outdir"] = join(".", "contact_map_" + self.args["--name"])
-        os.makedirs(self.args["--outdir"], exist_ok=True)
+        # Private temporary directory inside --tmpdir.
+        tmp_dir = self.make_tmp_dir()
 
         mtc.generate_contact_map(
             self.args["--assembly"],
@@ -1215,7 +1225,7 @@ class Contactmap(AbstractCommand):
 
         # Delete the temporary folder.
         if not self.args["--no-clean-up"]:
-            shutil.rmtree(tmp_dir)
+            self.remove_tmp_dir()
             # Delete pyfastx index:
             os.remove(self.args["--assembly"] + ".fxi")
 
@@ -1265,11 +1275,11 @@ class Scaffold(AbstractCommand):
 
         # Create output files:
         if self.args["--out-fasta"] is None:
-            out_fasta = join(".", f'{self.args["--bin-name"]}_scaffolded.fa')
+            out_fasta = join(".", f"{self.args['--bin-name']}_scaffolded.fa")
         else:
             out_fasta = self.args["--out-fasta"]
         if self.args["--out-frags"] is None:
-            out_info = join(".", f'{self.args["--bin-name"]}_info_frags.txt')
+            out_info = join(".", f"{self.args['--bin-name']}_info_frags.txt")
         else:
             out_info = self.args["--out-frags"]
 
@@ -1420,10 +1430,8 @@ class Mge(AbstractCommand):
         log_file = f"metator_mge_{now}.log"
         generate_log_header(log_file, cmd="mge", args=self.args)
 
-        # Defined the temporary directory.
-        if not self.args["--tmpdir"]:
-            self.args["--tmpdir"] = "./tmp"
-        tmp_dir = mio.generate_temp_dir(self.args["--tmpdir"])
+        # Private temporary directory inside --tmpdir.
+        tmp_dir = self.make_tmp_dir()
 
         # Defined the output directory and output file names.
         if not self.args["--outdir"]:
@@ -1457,7 +1465,7 @@ class Mge(AbstractCommand):
 
         # Delete the temporary folder.
         if remove_tmp:
-            shutil.rmtree(tmp_dir)
+            self.remove_tmp_dir()
             # Delete pyfastx index:
             os.remove(self.args["--assembly"] + ".fxi")
 

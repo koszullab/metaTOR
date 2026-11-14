@@ -7,7 +7,6 @@ This mdoule contains all core I/O functions:
     - check_checkm
     - check_fasta_index
     - check_is_fasta
-    - check_louvain_cpp
     - check_pypairix
     - generate_fasta_index
     - generate_temp_dir
@@ -63,7 +62,7 @@ def check_checkm():
         True if checkM found in the path, False otherwise.
     """
     try:
-        checkm = sp.check_output("checkm", stderr=sp.STDOUT, shell=True)
+        sp.check_output("checkm", stderr=sp.STDOUT, shell=True)
     except sp.CalledProcessError:
         logger.error("Cannot find 'checkm' in your path please install it or add it in your path.")
         return False
@@ -104,7 +103,8 @@ def check_fasta_index(ref, mode="bowtie2"):
     if index is not None:
         # Convert the PosixPath objects to strings and get the longest common
         # prefix to obtain index basename (without the dot)
-        index = os.path.commonprefix(list(map(str, index))).strip(".")
+        # A character-wise prefix is intended: "idx.1.bt2", "idx.rev.1.bt2"... -> "idx."
+        index = os.path.commonprefix(list(map(str, index))).rstrip(".")  # noqa: RUF071
     return index
 
 
@@ -132,53 +132,6 @@ def check_is_fasta(in_file):
     return test
 
 
-def check_louvain_cpp(louvain_path):
-    """Function to check is the Louvain functions are callable.
-
-    Parameters:
-    -----------
-    louvain_path : str
-        Path of the directory where the Louvain functions are.
-
-    Returns:
-    --------
-    bool:
-        Boolean value describing either the Louvain functions are callable or
-        not.
-    """
-
-    # Look for the path to call the functions:
-    louvain = join(louvain_path, "louvain")
-    convert = join(louvain_path, "convert")
-    hierarchy = join(louvain_path, "hierarchy")
-
-    # Check convert:
-    try:
-        convert = sp.check_output(f"{convert} --help", stderr=sp.STDOUT, shell=True)
-    except sp.CalledProcessError:
-        logger.error("Cannot find the 'convert' function from Louvain path.")
-        return False
-        raise ImportError
-
-    # Check louvain:
-    try:
-        louvain = sp.check_output(f"{louvain} --help", stderr=sp.STDOUT, shell=True)
-    except sp.CalledProcessError:
-        logger.error("Cannot find the 'louvain' function from Louvain path.")
-        return False
-        raise ImportError
-
-    # Check hierarchy:
-    try:
-        hierarchy = sp.check_output(f"{hierarchy} --help", stderr=sp.STDOUT, shell=True)
-    except sp.CalledProcessError:
-        logger.error("Cannot find the convert_net function from Louvain path.")
-        return False
-        raise ImportError
-
-    return True
-
-
 def check_pypairix():
     """
     Function to test if pypairix is available.
@@ -189,10 +142,10 @@ def check_pypairix():
         True if pypairix is available.
     """
     try:
-        v = version.parse(pypairix.__version__)
+        version.parse(pypairix.__version__)
     except AttributeError:
         logger.error("Cannot find 'pypairix' installed.")
-        raise AttributeError
+        raise AttributeError from None
     return True
 
 
@@ -251,8 +204,8 @@ def generate_temp_dir(path):
         os.makedirs(full_path)
     except PermissionError:
         raise PermissionError(
-            "The temporary directory cannot be created in {}. " "Make sure you have write permission.".format(path)
-        )
+            "The temporary directory cannot be created in {}. Make sure you have write permission.".format(path)
+        ) from None
     return full_path
 
 
@@ -324,7 +277,6 @@ def get_restriction_site(enzyme):
 
     # Iterates on the enzymes.
     for enz in rb:
-
         # Extract restriction sites and look for cut sites.
         restriction_list.append(enz.site.replace("N", "."))
 
@@ -660,7 +612,7 @@ def save_sparse_matrix(s_mat, path):
         File path where the matrix will be stored
     """
     if s_mat.format != "coo":
-        ValueError("Sparse matrix must be in coo format")
+        raise ValueError("Sparse matrix must be in coo format")
     _dtype = s_mat.dtype
     sparse_arr = np.vstack([s_mat.row, s_mat.col, s_mat.data]).T
 
@@ -709,8 +661,9 @@ def sort_pairs(in_file, out_file, tmp_dir=None, threads=1, buffer="2G"):
         sort_ver = list(map(int, sort_ver))
         if sort_ver[0] < 8 or (sort_ver[0] == 8 and sort_ver[1] < 23):
             logger.warning(
-                "GNU sort version is {0} but >8.23 is required for parallel "
-                "sort. Sorting on a single thread.".format(".".join(map(str, sort_ver)))
+                "GNU sort version is {0} but >8.23 is required for parallel sort. Sorting on a single thread.".format(
+                    ".".join(map(str, sort_ver))
+                )
             )
             parallel_ok = False
     # BSD sort has a different format and will throw error upon parsing. It does
@@ -719,10 +672,10 @@ def sort_pairs(in_file, out_file, tmp_dir=None, threads=1, buffer="2G"):
         logger.warning("Using BSD sort instead of GNU sort, sorting on a single thread.")
         parallel_ok = False
 
-    # Sort pairs and append to file.
-    with open(out_file, "a") as output:
+    # Sort pairs into a fresh output file.
+    with open(out_file, "w") as output:
         grep_proc = sp.Popen(["grep", "-v", "^#", in_file], stdout=sp.PIPE)
-        sort_cmd = ["sort", "-S %s" % buffer] + ["-k1,1V", "-k2,2V"]
+        sort_cmd = ["sort", "-S %s" % buffer, "-k1,1V", "-k2,2V"]
         if tmp_dir is not None:
             sort_cmd.append("--temporary-directory={0}".format(tmp_dir))
         if parallel_ok:
@@ -766,9 +719,7 @@ def sort_pairs_pairtools(pairfile, threads=1, remove=False, force=False, tmp_dir
         if os.path.isfile(sorted_pairs):
             os.remove(sorted_pairs)
     elif os.path.isfile(sorted_pairs) or os.path.isfile(f"{sorted_pairs}.gz"):
-        logger.error(
-            f"The {sorted_pairs} exists. Do not overwrite existing, use --force to overwrite or use another location."
-        )
+        logger.error(f"The {sorted_pairs} exists. Do not overwrite existing, use --force to overwrite or use another location.")
         raise ValueError
 
     # Sort pairs using pairtools.

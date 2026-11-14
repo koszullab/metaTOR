@@ -1,3 +1,3 @@
-from importlib.metadata import version
+"""Package version: the single source of truth, bumped by bump-my-version."""
 
-__version__ = version("metator")
+__version__ = "1.3.10"

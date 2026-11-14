@@ -180,3 +180,62 @@ def test_pairs(tmp_path):
     args = f"-rF {pairs1} {pairs2}"
     proc = mtc.Pairs(args.split(" "), {})
     proc.execute()
+
+
+def test_tmpdir_contents_survive(tmp_path):
+    """--tmpdir may already hold the user's files: a run removes only its own."""
+    user_tmp = tmp_path / "scratch"
+    user_tmp.mkdir()
+    keep = user_tmp / "precious.txt"
+    keep.write_text("keep me")
+    args = [
+        "-1", str(Path(global_args["SUBSET_PAIRS"]).resolve()),
+        "-a", str(Path(global_args["SUBSET_FASTA"]).resolve()),
+        "-o", str(tmp_path / "out"),
+        "-T", str(user_tmp),
+        "-S", "pair",
+    ]  # fmt: skip
+    mtc.Network(args, {}).execute()
+    assert keep.read_text() == "keep me"
+    assert list(user_tmp.iterdir()) == [keep]
+
+
+def test_default_tmpdir_is_tidied(tmp_path, monkeypatch):
+    """Without -T, ./tmp is removed if the run created it, kept if it existed."""
+    args = [
+        "-1", str(Path(global_args["SUBSET_PAIRS"]).resolve()),
+        "-a", str(Path(global_args["SUBSET_FASTA"]).resolve()),
+        "-o", "out",
+        "-S", "pair",
+    ]  # fmt: skip
+    monkeypatch.chdir(tmp_path)
+    mtc.Network(args, {}).execute()
+    assert not (tmp_path / "tmp").exists()
+
+    (tmp_path / "tmp").mkdir()
+    (tmp_path / "tmp" / "mine.txt").write_text("x")
+    mtc.Network(args, {}).execute()
+    assert [p.name for p in (tmp_path / "tmp").iterdir()] == ["mine.txt"]
+
+
+def test_invalid_prefix_is_rejected(tmp_path):
+    """miComplete drops dots from bin names, so a dotted --prefix is refused."""
+    args = ("-a {SUBSET_FASTA} -c {CONTIGS} -n {NETWORK} -o {OUT} -T {TMP} -p my.sample").format(
+        OUT=tmp_path / "out", TMP=tmp_path / "tmp", **global_args
+    )
+    with pytest.raises(ValueError, match="Invalid --prefix"):
+        mtc.Partition(args.split(" "), {}).execute()
+
+
+def test_spinglass_is_rejected_before_any_work(tmp_path, monkeypatch):
+    """spinglass is gone: refuse it up front, not after miComplete has run."""
+
+    def not_reached(*args, **kwargs):
+        raise AssertionError("recursive decontamination should not start")
+
+    monkeypatch.setattr(mtc.mtv, "recursive_decontamination", not_reached)
+    args = ("-a {SUBSET_FASTA} -c {CONTIGS_PARTITION} -f {OVERLAPPING_BINS} -n {NETWORK} -o {OUT} -T {TMP} -A spinglass").format(
+        OUT=tmp_path / "out", TMP=tmp_path / "tmp", **global_args
+    )
+    with pytest.raises(ValueError):
+        mtc.Validation(args.split(" "), {}).execute()

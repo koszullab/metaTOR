@@ -2,6 +2,56 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Changed
+- Louvain and Leiden now run through `igraph`: the bundled Louvain binaries,
+  the Leiden jar and the Java requirement are gone, and the wheel is pure
+  Python.
+- `metator mge`: flags renamed for consistency with the other commands;
+  MetaBAT input and the host, CheckV and plotting steps removed (#33).
+- `--prefix` (partition, validation, pipeline) accepts only letters, digits,
+  `_` and `-`: miComplete drops dots from bin names.
+- `validation` and `pipeline` no longer accept `-A spinglass`.
+- Temporary files go to a private subdirectory of `--tmpdir`.
+- Declare `docopt`, `packaging`, `matplotlib` and `requests`, and drop
+  `checkv` and `cooler`, in the package dependencies. A fresh install of
+  1.3.10 no longer starts: it never declared `docopt`, which `hicstuff`
+  stopped providing in 3.2.5.
+
+### Fixed
+- `network`, `partition`, `validation` and `pipeline` deleted the whole
+  `--tmpdir` directory, including files that were already in it.
+- `pipeline` (fastq or bam start) crashed while plotting at the end, after
+  writing its bins: the network heatmap read the compressed pairs files as
+  text. Runs with `--depth` crashed at the same step on a missing column.
+- With pandas 3, when a contaminated bin was split into several bins, only
+  one of them was kept in the final bins.
+- With `--aligner bwa`, every pair carried the first mate's position for
+  both mates.
+- With several Hi-C libraries, `network.txt` listed each edge once per
+  library; steps reading it with networkx kept only the last library's
+  contacts.
+- Two runs started from the same directory deleted each other's miComplete
+  files.
+- `contactmap` selected no contig for a numeric bin id (`--name 8`), and
+  failed without `--outdir`.
+- `mge --random` always failed.
+- A bowtie2 or bwa index given as `../path` was looked up at `/path`.
+- pandas 3 compatibility.
+- `pairtools sort` and `bgzip` failures are reported where they happen.
+- Core bin detection is no longer quadratic in the number of core bins.
+
+## [1.3.10] - 2025-05-21
+- `host` module rewritten to annotate the bacterial hosts of each MGE (#27).
+  Known issue: the `metator host` command was not updated and fails.
+- `pairtools sort` writes its temporary files to the temporary directory.
+- Docker image: install `procps`.
+
+## [1.3.9] - 2025-03-18
+- Pin `biopython<=1.80`, required by `micomplete` 1.1.1; better management
+  of the dependencies and of the CI (#24).
+
 ## [1.3.8] - 2025-03-01
 - Release after `metator` is added to `bioconda`.
 

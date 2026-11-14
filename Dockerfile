@@ -1,23 +1,23 @@
-FROM ghcr.io/mamba-org/micromamba:latest
+# Built by the release workflow from the released wheel (dist/*.whl), so the
+# image contains exactly what was published to PyPI.
+FROM ghcr.io/mamba-org/micromamba:2.10.0
 
-ARG PY_VERSION
-ARG PKG_VERSION
+ARG PY_VERSION=3.11
 
-LABEL Name=metator Version=$PKG_VERSION
-
-COPY --chown=$MAMBA_USER:$MAMBA_USER . ./
-
-# Install ps
 USER root
-RUN apt-get update && apt-get install -y procps
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends procps \
+    && rm -rf /var/lib/apt/lists/*
+USER $MAMBA_USER
 
-# Install the package
-USER mambauser
-RUN micromamba install -y -n base --file metator.yaml python=$PY_VERSION && \
-    micromamba run -n base pip install . && \
-    micromamba clean --all --yes && \
-    rm -rf /home/mambauser/.cache && \
-    rm -rf ./*
+# Non-Python tools: aligners, prodigal, hmmer...
+COPY --chown=$MAMBA_USER:$MAMBA_USER metator.yaml /tmp/metator.yaml
+RUN micromamba install -y -n base -f /tmp/metator.yaml python=$PY_VERSION \
+    && micromamba clean --all --yes
 
-WORKDIR /home/mambauser/
-ENTRYPOINT [ "/usr/local/bin/_entrypoint.sh" ]
+COPY --chown=$MAMBA_USER:$MAMBA_USER dist/*.whl /tmp/dist/
+RUN micromamba run -n base pip install --no-cache-dir /tmp/dist/*.whl \
+    && rm -rf /tmp/dist /tmp/metator.yaml
+
+WORKDIR /home/mambauser
+ENTRYPOINT ["/usr/local/bin/_entrypoint.sh"]

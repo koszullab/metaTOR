@@ -1,6 +1,8 @@
 # Test for network module
 
+import collections
 import metator.io as mio
+import numpy as np
 import metator.network as mtn
 import pandas as pd
 import pytest
@@ -75,6 +77,27 @@ def test_alignment_to_contacts():
     shutil.rmtree(tmp_dir)
 
 
+def _expected_network(pairs_file, contig_data, edge=0):
+    """Inter-contig contacts per contig pair, counted straight from a pairs file."""
+    expected = collections.Counter()
+    with open(pairs_file) as pairs:
+        for line in pairs:
+            if line.startswith("#"):
+                continue
+            fields = line.split("\t")
+            c1, pos1, c2, pos2 = fields[1], int(fields[2]), fields[3], int(fields[4])
+            len1, len2 = contig_data[c1]["length"], contig_data[c2]["length"]
+            id1, id2 = contig_data[c1]["id"], contig_data[c2]["id"]
+            inside = pos1 > edge and pos2 > edge and len1 - pos1 > edge and len2 - pos2 > edge
+            if id1 != id2 and inside:
+                expected[(min(id1, id2), max(id1, id2))] += 1
+    return expected
+
+
+def _read_network(network_file):
+    return pd.read_csv(network_file, sep="\t", header=None, names=["id1", "id2", "weight"])
+
+
 def test_compute_network():
     # Test computing network.
     tmp_dir = "tmp_network"
@@ -83,7 +106,7 @@ def test_compute_network():
     tmp_file_sor = join(tmp_dir, "prenetwork_sorted.txt")
     tmp_file_net = join(tmp_dir, "network.txt")
     contig_data, hit_data = mtn.create_contig_data(assembly, nb_alignment=1)
-    contig_data, out_files_list = mtn.precompute_network(
+    contig_data, _out_files_list = mtn.precompute_network(
         [alignment_file],
         contig_data,
         0,
@@ -91,7 +114,8 @@ def test_compute_network():
         tmp_file_pre,
         tmp_dir,
     )
-    # Case without normalization.
+    expected = _expected_network(alignment_file, contig_data)
+    # Case without normalization: one line per contig pair, with its count.
     mtn.compute_network(
         tmp_file_pre,
         tmp_file_net,
@@ -102,10 +126,12 @@ def test_compute_network():
         "None",
     )
     alpha = pd.read_csv(tmp_file_sor, sep="\t", header=None).iloc[0, 1]
-    beta = pd.read_csv(tmp_file_net, sep="\t", header=None).iloc[62, :]
     assert alpha == "NODE_1404"
-    # assert (beta == [1, 105, 8]).all()
-    # Case with normalization.
+    network = _read_network(tmp_file_net)
+    assert not network.duplicated(["id1", "id2"]).any()
+    assert {(a, b): w for a, b, w in network.itertuples(index=False)} == expected
+    # Case with normalization, reusing the same file names: counts must not
+    # accumulate across calls.
     mtn.compute_network(
         tmp_file_pre,
         tmp_file_net,
@@ -115,9 +141,35 @@ def test_compute_network():
         8,
         "length",
     )
-    beta = pd.read_csv(tmp_file_net, sep="\t", header=None).iloc[62, 2]
-    assert beta == pytest.approx(23.33, abs=1e-2)
+    network = _read_network(tmp_file_net)
+    assert len(network) == len(expected)
+    by_id = {data["id"]: data for data in contig_data.values()}
+    for a, b, weight in network.itertuples(index=False):
+        factor = np.sqrt(by_id[a]["hit"] / by_id[a]["length"] * by_id[b]["hit"] / by_id[b]["length"])
+        assert weight == pytest.approx(expected[(a, b)] / factor, rel=1e-6)
     shutil.rmtree(tmp_dir)
+
+
+def test_alignment_to_contacts_merges_libraries(tmp_path):
+    """With two libraries, network.txt sums them: one line per contig pair."""
+    contig_data, hit_data = mtn.create_contig_data(assembly, nb_alignment=2)
+    network_file, _ = mtn.alignment_to_contacts(
+        [alignment_file, alignment_file],
+        contig_data,
+        0,
+        hit_data,
+        str(tmp_path),
+        "network.txt",
+        "contig_data_network.txt",
+        str(tmp_path),
+        1,
+        "None",
+        False,
+    )
+    merged = _read_network(network_file).set_index(["id1", "id2"])["weight"]
+    single = _read_network(tmp_path / "network_0.txt").set_index(["id1", "id2"])["weight"]
+    assert merged.index.is_unique
+    pd.testing.assert_series_equal(merged.sort_index(), 2 * single.sort_index())
 
 
 def test_create_contig_data():
@@ -135,9 +187,7 @@ def test_create_contig_data():
     }
     assert hit_data["NODE_114957"] == {"id": 643, "hit": [0, 0, 0]}
     # Case with depth file.
-    contig_data, hit_data = mtn.create_contig_data(
-        assembly, 1, depth_file, "DpnII"
-    )
+    contig_data, hit_data = mtn.create_contig_data(assembly, 1, depth_file, "DpnII")
     assert len(contig_data) == 1219
     assert contig_data["NODE_522"] == {
         "id": 1,
@@ -147,30 +197,18 @@ def test_create_contig_data():
         "coverage": 4.76595,
         "RS": 162,
     }
-    assert hit_data == None
+    assert hit_data is None
 
 
 def test_normalize_pair():
     # Test for edges normalisation methods.
-    length = mtn.normalize_pair(
-        contigs_data, ("NODE_1", "NODE_6"), 52, "length"
-    )
-    abundance = mtn.normalize_pair(
-        contigs_data, ("NODE_1", "NODE_8"), 2004, "abundance"
-    )
-    abundance_null = mtn.normalize_pair(
-        contigs_data, ("NODE_1", "NODE_10"), 275, "abundance"
-    )
+    length = mtn.normalize_pair(contigs_data, ("NODE_1", "NODE_6"), 52, "length")
+    abundance = mtn.normalize_pair(contigs_data, ("NODE_1", "NODE_8"), 2004, "abundance")
+    abundance_null = mtn.normalize_pair(contigs_data, ("NODE_1", "NODE_10"), 275, "abundance")
     RS = mtn.normalize_pair(contigs_data, ("NODE_6", "NODE_8"), 800, "RS")
-    EH = mtn.normalize_pair(
-        contigs_data, ("NODE_8", "NODE_1"), 2022, "empirical_hit"
-    )
-    TH = mtn.normalize_pair(
-        contigs_data, ("NODE_6", "NODE_8"), 3333, "theoritical_hit"
-    )
-    TH_null = mtn.normalize_pair(
-        contigs_data, ("NODE_1", "NODE_8"), 2004, "theoritical_hit"
-    )
+    EH = mtn.normalize_pair(contigs_data, ("NODE_8", "NODE_1"), 2022, "empirical_hit")
+    TH = mtn.normalize_pair(contigs_data, ("NODE_6", "NODE_8"), 3333, "theoritical_hit")
+    TH_null = mtn.normalize_pair(contigs_data, ("NODE_1", "NODE_8"), 2004, "theoritical_hit")
     assert length == pytest.approx(71.77, abs=1e-2)
     assert abundance == pytest.approx(31.61, abs=1e-2)
     assert abundance_null == 0

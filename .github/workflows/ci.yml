@@ -1,66 +1,114 @@
-name: Test and Doc
+name: CI
 
 on:
+  # Other branches are checked through their pull request, or by hand from
+  # the Actions tab (workflow_dispatch).
   push:
+    branches: [master]
   pull_request:
-  
-defaults:
-  run:
-    shell: bash -l {0}
+  workflow_dispatch:
+  schedule:
+    # Weekly, so that upstream releases (pandas 3, hicstuff 3.2.5...) surface
+    # in the latest-dependencies job instead of on the next unrelated push.
+    - cron: "17 5 * * 1"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  
-  Test:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Check lock file consistency
+        run: uv lock --check
+
+      - name: Ruff
+        run: |
+          uv run --locked ruff check src tests
+          uv run --locked ruff format --check src tests
+
+      - name: Type check
+        # Advisory until the existing diagnostics are fixed.
+        continue-on-error: true
+        run: uv run --locked ty check src
+
+  test:
+    name: py${{ matrix.python-version }}
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
-        python-version: [ "3.9", "3.10", "3.11" ]
-        include:
-          - os: ubuntu-latest
-          # - os: windows-latest
-          # - os: macos-latest
-    runs-on: ${{ matrix.os }}
-
+        # 3.12+ is blocked by micomplete 1.1.1, which needs biopython<=1.80.
+        python-version: ["3.9", "3.10", "3.11"]
     steps:
-    
-      - name: 🧾 Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: 🛠️ Install Python ${{ matrix.python-version }} and deps with micromamba
-        uses: mamba-org/setup-micromamba@v1
+      - name: Install non-Python tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bowtie2 bwa samtools prodigal hmmer zlib1g-dev
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
-            environment-file: metator.yaml
-            init-shell: bash
-            cache-environment: false
-            post-cleanup: 'none'
-            generate-run-shell: true
-            create-args: >-
-              python=${{ matrix.python-version }}
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
 
-      - name: 📦 Install package
-        run: |
-          pip install -e .[test]
-        shell: micromamba-shell {0}
+      - name: Install dependencies
+        run: uv sync --locked
 
-      - name: ✅ Check that package functions work
-        run: |
-          metator --help
-          metator --version
-          $(python -c "from metator import LOUVAIN_PATH; print(LOUVAIN_PATH)")/louvain -h
-          java -cp $(python -c "from metator import LEIDEN_PATH; print(LEIDEN_PATH)") -h
-        shell: micromamba-shell {0}
+      - name: Check installed package
+        run: uv run --locked metator --version
 
-      - name: 🧪 Run tests with Python ${{ matrix.python-version }} 
-        run: |
-          ruff check . --select=E9,F63,F7,F82
-          pytest --cov --cov-report=xml
-        shell: micromamba-shell {0}
+      - name: Run tests
+        run: uv run --locked pytest --cov-report=xml
 
-      - name: 🛌 Compute coverage with codecov
+      - name: Upload coverage
+        if: matrix.python-version == '3.11'
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # `test` installs from uv.lock, so it never sees a dependency release newer
+  # than the lock. This job re-resolves to the newest allowed versions.
+  latest-dependencies:
+    name: latest dependencies / py3.11
+    runs-on: ubuntu-latest
+    env:
+      UV_RESOLUTION: highest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install non-Python tools
         run: |
-          codecov -t ${{ secrets.CODECOV_TOKEN }}
-        shell: micromamba-shell {0}
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bowtie2 bwa samtools prodigal hmmer zlib1g-dev
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+
+      - name: Re-resolve ignoring uv.lock
+        run: uv lock --upgrade
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run tests
+        run: uv run pytest -q --no-cov

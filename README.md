@@ -5,7 +5,7 @@
 [![Build Status](https://github.com/koszullab/metator/actions/workflows/ci.yml/badge.svg)](https://github.com/koszullab/metator/actions)
 [![codecov](https://codecov.io/gh/koszullab/metator/branch/master/graph/badge.svg)](https://codecov.io/gh/koszullab/metator)
 [![License: GPLv3](https://img.shields.io/badge/License-GPL%203-0298c3.svg)](https://opensource.org/licenses/bo-3.0)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 <!-- [![Read the docs](https://readthedocs.org/projects/metator/badge)](https://metator.readthedocs.io) -->
 
 Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that streamlines the processing and binning of metagenomic metaHiC datasets.
@@ -54,16 +54,13 @@ before installing `metator`:
     * [`samtools`](https://www.htslib.org/download/)
     * [`hmmer`](http://hmmer.org/documentation.html)
     * [`prodigal`](https://github.com/hyattpd/Prodigal)
-    * [`java`](https://www.oracle.com/java/technologies/downloads/)
-
-* The following non-pythonic librairies are **embedded** when installing `metator` with `pip`: [`louvain 0.3`](https://sourceforge.net/projects/louvain/files/GenericLouvain/) and [`leiden 1.3.0`](https://github.com/CWTSLeiden/networkanalysis).
 
 **Warning:** note that if you install `metator` with `pip`, this may upgrade/downgrade 
 versions of the above dependencies and may cause conflicts with other softwares.
 
 ```sh
-# Install bowtie2, samtools, hmmer, prodigal and java-jdk:
-sudo apt update && sudo apt install bowtie2 samtools hmmer prodigal default-jdk
+# Install bowtie2, bwa, samtools, hmmer and prodigal:
+sudo apt update && sudo apt install bowtie2 bwa samtools hmmer prodigal
 
 # Install metator from Pypi
 pip3 install metator
@@ -71,13 +68,17 @@ pip3 install metator
 
 ### Development version 
 
-You can use `metator` development version as follows: 
+The development version is managed with [uv](https://docs.astral.sh/uv/). With the
+non-Python dependencies listed above installed:
 
 ```sh
-git clone https://github.com/koszullab/metator
-cd metator
-pip3 install -e .[dev]
+git clone https://github.com/koszullab/metaTOR
+cd metaTOR
+uv sync
+uv run metator --help
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) to run the tests and checks.
 
 ## Usage
 
