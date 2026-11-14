@@ -322,39 +322,16 @@ class Scaffolder:
         while np.max(self.score_matrice_norm) > self.threshold:
             # If one breakpoint have only one possible association. Take it
             # first even if there are better association.
-            if np.sum((np.sum(self.score_matrice_norm > self.threshold, axis=1) == 1)) > 0:
-                if (
-                    np.max(
-                        self.score_matrice_norm[
-                            (
-                                np.sum(
-                                    self.score_matrice_norm > self.threshold,
-                                    axis=1,
-                                )
-                                == 1
-                            ),
-                            :,
-                        ]
-                    )
-                    > 5 * self.threshold
-                ):
-                    row1, col1 = np.where(
-                        self.score_matrice_norm
-                        == np.max(
-                            self.score_matrice_norm[
-                                (
-                                    np.sum(
-                                        self.score_matrice_norm > self.threshold,
-                                        axis=1,
-                                    )
-                                    == 1
-                                ),
-                                :,
-                            ]
-                        )
-                    )
-                else:
-                    row1, col1 = np.where(self.score_matrice_norm == np.max(self.score_matrice_norm))
+            single = np.sum(self.score_matrice_norm > self.threshold, axis=1) == 1
+            # Unless the other end of the same contig scores higher with that
+            # breakpoint: this end only sees it through its own contig, and
+            # taking it would flip the contig (e.g. the outer end of the first
+            # contig of a linear scaffold, which has no partner).
+            nodes = np.arange(2 * self.length)
+            partner = np.argmax(self.score_matrice_norm, axis=1)
+            single &= self.score_matrice_norm[nodes ^ 1, partner] <= self.score_matrice_norm[nodes, partner]
+            if np.any(single) and np.max(self.score_matrice_norm[single, :]) > 5 * self.threshold:
+                row1, col1 = np.where(self.score_matrice_norm == np.max(self.score_matrice_norm[single, :]))
             # Else take the highest association score
             else:
                 row1, col1 = np.where(self.score_matrice_norm == np.max(self.score_matrice_norm))

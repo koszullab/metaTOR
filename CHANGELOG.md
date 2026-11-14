@@ -48,6 +48,10 @@ All notable changes to this project will be documented in this file.
 - `scaffold` and `pipeline --scaffold` never scored a junction between the
   starts of two contigs that follow each other in the bin fasta, so such
   contigs could come out in the wrong order or orientation.
+- `scaffold` and `pipeline --scaffold` could reverse the first or last
+  contig of a linear scaffold (or close the scaffold into a circle): the
+  outer end of that contig, which has no partner, took the contig next to
+  its other end.
 
 ## [1.3.10] - 2025-05-21
 - `host` module rewritten to annotate the bacterial hosts of each MGE (#27).

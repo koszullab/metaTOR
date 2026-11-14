@@ -165,3 +165,48 @@ def test_normalize_matrix_scores_every_junction(tmp_path):
     scaffolder.normalize = np.ones(8)
     contig = np.arange(8) // 2
     assert np.array_equal(scaffolder.normalize_matrix() > 0, contig[:, None] != contig[None, :])
+
+
+def _oriented(contigs):
+    return [(contig.name, contig.is_reverse) for contig in contigs]
+
+
+def _canonical_oriented(oriented, circular):
+    """Oriented contigs up to the reading direction (and rotation if
+    circular): read backwards, every contig changes strand."""
+    flipped = [(name, not reverse) for name, reverse in oriented[::-1]]
+    candidates = []
+    for order in (list(oriented), flipped):
+        shifts = range(len(order)) if circular else [0]
+        candidates += [tuple(order[k:] + order[:k]) for k in shifts]
+    return min(candidates)
+
+
+def test_scaffold_terminal_contig_keeps_its_orientation(tmp_path):
+    """Contigs A, B, C of a linear genome. The outer end of A (node 0) has
+    no partner and contacts the start of B (node 2) only through A; its
+    single association must not take node 2 from the end of A (node 1)."""
+    (tmp_path / "bin.fa").write_text("".join(f">{name}\n{'ACGT' * 10}\n" for name in "ABC"))
+    scaffolder = mts.Scaffolder(Bin("bin", pyfastx.Fasta(str(tmp_path / "bin.fa"))), [], threshold=0.05)
+    scores = np.zeros((6, 6))
+    scores[1, 2], scores[3, 4] = 2.0, 2.1  # the junctions A-B and B-C
+    scores[0, 2] = 0.3  # the start of A sees the start of B through A
+    scores[1, 5], scores[0, 5] = 0.06, 0.01  # weak contacts A-C
+    scaffolder.score_matrice = scores
+    scaffolder.normalize = np.ones(6)
+    (scaffold,) = scaffolder.solve_graph()
+    assert not scaffold.circular
+    expected = [("A", False), ("B", False), ("C", False)]
+    assert _canonical_oriented(_oriented(scaffold.contigs), False) == _canonical_oriented(expected, False)
+
+
+@pytest.mark.parametrize("seed", [5, 85, 122])
+def test_scaffold_linear_genome_random_strands(tmp_path, seed):
+    """Seeds where the outer end of a terminal contig used to take the
+    partner of its other end, flipping the contig."""
+    community = _genome(seed=seed, circular=False, strands="random")
+    scaffolds = _scaffold(*_inputs(community, tmp_path / "inputs"))
+    assert len(scaffolds) == 1
+    assert not scaffolds[0].circular
+    truth = [(contig.name, contig.reverse) for contig in community.molecules[0].contigs]
+    assert _canonical_oriented(_oriented(scaffolds[0].contigs), False) == _canonical_oriented(truth, False)
