@@ -1,0 +1,1051 @@
+{
+ "metator": {
+  "options": [
+   {
+    "short": "-h",
+    "long": "--help",
+    "takes_value": false,
+    "metavar": null,
+    "default": false,
+    "required": false
+   },
+   {
+    "short": "-v",
+    "long": "--version",
+    "takes_value": false,
+    "metavar": null,
+    "default": false,
+    "required": false
+   }
+  ],
+  "commands": {
+   "network": {
+    "positional": [],
+    "options": [
+     {
+      "short": "-b",
+      "long": "--aligner",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": "bowtie2",
+      "required": false
+     },
+     {
+      "short": "-B",
+      "long": "--aligner-mode",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": "normal",
+      "required": false
+     },
+     {
+      "short": "-a",
+      "long": "--assembly",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": true
+     },
+     {
+      "short": "-d",
+      "long": "--depth",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": "-E",
+      "long": "--edge",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "0",
+      "required": false
+     },
+     {
+      "short": "-e",
+      "long": "--enzyme",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": "-1",
+      "long": "--forward",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": null,
+      "required": true
+     },
+     {
+      "short": "-q",
+      "long": "--min-quality",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "30",
+      "required": false
+     },
+     {
+      "short": "-N",
+      "long": "--no-clean-up",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-n",
+      "long": "--normalization",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": "empirical_hit",
+      "required": false
+     },
+     {
+      "short": "-o",
+      "long": "--outdir",
+      "takes_value": true,
+      "metavar": "DIR",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": "-2",
+      "long": "--reverse",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": "-s",
+      "long": "--self-contacts",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-S",
+      "long": "--start",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": "fastq",
+      "required": false
+     },
+     {
+      "short": "-t",
+      "long": "--threads",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "1",
+      "required": false
+     },
+     {
+      "short": "-T",
+      "long": "--tmpdir",
+      "takes_value": true,
+      "metavar": "DIR",
+      "default": "./tmp",
+      "required": false
+     }
+    ]
+   },
+   "partition": {
+    "positional": [],
+    "options": [
+     {
+      "short": "-A",
+      "long": "--algorithm",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": "louvain",
+      "required": false
+     },
+     {
+      "short": "-a",
+      "long": "--assembly",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": true
+     },
+     {
+      "short": "-C",
+      "long": "--cluster-matrix",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-c",
+      "long": "--contigs",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": true
+     },
+     {
+      "short": "-F",
+      "long": "--force",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-i",
+      "long": "--iterations",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "100",
+      "required": false
+     },
+     {
+      "short": "-n",
+      "long": "--network",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": true
+     },
+     {
+      "short": "-N",
+      "long": "--no-clean-up",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-o",
+      "long": "--outdir",
+      "takes_value": true,
+      "metavar": "DIR",
+      "default": "./",
+      "required": false
+     },
+     {
+      "short": "-O",
+      "long": "--overlap",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "80",
+      "required": false
+     },
+     {
+      "short": "-p",
+      "long": "--prefix",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": "-r",
+      "long": "--res-param",
+      "takes_value": true,
+      "metavar": "FLOAT",
+      "default": "1.0",
+      "required": false
+     },
+     {
+      "short": "-s",
+      "long": "--size",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "500000",
+      "required": false
+     },
+     {
+      "short": "-t",
+      "long": "--threads",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "1",
+      "required": false
+     },
+     {
+      "short": "-T",
+      "long": "--tmpdir",
+      "takes_value": true,
+      "metavar": "DIR",
+      "default": "./tmp",
+      "required": false
+     }
+    ]
+   },
+   "validation": {
+    "positional": [],
+    "options": [
+     {
+      "short": "-A",
+      "long": "--algorithm",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": "louvain",
+      "required": false
+     },
+     {
+      "short": "-a",
+      "long": "--assembly",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": true
+     },
+     {
+      "short": "-C",
+      "long": "--cluster-matrix",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-c",
+      "long": "--contigs",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": true
+     },
+     {
+      "short": "-f",
+      "long": "--fasta",
+      "takes_value": true,
+      "metavar": "DIR",
+      "default": null,
+      "required": true
+     },
+     {
+      "short": "-F",
+      "long": "--force",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-i",
+      "long": "--iterations",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "10",
+      "required": false
+     },
+     {
+      "short": "-n",
+      "long": "--network",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": true
+     },
+     {
+      "short": "-N",
+      "long": "--no-clean-up",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-o",
+      "long": "--outdir",
+      "takes_value": true,
+      "metavar": "DIR",
+      "default": "./",
+      "required": false
+     },
+     {
+      "short": "-O",
+      "long": "--overlap",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "90",
+      "required": false
+     },
+     {
+      "short": "-p",
+      "long": "--prefix",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": "-r",
+      "long": "--res-param",
+      "takes_value": true,
+      "metavar": "FLOAT",
+      "default": "1.0",
+      "required": false
+     },
+     {
+      "short": "-s",
+      "long": "--size",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "500000",
+      "required": false
+     },
+     {
+      "short": "-t",
+      "long": "--threads",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "1",
+      "required": false
+     },
+     {
+      "short": "-T",
+      "long": "--tmpdir",
+      "takes_value": true,
+      "metavar": "DIR",
+      "default": "./tmp",
+      "required": false
+     }
+    ]
+   },
+   "pipeline": {
+    "positional": [],
+    "options": [
+     {
+      "short": "-A",
+      "long": "--algorithm",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": "louvain",
+      "required": false
+     },
+     {
+      "short": "-b",
+      "long": "--aligner",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": "bowtie2",
+      "required": false
+     },
+     {
+      "short": "-B",
+      "long": "--aligner-mode",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": "normal",
+      "required": false
+     },
+     {
+      "short": "-a",
+      "long": "--assembly",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": true
+     },
+     {
+      "short": "-C",
+      "long": "--cluster-matrix",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-d",
+      "long": "--depth",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": "-E",
+      "long": "--edge",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "0",
+      "required": false
+     },
+     {
+      "short": "-e",
+      "long": "--enzyme",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": "-F",
+      "long": "--force",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-1",
+      "long": "--forward",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": "-i",
+      "long": "--iterations",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "100",
+      "required": false
+     },
+     {
+      "short": "-J",
+      "long": "--junctions",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": "NNNNN",
+      "required": false
+     },
+     {
+      "short": "-q",
+      "long": "--min-quality",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "30",
+      "required": false
+     },
+     {
+      "short": "-N",
+      "long": "--no-clean-up",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-m",
+      "long": "--normalization",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": "empirical_hit",
+      "required": false
+     },
+     {
+      "short": "-o",
+      "long": "--outdir",
+      "takes_value": true,
+      "metavar": "DIR",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": "-O",
+      "long": "--overlap",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "80",
+      "required": false
+     },
+     {
+      "short": "-p",
+      "long": "--prefix",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": "-j",
+      "long": "--rec-iter",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "10",
+      "required": false
+     },
+     {
+      "short": "-P",
+      "long": "--rec-overlap",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "90",
+      "required": false
+     },
+     {
+      "short": "-r",
+      "long": "--res-param",
+      "takes_value": true,
+      "metavar": "FLOAT",
+      "default": "1.0",
+      "required": false
+     },
+     {
+      "short": "-2",
+      "long": "--reverse",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": "-v",
+      "long": "--scaffold",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-s",
+      "long": "--size",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "500000",
+      "required": false
+     },
+     {
+      "short": "-S",
+      "long": "--start",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": "fastq",
+      "required": false
+     },
+     {
+      "short": "-t",
+      "long": "--threads",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "1",
+      "required": false
+     },
+     {
+      "short": "-T",
+      "long": "--tmpdir",
+      "takes_value": true,
+      "metavar": "DIR",
+      "default": "./tmp",
+      "required": false
+     }
+    ]
+   },
+   "qc": {
+    "positional": [
+     {
+      "name": "pairsfile",
+      "required": true,
+      "repeatable": true
+     }
+    ],
+    "options": [
+     {
+      "short": "-a",
+      "long": "--assembly",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": true
+     },
+     {
+      "short": "-b",
+      "long": "--bin-summary",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": "-c",
+      "long": "--contig-data",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": "-e",
+      "long": "--enzyme",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": null,
+      "required": true
+     },
+     {
+      "short": "-O",
+      "long": "--metator-dir",
+      "takes_value": true,
+      "metavar": "DIR",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": "-n",
+      "long": "--no-clean-up",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-o",
+      "long": "--outdir",
+      "takes_value": true,
+      "metavar": "DIR",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": "-P",
+      "long": "--plot",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-p",
+      "long": "--prefix",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": "-t",
+      "long": "--threshold",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": "-T",
+      "long": "--tmpdir",
+      "takes_value": true,
+      "metavar": "DIR",
+      "default": null,
+      "required": false
+     }
+    ]
+   },
+   "contactmap": {
+    "positional": [
+     {
+      "name": "pairsfile",
+      "required": true,
+      "repeatable": true
+     }
+    ],
+    "options": [
+     {
+      "short": "-a",
+      "long": "--assembly",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": true
+     },
+     {
+      "short": "-c",
+      "long": "--contig-data",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": true
+     },
+     {
+      "short": "-e",
+      "long": "--enzyme",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": null,
+      "required": true
+     },
+     {
+      "short": "-f",
+      "long": "--filter",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-F",
+      "long": "--force",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-m",
+      "long": "--mat-fmt",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": "graal",
+      "required": false
+     },
+     {
+      "short": "-s",
+      "long": "--min-size",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "5000",
+      "required": false
+     },
+     {
+      "short": "-n",
+      "long": "--name",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": null,
+      "required": true
+     },
+     {
+      "short": "-N",
+      "long": "--no-clean-up",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-O",
+      "long": "--object",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": "final_bin",
+      "required": false
+     },
+     {
+      "short": "-o",
+      "long": "--outdir",
+      "takes_value": true,
+      "metavar": "DIR",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": "-D",
+      "long": "--pcr-dup",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-t",
+      "long": "--threads",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "1",
+      "required": false
+     },
+     {
+      "short": "-T",
+      "long": "--tmpdir",
+      "takes_value": true,
+      "metavar": "DIR",
+      "default": null,
+      "required": false
+     }
+    ]
+   },
+   "scaffold": {
+    "positional": [
+     {
+      "name": "pairsfile",
+      "required": true,
+      "repeatable": true
+     }
+    ],
+    "options": [
+     {
+      "short": "-b",
+      "long": "--bin-name",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": null,
+      "required": true
+     },
+     {
+      "short": "-i",
+      "long": "--input-fasta",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": true
+     },
+     {
+      "short": "-j",
+      "long": "--junctions",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": "NNNNN",
+      "required": false
+     },
+     {
+      "short": "-o",
+      "long": "--out-fasta",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": "-O",
+      "long": "--out-frags",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": "-t",
+      "long": "--threads",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "1",
+      "required": false
+     },
+     {
+      "short": "-T",
+      "long": "--threshold",
+      "takes_value": true,
+      "metavar": "FLOAT",
+      "default": "0.05",
+      "required": false
+     },
+     {
+      "short": "-w",
+      "long": "--window-size",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "5000",
+      "required": false
+     }
+    ]
+   },
+   "pairs": {
+    "positional": [
+     {
+      "name": "pairsfile",
+      "required": true,
+      "repeatable": true
+     }
+    ],
+    "options": [
+     {
+      "short": "-F",
+      "long": "--force",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-r",
+      "long": "--remove",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-t",
+      "long": "--threads",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "1",
+      "required": false
+     }
+    ]
+   },
+   "mge": {
+    "positional": [
+     {
+      "name": "pairsfile",
+      "required": true,
+      "repeatable": true
+     }
+    ],
+    "options": [
+     {
+      "short": "-a",
+      "long": "--assembly",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": true
+     },
+     {
+      "short": "-b",
+      "long": "--binning",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": true
+     },
+     {
+      "short": "-c",
+      "long": "--contigs",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": true
+     },
+     {
+      "short": "-m",
+      "long": "--mges",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": true
+     },
+     {
+      "short": "-N",
+      "long": "--no-clean-up",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-o",
+      "long": "--outdir",
+      "takes_value": true,
+      "metavar": "DIR",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": "-r",
+      "long": "--random",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-s",
+      "long": "--threshold-bin",
+      "takes_value": true,
+      "metavar": "FLOAT",
+      "default": "0.8",
+      "required": false
+     },
+     {
+      "short": "-T",
+      "long": "--tmpdir",
+      "takes_value": true,
+      "metavar": "DIR",
+      "default": "./tmp",
+      "required": false
+     }
+    ]
+   }
+  }
+ }
+}
