@@ -203,7 +203,7 @@ def build_vmags_summary(checkv_summary):
             mags_summary.loc[0, "bins"] += 1
             mags_summary.loc[0, "size"] += size
             # checkv_summary.loc[i, "MAG_quality"] = ">90"
-        if completness >= 70:
+        elif completness >= 70:
             mags_summary.loc[1, "bins"] += 1
             mags_summary.loc[1, "size"] += size
             # checkv_summary.loc[i, "MAG_quality"] = ">70"

@@ -74,6 +74,10 @@ All notable changes to this project will be documented in this file.
   pair whose first read lies on the later of the two MGE contigs (in the
   contig table order) were left out of the MGE contact matrix. The matrix,
   and so the MGE bins, now count them, as with an indexed pairs file.
+- Python API: `metator.figures.build_vmags_summary` counted a vMAG of 90%
+  completeness or more in both the >90% and the 70-90% classes. Its vMAG
+  counts and sizes, and the plots built on them (`barplot_bins_number`,
+  `barplot_bins_size`, `pie_bins_size_distribution`), change accordingly.
 
 ## [1.3.10] - 2025-05-21
 - `host` module rewritten to annotate the bacterial hosts of each MGE (#27).

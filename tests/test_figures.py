@@ -174,15 +174,11 @@ def _checkv_summary():
     return pd.read_csv(table, sep="\t")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="build_vmags_summary counts a vMAG of >= 90% completeness in both the >90 and the >70 classes",
-)
 def test_build_vmags_summary():
     summary = mtf.build_vmags_summary(_checkv_summary())
     assert list(summary.bins) == [1, 1, 1, 1, 1]
     assert summary.bins.sum() == 5  # proviruses are left out
+    assert list(summary["size"]) == [50000, 40000, 30000, 20000, 10000]
 
 
 def test_vmags_figures(tmp_path):
