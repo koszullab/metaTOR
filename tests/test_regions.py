@@ -154,7 +154,9 @@ def test_bin_contigs_between(bin_fasta):
             bin.get_contigs_between(start, end)
 
 
-@pytest.mark.xfail(strict=True, reason="Bin.get_contigs_between names every piece after the bin instead of its contig")
+@pytest.mark.xfail(
+    strict=True, raises=AssertionError, reason="Bin.get_contigs_between names every piece after the bin instead of its contig"
+)
 def test_bin_contigs_between_keep_contig_names(bin_fasta):
     bin = Bin("bin", bin_fasta[0])
     assert [c.name for c in bin.get_contigs_between(50, 180)] == ["c1", "c2", "c3"]

@@ -176,6 +176,7 @@ def _checkv_summary():
 
 @pytest.mark.xfail(
     strict=True,
+    raises=AssertionError,
     reason="build_vmags_summary counts a vMAG of >= 90% completeness in both the >90 and the >70 classes",
 )
 def test_build_vmags_summary():
