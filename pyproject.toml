@@ -34,7 +34,6 @@ dependencies = [
     "hicstuff",
     "igraph>=0.10.3",
     "biopython>=1.80",
-    "docopt",
     "pysam",
     "pairtools",
     "pyfastx",
