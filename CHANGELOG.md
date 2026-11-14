@@ -57,6 +57,9 @@ All notable changes to this project will be documented in this file.
   `Bin` now follows these edits.
 - Python API: `metator.regions.Bin.get_breakpoints` raised `ValueError` for
   any bin of two contigs or more.
+- Python API: `metator.regions.Bin.get_contigs_between` named every piece
+  after the bin instead of its contig, so the pieces could not be read from
+  the fasta.
 
 ## [1.3.10] - 2025-05-21
 - `host` module rewritten to annotate the bacterial hosts of each MGE (#27).

@@ -342,7 +342,7 @@ class Bin:
         if contig_id_left == contig_id_right:
             return [
                 Contig(
-                    self.bin_name,
+                    self.contigs[contig_id_left].name,
                     self.contigs[contig_id_left].start + (start - start_bound_left),
                     self.contigs[contig_id_left].start + (end - start_bound_left),
                     self.contigs[contig_id_left].is_reverse,
@@ -356,7 +356,7 @@ class Bin:
         print("left_contig = ", left_contig)
 
         left_contig_trimmed = Contig(
-            self.bin_name,
+            left_contig.name,
             left_contig.start + (start - start_bound_left),
             left_contig.end,
             left_contig.is_reverse,
@@ -369,7 +369,7 @@ class Bin:
         print("right_contig = ", right_contig)
 
         right_contig_trimmed = Contig(
-            self.bin_name,
+            right_contig.name,
             right_contig.start,
             right_contig.start + end - start_bound_right,
             right_contig.is_reverse,
@@ -378,7 +378,7 @@ class Bin:
         # Add all contigs between the first and the last
         for contig_i in range(contig_id_left + 1, contig_id_right):
             contig = Contig(
-                self.bin_name,
+                self.contigs[contig_i].name,
                 self.contigs[contig_i].start,
                 self.contigs[contig_i].end,
                 self.contigs[contig_i].is_reverse,
