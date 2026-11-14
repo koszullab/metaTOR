@@ -2786,7 +2786,7 @@ dev = [
 requires-dist = [
     { name = "autodoc", marker = "extra == 'docs'" },
     { name = "autodocsumm", marker = "extra == 'docs'" },
-    { name = "biopython", specifier = "<=1.80" },
+    { name = "biopython", specifier = ">=1.80" },
     { name = "docopt" },
     { name = "furo", marker = "extra == 'docs'" },
     { name = "hicstuff" },
