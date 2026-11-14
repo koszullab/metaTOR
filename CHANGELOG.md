@@ -55,6 +55,8 @@ All notable changes to this project will be documented in this file.
 - Python API: `metator.regions.Bin.insert`, `invert` and `delete` raised
   `AttributeError` after they had changed the contigs; the length of a
   `Bin` now follows these edits.
+- Python API: `metator.regions.Bin.get_breakpoints` raised `ValueError` for
+  any bin of two contigs or more.
 
 ## [1.3.10] - 2025-05-21
 - `host` module rewritten to annotate the bacterial hosts of each MGE (#27).

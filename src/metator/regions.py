@@ -510,8 +510,8 @@ class Bin:
         self.clean_contigs()
         for contig_id in range(0, len(self.contigs) - 1):
             contig1, contig2 = self.contigs[contig_id : contig_id + 2]
-            p1 = Position(contig1.bin, contig1.end, not contig1.is_reverse)
-            p2 = Position(contig2.bin, contig2.start, contig2.is_reverse)
+            p1 = Position(contig1.name, contig1.end, not contig1.is_reverse)
+            p2 = Position(contig2.name, contig2.start, contig2.is_reverse)
             breakpoint = BreakPoint(p1, p2)
             breakpoint.contig1 = contig1
             breakpoint.contig2 = contig2

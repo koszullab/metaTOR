@@ -177,14 +177,13 @@ def test_bin_single_contig_has_no_breakpoint(tmp_path):
     assert list(Bin("bin", pyfastx.Fasta(str(tmp_path / "one.fa"))).get_breakpoints()) == []
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=ValueError,
-    reason="Bin.get_breakpoints positions breakpoints on the bin name, which the contig setters reject",
-)
 def test_bin_breakpoints(bin_fasta):
     breakpoints = list(Bin("bin", bin_fasta[0]).get_breakpoints())
     assert [(bp.contig1.name, bp.contig2.name) for bp in breakpoints] == [("c1", "c2"), ("c2", "c3")]
+    assert [repr(bp) for bp in breakpoints] == [
+        "[c1:0-100:+]c1:100:+|c2:0:-[c2:0-50:+] UNK",
+        "[c2:0-50:+]c2:50:+|c3:0:-[c3:0-80:+] UNK",
+    ]
 
 
 EDITS = {
