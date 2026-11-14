@@ -68,7 +68,7 @@ def test_solve_graph_order_and_orientation(tmp_path):
 
 def test_solve_graph_start_of_a_small_scaffold(tmp_path):
     """The start of a scaffold holding few of the bin's contigs follows the
-    same rule. networkx iterated their breakpoints as a set: these two
+    same rule. metaTOR 1.3.10 iterated their breakpoints as a set: these two
     scaffolds started from c8."""
     # Linear: end of c8 - end of c5.
     scaffolds = _scaffolder_on_graph(tmp_path, 20, [(17, 11)]).solve_graph()
