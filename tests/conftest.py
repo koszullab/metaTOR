@@ -55,9 +55,14 @@ def metagenome_files(metagenome, tmp_path_factory):
     """Assembly, depth.txt, pairs and truth of the mock community.
 
     Shared by the whole session: tests must not write next to these files
-    (use ``metagenome_inputs`` for commands that do).
+    (use ``metagenome_inputs`` for commands that do), which is checked at
+    the end of the session.
     """
-    return metagenome.write_all(tmp_path_factory.mktemp("metagenome"))
+    directory = tmp_path_factory.mktemp("metagenome")
+    files = metagenome.write_all(directory)
+    yield files
+    written = sorted(set(os.listdir(directory)) - {path.name for path in files.values()})
+    assert not written, f"tests wrote next to the shared mock metagenome: {written}"
 
 
 @pytest.fixture(scope="session")

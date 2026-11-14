@@ -76,13 +76,14 @@ def test_contig_data_matches_the_truth(metagenome, metagenome_network):
 
 
 @pytest.mark.parametrize("algorithm", ["louvain", "leiden"])
-def test_partition_recovers_the_genomes(metagenome, metagenome_files, metagenome_network, tmp_path, algorithm):
+def test_partition_recovers_the_genomes(metagenome, metagenome_inputs, metagenome_network, tmp_path, algorithm):
     random.seed(0)  # igraph draws from Python's random module.
     fasta_dir = tmp_path / "overlapping_bin"
     fasta_dir.mkdir()
+    # A private copy of the assembly: pyfastx indexes it (.fxi) in place.
     _, contig_data_file = mtp.partition(
         algorithm,
-        str(metagenome_files["assembly"]),
+        str(metagenome_inputs["assembly"]),
         False,
         str(metagenome_network["contig_data"]),
         10,
