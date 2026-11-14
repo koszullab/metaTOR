@@ -151,6 +151,9 @@ testpaths = ["tests"]
 
 [tool.coverage.run]
 source = ["src/metator"]
+# Measure the Python subprocesses too: miComplete runs as
+# `python -m metator._micomplete` (needs coverage >= 7.10).
+patch = ["subprocess"]
 
 omit = []
 

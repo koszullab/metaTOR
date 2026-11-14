@@ -9,5 +9,6 @@ coverage:
         only_pulls: false
     patch:
       default:
-        target: auto
-        threshold: 80%
+        # At least 80% of the changed lines must be covered. (A threshold of
+        # 80% on an `auto` target let an 18.9% patch pass.)
+        target: 80%
