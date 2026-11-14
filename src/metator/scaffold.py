@@ -16,8 +16,8 @@ Class to handle the scaffolding:
 """
 
 from dataclasses import dataclass, field
+import igraph as ig
 import metator.io as mio
-import networkx as nx
 import numpy as np
 import pypairix
 import pyfastx
@@ -313,10 +313,10 @@ class Scaffolder:
         except AttributeError:
             self.normalize_matrix()
 
-        self.graph = nx.Graph()
         # Add edges between the breakpoints of the same contigs (the two edges).
+        edges = []
         for i in range(self.length):
-            self.graph.add_edge(2 * i, 2 * i + 1)
+            edges.append((2 * i, 2 * i + 1))
             self.score_matrice_norm[2 * i, 2 * i + 1] = 0
 
         while np.max(self.score_matrice_norm) > self.threshold:
@@ -339,12 +339,14 @@ class Scaffolder:
             row1 = row1[0]
             col1 = col1[0]
             # Add the edge in the graph.
-            self.graph.add_edge(row1, col1)
+            edges.append((int(row1), int(col1)))
             # Remove the  other scores as an association have been found.
             self.score_matrice_norm[row1, :] = 0
             self.score_matrice_norm[col1, :] = 0
             self.score_matrice_norm[:, row1] = 0
             self.score_matrice_norm[:, col1] = 0
+        # Vertex i is the breakpoint i.
+        self.graph = ig.Graph(n=2 * self.length, edges=edges)
 
     def solve_graph(self):
         """Solve the connected components in the graph into scaffolds."""
@@ -352,27 +354,28 @@ class Scaffolder:
         if not hasattr(self, "graph"):
             self.build_graph()
 
-        # Iterates on each scaffold as a connected component.
-        n = 0
-        for components in nx.connected_components(self.graph):
-            n += 1
+        # Iterates on each scaffold as a connected component, in the order of
+        # their first breakpoint. Each component lists its breakpoints in
+        # ascending order.
+        degree = self.graph.degree()
+        for n, component in enumerate(self.graph.connected_components(), start=1):
             scaf_name = f"metator_scaffold_{n:04d}"
-            subgraph = nx.subgraph(self.graph, components)
             # Case of an isolated contigs add it alone as a scaffold.
             # We choose to keep the forward strand of the contig.
-            if len(subgraph.nodes) == 2:
-                contig_id = next(iter(subgraph.nodes)) // 2
+            if len(component) == 2:
+                contig_id = component[0] // 2
                 self.bin.contigs[contig_id].is_reverse = False
                 scaffold = Scaffold(scaf_name, [self.bin.contigs[contig_id]], False)
                 self.bin.scaffolds.append(scaffold)
             # Look at dangling residues to search for edges of the scaffold.
             else:
-                ordered_nodes = np.zeros(len(subgraph.nodes))
-                dangling_residues = [node for node in subgraph.nodes if subgraph.degree(node) == 1]
+                ordered_nodes = np.zeros(len(component))
+                dangling_residues = [node for node in component if degree[node] == 1]
                 # Either two dangling residues (linear)
                 if len(dangling_residues) == 2:
                     circular = False
-                    # Choose arbitrarly the start and end.
+                    # Start from the end with the lowest breakpoint: the end
+                    # whose contig comes first in the bin.
                     start = dangling_residues[0]
                     end = dangling_residues[1]
                     ordered_nodes[0] = start
@@ -381,7 +384,7 @@ class Scaffolder:
                 else:
                     # Take first contig as a start as it's circular.
                     circular = True
-                    start = next(iter(subgraph.nodes))
+                    start = component[0]
                     end = start + 1 if start % 2 == 0 else start - 1
                     ordered_nodes[0], ordered_nodes[1] = end, start
                     k = 1
@@ -389,17 +392,10 @@ class Scaffolder:
                 # Build a list of the breakpoint ID.
                 while start != end:
                     k += 1
-                    for i, j in subgraph.edges(start):
-                        if (i != start) & (i != prev):
+                    for neighbor in self.graph.neighbors(start):
+                        if (neighbor != start) & (neighbor != prev):
                             prev = start
-                            start = i
-                            # Avoid to add the last one in circular case.
-                            if (start != end) or not circular:
-                                ordered_nodes[k] = start
-                            break
-                        elif (j != start) & (j != prev):
-                            prev = start
-                            start = j
+                            start = neighbor
                             # Avoid to add the last one in circular case.
                             if (start != end) or not circular:
                                 ordered_nodes[k] = start
