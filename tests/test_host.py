@@ -1,9 +1,12 @@
 # Tests of the MGE host detection (metator.host) on the mock metagenome:
 # each MGE contacts one host genome much more than the others.
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+from matplotlib.collections import LineCollection, PolyCollection
+from matplotlib.colors import to_hex
 
 import metator.host as mth
 
@@ -139,14 +142,103 @@ def test_background_noise(metagenome, binned):
         assert mag.intra_signal > 10 * max(mag.inter_signals)
 
 
-def test_plot_mag_noise(binned, tmp_path):
+def _half_violins(ax):
+    """What the split violins of ax show, by (x, side): the range and the
+    quartiles of each half violin, and the value of each line drawn in
+    place of a half violin."""
+    violins, quartiles, lines = {}, {}, {}
+    for body in [c for c in ax.collections if isinstance(c, PolyCollection)]:
+        extents = body.get_paths()[0].get_extents()
+        assert extents.width == pytest.approx(0.4)
+        side = "high" if np.isclose(extents.x0, round(extents.x0)) else "low"
+        x = round(extents.x0 if side == "high" else extents.x1)
+        colour = {"low": "C0", "high": "C1"}[side]
+        assert to_hex(body.get_facecolor()[0]) == to_hex(colour)
+        violins[x, side] = (extents.y0, extents.y1)
+    for collection in [c for c in ax.collections if isinstance(c, LineCollection)]:
+        for (x0, y), (x1, _) in collection.get_segments():
+            # Quartile lines span half of the half violin from its axis.
+            side = "high" if np.isclose(x0, round(x0)) else "low"
+            quartiles.setdefault((round(x0 if side == "high" else x1), side), []).append(y)
+    for line in ax.lines:
+        (x0, x1), (y, _) = line.get_xdata(), line.get_ydata()
+        side = "high" if np.isclose(x0, round(x0)) else "low"
+        lines[round(x0 if side == "high" else x1), side] = y
+    return violins, {key: sorted(values) for key, values in quartiles.items()}, lines
+
+
+def test_plot_mag_noise(binned, tmp_path, saved_figures):
+    """One split violin per quality: intra-MAG signals on the left half,
+    inter-MAG signals on the right half, with their quartiles."""
     data, network, _, _ = binned
     mag_bins, _ = mth.create_bins(data)
     mag_bins = mth.estimate_noise(mag_bins, network)
-    for mag, quality in zip(mag_bins.values(), ["HQ", "HQ", "MQ", "Contaminated", "MQ"]):
+    qualities = ["HQ", "HQ", "MQ", "Contaminated", "MQ"]
+    for mag, quality in zip(mag_bins.values(), qualities):
         mag.quality = quality
     mth.plot_mag_noise(mag_bins, image_file=str(tmp_path / "noise.png"))
     assert (tmp_path / "noise.png").stat().st_size > 0
+    assert not plt.get_fignums()  # closed once saved
+
+    ax = saved_figures["noise.png"].axes[0]
+    order = ["HQ", "MQ", "Contaminated"]  # order of first appearance
+    assert [label.get_text() for label in ax.get_xticklabels()] == order
+    assert list(ax.get_xticks()) == [0, 1, 2]
+    assert ax.get_xlabel() == "MAG Quality"
+    assert ax.get_ylabel() == "Interaction Signal (log scale)"
+    assert ax.get_title() == "Distribution of Intra- and Inter-MAG Interaction Signals"
+    legend = ax.get_legend()
+    assert legend.get_title().get_text() == "Interaction Type"
+    assert [text.get_text() for text in legend.get_texts()] == ["intra", "inter"]
+    assert [to_hex(handle.get_facecolor()) for handle in legend.legend_handles] == [to_hex("C0"), to_hex("C1")]
+
+    signals = {}
+    for mag, quality in zip(mag_bins.values(), qualities):
+        signals.setdefault((order.index(quality), "low"), []).append(mag.intra_signal)
+        signals.setdefault((order.index(quality), "high"), []).extend(mag.inter_signals)
+    signals = {key: np.log10(np.array(values) + 1e-10) for key, values in signals.items()}
+    violins, quartiles, lines = _half_violins(ax)
+    # The only Contaminated MAG has a single intra-MAG signal: a line.
+    assert lines == {(2, "low"): pytest.approx(signals[2, "low"][0])}
+    del signals[2, "low"]
+    assert violins.keys() == signals.keys() == quartiles.keys()
+    for key, values in signals.items():
+        assert violins[key] == pytest.approx((values.min(), values.max()))
+        assert quartiles[key] == pytest.approx(np.percentile(values, [25, 50, 75]))
+
+
+def test_plot_mag_noise_leaves_out_missing_values(tmp_path, saved_figures):
+    """MAGs without a quality are left out, and so are missing signals."""
+    mags = {}
+    for name, quality, intra, inter in [
+        ("m1", "HQ", 1.0, [0.01, 0.02]),
+        ("m2", None, 5.0, [0.5, 0.6]),
+        ("m3", "HQ", 2.0, [0.03, 0.01]),
+        ("m4", "LQ", 3.0, []),
+    ]:
+        mags[name] = mth.Mag(name)
+        mags[name].quality, mags[name].intra_signal, mags[name].inter_signals = quality, intra, inter
+    mth.plot_mag_noise(mags, image_file=str(tmp_path / "noise.png"))
+    ax = saved_figures["noise.png"].axes[0]
+    assert [label.get_text() for label in ax.get_xticklabels()] == ["HQ", "LQ"]
+    violins, quartiles, lines = _half_violins(ax)
+
+    def log(*signals):
+        return np.log10(np.array(signals) + 1e-10)
+
+    assert violins == {(0, "low"): pytest.approx(log(1.0, 2.0)), (0, "high"): pytest.approx(log(0.01, 0.03))}
+    assert quartiles.keys() == violins.keys()
+    # LQ: one intra-MAG signal and no inter-MAG signal.
+    assert lines == {(1, "low"): pytest.approx(log(3.0)[0])}
+
+
+def test_half_violins_without_density():
+    """Groups with one distinct value are lines, empty groups are skipped."""
+    _, ax = plt.subplots()
+    mth._half_violins(ax, [np.array([1.0]), np.array([]), np.array([2.0, 2.0])], "high", "C1")
+    assert not ax.collections
+    lines = sorted((tuple(line.get_xdata()), tuple(line.get_ydata())) for line in ax.lines)
+    assert lines == [((0, 0.4), (1.0, 1.0)), ((2, 2.4), (2.0, 2.0))]
 
 
 def test_annotate_hosts(metagenome, binned, tmp_path):
