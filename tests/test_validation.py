@@ -130,8 +130,10 @@ def test_recursive_clustering_worker():
 
 def test_recursive_clustering_worker_subnetwork(tmp_path):
     """The subnetwork of a bin is the network rows between two of its
-    contigs, verbatim and in the order of the network."""
-    rows = ["5\t2\t1.5", "1\t2\t0.25", "2\t9\t3.0", "3\t3\t2", "1\t3\t1e-05", "9\t8\t1.0"]
+    contigs, verbatim and in the order of the network: an edge listed in
+    two rows (network.txt of 1.3.10 from two libraries) keeps both, as in
+    partition."""
+    rows = ["5\t2\t1.5", "1\t2\t0.25", "2\t9\t3.0", "3\t3\t2", "1\t3\t1e-05", "9\t8\t1.0", "2\t5\t0.5"]
     (tmp_path / "network.txt").write_text("\n".join(rows) + "\n")
     network = pd.read_csv(
         tmp_path / "network.txt", sep="\t", header=None, names=["contig1", "contig2", "weight"], dtype={"weight": str}
@@ -141,7 +143,7 @@ def test_recursive_clustering_worker_subnetwork(tmp_path):
     )
     partition = mtv.recursive_clustering_worker("bin_00001_00000", str(tmp_path), network, "louvain", 2, 1.0, data)
     subnetwork = tmp_path / "recursive_bins" / "bin_00001_00000" / "subnetwork_bin_00001_00000.txt"
-    assert subnetwork.read_text().splitlines() == [rows[0], rows[1], rows[3], rows[4]]
+    assert subnetwork.read_text().splitlines() == [rows[0], rows[1], rows[3], rows[4], rows[6]]
     assert sorted(partition) == [1, 2, 3, 5]
 
 
