@@ -12,10 +12,10 @@ metator.align module
    :undoc-members:
    :show-inheritance:
 
-metator.commands module
------------------------
+metator.cli module
+------------------
 
-.. automodule:: metator.commands
+.. automodule:: metator.cli
    :members:
    :undoc-members:
    :show-inheritance:
