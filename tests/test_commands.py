@@ -239,3 +239,110 @@ def test_spinglass_is_rejected_before_any_work(tmp_path, monkeypatch):
     )
     with pytest.raises(ValueError):
         mtc.Validation(args.split(" "), {}).execute()
+
+
+# Argument checks: each command refuses inconsistent options before working.
+
+NETWORK_ERRORS = {
+    "fastq without reverse reads": ["-1", "r1.fq"],
+    "unknown aligner": ["-1", "r1.fq", "-2", "r2.fq", "-b", "minimap2"],
+    "unknown aligner mode": ["-1", "r1.fq", "-2", "r2.fq", "-B", "fast"],
+    "unknown normalization": ["-1", "r1.fq", "-2", "r2.fq", "-B", "cutsite", "-n", "cosine"],
+    "RS without enzyme": ["-1", "r1.fq", "-2", "r2.fq", "-n", "RS"],
+    "abundance without depth": ["-1", "r1.fq", "-2", "r2.fq", "-n", "abundance"],
+    "unknown start": ["-1", "r1.fq", "-2", "r2.fq", "-S", "sam"],
+    "assembly neither fasta nor index": ["-1", "x.pairs", "-S", "pair", "-a", "missing.fa"],
+}
+
+
+@pytest.mark.parametrize("case", list(NETWORK_ERRORS))
+def test_network_argument_errors(case, tmp_path):
+    args = ["-o", str(tmp_path / "out"), "-T", str(tmp_path / "tmp"), *NETWORK_ERRORS[case]]
+    if "-a" not in args:
+        args += ["-a", global_args["FASTA"]]
+    with pytest.raises(ValueError):
+        mtc.Network(args, {}).execute()
+
+
+PIPELINE_ERRORS = {
+    "unknown aligner": ["-b", "minimap2"],
+    "unknown aligner mode": ["-B", "fast"],
+    "unknown algorithm": ["-B", "cutsite", "-A", "spinglass"],
+    "unknown normalization": ["-m", "cosine"],
+    "RS without enzyme": ["-m", "RS"],
+    "abundance without depth": ["-m", "abundance"],
+    "unknown start": ["-S", "network"],
+    "fastq without reverse reads": ["-1", "r1.fq", "-S", "fastq"],
+    "assembly neither fasta nor index": ["-1", "x.pairs", "-S", "pair", "-a", "missing.fa"],
+}
+
+
+@pytest.mark.parametrize("case", list(PIPELINE_ERRORS))
+def test_pipeline_argument_errors(case, tmp_path):
+    args = ["-o", str(tmp_path / "out"), "-T", str(tmp_path / "tmp"), *PIPELINE_ERRORS[case]]
+    if "-a" not in args:
+        args += ["-a", global_args["FASTA"]]
+    with pytest.raises(ValueError):
+        mtc.Pipeline(args, {}).execute()
+
+
+@pytest.mark.parametrize("existing", ["overlapping_bin", "recursive_bin", "final_bin_unscaffold", "scaffold_bin"])
+def test_pipeline_refuses_existing_outputs(existing, tmp_path):
+    (tmp_path / "out" / existing).mkdir(parents=True)
+    args = ["-a", global_args["FASTA"], "-1", "x.pairs", "-S", "pair", "--scaffold", "-o", str(tmp_path / "out"),
+            "-T", str(tmp_path / "tmp")]  # fmt: skip
+    with pytest.raises(ValueError):
+        mtc.Pipeline(args, {}).execute()
+
+
+def test_pipeline_force_replaces_outputs(tmp_path):
+    """With --force the output directories are emptied, then the run goes on
+    (here up to the missing reverse reads)."""
+    for existing in ["overlapping_bin", "recursive_bin", "final_bin_unscaffold", "scaffold_bin"]:
+        (tmp_path / "out" / existing).mkdir(parents=True)
+        (tmp_path / "out" / existing / "stale.fa").write_text(">old\nA\n")
+    args = ["-a", global_args["FASTA"], "-1", "r1.fq", "--scaffold", "-F", "-o", str(tmp_path / "out"),
+            "-T", str(tmp_path / "tmp")]  # fmt: skip
+    with pytest.raises(ValueError):
+        mtc.Pipeline(args, {}).execute()
+    assert not list((tmp_path / "out").glob("*/stale.fa"))
+
+
+@pytest.mark.parametrize("existing", ["recursive_bin", "final_bin"])
+def test_validation_refuses_existing_outputs(existing, tmp_path):
+    (tmp_path / "out" / existing).mkdir(parents=True)
+    args = ("-a {SUBSET_FASTA} -c {CONTIGS_PARTITION} -f {OVERLAPPING_BINS} -n {NETWORK} -o {OUT} -T {TMP}").format(
+        OUT=tmp_path / "out", TMP=tmp_path / "tmp", **global_args
+    )
+    with pytest.raises(ValueError):
+        mtc.Validation(args.split(" "), {}).execute()
+
+
+def test_partition_existing_outputs(metagenome_inputs, metagenome_network, tmp_path):
+    """An existing overlapping_bin is refused, or replaced with --force; the
+    --prefix names the bins."""
+    fasta_dir = tmp_path / "out" / "overlapping_bin"
+    fasta_dir.mkdir(parents=True)
+    (fasta_dir / "stale.fa").write_text(">old\nA\n")
+    args = ["-a", str(metagenome_inputs["assembly"]), "-c", str(metagenome_network["contig_data"]),
+            "-n", str(metagenome_network["network"]), "-o", str(tmp_path / "out"), "-T", str(tmp_path / "tmp"),
+            "-i", "5", "-s", "50000", "-p", "sample-1"]  # fmt: skip
+    with pytest.raises(ValueError):
+        mtc.Partition(args, {}).execute()
+    with pytest.raises(ValueError):
+        mtc.Partition([*args, "-F", "-A", "spinglass"], {}).execute()
+    mtc.Partition([*args, "-F"], {}).execute()
+    bins = sorted(p.name for p in fasta_dir.iterdir())
+    assert "stale.fa" not in bins
+    assert bins and all(name.startswith("sample-1_metator_") for name in bins)
+
+
+def test_check_output_path(tmp_path):
+    command = mtc.Pairs(["x.pairs"], {})
+    target = tmp_path / "new" / "dir" / "file.txt"
+    command.check_output_path(str(target))
+    assert target.parent.is_dir()
+    target.write_text("x")
+    with pytest.raises(IOError, match="--force"):
+        command.check_output_path(str(target))
+    command.check_output_path(str(target), force=True)
