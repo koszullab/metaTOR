@@ -24,6 +24,9 @@ All notable changes to this project will be documented in this file.
   stopped providing in 3.2.5.
 
 ### Removed
+- `metator host`, which always failed since 1.3.10: it called
+  `metator.host.host_detection`, which the rewrite of the `host` module
+  removed. Python API: `metator.io.import_network`, used only by it.
 - Text notifications: when the working directory held a
   `text_credentials.json` file, every error message was sent to the web
   API named in it. Python API: `metator.log.setup_text_logging`,
