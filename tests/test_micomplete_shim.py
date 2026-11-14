@@ -215,6 +215,22 @@ def test_main_runs_micomplete_cli(shim_state, monkeypatch, capsys):
     assert capsys.readouterr().out.startswith("usage: miComplete")
 
 
+def test_main_passes_arguments_and_exit_status(shim_state, monkeypatch):
+    """main() hands the arguments to miComplete's CLI, under its own name, and
+    returns its exit status (miComplete stubbed)."""
+    shim = _import_shim()
+    calls = []
+    package = types.ModuleType("micomplete")
+    cli = types.ModuleType("micomplete.micomplete")
+    cli.main = lambda: calls.append(list(sys.argv)) or 3
+    package.micomplete = cli
+    monkeypatch.setitem(sys.modules, "micomplete", package)
+    monkeypatch.setitem(sys.modules, "micomplete.micomplete", cli)
+    monkeypatch.setattr(sys, "argv", ["/somewhere/_micomplete.py", "seqs.tab", "--hmms", "Bact105"])
+    assert shim.main() == 3
+    assert calls == [["miComplete", "seqs.tab", "--hmms", "Bact105"]]
+
+
 def test_run_as_module(shim_state, monkeypatch, capsys):
     """`python -m metator._micomplete -h`, as validation runs it."""
     # runpy warns when the module it runs as __main__ is already imported.
