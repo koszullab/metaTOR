@@ -24,7 +24,7 @@ Main functions and methods include:
 # import metator.figures as mtf
 # import metator.io as mio
 from collections import Counter
-from typing import Literal
+from typing import Literal, Optional
 import networkx as nx
 import matplotlib.pyplot as plt
 
@@ -313,18 +313,9 @@ def classify_mags(mags, bin_summary) -> dict:
     """
     logger.info("Classifying MAGs based on their completeness and contamination values...")
 
-    def classify_mag(
-        mag,
-    ) -> (
-        Literal["Unknown"]
-        | Literal["Contaminated"]
-        | Literal["Complete"]
-        | Literal["HQ"]
-        | Literal["MQ"]
-        | Literal["LQ"]
-        | Literal["PQ"]
-        | None
-    ):
+    # Optional[...] rather than X | None: the annotation is evaluated each
+    # time classify_mags runs, and Python 3.9 has no | between types.
+    def classify_mag(mag) -> Optional[Literal["Unknown", "Contaminated", "Complete", "HQ", "MQ", "LQ", "PQ"]]:
         c, r = mag.completeness, mag.contamination
         if pd.isna(c) or pd.isna(r):
             return "Unknown"

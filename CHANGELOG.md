@@ -60,6 +60,8 @@ All notable changes to this project will be documented in this file.
 - Python API: `metator.regions.Bin.get_contigs_between` named every piece
   after the bin instead of its contig, so the pieces could not be read from
   the fasta.
+- Python API: on Python 3.9, `metator.host.classify_mags` and
+  `annotate_hosts` failed with `TypeError`.
 
 ## [1.3.10] - 2025-05-21
 - `host` module rewritten to annotate the bacterial hosts of each MGE (#27).
