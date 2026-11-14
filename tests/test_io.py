@@ -112,6 +112,24 @@ def test_check_pypairix_missing(monkeypatch):
         mio.check_pypairix()
 
 
+@pytest.mark.parametrize(
+    ("version", "expected"),
+    [("1.1.2", (1, 1, 2)), ("1.0.3", (1, 0, 3)), ("1.1.0.dev1", (1, 1, 0)), ("2.0.0rc1", (2, 0, 0)), ("10", (10,))],
+)
+def test_version_tuple(version, expected):
+    assert mio._version_tuple(version) == expected
+
+
+def test_version_tuple_without_number():
+    with pytest.raises(ValueError, match="Cannot read the version 'dev'"):
+        mio._version_tuple("dev")
+
+
+def test_pairtools_column_options():
+    """pairtools sort takes --c1, --c2, --p1, --p2 and --pt from 1.1.0 on."""
+    assert mio._version_tuple("1.0.3") < (1, 1) <= mio._version_tuple("1.1.0")
+
+
 def test_generate_temp_dir_without_permission(tmp_path, monkeypatch):
     def denied(path):
         raise PermissionError(path)
