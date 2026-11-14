@@ -52,7 +52,9 @@ All notable changes to this project will be documented in this file.
   `--normalization`, `--start` or `--mat-fmt`, or a value that is not a
   number for a numeric option, is refused before the command starts,
   with exit status 2 (`network --start network` included: it was
-  accepted, then failed while aligning). Long options can no longer be
+  accepted, then failed while aligning). The other usage errors (a
+  missing option or argument, an unknown command or option) also exit
+  with status 2 instead of 1. Long options can no longer be
   abbreviated (`--thread` for `--threads`). The log files record the
   command line as typed. `python -m metator` runs the command line.
 
@@ -70,7 +72,9 @@ All notable changes to this project will be documented in this file.
 - The `docopt` dependency.
 - Python API: `metator.commands`, the docopt command classes. Each
   command is a function of `metator.cli`, whose `cli` is the `metator`
-  command line; `metator.main.main` is an alias of it.
+  command line; `metator.main.main` is an alias of it. Like any click
+  command, it ends by raising `SystemExit` (status 0 after a successful
+  run) instead of returning.
 
 ### Fixed
 - A fresh install of 1.3.10 did not start: it never declared `docopt`,
