@@ -292,11 +292,13 @@ class Scaffolder:
         if not hasattr(self, "score_matrice"):
             self.get_matrix()
 
-        # Normalized the matrix.
+        # Normalized the matrix. Contig k has the nodes 2k (start) and 2k + 1
+        # (end): score every pair of nodes but the two ends of one contig,
+        # which build_graph joins anyway.
         self.score_matrice_norm = np.zeros((2 * self.length, 2 * self.length))
         for i in range(self.length * 2):
             for j in range(i + 1, self.length * 2):
-                if (j - i > 2) or (i % 2 == 1):
+                if i // 2 != j // 2:
                     self.score_matrice_norm[i, j] = self.score_matrice[i, j] / np.sqrt(self.normalize[i] * self.normalize[j])
         self.score_matrice_norm = self.score_matrice_norm + self.score_matrice_norm.T
         return self.score_matrice_norm

@@ -45,6 +45,9 @@ All notable changes to this project will be documented in this file.
 - pandas 3 compatibility.
 - `pairtools sort` and `bgzip` failures are reported where they happen.
 - Core bin detection is no longer quadratic in the number of core bins.
+- `scaffold` and `pipeline --scaffold` never scored a junction between the
+  starts of two contigs that follow each other in the bin fasta, so such
+  contigs could come out in the wrong order or orientation.
 
 ## [1.3.10] - 2025-05-21
 - `host` module rewritten to annotate the bacterial hosts of each MGE (#27).
