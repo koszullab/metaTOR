@@ -52,6 +52,9 @@ All notable changes to this project will be documented in this file.
   contig of a linear scaffold (or close the scaffold into a circle): the
   outer end of that contig, which has no partner, took the contig next to
   its other end.
+- Python API: `metator.regions.Bin.insert`, `invert` and `delete` raised
+  `AttributeError` after they had changed the contigs; the length of a
+  `Bin` now follows these edits.
 
 ## [1.3.10] - 2025-05-21
 - `host` module rewritten to annotate the bacterial hosts of each MGE (#27).

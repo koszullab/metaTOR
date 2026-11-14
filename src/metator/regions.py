@@ -275,13 +275,13 @@ class Bin:
         for seq in self.fasta:
             self.contigs.append(Contig(seq.name, 0, len(seq), bin=self.bin_name))
 
-        # Compute breakpoint positions.
-        self.breakpoints = np.cumsum([0] + [len(contig) for contig in self.contigs])
+        # Breakpoints of the edits (insert, invert, delete) made to the bin.
+        self.breakpoints = []
         self.scaffolds = []
 
     def __len__(self) -> int:
         """Returns the total bin length."""
-        return self.breakpoints[-1]
+        return self.boundaries[-1]
 
     def get_contigs_counts(self) -> int:
         """Returns the number of bins."""

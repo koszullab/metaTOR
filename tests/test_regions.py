@@ -213,17 +213,27 @@ EDITS = {
 }
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AttributeError,
-    reason="Bin.insert/invert/delete append to Bin.breakpoints, a numpy array without append",
-)
 @pytest.mark.parametrize("edit", list(EDITS))
 def test_bin_edits(bin_fasta, edit):
     bin = Bin("bin", bin_fasta[0])
     change, layout = EDITS[edit]
     change(bin)
     assert _layout(bin.contigs) == layout
+    assert len(bin) == sum(len(contig) for contig in bin.contigs)
+
+
+def test_bin_edits_record_their_breakpoints(bin_fasta):
+    bin = Bin("bin", bin_fasta[0])
+    assert bin.breakpoints == []
+    bin.invert(50, 120)
+    bin.delete(10, 20)
+    # The length follows the edits, so a contig can be appended at the end.
+    assert len(bin) == 220
+    bin.insert(len(bin), Contig("ins", 0, 10))
+    assert _layout(bin.contigs)[-1] == "ins:0-10:+"
+    assert len(bin) == 230
+    assert [bp.type for bp in bin.breakpoints] == ["INV", "DEL", "INS"]
+    assert [(bp.pos1.coord, bp.pos2.coord) for bp in bin.breakpoints[:2]] == [(50, 120), (10, 20)]
 
 
 # -- Scaffold ----------------------------------------------------------------
