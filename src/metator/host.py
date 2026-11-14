@@ -301,6 +301,9 @@ def plot_mag_noise(mags, image_file="background_noise.png") -> None:
         _half_violins(ax, groups, side, colour)
         handles.append(Patch(facecolor=colour, edgecolor=VIOLIN_LINE_COLOUR, linewidth=1.25, label=kind))
     ax.set_xticks(range(len(qualities)), labels=qualities)
+    if qualities:
+        # One unit per quality, as on a categorical axis.
+        ax.set_xlim(-0.5, len(qualities) - 0.5)
     ax.set_xlabel("MAG Quality")
     ax.set_ylabel("Interaction Signal (log scale)")
     ax.set_title("Distribution of Intra- and Inter-MAG Interaction Signals")

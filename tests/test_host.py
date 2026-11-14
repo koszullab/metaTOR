@@ -184,6 +184,7 @@ def test_plot_mag_noise(binned, tmp_path, saved_figures):
     order = ["HQ", "MQ", "Contaminated"]  # order of first appearance
     assert [label.get_text() for label in ax.get_xticklabels()] == order
     assert list(ax.get_xticks()) == [0, 1, 2]
+    assert ax.get_xlim() == (-0.5, 2.5)
     assert ax.get_xlabel() == "MAG Quality"
     assert ax.get_ylabel() == "Interaction Signal (log scale)"
     assert ax.get_title() == "Distribution of Intra- and Inter-MAG Interaction Signals"
@@ -223,6 +224,7 @@ def test_plot_mag_noise_leaves_out_missing_values(tmp_path, saved_figures):
     mth.plot_mag_noise(mags, image_file=str(tmp_path / "noise.png"))
     ax = saved_figures["noise.png"].axes[0]
     assert [label.get_text() for label in ax.get_xticklabels()] == ["HQ", "LQ"]
+    assert ax.get_xlim() == (-0.5, 1.5)
     violins, quartiles, lines = _half_violins(ax)
 
     def log(*signals):
@@ -232,6 +234,16 @@ def test_plot_mag_noise_leaves_out_missing_values(tmp_path, saved_figures):
     assert quartiles.keys() == violins.keys()
     # LQ: one finite intra-MAG signal and no finite inter-MAG signal.
     assert lines == {(1, "low"): pytest.approx(log(3.0)[0])}
+
+
+def test_plot_mag_noise_without_quality(tmp_path, saved_figures):
+    """Without any MAG quality, the figure is saved empty."""
+    mag = mth.Mag("m1")
+    mag.quality, mag.intra_signal, mag.inter_signals = None, 1.0, [0.1, 0.2]
+    mth.plot_mag_noise({"m1": mag}, image_file=str(tmp_path / "noise.png"))
+    ax = saved_figures["noise.png"].axes[0]
+    assert not ax.get_xticks().size and not ax.collections and not ax.lines
+    assert [text.get_text() for text in ax.get_legend().get_texts()] == ["intra", "inter"]
 
 
 def test_half_violins_without_density():
