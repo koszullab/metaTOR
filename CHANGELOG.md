@@ -33,6 +33,12 @@ All notable changes to this project will be documented in this file.
   one of them was kept in the final bins.
 - With `--aligner bwa`, every pair carried the first mate's position for
   both mates.
+- With `--aligner bowtie2` (the default), `network` and `pipeline` paired
+  the forward and reverse reads assuming an order of the read names other
+  than the one `samtools sort -n` sorts them in: the pair `r5` was lost
+  when the reverse reads were `r.5` (unpaired) then `r5`, and names such
+  as `r_1` and `r5` stopped the run with `TypeError`. The reads are now
+  paired in the samtools order.
 - With several Hi-C libraries, `network.txt` listed each edge once per
   library; steps reading it with networkx kept only the last library's
   contacts.

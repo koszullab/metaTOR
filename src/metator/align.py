@@ -15,6 +15,7 @@ This module contains all these alignment functions:
     - merge_alignement
     - process_bamfile
     - process_bwa_bamfile
+    - strnum_cmp
 """
 
 import csv
@@ -28,7 +29,6 @@ import metator.io as mio
 import metator.network as mtn
 from metator.log import logger
 from os.path import join
-from looseversion import LooseVersion
 
 
 def align(
@@ -390,15 +390,13 @@ def merge_alignment(forward_aligned, reverse_aligned, contig_data, out_file):
                     rev_read = next(rev_bam)
                 except StopIteration:
                     break
-            # As the file is version sorted we have to do compare the two names
-            # according to the version order.
+            # Both files follow the read name order of "samtools sort -n", so
+            # the read that comes first in that order has no mate.
             else:
-                names = [for_read[0], rev_read[0]]
-                names_sorted = sorted(names, key=LooseVersion)
                 # Case of the forward read mapped but not the reverse. Indeed,
                 # no line would have been added previously if the read didn't
                 # map.
-                if names == names_sorted:
+                if strnum_cmp(for_read[0], rev_read[0]) <= 0:
                     try:
                         for_read = next(for_bam)
                     except StopIteration:
@@ -577,3 +575,66 @@ def process_bwa_bamfile(alignment, min_qual, contig_data, out_file):
     # Close the bam file and return number of pairs
     temp_bam.close()
     return n_pairs
+
+
+def _is_digit(char):
+    """Whether a character is an ASCII digit, as samtools' is_digit."""
+    return "0" <= char <= "9"
+
+
+def strnum_cmp(name_a, name_b):
+    """Compare two read names in the order of ``samtools sort -n``.
+
+    A port of ``strnum_cmp`` from samtools' ``bam_sort.c``, the natural order
+    in which ``samtools sort -n`` (``pysam.sort("-n", ...)``) sorts the reads:
+    runs of digits compare as numbers, whatever their leading zeros ("r9" <
+    "r10", "r07" == "r7"), and any other character by its code ("a_1" > "a1",
+    "rAb" > "rAB"). Read names are printable ASCII (SAM specification), so
+    comparing characters compares the bytes samtools compares.
+
+    Parameters
+    ----------
+    name_a : str
+        First read name.
+    name_b : str
+        Second read name.
+
+    Returns
+    -------
+    int:
+        A negative number if name_a comes first, a positive number if name_b
+        comes first, 0 if the names are equivalent (samtools then orders the
+        reads by their flags, then keeps their input order).
+    """
+    # The C code walks NUL-terminated strings.
+    a = name_a + "\0"
+    b = name_b + "\0"
+    i = j = 0
+    while a[i] != "\0" and b[j] != "\0":
+        if not _is_digit(a[i]) or not _is_digit(b[j]):
+            if a[i] != b[j]:
+                return ord(a[i]) - ord(b[j])
+            i += 1
+            j += 1
+        else:
+            # Skip leading zeros.
+            while a[i] == "0":
+                i += 1
+            while b[j] == "0":
+                j += 1
+            # Skip matching digits.
+            while _is_digit(a[i]) and a[i] == b[j]:
+                i += 1
+                j += 1
+            # Now mismatching, so see which ends the number sooner.
+            diff = ord(a[i]) - ord(b[j])
+            while _is_digit(a[i]) and _is_digit(b[j]):
+                i += 1
+                j += 1
+            if _is_digit(a[i]):
+                return 1  # a still going, so larger
+            if _is_digit(b[j]):
+                return -1  # b still going, so larger
+            if diff:
+                return diff  # same length, so earlier diff
+    return 1 if a[i] != "\0" else -1 if b[j] != "\0" else 0
