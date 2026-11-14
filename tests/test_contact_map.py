@@ -1,14 +1,14 @@
 # Tests for the contact_map module and the contactmap command.
 
+import inspect
 import shutil
 from pathlib import Path
 
-import hicstuff
+import hicstuff.pipeline
 import metator.commands as mtc
 import metator.contact_map as mtcm
 import pandas as pd
 import pytest
-from packaging.version import Version
 from tests import synthetic
 
 CONTIG_DATA = "tests_data/contig_data_final.txt"
@@ -111,9 +111,20 @@ def _matrix_total(out_dir, name, mat_fmt):
     return cooler.Cooler(str(out_dir / f"{name}.cool")).pixels()[:]["count"].sum()
 
 
+def _hicstuff_swaps_chr2_and_pos2():
+    """Whether the installed hicstuff has the bug below. Checked on its code
+    rather than guessed from its version, so that the xfail goes away with
+    whichever release fixes it."""
+    try:
+        return "-p2 4 -c2 5" in inspect.getsource(hicstuff.pipeline.pairs2cool)
+    except (AttributeError, OSError, TypeError):
+        return False
+
+
 HICSTUFF_COOL_BUG = pytest.mark.xfail(
-    Version(hicstuff.__version__) < Version("3.3"),
+    _hicstuff_swaps_chr2_and_pos2(),
     strict=True,
+    raises=FileNotFoundError,
     reason="hicstuff.pipeline.pairs2cool runs `cooler cload pairs -p2 4 -c2 5`: chr2 and pos2 are swapped and no "
     ".cool is written",
 )
