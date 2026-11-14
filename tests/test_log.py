@@ -1,6 +1,5 @@
 # Tests of the logging helpers.
 
-import json
 import logging
 
 import pytest
@@ -28,20 +27,3 @@ def test_set_file_handler(tmp_path, restore_handlers):
     mtl.logger.info("hello")
     assert (tmp_path / "second.log").read_text().endswith(" :: INFO :: hello\n")
     assert (tmp_path / "first.log").read_text() == ""
-
-
-def test_text_logging(tmp_path, monkeypatch, restore_handlers):
-    """Errors, and only errors, are sent to the text notification API."""
-    credentials = tmp_path / "text_credentials.json"
-    credentials.write_text(json.dumps({"api_service": "https://sms.invalid/send", "user": "me"}))
-    sent = []
-    monkeypatch.setattr(mtl.requests, "get", lambda url, params: sent.append((url, dict(params))))
-    mtl.setup_text_logging(str(credentials))
-    mtl.logger.warning("just a warning")
-    mtl.logger.error("disk full")
-    assert sent == [("https://sms.invalid/send", {"user": "me", "msg": "disk full"})]
-
-
-def test_text_logging_needs_credentials(tmp_path):
-    with pytest.raises(FileNotFoundError):
-        mtl.setup_text_logging(str(tmp_path / "missing.json"))

@@ -23,6 +23,12 @@ All notable changes to this project will be documented in this file.
   1.3.10 no longer starts: it never declared `docopt`, which `hicstuff`
   stopped providing in 3.2.5.
 
+### Removed
+- Text notifications: when the working directory held a
+  `text_credentials.json` file, every error message was sent to the web
+  API named in it. Python API: `metator.log.setup_text_logging`,
+  `TEXT_CREDENTIALS_DEFAULT_PATH` and `text_formatter` are gone.
+
 ### Fixed
 - `network`, `partition`, `validation` and `pipeline` deleted the whole
   `--tmpdir` directory, including files that were already in it.
