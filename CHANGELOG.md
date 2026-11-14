@@ -66,6 +66,10 @@ All notable changes to this project will be documented in this file.
   was contaminated: it removed `<assembly>.fxi`, which pyfastx only writes
   when a bin is re-partitioned.
 - `partition` failed the same way at the end when no bin reached `--size`.
+- `HiC_abundance` in `bin_summary.txt` (`validation`, `pipeline`) was half
+  the share of the Hi-C reads in the bin: the values are now twice as
+  large, and those of a fully binned metagenome sum to 100%, like
+  `SG_abundance`.
 
 ## [1.3.10] - 2025-05-21
 - `host` module rewritten to annotate the bacterial hosts of each MGE (#27).
