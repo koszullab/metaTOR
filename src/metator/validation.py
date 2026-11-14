@@ -34,7 +34,6 @@ import logging
 import metator.io as mio
 import metator.figures as mtf
 import metator.partition as mtp
-import networkx as nx
 import numpy as np
 import os
 import pandas as pd
@@ -370,8 +369,9 @@ def recursive_clustering(
         Dictionary containing information about the bins.
     contigs_data : pandas.DataFrame
         Table with all the data from the contigs.
-    network : str
-        Metator full network.
+    network : pandas.DataFrame
+        Metator full network: one row per edge, with the columns contig1,
+        contig2 and weight.
     cluster_matrix : bool
         If True, build the clustering matrix and save it.
     size : int
@@ -519,8 +519,9 @@ def recursive_clustering_worker(
         Path the temp directory.
     algorithm : str
         Algorithm to use, either louvain or leiden.
-    network : networkx.classes.graph.Graph
-        Network of contigs from HiC librairies.
+    network : pandas.DataFrame
+        Network of contigs from HiC librairies: one row per edge, with the
+        columns contig1, contig2 and weight.
     iterations : int
         Number of iterations to use for recursive iterations of Louvain or
         Leiden.
@@ -542,11 +543,11 @@ def recursive_clustering_worker(
     mask = (contigs_data["Overlapping_bin_ID"] == over_bin_id) & (contigs_data["Recursive_bin_ID"].apply(str) == rec_bin_id)
     list_contigs = list(contigs_data.loc[mask, "ID"])
 
-    # Extract subnetwork
-    subnetwork = network.subgraph(list_contigs)
+    # Extract subnetwork: the edges between two contigs of the bin.
+    subnetwork = network[network["contig1"].isin(list_contigs) & network["contig2"].isin(list_contigs)]
 
     # Write the new subnetwork
-    nx.write_edgelist(subnetwork, subnetwork_file, delimiter="\t", data=["weight"])
+    subnetwork.to_csv(subnetwork_file, sep="\t", header=False, index=False)
 
     # Partition the subnetwork.
     output_partition = mtp.algo_partition(
@@ -644,8 +645,15 @@ def recursive_decontamination(
         threads,
     )
 
-    # Load network:
-    network = nx.read_edgelist(network_file, nodetype=int, data=(("weight", float),))
+    # Load network: the weights stay as text, so that the subnetwork of a bin
+    # repeats its rows verbatim.
+    network = pd.read_csv(
+        network_file,
+        sep="\t",
+        header=None,
+        names=["contig1", "contig2", "weight"],
+        dtype={"weight": str},
+    )
 
     # Load contigs data:
     contigs_data = pd.read_csv(

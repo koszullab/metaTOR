@@ -24,7 +24,7 @@ Main functions and methods include:
 # import metator.io as mio
 from collections import Counter
 from typing import Literal, Optional
-import networkx as nx
+import igraph as ig
 import matplotlib.pyplot as plt
 
 # import pypairix
@@ -136,25 +136,29 @@ def map_contigs_to_mags(mags: dict) -> dict:
     return contig_to_mag
 
 
-def build_contig_graph(network_data: pd.DataFrame) -> nx.Graph:
+def build_contig_graph(network_data: pd.DataFrame) -> ig.Graph:
     """
     Builds an undirected interaction graph from a DataFrame containing contig pairs and interaction signals.
 
     Each row of the DataFrame should contain two contig IDs and a signal value representing the interaction strength.
-    The function constructs a NetworkX graph where each contig is a node, and each edge is weighted by the signal.
+    The function constructs an igraph graph where each contig is a vertex, named after the contig ID, and each edge
+    is weighted by the signal. A pair of contigs listed in several rows makes one edge, which keeps the signal of the
+    last row; its ``order`` attribute is the index of the first row, so that sorting edges by ``order`` follows the
+    rows of the table.
 
     Args:
     - network_data (pd.DataFrame): DataFrame with columns ['contig1', 'contig2', 'signal'].
 
     Returns:
-    - G (nx.Graph): An undirected graph where edges are weighted by the interaction signal.
+    - G (ig.Graph): An undirected graph where edges are weighted by the interaction signal.
     """
     logger.info("Creating contigs contacts graph...")
 
-    G = nx.Graph()
-    edges = [[int(u), int(v), w] for u, v, w in zip(network_data["contig1"], network_data["contig2"], network_data["signal"])]
-    G.add_weighted_edges_from(edges)
-    logger.info(f"Contigs graph has {G.number_of_nodes()} nodes and {G.number_of_edges()} edges.")
+    edges = [(int(u), int(v), w) for u, v, w in zip(network_data["contig1"], network_data["contig2"], network_data["signal"])]
+    G = ig.Graph.TupleList(edges, weights=True)
+    G.es["order"] = range(G.ecount())
+    G.simplify(multiple=True, loops=False, combine_edges={"weight": "last", "order": "min"})
+    logger.info(f"Contigs graph has {G.vcount()} nodes and {G.ecount()} edges.")
     return G
 
 
@@ -433,6 +437,10 @@ def compute_mge_mag_interactions(
     """
 
     G = build_contig_graph(network_data)
+    names, ends, weights, order = G.vs["name"], G.get_edgelist(), G.es["weight"], G.es["order"]
+    # Vertex of each contig ID (G.vs.find(name=...) scans every vertex for a
+    # name that is not a string).
+    vertex_of = {name: vertex for vertex, name in enumerate(names)}
 
     contig_to_mag = map_contigs_to_mags(mags)
 
@@ -442,11 +450,16 @@ def compute_mge_mag_interactions(
         interaction_signals = {}
         interacting_contigs_by_mag = {}
         for contig1 in mgemag.contigs.values():
-            if contig1 in G:
-                for contig2 in G.neighbors(contig1):
+            if contig1 in vertex_of:
+                vertex = vertex_of[contig1]
+                # Neighbours in the order of the network rows; a self-contact,
+                # listed twice by igraph, counts once.
+                for edge in sorted(set(G.incident(vertex)), key=order.__getitem__):
+                    source, target = ends[edge]
+                    contig2 = names[target if source == vertex else source]
                     if contig2 in contig_to_mag:
                         mag_name = contig_to_mag[contig2]
-                        signal = G[contig1][contig2]["weight"]
+                        signal = weights[edge]
                         interaction_signals[mag_name] = interaction_signals.get(mag_name, 0) + signal
                         interacting_contigs_by_mag.setdefault(mag_name, set()).add(contig2)
 

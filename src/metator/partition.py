@@ -676,7 +676,7 @@ def spinglass_partition(
 
     Parameters:
     -----------
-    subnetwork : networkx.classes.graph.Graph
+    subnetwork : igraph.Graph
         Network of interaction of a contaminated bins.
     spins : int
         Number of expected MAGs in the contaminated bins.

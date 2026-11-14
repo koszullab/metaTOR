@@ -132,6 +132,69 @@ def test_estimate_noise():
     assert mags["C"].inter_signals == 0
 
 
+def test_build_contig_graph():
+    """One vertex per contig ID and one edge per pair of contigs: a pair listed
+    twice keeps the signal of its last row and the position of its first."""
+    network = pd.DataFrame(
+        {"contig1": [7, 3, 7, 5, 3], "contig2": [3, 5, 7, 7, 7], "signal": [1.0, 2.0, 3.0, 4.0, 5.0]},
+    )
+    graph = mth.build_contig_graph(network)
+    names = graph.vs["name"]
+    assert sorted(names) == [3, 5, 7]
+    edges = {
+        frozenset((names[u], names[v])): (w, o)
+        for (u, v), w, o in zip(graph.get_edgelist(), graph.es["weight"], graph.es["order"])
+    }
+    assert edges == {
+        frozenset((3, 7)): (5.0, 0),
+        frozenset((3, 5)): (2.0, 1),
+        frozenset((7,)): (3.0, 2),  # a self-contact
+        frozenset((5, 7)): (4.0, 3),
+    }
+
+
+def test_mge_mag_interactions_follow_the_network_rows(tmp_path):
+    """The MAGs of an MGE come in the order of its first contact with each in
+    the network (not in the order the contigs first appear in it), and a pair
+    listed twice counts with its last signal."""
+    mags = {name: mth.Mag(name) for name in ["metator_A", "metator_B"]}
+    mags["metator_A"].add_contig("a", 10)
+    mags["metator_B"].add_contig("b", 20)
+    mge = mth.MgeMag("MetaTOR_MGE_1")
+    mge.add_contig("m", 1)
+    mge.add_contig("m_without_contact", 2)
+    network = pd.DataFrame(
+        {
+            "contig1": [10, 1, 1, 20, 1],
+            "contig2": [30, 20, 10, 1, 1],
+            "signal": [9.0, 1.0, 2.0, 3.0, 4.0],
+        },
+    )
+    out = tmp_path / "interactions.txt"
+    _, mge_mags = mth.compute_mge_mag_interactions(
+        network, mags, {mge.name: mge}, 10.0, 1, output_file=str(out), image_file=str(tmp_path / "histogram.png")
+    )
+    assert out.read_text().splitlines()[1:] == [
+        f"{'MetaTOR_MGE_1':<24}\t{'metator_B':<24}\t3.000000\t60.00\t1",
+        f"{'MetaTOR_MGE_1':<24}\t{'metator_A':<24}\t2.000000\t40.00\t1",
+    ]
+    assert list(mge_mags[mge.name].hosts) == ["metator_B", "metator_A"]
+
+
+def test_mge_mag_interactions_count_a_self_contact_once(tmp_path):
+    """A contig in both an MGE and a MAG (bins built by hand) contacts itself
+    once."""
+    mag = mth.Mag("metator_A")
+    mag.add_contig("a", 10)
+    mag.add_contig("m", 1)
+    mge = mth.MgeMag("MetaTOR_MGE_1")
+    mge.add_contig("m", 1)
+    network = pd.DataFrame({"contig1": [1, 10], "contig2": [1, 1], "signal": [4.0, 2.0]})
+    out = tmp_path / "interactions.txt"
+    mth.compute_mge_mag_interactions(network, {mag.name: mag}, {mge.name: mge}, 10.0, 1, str(out), str(tmp_path / "h.png"))
+    assert out.read_text().splitlines()[1] == f"{'MetaTOR_MGE_1':<24}\t{'metator_A':<24}\t6.000000\t100.00\t2"
+
+
 def test_background_noise(metagenome, binned):
     """Contigs of a MAG contact each other more than other MAGs' contigs."""
     data, network, _, _ = binned

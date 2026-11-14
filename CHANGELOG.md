@@ -29,6 +29,23 @@ All notable changes to this project will be documented in this file.
   boxplots and the background-noise violins show the same data; their
   colours are no longer muted, and each half violin now stops at the
   smallest and largest values instead of extending past them.
+- `networkx` is no longer installed, and `igraph` must be 0.10.3 or later:
+  `scaffold` and the MGE host detection build their graphs with `igraph`,
+  and the recursive step of `validation` takes the edges of each bin
+  straight from `network.txt`, every row as `partition` does (networkx
+  kept the last row of an edge listed several times, as in a
+  `network.txt` written by 1.3.10 from several libraries). Otherwise the
+  outputs do not change, with one exception: `scaffold` (and
+  `pipeline --scaffold`) now reads a linear scaffold from the end whose
+  contig comes first in the bin fasta, and a circular one from its first
+  contig. networkx chose the end from the order of a Python set for
+  scaffolds holding less than half of the bin's contigs: such a scaffold
+  can come out reverse-complemented or starting from another contig, with
+  the same contigs, junctions and relative orientations. Python API:
+  `metator.host.build_contig_graph` returns an `igraph.Graph`, and the
+  `network` of `metator.validation.recursive_clustering` and
+  `recursive_clustering_worker` is the network table (a
+  `pandas.DataFrame` with the columns contig1, contig2 and weight).
 
 ### Removed
 - `metator host`, which always failed since 1.3.10: it called
