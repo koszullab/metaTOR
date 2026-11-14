@@ -267,29 +267,80 @@ wheels = [
 
 [[package]]
 name = "biopython"
-version = "1.80"
+version = "1.85"
 source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version < '3.10'",
+]
 dependencies = [
-    { name = "numpy", version = "2.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*'" },
+    { name = "numpy", version = "2.0.2", source = { registry = "https://pypi.org/simple" } },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/db/ca/1d5fab0fedaf5c2f376d9746d447cdce04241c433602c3861693361ce54c/biopython-1.85.tar.gz", hash = "sha256:5dafab74059de4e78f49f6b5684eddae6e7ce46f09cfa059c1d1339e8b1ea0a6", size = 19909902, upload-time = "2025-01-15T15:06:51.997Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/79/de/79824470fdc5c2aedeb1bab637d24eab654a7e9fbb7070f779fd944fd1ca/biopython-1.85-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:a6308053a61f3bdbb11504ece4cf24e264c6f1d6fad278f7e59e6b84b0d9a7b4", size = 2787511, upload-time = "2025-01-15T15:11:56.656Z" },
+    { url = "https://files.pythonhosted.org/packages/4b/d6/3c90df2ebc4f2a522235f4391392253e528f19f5fb6a52396a2316e17064/biopython-1.85-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:434dd23e972b0c89e128f2ebbd16b38075d609184f4f1fd16368035f923019c2", size = 2765456, upload-time = "2025-01-15T15:12:05.177Z" },
+    { url = "https://files.pythonhosted.org/packages/ff/d7/34233c4ee906b088b199eb2af9c4107384a547d44b5960257ef2bf2cc3c8/biopython-1.85-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:9a08d082e85778259a83501063871e00ba57336136403b75050eea14d523c00a", size = 3225137, upload-time = "2025-01-15T15:12:15.847Z" },
+    { url = "https://files.pythonhosted.org/packages/ae/6b/e7a5ae49ef7e8f81720593db22e884c1c8e3504e0e235da0395758a5c7d0/biopython-1.85-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:d93464e629950e4df87d810125dc4e904538a4344b924f340908ea5bc95db986", size = 3245258, upload-time = "2025-01-15T15:12:21.012Z" },
+    { url = "https://files.pythonhosted.org/packages/68/2c/0035656dbe51ac0bbe81321172b43c37b38408f8d136abaac443e9f44b62/biopython-1.85-cp310-cp310-win32.whl", hash = "sha256:f2f45ab3f1e43fdaa697fd753148999090298623278097c19c2c3c0ba134e57c", size = 2786505, upload-time = "2025-01-15T15:12:26.545Z" },
+    { url = "https://files.pythonhosted.org/packages/32/a4/f20d5830dbd8654c13e763daef429fa32ef0b2b09749ac427d045cc81976/biopython-1.85-cp310-cp310-win_amd64.whl", hash = "sha256:7c8326cd2825ba166abecaf72843b9b15823affd6cec04fde65f0d2526767da4", size = 2820961, upload-time = "2025-01-15T15:12:32.364Z" },
+    { url = "https://files.pythonhosted.org/packages/c3/73/c3a1323a3fe0d07212b09c04fb903e2cbb98aebfbb58e55e8717473e1bc0/biopython-1.85-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:db8822adab0cd75a6e6ae845acf312addd8eab5f9b731c191454b961fc2c2cdc", size = 2787585, upload-time = "2025-01-15T15:12:36.927Z" },
+    { url = "https://files.pythonhosted.org/packages/ff/cf/299524e896fa49beb7588143e1509cce4848572215ebafb8eea83a861820/biopython-1.85-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:8e2bbe58cc1a592b239ef6d68396745d3fbfaafc668ce38283871d8ff070dbab", size = 2765608, upload-time = "2025-01-15T15:12:43.853Z" },
+    { url = "https://files.pythonhosted.org/packages/b1/dd/be3e95b72a35ee6d52c84412e15af828951e5c69175080d4619985fd54ce/biopython-1.85-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:5916eb56df7ecd4a3babc07a48d4894c40cfb45dc18ccda1c148d0131017ce04", size = 3237552, upload-time = "2025-01-15T15:12:49.046Z" },
+    { url = "https://files.pythonhosted.org/packages/25/9c/612821b946930b6caa5d795cfe4169ed6a522562eced9776914be7efaf21/biopython-1.85-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b0cec8833bf3036049129944ee5382dd576dac9670c3814ff2314b52aa94f199", size = 3257287, upload-time = "2025-01-15T15:12:56.168Z" },
+    { url = "https://files.pythonhosted.org/packages/a1/77/316e51dd42fd8225429574a268bdc627ce4f42067a3976c4c8c457a42023/biopython-1.85-cp311-cp311-win32.whl", hash = "sha256:cf88a4c8d8af13138be115949639a5e4a201618185a72ff09adbe175b7946b28", size = 2786411, upload-time = "2025-01-15T15:13:02.754Z" },
+    { url = "https://files.pythonhosted.org/packages/f2/11/3c4e8c049b91998bbbd51ddebc6f790b1aa66211babfbf5ff008a72fb1f9/biopython-1.85-cp311-cp311-win_amd64.whl", hash = "sha256:d3c99db65d57ae4fc5034e42ac6cd8ddce069e664903f04c8a4f684d7609d6fa", size = 2820912, upload-time = "2025-01-15T15:13:10.499Z" },
+    { url = "https://files.pythonhosted.org/packages/a3/25/e46f05359df7f0049c3adc5eaeb9aee0f5fbde1d959d05c78eb1de8f4d12/biopython-1.85-cp312-cp312-macosx_10_9_x86_64.whl", hash = "sha256:cc5b981b9e3060db7c355b6145dfe3ce0b6572e1601b31211f6d742b10543874", size = 2789327, upload-time = "2025-01-15T15:13:17.086Z" },
+    { url = "https://files.pythonhosted.org/packages/54/5b/8b3b029c94c63ab4c1781d141615b4a837e658422381d460c5573d5d8262/biopython-1.85-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:6fe47d704c2d3afac99aeb461219ec5f00273120d2d99835dc0a9a617f520141", size = 2765805, upload-time = "2025-01-15T15:13:26.92Z" },
+    { url = "https://files.pythonhosted.org/packages/69/0a/9a8a38eff03c4607b9cec8d0e08c76b346b1cee1f77bc6d00efebfc7ec83/biopython-1.85-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:e54e495239e623660ad367498c2f7a1a294b1997ba603f2ceafb36fd18f0eba6", size = 3249276, upload-time = "2025-01-15T15:13:36.639Z" },
+    { url = "https://files.pythonhosted.org/packages/b4/0d/b7a0f10f5100dcf51ae36ba31490169bfa45617323bd82af43e1fb0098fb/biopython-1.85-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:d024ad48997ad53d53a77da24b072aaba8a550bd816af8f2e7e606a9918a3b43", size = 3268869, upload-time = "2025-01-15T15:13:44.009Z" },
+    { url = "https://files.pythonhosted.org/packages/07/51/646a4b7bdb4c1153786a70d33588ed09178bfcdda0542dfdc976294f4312/biopython-1.85-cp312-cp312-win32.whl", hash = "sha256:6985e17a2911defcbd30275a12f5ed5de2765e4bc91a60439740d572fdbfdf43", size = 2787011, upload-time = "2025-01-15T15:13:48.958Z" },
+    { url = "https://files.pythonhosted.org/packages/c1/84/c583fa2ac6e7d392d24ebdc5c99e95e517507de22cf143efb6cf1fc93ff5/biopython-1.85-cp312-cp312-win_amd64.whl", hash = "sha256:d6f8efb2db03f2ec115c5e8c764dbadf635e0c9ecd4c0e91fc8216c1b62f85f5", size = 2820972, upload-time = "2025-01-15T15:13:54.475Z" },
+    { url = "https://files.pythonhosted.org/packages/b3/04/9bdf0003913803d3d2239785f0f53875694dd441bd5e1a8c1581cab37747/biopython-1.85-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:d76e44b46f555da2e72ac36e757efd327f7f5f690e9f00ede6f723b48538b6d5", size = 2787519, upload-time = "2025-01-15T15:14:45.867Z" },
+    { url = "https://files.pythonhosted.org/packages/a4/9b/bef7dd17980eb4625c3c69411d3273e9b45d83dc7e2f1c63719607fa1026/biopython-1.85-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:8469095907a17f156c76b6644829227efdf4996164f7726e6f4ca15039329776", size = 2765442, upload-time = "2025-01-15T15:14:51.469Z" },
+    { url = "https://files.pythonhosted.org/packages/94/49/20f55dcfcc5487d84a6a4c84b59bcfb7ae2610f7370847b07e63e0f79cc6/biopython-1.85-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:cffc15ac46688cd4cf662b24d03037234ce00b571df67be45a942264f101f990", size = 3223396, upload-time = "2025-01-15T15:14:56.519Z" },
+    { url = "https://files.pythonhosted.org/packages/80/5a/6ba0066b7f38b9e7a085f2fc4c171a25ebfa64202aab0965961621f561e1/biopython-1.85-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:9a630b3804f6c3fcae2f9b7485d7a05425e143fc570f25babbc5a4b3d3db00d7", size = 3243475, upload-time = "2025-01-15T15:15:01.798Z" },
+    { url = "https://files.pythonhosted.org/packages/90/1d/a38a9a61abd4a917fb9b95698971914d722e75027885bdb957b0fe757cd5/biopython-1.85-cp39-cp39-win32.whl", hash = "sha256:0ffb03cd982cb3a79326b84e789f2093880175c44eea10f3030c632f98de24f6", size = 2786482, upload-time = "2025-01-15T15:15:06.532Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/46/9cb732167a3ce4fd40920d1bec444d1739aaf18b58190f2fab8692fcaba5/biopython-1.85-cp39-cp39-win_amd64.whl", hash = "sha256:8208bf2d87ade066fafe9a63a2eb77486c233bc1bdda2cbf721ebee54715f1bf", size = 2820941, upload-time = "2025-01-15T15:15:12.311Z" },
+]
+
+[[package]]
+name = "biopython"
+version = "1.88"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.12' and sys_platform == 'win32'",
+    "python_full_version >= '3.12' and sys_platform == 'emscripten'",
+    "python_full_version >= '3.12' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform == 'win32'",
+    "python_full_version >= '3.11' and python_full_version < '3.11.5' and sys_platform == 'win32'",
+    "python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform == 'emscripten'",
+    "python_full_version >= '3.11' and python_full_version < '3.11.5' and sys_platform == 'emscripten'",
+    "python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version >= '3.11' and python_full_version < '3.11.5' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version == '3.10.*'",
+]
+dependencies = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
     { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cb/8d/7cd217252797f7088847d667101b490df5644f0ff5202441e444b2b620ba/biopython-1.80.tar.gz", hash = "sha256:52805e9af88767e450e2df8113b5bc59e964e2e8a7bb803a83570bdbb51c0e43", size = 17924553, upload-time = "2022-11-18T16:37:28.126Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f6/a0/cf657d076ec56a5f9e5c29a560c1f97b8eb6ae6608dc8bc95b4e2437f129/biopython-1.88.tar.gz", hash = "sha256:9aaa31c0bda4d059f7b2ee00bfdb5cbb73ade3057aa4b737a7cc0187091d071a", size = 19858058, upload-time = "2026-08-06T12:13:36.003Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e4/f9/0a85df7917f6cd87d69983a10fc6dcdd090226ff71a15a7b086edea2acd7/biopython-1.80-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:7c028b6129505e40efaeb70cc9ee034da83be743049315e124e5d44ec0e43494", size = 2678800, upload-time = "2022-11-18T16:37:48.229Z" },
-    { url = "https://files.pythonhosted.org/packages/66/ab/51ef468219008623e96202055949d0e8bb018bb12f5cbdc4f8da34d34765/biopython-1.80-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:2fa77bf8a99e5acc82518805a07cfb01bb98bf9439fed3e2764df57ae52b1614", size = 3078620, upload-time = "2022-11-18T16:37:54.344Z" },
-    { url = "https://files.pythonhosted.org/packages/6e/f2/ef58012529de1d3ea401bd3dfa87c5e5c9fb05aa611519ccc18ce6b17ce3/biopython-1.80-cp310-cp310-win32.whl", hash = "sha256:299b2402eb7145b56d8c9a2418bb5b36c3ceadc7b1e915e0dd0062973281affa", size = 2680874, upload-time = "2022-11-18T16:38:00.194Z" },
-    { url = "https://files.pythonhosted.org/packages/06/ed/6fbab8be0b4868f5105d76f3ab8b202c1bffd23d43cd422ba485af374b71/biopython-1.80-cp310-cp310-win_amd64.whl", hash = "sha256:c3cedd2d7935084f8e929e5f516218845eaea4b06e6ac14ef400906dc48214a9", size = 2715479, upload-time = "2022-11-18T16:38:05.769Z" },
-    { url = "https://files.pythonhosted.org/packages/c0/de/ca9324a7c4991b0d30cf7235d51985cf0efcc05bed6d4780bfe5170c9346/biopython-1.80-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:bc8e00f3f3704f1e6aa0a67c19874c5a848ff827e31c7226b495c258d079f329", size = 2678924, upload-time = "2022-11-18T16:38:11.593Z" },
-    { url = "https://files.pythonhosted.org/packages/97/2c/249d8d97ef86b574147392afb5d53d8e801821bd2e1b84e3c4cab8571345/biopython-1.80-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:24b0376a1df657531cb9c6d221ef8e7956dd52533f550a8548572e875b4877c8", size = 3088320, upload-time = "2022-11-18T16:38:17.794Z" },
-    { url = "https://files.pythonhosted.org/packages/c6/85/2e8078cb2fc2bdaf340a3fa6bd85f53e68c3ce549dbc2e5535be85626888/biopython-1.80-cp311-cp311-win32.whl", hash = "sha256:0766783ec50a100dc12636c9f261cb46c438ba56be33b4e27c68b9b98c80a102", size = 2680780, upload-time = "2022-11-18T16:38:22.85Z" },
-    { url = "https://files.pythonhosted.org/packages/6e/59/8c0a0af8c0d7d16571426cb9b2320de3e3abffa81a6bb1dd96b66e6e8d33/biopython-1.80-cp311-cp311-win_amd64.whl", hash = "sha256:2a324830cff00e706d7010efb3013348bdabdacf42496cc706d2a2fd34d3fe17", size = 2715436, upload-time = "2022-11-18T16:38:28.142Z" },
-    { url = "https://files.pythonhosted.org/packages/1e/ce/2ba63838f8489bac77b1dbc204eb17a5ef2df51ebbded2f3e2674ecc40c6/biopython-1.80-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:9ab20351dda7b2b1951481586acf6299593541069301422d178ee82ac7d66845", size = 2678800, upload-time = "2022-11-18T16:39:28.993Z" },
-    { url = "https://files.pythonhosted.org/packages/e9/b3/d5703920ae7f9ff0458a3cf75cd5db271b9a8096fad492177621827f975b/biopython-1.80-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:013c664418ee47ec3ac459c924d0fe8193240b384dc3f1ae00fb69b39eebdb2b", size = 3077342, upload-time = "2022-11-18T16:39:34.475Z" },
-    { url = "https://files.pythonhosted.org/packages/56/38/b815307b7860c1020bd71745be6c5d975f389a5f81000c426c915a16b481/biopython-1.80-cp39-cp39-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:5d91b0bf503bc69accdb1b6d549f195ba421c5e6c55535de593a4b06cc1fb699", size = 3040656, upload-time = "2022-11-18T16:39:39.93Z" },
-    { url = "https://files.pythonhosted.org/packages/db/42/674f81acc0fee8cafd67a4692ffb04c341125b1a09537e0791e6a86efabd/biopython-1.80-cp39-cp39-win32.whl", hash = "sha256:063b1de90331f52f4617821b7ba0e6a2846c06028844ba0d047573da8b1b4ea1", size = 2680856, upload-time = "2022-11-18T16:39:45.465Z" },
-    { url = "https://files.pythonhosted.org/packages/2e/f4/c45a5a00036f7bd147270a8bda3925a30cf947b09f9598e44919e0b2b17c/biopython-1.80-cp39-cp39-win_amd64.whl", hash = "sha256:4782e1ba91069f12f9a526a4291c71d6aafb08503f72fb250aafeb6fb811278c", size = 2715434, upload-time = "2022-11-18T16:39:50.495Z" },
+    { url = "https://files.pythonhosted.org/packages/f9/9d/2a2f88a3315a1cd77fd94c297ac9f2fc323dee8e41c43c423edf108fca20/biopython-1.88-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:9732e2c74b1e3751810b026e568817afb18101039c30c9b16b9193e40ec1efdb", size = 2680594, upload-time = "2026-08-06T12:30:38.131Z" },
+    { url = "https://files.pythonhosted.org/packages/af/ed/b624a5ecb8c11b0d0ed7ae7f7c4d39663d72c8351808ecae3288c92b123c/biopython-1.88-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:02a6d8ed4eea1ee9e1c2a9d7690f21a60406bcfee7c71348363e267cce397bee", size = 3194726, upload-time = "2026-08-06T12:58:57.248Z" },
+    { url = "https://files.pythonhosted.org/packages/60/d4/7ac6f119c1699348538f4cf2bc118cd1216ed58b65a0ca0343f36e33f8b2/biopython-1.88-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:b321ee0f652aaecefe065b11d64b527c4d04f7826dfb7cfa31edea5ab1db07c2", size = 3216437, upload-time = "2026-08-06T12:59:05.649Z" },
+    { url = "https://files.pythonhosted.org/packages/23/97/d7c82acb2899629b5c6784ef30bdc72f97edc54303640fce8b52bd0afcb7/biopython-1.88-cp310-cp310-win32.whl", hash = "sha256:99288eb34ce75cb85a10ab3e5d76ffe45f0c03c7f5cc6d144d3777419e44b31e", size = 2709152, upload-time = "2026-08-06T12:31:44.064Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/e2/a012d3df653fdb02f6388a0cbd74788893686d56fcdbf3cb6126944e3a1f/biopython-1.88-cp310-cp310-win_amd64.whl", hash = "sha256:0e732f44208f1bab7c42bfea94422609249bd897da6b25b5588618436e80a6d2", size = 2745370, upload-time = "2026-08-06T12:31:40.017Z" },
+    { url = "https://files.pythonhosted.org/packages/33/f7/caf900dbc48ec6c338f156fb1354fb8a78e17221fb9f0d6272d24324ac6f/biopython-1.88-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:793de1a57d9b75546a4041f547b6a848031a71933f66d4c761857b0b0118c46b", size = 2680598, upload-time = "2026-08-06T12:30:46.676Z" },
+    { url = "https://files.pythonhosted.org/packages/2f/71/d98fdce67942d93b9824cf4e47e4a5c126ecd9a94e5a082eacd0d2646f21/biopython-1.88-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:906a7b2d4bc4515f5718f3ae994bd3bcfe8e87d963954008b57e0109e3772a58", size = 3207906, upload-time = "2026-08-06T12:59:10.531Z" },
+    { url = "https://files.pythonhosted.org/packages/83/39/5da166f2152ef43eae6c0a3976898d90e2e0065d010be174ca1460346c49/biopython-1.88-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:99e1f7022ab8eee2ae9e9a05b66ad183b9fe4eeb4e561a65ed0fd85eef5f8267", size = 3229559, upload-time = "2026-08-06T12:59:16.426Z" },
+    { url = "https://files.pythonhosted.org/packages/02/67/6fb95df7d811f9028088d0e2f771dfeaf1916a5d4236c9a408acc0480b70/biopython-1.88-cp311-cp311-win32.whl", hash = "sha256:024e438d044a0b1d4a0157af4ab2411b83389696aee3cdeb71f5ee74d0a59df2", size = 2708977, upload-time = "2026-08-06T12:32:02.068Z" },
+    { url = "https://files.pythonhosted.org/packages/90/ea/479bdfd4799801bbe2c990bbd38517f84f4b454460454d874db16ff98c63/biopython-1.88-cp311-cp311-win_amd64.whl", hash = "sha256:5808c5b980e63226426737b6f71b5dd7747e2e3d0074720cc04edf348ab57eab", size = 2744947, upload-time = "2026-08-06T12:31:57.772Z" },
+    { url = "https://files.pythonhosted.org/packages/83/b4/fbd2f53d06bd2c98d7f52da05a1d4cc838e4921ca6daa839a30d72d89256/biopython-1.88-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:43ce1fbed01c0ddb903fa426fa0f836062d973a09df15560ac8e895da24c1350", size = 2681164, upload-time = "2026-08-06T12:30:50.889Z" },
+    { url = "https://files.pythonhosted.org/packages/ae/a8/aaf7e3d1302cdbe9ee9261861b75a891d6de8de02e1fadeff1ea623687be/biopython-1.88-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:fe2dccf88e309dc896e7c2cc974a47be7a7b96d59c7f2ffd74ffcc7cfbdebb0c", size = 3220547, upload-time = "2026-08-06T12:59:21.865Z" },
+    { url = "https://files.pythonhosted.org/packages/17/c2/613ca5f729b55b2f7a9c17a3cd59d3f053ee2816da2d19933acc6b8741ec/biopython-1.88-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:9384c30460832926e765319040d732d1252a713a05af1dd4cc8b19cb1d590439", size = 3246647, upload-time = "2026-08-06T12:59:27.092Z" },
+    { url = "https://files.pythonhosted.org/packages/8d/ba/fae2eddf1f7aaf149a2a51663853bcc9d80381b9c03ab4d8b56557f58c75/biopython-1.88-cp312-cp312-win32.whl", hash = "sha256:4904abb18a1e039a631e549529c9b8123a166838cafe27f649f83f0183382d61", size = 2709235, upload-time = "2026-08-06T12:32:17.329Z" },
+    { url = "https://files.pythonhosted.org/packages/9e/4c/99ab6a00038e15f88e02992986225f57b1c675d1ad8bc8e5271d34c47c0d/biopython-1.88-cp312-cp312-win_amd64.whl", hash = "sha256:dd5131b70287486af1acef2fc40de51c68de2ea740ab772097ac2d10bad9a0b5", size = 2744159, upload-time = "2026-08-06T12:32:12.817Z" },
 ]
 
 [[package]]
@@ -1579,7 +1630,8 @@ name = "hicstuff"
 version = "3.2.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "biopython" },
+    { name = "biopython", version = "1.85", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "biopython", version = "1.88", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "cooler" },
     { name = "matplotlib", version = "3.9.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "matplotlib", version = "3.10.9", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*'" },
@@ -2703,7 +2755,8 @@ wheels = [
 name = "metator"
 source = { editable = "." }
 dependencies = [
-    { name = "biopython" },
+    { name = "biopython", version = "1.85", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "biopython", version = "1.88", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "docopt" },
     { name = "hicstuff" },
     { name = "igraph" },
@@ -2786,7 +2839,7 @@ dev = [
 requires-dist = [
     { name = "autodoc", marker = "extra == 'docs'" },
     { name = "autodocsumm", marker = "extra == 'docs'" },
-    { name = "biopython", specifier = "<=1.80" },
+    { name = "biopython", specifier = ">=1.80" },
     { name = "docopt" },
     { name = "furo", marker = "extra == 'docs'" },
     { name = "hicstuff" },
@@ -2836,7 +2889,8 @@ name = "micomplete"
 version = "1.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "biopython" },
+    { name = "biopython", version = "1.85", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "biopython", version = "1.88", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "matplotlib", version = "3.9.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "matplotlib", version = "3.10.9", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*'" },
     { name = "matplotlib", version = "3.11.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
