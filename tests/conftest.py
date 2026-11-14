@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import pytest
 
 from tests import synthetic
+from tests.ansi import plain
 
 TESTS_DATA = Path(__file__).resolve().parents[1] / "tests_data"
 
@@ -64,6 +65,17 @@ def saved_figures(monkeypatch):
     return saved
 
 
+class _PlainResult:
+    """A click Result whose output has no ANSI escape codes (see tests.ansi)."""
+
+    def __init__(self, result):
+        self._result = result
+        self.output = plain(result.output)
+
+    def __getattr__(self, name):
+        return getattr(self._result, name)
+
+
 @pytest.fixture
 def run_cli(monkeypatch):
     """Run a metator command line in-process, as typed after ``metator``.
@@ -83,7 +95,7 @@ def run_cli(monkeypatch):
         args = [str(arg) for arg in args]
         monkeypatch.setattr(sys, "argv", ["metator", *args])
         # As wide as the help gets (100 columns): short error messages do not wrap.
-        result = CliRunner(env={"COLUMNS": "200"}).invoke(cli, args, catch_exceptions=False)
+        result = _PlainResult(CliRunner(env={"COLUMNS": "200"}).invoke(cli, args, catch_exceptions=False))
         assert result.exit_code == exit_code, result.output
         return result
 

@@ -16,6 +16,7 @@ import pytest
 import metator.cli as mtcli
 import metator.main as mtm
 from metator.version import __version__
+from tests.ansi import plain
 
 COMMANDS = ["network", "partition", "validation", "pipeline", "qc", "contactmap", "scaffold", "pairs", "mge"]
 
@@ -30,7 +31,7 @@ def _shown(exit, capsys):
     """Everything shown to the user: printed output and exit message."""
     captured = capsys.readouterr()
     message = "" if isinstance(exit.value.code, int) or exit.value.code is None else str(exit.value.code)
-    return captured.out + captured.err + message
+    return plain(captured.out + captured.err + message)
 
 
 def test_main_is_the_cli():
@@ -41,7 +42,7 @@ def test_help(monkeypatch, capsys):
     with pytest.raises(SystemExit) as exit:
         _run(monkeypatch, "--help")
     assert not exit.value.code
-    out = capsys.readouterr().out
+    out = plain(capsys.readouterr().out)
     for command in COMMANDS:
         # Listed at the start of a line, after indentation or table borders.
         assert re.search(rf"^\W*{command}\b", out, flags=re.MULTILINE), command
@@ -78,7 +79,7 @@ def test_command_help(monkeypatch, capsys):
     with pytest.raises(SystemExit) as exit:
         _run(monkeypatch, "pairs", "--help")
     assert not exit.value.code
-    out = capsys.readouterr().out
+    out = plain(capsys.readouterr().out)
     for option in ["--force", "--remove", "--threads"]:
         assert option in out
     assert "pairsfile" in out.lower()
