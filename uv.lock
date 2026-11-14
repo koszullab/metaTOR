@@ -2830,7 +2830,7 @@ requires-dist = [
     { name = "igraph" },
     { name = "lxml", extras = ["html-clean"], marker = "extra == 'docs'" },
     { name = "m2r", marker = "extra == 'docs'" },
-    { name = "matplotlib" },
+    { name = "matplotlib", specifier = ">=3.9" },
     { name = "micomplete" },
     { name = "myst-parser", marker = "extra == 'docs'" },
     { name = "nbsphinx", marker = "extra == 'docs'" },

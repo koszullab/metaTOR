@@ -41,7 +41,7 @@ dependencies = [
     "pyfastx",
     "numpy",
     "pandas",
-    "matplotlib",
+    "matplotlib>=3.9",
     "scipy",
     "seaborn",
     "micomplete",
