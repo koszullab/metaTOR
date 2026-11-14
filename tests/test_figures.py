@@ -1,7 +1,6 @@
 # Test for figures module
 
 import gzip
-import io
 
 import metator.figures as mtf
 import numpy as np
@@ -157,34 +156,3 @@ def test_frags_network_and_heatmap(metagenome, tmp_path):
     assert matrix.shape == (n_bins, n_bins)
     assert np.allclose(matrix, matrix.T)
     mtf.network_heatmap(matrix, mag_starts=mag_starts)  # shown, not saved
-
-
-def _checkv_summary():
-    """A CheckV quality summary (completeness of the viral contigs), read
-    from its tab-separated file."""
-    table = io.StringIO(
-        "contig_id\tcontig_length\tprovirus\tcompleteness\n"
-        "v0\t50000\tNo\t95.0\n"
-        "v1\t40000\tNo\t80.0\n"
-        "v2\t30000\tNo\t60.0\n"
-        "v3\t20000\tNo\t40.0\n"
-        "v4\t10000\tNo\tNA\n"
-        "v5\t5000\tYes\t99.0\n"
-    )
-    return pd.read_csv(table, sep="\t")
-
-
-def test_build_vmags_summary():
-    summary = mtf.build_vmags_summary(_checkv_summary())
-    assert list(summary.bins) == [1, 1, 1, 1, 1]
-    assert summary.bins.sum() == 5  # proviruses are left out
-    assert list(summary["size"]) == [50000, 40000, 30000, 20000, 10000]
-
-
-def test_vmags_figures(tmp_path):
-    labels = ["sample_1", "sample_2"]
-    mtf.barplot_bins_number(labels, [_checkv_summary(), _checkv_summary()], str(tmp_path / "number.png"))
-    mtf.barplot_bins_size(labels, [_checkv_summary(), _checkv_summary()], str(tmp_path / "size.png"))
-    mtf.pie_bins_size_distribution(_checkv_summary(), str(tmp_path / "pie.png"))
-    for name in ["number.png", "size.png", "pie.png"]:
-        assert (tmp_path / name).stat().st_size > 0

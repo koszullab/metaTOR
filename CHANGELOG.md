@@ -18,10 +18,23 @@ All notable changes to this project will be documented in this file.
   `_` and `-`: miComplete drops dots from bin names.
 - `validation` and `pipeline` no longer accept `-A spinglass`.
 - Temporary files go to a private subdirectory of `--tmpdir`.
-- Declare `docopt`, `packaging`, `matplotlib` and `requests`, and drop
-  `checkv` and `cooler`, in the package dependencies. A fresh install of
-  1.3.10 no longer starts: it never declared `docopt`, which `hicstuff`
-  stopped providing in 3.2.5.
+- Declare `docopt` and `matplotlib`, and drop `checkv` and `cooler`, in
+  the package dependencies. A fresh install of 1.3.10 no longer starts:
+  it never declared `docopt`, which `hicstuff` stopped providing in 3.2.5.
+- metaTOR no longer depends on `scikit-learn`, `looseversion`,
+  `packaging` or `requests`.
+
+### Removed
+- `metator host`, which always failed since 1.3.10: it called
+  `metator.host.host_detection`, which the rewrite of the `host` module
+  removed. Python API: `metator.io.import_network`, used only by it.
+- Text notifications: when the working directory held a
+  `text_credentials.json` file, every error message was sent to the web
+  API named in it. Python API: `metator.log.setup_text_logging`,
+  `TEXT_CREDENTIALS_DEFAULT_PATH` and `text_formatter` are gone.
+- Python API: the CheckV plot helpers of `metator.figures`
+  (`barplot_bins_number`, `barplot_bins_size`, `build_vmags_summary` and
+  `pie_bins_size_distribution`), unused since `mge` lost its CheckV step.
 
 ### Fixed
 - `network`, `partition`, `validation` and `pipeline` deleted the whole
@@ -33,6 +46,12 @@ All notable changes to this project will be documented in this file.
   one of them was kept in the final bins.
 - With `--aligner bwa`, every pair carried the first mate's position for
   both mates.
+- With `--aligner bowtie2` (the default), `network` and `pipeline` paired
+  the forward and reverse reads assuming an order of the read names other
+  than the one `samtools sort -n` sorts them in: the pair `r5` was lost
+  when the reverse reads were `r.5` (unpaired) then `r5`, and names such
+  as `r_1` and `r5` stopped the run with `TypeError`. The reads are now
+  paired in the samtools order.
 - With several Hi-C libraries, `network.txt` listed each edge once per
   library; steps reading it with networkx kept only the last library's
   contacts.
@@ -78,10 +97,6 @@ All notable changes to this project will be documented in this file.
   pair whose first read lies on the later of the two MGE contigs (in the
   contig table order) were left out of the MGE contact matrix. The matrix,
   and so the MGE bins, now count them, as with an indexed pairs file.
-- Python API: `metator.figures.build_vmags_summary` counted a vMAG of 90%
-  completeness or more in both the >90% and the 70-90% classes. Its vMAG
-  counts and sizes, and the plots built on them (`barplot_bins_number`,
-  `barplot_bins_size`, `pie_bins_size_distribution`), change accordingly.
 
 ## [1.3.10] - 2025-05-21
 - `host` module rewritten to annotate the bacterial hosts of each MGE (#27).

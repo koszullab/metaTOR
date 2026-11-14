@@ -14,7 +14,6 @@ This mdoule contains all core I/O functions:
     - get_restriction_site
     - import_anvio_binning
     - import_contig_data_mges
-    - import_network
     - import_mges_contigs
     - process_ligation_sites
     - read_bin_summary
@@ -32,7 +31,6 @@ This mdoule contains all core I/O functions:
 import bz2
 import gzip
 import io
-import networkx as nx
 import numpy as np
 import os
 import pandas as pd
@@ -49,8 +47,6 @@ from Bio.Restriction import RestrictionBatch
 from metator.log import logger
 from os.path import join, exists, isfile
 from random import getrandbits
-from packaging import version
-from packaging.version import Version
 
 
 def check_checkm():
@@ -145,11 +141,9 @@ def check_pypairix():
     bool:
         True if pypairix is available.
     """
-    try:
-        version.parse(pypairix.__version__)
-    except AttributeError:
+    if not hasattr(pypairix, "build_index"):
         logger.error("Cannot find 'pypairix' installed.")
-        raise AttributeError from None
+        raise AttributeError("pypairix has no build_index")
     return True
 
 
@@ -346,23 +340,6 @@ def import_contig_data_mges(contig_data_file, binning_result, mges_list):
         except KeyError:
             continue
     return contig_data, mges_list_id
-
-
-def import_network(network_file):
-    """Import MetaTOR network file.
-
-    Parameters:
-    -----------
-    network_file : str
-        Path to the network file to import.
-
-    Returns:
-    --------
-    networkx.classes.graph.Graph:
-        Network as networkx class.
-    """
-    network = nx.read_edgelist(network_file, nodetype=int, data=(("weight", float),))
-    return network
 
 
 def import_mges_contigs(mges_file):
@@ -703,6 +680,14 @@ def sort_pairs(in_file, out_file, tmp_dir=None, threads=1, buffer="2G"):
         sort_proc.communicate()
 
 
+def _version_tuple(version):
+    """The leading numbers of a version string: (1, 1, 2) for "1.1.2"."""
+    numbers = re.match(r"\d+(?:\.\d+)*", version)
+    if numbers is None:
+        raise ValueError(f"Cannot read the version {version!r}.")
+    return tuple(int(number) for number in numbers.group().split("."))
+
+
 def sort_pairs_pairtools(pairfile, threads=1, remove=False, force=False, tmp_dir="."):
     """Sort pairs files using pairtools executable. Pairix only works with
     compressed pair files. So we use bgzip (or pysam if bgzip is not in the
@@ -743,7 +728,7 @@ def sort_pairs_pairtools(pairfile, threads=1, remove=False, force=False, tmp_dir
 
     # Sort pairs using pairtools.
     cmd = ["pairtools", "sort", pairfile, "--nproc", str(threads), "-o", sorted_pairs, "--tmpdir", tmp_dir]
-    if Version(pairtools.__version__) >= Version("1.1.0"):
+    if _version_tuple(pairtools.__version__) >= (1, 1):
         logger.debug("pairtools version >= 1.1.0. Use new options.")
         cmd += ["--c1", "chr1", "--c2", "chr2", "--p1", "pos1", "--p2", "pos2", "--pt", "strand1"]
     sp.run(cmd, check=True)

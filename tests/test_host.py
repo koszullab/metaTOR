@@ -5,7 +5,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import metator.commands as mtc
 import metator.host as mth
 
 
@@ -160,25 +159,3 @@ def test_annotate_hosts(metagenome, binned, tmp_path):
     assert qualities == dict(zip(mags.values(), ["Complete", "Contaminated", "MQ", "LQ", "PQ"]))
     for name in ["background_noise.png", "mge_mag_histogram.png", "mge_mag_interactions.txt"]:
         assert (tmp_path / name).stat().st_size > 0
-
-
-@pytest.mark.xfail(
-    strict=True,
-    raises=AttributeError,
-    reason="metator host calls metator.host.host_detection, which no longer exists",
-)
-def test_host_command(metagenome, binned, metagenome_network, tmp_path):
-    data, _, _, _ = binned
-    data.to_csv(tmp_path / "contig_data.txt", sep="\t", index=False)
-    data[["Name", "Final_bin"]].to_csv(tmp_path / "binning.txt", sep="\t", index=False, header=False)
-    mge_contigs = [c.name for mge in metagenome.mges for c in mge.contigs]
-    (tmp_path / "mges.txt").write_text("\n".join(mge_contigs) + "\n")
-    args = [
-        "-n", str(metagenome_network["network"]),
-        "-b", str(tmp_path / "binning.txt"),
-        "-m", str(tmp_path / "mges.txt"),
-        "-c", str(tmp_path / "contig_data.txt"),
-        "-o", str(tmp_path / "hosts.tsv"),
-    ]  # fmt: skip
-    mtc.Host(args, {}).execute()
-    assert (tmp_path / "hosts.tsv").stat().st_size > 0

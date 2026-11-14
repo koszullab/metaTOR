@@ -131,6 +131,22 @@ def test_generate_fasta():
     shutil.rmtree(tmp_dir)
 
 
+# Number of the 5 iterations in which two core bins of core_bins_iterations
+# share their community: 5 times one minus their normalized Hamming distance.
+shared_iterations = np.array(
+    [
+        [5, 3, 0, 1, 0, 0, 0, 0],
+        [3, 5, 0, 1, 0, 0, 0, 1],
+        [0, 0, 5, 2, 0, 0, 0, 0],
+        [1, 1, 2, 5, 0, 0, 0, 0],
+        [0, 0, 0, 0, 5, 1, 0, 0],
+        [0, 0, 0, 0, 1, 5, 1, 0],
+        [0, 0, 0, 0, 0, 1, 5, 0],
+        [0, 1, 0, 0, 0, 0, 0, 5],
+    ]
+)
+
+
 def test_get_distances_splitmat():
     # Test hamming distance computation worker.
     x = mtp.get_distances_splitmat(core_bins_iterations[0:1], core_bins_iterations)
@@ -139,12 +155,23 @@ def test_get_distances_splitmat():
     assert x.nnz == 3
 
 
+def test_get_distances_splitmat_values():
+    """One column per core bin of the slice, one row per core bin, with the
+    values scikit-learn's 1 - pairwise_distances(metric="hamming") gave."""
+    x = mtp.get_distances_splitmat(core_bins_iterations[2:5], core_bins_iterations)
+    assert x.format == "csr"
+    np.testing.assert_allclose(x.toarray(), shared_iterations[:, 2:5] / 5, rtol=0, atol=1e-12)
+    # Exact zeros (no shared iteration) are not stored.
+    assert x.nnz == np.count_nonzero(shared_iterations[:, 2:5])
+
+
 def test_get_hamming_distance():
     # Test hamming distance computation.
     hamming_distance = mtp.get_hamming_distance(core_bins_iterations, threads)
     assert np.sum(hamming_distance.data) == pytest.approx(12, abs=1e-5)
     assert hamming_distance.shape == (8, 8)
     assert hamming_distance.nnz == 22
+    np.testing.assert_allclose(hamming_distance.toarray(), shared_iterations / 5, rtol=0, atol=1e-12)
 
 
 def test_leiden_iterations():

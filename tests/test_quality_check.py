@@ -12,7 +12,6 @@ import metator.quality_check as mtq
 import pandas as pd
 import pytest
 from metator.log import logger
-from packaging.version import Version
 from tests import synthetic
 
 CONTIGS = ["NODE_522", "NODE_1404", "NODE_1814", "NODE_2100", "NODE_2210", "NODE_2398"]
@@ -67,7 +66,7 @@ def test_hic_quality(large_contigs_pairs):
 
 
 @pytest.mark.skipif(
-    Version(Bio.__version__) < Version("1.87"),
+    tuple(int(x) for x in Bio.__version__.split(".")[:2]) < (1, 87),
     reason="Biopython < 1.87 skips text before the first record (with a warning from 1.85).",
 )
 @pytest.mark.parametrize("before", ["\n", "# assembly\n", "not a fasta\n"])
