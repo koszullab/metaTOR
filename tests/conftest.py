@@ -64,6 +64,32 @@ def saved_figures(monkeypatch):
     return saved
 
 
+@pytest.fixture
+def run_cli(monkeypatch):
+    """Run a metator command line in-process, as typed after ``metator``.
+
+    ``sys.argv`` is set as the shell would set it (the log files record the
+    command line from it). An exception raised by the command propagates;
+    a usage error (exit code 2) is returned as the click result, whose exit
+    code is checked against ``exit_code``.
+    """
+    import sys
+
+    from click.testing import CliRunner
+
+    from metator.cli import cli
+
+    def run(*args, exit_code=0):
+        args = [str(arg) for arg in args]
+        monkeypatch.setattr(sys, "argv", ["metator", *args])
+        # As wide as the help gets (100 columns): short error messages do not wrap.
+        result = CliRunner(env={"COLUMNS": "200"}).invoke(cli, args, catch_exceptions=False)
+        assert result.exit_code == exit_code, result.output
+        return result
+
+    return run
+
+
 @pytest.fixture(scope="session")
 def metagenome():
     """The mock community (see tests/synthetic.py) and its ground truth."""

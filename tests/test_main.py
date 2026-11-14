@@ -1,15 +1,19 @@
-# Tests of the metator command line entry point.
+# Tests of the metator command line entry points.
 #
 # They check what a user sees (the commands listed, the options of a command,
 # a failure on a missing or unknown command), not the layout of the help
-# text, which belongs to the command line parsing library.
+# text, which belongs to the command line parsing library. The `metator`
+# command runs metator.cli.cli; metator.main.main, the former entry point,
+# and `python -m metator` run the same command line.
 
 import re
+import runpy
 import shutil
 import sys
 
 import pytest
 
+import metator.cli as mtcli
 import metator.main as mtm
 from metator.version import __version__
 
@@ -17,6 +21,7 @@ COMMANDS = ["network", "partition", "validation", "pipeline", "qc", "contactmap"
 
 
 def _run(monkeypatch, *argv):
+    """Run metator.main.main() on the command line `metator *argv`."""
     monkeypatch.setattr(sys, "argv", ["metator", *argv])
     mtm.main()
 
@@ -26,6 +31,10 @@ def _shown(exit, capsys):
     captured = capsys.readouterr()
     message = "" if isinstance(exit.value.code, int) or exit.value.code is None else str(exit.value.code)
     return captured.out + captured.err + message
+
+
+def test_main_is_the_cli():
+    assert mtm.main is mtcli.cli
 
 
 def test_help(monkeypatch, capsys):
@@ -40,11 +49,12 @@ def test_help(monkeypatch, capsys):
     assert "--version" in out
 
 
-def test_version(monkeypatch, capsys):
+@pytest.mark.parametrize("option", ["--version", "-v"])
+def test_version(monkeypatch, capsys, option):
     with pytest.raises(SystemExit) as exit:
-        _run(monkeypatch, "--version")
+        _run(monkeypatch, option)
     assert not exit.value.code
-    assert __version__ in capsys.readouterr().out
+    assert capsys.readouterr().out == f"{__version__}\n"
 
 
 def test_no_command(monkeypatch, capsys):
@@ -78,7 +88,21 @@ def test_command_help(monkeypatch, capsys):
 def test_command_runs(monkeypatch, tmp_path):
     pairs = tmp_path / "sample.pairs"
     shutil.copyfile("tests_data/alignment.pairs", pairs)
-    _run(monkeypatch, "pairs", "--remove", str(pairs))
+    with pytest.raises(SystemExit) as exit:
+        _run(monkeypatch, "pairs", "--remove", str(pairs))
+    assert not exit.value.code
     assert (tmp_path / "sample_sorted.pairs.gz").exists()
     assert (tmp_path / "sample_sorted.pairs.gz.px2").exists()
     assert not pairs.exists()
+
+
+@pytest.mark.parametrize("module", ["metator", "metator.main"])
+def test_python_m(monkeypatch, capsys, module):
+    """`python -m metator` and `python -m metator.main` run the command line."""
+    monkeypatch.setattr(sys, "argv", [module, "--version"])
+    # Run from a fresh copy, as python does.
+    monkeypatch.delitem(sys.modules, "metator.__main__" if module == "metator" else module, raising=False)
+    with pytest.raises(SystemExit) as exit:
+        runpy.run_module(module, run_name="__main__", alter_sys=True)
+    assert not exit.value.code
+    assert capsys.readouterr().out == f"{__version__}\n"

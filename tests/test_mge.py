@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import metator.commands as mtc
 import metator.io as mio
 import metator.mge as mtm
 from tests import synthetic
@@ -33,7 +32,7 @@ global_args = {
 }
 
 
-def test_mge(tmp_dir):
+def test_mge(tmp_dir, run_cli):
     """Test the metator mge command with subset data from pipeline output."""
     args = (
         "-c {CONTIGS} -a {SUBSET_FASTA} -b {BINNING} -m {SUBSET_MGES} "
@@ -43,16 +42,15 @@ def test_mge(tmp_dir):
         **global_args,
     )
     print("CLI command:\nmetator mge", *args.split(" "))
-    proc = mtc.Mge(args.split(" "), {})
-    proc.execute()
+    run_cli("mge", *args.split(" "))
 
 
-def test_mge_random(tmp_path):
+def test_mge_random(tmp_path, run_cli):
     """--random shuffles the MGE bins and still writes the bins and summary."""
     args = (
         "-c {CONTIGS} -a {SUBSET_FASTA} -b {BINNING} -m {SUBSET_MGES} -o {OUT_TEST} --random --threshold-bin 0.5 {SUBSET_PAIRS}"
     ).format(OUT_TEST=tmp_path / "out", **global_args)
-    mtc.Mge(args.split(" "), {}).execute()
+    run_cli("mge", *args.split(" "))
     assert len(os.listdir(tmp_path / "out")) > 0
 
 

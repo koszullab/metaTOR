@@ -1,0 +1,398 @@
+# Tests of the metator command line (metator.cli): parity with the docopt
+# command line it replaced, help, version and usage errors, and the
+# bookkeeping of the commands (log files, temporary directories, default
+# outputs), with the heavy steps replaced by stubs.
+
+import json
+import os
+import shutil
+import sys
+from pathlib import Path
+
+import click
+import pytest
+
+import metator.cli as mtcli
+from metator.version import __version__
+
+TESTS_DATA = Path(__file__).resolve().parents[1] / "tests_data"
+
+# The docopt command line that rich-click replaced (that of 1.3.10, with the
+# mge options renamed and host removed), as docopt read it: see the commit
+# that added the file.
+INVENTORY = json.loads((TESTS_DATA / "cli_inventory.json").read_text())["metator"]
+
+# Options whose value is one of a list, wherever they appear. --object takes
+# any column name of the contig data file.
+CHOICES = {
+    "--aligner": ["bowtie2", "bwa"],
+    "--aligner-mode": ["normal", "iterative", "cutsite"],
+    "--algorithm": ["louvain", "leiden"],
+    "--normalization": ["None", "abundance", "length", "RS", "empirical_hit", "theoritical_hit"],
+    "--start": ["fastq", "bam", "pair"],
+    "--mat-fmt": ["graal", "bg2", "cool"],
+}
+
+
+def _info():
+    ctx = mtcli.cli.make_context("metator", ["--help"], resilient_parsing=True)
+    return mtcli.cli.to_info_dict(ctx)
+
+
+def _options(params):
+    """Options in the inventory's format, by long name (--help left out)."""
+    options = {}
+    for param in params:
+        if param["param_type_name"] != "option" or param["name"] == "help":
+            continue
+        longs = [opt for opt in param["opts"] if opt.startswith("--")]
+        shorts = [opt for opt in param["opts"] if not opt.startswith("--")]
+        assert len(longs) == 1 and len(shorts) <= 1 and not param["secondary_opts"], param["opts"]
+        default = param["default"]
+        options[longs[0]] = {
+            "short": shorts[0] if shorts else None,
+            "long": longs[0],
+            "takes_value": not param["is_flag"],
+            "default": default if param["is_flag"] or default is None else str(default),
+            "required": param["required"],
+        }
+    return options
+
+
+def _positional(params):
+    return [
+        {"name": param["name"], "required": param["required"], "repeatable": param["nargs"] == -1}
+        for param in params
+        if param["param_type_name"] == "argument"
+    ]
+
+
+def _required_args(command):
+    """A command line with every required option and argument of a command,
+    with made-up values."""
+    args = []
+    for option in INVENTORY["commands"][command]["options"]:
+        if option["required"]:
+            args += [option["short"] or option["long"], "x"]
+    args += ["p.pairs" for _ in INVENTORY["commands"][command]["positional"]]
+    return args
+
+
+def test_commands_are_the_docopt_commands():
+    assert sorted(_info()["commands"]) == sorted(INVENTORY["commands"])
+
+
+@pytest.mark.parametrize("command", sorted(INVENTORY["commands"]))
+def test_options_are_the_docopt_options(command):
+    """Same options, short aliases, defaults and required options as the
+    docopt command line, and the same positional arguments."""
+    params = _info()["commands"][command]["params"]
+    frozen = {option["long"]: option for option in INVENTORY["commands"][command]["options"]}
+    found = _options(params)
+    assert sorted(found) == sorted(frozen)
+    for long, option in frozen.items():
+        expected = {key: option[key] for key in ["short", "long", "takes_value", "default", "required"]}
+        assert found[long] == expected, long
+    assert _positional(params) == INVENTORY["commands"][command]["positional"]
+
+
+@pytest.mark.parametrize("command", sorted(INVENTORY["commands"]))
+def test_value_names_and_choices(command):
+    """Choice options list their values; the others show docopt's value
+    name (FILE, INT...)."""
+    frozen = {option["long"]: option for option in INVENTORY["commands"][command]["options"]}
+    for param in mtcli.cli.commands[command].params:
+        if not isinstance(param, click.Option):
+            continue
+        long = next(opt for opt in param.opts if opt.startswith("--"))
+        if long in CHOICES:
+            assert isinstance(param.type, click.Choice), long
+            assert list(param.type.choices) == CHOICES[long], long
+            assert frozen[long]["default"] in CHOICES[long]
+        else:
+            assert not isinstance(param.type, click.Choice), long
+        if frozen[long]["takes_value"] and not isinstance(param.type, click.Choice):
+            assert param.metavar == frozen[long]["metavar"], long
+
+
+def test_global_options():
+    found = {param["opts"][-1]: param["opts"] for param in _info()["params"]}
+    frozen = {option["long"]: [option["short"], option["long"]] for option in INVENTORY["options"]}
+    assert found == frozen
+
+
+@pytest.mark.parametrize("command", sorted(INVENTORY["commands"]))
+@pytest.mark.parametrize("help_option", ["-h", "--help"])
+def test_command_help(command, help_option, run_cli):
+    output = run_cli(command, help_option).output
+    assert f"Usage: metator {command}" in output
+    for option in INVENTORY["commands"][command]["options"]:
+        assert option["long"] in output
+
+
+def test_group_help(run_cli):
+    output = run_cli("-h").output
+    for command in INVENTORY["commands"]:
+        assert command in output
+    assert "Binning" in output
+
+
+def test_version(run_cli):
+    assert run_cli("-v").output == f"{__version__}\n"
+
+
+@pytest.mark.parametrize(
+    "command, missing",
+    [
+        (command, option["long"])
+        for command, frozen in sorted(INVENTORY["commands"].items())
+        for option in frozen["options"]
+        if option["required"]
+    ],
+)
+def test_missing_required_option(command, missing, run_cli):
+    args = _required_args(command)
+    short = next(option["short"] for option in INVENTORY["commands"][command]["options"] if option["long"] == missing)
+    index = args.index(short)
+    del args[index : index + 2]
+    result = run_cli(command, *args, exit_code=2)
+    assert f"Missing option '{short}' / '{missing}'" in result.output
+
+
+@pytest.mark.parametrize("command", [command for command, frozen in INVENTORY["commands"].items() if frozen["positional"]])
+def test_missing_pairs_files(command, run_cli):
+    args = _required_args(command)[:-1]
+    result = run_cli(command, *args, exit_code=2)
+    assert "Missing argument 'PAIRSFILE...'" in result.output
+
+
+@pytest.mark.parametrize(
+    "command, option",
+    [
+        (command, option["long"])
+        for command, frozen in sorted(INVENTORY["commands"].items())
+        for option in frozen["options"]
+        if option["long"] in CHOICES
+    ],
+)
+def test_bad_choice(command, option, run_cli, tmp_path):
+    result = run_cli(command, *_required_args(command), option, "bogus", exit_code=2)
+    assert f"'{option}': 'bogus' is not one of" in result.output
+    # Refused before the command starts: no log, no temporary directory.
+    assert sorted(os.listdir(tmp_path)) == ["tests_data"]
+
+
+@pytest.mark.parametrize("value", ["8.5", "eight"])
+def test_bad_number(value, run_cli):
+    result = run_cli("pairs", "-t", value, "p.pairs", exit_code=2)
+    assert f"'{value}' is not a valid integer" in result.output
+
+
+def test_unknown_option(run_cli):
+    """Long options cannot be abbreviated (docopt accepted --thread)."""
+    result = run_cli("pairs", "--thread", "2", "p.pairs", exit_code=2)
+    assert "No such option" in result.output and "--thread" in result.output
+
+
+# Helpers
+
+
+def test_private_tmp_dir(tmp_path):
+    base = tmp_path / "tmp"
+    with mtcli.private_tmp_dir(str(base)) as tmp_dir:
+        assert Path(tmp_dir).parent == base
+        (Path(tmp_dir) / "file").write_text("x")
+    # The run created --tmpdir: both go.
+    assert not base.exists()
+
+    # --tmpdir already existed: only the run's directory goes.
+    base.mkdir()
+    with mtcli.private_tmp_dir(str(base)) as tmp_dir:
+        pass
+    assert base.exists() and not Path(tmp_dir).exists()
+
+    # Something else was written to --tmpdir meanwhile: it stays.
+    shutil.rmtree(base)
+    with mtcli.private_tmp_dir(str(base)) as tmp_dir:
+        (base / "other").write_text("x")
+    assert sorted(os.listdir(base)) == ["other"]
+
+
+def test_private_tmp_dir_kept(tmp_path, monkeypatch):
+    """Kept with --no-clean-up, and when the run fails."""
+    monkeypatch.chdir(tmp_path)
+    with mtcli.private_tmp_dir(None, clean_up=False) as tmp_dir:
+        assert Path(tmp_dir).parent == Path("tmp")
+    assert Path(tmp_dir).is_dir()
+
+    with pytest.raises(ValueError), mtcli.private_tmp_dir("failed") as tmp_dir:
+        raise ValueError
+    assert Path(tmp_dir).is_dir()
+
+
+@pytest.mark.parametrize(
+    "prefix, expected",
+    [(None, "metator"), ("", "metator"), ("sample_1-a", "sample_1-a_metator")],
+)
+def test_bin_prefix(prefix, expected):
+    assert mtcli.bin_prefix(prefix) == expected
+
+
+@pytest.mark.parametrize("prefix", ["my.sample", "a/b", "é"])
+def test_bin_prefix_refused(prefix):
+    with pytest.raises(ValueError, match="Invalid --prefix"):
+        mtcli.bin_prefix(prefix)
+
+
+def test_log_header_records_the_command_line(tmp_path, monkeypatch):
+    log = tmp_path / "run.log"
+    monkeypatch.setattr(sys, "argv", ["/usr/bin/metator", "qc", "-p", "my sample", "a.pairs"])
+    mtcli.generate_log_header(str(log))
+    mtcli.generate_log_footer(str(log))
+    lines = log.read_text().splitlines()
+    assert lines[0] == f"## MetaTOR: v{__version__} log file"
+    assert lines[1].startswith("## date: ")
+    assert lines[2] == "## Command used: metator qc -p 'my sample' a.pairs"
+    assert lines[-1].startswith("## date: ")
+
+
+# The bookkeeping of the commands, with the heavy steps replaced by stubs.
+
+
+@pytest.fixture
+def stub_pipeline(monkeypatch, tmp_path):
+    """Replace the steps of the pipeline by stubs that write their outputs
+    and record their arguments."""
+    calls = {}
+
+    def get_contact_pairs(*args):
+        calls["get_contact_pairs"] = args
+        out_dir = args[10]
+        pairs = [os.path.join(out_dir, f"alignment_{i}.pairs") for i in range(len(args[0].split(",")))]
+        for path in pairs:
+            Path(path).write_text("## pairs format v1.0\n")
+        return pairs, {}, {}
+
+    def alignment_to_contacts(alignment_files, contig_data, edge, hit_data, out_dir, network, contig_data_file, *args):
+        calls["alignment_to_contacts"] = (alignment_files, edge, out_dir, *args)
+        for name in [network, contig_data_file]:
+            Path(out_dir, name).write_text("x")
+        return os.path.join(out_dir, network), os.path.join(out_dir, contig_data_file)
+
+    def partition(*args):
+        calls["partition"] = args
+        out_dir = args[6]
+        Path(out_dir, "contig_data_partition.txt").write_text("x")
+        return os.path.join(out_dir, "clustering_matrix_partition"), os.path.join(out_dir, "contig_data_partition.txt")
+
+    def recursive_decontamination(*args):
+        calls["recursive_decontamination"] = args
+        # pyfastx indexes the assembly while extracting the bins.
+        Path(f"{args[1]}.fxi").write_text("x")
+        return os.path.join(args[8], "clustering_matrix_validation")
+
+    def generate_fasta_index(fasta, aligner, tmp_dir):
+        calls["generate_fasta_index"] = (fasta, aligner, tmp_dir)
+        return os.path.join(tmp_dir, "index")
+
+    monkeypatch.setattr("metator.align.get_contact_pairs", get_contact_pairs)
+    monkeypatch.setattr("metator.network.alignment_to_contacts", alignment_to_contacts)
+    monkeypatch.setattr("metator.partition.partition", partition)
+    monkeypatch.setattr("metator.validation.recursive_decontamination", recursive_decontamination)
+    monkeypatch.setattr("metator.io.generate_fasta_index", generate_fasta_index)
+    return calls
+
+
+@pytest.mark.parametrize("start", ["fastq", "bam"])
+@pytest.mark.parametrize("clean_up", [True, False])
+def test_pipeline_from_reads(start, clean_up, stub_pipeline, tmp_path, run_cli):
+    """From reads or alignments: the pairs files and the contig data of the
+    network step are intermediate files."""
+    if start == "fastq":
+        # A fasta: its index is built.
+        assembly = tmp_path / "assembly.fa"
+        shutil.copyfile(TESTS_DATA / "subset.assembly.fa", assembly)
+    else:
+        # A bowtie2 index: its fasta is retrieved.
+        assembly = TESTS_DATA / "assembly"
+    out = tmp_path / "out"
+    args = ["-1", "a1.fq,b1.fq", "-2", "a2.fq,b2.fq", "-a", assembly, "-S", start, "-B", "cutsite", "-q", "20",
+            "-t", "2", "-o", out, "-T", tmp_path / "tmp"]  # fmt: skip
+    if not clean_up:
+        args.append("-N")
+    run_cli("pipeline", *args)
+
+    calls = stub_pipeline
+    forward, reverse, index, fasta, aligner, mode, min_quality, start_arg, *_, threads = calls["get_contact_pairs"]
+    assert (forward, reverse, aligner, start_arg) == ("a1.fq,b1.fq", "a2.fq,b2.fq", "bowtie2", start)
+    # cutsite needs an enzyme.
+    assert mode == "iterative"
+    assert min_quality == 20 and threads == 2
+    if start == "fastq":
+        assert calls["generate_fasta_index"][0] == str(assembly)
+        assert (fasta, index) == (str(assembly), calls["generate_fasta_index"][2] + "/index")
+    else:
+        assert "generate_fasta_index" not in calls
+        assert index == str(assembly) and fasta.endswith(".fa")
+    assert calls["partition"][1] == fasta
+    assert calls["recursive_decontamination"][6] == 10
+    assert not Path(f"{fasta}.fxi").exists()
+    assert not (out / "contig_data_network.txt").exists()
+    assert not (out / "contig_data_partition.txt").exists()
+    assert (out / "network.txt").exists()
+    pairs = [out / "alignment_0.pairs", out / "alignment_1.pairs"]
+    assert [path.exists() for path in pairs] == [not clean_up] * 2
+    assert (tmp_path / "tmp").exists() == (not clean_up)
+    (log,) = out.glob("metator_pipeline_*.log")
+    assert f"## Command used: metator pipeline -1 a1.fq,b1.fq -2 a2.fq,b2.fq -a {assembly}" in log.read_text()
+
+
+def test_qc_default_outdir(tmp_path, monkeypatch, run_cli):
+    """Without --outdir, qc writes to ./metator_qc_<prefix>."""
+    calls = []
+    monkeypatch.setattr("metator.quality_check.quality_check", lambda *args, **kwargs: calls.append((args, kwargs)))
+    for name in ["bin_summary.txt", "contig_data_final.txt"]:
+        (tmp_path / name).write_text("x")
+    run_cli("qc", "-a", "assembly.fa", "-e", "DpnII,HinfI", "-p", "sample", "-t", "3,4", "a.pairs", "b.pairs")
+    ((args, kwargs),) = calls
+    assert args[:5] == (
+        "./contig_data_final.txt",
+        "./bin_summary.txt",
+        "assembly.fa",
+        ["a.pairs", "b.pairs"],
+        "./metator_qc_sample",
+    )
+    assert args[6:] == ("sample", False)
+    assert kwargs == {"enzyme": ["DpnII", "HinfI"], "threshold": ["3", "4"]}
+    assert len(list((tmp_path / "metator_qc_sample").glob("metator_qc_*.log"))) == 1
+
+
+def test_scaffold_default_outputs(tmp_path, monkeypatch, run_cli):
+    calls = []
+    monkeypatch.setattr("metator.scaffold.get_scaffolds", lambda *args, **kwargs: calls.append((args, kwargs)))
+    run_cli("scaffold", "-b", "bin_1", "-i", "bin_1.fa", "a.pairs")
+    ((args, kwargs),) = calls
+    assert args == ("bin_1", "bin_1.fa", ["a.pairs"], "./bin_1_scaffolded.fa", "./bin_1_info_frags.txt")
+    assert kwargs == {"threshold": 0.05, "threads": 1, "window_size": 5000, "junctions": "NNNNN"}
+    assert len(list(tmp_path.glob("metator_scaffold_*.log"))) == 1
+
+
+def test_mge_default_outdir(tmp_path, monkeypatch, run_cli):
+    """Without --outdir, mge writes to the current directory; the pyfastx
+    index of the assembly is removed at the end."""
+    calls = []
+
+    def mge_binning(**kwargs):
+        calls.append(kwargs)
+        Path(f"{kwargs['fasta_mges_contigs']}.fxi").write_text("x")
+
+    monkeypatch.setattr("metator.mge.mge_binning", mge_binning)
+    assembly = tmp_path / "assembly.fa"
+    shutil.copyfile(TESTS_DATA / "subset.assembly.fa", assembly)
+    run_cli("mge", "-a", assembly, "-c", "tests_data/contig_data_final.txt", "-b", "tests_data/binning.txt",
+            "-m", "tests_data/subset.mges.txt", "a.pairs")  # fmt: skip
+    (kwargs,) = calls
+    assert kwargs["out_dir"] == "." and kwargs["pairs_files"] == ["a.pairs"]
+    assert kwargs["threshold_bin"] == 0.8 and kwargs["random"] is False
+    assert not Path(f"{assembly}.fxi").exists()
+    assert not (tmp_path / "tmp").exists()

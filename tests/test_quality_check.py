@@ -6,7 +6,6 @@ import re
 import shutil
 
 import Bio
-import metator.commands as mtc
 import metator.io as mio
 import metator.quality_check as mtq
 import pandas as pd
@@ -191,19 +190,19 @@ def test_hic_quality_counts(large_contigs, tmp_path):
     )
 
 
-def test_qc_command(large_contigs, tmp_path):
+def test_qc_command(large_contigs, tmp_path, run_cli):
     """From the metator output directory, with automatic thresholds and plots."""
     _, files, pairs, directory = large_contigs
     out = tmp_path / "qc"
     args = ["-a", str(files["assembly"]), "-e", "DpnII", "-O", str(directory), "-o", str(out), "-p", "sample", "-P",
             "-T", str(tmp_path / "tmp"), str(pairs)]  # fmt: skip
-    mtc.Qc(args, {}).execute()
+    run_cli("qc", *args)
     assert (out / "sample_camembert_plot.pdf").stat().st_size > 0
     assert (out / "sample_event.pdf").stat().st_size > 0
     assert not (tmp_path / "tmp").exists()
 
 
-def test_qc_command_without_hq_mags(large_contigs, tmp_path):
+def test_qc_command_without_hq_mags(large_contigs, tmp_path, run_cli):
     """Explicit tables; no high-quality MAG, so nothing is plotted."""
     _, files, pairs, directory = large_contigs
     summary = mio.read_bin_summary(str(directory / "bin_summary.txt"))
@@ -212,13 +211,13 @@ def test_qc_command_without_hq_mags(large_contigs, tmp_path):
     args = ["-a", str(files["assembly"]), "-e", "DpnII", "-b", str(tmp_path / "bin_summary.txt"),
             "-c", str(directory / "contig_data_final.txt"), "-t", "3,3", "-T", str(tmp_path / "tmp"), "-n",
             str(pairs)]  # fmt: skip
-    mtc.Qc(args, {}).execute()
+    run_cli("qc", *args)
     assert not list((tmp_path / "metator_qc").glob("*.pdf"))
     assert (tmp_path / "tmp").exists()  # --no-clean-up
 
 
 @pytest.mark.parametrize("missing", ["bin_summary.txt", "contig_data_final.txt"])
-def test_qc_command_missing_tables(large_contigs, tmp_path, missing):
+def test_qc_command_missing_tables(large_contigs, tmp_path, missing, run_cli):
     _, files, pairs, directory = large_contigs
     metator_dir = tmp_path / "metator"
     metator_dir.mkdir()
@@ -226,4 +225,4 @@ def test_qc_command_missing_tables(large_contigs, tmp_path, missing):
         shutil.copyfile(directory / name, metator_dir / name)
     args = ["-a", str(files["assembly"]), "-e", "DpnII", "-O", str(metator_dir), "-T", str(tmp_path / "tmp"), str(pairs)]
     with pytest.raises(FileNotFoundError):
-        mtc.Qc(args, {}).execute()
+        run_cli("qc", *args)
