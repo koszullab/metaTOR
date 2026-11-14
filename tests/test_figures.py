@@ -6,6 +6,7 @@ import metator.figures as mtf
 import numpy as np
 import pandas as pd
 import pytest
+from matplotlib.colors import to_hex
 
 
 def test_reindex_df():
@@ -131,6 +132,92 @@ def test_plot_figures_quality_classes(metagenome, tmp_path, qualities):
         assert (tmp_path / "plot" / f"{name}.png").stat().st_size > 0
     # No pairs in the output directory: no heatmap.
     assert not (tmp_path / "plot" / "network_heatmap.png").exists()
+
+
+def _boxes(ax):
+    """(x, q1, median, q3, fill colour) of each box, from left to right."""
+    medians = {}
+    for line in ax.lines:
+        x = np.asarray(line.get_xdata(), dtype=float)
+        # Medians span the whole box; caps span half of it.
+        if len(x) == 2 and np.isclose(x[1] - x[0], 1.0):
+            medians[round(x.mean())] = line.get_ydata()[0]
+    boxes = []
+    for box in ax.patches:
+        extents = box.get_path().get_extents()
+        assert extents.width == pytest.approx(1.0)
+        x = round((extents.x0 + extents.x1) / 2)
+        boxes.append((x, extents.y0, medians[x], extents.y1, to_hex(box.get_facecolor())))
+    return sorted(boxes)
+
+
+def _check_boxes(ax, expected):
+    """Compare the boxes of ax with (x, values, colour) triples."""
+    boxes = _boxes(ax)
+    assert [(x, colour) for x, *_, colour in boxes] == [(x, colour) for x, _, colour in expected]
+    for (_, *stats, _), (_, values, _) in zip(boxes, expected):
+        assert stats == pytest.approx(np.percentile(values, [25, 50, 75]))
+
+
+BOXPLOTS = {
+    "MAGs_GC_distribution": ("GC_content", "GC content distribution", "linear"),
+    "MAGs_HiC_cov_distribution": ("HiC_cov", "HiC coverage distribution", "log"),
+    "MAGs_SG_cov_distribution": ("Shotgun_coverage", "Assembly coverage distribution", "log"),
+}
+
+
+@pytest.mark.parametrize(
+    "qualities",
+    [list(QUALITIES), ["HQ", "Other", "HQ", "Other", "HQ"]],
+    ids=["every-class", "some-classes"],
+)
+def test_quality_boxplots(metagenome, tmp_path, saved_figures, qualities):
+    """One box per bin of the size-weighted contig values, coloured by the
+    quality of the bin, and a legend of every quality class."""
+    contigs_data, bin_summary = _binning(metagenome, qualities)
+    mtf.plot_figures(str(tmp_path), contigs_data.copy(), bin_summary, 50_000)
+    binned = contigs_data[contigs_data.Final_bin != "ND"].copy()
+    binned["HiC_cov"] = 100 * binned.Hit / binned.Size
+    weights = (binned.Size / binned.Size.min()).astype(int)
+    quality = dict(zip(bin_summary, qualities))
+    for name, (column, ylabel, scale) in BOXPLOTS.items():
+        values = binned[column].repeat(weights).groupby(binned.Final_bin.repeat(weights))
+        # Bins by decreasing value: the GC content of the bin, or the
+        # highest coverage of its contigs.
+        if column == "GC_content":
+            order = sorted(bin_summary, key=lambda b: bin_summary[b]["GC-content"], reverse=True)
+        else:
+            order = list(values.max().sort_values(ascending=False).index)
+        ax = saved_figures[f"{name}.png"].axes[0]
+        _check_boxes(
+            ax,
+            [(x, values.get_group(b), mtf.MAG_QUALITY_COLOURS[quality[b]]) for x, b in enumerate(order)],
+        )
+        assert ax.get_xlabel() == "" and ax.get_ylabel() == ylabel
+        assert ax.get_yscale() == scale
+        assert ax.get_xlim() == (-0.5, len(order) - 0.5)
+        assert [label.get_text() for label in ax.get_xticklabels()] == [""] * len(order)
+        legend = ax.get_legend()
+        assert [text.get_text() for text in legend.get_texts()] == list(mtf.MAG_QUALITY_LABELS.values())
+        assert [to_hex(handle.get_facecolor()) for handle in legend.legend_handles] == list(mtf.MAG_QUALITY_COLOURS.values())
+
+
+def test_quality_boxplots_skip_unknown_classes_and_missing_values(tmp_path, saved_figures):
+    """Bins of no known quality class are left out, and so are missing and
+    infinite values (seaborn treated both as missing)."""
+    data = pd.DataFrame(
+        {
+            "Final_bin": ["b1", "b1", "b1", "b1", "b2", "b3", "b3"],
+            "MAG_quality": ["MQ", "MQ", "MQ", "MQ", "ND", "LQ", "LQ"],
+            "size_weight": [1, 2, 1, 1, 1, 1, 1],
+            "value": [1.0, 3.0, np.nan, np.inf, 5.0, 7.0, -np.inf],
+        }
+    )
+    mtf._quality_boxplots(data, "value", "Value", str(tmp_path / "boxes.png"))
+    ax = saved_figures["boxes.png"].axes[0]
+    _check_boxes(ax, [(0, [1.0, 3.0, 3.0], "#6666ff"), (1, [7.0], "#ccccff")])
+    assert ax.get_ylabel() == "Value" and ax.get_yscale() == "linear"
+    assert (tmp_path / "boxes.png").stat().st_size > 0
 
 
 def test_bins_size_distribution_classes(metagenome, tmp_path):

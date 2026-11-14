@@ -31,7 +31,7 @@ import matplotlib.pyplot as plt
 from metator.log import logger
 import pandas as pd
 import numpy as np
-import seaborn as sns
+from matplotlib.patches import Patch
 import math
 
 
@@ -287,16 +287,71 @@ def plot_mag_noise(mags, image_file="background_noise.png") -> None:
 
     # Create a DataFrame for plotting
     data = pd.concat([intra_signals, inter_signals], ignore_index=True)
+    # MAGs without a quality and missing or infinite signals are left out.
+    data = data[data["quality"].notna() & np.isfinite(data["log_signal"].to_numpy(dtype=float))]
+    qualities = list(pd.unique(data["quality"]))
 
     # Plotting a split violin plot; each violin show distribution of intra (left) and inter (right) signals, per quality
-    plt.figure(figsize=(12, 6))
-    sns.violinplot(x="quality", y="log_signal", hue="type", data=data, split=True, inner="quartile")
-    plt.xlabel("MAG Quality")
-    plt.ylabel("Interaction Signal (log scale)")
-    plt.title("Distribution of Intra- and Inter-MAG Interaction Signals")
-    plt.legend(title="Interaction Type")
-    plt.tight_layout()
-    plt.savefig(image_file)
+    fig, ax = plt.subplots(figsize=(12, 6))
+    handles = []
+    for kind, side, colour in [("intra", "low", "C0"), ("inter", "high", "C1")]:
+        groups = [
+            data.loc[(data["quality"] == quality) & (data["type"] == kind), "log_signal"].to_numpy() for quality in qualities
+        ]
+        _half_violins(ax, groups, side, colour)
+        handles.append(Patch(facecolor=colour, edgecolor=VIOLIN_LINE_COLOUR, linewidth=1.25, label=kind))
+    ax.set_xticks(range(len(qualities)), labels=qualities)
+    if qualities:
+        # One unit per quality, as on a categorical axis.
+        ax.set_xlim(-0.5, len(qualities) - 0.5)
+    ax.set_xlabel("MAG Quality")
+    ax.set_ylabel("Interaction Signal (log scale)")
+    ax.set_title("Distribution of Intra- and Inter-MAG Interaction Signals")
+    ax.legend(handles=handles, title="Interaction Type")
+    fig.tight_layout()
+    fig.savefig(image_file)
+    plt.close(fig)
+
+
+# Outlines and quartile lines of the violins.
+VIOLIN_LINE_COLOUR = "0.25"
+
+
+def _half_violins(ax, groups, side, colour, width=0.8):
+    """
+    Draws one half violin per group of values, at x = 0, 1, 2...
+
+    Args:
+        ax (matplotlib.axes.Axes): Axes to draw on.
+        groups (list of numpy.ndarray): Values of each violin.
+        side (str): "low" for left halves, "high" for right halves.
+        colour (str): Fill colour of the violins.
+        width (float): Width of a whole violin.
+
+    A group with a single distinct value has no density to draw: it is
+    drawn as a line at that value. Empty groups are skipped.
+    """
+    positions = []
+    for position, values in enumerate(groups):
+        distinct = np.unique(values)
+        if len(distinct) > 1:
+            positions.append(position)
+        elif len(distinct) == 1:
+            start = position - width / 2 if side == "low" else position
+            ax.plot([start, start + width / 2], [distinct[0], distinct[0]], color=VIOLIN_LINE_COLOUR, linewidth=1.25)
+    if not positions:
+        return
+    parts = ax.violinplot(
+        [groups[position] for position in positions],
+        positions,
+        widths=width,
+        side=side,
+        showextrema=False,
+        quantiles=[[0.25, 0.5, 0.75]] * len(positions),
+    )
+    for body in parts["bodies"]:
+        body.set(facecolor=colour, edgecolor=VIOLIN_LINE_COLOUR, linewidth=1.25, alpha=1)
+    parts["cquantiles"].set(color=VIOLIN_LINE_COLOUR, linestyle="--", linewidth=1.25)
 
 
 def classify_mags(mags, bin_summary) -> dict:
