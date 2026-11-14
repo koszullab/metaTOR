@@ -1,6 +1,7 @@
 # Test for quality_check module
 
 import gzip
+import locale
 import re
 
 import Bio
@@ -74,6 +75,20 @@ def test_hic_quality_rejects_text_before_the_first_record(tmp_path, caplog, monk
     with pytest.raises(ValueError, match=f"^Not a FASTA file: {re.escape(str(fasta))}$"):
         mtq.hic_quality({}, 0, "absent.pairs", "absent_idx.pairs", str(fasta), ["DpnII"])
     assert f"{fasta} is not a FASTA file: it must start with a '>' header line" in caplog.text
+
+
+@pytest.mark.skipif(
+    locale.getpreferredencoding(False).lower().replace("-", "") != "utf8",
+    reason="Needs a UTF-8 locale to make the byte below undecodable.",
+)
+def test_parse_fasta_passes_decoding_errors_on(tmp_path, caplog, monkeypatch):
+    """A byte that is not UTF-8 is not reported as a missing '>' header."""
+    fasta = tmp_path / "assembly.fa"
+    fasta.write_bytes(b">NODE_522\nGATC\xe9GATC\n")
+    monkeypatch.setattr(logger, "propagate", True)
+    with pytest.raises(UnicodeDecodeError):
+        list(mtq.parse_fasta(str(fasta)))
+    assert "is not a FASTA file" not in caplog.text
 
 
 def test_parse_fasta_reads_compressed_files(tmp_path):

@@ -129,14 +129,19 @@ def parse_fasta(fasta):
         If the file does not start with a '>' header line. Biopython >= 1.87
         raises it on any text before the first record, blank or '#' lines
         included; it is logged here as an error on the input file.
+    UnicodeDecodeError:
+        If the file holds a byte that cannot be decoded. It is a ValueError
+        too, but says nothing about the header, so it is passed on as is.
     """
     try:
         yield from SeqIO.parse(mio.read_compressed(fasta), "fasta")
-    except ValueError:
+    except UnicodeDecodeError:
+        raise
+    except ValueError as err:
         logger.error(
             f"{fasta} is not a FASTA file: it must start with a '>' header line, with no blank or '#' comment line before it."
         )
-        raise ValueError(f"Not a FASTA file: {fasta}") from None
+        raise ValueError(f"Not a FASTA file: {fasta}") from err
 
 
 def hic_quality(
