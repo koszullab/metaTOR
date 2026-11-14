@@ -2,7 +2,6 @@
 
 import metator.io as mio
 import metator.validation as mtv
-import networkx as nx
 import numpy as np
 import pandas as pd
 import pickle
@@ -30,10 +29,12 @@ contigs_data = contigs_data.set_index("index")
 contigs_data["Recursive_bin_ID"] = f"{0:05d}"
 contigs_data["Recursive_bin_contigs"] = pd.Series("-", index=contigs_data.index, dtype=object)
 contigs_data["Recursive_bin_size"] = pd.Series("-", index=contigs_data.index, dtype=object)
-network = nx.read_edgelist(
+network = pd.read_csv(
     "tests_data/outdir_validation/network.txt",
-    nodetype=int,
-    data=(("weight", float),),
+    sep="\t",
+    header=None,
+    names=["contig1", "contig2", "weight"],
+    dtype={"weight": str},
 )
 fileObj = open("tests_data/outdir_validation/recursive_bins.obj", "rb")
 recursive_bins = pickle.load(fileObj)
@@ -125,6 +126,23 @@ def test_recursive_clustering_worker():
     assert len(partition) == 192
     assert len(partition[716].split(";")) == iterations
     shutil.rmtree(tmp_dir)
+
+
+def test_recursive_clustering_worker_subnetwork(tmp_path):
+    """The subnetwork of a bin is the network rows between two of its
+    contigs, verbatim and in the order of the network."""
+    rows = ["5\t2\t1.5", "1\t2\t0.25", "2\t9\t3.0", "3\t3\t2", "1\t3\t1e-05", "9\t8\t1.0"]
+    (tmp_path / "network.txt").write_text("\n".join(rows) + "\n")
+    network = pd.read_csv(
+        tmp_path / "network.txt", sep="\t", header=None, names=["contig1", "contig2", "weight"], dtype={"weight": str}
+    )
+    data = pd.DataFrame(
+        {"ID": [1, 2, 3, 5, 8, 9], "Overlapping_bin_ID": ["00001"] * 4 + ["00002"] * 2, "Recursive_bin_ID": "00000"}
+    )
+    partition = mtv.recursive_clustering_worker("bin_00001_00000", str(tmp_path), network, "louvain", 2, 1.0, data)
+    subnetwork = tmp_path / "recursive_bins" / "bin_00001_00000" / "subnetwork_bin_00001_00000.txt"
+    assert subnetwork.read_text().splitlines() == [rows[0], rows[1], rows[3], rows[4]]
+    assert sorted(partition) == [1, 2, 3, 5]
 
 
 def test_update_contigs_data_recursive():
