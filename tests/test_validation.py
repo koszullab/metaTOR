@@ -204,6 +204,7 @@ def test_checkm_compare_bins():
 
 @pytest.mark.xfail(
     strict=True,
+    raises=AssertionError,
     reason="HiC_abundance is halved twice: a fully binned metagenome sums to 50%, while SG_abundance sums to 100%",
 )
 def test_bin_abundances_are_percentages():

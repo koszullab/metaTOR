@@ -96,6 +96,7 @@ def test_build_matrix(metagenome, metagenome_files, metagenome_indexed_pairs, tm
 
 @pytest.mark.xfail(
     strict=True,
+    raises=AssertionError,
     reason="without a pypairix index, build_matrix stores the contacts of a pair whose chr1 comes after chr2 in the "
     "contig list in the lower triangle, which resolve_matrix ignores",
 )

@@ -137,6 +137,7 @@ def test_parallel_scaffold_default_outputs(tmp_path):
 
 @pytest.mark.xfail(
     strict=True,
+    raises=AssertionError,
     reason="Scaffolder.normalize_matrix keeps scores for j - i > 2 instead of > 1: the junction between the starts of "
     "two contigs adjacent in the fasta is never scored",
 )
