@@ -55,6 +55,10 @@ All notable changes to this project will be documented in this file.
 - Python API: `metator.regions.Bin.insert`, `invert` and `delete` raised
   `AttributeError` after they had changed the contigs; the length of a
   `Bin` now follows these edits.
+- Python API: when the contigs of a `metator.regions.Bin` came back to the
+  layout they had when its boundaries were first read (a contig inserted,
+  then deleted), the bin kept the boundaries of the layout in between: a
+  wrong length, and wrong or failing contig lookups.
 - Python API: `metator.regions.Bin.get_breakpoints` raised `ValueError` for
   any bin of two contigs or more.
 - Python API: `metator.regions.Bin.get_contigs_between` named every piece

@@ -237,6 +237,20 @@ def test_bin_edits_record_their_breakpoints(bin_fasta):
     assert [(bp.pos1.coord, bp.pos2.coord) for bp in bin.breakpoints[:2]] == [(50, 120), (10, 20)]
 
 
+def test_bin_boundaries_after_a_return_to_the_first_layout(bin_fasta):
+    """Insert a contig, delete it and purge the empty pieces: the contigs are
+    those of the first access to the boundaries, which must not come back
+    with the boundaries of an intermediate layout."""
+    bin = Bin("bin", bin_fasta[0])
+    bin.insert(100, Contig("ins", 0, 10))
+    bin.delete(100, 110)
+    bin.clean_contigs()
+    assert _layout(bin.contigs) == ["c1:0-100:+", "c2:0-50:+", "c3:0-80:+"]
+    assert list(bin.boundaries) == [0, 100, 150, 230]
+    assert len(bin) == 230
+    assert _layout(bin.get_contigs_between(120, 160)) == ["c2:20-50:+", "c3:0-10:+"]
+
+
 # -- Scaffold ----------------------------------------------------------------
 
 

@@ -301,9 +301,10 @@ class Bin:
                 changed = True
         # On first access, required attrs are generated
         except AttributeError:
-            self._contig_hash = contig_hash
             changed = True
         if changed:
+            # Remember which layout these boundaries belong to.
+            self._contig_hash = contig_hash
             self._bds = np.cumsum([0] + [len(contig) for contig in self.contigs])
         return self._bds
 
