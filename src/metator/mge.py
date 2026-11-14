@@ -98,8 +98,9 @@ def build_matrix(contigs: List[str], contigs_size: List[int], pairs_files: List[
                     pairs = pairs_line.split("\t")
                     if pairs[1] in contigs and pairs[3] in contigs:
                         npairs += 1
-                        i = contigs.index(pairs[1])
-                        j = contigs.index(pairs[3])
+                        # Upper triangle, as with the index: resolve_matrix
+                        # reads nothing else.
+                        i, j = sorted((contigs.index(pairs[1]), contigs.index(pairs[3])))
                         # The threshold of 1000 is to remove the close range
                         # contacts.
                         if i == j:

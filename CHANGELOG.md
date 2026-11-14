@@ -70,6 +70,10 @@ All notable changes to this project will be documented in this file.
   the share of the Hi-C reads in the bin: the values are now twice as
   large, and those of a fully binned metagenome sum to 100%, like
   `SG_abundance`.
+- `mge` with a pairs file that has no pypairix index: the contacts of a
+  pair whose first read lies on the later of the two MGE contigs (in the
+  contig table order) were left out of the MGE contact matrix. The matrix,
+  and so the MGE bins, now count them, as with an indexed pairs file.
 
 ## [1.3.10] - 2025-05-21
 - `host` module rewritten to annotate the bacterial hosts of each MGE (#27).
