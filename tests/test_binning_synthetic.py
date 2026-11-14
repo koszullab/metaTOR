@@ -145,6 +145,10 @@ def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenom
         metagenome, metagenome_network["contig_data"], tmp_path, merged=("genome_1", "genome_2")
     )
     out = tmp_path / "out"
+    # Outputs of an earlier run, replaced thanks to --force.
+    for stale in ["recursive_bin", "final_bin"]:
+        (out / stale).mkdir(parents=True)
+        (out / stale / "metator_00009_00000.fa").write_text(">old\nACGT\n")
     args = [
         "-a", str(metagenome_inputs["assembly"]),
         "-c", str(partition_file),
@@ -155,8 +159,10 @@ def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenom
         "-s", "50000",
         "-i", "10",
         "-t", "1",
+        "-F",
     ]  # fmt: skip
     mtc.Validation(args, {}).execute()
+    assert not (out / "recursive_bin" / "metator_00009_00000.fa").exists()
 
     # miComplete ran on the partition bins, then on the bins of the first
     # recursive step only: the split bins are clean.
