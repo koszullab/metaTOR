@@ -205,11 +205,6 @@ def test_validation_without_contaminated_bin(metagenome, metagenome_inputs, meta
     assert len(pd.read_csv(out / "bin_summary.txt", sep="\t", index_col=0)) == len(metagenome.genomes)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=FileNotFoundError,
-    reason="Partition removes <assembly>.fxi, which only exists if a bin passed the size threshold",
-)
 def test_partition_without_bin_above_the_size_threshold(metagenome_inputs, metagenome_network, tmp_path):
     args = [
         "-a", str(metagenome_inputs["assembly"]),

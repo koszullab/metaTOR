@@ -65,6 +65,7 @@ All notable changes to this project will be documented in this file.
 - `validation` failed at the very end, after writing its bins, when no bin
   was contaminated: it removed `<assembly>.fxi`, which pyfastx only writes
   when a bin is re-partitioned.
+- `partition` failed the same way at the end when no bin reached `--size`.
 
 ## [1.3.10] - 2025-05-21
 - `host` module rewritten to annotate the bacterial hosts of each MGE (#27).

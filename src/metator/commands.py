@@ -468,8 +468,8 @@ class Partition(AbstractCommand):
             prefix,
         )
 
-        # Delete pyfastx index:
-        os.remove(self.args["--assembly"] + ".fxi")
+        # Delete pyfastx index (only made if a bin passed the size threshold):
+        mio.remove_pyfastx_index(self.args["--assembly"])
         # Delete the temporary folder
         if not self.args["--no-clean-up"]:
             self.remove_tmp_dir()
