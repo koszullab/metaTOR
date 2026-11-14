@@ -18,10 +18,11 @@ All notable changes to this project will be documented in this file.
   `_` and `-`: miComplete drops dots from bin names.
 - `validation` and `pipeline` no longer accept `-A spinglass`.
 - Temporary files go to a private subdirectory of `--tmpdir`.
-- Declare `docopt`, `packaging`, `matplotlib` and `requests`, and drop
-  `checkv` and `cooler`, in the package dependencies. A fresh install of
-  1.3.10 no longer starts: it never declared `docopt`, which `hicstuff`
-  stopped providing in 3.2.5.
+- Declare `docopt` and `matplotlib`, and drop `checkv` and `cooler`, in
+  the package dependencies. A fresh install of 1.3.10 no longer starts:
+  it never declared `docopt`, which `hicstuff` stopped providing in 3.2.5.
+- metaTOR no longer depends on `scikit-learn`, `looseversion`,
+  `packaging` or `requests`.
 
 ### Removed
 - `metator host`, which always failed since 1.3.10: it called

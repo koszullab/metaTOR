@@ -40,14 +40,10 @@ dependencies = [
     "pairtools",
     "pyfastx",
     "numpy",
-    "packaging",
     "pandas",
     "matplotlib",
-    "requests",
-    "scikit-learn",
     "scipy",
     "seaborn",
-    "looseversion",
     "micomplete",
     "pypairix"
 
