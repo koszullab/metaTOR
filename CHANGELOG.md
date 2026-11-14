@@ -28,6 +28,9 @@ All notable changes to this project will be documented in this file.
   `text_credentials.json` file, every error message was sent to the web
   API named in it. Python API: `metator.log.setup_text_logging`,
   `TEXT_CREDENTIALS_DEFAULT_PATH` and `text_formatter` are gone.
+- Python API: the CheckV plot helpers of `metator.figures`
+  (`barplot_bins_number`, `barplot_bins_size`, `build_vmags_summary` and
+  `pie_bins_size_distribution`), unused since `mge` lost its CheckV step.
 
 ### Fixed
 - `network`, `partition`, `validation` and `pipeline` deleted the whole
@@ -90,10 +93,6 @@ All notable changes to this project will be documented in this file.
   pair whose first read lies on the later of the two MGE contigs (in the
   contig table order) were left out of the MGE contact matrix. The matrix,
   and so the MGE bins, now count them, as with an indexed pairs file.
-- Python API: `metator.figures.build_vmags_summary` counted a vMAG of 90%
-  completeness or more in both the >90% and the 70-90% classes. Its vMAG
-  counts and sizes, and the plots built on them (`barplot_bins_number`,
-  `barplot_bins_size`, `pie_bins_size_distribution`), change accordingly.
 
 ## [1.3.10] - 2025-05-21
 - `host` module rewritten to annotate the bacterial hosts of each MGE (#27).

@@ -20,7 +20,6 @@ Main functions and methods include:
     - `compute_mge_mag_interactions()`: Compute MGE-MAG to MAG interaction signals with signal filtering by percentage and minimum contact threshold.
 """
 
-# import checkv
 # import metator.figures as mtf
 # import metator.io as mio
 from collections import Counter
