@@ -83,11 +83,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) to run the tests and checks.
 ## Usage
 
 ```sh
-metator {network|partition|validation|pipeline|qc|contactmap|pairs|mge} [parameters]
+metator {network|partition|validation|pipeline|qc|contactmap|scaffold|pairs|mge} [parameters]
 ```
 
 A metator command takes the form `metator action --param1 arg1 --param2
-arg2 #etc.`
+arg2 #etc.` `metator --help` lists the actions, `metator action --help`
+shows the parameters of an action and `metator --version` the version
+number.
 
 There are three actions/steps in the metator pipeline, which must be run in the
 following order:
@@ -102,8 +104,8 @@ There are a number of other, optional, miscellaneous actions:
 * `mge` : Perform the binning over mge contigs. A specific section is dedicated to this tool below.
 * `contactmap` : Generates a contact map from one bin from the final ouptut of metator.
 * `qc` : Generates some quality check on the input/output of metator.
-* `version` : display current version number.
-* `help` : display help message.
+* `scaffold` : Scaffolds a bin from the pairs files.
+* `pairs` : Sorts, compresses and indexes pairs files.
 
 
 ### Principle of MetaTOR pipeline

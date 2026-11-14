@@ -18,9 +18,8 @@ All notable changes to this project will be documented in this file.
   `_` and `-`: miComplete drops dots from bin names.
 - `validation` and `pipeline` no longer accept `-A spinglass`.
 - Temporary files go to a private subdirectory of `--tmpdir`.
-- Declare `docopt` and `matplotlib`, and drop `checkv` and `cooler`, in
-  the package dependencies. A fresh install of 1.3.10 no longer starts:
-  it never declared `docopt`, which `hicstuff` stopped providing in 3.2.5.
+- Declare `matplotlib`, and drop `checkv` and `cooler`, in the package
+  dependencies.
 - metaTOR no longer depends on `scikit-learn`, `looseversion`,
   `packaging` or `requests`.
 - Figures are drawn with matplotlib alone: metaTOR no longer depends on
@@ -46,6 +45,16 @@ All notable changes to this project will be documented in this file.
   `network` of `metator.validation.recursive_clustering` and
   `recursive_clustering_worker` is the network table (a
   `pandas.DataFrame` with the columns contig1, contig2 and weight).
+- The command line uses `rich-click` instead of `docopt`: the help pages
+  look different, with the options grouped in panels, but the commands,
+  their options, short aliases and defaults are unchanged. An unknown
+  value of `--algorithm`, `--aligner`, `--aligner-mode`,
+  `--normalization`, `--start` or `--mat-fmt`, or a value that is not a
+  number for a numeric option, is refused before the command starts,
+  with exit status 2 (`network --start network` included: it was
+  accepted, then failed while aligning). Long options can no longer be
+  abbreviated (`--thread` for `--threads`). The log files record the
+  command line as typed. `python -m metator` runs the command line.
 
 ### Removed
 - `metator host`, which always failed since 1.3.10: it called
@@ -58,8 +67,15 @@ All notable changes to this project will be documented in this file.
 - Python API: the CheckV plot helpers of `metator.figures`
   (`barplot_bins_number`, `barplot_bins_size`, `build_vmags_summary` and
   `pie_bins_size_distribution`), unused since `mge` lost its CheckV step.
+- The `docopt` dependency.
+- Python API: `metator.commands`, the docopt command classes. Each
+  command is a function of `metator.cli`, whose `cli` is the `metator`
+  command line; `metator.main.main` is an alias of it.
 
 ### Fixed
+- A fresh install of 1.3.10 did not start: it never declared `docopt`,
+  which `hicstuff` stopped providing in 3.2.5. The command line no longer
+  needs it.
 - `network`, `partition`, `validation` and `pipeline` deleted the whole
   `--tmpdir` directory, including files that were already in it.
 - `pipeline` (fastq or bam start) crashed while plotting at the end, after
