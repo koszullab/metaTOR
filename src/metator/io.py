@@ -21,6 +21,7 @@ This mdoule contains all core I/O functions:
     - read_compressed
     - read_contig_data
     - read_results_checkm
+    - remove_pyfastx_index
     - retrieve_fasta
     - sort_pairs
     - sort_pairs_pairtools
@@ -554,6 +555,21 @@ def read_results_checkm(checkm_file, checkm_taxonomy_file):
     checkm_summary.pop("Bin")
 
     return checkm_summary
+
+
+def remove_pyfastx_index(fasta):
+    """Remove the index pyfastx writes next to a fasta file, if there is
+    one: pyfastx only indexes the assembly when a bin is extracted from it.
+
+    Parameters:
+    -----------
+    fasta : str
+        Path to the fasta file.
+    """
+    try:
+        os.remove(f"{fasta}.fxi")
+    except FileNotFoundError:
+        pass
 
 
 def retrieve_fasta(in_file, aligner, tmpdir):

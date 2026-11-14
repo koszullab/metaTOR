@@ -45,6 +45,43 @@ All notable changes to this project will be documented in this file.
 - pandas 3 compatibility.
 - `pairtools sort` and `bgzip` failures are reported where they happen.
 - Core bin detection is no longer quadratic in the number of core bins.
+- `scaffold` and `pipeline --scaffold` never scored a junction between the
+  starts of two contigs that follow each other in the bin fasta, so such
+  contigs could come out in the wrong order or orientation.
+- `scaffold` and `pipeline --scaffold` could reverse the first or last
+  contig of a linear scaffold (or close the scaffold into a circle): the
+  outer end of that contig, which has no partner, took the contig next to
+  its other end.
+- Python API: `metator.regions.Bin.insert`, `invert` and `delete` raised
+  `AttributeError` after they had changed the contigs; the length of a
+  `Bin` now follows these edits.
+- Python API: when the contigs of a `metator.regions.Bin` came back to the
+  layout they had when its boundaries were first read (a contig inserted,
+  then deleted), the bin kept the boundaries of the layout in between: a
+  wrong length, and wrong or failing contig lookups.
+- Python API: `metator.regions.Bin.get_breakpoints` raised `ValueError` for
+  any bin of two contigs or more.
+- Python API: `metator.regions.Bin.get_contigs_between` named every piece
+  after the bin instead of its contig, so the pieces could not be read from
+  the fasta.
+- Python API: on Python 3.9, `metator.host.classify_mags` and
+  `annotate_hosts` failed with `TypeError`.
+- `validation` failed at the very end, after writing its bins, when no bin
+  was contaminated: it removed `<assembly>.fxi`, which pyfastx only writes
+  when a bin is re-partitioned.
+- `partition` failed the same way at the end when no bin reached `--size`.
+- `HiC_abundance` in `bin_summary.txt` (`validation`, `pipeline`) was half
+  the share of the Hi-C reads in the bin: the values are now twice as
+  large, and those of a fully binned metagenome sum to 100%, like
+  `SG_abundance`.
+- `mge` with a pairs file that has no pypairix index: the contacts of a
+  pair whose first read lies on the later of the two MGE contigs (in the
+  contig table order) were left out of the MGE contact matrix. The matrix,
+  and so the MGE bins, now count them, as with an indexed pairs file.
+- Python API: `metator.figures.build_vmags_summary` counted a vMAG of 90%
+  completeness or more in both the >90% and the 70-90% classes. Its vMAG
+  counts and sizes, and the plots built on them (`barplot_bins_number`,
+  `barplot_bins_size`, `pie_bins_size_distribution`), change accordingly.
 
 ## [1.3.10] - 2025-05-21
 - `host` module rewritten to annotate the bacterial hosts of each MGE (#27).

@@ -1,21 +1,12 @@
 # Tests of the MGE host detection (metator.host) on the mock metagenome:
 # each MGE contacts one host genome much more than the others.
 
-import sys
-
 import numpy as np
 import pandas as pd
 import pytest
 
 import metator.commands as mtc
 import metator.host as mth
-
-needs_py310 = pytest.mark.xfail(
-    sys.version_info < (3, 10),
-    raises=TypeError,
-    strict=True,
-    reason="host.classify_mags annotates a nested function with Literal[...] | Literal[...], which needs Python 3.10",
-)
 
 
 @pytest.fixture
@@ -106,7 +97,6 @@ def test_no_host_below_the_thresholds(binned, tmp_path):
     assert not (tmp_path / "histogram.png").exists()
 
 
-@needs_py310
 def test_classify_mags():
     names = [f"m{i}" for i in range(7)]
     mags = {name: mth.Mag(name) for name in [*names, "absent"]}
@@ -160,7 +150,6 @@ def test_plot_mag_noise(binned, tmp_path):
     assert (tmp_path / "noise.png").stat().st_size > 0
 
 
-@needs_py310
 def test_annotate_hosts(metagenome, binned, tmp_path):
     data, network, mags, mges = binned
     summary = _bin_summary(list(mags.values()), [0.95, 0.95, 0.8, 0.6, 0.3], [1.0, 1.2, 1.05, 1.05, 1.0])

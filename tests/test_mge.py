@@ -94,18 +94,13 @@ def test_build_matrix(metagenome, metagenome_files, metagenome_indexed_pairs, tm
     assert np.array_equal(mtm.build_matrix(names, sizes, [str(plain)]), expected)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="without a pypairix index, build_matrix stores the contacts of a pair whose chr1 comes after chr2 in the "
-    "contig list in the lower triangle, which resolve_matrix ignores",
-)
 def test_build_matrix_contig_order(metagenome, metagenome_files, metagenome_indexed_pairs, tmp_path):
     names, sizes = _mge_contigs(metagenome)
     names, sizes = names[::-1], sizes[::-1]
     plain = tmp_path / "plain.pairs"
     shutil.copyfile(metagenome_files["pairs"], plain)
     indexed = mtm.build_matrix(names, sizes, [str(metagenome_indexed_pairs)])
+    assert np.array_equal(indexed, _expected_matrix(metagenome, names))
     assert np.array_equal(mtm.build_matrix(names, sizes, [str(plain)]), indexed)
 
 

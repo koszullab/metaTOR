@@ -154,12 +154,14 @@ def test_bin_contigs_between(bin_fasta):
             bin.get_contigs_between(start, end)
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="Bin.get_contigs_between names every piece after the bin instead of its contig"
-)
 def test_bin_contigs_between_keep_contig_names(bin_fasta):
-    bin = Bin("bin", bin_fasta[0])
+    fasta, sequences = bin_fasta
+    bin = Bin("bin", fasta)
     assert [c.name for c in bin.get_contigs_between(50, 180)] == ["c1", "c2", "c3"]
+    assert [c.name for c in bin.get_contigs_between(110, 120)] == ["c2"]
+    # The pieces can be read from the fasta.
+    pieces = Scaffold("pieces", bin.get_contigs_between(50, 180))
+    assert "".join(pieces.get_seq(fasta)) == sequences["c1"][50:] + sequences["c2"] + sequences["c3"][:30]
 
 
 def test_bin_sequence(bin_fasta):
@@ -177,14 +179,13 @@ def test_bin_single_contig_has_no_breakpoint(tmp_path):
     assert list(Bin("bin", pyfastx.Fasta(str(tmp_path / "one.fa"))).get_breakpoints()) == []
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=ValueError,
-    reason="Bin.get_breakpoints positions breakpoints on the bin name, which the contig setters reject",
-)
 def test_bin_breakpoints(bin_fasta):
     breakpoints = list(Bin("bin", bin_fasta[0]).get_breakpoints())
     assert [(bp.contig1.name, bp.contig2.name) for bp in breakpoints] == [("c1", "c2"), ("c2", "c3")]
+    assert [repr(bp) for bp in breakpoints] == [
+        "[c1:0-100:+]c1:100:+|c2:0:-[c2:0-50:+] UNK",
+        "[c2:0-50:+]c2:50:+|c3:0:-[c3:0-80:+] UNK",
+    ]
 
 
 EDITS = {
@@ -213,17 +214,41 @@ EDITS = {
 }
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AttributeError,
-    reason="Bin.insert/invert/delete append to Bin.breakpoints, a numpy array without append",
-)
 @pytest.mark.parametrize("edit", list(EDITS))
 def test_bin_edits(bin_fasta, edit):
     bin = Bin("bin", bin_fasta[0])
     change, layout = EDITS[edit]
     change(bin)
     assert _layout(bin.contigs) == layout
+    assert len(bin) == sum(len(contig) for contig in bin.contigs)
+
+
+def test_bin_edits_record_their_breakpoints(bin_fasta):
+    bin = Bin("bin", bin_fasta[0])
+    assert bin.breakpoints == []
+    bin.invert(50, 120)
+    bin.delete(10, 20)
+    # The length follows the edits, so a contig can be appended at the end.
+    assert len(bin) == 220
+    bin.insert(len(bin), Contig("ins", 0, 10))
+    assert _layout(bin.contigs)[-1] == "ins:0-10:+"
+    assert len(bin) == 230
+    assert [bp.type for bp in bin.breakpoints] == ["INV", "DEL", "INS"]
+    assert [(bp.pos1.coord, bp.pos2.coord) for bp in bin.breakpoints[:2]] == [(50, 120), (10, 20)]
+
+
+def test_bin_boundaries_after_a_return_to_the_first_layout(bin_fasta):
+    """Insert a contig, delete it and purge the empty pieces: the contigs are
+    those of the first access to the boundaries, which must not come back
+    with the boundaries of an intermediate layout."""
+    bin = Bin("bin", bin_fasta[0])
+    bin.insert(100, Contig("ins", 0, 10))
+    bin.delete(100, 110)
+    bin.clean_contigs()
+    assert _layout(bin.contigs) == ["c1:0-100:+", "c2:0-50:+", "c3:0-80:+"]
+    assert list(bin.boundaries) == [0, 100, 150, 230]
+    assert len(bin) == 230
+    assert _layout(bin.get_contigs_between(120, 160)) == ["c2:20-50:+", "c3:0-10:+"]
 
 
 # -- Scaffold ----------------------------------------------------------------

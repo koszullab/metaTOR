@@ -42,7 +42,9 @@ fileObj.close()
 
 def test_get_bin_coverage():
     bin_info = mtv.get_bin_coverage(bin_summary, contigs_data)
-    assert bin_info["MetaTOR_00002_00000"]["HiC_abundance"] == pytest.approx(49.72, abs=1e-2)
+    # Every contig is binned: the two bins hold all the Hi-C hits.
+    assert bin_info["MetaTOR_00002_00000"]["HiC_abundance"] == pytest.approx(99.45, abs=1e-2)
+    assert sum(info["HiC_abundance"] for info in bin_info.values()) == pytest.approx(100)
 
 
 def test_merge_micomplete():
@@ -202,11 +204,6 @@ def test_checkm_compare_bins():
     assert not (set(over_id) & set(rec_id))
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="HiC_abundance is halved twice: a fully binned metagenome sums to 50%, while SG_abundance sums to 100%",
-)
 def test_bin_abundances_are_percentages():
     contigs = pd.DataFrame(
         {

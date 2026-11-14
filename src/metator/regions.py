@@ -275,13 +275,13 @@ class Bin:
         for seq in self.fasta:
             self.contigs.append(Contig(seq.name, 0, len(seq), bin=self.bin_name))
 
-        # Compute breakpoint positions.
-        self.breakpoints = np.cumsum([0] + [len(contig) for contig in self.contigs])
+        # Breakpoints of the edits (insert, invert, delete) made to the bin.
+        self.breakpoints = []
         self.scaffolds = []
 
     def __len__(self) -> int:
         """Returns the total bin length."""
-        return self.breakpoints[-1]
+        return self.boundaries[-1]
 
     def get_contigs_counts(self) -> int:
         """Returns the number of bins."""
@@ -301,9 +301,10 @@ class Bin:
                 changed = True
         # On first access, required attrs are generated
         except AttributeError:
-            self._contig_hash = contig_hash
             changed = True
         if changed:
+            # Remember which layout these boundaries belong to.
+            self._contig_hash = contig_hash
             self._bds = np.cumsum([0] + [len(contig) for contig in self.contigs])
         return self._bds
 
@@ -342,7 +343,7 @@ class Bin:
         if contig_id_left == contig_id_right:
             return [
                 Contig(
-                    self.bin_name,
+                    self.contigs[contig_id_left].name,
                     self.contigs[contig_id_left].start + (start - start_bound_left),
                     self.contigs[contig_id_left].start + (end - start_bound_left),
                     self.contigs[contig_id_left].is_reverse,
@@ -356,7 +357,7 @@ class Bin:
         print("left_contig = ", left_contig)
 
         left_contig_trimmed = Contig(
-            self.bin_name,
+            left_contig.name,
             left_contig.start + (start - start_bound_left),
             left_contig.end,
             left_contig.is_reverse,
@@ -369,7 +370,7 @@ class Bin:
         print("right_contig = ", right_contig)
 
         right_contig_trimmed = Contig(
-            self.bin_name,
+            right_contig.name,
             right_contig.start,
             right_contig.start + end - start_bound_right,
             right_contig.is_reverse,
@@ -378,7 +379,7 @@ class Bin:
         # Add all contigs between the first and the last
         for contig_i in range(contig_id_left + 1, contig_id_right):
             contig = Contig(
-                self.bin_name,
+                self.contigs[contig_i].name,
                 self.contigs[contig_i].start,
                 self.contigs[contig_i].end,
                 self.contigs[contig_i].is_reverse,
@@ -510,8 +511,8 @@ class Bin:
         self.clean_contigs()
         for contig_id in range(0, len(self.contigs) - 1):
             contig1, contig2 = self.contigs[contig_id : contig_id + 2]
-            p1 = Position(contig1.bin, contig1.end, not contig1.is_reverse)
-            p2 = Position(contig2.bin, contig2.start, contig2.is_reverse)
+            p1 = Position(contig1.name, contig1.end, not contig1.is_reverse)
+            p2 = Position(contig2.name, contig2.start, contig2.is_reverse)
             breakpoint = BreakPoint(p1, p2)
             breakpoint.contig1 = contig1
             breakpoint.contig2 = contig2

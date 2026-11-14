@@ -188,11 +188,6 @@ def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenom
     assert (out / "plot" / "bins_distribution.png").stat().st_size > 0
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=FileNotFoundError,
-    reason="Validation removes <assembly>.fxi, which only exists if a contaminated bin was re-partitioned",
-)
 def test_validation_without_contaminated_bin(metagenome, metagenome_inputs, metagenome_network, tmp_path, monkeypatch):
     monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
     partition_file, fasta_dir = _partition_with_merged_bin(metagenome, metagenome_network["contig_data"], tmp_path, merged=())
@@ -210,11 +205,6 @@ def test_validation_without_contaminated_bin(metagenome, metagenome_inputs, meta
     assert len(pd.read_csv(out / "bin_summary.txt", sep="\t", index_col=0)) == len(metagenome.genomes)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=FileNotFoundError,
-    reason="Partition removes <assembly>.fxi, which only exists if a bin passed the size threshold",
-)
 def test_partition_without_bin_above_the_size_threshold(metagenome_inputs, metagenome_network, tmp_path):
     args = [
         "-a", str(metagenome_inputs["assembly"]),
