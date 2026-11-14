@@ -7,6 +7,7 @@ import matplotlib
 # Figures are only written to files: never open a window.
 matplotlib.use("Agg")
 
+import matplotlib.pyplot as plt
 import pytest
 
 from tests import synthetic
@@ -29,6 +30,18 @@ def _run_in_tmp_path(tmp_path, monkeypatch):
     """
     os.symlink(TESTS_DATA, tmp_path / "tests_data")
     monkeypatch.chdir(tmp_path)
+
+
+@pytest.fixture(autouse=True)
+def _close_figures():
+    """Close the figures a test leaves open.
+
+    Some plotting functions draw on pyplot's current figure (and some never
+    close theirs): without this, a figure left open by one test ends up in
+    the plots of the next one.
+    """
+    yield
+    plt.close("all")
 
 
 @pytest.fixture(scope="session")
