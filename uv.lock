@@ -2822,7 +2822,7 @@ requires-dist = [
     { name = "docopt" },
     { name = "furo", marker = "extra == 'docs'" },
     { name = "hicstuff" },
-    { name = "igraph", specifier = ">=0.10" },
+    { name = "igraph", specifier = ">=0.10.3" },
     { name = "lxml", extras = ["html-clean"], marker = "extra == 'docs'" },
     { name = "m2r", marker = "extra == 'docs'" },
     { name = "matplotlib", specifier = ">=3.9" },

@@ -12,7 +12,7 @@ All notable changes to this project will be documented in this file.
 - Louvain and Leiden now run through `igraph`: the bundled Louvain binaries,
   the Leiden jar and the Java requirement are gone, and the wheel is pure
   Python.
-- `networkx` is no longer installed, and `igraph` must be 0.10 or later:
+- `networkx` is no longer installed, and `igraph` must be 0.10.3 or later:
   `scaffold` and the MGE host detection build their graphs with `igraph`,
   and the recursive step of `validation` takes the edges of each bin
   straight from `network.txt`. The outputs do not change, with one
