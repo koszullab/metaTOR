@@ -133,6 +133,18 @@ def test_read_compressed_zip(tmp_path):
         mio.read_compressed(str(tmp_path / "two.zip"))
 
 
+def test_remove_pyfastx_index(tmp_path):
+    fasta = tmp_path / "assembly.fa"
+    fasta.write_text(">c1\nACGT\n")
+    index = tmp_path / "assembly.fa.fxi"
+    index.touch()
+    mio.remove_pyfastx_index(str(fasta))
+    assert fasta.exists() and not index.exists()
+    # No index: nothing to remove.
+    mio.remove_pyfastx_index(str(fasta))
+    assert fasta.exists()
+
+
 def test_retrieve_fasta(tmp_path):
     fasta = tmp_path / "ref.fa"
     fasta.write_text(">c1\nACGTACGTAC\n")

@@ -188,11 +188,6 @@ def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenom
     assert (out / "plot" / "bins_distribution.png").stat().st_size > 0
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=FileNotFoundError,
-    reason="Validation removes <assembly>.fxi, which only exists if a contaminated bin was re-partitioned",
-)
 def test_validation_without_contaminated_bin(metagenome, metagenome_inputs, metagenome_network, tmp_path, monkeypatch):
     monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
     partition_file, fasta_dir = _partition_with_merged_bin(metagenome, metagenome_network["contig_data"], tmp_path, merged=())

@@ -608,8 +608,8 @@ class Validation(AbstractCommand):
             prefix,
         )
 
-        # Delete pyfastx index:
-        os.remove(self.args["--assembly"] + ".fxi")
+        # Delete pyfastx index (only made if a bin was re-partitioned):
+        mio.remove_pyfastx_index(self.args["--assembly"])
         # Delete the temporary folder
         if not self.args["--no-clean-up"]:
             self.remove_tmp_dir()

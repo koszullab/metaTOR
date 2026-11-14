@@ -62,6 +62,9 @@ All notable changes to this project will be documented in this file.
   the fasta.
 - Python API: on Python 3.9, `metator.host.classify_mags` and
   `annotate_hosts` failed with `TypeError`.
+- `validation` failed at the very end, after writing its bins, when no bin
+  was contaminated: it removed `<assembly>.fxi`, which pyfastx only writes
+  when a bin is re-partitioned.
 
 ## [1.3.10] - 2025-05-21
 - `host` module rewritten to annotate the bacterial hosts of each MGE (#27).
