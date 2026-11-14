@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Changed
+- `Biopython` is no longer pinned <= 1.80: miComplete is now run through `metator._micomplete`, which restores `Bio.SeqUtils.GC` (removed in Biopython 1.82) and `distutils.spawn` (removed in Python 3.12) before running it.
+- With Biopython >= 1.87, FASTA inputs must start with a `>` header line:
+  leading blank or `#` lines are rejected. `network` and `pipeline` then
+  refuse the assembly, and `qc` stops with an error naming it.
 - Louvain and Leiden now run through `igraph`: the bundled Louvain binaries,
   the Leiden jar and the Java requirement are gone, and the wheel is pure
   Python.

@@ -7,3 +7,7 @@ coverage:
         if_ci_failed: error #success, failure, error, ignore
         informational: false
         only_pulls: false
+    patch:
+      default:
+        # The lines a pull request changes must be at least 80% covered.
+        target: 80%

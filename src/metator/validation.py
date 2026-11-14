@@ -34,7 +34,6 @@ import logging
 import metator.io as mio
 import metator.figures as mtf
 import metator.partition as mtp
-import micomplete
 import networkx as nx
 import numpy as np
 import os
@@ -42,8 +41,10 @@ import pandas as pd
 import pyfastx
 import shutil
 import subprocess as sp
+import sys
 import tempfile
 from functools import partial
+from importlib.metadata import version
 from metator.log import logger
 from os.path import join
 from scipy import sparse
@@ -197,7 +198,7 @@ def merge_micomplete(out_bact105, out_arch131, outfile):
     # Write header
     with open(outfile, "w") as out:
         out.write("## miComplete\n")
-        out.write(f"## v{micomplete.__version__}\n")
+        out.write(f"## v{version('micomplete')}\n")
         out.write("## Weights: Bact105 and Arch131\n")
         out.write("Name\t{0}\tMarkers\n".format("\t".join(list(arch131.columns))))
         for bin_id in bact105.index:
@@ -305,12 +306,13 @@ def micomplete_quality(fasta_dir, outfile, threads):
             if path.endswith((".fa", ".fasta", ".fna")):
                 tab.write(f"{join(fasta_dir, path)}\tfna\n")
 
-    # Run miComplete with the bacterial and the archaeal marker sets.
+    # Run miComplete (through metator._micomplete, which patches it for recent
+    # Biopython and Python) with the bacterial and the archaeal marker sets.
     out_bact105 = join(workdir, "micomplete_bact105.tsv")
     out_arch131 = join(workdir, "micomplete_arch131.tsv")
     for markers, out in (("Bact105", out_bact105), ("Arch131", out_arch131)):
         cmd = [
-            "miComplete", tmp_seq_tab,
+            sys.executable, "-m", "metator._micomplete", tmp_seq_tab,
             "--hmms", markers,
             "--weights", markers,
             "--threads", str(threads),

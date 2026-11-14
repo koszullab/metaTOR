@@ -126,7 +126,10 @@ def check_is_fasta(in_file):
     try:
         with open(in_file, "r") as handle:
             test = any(SeqIO.parse(handle, "fasta"))
-    except FileNotFoundError:
+    # Biopython >= 1.87 raises ValueError on any text before the first '>'
+    # line, blank or '#' lines included. Earlier versions skipped that text
+    # (1.85 and 1.86 with a warning), so text with no '>' line gave no record.
+    except (FileNotFoundError, ValueError):
         test = False
 
     return test
