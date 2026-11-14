@@ -12,6 +12,21 @@ All notable changes to this project will be documented in this file.
 - Louvain and Leiden now run through `igraph`: the bundled Louvain binaries,
   the Leiden jar and the Java requirement are gone, and the wheel is pure
   Python.
+- `networkx` is no longer installed, and `igraph` must be 0.10 or later:
+  `scaffold` and the MGE host detection build their graphs with `igraph`,
+  and the recursive step of `validation` takes the edges of each bin
+  straight from `network.txt`. The outputs do not change, with one
+  exception: `scaffold` (and `pipeline --scaffold`) now reads a linear
+  scaffold from the end whose contig comes first in the bin fasta, and a
+  circular one from its first contig. networkx chose the end from the
+  order of a Python set for scaffolds holding less than half of the bin's
+  contigs: such a scaffold can come out reverse-complemented or starting
+  from another contig, with the same contigs, junctions and relative
+  orientations. Python API: `metator.io.import_network` is removed,
+  `metator.host.build_contig_graph` returns an `igraph.Graph`, and the
+  `network` of `metator.validation.recursive_clustering` and
+  `recursive_clustering_worker` is the network table (a
+  `pandas.DataFrame` with the columns contig1, contig2 and weight).
 - `metator mge`: flags renamed for consistency with the other commands;
   MetaBAT input and the host, CheckV and plotting steps removed (#33).
 - `--prefix` (partition, validation, pipeline) accepts only letters, digits,
