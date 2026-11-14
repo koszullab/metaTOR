@@ -126,7 +126,9 @@ def check_is_fasta(in_file):
     try:
         with open(in_file, "r") as handle:
             test = any(SeqIO.parse(handle, "fasta"))
-    except FileNotFoundError:
+    # Biopython >= 1.85 raises ValueError on text that is not FASTA instead of
+    # yielding no record.
+    except (FileNotFoundError, ValueError):
         test = False
 
     return test
