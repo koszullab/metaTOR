@@ -39,7 +39,7 @@ from functools import partial
 from metator.log import logger
 from os.path import join
 from scipy import sparse
-from sklearn import metrics
+from scipy.spatial.distance import cdist
 
 
 def algo_partition(
@@ -302,6 +302,9 @@ def get_distances_splitmat(bins, core_bins_iterations):
     computes, for each index (i.e. contig), the hamming distance to each of the
     other indices.
 
+    The values are one minus the normalized Hamming distance, i.e. the fraction
+    of the iterations in which both core bins fell in the same community.
+
     Parameters:
     -----------
     bins : pandas.core.frame.DataFrame
@@ -316,7 +319,7 @@ def get_distances_splitmat(bins, core_bins_iterations):
         matrix of the distance of the possible pairs from the slice of the table
         and the table itself.
     """
-    x = sparse.csr_matrix(1 - metrics.pairwise_distances(core_bins_iterations, bins.values, metric="hamming"))
+    x = sparse.csr_matrix(1 - cdist(core_bins_iterations, bins.values, metric="hamming"))
     return x
 
 
