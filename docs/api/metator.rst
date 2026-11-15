@@ -60,6 +60,14 @@ metator.main module
    :undoc-members:
    :show-inheritance:
 
+metator.metacool module
+-----------------------
+
+.. automodule:: metator.metacool
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 metator.network module
 ----------------------
 

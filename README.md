@@ -21,7 +21,8 @@ Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that
 2. [Usage](#usage)
    1. [Principle of MetaTOR pipeline](#Principle-of-MetaTOR-pipeline)
    2. [Output files](#output-files)
-   3. [metator mge](#metator-mge)
+   3. [Contact map](#contact-map)
+   4. [metator mge](#metator-mge)
       1. [Principle of mge binning](#Principle-of-mge-binning)
       2. [Usage](#usage-of-mge)
       3. [Output](#output)
@@ -83,7 +84,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) to run the tests and checks.
 ## Usage
 
 ```sh
-metator {network|partition|validation|pipeline|qc|contactmap|scaffold|pairs|mge} [parameters]
+metator {network|partition|validation|pipeline|qc|contactmap|metacool|scaffold|pairs|mge} [parameters]
 ```
 
 A metator command takes the form `metator action --param1 arg1 --param2
@@ -103,6 +104,7 @@ There are a number of other, optional, miscellaneous actions:
 * `pipeline` : Run all three of the above actions sequentially or only some of them depending on the arguments given. This can take a while.
 * `mge` : Perform the binning over mge contigs. A specific section is dedicated to this tool below.
 * `contactmap` : Generates a contact map from one bin from the final ouptut of metator.
+* `metacool` : Writes the contact map of all the contigs, grouped by bin, as a `.metacool` file (see [Contact map](#contact-map)). `pipeline` writes it at the end of a run.
 * `qc` : Generates some quality check on the input/output of metator.
 * `scaffold` : Scaffolds a bin from the pairs files.
 * `pairs` : Sorts, compresses and indexes pairs files.
@@ -135,6 +137,7 @@ The output files will be in the ouput directory given as parmater or in working 
 | overlapping_bin |Directory with the fasta of the partition bins||X|X|X|
 | recursive_bin |Directory with the fasta of the recursive bins|||X|X|
 | **final_bin** |**Directory with the fasta of the final bins**|||**X**|**X**|
+| metator.metacool |Contact map of the contigs, grouped by bin (`<prefix>.metacool` with `--prefix`)||||X|
 
 **Bam alignment files**
 For the bam alignments files, only the aligned reads are kept and the bam are sorted by name. The N value correspond to the id (order of the given fastq started at 0)
@@ -179,6 +182,48 @@ This is the summary of the data of the final bins build with all the step of met
 |metator_00031_00000|6169839.00|57.47|103.00|0.98|1.01|0.98|1.02|153.00|287729.00|8.00|40103.00|27.00|5707.00|False|0||3.3423|
 |metator_00001_00000|4695682.00|42.58|103.00|0.98|1.03|0.99|1.08|326.00|71792.00|22.00|13441.00|85.00|4141.00|False|0||1.9909|
 |metator_00030_00001|5094713.00|45.69|105.00|1.00|1.10|1.00|1.13|44.00|428652.00|5.00|99776.00|15.00|4726.00|False|1|metator_00030_00000|0.3708|
+
+### Contact map
+
+At the end of a run, `metator pipeline` writes the contact map of all the contigs, grouped by bin, as
+`metator.metacool` in the output directory (`<prefix>.metacool` with `--prefix`); `--no-metacool`
+skips it. `metator metacool` writes the same file from the pairs files, `contig_data_final.txt` and
+`bin_summary.txt` of a run:
+
+```sh
+metator metacool -c contig_data_final.txt -b bin_summary.txt -o sample.metacool alignment_0_sorted.pairs.gz alignment_1_sorted.pairs.gz
+```
+
+A `.metacool` file is the contact map format of [metacooler](https://github.com/js2264/metacooler): a
+[cooler](https://github.com/open2c/cooler) whose chromosomes are the contigs, grouped by genome. `cooler`
+and the tools built on it read it as any `.cool` file, and `metacooler` adds the genomes:
+
+* one bin per contig, and one genome per final bin. The contigs that are in no final bin (`ND` in
+  `contig_data_final.txt`) are kept, with all their contacts, in the `__unbinned__` genome. The contigs
+  come genome by genome, the longest first;
+* the contacts: each pair whose two ends lie on contigs of the assembly is one contact between these
+  two contigs (an intra-contig contact when both ends are on the same contig). These are the raw
+  contacts of the pairs files, without the filters and the normalization of the network, and those of
+  several libraries are summed;
+* the genomes table holds the columns of `bin_summary.txt` (completeness, redundancy, Hi-C and
+  shotgun abundances...), next to the length, contig and bin counts of each genome and the contact
+  statistics that metacooler computes while reading the pairs;
+* the metadata of the file hold the version of metaTOR, the command line and its parameters, under
+  the `metator` key.
+
+```python
+import cooler
+import metacooler
+
+clr = cooler.Cooler("metator.metacool")
+mc = metacooler.MetaCooler("metator.metacool")
+mc.genomes  # one row per bin, with the columns of bin_summary.txt
+```
+
+The contig and bin names must be ASCII, as `cooler` reads them as ASCII text. When the map cannot be
+written (for example, an assembly with contig names that are not ASCII), `metator pipeline` logs a
+warning saying why and keeps its other outputs and its exit status; `metator metacool` stops with an
+error.
 
 ### metator mge
 

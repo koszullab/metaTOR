@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+- `pipeline` writes the contact map of all the contigs, grouped by bin, as
+  `metator.metacool` in its output directory (`<prefix>.metacool` with
+  `--prefix`), once the bins are final; `--no-metacool` skips it. A
+  `.metacool` file is the contact map of
+  [metacooler](https://github.com/js2264/metacooler): a cooler whose
+  chromosomes are the contigs, which `cooler` reads as any `.cool` file and
+  `metacooler` by genome. It has one bin per contig and one genome per
+  final bin, plus `__unbinned__` for the contigs in no bin, which keep all
+  their contacts. Each pair whose two ends lie on contigs of the assembly
+  is one contact, and the libraries are summed. The genomes table holds the
+  columns of `bin_summary.txt`, and the file metadata the version, command
+  line and parameters of the run, under the `metator` key. The map is
+  written last: when it cannot be written (for example, contig names that
+  are not ASCII, which cooler cannot read), a warning says why and the run
+  keeps its other outputs and its exit status. See the README.
+- `metator metacool` writes the same file from the pairs files,
+  `contig_data_final.txt` and `bin_summary.txt` of a run. Python API:
+  `metator.metacool.write_metacool`.
+- metaTOR depends on `metacooler`.
+
 ### Changed
 - metaTOR supports Python 3.10 to 3.14: 3.13 and 3.14 are new, and
   3.9 is no longer supported (see Removed). The Docker image runs
