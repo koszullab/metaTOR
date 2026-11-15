@@ -1,6 +1,8 @@
 # Test for align module
 
 import functools
+import gzip
+import itertools
 import random
 import string
 
@@ -32,6 +34,20 @@ def _write_bam(path, reads):
             read.mapping_quality = mapq[0] if mapq else 60
             read.cigartuples = [(0, 50)]
             bam.write(read)
+
+
+def test_align_iterative_extends_reads(tmp_path):
+    """Reads that do not align once truncated are extended and aligned again,
+    up to their full length (151 bp in the test data). Told that the reads
+    were 20 bp long, hicstuff never aligned more than their first 40 bp."""
+    reads = tmp_path / "reads.fq"
+    with gzip.open("tests_data/for_paired.fq.gz", "rt") as fastq:
+        reads.write_text("".join(itertools.islice(fastq, 4 * 2000)))
+    bam = tmp_path / "alignment.bam"
+    mta.align(str(reads), "tests_data/assembly", "bowtie2", str(bam), 1, str(tmp_path), iterative=True)
+    with pysam.AlignmentFile(str(bam), "rb", check_sq=False) as alignment:
+        lengths = {read.infer_read_length() for read in alignment.fetch(until_eof=True) if not read.is_unmapped}
+    assert max(lengths) == 151
 
 
 def test_process_bwa_bamfile(tmp_path):

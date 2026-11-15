@@ -77,6 +77,8 @@ def align(
     if iterative:
         iter_tmp_dir = hio.generate_temp_dir(tmp_dir)
         tmp_bam = join(tmp_dir, "tmp.bam")
+        # hicstuff extends the reads up to the length of the first read of the
+        # file, as its own pipeline does by default.
         hci.iterative_align(
             fq_in,
             tmp_dir=iter_tmp_dir,
@@ -85,7 +87,6 @@ def align(
             bam_out=tmp_bam,
             min_qual=40,
             aligner=aligner,
-            read_len=20,
         )
         st.rmtree(iter_tmp_dir)
         pysam.sort("-n", "-@", str(n_cpu), "-o", bam_out, tmp_bam)
