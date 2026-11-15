@@ -31,7 +31,7 @@ classifiers = [
     "Operating System :: Unix",
 ]
 dependencies = [
-    "hicstuff",
+    "hicstuff>=3.3.0",
     "igraph>=0.10.3",
     "biopython>=1.80",
     "pysam",
