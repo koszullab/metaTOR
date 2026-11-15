@@ -36,13 +36,32 @@ def _write_bam(path, reads):
             bam.write(read)
 
 
-def test_align_iterative_extends_reads(tmp_path):
-    """Reads that do not align once truncated are extended and aligned again,
-    up to their full length (151 bp in the test data). Told that the reads
-    were 20 bp long, hicstuff never aligned more than their first 40 bp."""
+def test_max_read_length(tmp_path):
+    """The longest read, not the first one; gzipped or not."""
     reads = tmp_path / "reads.fq"
+    reads.write_text("@r1\nACGT\n+\nIIII\n@r2\nACGTACG\n+\nIIIIIII\n@r3\n\n+\n\n")
+    assert mta.max_read_length(str(reads)) == 7
+    assert mta.max_read_length("tests_data/for_paired.fq.gz") == 151
+    (tmp_path / "empty.fq").write_text("")
+    assert mta.max_read_length(str(tmp_path / "empty.fq")) == 0
+
+
+@pytest.mark.parametrize("first_read_length", [None, 35], ids=["untrimmed", "trimmed-first-read"])
+def test_align_iterative_extends_reads(tmp_path, first_read_length):
+    """Reads that do not align once truncated are extended and aligned again,
+    up to the longest read (151 bp in the test data), even when the first read
+    of the file is shorter. Told that the reads were 20 bp long, hicstuff never
+    aligned more than their first 40 bp; left to itself, it extends them up to
+    the length of the first read only."""
     with gzip.open("tests_data/for_paired.fq.gz", "rt") as fastq:
-        reads.write_text("".join(itertools.islice(fastq, 4 * 2000)))
+        lines = list(itertools.islice(fastq, 4 * 2000))
+    if first_read_length:
+        # Trim the sequence and quality of the first read, as an adapter
+        # trimmer would.
+        for i in (1, 3):
+            lines[i] = lines[i][:first_read_length] + "\n"
+    reads = tmp_path / "reads.fq"
+    reads.write_text("".join(lines))
     bam = tmp_path / "alignment.bam"
     mta.align(str(reads), "tests_data/assembly", "bowtie2", str(bam), 1, str(tmp_path), iterative=True)
     with pysam.AlignmentFile(str(bam), "rb", check_sq=False) as alignment:

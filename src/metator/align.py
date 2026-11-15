@@ -12,6 +12,7 @@ on two different contigs.
 This module contains all these alignment functions:
     - align
     - get_contact_pairs
+    - max_read_length
     - merge_alignement
     - process_bamfile
     - process_bwa_bamfile
@@ -77,8 +78,10 @@ def align(
     if iterative:
         iter_tmp_dir = hio.generate_temp_dir(tmp_dir)
         tmp_bam = join(tmp_dir, "tmp.bam")
-        # hicstuff extends the reads up to the length of the first read of the
-        # file, as its own pipeline does by default.
+        # hicstuff extends the reads that do not align by 20 bp per round up to
+        # read_len, the length of the reads. Left unset, it is the length of the
+        # first read, which leaves the longer reads truncated when the reads
+        # were trimmed and the first one is short.
         hci.iterative_align(
             fq_in,
             tmp_dir=iter_tmp_dir,
@@ -87,6 +90,7 @@ def align(
             bam_out=tmp_bam,
             min_qual=40,
             aligner=aligner,
+            read_len=max_read_length(fq_in),
         )
         st.rmtree(iter_tmp_dir)
         pysam.sort("-n", "-@", str(n_cpu), "-o", bam_out, tmp_bam)
@@ -311,6 +315,23 @@ def get_contact_pairs(
         logger.info(f"TOTAL PAIRS MAPPED: {total_aligned_pairs}\n")
 
     return out_file_list, contig_data, hit_data
+
+
+def max_read_length(fastq):
+    """Length of the longest read of a fastq file.
+
+    Parameters
+    ----------
+    fastq : str
+        Path to the fastq file, gzipped or not.
+
+    Returns
+    -------
+    int :
+        Length of the longest read, 0 if the file has no read.
+    """
+    with pysam.FastxFile(fastq) as reads:
+        return max((len(read.sequence) for read in reads), default=0)
 
 
 def merge_alignment(forward_aligned, reverse_aligned, contig_data, out_file):
