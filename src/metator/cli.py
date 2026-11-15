@@ -1061,10 +1061,13 @@ def pipeline(
         # Delete pyfastx index:
         os.remove(fasta + ".fxi")
 
-    # Delete the pairs files made from the reads or the alignments.
+    # Delete the pairs files made from the reads or the alignments, and
+    # their pypairix index.
     if not no_clean_up and start_step < 3:
         for pair_file in alignment_files:
             os.remove(pair_file)
+            if os.path.exists(f"{pair_file}.px2"):
+                os.remove(f"{pair_file}.px2")
 
     generate_log_footer(log_file)
 

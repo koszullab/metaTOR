@@ -104,6 +104,11 @@ All notable changes to this project will be documented in this file.
 - `pipeline` (fastq or bam start) crashed while plotting at the end, after
   writing its bins: the network heatmap read the compressed pairs files as
   text. Runs with `--depth` crashed at the same step on a missing column.
+- `pipeline` (fastq or bam start, without `--no-clean-up`) deleted the
+  pairs files it had made from the reads but left their pypairix index
+  (`alignment_N_sorted.pairs.gz.px2`) in the output directory, as 1.3.10
+  did. The index now goes with its pairs file; pairs files given with
+  `--start pair` are still kept, with their index.
 - With pandas 3, when a contaminated bin was split into several bins, only
   one of them was kept in the final bins.
 - With `--aligner bwa`, every pair carried the first mate's position for
