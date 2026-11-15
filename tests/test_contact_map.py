@@ -1,10 +1,8 @@
 # Tests for the contact_map module and the contactmap command.
 
-import inspect
 import shutil
 from pathlib import Path
 
-import hicstuff.pipeline
 import metator.contact_map as mtcm
 import pandas as pd
 import pytest
@@ -110,26 +108,7 @@ def _matrix_total(out_dir, name, mat_fmt):
     return cooler.Cooler(str(out_dir / f"{name}.cool")).pixels()[:]["count"].sum()
 
 
-def _hicstuff_swaps_chr2_and_pos2():
-    """Whether the installed hicstuff has the bug below. Checked on its code
-    rather than guessed from its version, so that the xfail goes away with
-    whichever release fixes it."""
-    try:
-        return "-p2 4 -c2 5" in inspect.getsource(hicstuff.pipeline.pairs2cool)
-    except (AttributeError, OSError, TypeError):
-        return False
-
-
-HICSTUFF_COOL_BUG = pytest.mark.xfail(
-    _hicstuff_swaps_chr2_and_pos2(),
-    strict=True,
-    raises=FileNotFoundError,
-    reason="hicstuff.pipeline.pairs2cool runs `cooler cload pairs -p2 4 -c2 5`: chr2 and pos2 are swapped and no "
-    ".cool is written",
-)
-
-
-@pytest.mark.parametrize("mat_fmt", ["graal", "bg2", pytest.param("cool", marks=HICSTUFF_COOL_BUG)])
+@pytest.mark.parametrize("mat_fmt", ["graal", "bg2", "cool"])
 def test_generate_contact_map(metagenome, metagenome_inputs, metagenome_indexed_pairs, final_contig_data, tmp_path, mat_fmt):
     contig_data, bins = final_contig_data
     name = bins["genome_3"]
