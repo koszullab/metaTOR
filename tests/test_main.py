@@ -85,7 +85,6 @@ def test_command_help(monkeypatch, capsys):
     assert "pairsfile" in out.lower()
 
 
-@pytest.mark.skipif(shutil.which("pairtools") is None, reason="pairtools is not installed")
 def test_command_runs(monkeypatch, tmp_path):
     pairs = tmp_path / "sample.pairs"
     shutil.copyfile("tests_data/alignment.pairs", pairs)

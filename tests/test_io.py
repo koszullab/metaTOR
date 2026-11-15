@@ -1,17 +1,20 @@
 # Test for io module.
 
 import bz2
+import collections
 import gzip
 import os
 import shutil
 import subprocess as sp
 import types
+import warnings
 import zipfile
 
 import metator.io as mio
 import numpy as np
 import pandas as pd
 import pypairix
+import pysam
 import pytest
 from scipy import sparse
 from tests import synthetic
@@ -70,21 +73,181 @@ def test_read_compressed(tmp_path):
             assert handle.read() == text
 
 
-def test_sort_pairs_pairtools():
-    pairfile = "tests_data/alignment.pairs"
-    tmp_dir = "out_test_io"
-    os.makedirs(tmp_dir, exist_ok=True)
-    test_file = os.path.join(tmp_dir, "test.pairs")
-    shutil.copyfile(pairfile, test_file)
-    sorted_file = mio.sort_pairs_pairtools(test_file, 1, True, False)
-    assert sorted_file == os.path.join(tmp_dir, "test_sorted.pairs.gz")
-    assert not os.path.exists(test_file)  # remove=True
-    with open(pairfile) as pairs:
-        n_input = sum(not line.startswith("#") for line in pairs)
-    with gzip.open(sorted_file, "rt") as pairs:
-        n_sorted = sum(not line.startswith("#") for line in pairs)
-    assert n_sorted == n_input
-    pypairix.open(sorted_file)  # the index exists and loads
+def _pairs_key(row):
+    """The order of pairtools sort, and of hicstuff: contig names byte by byte
+    (NODE_10 before NODE_2), then positions as numbers."""
+    return row[1].encode(), row[3].encode(), int(row[2]), int(row[4])
+
+
+def _read_pairs(path):
+    """Header lines and rows (split on tabs) of a pairs file, compressed or not."""
+    with mio.read_compressed(str(path)) as handle:
+        lines = handle.read().splitlines()
+    return [line for line in lines if line.startswith("#")], [line.split("\t") for line in lines if not line.startswith("#")]
+
+
+def test_sort_and_index_pairs(tmp_path):
+    test_file = tmp_path / "test.pairs"
+    shutil.copyfile("tests_data/alignment.pairs", test_file)
+    sorted_file = mio.sort_and_index_pairs(str(test_file), 1, True, False)
+    assert sorted_file == str(tmp_path / "test_sorted.pairs.gz")
+    assert os.path.isfile(f"{sorted_file}.px2")
+    assert not test_file.exists()  # remove=True
+    input_header, input_body = _read_pairs("tests_data/alignment.pairs")
+    header, body = _read_pairs(sorted_file)
+    # The header is kept, with the new sort order.
+    assert "#sorted: readID" in input_header
+    assert header == [("#sorted: chr1-chr2-pos1-pos2" if line.startswith("#sorted") else line) for line in input_header]
+    # The same pairs, by contig names in byte order (NODE_1404 before
+    # NODE_522), then positions: the order of pairtools sort.
+    assert sorted(body) == sorted(input_body)
+    keys = [_pairs_key(row) for row in body]
+    assert keys == sorted(keys)
+    # pypairix finds the pairs between two contigs.
+    sizes = dict(line.split()[1:] for line in header if line.startswith("#chromsize"))
+    pairs = collections.Counter((row[1], row[3]) for row in input_body if row[1] != row[3])
+    pairs_data = pypairix.open(sorted_file)
+
+    def query(chr1, chr2, autoflip):
+        return [row[0] for row in pairs_data.query2D(chr1, 0, int(sizes[chr1]), chr2, 0, int(sizes[chr2]), autoflip)]
+
+    # Contigs whose pairs all have the same orientation: asked the other way
+    # round, as metaTOR's readers ask, pypairix flips the query.
+    first, second = max((key for key in pairs if key[::-1] not in pairs), key=pairs.get)
+    found = query(first, second, 0)
+    assert len(found) == pairs[first, second] > 1
+    with warnings.catch_warnings(record=True) as caught:
+        assert query(second, first, 0) == []
+    assert "flipped order" in str(caught[0].message)
+    assert sorted(query(second, first, 1)) == sorted(found)
+    # Contigs with pairs in both orientations: one block for each.
+    first, second = max((key for key in pairs if key[::-1] in pairs), key=lambda key: pairs[key] + pairs[key[::-1]])
+    assert len(query(first, second, 0)) == pairs[first, second] > 0
+    assert len(query(second, first, 0)) == pairs[second, first] > 0
+
+
+# Contigs whose names sort differently in byte order (c1, c10, c2), the
+# order of pairtools sort, and in version order (c1, c2, c10).
+SMALL_PAIRS = [
+    "r1\tc2\t30\tc10\t5\t+\t-",
+    "r2\tc1\t50\tc2\t7\t+\t+",
+    "r3\tc2\t10\tc10\t9\t-\t-",
+    "r4\tc1\t20\tc2\t3\t+\t-",
+    "r5\tc10\t4\tc10\t8\t+\t+",
+]
+SMALL_PAIRS_ORDER = ["r4", "r2", "r5", "r3", "r1"]
+FORMAT_LINE = "## pairs format v1.0"
+COLUMNS_LINE = "#columns: readID chr1 pos1 chr2 pos2 strand1 strand2"
+SORTED_LINE = "#sorted: chr1-chr2-pos1-pos2"
+
+
+def _write_small_pairs(path, header=(FORMAT_LINE, "#sorted: readID", COLUMNS_LINE), compression=None):
+    text = "".join(f"{line}\n" for line in [*header, *SMALL_PAIRS])
+    if compression == "bgzip":
+        path.with_suffix("").write_text(text)
+        pysam.tabix_compress(str(path.with_suffix("")), str(path))
+        path.with_suffix("").unlink()
+    else:
+        with {None: open, "gzip": gzip.open, "bz2": bz2.open}[compression](path, "wt") as handle:
+            handle.write(text)
+    return path
+
+
+@pytest.mark.parametrize(
+    "header, expected",
+    [
+        ([FORMAT_LINE, "#sorted: readID", COLUMNS_LINE], [FORMAT_LINE, SORTED_LINE, COLUMNS_LINE]),
+        ([FORMAT_LINE, COLUMNS_LINE, SORTED_LINE], [FORMAT_LINE, COLUMNS_LINE, SORTED_LINE]),
+        # No #sorted line: one is added, after the format line.
+        ([FORMAT_LINE, COLUMNS_LINE], [FORMAT_LINE, SORTED_LINE, COLUMNS_LINE]),
+        ([COLUMNS_LINE], [SORTED_LINE, COLUMNS_LINE]),
+        ([], [SORTED_LINE]),
+    ],
+)
+def test_sort_and_index_pairs_header(tmp_path, header, expected):
+    pairs = _write_small_pairs(tmp_path / "sample.pairs", header)
+    sorted_pairs = mio.sort_and_index_pairs(str(pairs))
+    header, body = _read_pairs(sorted_pairs)
+    assert header == expected
+    assert [row[0] for row in body] == SMALL_PAIRS_ORDER
+    assert sorted(body) == sorted(line.split("\t") for line in SMALL_PAIRS)
+    assert not os.path.exists(sorted_pairs[: -len(".gz")])
+    assert not os.path.exists(f"{sorted_pairs[: -len('.gz')]}.tmp")
+    assert pairs.exists()  # remove=False
+    assert [row[0] for row in pypairix.open(sorted_pairs).query2D("c2", 0, 100, "c10", 0, 100, 0)] == ["r3", "r1"]
+
+
+@pytest.mark.parametrize(
+    "compression, name, sorted_name",
+    [
+        (None, "sample.pairs", "sample_sorted.pairs.gz"),
+        ("gzip", "sample.pairs.gz", "sample.pairs_sorted.pairs.gz"),
+        ("bgzip", "sample.pairs.gz", "sample.pairs_sorted.pairs.gz"),
+        ("bz2", "sample.pairs.bz2", "sample.pairs_sorted.pairs.gz"),
+    ],
+)
+def test_sort_and_index_pairs_compressed_input(tmp_path, compression, name, sorted_name):
+    """Compressed inputs are sorted alike; the output is named after the
+    input without its last extension."""
+    pairs = _write_small_pairs(tmp_path / name, compression=compression)
+    sorted_pairs = mio.sort_and_index_pairs(str(pairs), threads=2, remove=True, tmp_dir=str(tmp_path))
+    assert sorted_pairs == str(tmp_path / sorted_name)
+    assert not pairs.exists()
+    header, body = _read_pairs(sorted_pairs)
+    assert header == [FORMAT_LINE, SORTED_LINE, COLUMNS_LINE]
+    assert [row[0] for row in body] == SMALL_PAIRS_ORDER
+    assert [row[0] for row in pypairix.open(sorted_pairs).query2D("c2", 0, 100, "c1", 0, 100, 1)] == ["r4", "r2"]
+
+
+@pytest.mark.parametrize(
+    "bgzip",
+    [pytest.param(True, marks=pytest.mark.skipif(shutil.which("bgzip") is None, reason="bgzip is not installed")), False],
+)
+def test_sort_and_index_pairs_force(tmp_path, monkeypatch, bgzip):
+    """An existing output is kept unless force; bgzip compresses, or pysam
+    without it."""
+    if not bgzip:
+        real_which = shutil.which
+        monkeypatch.setattr(mio.shutil, "which", lambda name: None if name == "bgzip" else real_which(name))
+    pairs = _write_small_pairs(tmp_path / "sample.pairs")
+    sorted_pairs = mio.sort_and_index_pairs(str(pairs))
+    expected = _read_pairs(sorted_pairs)
+    # BGZF, the gzip variant pypairix needs: "BC" extra subfield.
+    with open(sorted_pairs, "rb") as handle:
+        assert handle.read(14)[12:] == b"BC"
+    with pytest.raises(ValueError):
+        mio.sort_and_index_pairs(str(pairs))
+    # The uncompressed file of an interrupted run blocks it too.
+    os.rename(sorted_pairs, f"{sorted_pairs}.bak")
+    (tmp_path / "sample_sorted.pairs").write_text("unfinished\n")
+    with pytest.raises(ValueError):
+        mio.sort_and_index_pairs(str(pairs))
+    os.rename(f"{sorted_pairs}.bak", sorted_pairs)
+    # force overwrites both, and the index; remove deletes the input.
+    _write_small_pairs(pairs, header=[FORMAT_LINE])
+    assert mio.sort_and_index_pairs(str(pairs), remove=True, force=True) == sorted_pairs
+    assert not pairs.exists()
+    assert not (tmp_path / "sample_sorted.pairs").exists()
+    assert _read_pairs(sorted_pairs) == ([FORMAT_LINE, SORTED_LINE], expected[1])
+    assert [row[0] for row in pypairix.open(sorted_pairs).query2D("c1", 0, 100, "c2", 0, 100, 0)] == ["r4", "r2"]
+
+
+def test_sort_and_index_pairs_leading_zeros(tmp_path):
+    """contig_01 and contig_1, one name to version order (sort -V of GNU
+    coreutils >= 9.1), are two in byte order: each gets its own block,
+    which pypairix indexes."""
+    pairs = tmp_path / "sample.pairs"
+    pairs.write_text(
+        f"{FORMAT_LINE}\nr1\tcontig_01\t1\tcontig_1\t5\t+\t+\nr2\tcontig_1\t5\tcontig_1\t9\t+\t+\n"
+        "r3\tcontig_01\t9\tcontig_1\t2\t+\t+\n"
+    )
+    sorted_pairs = mio.sort_and_index_pairs(str(pairs))
+    _, body = _read_pairs(sorted_pairs)
+    assert [row[0] for row in body] == ["r1", "r3", "r2"]
+    pairs_data = pypairix.open(sorted_pairs)
+    for (chr1, chr2), expected in {("contig_01", "contig_1"): ["r1", "r3"], ("contig_1", "contig_1"): ["r2"]}.items():
+        assert [row[0] for row in pairs_data.query2D(chr1, 0, 100, chr2, 0, 100, 0)] == expected
+    assert pairs.exists()
 
 
 def test_save_sparse_matrix_requires_coo(tmp_path):
@@ -110,24 +273,6 @@ def test_check_pypairix_missing(monkeypatch):
     monkeypatch.setattr(mio, "pypairix", types.SimpleNamespace())
     with pytest.raises(AttributeError):
         mio.check_pypairix()
-
-
-@pytest.mark.parametrize(
-    ("version", "expected"),
-    [("1.1.2", (1, 1, 2)), ("1.0.3", (1, 0, 3)), ("1.1.0.dev1", (1, 1, 0)), ("2.0.0rc1", (2, 0, 0)), ("10", (10,))],
-)
-def test_version_tuple(version, expected):
-    assert mio._version_tuple(version) == expected
-
-
-def test_version_tuple_without_number():
-    with pytest.raises(ValueError, match="Cannot read the version 'dev'"):
-        mio._version_tuple("dev")
-
-
-def test_pairtools_column_options():
-    """pairtools sort takes --c1, --c2, --p1, --p2 and --pt from 1.1.0 on."""
-    assert mio._version_tuple("1.0.3") < (1, 1) <= mio._version_tuple("1.1.0")
 
 
 def test_generate_temp_dir_without_permission(tmp_path, monkeypatch):
@@ -270,8 +415,6 @@ def test_write_mge_data(tmp_path, with_tmp_column):
 
 # Pairs of the mock metagenome (tests/synthetic.py).
 
-needs_pairtools = pytest.mark.skipif(shutil.which("pairtools") is None, reason="pairtools is not installed")
-
 
 def _count_query(pairs_data, metagenome, first, second):
     """Pairs between two contigs found by pypairix, and in the simulation."""
@@ -282,7 +425,6 @@ def _count_query(pairs_data, metagenome, first, second):
     return found, expected
 
 
-@needs_pairtools
 def test_get_pairs_data(metagenome, metagenome_files, tmp_path):
     first, second = (c.name for c in metagenome.molecule("genome_2").contigs[:2])
     pairs = tmp_path / "synthetic.pairs"
@@ -300,26 +442,16 @@ def test_get_pairs_data(metagenome, metagenome_files, tmp_path):
     assert sorted_pairs.stat().st_mtime_ns == mtime
 
 
-@needs_pairtools
-def test_sort_pairs_pairtools_synthetic(metagenome, metagenome_files, tmp_path, monkeypatch):
+def test_sort_and_index_pairs_synthetic(metagenome, metagenome_files, tmp_path):
     pairs = tmp_path / "synthetic.pairs"
     shutil.copyfile(metagenome_files["pairs"], pairs)
-    sorted_pairs = mio.sort_pairs_pairtools(str(pairs), tmp_dir=str(tmp_path))
+    sorted_pairs = mio.sort_and_index_pairs(str(pairs), tmp_dir=str(tmp_path))
     assert sorted_pairs == str(tmp_path / "synthetic_sorted.pairs.gz")
-    with gzip.open(sorted_pairs, "rt") as handle:
-        body = [line.split("\t") for line in handle if not line.startswith("#")]
+    _, body = _read_pairs(sorted_pairs)
     assert len(body) == len(metagenome.pairs)
     # Sorted by chr1, chr2, pos1, pos2, as pairix needs.
-    keys = [(row[1], row[3], int(row[2]), int(row[4])) for row in body]
+    keys = [_pairs_key(row) for row in body]
     assert keys == sorted(keys)
-    # An existing output is kept unless --force.
-    with pytest.raises(ValueError):
-        mio.sort_pairs_pairtools(str(pairs), tmp_dir=str(tmp_path))
-    # Without bgzip, pysam compresses; remove deletes the input.
-    real_which = shutil.which
-    monkeypatch.setattr(mio.shutil, "which", lambda name: None if name == "bgzip" else real_which(name))
-    assert mio.sort_pairs_pairtools(str(pairs), remove=True, force=True, tmp_dir=str(tmp_path)) == sorted_pairs
-    assert not pairs.exists()
     first, second = (c.name for c in metagenome.molecule("genome_4").contigs[:2])
     found, expected = _count_query(pypairix.open(sorted_pairs), metagenome, first, second)
     assert found == expected > 0

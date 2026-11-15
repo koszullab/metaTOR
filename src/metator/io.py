@@ -22,21 +22,21 @@ This mdoule contains all core I/O functions:
     - read_results_checkm
     - remove_pyfastx_index
     - retrieve_fasta
+    - sort_and_index_pairs
     - sort_pairs
-    - sort_pairs_pairtools
     - write_bin_summary
     - write_mge_data
 """
 
 import bz2
 import gzip
+import hicstuff.io as hio
 import io
 import numpy as np
 import os
 import pandas as pd
 import pathlib
 import pypairix
-import pairtools
 import pysam
 import re
 import shutil
@@ -209,7 +209,8 @@ def generate_temp_dir(path):
 
 def get_pairs_data(pairfile, threads=1, remove=False, force=False):
     """Extract pairs data from pypairix indexed pairs file. If no pypairix
-    indexed found, sort pairs files using pairtools executable.
+    index is found, sort, compress and index the pairs file with
+    sort_and_index_pairs.
 
     Parameters
     ----------
@@ -236,7 +237,9 @@ def get_pairs_data(pairfile, threads=1, remove=False, force=False):
             pairs_data = pypairix.open(pairfile_sorted)
         except pypairix.PairixError:
             logger.warning("No pypairix index found. Build the index.")
-            pairfile = sort_pairs_pairtools(pairfile, threads, remove, force)
+            # Sort's temporary files go to the working directory: /tmp can be
+            # small, or in memory.
+            pairfile = sort_and_index_pairs(pairfile, threads, remove, force, tmp_dir=".")
             pairs_data = pypairix.open(pairfile)
     return pairs_data
 
@@ -680,23 +683,28 @@ def sort_pairs(in_file, out_file, tmp_dir=None, threads=1, buffer="2G"):
         sort_proc.communicate()
 
 
-def _version_tuple(version):
-    """The leading numbers of a version string: (1, 1, 2) for "1.1.2"."""
-    numbers = re.match(r"\d+(?:\.\d+)*", version)
-    if numbers is None:
-        raise ValueError(f"Cannot read the version {version!r}.")
-    return tuple(int(number) for number in numbers.group().split("."))
+# The order pypairix needs: the pairs of each (chr1, chr2) block together,
+# sorted by pos1.
+PAIRS_SORT_KEYS = ["chr1", "chr2", "pos1", "pos2"]
 
 
-def sort_pairs_pairtools(pairfile, threads=1, remove=False, force=False, tmp_dir="."):
-    """Sort pairs files using pairtools executable. Pairix only works with
-    compressed pair files. So we use bgzip (or pysam if bgzip is not in the
-    path) to compress them.
+def sort_and_index_pairs(pairfile, threads=1, remove=False, force=False, tmp_dir=None):
+    """Sort a pairs file by chr1, chr2, pos1 and pos2 with hicstuff, compress
+    it with bgzip (or pysam if bgzip is not in the path) and index it with
+    pypairix, which only reads bgzip compressed pairs files.
+
+    Contig names sort byte by byte (chr1, chr10, chr2), as with pairtools
+    sort, so that each one forms a single block; positions sort as numbers.
+
+    The header of the input is kept, with "#sorted: chr1-chr2-pos1-pos2"
+    in place of its "#sorted" line. A header without one gets it after its
+    "## pairs format" line.
 
     Parameters
     ----------
     pairfile : str
-        Path to the pairfile to sort, compress and index.
+        Path to the pairfile to sort, compress and index. It can be
+        compressed (gzip, bgzip, bzip2 or zip).
     threads : int
         Number of threads to use. [Default: 1]
     remove : bool
@@ -704,12 +712,17 @@ def sort_pairs_pairtools(pairfile, threads=1, remove=False, force=False, tmp_dir
     force : bool
         If set overwrite existing files. [Default: False]
     tmp_dir : str
-        Path to the temporary directory to write the temporary files. [Default: "."]
+        Path to the directory where sort writes its temporary files.
+        [Default: None, the default of sort: $TMPDIR, else /tmp]
 
     Returns
     -------
     str :
-        Path to the sorted and indexed pair file.
+        Path to the sorted and indexed pair file, named after the input
+        without its last extension ("sample_sorted.pairs.gz" for
+        "sample.pairs", "sample.pairs_sorted.pairs.gz" for
+        "sample.pairs.gz"), with its pypairix index (the same name with
+        ".px2") next to it.
     """
     # Extract basename of the file.
     basename = os.path.splitext(pairfile)[0]
@@ -726,12 +739,11 @@ def sort_pairs_pairtools(pairfile, threads=1, remove=False, force=False, tmp_dir
         logger.error(f"The {sorted_pairs} exists. Do not overwrite existing, use --force to overwrite or use another location.")
         raise ValueError
 
-    # Sort pairs using pairtools.
-    cmd = ["pairtools", "sort", pairfile, "--nproc", str(threads), "-o", sorted_pairs, "--tmpdir", tmp_dir]
-    if _version_tuple(pairtools.__version__) >= (1, 1):
-        logger.debug("pairtools version >= 1.1.0. Use new options.")
-        cmd += ["--c1", "chr1", "--c2", "chr2", "--p1", "pos1", "--p2", "pos2", "--pt", "strand1"]
-    sp.run(cmd, check=True)
+    # Sort pairs using hicstuff. It rewrites the "#sorted" line of the header,
+    # but adds none.
+    hio.sort_pairs(pairfile, sorted_pairs, keys=PAIRS_SORT_KEYS, tmp_dir=tmp_dir, threads=threads)
+    if not any(line.startswith("#sorted") for line in hio.get_pairs_header(sorted_pairs)):
+        _add_sorted_line(sorted_pairs)
 
     # Compress pairs.
     if shutil.which("bgzip"):
@@ -747,6 +759,28 @@ def sort_pairs_pairtools(pairfile, threads=1, remove=False, force=False, tmp_dir
     if remove:
         os.remove(pairfile)
     return f"{sorted_pairs}.gz"
+
+
+def _add_sorted_line(pairs_file):
+    """Add "#sorted: chr1-chr2-pos1-pos2" to the header of a pairs file:
+    second, after the "## pairs format" line that starts a pairs file, or
+    first if there is none.
+
+    Parameters
+    ----------
+    pairs_file : str
+        Path to the uncompressed pairs file to rewrite.
+    """
+    sorted_line = "#sorted: {}\n".format("-".join(PAIRS_SORT_KEYS)).encode()
+    rewritten = f"{pairs_file}.tmp"
+    with open(pairs_file, "rb") as pairs, open(rewritten, "wb") as output:
+        first_line = pairs.readline()
+        if first_line.startswith(b"##"):
+            output.write(first_line + sorted_line)
+        else:
+            output.write(sorted_line + first_line)
+        shutil.copyfileobj(pairs, output)
+    os.replace(rewritten, pairs_file)
 
 
 def write_bin_summary(bin_summary, bin_summary_file):

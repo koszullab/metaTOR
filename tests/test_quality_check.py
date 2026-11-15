@@ -108,8 +108,6 @@ def test_parse_fasta_reads_compressed_files(tmp_path):
 def large_contigs(tmp_path_factory):
     """Assembly, sorted pairs and metator outputs (contig data, bin summary)
     of two genomes in large contigs; a third, low-quality bin has none."""
-    if shutil.which("pairtools") is None:
-        pytest.skip("pairtools is not installed")
     genomes = (
         synthetic.GenomeSpec("big_1", gc=0.40, abundance=1.0, length=260_000),
         synthetic.GenomeSpec("big_2", gc=0.60, abundance=2.0, length=240_000),
@@ -119,7 +117,7 @@ def large_contigs(tmp_path_factory):
     )
     directory = tmp_path_factory.mktemp("large_contigs")
     files = community.write_all(directory)
-    pairs = mio.sort_pairs_pairtools(str(files["pairs"]), tmp_dir=str(directory))
+    pairs = mio.sort_and_index_pairs(str(files["pairs"]), tmp_dir=str(directory))
     truth = community.truth
     bins = {"big_1": "metator_00001_00000", "big_2": "metator_00002_00000"}
     contig_data = pd.DataFrame(

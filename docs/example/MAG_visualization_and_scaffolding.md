@@ -71,16 +71,12 @@ metator contactmap -a ../assembly.fa -c contig_data_final.txt -e HpaII -n $bin -
 
 ### Using pairix index
 
-If you want to viusalize multiple objects, in order to avoid to iterate each time on the pairs file it's possible to build an index of the pairs file using pairix. For now, MetaTOR do not provide any script which directly build the index and you have to build it by hand. Here it's an example of command to build the pairs indexed and launch MetaTOR contactm map on it.
+If you want to viusalize multiple objects, in order to avoid to iterate each time on the pairs file it's possible to build an index of the pairs file using pairix. `metator pairs` sorts the pairs file by chr1, chr2, pos1 and pos2 (using hicstuff), compresses it with bgzip and builds the pairix index. Here it's an example of command to build the pairs indexed and launch MetaTOR contactm map on it.
 
 ```sh
-# Sort the pairs file
-grep "^#" alignment_0.pairs > alignment_0_sorted.pairs
-grep -v "^#" alignment_0.pairs | sort --parallel 16 -S 2GB -k2,2V -k4,4V -k3,3n -k5,5n >> alignment_0_sorted.pairs
-# Compress the pairs file
-bgzip alignment_0_sorted.pairs
-# Build the index
-pairix alignment_0_sorted.pairs.gz
+# Sort, compress and index the pairs file: alignment_0_sorted.pairs.gz and
+# its index alignment_0_sorted.pairs.gz.px2
+metator pairs -t 16 alignment_0.pairs
 # Launch MetaTOR contact map
 metator contactmap -a ../assembly.fa -c contig_data_final.txt -e HpaII,MluCI -n $bin -p alignment_0_sorted.pairs.gz -DfF -s 5000 -o contact_map/$bin/
 ```

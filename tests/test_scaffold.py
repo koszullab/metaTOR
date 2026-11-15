@@ -12,8 +12,6 @@ import metator.scaffold as mts
 from metator.regions import Bin
 from tests import synthetic
 
-pytestmark = pytest.mark.skipif(shutil.which("pairtools") is None, reason="pairtools is not installed")
-
 
 def _genome(seed, circular, length=100_000, strands="forward", shuffle=True):
     """One genome cut into 12-25 kb contigs, with a steep contact decay
@@ -40,7 +38,7 @@ def _inputs(community, directory):
     """Assembly and sorted, indexed pairs of a community."""
     directory.mkdir()
     files = community.write_all(directory)
-    pairs = mio.sort_pairs_pairtools(str(files["pairs"]), tmp_dir=str(directory))
+    pairs = mio.sort_and_index_pairs(str(files["pairs"]), tmp_dir=str(directory))
     return files["assembly"], pairs
 
 
