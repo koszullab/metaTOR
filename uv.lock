@@ -243,29 +243,6 @@ wheels = [
 ]
 
 [[package]]
-name = "bioframe"
-version = "0.8.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "matplotlib", version = "3.9.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "matplotlib", version = "3.10.9", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*'" },
-    { name = "matplotlib", version = "3.11.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "numpy", version = "2.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*'" },
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
-    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "pandas", version = "3.1.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "pyyaml" },
-    { name = "requests", version = "2.32.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "requests", version = "2.34.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/3a/0e/69fe99dc5d8084eb6717e0c69dbd2dc095373053ec47415a105638cb1127/bioframe-0.8.0.tar.gz", hash = "sha256:ea87d7c3f26235bf35396d41bbdcddd21fe7434f7406f8182a67aad241b96fa2", size = 965612, upload-time = "2025-04-08T17:43:48.806Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d4/66/41b2bce9de683b3bcac510b6e97682946f403e0553ae5cf8dfc267bb26b8/bioframe-0.8.0-py3-none-any.whl", hash = "sha256:5db243f74cd2deafbf3b664e0cfd6e9d5e736e01143747aa52d99409c8315574", size = 153335, upload-time = "2025-04-08T17:43:45.675Z" },
-]
-
-[[package]]
 name = "biopython"
 version = "1.85"
 source = { registry = "https://pypi.org/simple" }
@@ -1188,40 +1165,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/a9/95/a3dbbb5028f35eafb79008e7522a75244477d2838f38cbb722248dabc2a8/cycler-0.12.1.tar.gz", hash = "sha256:88bb128f02ba341da8ef447245a9e138fae777f6a23943da4540077d3601eb1c", size = 7615, upload-time = "2023-10-07T05:32:18.335Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e7/05/c19819d5e3d95294a6f5947fb9b9629efb316b96de511b418c53d245aae6/cycler-0.12.1-py3-none-any.whl", hash = "sha256:85cef7cff222d8644161529808465972e51340599459b8ac3ccbac5a854e0d30", size = 8321, upload-time = "2023-10-07T05:32:16.783Z" },
-]
-
-[[package]]
-name = "cython"
-version = "3.3.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/99/ca/18e324972e5cac914816fdd7bb03e19a455b90039c277a538f7781b50c85/cython-3.3.1.tar.gz", hash = "sha256:e0e45989e821bef6aa9ae15c7d583ab5e055f7406c4b3624e49e06d24e90375a", size = 3743354, upload-time = "2026-11-01T20:12:04.773Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e1/c6/52279cc4cea73ba4ee0a8076514bac97abd8b9ed0276f34e1d19cd3f4c2a/cython-3.3.1-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:7c1f05344b32ecbb83e3bbd3586282ac1f4aedeb8025cc6e13f22a6d4e2b4222", size = 3142271, upload-time = "2026-11-01T20:12:21.147Z" },
-    { url = "https://files.pythonhosted.org/packages/db/8c/79770fcd3d80f40d0ef2b38cbeb66686f19c8a9b23061c05cd3f4b43b1ff/cython-3.3.1-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:08ef3dcd3070959983a15e82bbfd56edb13cbe75b14043665c76ee4425140eaf", size = 3350594, upload-time = "2026-11-01T20:12:23.088Z" },
-    { url = "https://files.pythonhosted.org/packages/82/33/e8d7d8d8e6165416689763d8675872d01b6c1c08fd2312db7b8e68ed0edb/cython-3.3.1-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:14bd1521a14d98bed4ae791ace5e830055ffc45a8cbb09f22adf90ee7dca3409", size = 3482473, upload-time = "2026-11-01T20:12:25.212Z" },
-    { url = "https://files.pythonhosted.org/packages/6a/1d/b86524bee9f664b61608757456fe47e0d4cc5f4bf02802ca03fcbcf7d72f/cython-3.3.1-cp310-cp310-win_amd64.whl", hash = "sha256:747dade0373011034645ace4e7eb3a54102c52524fc0675dea76e655e9c1dcff", size = 2861943, upload-time = "2026-11-01T20:12:26.931Z" },
-    { url = "https://files.pythonhosted.org/packages/14/e1/bad59c9ce7931f5c2b7cd9d5228d16926373267bb841aa8a4b29a1ab3c3a/cython-3.3.1-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:0ce9efd76bfbf7b67be0da80d450231e1c1bdd5e755d7a8dc10ffc2669fc5edf", size = 3135399, upload-time = "2026-11-01T20:12:28.657Z" },
-    { url = "https://files.pythonhosted.org/packages/21/33/cb2588a238d862ebc5e973acc3504ec28764bcc4273828f8e0915354415f/cython-3.3.1-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:43b16388665cb829c265060705900db8e26e9c3c04cc91f28af38c905d12293f", size = 3351071, upload-time = "2026-11-01T20:12:31.078Z" },
-    { url = "https://files.pythonhosted.org/packages/5f/78/1e8562e6dc57f6b9398bc754dcaf574f71762a5a637bb6525ae06cdc7f91/cython-3.3.1-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:26a28e0ca5dffe9c7d69d1e3a0f78cb74f41b2b6b40771f620262a5d04862a00", size = 3483723, upload-time = "2026-11-01T20:12:33.044Z" },
-    { url = "https://files.pythonhosted.org/packages/de/44/55cfaaba499dcd06fb998bf64d3839f7208e80b2acb1dabcdec515d26bf9/cython-3.3.1-cp311-cp311-win_amd64.whl", hash = "sha256:298d3e46d1d4e2f4405d2c934b51899482101a0b0dc43b1b13b2e38f87addf52", size = 2866366, upload-time = "2026-11-01T20:12:35.09Z" },
-    { url = "https://files.pythonhosted.org/packages/40/3f/362d57b505de56a3a24f84a94b2e09772ebbc9d05402e9c3bbe7b1b780a5/cython-3.3.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:744bb804252cf204e6bc9b0fac06b3bad7bb14258cefb9f321c59c4c59e9bc17", size = 3145239, upload-time = "2026-11-01T20:12:37.11Z" },
-    { url = "https://files.pythonhosted.org/packages/4f/9d/016dfaefc1a10e182fd770e6c331ebf79df88a527883b4ecbdd74abb9969/cython-3.3.1-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:5f08b3eaa639005bea6ab119ebbd6e30656e448981e7a124d80b409760d06c15", size = 3262357, upload-time = "2026-11-01T20:12:38.861Z" },
-    { url = "https://files.pythonhosted.org/packages/4a/c6/51ffdd996a1e6836792061ebe7ecf40480f1bd5693a721cea0ad4a689a81/cython-3.3.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:215669fd0ce792080cd4d0748db7e1e31f424b6706a6220d08339895e6a3a03a", size = 3418124, upload-time = "2026-11-01T20:12:41.076Z" },
-    { url = "https://files.pythonhosted.org/packages/4c/6b/de4b5b3f43bccd82ef48071a33c48315098867eafe6ae3a39f1064f8d331/cython-3.3.1-cp312-cp312-win_amd64.whl", hash = "sha256:fd81cfc6e94c43c5c0fe50439c11b90dc89cc6b323f92b37edc6a951d0a619d7", size = 2875470, upload-time = "2026-11-01T20:12:43.169Z" },
-    { url = "https://files.pythonhosted.org/packages/d7/4e/548df758dbbea481ab054e062933252753b8db86757894bbb1fa84bd9292/cython-3.3.1-cp39-abi3-macosx_10_9_x86_64.whl", hash = "sha256:c4e4132b03a6c6c11541f7498441224f55a9e101c615d49494983d2b10dd7669", size = 3066885, upload-time = "2026-11-01T20:13:07.719Z" },
-    { url = "https://files.pythonhosted.org/packages/87/55/61840ec209f861887ca547c75c401a493be6c034c1d9ad8f9b628b607054/cython-3.3.1-cp39-abi3-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:226d791808ce95f20ab1b3589082be604b5b5b31e670bf773ef9c312d2f0a8c2", size = 3361449, upload-time = "2026-11-01T20:13:09.398Z" },
-    { url = "https://files.pythonhosted.org/packages/96/b1/16e743c3fbfa6424d9c94430934b5bde3a696e7b72c1476e284fdcd1210f/cython-3.3.1-cp39-abi3-manylinux2014_armv7l.manylinux_2_17_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:4d1f9d6fad7a8d9750b641a941cd841ec43740a375cb2fdb934329a17fa88b36", size = 3044439, upload-time = "2026-11-01T20:13:11.239Z" },
-    { url = "https://files.pythonhosted.org/packages/59/4d/5e19712c074564e696731df56242c7626001b5695d09798115d788cbd771/cython-3.3.1-cp39-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:73f6f40f9308e77cbdb3259155d793ac189ead6687b9a432f1b4503170cb9a13", size = 3157847, upload-time = "2026-11-01T20:13:12.87Z" },
-    { url = "https://files.pythonhosted.org/packages/39/16/d6517f078e69f0e5b224b0f1109851408f240af70982d1ef61c53f3a2df9/cython-3.3.1-cp39-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:801730e5714a40dbab8a373af36110de8ff161ec056c855a9627cf05fbc8a6d1", size = 3049217, upload-time = "2026-11-01T20:13:14.506Z" },
-    { url = "https://files.pythonhosted.org/packages/78/5c/539b55fa787a427b0dd0e2ba805c04acb108fa65c69ff76e901d44e4a2d2/cython-3.3.1-cp39-abi3-musllinux_1_2_i686.whl", hash = "sha256:a2bdb50e9fe8974447b68edc5b0201573b06d2c5683f472a5fc08e1792051277", size = 3376191, upload-time = "2026-11-01T20:13:16.383Z" },
-    { url = "https://files.pythonhosted.org/packages/8d/dc/ca2ea10c22499e00d366a9252177ec9039b8d786c85fd28260d41ec2dda5/cython-3.3.1-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:5febfc8c52aced0cf9360e6f2304428a5fa0e66fd9aa7338d5c41f0ce26dd104", size = 3267528, upload-time = "2026-11-01T20:13:18.074Z" },
-    { url = "https://files.pythonhosted.org/packages/66/89/b2fdb92a7ccedff602f362bdf3fe38d67016de8c6655bc60bffce98b923a/cython-3.3.1-cp39-abi3-win32.whl", hash = "sha256:b0265a0e186af3c38339c561507e98e2e3a0d377cdb2b0427f980138ceddd4af", size = 2590014, upload-time = "2026-11-01T20:13:19.925Z" },
-    { url = "https://files.pythonhosted.org/packages/9f/d8/3d620697d89110b58937b1297dfdafbbfec4415b11b845b46ec9a04b52b5/cython-3.3.1-cp39-abi3-win_arm64.whl", hash = "sha256:8b4391d39260efedeff2e3914e958b9ed75cb2b40f10b62bb0e9ca002658563a", size = 2693762, upload-time = "2026-11-01T20:13:21.506Z" },
-    { url = "https://files.pythonhosted.org/packages/d8/cc/45673a756bc7de8c574a5627151b30e8a0a3062b646347ec4043ed1088b4/cython-3.3.1-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:ccd7b6030b2f7705b928080f6c444a99a37f6058de8dab11d577499b64ea0f3a", size = 3144988, upload-time = "2026-11-01T20:13:23.159Z" },
-    { url = "https://files.pythonhosted.org/packages/37/54/d46cfba1a9a9a8836115dff3da926938687c21a54678256494a6422c462f/cython-3.3.1-cp39-cp39-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:76be39d20d064ad31ca55e124f5cb539e2baf933ccc321ef629ce162ab8b10d7", size = 3351531, upload-time = "2026-11-01T20:13:25.077Z" },
-    { url = "https://files.pythonhosted.org/packages/2c/d6/929f573b38ec716fa833a531121ece4492a151c5272b76300551a178ce4c/cython-3.3.1-cp39-cp39-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:55102da0e7700c533cea2bec1456ee6169cc13ace6b9f6048c31f55cca76bc51", size = 3482730, upload-time = "2026-11-01T20:13:26.918Z" },
-    { url = "https://files.pythonhosted.org/packages/2c/8a/8aab44c9dcf87ce82a957b2b4e3aec1bd2da5f04b8e4a3830e3f998fdb33/cython-3.3.1-cp39-cp39-win_amd64.whl", hash = "sha256:39a070cfd465ab44e4fc027f655df38e7d37c32d16262b254390a1015a0691e9", size = 2863563, upload-time = "2026-11-01T20:13:28.735Z" },
-    { url = "https://files.pythonhosted.org/packages/9d/55/088578d75bc8dbcbc535af04b1d596ff227ca756dd74f9d3c1c526f955d0/cython-3.3.1-py3-none-any.whl", hash = "sha256:61abc7feedd20dac6c4ff7ab3a30e17136a067b242ab9253e2b4a6d9a72c2b61", size = 1352000, upload-time = "2026-11-01T20:12:01.888Z" },
 ]
 
 [[package]]
@@ -2701,7 +2644,6 @@ dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*'" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
     { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "pairtools" },
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pandas", version = "3.1.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pyfastx" },
@@ -2772,7 +2714,6 @@ requires-dist = [
     { name = "myst-parser", marker = "extra == 'docs'" },
     { name = "nbsphinx", marker = "extra == 'docs'" },
     { name = "numpy" },
-    { name = "pairtools" },
     { name = "pandas" },
     { name = "pydata-sphinx-theme", marker = "extra == 'docs'" },
     { name = "pyfastx" },
@@ -3251,36 +3192,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/7d/fa/3944b40b07da9ce895c0e6303a5ab7d53da063554f534556b134a54d6093/packaging-26.3.tar.gz", hash = "sha256:94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79", size = 313412, upload-time = "2026-08-04T18:15:28.737Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl", hash = "sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c", size = 129956, upload-time = "2026-08-04T18:15:27.159Z" },
-]
-
-[[package]]
-name = "pairtools"
-version = "1.1.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "bioframe" },
-    { name = "click", version = "8.1.8", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "click", version = "8.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
-    { name = "cython" },
-    { name = "numpy", version = "2.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*'" },
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
-    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "pandas", version = "3.1.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "pysam" },
-    { name = "pyyaml" },
-    { name = "scipy", version = "1.13.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*'" },
-    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
-    { name = "scipy", version = "1.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/31/a9/5602ec186babe2702af93f4f7957cadd36945accb94315076105eb228ad1/pairtools-1.1.2.tar.gz", hash = "sha256:c6da509072fb88f82af38e2ddbc5edf17f71f19df54330e7c5f83883732206dd", size = 1425951, upload-time = "2024-12-11T08:28:56.096Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/6d/2d/440ae1686311dff1c172452d083d730b0a663395665052759787fe27f48c/pairtools-1.1.2-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:d35c2cddb38055075d70bf87837ad5e1930573f1c0c97bb0f0bfc8341b6b0eca", size = 12907021, upload-time = "2024-12-11T08:29:06.405Z" },
-    { url = "https://files.pythonhosted.org/packages/96/c2/c582e569b292c76550dfdade2413f190cf52b6fe3cd44c0f57086dbafc5a/pairtools-1.1.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:81824a3195fd531ac06872cf45af88adcdd5a7579580d48a87b7585d81ad14e2", size = 13505131, upload-time = "2024-12-11T08:29:11.23Z" },
-    { url = "https://files.pythonhosted.org/packages/f3/96/3318ca5b1e45063558f658696644e2842aede5a3768a5bf6d45e87670628/pairtools-1.1.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:0fbf68190e680829852e22d456c8807769f3855ec7e0da312a3cec6ab89d0332", size = 13563248, upload-time = "2024-12-11T08:29:15.981Z" },
-    { url = "https://files.pythonhosted.org/packages/ef/b3/63ac0d89d01ae2cbf7c7a296289d9dbdfaf105e03107c5bf0fa118bc4298/pairtools-1.1.2-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:55f1f855105ce5fb7f92f4f267a06af00cea3766fd8670d1fd0d3f46f1c8b33f", size = 12934197, upload-time = "2024-12-11T08:29:23.439Z" },
 ]
 
 [[package]]
