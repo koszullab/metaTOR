@@ -57,6 +57,25 @@ All notable changes to this project will be documented in this file.
   with status 2 instead of 1. Long options can no longer be
   abbreviated (`--thread` for `--threads`). The log files record the
   command line as typed. `python -m metator` runs the command line.
+- Pairs files are sorted by hicstuff (`hicstuff.io.sort_pairs`, so
+  hicstuff >= 3.3.0 is required): in `metator pairs`, after the
+  alignment in `network` and `pipeline`, and when `scaffold`, `qc` or
+  `contactmap` read a pairs file that has no pypairix index. The sorted
+  files keep their names, their bgzip compression and their pypairix
+  index, and `metator pairs` its options. The pairs keep the order of
+  pairtools sort, contig names byte by byte (`chr1`, `chr10`, `chr2`)
+  then positions, so their blocks come in the same order as with 1.3.10
+  and the pairs of contigs whose names differ only by leading zeros
+  (`contig_01` and `contig_1`) are still indexed like any others; only
+  pairs with the same two contigs and the same two positions can come
+  in another order among themselves. The header says
+  `#sorted: chr1-chr2-pos1-pos2` instead of keeping the `#sorted: readID`
+  of the input. Python API: `metator.io.sort_pairs_pairtools` is now
+  `metator.io.sort_and_index_pairs`, whose `tmp_dir` defaults to the
+  temporary directory of `sort` (`$TMPDIR`, else `/tmp`) instead of the
+  working directory.
+- `pairtools` is no longer installed: neither metaTOR nor hicstuff >= 3.3.0
+  uses it.
 
 ### Removed
 - `metator host`, which always failed since 1.3.10: it called
@@ -120,6 +139,9 @@ All notable changes to this project will be documented in this file.
   files.
 - `contactmap` selected no contig for a numeric bin id (`--name 8`), and
   failed without `--outdir`.
+- `contactmap --mat-fmt cool` wrote no `.cool` file: hicstuff 3.1.4 to
+  3.2.5 swap the chr2 and pos2 columns in `pairs2cool`. hicstuff >= 3.3.0,
+  now required, does not.
 - `mge --random` always failed.
 - A bowtie2 or bwa index given as `../path` was looked up at `/path`, and
   so, in iterative mode, was an index built from the fasta in a `--tmpdir`
@@ -127,7 +149,11 @@ All notable changes to this project will be documented in this file.
   and strips the leading dots of its path: it is now given the absolute
   path of the index.
 - pandas 3 compatibility.
-- `pairtools sort` and `bgzip` failures are reported where they happen.
+- Pairs sorting and `bgzip` failures are reported where they happen.
+- `pairs` failed on a pairs file without a `#columns` header line, where
+  pairtools >= 1.1 looked up the chr1, chr2, pos1 and pos2 columns, or
+  without any header line, which pairtools refused; so did `scaffold`,
+  `qc` and `contactmap` when they had to sort such a file.
 - Core bin detection is no longer quadratic in the number of core bins.
 - `scaffold` and `pipeline --scaffold` never scored a junction between the
   starts of two contigs that follow each other in the bin fasta, so such
