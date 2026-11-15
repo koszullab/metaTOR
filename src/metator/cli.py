@@ -1055,7 +1055,9 @@ def pipeline(
                 scaffold_fasta_dir=scaffold_fasta_dir,
                 junctions=junctions,
             )
-            with mp.Pool(processes=threads) as pool:
+            # Workers started by forkserver (Linux's default from Python 3.14)
+            # or spawn (macOS) do not inherit the log file handler.
+            with mp.Pool(processes=threads, initializer=mtl.set_file_handler, initargs=(log_file,)) as pool:
                 pool.map(task, bin_summary.index)
 
         # Delete pyfastx index:

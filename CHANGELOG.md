@@ -116,6 +116,10 @@ All notable changes to this project will be documented in this file.
   (`alignment_N_sorted.pairs.gz.px2`) in the output directory, as 1.3.10
   did. The index now goes with its pairs file; pairs files given with
   `--start pair` are still kept, with their index.
+- `pipeline --scaffold` left the messages of the processes scaffolding the
+  bins (`Scaffolding <bin>...`) out of its log file wherever these
+  processes are not forked: on macOS, and on Linux from Python 3.14, whose
+  default start method is forkserver. They only reached the terminal.
 - With pandas 3, when a contaminated bin was split into several bins, only
   one of them was kept in the final bins.
 - With `--aligner bwa`, every pair carried the first mate's position for
