@@ -105,6 +105,11 @@ All notable changes to this project will be documented in this file.
   which would still cut the reads of a trimmed file whose first read is
   short). Networks built in iterative mode change: on the test data,
   52,650 pairs instead of 33,358 (41,563 in normal mode).
+- `--aligner bwa` in iterative mode crashed once the reads were aligned,
+  with `UnboundLocalError`. The forward and reverse reads, which this mode
+  aligns separately, are now paired as with bowtie2, keeping one alignment
+  per read: hicstuff writes a read once per round when bwa also gives it a
+  supplementary alignment.
 - With several Hi-C libraries, `network.txt` listed each edge once per
   library; steps reading it with networkx kept only the last library's
   contacts.
