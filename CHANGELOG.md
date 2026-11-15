@@ -95,6 +95,16 @@ All notable changes to this project will be documented in this file.
   when the reverse reads were `r.5` (unpaired) then `r5`, and names such
   as `r_1` and `r5` stopped the run with `TypeError`. The reads are now
   paired in the samtools order.
+- `--aligner-mode iterative` (`network`, `pipeline`, and `cutsite` mode
+  without `--enzyme`, which falls back to it) only ever aligned the first
+  40 bp of each read: it told hicstuff that the reads were 20 bp long, so
+  after a round at 20 bp (which aligns nothing with bowtie2's local mode)
+  the reads were cut to 40 bp and never extended. The reads that do not
+  align are now extended by 20 bp at a time up to the length of the
+  longest read of the file (not of the first one, hicstuff's default,
+  which would still cut the reads of a trimmed file whose first read is
+  short). Networks built in iterative mode change: on the test data,
+  52,650 pairs instead of 33,358 (41,563 in normal mode).
 - With several Hi-C libraries, `network.txt` listed each edge once per
   library; steps reading it with networkx kept only the last library's
   contacts.
