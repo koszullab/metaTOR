@@ -4,8 +4,8 @@
 """metaTOR command line interface.
 
 One function per command: network, partition, validation, pipeline, qc,
-contactmap, scaffold, pairs and mge. The ``metator`` entry point is
-:func:`cli`.
+contactmap, metacool, scaffold, pairs and mge. The ``metator`` entry point
+is :func:`cli`.
 """
 
 import logging
@@ -27,6 +27,7 @@ import metator.align as mta
 import metator.contact_map as mtc
 import metator.io as mio
 import metator.log as mtl
+import metator.metacool as mtmc
 import metator.mge as mtm
 import metator.network as mtn
 import metator.partition as mtp
@@ -197,6 +198,16 @@ def log_file_name(directory, command):
     """Log file of a run: <directory>/metator_<command>_<date>.log."""
     now = time.strftime("%Y%m%d%H%M%S")
     return join(directory, f"metator_{command}_{now}.log")
+
+
+def run_metadata():
+    """The command line and the parameters of the running command, as stored
+    in a .metacool file."""
+    params = click.get_current_context().params
+    return {
+        "command": shlex.join(["metator", *sys.argv[1:]]),
+        "parameters": {name: list(value) if isinstance(value, tuple) else value for name, value in params.items()},
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -449,7 +460,7 @@ def no_clean_up_option(short="-N", help="Do not remove temporary files."):
 @click.group("metator", context_settings={"help_option_names": ["-h", "--help"]})
 @click.rich_config(help_config=click.RichHelpConfiguration(text_markup="rich", show_arguments=True, max_width=100))
 @click.command_panel("Binning", commands=["network", "partition", "validation", "pipeline"])
-@click.command_panel("Other commands", commands=["qc", "contactmap", "scaffold", "pairs", "mge"])
+@click.command_panel("Other commands", commands=["qc", "contactmap", "metacool", "scaffold", "pairs", "mge"])
 @click.version_option(__version__, "-v", "--version", prog_name="metator", message="%(version)s")
 def cli():
     """MetaHiC pipeline for generating and manipulating MAGs.
@@ -1362,6 +1373,70 @@ def contactmap(
     if not no_clean_up:
         # Delete pyfastx index:
         os.remove(assembly + ".fxi")
+
+    generate_log_footer(log_file)
+
+
+# ---------------------------------------------------------------------------
+# metacool
+# ---------------------------------------------------------------------------
+
+
+@cli.command(short_help="Write the contact map of the contigs, grouped by bin, as a .metacool file.")
+@pairsfile_argument()
+@_option(
+    "-c",
+    "--contig-data",
+    required=True,
+    metavar="FILE",
+    panel="Input",
+    help="Path to the contig_data_final.txt file from MetaTOR output: the contigs and their final bins.",
+)
+@_option(
+    "-b",
+    "--bin-summary",
+    metavar="FILE",
+    panel="Input",
+    help="Path to the bin_summary.txt file from MetaTOR output: its columns are added to the genomes table.",
+)
+@_option("-o", "--outfile", required=True, metavar="FILE", help="Path to the .metacool file to write.")
+@_option("-n", "--assembly-name", metavar="STR", help="Name of the assembly, stored in the file.")
+@threads_option(help="Number of threads binning the pairs.")
+@force_option("Overwrite the output file if it exists.")
+def metacool(pairsfile, contig_data, bin_summary, outfile, assembly_name, threads, force):
+    """Write the contact map of a metaTOR run as a .metacool file.
+
+    A .metacool file is the contact map format of metacooler: a cooler
+    whose chromosomes are the contigs, grouped by genome, which
+    [cyan]cooler[/] reads as any cooler and [cyan]metacooler[/] by genome.
+    The map has one bin per contig and one genome per final bin of the
+    contig data file. The unbinned contigs keep all their contacts, in
+    metacooler's [cyan]__unbinned__[/] genome. The columns of the bin
+    summary (completeness, contamination, abundances...) are stored in the
+    genomes table.
+
+    Each pair whose two ends lie on contigs of the contig data file is one
+    contact; the pairs files of several libraries are summed. The contig
+    and bin names must be ASCII.
+    """
+    # Generate log
+    log_file = log_file_name("", "metacool")
+    generate_log_header(log_file)
+
+    try:
+        mtmc.write_metacool(
+            list(pairsfile),
+            contig_data,
+            outfile,
+            bin_summary=bin_summary,
+            assembly_name=assembly_name,
+            threads=threads,
+            force=force,
+            metadata=run_metadata(),
+        )
+    except mtmc.MetacoolError as error:
+        logger.error(str(error))
+        click.get_current_context().exit(1)
 
     generate_log_footer(log_file)
 

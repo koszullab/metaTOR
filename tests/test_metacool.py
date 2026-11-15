@@ -4,6 +4,7 @@
 
 import logging
 import re
+import shlex
 import shutil
 from pathlib import Path
 
@@ -324,3 +325,80 @@ def test_one_pairs_file_as_a_path(binning, tmp_path):
     shutil.copyfile(binning["pairs"], pairs)
     mtmc.write_metacool(Path(pairs), str(binning["contig_data"]), str(tmp_path / "map.metacool"))
     assert pairs.read_bytes() == Path(binning["pairs"]).read_bytes()
+
+
+# The metacool command.
+
+
+def test_metacool_command(metagenome, binning, tmp_path, run_cli):
+    pairs = metagenome.pairs
+    half = len(pairs) // 2
+    first = write_pairs(pairs.iloc[:half], tmp_path / "library_1.pairs")
+    second = write_pairs(pairs.iloc[half:], tmp_path / "library_2.pairs")
+    args = ["-c", binning["contig_data"], "-b", binning["bin_summary"], "-o", "maps/sample.metacool", "-n", "synthetic",
+            "-t", "2", first, second]  # fmt: skip
+    run_cli("metacool", *args)
+
+    out = tmp_path / "maps" / "sample.metacool"
+    metacooler.validate(str(out))
+    clr = cooler.Cooler(str(out))
+    assert clr.info["genome-assembly"] == "synthetic"
+    assert clr.pixels()[:]["count"].sum() == len(pairs)
+    genomes = metacooler.MetaCooler(str(out)).genomes
+    assert list(genomes.name) == ["__unbinned__", *sorted(mio.read_bin_summary(binning["bin_summary"]).index)]
+    assert "Completeness" in genomes.columns
+    assert clr.info["metadata"]["metator"] == {
+        "version": __version__,
+        "command": shlex.join(["metator", "metacool", *map(str, args)]),
+        "parameters": {
+            "pairsfile": [str(first), str(second)],
+            "contig_data": str(binning["contig_data"]),
+            "bin_summary": str(binning["bin_summary"]),
+            "outfile": "maps/sample.metacool",
+            "assembly_name": "synthetic",
+            "threads": 2,
+            "force": False,
+        },
+    }
+    # The log of the run is in the working directory.
+    (log,) = tmp_path.glob("metator_metacool_*.log")
+    logged = log.read_text()
+    assert "## Command used: metator metacool -c" in logged
+    assert "Created metacool file" in logged
+
+
+def _logged(directory):
+    return "".join(log.read_text() for log in directory.glob("metator_metacool_*.log"))
+
+
+def test_metacool_command_existing_outfile(binning, tmp_path, run_cli):
+    out = tmp_path / "map.metacool"
+    out.write_text("old")
+    args = ["-c", binning["contig_data"], "-o", out, binning["pairs"]]
+    run_cli("metacool", *args, exit_code=1)
+    assert f"ERROR :: {out} already exists. Use --force to overwrite it." in _logged(tmp_path)
+    assert out.read_text() == "old"
+    run_cli("metacool", *args, "-F")
+    metacooler.validate(str(out))
+
+
+ERRORS = {
+    "missing pairs file": (["missing.pairs"], "Input file(s) not found: missing.pairs."),
+    "contig data without Final_bin": ([], "has no Final_bin column"),
+    "non-ASCII contig names": ([], "A .metacool file needs ASCII contig names"),
+}
+
+
+@pytest.mark.parametrize("case", list(ERRORS))
+def test_metacool_command_errors(case, metagenome, metagenome_network, binning, tmp_path, run_cli):
+    """Refused with a message and exit status 1, before any pair is read."""
+    pairs, message = ERRORS[case]
+    contig_data = binning["contig_data"]
+    if case == "contig data without Final_bin":
+        contig_data = metagenome_network["contig_data"]
+    elif case == "non-ASCII contig names":
+        name = metagenome.contigs[0].name
+        contig_data.write_text(contig_data.read_text().replace(f"\t{name}\t", "\tcontig_é\t"))
+    run_cli("metacool", "-c", contig_data, "-o", "map.metacool", *(pairs or [binning["pairs"]]), exit_code=1)
+    assert re.search(rf"ERROR :: .*{re.escape(message)}", _logged(tmp_path))
+    assert not (tmp_path / "map.metacool").exists()

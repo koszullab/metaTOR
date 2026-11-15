@@ -19,7 +19,8 @@ TESTS_DATA = Path(__file__).resolve().parents[1] / "tests_data"
 
 # The docopt command line that rich-click replaced (that of 1.3.10, with the
 # mge options renamed and host removed), as docopt read it: see the commit
-# that added the file.
+# that added the file. Commands and options added since are added to it:
+# metacool.
 INVENTORY = json.loads((TESTS_DATA / "cli_inventory.json").read_text())["metator"]
 
 # Options whose value is one of a list, wherever they appear. --object takes
