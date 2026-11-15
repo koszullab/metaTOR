@@ -6,6 +6,7 @@ from pathlib import Path
 import gzip
 import metator.cli as mtc
 import metator.io as mio
+import metacooler
 import pypairix
 import pytest
 import shutil
@@ -157,6 +158,11 @@ def test_pipeline(tmp_path, run_cli):
     )
     print("CLI command:\n", "metator pipeline", *args.split(" "))
     run_cli("pipeline", *args.split(" "))
+    # The contact map of the contigs, grouped by bin.
+    metacool = Path(tmp_path, "out_test", "metator.metacool")
+    metacooler.validate(str(metacool))
+    genomes = metacooler.MetaCooler(str(metacool)).genomes
+    assert set(genomes.name) - {"__unbinned__"} == set(mio.read_bin_summary(Path(tmp_path, "out_test", "bin_summary.txt")).index)
 
 
 def test_pairs(tmp_path, run_cli, monkeypatch):

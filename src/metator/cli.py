@@ -210,6 +210,43 @@ def run_metadata():
     }
 
 
+def assembly_basename(assembly):
+    """Name of an assembly: its fasta file name without the extensions, or
+    the basename of its index."""
+    return re.sub(r"(\.(fa|fas|fasta|fna))?(\.gz)?$", "", os.path.basename(os.path.normpath(assembly)))
+
+
+def pipeline_metacool(pairs_files, outdir, prefix, assembly, tmp_dir, threads):
+    """Write the contact map of a pipeline run: <outdir>/<prefix>.metacool,
+    or <outdir>/metator.metacool without --prefix.
+
+    The map is an extra output, written last: when it cannot be written, a
+    warning says why, and the run keeps its other outputs and its exit
+    status. A previous map of the same name is replaced, like the other
+    files of the run.
+    """
+    outfile = join(outdir, f"{prefix or 'metator'}.metacool")
+    try:
+        mtmc.write_metacool(
+            pairs_files,
+            join(outdir, "contig_data_final.txt"),
+            outfile,
+            bin_summary=join(outdir, "bin_summary.txt"),
+            assembly_name=assembly_basename(assembly),
+            threads=threads,
+            force=True,
+            metadata=run_metadata(),
+            tmp_dir=tmp_dir,
+        )
+    except mtmc.MetacoolError as error:
+        logger.warning(f"{outfile} is not written: {str(error).rstrip('.')}. The other outputs of the run are kept.")
+    except Exception as error:
+        logger.warning(
+            f"{outfile} is not written: {type(error).__name__}: {str(error).rstrip('.')}. The other outputs of the run are kept.",
+            exc_info=True,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Options shared by several commands
 # ---------------------------------------------------------------------------
@@ -875,6 +912,12 @@ def validation(
 @tmpdir_option()
 @threads_option(help="Number of parallel threads allocated for the alignment.")
 @no_clean_up_option()
+@_option(
+    "--no-metacool",
+    is_flag=True,
+    help="Do not write the contact map of the contigs, grouped by bin, as <prefix>.metacool (metator.metacool "
+    "without --prefix) at the end.",
+)
 def pipeline(
     forward,
     reverse,
@@ -903,6 +946,7 @@ def pipeline(
     tmpdir,
     threads,
     no_clean_up,
+    no_metacool,
 ):
     """Launch the full metaTOR pipeline.
 
@@ -911,6 +955,10 @@ def pipeline(
     It's possible to start from the fastq, the bam or the pairs files. A
     validation step decontaminates the bins when it's necessary; it is the
     critical step for memory usage (~40G).
+
+    At the end, the contact map of the contigs, grouped by bin, is written
+    as a .metacool file (see [cyan]metator metacool[/]), unless
+    --no-metacool is given.
     """
     # Private temporary directory inside --tmpdir.
     with private_tmp_dir(tmpdir, clean_up=not no_clean_up) as tmp_dir:
@@ -1073,6 +1121,10 @@ def pipeline(
 
         # Delete pyfastx index:
         os.remove(fasta + ".fxi")
+
+        # Write the contact map last, while the pairs files are still there.
+        if not no_metacool:
+            pipeline_metacool(alignment_files, outdir, prefix, assembly, tmp_dir, threads)
 
     # Delete the pairs files made from the reads or the alignments, and
     # their pypairix index.
@@ -1417,7 +1469,8 @@ def metacool(pairsfile, contig_data, bin_summary, outfile, assembly_name, thread
 
     Each pair whose two ends lie on contigs of the contig data file is one
     contact; the pairs files of several libraries are summed. The contig
-    and bin names must be ASCII.
+    and bin names must be ASCII. [cyan]pipeline[/] writes this file at the
+    end of a run.
     """
     # Generate log
     log_file = log_file_name("", "metacool")
