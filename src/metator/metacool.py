@@ -190,11 +190,13 @@ def write_metacool(
     Raises
     ------
     MetacoolError
-        If the outfile exists (without force), an input file is missing,
-        the contig data has no Name, Size or Final_bin column, or a contig
-        or bin name is not ASCII.
+        If threads is below 1, the outfile exists (without force), an input
+        file is missing, the contig data has no Name, Size or Final_bin
+        column, or a contig or bin name is not ASCII.
     """
     pairs_files = [str(pairs_files)] if isinstance(pairs_files, (str, os.PathLike)) else [str(p) for p in pairs_files]
+    if threads < 1:
+        raise MetacoolError(f"The number of threads must be at least 1, got {threads}.")
     if os.path.exists(outfile) and not force:
         raise MetacoolError(f"{outfile} already exists. Use --force to overwrite it.")
     inputs = [*pairs_files, contig_data] + ([bin_summary] if bin_summary else [])

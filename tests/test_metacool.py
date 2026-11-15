@@ -402,3 +402,11 @@ def test_metacool_command_errors(case, metagenome, metagenome_network, binning, 
     run_cli("metacool", "-c", contig_data, "-o", "map.metacool", *(pairs or [binning["pairs"]]), exit_code=1)
     assert re.search(rf"ERROR :: .*{re.escape(message)}", _logged(tmp_path))
     assert not (tmp_path / "map.metacool").exists()
+
+
+def test_metacool_command_threads_below_one(binning, tmp_path, monkeypatch, run_cli):
+    """-t 0: an error message, not a traceback, before any pair is read."""
+    monkeypatch.setattr(metacooler, "from_pairs", lambda *args, **kwargs: pytest.fail("pairs read"))
+    run_cli("metacool", "-c", binning["contig_data"], "-o", "map.metacool", "-t", "0", binning["pairs"], exit_code=1)
+    assert "ERROR :: The number of threads must be at least 1, got 0." in _logged(tmp_path)
+    assert not (tmp_path / "map.metacool").exists()
