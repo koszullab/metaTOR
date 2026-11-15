@@ -432,7 +432,7 @@ def merge_iterations(contigs, memberships):
         of each iterations separated by a semicolon as values.
     """
     memberships = np.array(memberships).T
-    return {int(contig): ";".join(map(str, clusters)) for contig, clusters in zip(contigs, memberships)}
+    return {int(contig): ";".join(map(str, clusters)) for contig, clusters in zip(contigs, memberships, strict=True)}
 
 
 def partition(

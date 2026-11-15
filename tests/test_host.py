@@ -143,7 +143,7 @@ def test_build_contig_graph():
     assert sorted(names) == [3, 5, 7]
     edges = {
         frozenset((names[u], names[v])): (w, o)
-        for (u, v), w, o in zip(graph.get_edgelist(), graph.es["weight"], graph.es["order"])
+        for (u, v), w, o in zip(graph.get_edgelist(), graph.es["weight"], graph.es["order"], strict=True)
     }
     assert edges == {
         frozenset((3, 7)): (5.0, 0),
@@ -237,7 +237,7 @@ def test_plot_mag_noise(binned, tmp_path, saved_figures):
     mag_bins, _ = mth.create_bins(data)
     mag_bins = mth.estimate_noise(mag_bins, network)
     qualities = ["HQ", "HQ", "MQ", "Contaminated", "MQ"]
-    for mag, quality in zip(mag_bins.values(), qualities):
+    for mag, quality in zip(mag_bins.values(), qualities, strict=True):
         mag.quality = quality
     mth.plot_mag_noise(mag_bins, image_file=str(tmp_path / "noise.png"))
     assert (tmp_path / "noise.png").stat().st_size > 0
@@ -257,7 +257,7 @@ def test_plot_mag_noise(binned, tmp_path, saved_figures):
     assert [to_hex(handle.get_facecolor()) for handle in legend.legend_handles] == [to_hex("C0"), to_hex("C1")]
 
     signals = {}
-    for mag, quality in zip(mag_bins.values(), qualities):
+    for mag, quality in zip(mag_bins.values(), qualities, strict=True):
         signals.setdefault((order.index(quality), "low"), []).append(mag.intra_signal)
         signals.setdefault((order.index(quality), "high"), []).extend(mag.inter_signals)
     signals = {key: np.log10(np.array(values) + 1e-10) for key, values in signals.items()}
@@ -325,6 +325,6 @@ def test_annotate_hosts(metagenome, binned, tmp_path):
     for mge in metagenome.mges:
         assert list(mge_bins[mges[mge.name]].hosts) == [mags[mge.host]]
     qualities = {name: mag.quality for name, mag in mag_bins.items()}
-    assert qualities == dict(zip(mags.values(), ["Complete", "Contaminated", "MQ", "LQ", "PQ"]))
+    assert qualities == dict(zip(mags.values(), ["Complete", "Contaminated", "MQ", "LQ", "PQ"], strict=True))
     for name in ["background_noise.png", "mge_mag_histogram.png", "mge_mag_interactions.txt"]:
         assert (tmp_path / name).stat().st_size > 0

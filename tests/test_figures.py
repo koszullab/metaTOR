@@ -103,7 +103,7 @@ def _binning(metagenome, qualities, with_depth=True):
         }
     ).reset_index(drop=True)
     bin_summary = {}
-    for genome, quality in zip(metagenome.genomes, qualities):
+    for genome, quality in zip(metagenome.genomes, qualities, strict=True):
         completeness, redundancy = QUALITIES[quality]
         bin_summary[bins[genome.name]] = {
             "Length": genome.length,
@@ -155,7 +155,7 @@ def _check_boxes(ax, expected):
     """Compare the boxes of ax with (x, values, colour) triples."""
     boxes = _boxes(ax)
     assert [(x, colour) for x, *_, colour in boxes] == [(x, colour) for x, _, colour in expected]
-    for (_, *stats, _), (_, values, _) in zip(boxes, expected):
+    for (_, *stats, _), (_, values, _) in zip(boxes, expected, strict=True):
         assert stats == pytest.approx(np.percentile(values, [25, 50, 75]))
 
 
@@ -179,7 +179,7 @@ def test_quality_boxplots(metagenome, tmp_path, saved_figures, qualities):
     binned = contigs_data[contigs_data.Final_bin != "ND"].copy()
     binned["HiC_cov"] = 100 * binned.Hit / binned.Size
     weights = (binned.Size / binned.Size.min()).astype(int)
-    quality = dict(zip(bin_summary, qualities))
+    quality = dict(zip(bin_summary, qualities, strict=True))
     for name, (column, ylabel, scale) in BOXPLOTS.items():
         values = binned[column].repeat(weights).groupby(binned.Final_bin.repeat(weights))
         # Bins by decreasing value: the GC content of the bin, or the

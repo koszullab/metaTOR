@@ -154,7 +154,10 @@ def build_contig_graph(network_data: pd.DataFrame) -> ig.Graph:
     """
     logger.info("Creating contigs contacts graph...")
 
-    edges = [(int(u), int(v), w) for u, v, w in zip(network_data["contig1"], network_data["contig2"], network_data["signal"])]
+    edges = [
+        (int(u), int(v), w)
+        for u, v, w in zip(network_data["contig1"], network_data["contig2"], network_data["signal"], strict=True)
+    ]
     G = ig.Graph.TupleList(edges, weights=True)
     G.es["order"] = range(G.ecount())
     G.simplify(multiple=True, loops=False, combine_edges={"weight": "last", "order": "min"})

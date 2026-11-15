@@ -162,7 +162,7 @@ def test_mge_binning(metagenome, metagenome_inputs, metagenome_network, metageno
     summary, out = _mge_binning(metagenome, metagenome_inputs, metagenome_network, metagenome_indexed_pairs, tmp_path)
     found = {frozenset(contigs.split(",")) for contigs in summary.Contigs}
     assert found == {frozenset(c.name for c in mge.contigs) for mge in metagenome.mges}
-    lengths = dict(zip(summary.Contigs.map(lambda c: frozenset(c.split(","))), summary.BinLength))
+    lengths = dict(zip(summary.Contigs.map(lambda c: frozenset(c.split(","))), summary.BinLength, strict=True))
     for mge in metagenome.mges:
         assert lengths[frozenset(c.name for c in mge.contigs)] == mge.length
     assert summary.BinningScore.notna().sum() == 1  # only the phage was associated
@@ -172,7 +172,7 @@ def test_mge_binning(metagenome, metagenome_inputs, metagenome_network, metageno
     sequences = synthetic.read_fasta(out / "mges_binned.fa")
     assert sorted(sequences) == sorted(summary.BinName)
     contig_seqs = {c.name: c.seq for c in metagenome.contigs}
-    for name, contigs in zip(summary.BinName, summary.Contigs):
+    for name, contigs in zip(summary.BinName, summary.Contigs, strict=True):
         pieces = [piece for piece in sequences[name].split("N") if piece]
         assert sorted(pieces) == sorted(contig_seqs[c] for c in contigs.split(","))
 

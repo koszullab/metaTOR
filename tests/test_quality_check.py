@@ -138,7 +138,7 @@ def test_extract_hq_contigs(large_contigs):
     summary = mio.read_bin_summary(str(directory / "bin_summary.txt"))
     hq_contigs, n_mags = mtq.extract_hq_contigs(summary, contigs_data)
     assert n_mags == 2
-    assert hq_contigs == dict(zip(contigs_data.Name, contigs_data.Final_bin))
+    assert hq_contigs == dict(zip(contigs_data.Name, contigs_data.Final_bin, strict=True))
     # A contaminated MAG is not high quality.
     summary.loc["metator_00002_00000", "Weighted redundancy"] = 1.3
     hq_contigs, n_mags = mtq.extract_hq_contigs(summary, contigs_data)
@@ -153,7 +153,7 @@ def test_hic_quality_counts(large_contigs, tmp_path):
     names = list(contigs_data.Name)
     n_pairs = mtq.extract_pairs([str(pairs)], str(tmp_path / "hq.pairs"), names, contigs_data)
     assert n_pairs == len(community.pairs)
-    contigs = dict(zip(names, contigs_data.Final_bin))
+    contigs = dict(zip(names, contigs_data.Final_bin, strict=True))
     counts = mtq.hic_quality(
         contigs,
         2,

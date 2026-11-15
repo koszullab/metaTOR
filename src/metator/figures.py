@@ -417,7 +417,7 @@ def _quality_boxplots(contigs_data, column, ylabel, out_file, log_scale=False):
             "markeredgewidth": 0.0,
         },
     )
-    for box, colour in zip(boxes["boxes"], colours):
+    for box, colour in zip(boxes["boxes"], colours, strict=True):
         box.set_facecolor(colour)
     if log_scale:
         ax.set_yscale("log")
