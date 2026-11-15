@@ -45,7 +45,7 @@ jobs:
       # docopt dependency.
       - name: Smoke-test the wheel in a clean environment
         run: |
-          uv venv --python 3.11 /tmp/smoke
+          uv venv --python 3.14 /tmp/smoke
           uv pip install --python /tmp/smoke/bin/python dist/*.whl
           cd /tmp
           /tmp/smoke/bin/metator --version
