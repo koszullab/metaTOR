@@ -29,7 +29,7 @@ import hicstuff.iteralign as hci
 import metator.io as mio
 import metator.network as mtn
 from metator.log import logger
-from os.path import join
+from os.path import abspath, join
 
 
 def align(
@@ -41,6 +41,7 @@ def align(
     tmp_dir,
     iterative=False,
     fq_in_2=None,
+    min_qual=30,
 ):
     """Alignment
     Aligns reads of fq_in with bowtie2. Parameters of bowtie2 are set as
@@ -68,6 +69,9 @@ def align(
     fq_in_2 : str
         Path to the reverse fastq file for bwa (map both reads at the same time
         but do not take into account their poistion as pairs.)
+    min_qual : int
+        Iterative mode: minimum mapping quality for a read to be kept at the
+        length it is aligned at, rather than extended and aligned again.
 
     Returns:
     --------
@@ -85,10 +89,12 @@ def align(
         hci.iterative_align(
             fq_in,
             tmp_dir=iter_tmp_dir,
-            ref=index,
+            # hicstuff looks the index up again and strips the leading dots of
+            # its path (hicstuff.io.check_fasta_index): ../idx would be /idx.
+            ref=abspath(index),
             n_cpu=n_cpu,
             bam_out=tmp_bam,
-            min_qual=40,
+            min_qual=min_qual,
             aligner=aligner,
             read_len=max_read_length(fq_in),
         )
@@ -216,9 +222,8 @@ def get_contact_pairs(
         out_file = join(out_dir, "alignment_" + str(i) + ".pairs")
 
         # Align if necessary
+        iterative = False
         if start == "fastq":
-            iterative = False
-
             # Digest reads if necessary.
             if aligner_mode == "cutsite":
                 digest_for = join(tmp_dir, f"digest_for_{i}.fq.gz")
@@ -245,7 +250,7 @@ def get_contact_pairs(
 
                 # Align the forward reads
                 logger.info(f"Alignment of {for_in}:")
-                align(for_in, index, aligner, alignment_for, n_cpu, tmp_dir, iterative)
+                align(for_in, index, aligner, alignment_for, n_cpu, tmp_dir, iterative, min_qual=min_qual)
 
                 # Align the reverse reads
                 logger.info(f"Alignment of  {rev_in}:")
@@ -257,6 +262,7 @@ def get_contact_pairs(
                     n_cpu,
                     tmp_dir,
                     iterative,
+                    min_qual=min_qual,
                 )
             elif aligner == "bwa":
                 # Create file to save the alignement.
@@ -284,7 +290,9 @@ def get_contact_pairs(
             logger.error("Start argument should be either 'fastq' or 'bam'.")
             raise ValueError
 
-        if aligner == "bowtie2":
+        # One BAM per mate: bowtie2, and bwa in iterative mode, which aligns
+        # each mate on its own.
+        if aligner == "bowtie2" or iterative:
             # Create files to save the alignment.
             alignment_temp_for = join(tmp_dir, name + "_for_temp.txt")
             alignment_temp_rev = join(tmp_dir, name + "_rev_temp.txt")
@@ -299,8 +307,9 @@ def get_contact_pairs(
             logger.info("Merging the pairs:")
             n_pairs = merge_alignment(alignment_temp_for, alignment_temp_rev, contig_data, out_file)
 
-        # Case where a bam file from bwa is given as input.
-        if aligner == "bwa":
+        # One BAM for both mates: bwa in the other modes, or a bam file from bwa
+        # given as input.
+        elif aligner == "bwa":
             n_pairs = process_bwa_bamfile(alignment, min_qual, contig_data, out_file)
 
         logger.info(f"{n_pairs} pairs aligned.\n")
@@ -439,12 +448,13 @@ def process_bamfile(alignment, min_qual, filtered_out):
     Reads all the reads in the input BAM alignment file. Keep reads in the
     output if they are aligned with a good quality (greater than min quality
     threshold given) saving their only some columns: ReadID, Contig,
-    Position_start, Position_end, strand to save memory.
+    Position_start, Position_end, strand to save memory. Only the first such
+    alignment of a read is kept.
 
     Parameters
     ----------
     alignment : str
-        Path to the input temporary alignment.
+        Path to the input temporary alignment, sorted by read name.
     min_qual : int
         Minimum mapping quality required to keep a Hi-C pair.
     filtered_out : str
@@ -458,20 +468,27 @@ def process_bamfile(alignment, min_qual, filtered_out):
 
     # Check the quality and status of each aligned fragment.
     aligned_reads = 0
+    # With bwa, hicstuff's iterative alignment writes a read several times
+    # when it also has a supplementary alignment: its primary alignment is
+    # kept, but the supplementary one sends the read to the next round. The
+    # file is sorted by read name, so these copies follow each other.
+    last_read = None
     save = pysam.set_verbosity(0)
     temp_bam = pysam.AlignmentFile(alignment, "rb", check_sq=False)
     pysam.set_verbosity(save)
     with open(filtered_out, "w") as f:
         for r in temp_bam:
-            # Check mapping quality
-            if r.mapping_quality >= min_qual:
+            # Check mapping quality, and that the read is not already kept.
+            if r.mapping_quality >= min_qual and r.query_name != last_read:
                 # Check Mapping (0 or 16 flags are kept only)
                 if r.flag == 0:
                     aligned_reads += 1
+                    last_read = r.query_name
                     read = str(r.query_name + "\t" + r.reference_name + "\t" + str(r.reference_start) + "\t" + "+" + "\n")
                     f.write(read)
                 elif r.flag == 16:
                     aligned_reads += 1
+                    last_read = r.query_name
                     read = str(r.query_name + "\t" + r.reference_name + "\t" + str(r.reference_start) + "\t" + "-" + "\n")
                     f.write(read)
     temp_bam.close()

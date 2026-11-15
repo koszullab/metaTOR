@@ -1,12 +1,15 @@
 # Test for align module
 
 import functools
+import glob
 import gzip
 import itertools
+import os
 import random
 import string
 
 import metator.align as mta
+import metator.io as mio
 import pysam
 import pytest
 
@@ -36,6 +39,12 @@ def _write_bam(path, reads):
             bam.write(read)
 
 
+def _first_reads(fastq, n_reads):
+    """The lines of the first reads of a gzipped fastq."""
+    with gzip.open(fastq, "rt") as reads:
+        return list(itertools.islice(reads, 4 * n_reads))
+
+
 def test_max_read_length(tmp_path):
     """The longest read, not the first one; gzipped or not."""
     reads = tmp_path / "reads.fq"
@@ -53,8 +62,7 @@ def test_align_iterative_extends_reads(tmp_path, first_read_length):
     of the file is shorter. Told that the reads were 20 bp long, hicstuff never
     aligned more than their first 40 bp; left to itself, it extends them up to
     the length of the first read only."""
-    with gzip.open("tests_data/for_paired.fq.gz", "rt") as fastq:
-        lines = list(itertools.islice(fastq, 4 * 2000))
+    lines = _first_reads("tests_data/for_paired.fq.gz", 2000)
     if first_read_length:
         # Trim the sequence and quality of the first read, as an adapter
         # trimmer would.
@@ -67,6 +75,104 @@ def test_align_iterative_extends_reads(tmp_path, first_read_length):
     with pysam.AlignmentFile(str(bam), "rb", check_sq=False) as alignment:
         lengths = {read.infer_read_length() for read in alignment.fetch(until_eof=True) if not read.is_unmapped}
     assert max(lengths) == 151
+
+
+@pytest.mark.parametrize("min_qual", [30, 40])
+def test_align_iterative_min_quality(tmp_path, min_qual):
+    """A read is kept at the first length at which it aligns with a mapping
+    quality of at least min_qual, and extended otherwise. hicstuff was always
+    given 40, whatever --min-quality, so a read aligned at a mapping quality of
+    30 to 39 was extended even with the default --min-quality of 30."""
+    lines = _first_reads("tests_data/for_paired.fq.gz", 2000)
+    lengths = {lines[i][1:].split()[0]: len(lines[i + 1].rstrip()) for i in range(0, len(lines), 4)}
+    reads = tmp_path / "reads.fq"
+    reads.write_text("".join(lines))
+    bam = tmp_path / "alignment.bam"
+    mta.align(str(reads), "tests_data/assembly", "bowtie2", str(bam), 1, str(tmp_path), iterative=True, min_qual=min_qual)
+    with pysam.AlignmentFile(str(bam), "rb", check_sq=False) as alignment:
+        # Mapping quality of the reads kept before their full length.
+        truncated = [
+            read.mapping_quality
+            for read in alignment.fetch(until_eof=True)
+            if read.flag in (0, 16) and read.infer_read_length() < lengths[read.query_name]
+        ]
+    assert min(truncated) >= min_qual
+    assert any(mapq < 40 for mapq in truncated) == (min_qual < 40)
+
+
+@pytest.mark.parametrize("aligner", ["bowtie2", "bwa"])
+def test_align_iterative_index_in_parent_directory(tmp_path, monkeypatch, aligner):
+    """An index given as ../idx/<name> is found in iterative mode, as in
+    normal mode. hicstuff looks the index up again and strips the leading dots
+    of the path it finds: it aligned the reads on /idx/<name>, which does not
+    exist, and the run stopped with FileNotFoundError."""
+    index_dir = tmp_path / "idx"
+    index_dir.mkdir()
+    if aligner == "bwa":
+        index = mio.generate_fasta_index(os.path.abspath("tests_data/assembly.fa"), "bwa", str(index_dir))
+    else:
+        for path in glob.glob("tests_data/assembly*.bt2"):
+            (index_dir / os.path.basename(path)).symlink_to(os.path.abspath(path))
+        index = str(index_dir / "assembly")
+    reads = tmp_path / "reads.fq"
+    reads.write_text("".join(_first_reads("tests_data/for_paired.fq.gz", 200)))
+    bam = tmp_path / "alignment.bam"
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    monkeypatch.chdir(run_dir)
+    relative_index = os.path.join("..", "idx", os.path.basename(index))
+    mta.align(str(reads), relative_index, aligner, str(bam), 1, str(tmp_path), iterative=True)
+    with pysam.AlignmentFile(str(bam), "rb", check_sq=False) as alignment:
+        assert any(read.flag in (0, 16) for read in alignment.fetch(until_eof=True))
+
+
+@pytest.mark.parametrize("aligner", ["bowtie2", "bwa"])
+def test_get_contact_pairs_iterative(tmp_path, monkeypatch, aligner):
+    """In iterative mode, both aligners align each mate on its own, then the
+    mates are paired, one pair per read pair. With bwa, the run crashed once the
+    reads were aligned (UnboundLocalError): it looked for the BAM that bwa
+    writes for both mates in the other modes. hicstuff writes some bwa reads
+    several times (read 2,712 of the test data, on both mates): they make one
+    pair, not one per copy. The minimum mapping quality is passed on to
+    hicstuff."""
+    min_quals = []
+    iterative_align = mta.hci.iterative_align
+
+    def record_min_qual(*args, **kwargs):
+        min_quals.append(kwargs["min_qual"])
+        return iterative_align(*args, **kwargs)
+
+    monkeypatch.setattr(mta.hci, "iterative_align", record_min_qual)
+    fastqs = []
+    for mate in ("for", "rev"):
+        fastq = tmp_path / f"{mate}.fq"
+        fastq.write_text("".join(_first_reads(f"tests_data/{mate}_paired.fq.gz", 3000)))
+        fastqs.append(str(fastq))
+    if aligner == "bwa":
+        index = mio.generate_fasta_index("tests_data/assembly.fa", "bwa", str(tmp_path))
+    else:
+        index = "tests_data/assembly"
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    (pairs_file,), _, _ = mta.get_contact_pairs(
+        *fastqs,
+        index,
+        "tests_data/assembly.fa",
+        aligner,
+        "iterative",
+        35,
+        "fastq",
+        None,
+        None,
+        str(out_dir),
+        str(tmp_path),
+        1,
+    )
+    with gzip.open(pairs_file, "rt") as pairs:
+        names = [line.split("\t", 1)[0] for line in pairs if not line.startswith("#")]
+    assert len(names) > 1000
+    assert len(set(names)) == len(names)
+    assert min_quals == [35, 35]
 
 
 def test_process_bwa_bamfile(tmp_path):
@@ -108,6 +214,29 @@ def test_process_bamfile(tmp_path):
     assert [line.split("\t") for line in out.read_text().splitlines()] == [
         ["r1", "c1", "100", "+"],
         ["r2", "c2", "5000", "-"],
+    ]
+
+
+def test_process_bamfile_keeps_one_alignment_per_read(tmp_path):
+    """The first alignment of a read that passes the filters is kept, its
+    other copies are not: hicstuff's iterative alignment with bwa writes a read
+    once per round when it also has a supplementary alignment."""
+    bam = tmp_path / "for.bam"
+    _write_bam(
+        bam,
+        [
+            ("r1", 0, 100, 0),  # kept
+            ("r1", 0, 100, 0),  # the same alignment, from a later round
+            ("r2", 1, 5000, 16, 10),  # mapping quality too low
+            ("r2", 1, 4980, 16),  # kept
+            ("r2", 1, 4960, 16),  # from a later round
+        ],
+    )
+    out = tmp_path / "for.tsv"
+    assert mta.process_bamfile(str(bam), 30, str(out)) == 2
+    assert [line.split("\t") for line in out.read_text().splitlines()] == [
+        ["r1", "c1", "100", "+"],
+        ["r2", "c2", "4980", "-"],
     ]
 
 

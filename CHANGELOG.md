@@ -103,8 +103,16 @@ All notable changes to this project will be documented in this file.
   align are now extended by 20 bp at a time up to the length of the
   longest read of the file (not of the first one, hicstuff's default,
   which would still cut the reads of a trimmed file whose first read is
-  short). Networks built in iterative mode change: on the test data,
-  52,650 pairs instead of 33,358 (41,563 in normal mode).
+  short). A read is kept at the first length at which it aligns with a
+  mapping quality of at least `--min-quality` (30 by default; the Python
+  API's `metator.align.align` takes it as `min_qual`): hicstuff was given
+  40, whatever `--min-quality`. Networks built in iterative mode change: on
+  the test data, 56,810 pairs instead of 33,358 (41,563 in normal mode).
+- `--aligner bwa` in iterative mode crashed once the reads were aligned,
+  with `UnboundLocalError`. The forward and reverse reads, which this mode
+  aligns separately, are now paired as with bowtie2, keeping one alignment
+  per read: hicstuff writes a read once per round when bwa also gives it a
+  supplementary alignment.
 - With several Hi-C libraries, `network.txt` listed each edge once per
   library; steps reading it with networkx kept only the last library's
   contacts.
@@ -113,7 +121,11 @@ All notable changes to this project will be documented in this file.
 - `contactmap` selected no contig for a numeric bin id (`--name 8`), and
   failed without `--outdir`.
 - `mge --random` always failed.
-- A bowtie2 or bwa index given as `../path` was looked up at `/path`.
+- A bowtie2 or bwa index given as `../path` was looked up at `/path`, and
+  so, in iterative mode, was an index built from the fasta in a `--tmpdir`
+  given as `../path`. In iterative mode, hicstuff looks the index up again
+  and strips the leading dots of its path: it is now given the absolute
+  path of the index.
 - pandas 3 compatibility.
 - `pairtools sort` and `bgzip` failures are reported where they happen.
 - Core bin detection is no longer quadratic in the number of core bins.
