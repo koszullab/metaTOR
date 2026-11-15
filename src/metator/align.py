@@ -29,7 +29,7 @@ import hicstuff.iteralign as hci
 import metator.io as mio
 import metator.network as mtn
 from metator.log import logger
-from os.path import join
+from os.path import abspath, join
 
 
 def align(
@@ -89,7 +89,9 @@ def align(
         hci.iterative_align(
             fq_in,
             tmp_dir=iter_tmp_dir,
-            ref=index,
+            # hicstuff looks the index up again and strips the leading dots of
+            # its path (hicstuff.io.check_fasta_index): ../idx would be /idx.
+            ref=abspath(index),
             n_cpu=n_cpu,
             bam_out=tmp_bam,
             min_qual=min_qual,

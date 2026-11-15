@@ -121,7 +121,11 @@ All notable changes to this project will be documented in this file.
 - `contactmap` selected no contig for a numeric bin id (`--name 8`), and
   failed without `--outdir`.
 - `mge --random` always failed.
-- A bowtie2 or bwa index given as `../path` was looked up at `/path`.
+- A bowtie2 or bwa index given as `../path` was looked up at `/path`, and
+  so, in iterative mode, was an index built from the fasta in a `--tmpdir`
+  given as `../path`. In iterative mode, hicstuff looks the index up again
+  and strips the leading dots of its path: it is now given the absolute
+  path of the index.
 - pandas 3 compatibility.
 - `pairtools sort` and `bgzip` failures are reported where they happen.
 - Core bin detection is no longer quadratic in the number of core bins.

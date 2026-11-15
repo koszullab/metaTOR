@@ -1,8 +1,10 @@
 # Test for align module
 
 import functools
+import glob
 import gzip
 import itertools
+import os
 import random
 import string
 
@@ -96,6 +98,32 @@ def test_align_iterative_min_quality(tmp_path, min_qual):
         ]
     assert min(truncated) >= min_qual
     assert any(mapq < 40 for mapq in truncated) == (min_qual < 40)
+
+
+@pytest.mark.parametrize("aligner", ["bowtie2", "bwa"])
+def test_align_iterative_index_in_parent_directory(tmp_path, monkeypatch, aligner):
+    """An index given as ../idx/<name> is found in iterative mode, as in
+    normal mode. hicstuff looks the index up again and strips the leading dots
+    of the path it finds: it aligned the reads on /idx/<name>, which does not
+    exist, and the run stopped with FileNotFoundError."""
+    index_dir = tmp_path / "idx"
+    index_dir.mkdir()
+    if aligner == "bwa":
+        index = mio.generate_fasta_index(os.path.abspath("tests_data/assembly.fa"), "bwa", str(index_dir))
+    else:
+        for path in glob.glob("tests_data/assembly*.bt2"):
+            (index_dir / os.path.basename(path)).symlink_to(os.path.abspath(path))
+        index = str(index_dir / "assembly")
+    reads = tmp_path / "reads.fq"
+    reads.write_text("".join(_first_reads("tests_data/for_paired.fq.gz", 200)))
+    bam = tmp_path / "alignment.bam"
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    monkeypatch.chdir(run_dir)
+    relative_index = os.path.join("..", "idx", os.path.basename(index))
+    mta.align(str(reads), relative_index, aligner, str(bam), 1, str(tmp_path), iterative=True)
+    with pysam.AlignmentFile(str(bam), "rb", check_sq=False) as alignment:
+        assert any(read.flag in (0, 16) for read in alignment.fetch(until_eof=True))
 
 
 @pytest.mark.parametrize("aligner", ["bowtie2", "bwa"])
