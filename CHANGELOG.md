@@ -19,7 +19,9 @@ All notable changes to this project will be documented in this file.
   line and parameters of the run, under the `metator` key. The map is
   written last: when it cannot be written (for example, contig names that
   are not ASCII, which cooler cannot read), a warning says why and the run
-  keeps its other outputs and its exit status. See the README.
+  keeps its other outputs and its exit status. A map left in the output
+  directory by an earlier run is removed first, so that it cannot pass for
+  the map of this run. See the README.
 - `metator metacool` writes the same file from the pairs files,
   `contig_data_final.txt` and `bin_summary.txt` of a run. Python API:
   `metator.metacool.write_metacool`.

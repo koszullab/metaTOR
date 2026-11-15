@@ -223,7 +223,8 @@ mc.genomes  # one row per bin, with the columns of bin_summary.txt
 The contig and bin names must be ASCII, as `cooler` reads them as ASCII text. When the map cannot be
 written (for example, an assembly with contig names that are not ASCII), `metator pipeline` logs a
 warning saying why and keeps its other outputs and its exit status; `metator metacool` stops with an
-error.
+error. A map that an earlier run left in the output directory is removed before the new one is written,
+as it no longer matches the bins: a run whose map cannot be written leaves none.
 
 ### metator mge
 

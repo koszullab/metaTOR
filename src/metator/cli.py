@@ -222,11 +222,15 @@ def pipeline_metacool(pairs_files, outdir, prefix, assembly, tmp_dir, threads):
 
     The map is an extra output, written last: when it cannot be written, a
     warning says why, and the run keeps its other outputs and its exit
-    status. A previous map of the same name is replaced, like the other
-    files of the run.
+    status. A map of the same name left by an earlier run is removed first:
+    this run has replaced the tables it was made from, so it must not stay
+    behind, passing for this run's, when the new map cannot be written.
     """
     outfile = join(outdir, f"{prefix or 'metator'}.metacool")
     try:
+        if os.path.lexists(outfile):
+            logger.info(f"Removing {outfile}, the contact map of an earlier run.")
+            os.remove(outfile)
         mtmc.write_metacool(
             pairs_files,
             join(outdir, "contig_data_final.txt"),

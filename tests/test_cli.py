@@ -458,6 +458,41 @@ def test_pipeline_metacool_failure_is_a_warning(stub_pipeline, tmp_path, monkeyp
     assert not (out / "alignment_0_sorted.pairs.gz.px2").exists()
 
 
+@pytest.mark.parametrize("case", ["written", "failed", "skipped"])
+def test_pipeline_earlier_metacool(case, stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """A map left by an earlier run in the output directory is removed
+    before the new one is written: it would pass for this run's map when
+    the new one fails. --no-metacool leaves it alone."""
+    out = tmp_path / "out"
+    out.mkdir()
+    earlier = out / "metator.metacool"
+    earlier.write_text("earlier run")
+    seen = []
+
+    def write_metacool(pairs_files, contig_data, outfile, **kwargs):
+        seen.append(os.path.exists(outfile))
+        if case == "failed":
+            raise RuntimeError("disk full")
+        Path(outfile).write_text("this run")
+
+    monkeypatch.setattr("metator.metacool.write_metacool", write_metacool)
+    options = ["--no-metacool"] if case == "skipped" else []
+    run_cli("pipeline", "-1", "a.pairs", "-a", _assembly(tmp_path), "-S", "pair", "-o", out, "-T", tmp_path / "tmp", *options)
+    (log,) = out.glob("metator_pipeline_*.log")
+    logged = log.read_text()
+    if case == "skipped":
+        assert seen == [] and earlier.read_text() == "earlier run"
+        assert "Removing" not in logged
+        return
+    assert seen == [False]
+    assert f"INFO :: Removing {earlier}, the contact map of an earlier run." in logged
+    if case == "failed":
+        assert not earlier.exists()
+        assert f"WARNING :: {earlier} is not written: RuntimeError: disk full." in logged
+    else:
+        assert earlier.read_text() == "this run"
+
+
 def test_pipeline_metacool_written(stub_pipeline, tmp_path, monkeypatch, run_cli):
     """With the real writer, from the tables of the (stub) validation."""
     monkeypatch.setattr("metator.metacool.write_metacool", mtmc_write_metacool)
