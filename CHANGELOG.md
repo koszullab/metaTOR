@@ -103,8 +103,11 @@ All notable changes to this project will be documented in this file.
   align are now extended by 20 bp at a time up to the length of the
   longest read of the file (not of the first one, hicstuff's default,
   which would still cut the reads of a trimmed file whose first read is
-  short). Networks built in iterative mode change: on the test data,
-  52,650 pairs instead of 33,358 (41,563 in normal mode).
+  short). A read is kept at the first length at which it aligns with a
+  mapping quality of at least `--min-quality` (30 by default; the Python
+  API's `metator.align.align` takes it as `min_qual`): hicstuff was given
+  40, whatever `--min-quality`. Networks built in iterative mode change: on
+  the test data, 56,810 pairs instead of 33,358 (41,563 in normal mode).
 - `--aligner bwa` in iterative mode crashed once the reads were aligned,
   with `UnboundLocalError`. The forward and reverse reads, which this mode
   aligns separately, are now paired as with bowtie2, keeping one alignment

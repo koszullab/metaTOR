@@ -41,6 +41,7 @@ def align(
     tmp_dir,
     iterative=False,
     fq_in_2=None,
+    min_qual=30,
 ):
     """Alignment
     Aligns reads of fq_in with bowtie2. Parameters of bowtie2 are set as
@@ -68,6 +69,9 @@ def align(
     fq_in_2 : str
         Path to the reverse fastq file for bwa (map both reads at the same time
         but do not take into account their poistion as pairs.)
+    min_qual : int
+        Iterative mode: minimum mapping quality for a read to be kept at the
+        length it is aligned at, rather than extended and aligned again.
 
     Returns:
     --------
@@ -88,7 +92,7 @@ def align(
             ref=index,
             n_cpu=n_cpu,
             bam_out=tmp_bam,
-            min_qual=40,
+            min_qual=min_qual,
             aligner=aligner,
             read_len=max_read_length(fq_in),
         )
@@ -244,7 +248,7 @@ def get_contact_pairs(
 
                 # Align the forward reads
                 logger.info(f"Alignment of {for_in}:")
-                align(for_in, index, aligner, alignment_for, n_cpu, tmp_dir, iterative)
+                align(for_in, index, aligner, alignment_for, n_cpu, tmp_dir, iterative, min_qual=min_qual)
 
                 # Align the reverse reads
                 logger.info(f"Alignment of  {rev_in}:")
@@ -256,6 +260,7 @@ def get_contact_pairs(
                     n_cpu,
                     tmp_dir,
                     iterative,
+                    min_qual=min_qual,
                 )
             elif aligner == "bwa":
                 # Create file to save the alignement.

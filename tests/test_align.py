@@ -75,14 +75,46 @@ def test_align_iterative_extends_reads(tmp_path, first_read_length):
     assert max(lengths) == 151
 
 
+@pytest.mark.parametrize("min_qual", [30, 40])
+def test_align_iterative_min_quality(tmp_path, min_qual):
+    """A read is kept at the first length at which it aligns with a mapping
+    quality of at least min_qual, and extended otherwise. hicstuff was always
+    given 40, whatever --min-quality, so a read aligned at a mapping quality of
+    30 to 39 was extended even with the default --min-quality of 30."""
+    lines = _first_reads("tests_data/for_paired.fq.gz", 2000)
+    lengths = {lines[i][1:].split()[0]: len(lines[i + 1].rstrip()) for i in range(0, len(lines), 4)}
+    reads = tmp_path / "reads.fq"
+    reads.write_text("".join(lines))
+    bam = tmp_path / "alignment.bam"
+    mta.align(str(reads), "tests_data/assembly", "bowtie2", str(bam), 1, str(tmp_path), iterative=True, min_qual=min_qual)
+    with pysam.AlignmentFile(str(bam), "rb", check_sq=False) as alignment:
+        # Mapping quality of the reads kept before their full length.
+        truncated = [
+            read.mapping_quality
+            for read in alignment.fetch(until_eof=True)
+            if read.flag in (0, 16) and read.infer_read_length() < lengths[read.query_name]
+        ]
+    assert min(truncated) >= min_qual
+    assert any(mapq < 40 for mapq in truncated) == (min_qual < 40)
+
+
 @pytest.mark.parametrize("aligner", ["bowtie2", "bwa"])
-def test_get_contact_pairs_iterative(tmp_path, aligner):
+def test_get_contact_pairs_iterative(tmp_path, monkeypatch, aligner):
     """In iterative mode, both aligners align each mate on its own, then the
     mates are paired, one pair per read pair. With bwa, the run crashed once the
     reads were aligned (UnboundLocalError): it looked for the BAM that bwa
     writes for both mates in the other modes. hicstuff writes some bwa reads
     several times (read 2,712 of the test data, on both mates): they make one
-    pair, not one per copy."""
+    pair, not one per copy. The minimum mapping quality is passed on to
+    hicstuff."""
+    min_quals = []
+    iterative_align = mta.hci.iterative_align
+
+    def record_min_qual(*args, **kwargs):
+        min_quals.append(kwargs["min_qual"])
+        return iterative_align(*args, **kwargs)
+
+    monkeypatch.setattr(mta.hci, "iterative_align", record_min_qual)
     fastqs = []
     for mate in ("for", "rev"):
         fastq = tmp_path / f"{mate}.fq"
@@ -100,7 +132,7 @@ def test_get_contact_pairs_iterative(tmp_path, aligner):
         "tests_data/assembly.fa",
         aligner,
         "iterative",
-        30,
+        35,
         "fastq",
         None,
         None,
@@ -112,6 +144,7 @@ def test_get_contact_pairs_iterative(tmp_path, aligner):
         names = [line.split("\t", 1)[0] for line in pairs if not line.startswith("#")]
     assert len(names) > 1000
     assert len(set(names)) == len(names)
+    assert min_quals == [35, 35]
 
 
 def test_process_bwa_bamfile(tmp_path):
