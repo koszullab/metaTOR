@@ -412,7 +412,8 @@ def _final_tables(monkeypatch, contig, final_bin="metator_00001_00000", summary=
     def recursive_decontamination(*args):
         out_dir = args[8]
         Path(out_dir, "contig_data_final.txt").write_text(
-            f"\tID\tName\tSize\tFinal_bin\n0\t1\t{contig}\t100\t{final_bin}\n1\t2\tc2\t50\tND\n"
+            "\tID\tName\tSize\tGC_content\tHit\tFinal_bin\n"
+            f"0\t1\t{contig}\t100\t40.5\t-\t{final_bin}\n1\t2\tc2\t50\t35.0\t-\tND\n"
         )
         rows = "" if final_bin == "ND" else f"{final_bin}\t0.9\n"
         Path(out_dir, "bin_summary.txt").write_text(summary or f"\tCompleteness\n{rows}")
@@ -536,6 +537,11 @@ def test_pipeline_metacool_written(stub_pipeline, tmp_path, monkeypatch, run_cli
     genomes = metacooler.MetaCooler(str(out / "metator.metacool")).genomes
     assert list(genomes.name) == ["__unbinned__", "metator_00001_00000"]
     assert list(genomes.Completeness.iloc[1:]) == [0.9]
+    # The contig columns of the contig data: its GC_content (Hit is - on
+    # every contig), not its ID or Final_bin.
+    contigs = metacooler.MetaCooler(str(out / "metator.metacool")).contigs.set_index("name")
+    assert list(contigs.columns) == ["length", "genome_id", "GC_content"]
+    assert contigs.GC_content.to_dict() == {"c1": 40.5, "c2": 35.0}
 
 
 def test_pipeline_metacool_without_final_bin(stub_pipeline, tmp_path, monkeypatch, run_cli):
@@ -555,6 +561,7 @@ def test_pipeline_metacool_without_final_bin(stub_pipeline, tmp_path, monkeypatc
     mc = metacooler.MetaCooler(str(out / "metator.metacool"))
     assert list(mc.genomes.name) == ["__unbinned__"] and "Completeness" not in mc.genomes.columns
     assert sorted(mc.contigs.name) == ["c1", "c2"]
+    assert list(mc.contigs.columns) == ["name", "length", "genome_id", "GC_content"]
     (log,) = out.glob("metator_pipeline_*.log")
     assert "is not written" not in log.read_text()
 

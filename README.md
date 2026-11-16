@@ -210,6 +210,11 @@ and the tools built on it read it as any `.cool` file, and `metacooler` adds the
   statistics that metacooler computes while reading the pairs. Each row of `bin_summary.txt` must
   have as many fields as its header, as metaTOR writes it: metacooler refuses a table whose values it
   cannot match with their columns;
+* the contigs table (the chromosomes table of `cooler`) holds what metaTOR measured on each contig:
+  the `GC_content`, `Hit`, `Shotgun_coverage` and `Restriction_site` columns of
+  `contig_data_final.txt`, except those that are `-` on every contig (`Shotgun_coverage` of a run
+  without `--depth`, `Restriction_site` of a run without `--enzyme`). The bins of the contigs are not
+  stored there: the genome of a contig is its final bin;
 * the metadata of the file hold the version of metaTOR, the command line and its parameters, under
   the `metator` key.
 
@@ -220,6 +225,7 @@ import metacooler
 clr = cooler.Cooler("metator.metacool")
 mc = metacooler.MetaCooler("metator.metacool")
 mc.genomes  # one row per bin, with the columns of bin_summary.txt
+mc.contigs  # one row per contig, with its GC content and Hi-C hits (see above)
 ```
 
 The contig and bin names must be ASCII, as `cooler` reads them as ASCII text. No bin may be named as

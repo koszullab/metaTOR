@@ -163,6 +163,10 @@ def test_pipeline(tmp_path, run_cli):
     metacooler.validate(str(metacool))
     genomes = metacooler.MetaCooler(str(metacool)).genomes
     assert set(genomes.name) - {"__unbinned__"} == set(mio.read_bin_summary(Path(tmp_path, "out_test", "bin_summary.txt")).index)
+    # The contig columns but Shotgun_coverage, which is - without a depth
+    # file.
+    contigs = metacooler.MetaCooler(str(metacool)).contigs
+    assert list(contigs.columns) == ["name", "length", "genome_id", "GC_content", "Hit", "Restriction_site"]
 
 
 def test_pairs(tmp_path, run_cli, monkeypatch):

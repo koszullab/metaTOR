@@ -283,6 +283,13 @@ def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, metagenome
     assert dict(zip(mc.contigs.name, mc.contigs.genome_id.map(mc.genomes.name), strict=True)) == dict(host_bin)
     assert sorted(mc.genomes.name) == sorted(summary.index)
     assert mc.genomes.set_index("name").Completeness[summary.index].to_numpy() == pytest.approx(summary.Completeness.to_numpy())
+    # What metaTOR measured on each contig (with a depth file and an
+    # enzyme: the four columns), not its bins.
+    columns = ["GC_content", "Hit", "Shotgun_coverage", "Restriction_site"]
+    assert list(mc.contigs.columns) == ["name", "length", "genome_id", *columns]
+    measured = final.set_index("Name").loc[mc.contigs.name, columns]
+    for column in columns:
+        assert mc.contigs[column].tolist() == measured[column].tolist(), column
     # Clean-up: no temporary directory, no pyfastx index, no intermediate table.
     assert not (tmp_path / "tmp").exists()
     assert not os.path.exists(f"{metagenome_inputs['assembly']}.fxi")

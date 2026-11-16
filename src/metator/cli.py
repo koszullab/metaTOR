@@ -1445,7 +1445,8 @@ def contactmap(
     required=True,
     metavar="FILE",
     panel="Input",
-    help="Path to the contig_data_final.txt file from MetaTOR output: the contigs and their final bins.",
+    help="Path to the contig_data_final.txt file from MetaTOR output: the contigs, their final bins and what "
+    "metaTOR measured on them.",
 )
 @_option(
     "-b",
@@ -1468,7 +1469,9 @@ def metacool(pairsfile, contig_data, bin_summary, outfile, assembly_name, thread
     contig data file. The unbinned contigs keep all their contacts, in
     metacooler's [cyan]__unbinned__[/] genome. The columns of the bin
     summary (completeness, contamination, abundances...) are stored in the
-    genomes table.
+    genomes table, and the GC_content, Hit, Shotgun_coverage and
+    Restriction_site columns of the contig data in the contigs table
+    (except those that are - on every contig).
 
     Each pair whose two ends lie on contigs of the contig data file is one
     contact; the pairs files of several libraries are summed. The contig

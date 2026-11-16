@@ -11,19 +11,22 @@ All notable changes to this project will be documented in this file.
   `.metacool` file is the contact map of
   [metacooler](https://github.com/js2264/metacooler): a cooler whose
   chromosomes are the contigs, which `cooler` reads as any `.cool` file and
-  `metacooler` by genome. It has one bin per contig and one genome per
-  final bin, plus `__unbinned__` for the contigs in no bin, which keep all
-  their contacts (all the contigs of a run with no final bin). Each pair
-  whose two ends lie on contigs of the assembly is one contact, and the
-  libraries are summed. The genomes table holds the columns of
-  `bin_summary.txt`, and the file metadata the version, command line and
-  parameters of the run, under the `metator` key. The map is written
-  last: when it cannot be written (for example, contig names that are not
-  ASCII, which cooler cannot read, or a misaligned bin summary, see
-  below), a warning says why and the run keeps its other outputs and its
-  exit status. A map left in the output directory by an earlier run is
-  removed first, so that it cannot pass for the map of this run. See the
-  README.
+  `metacooler` by genome. It has one bin per contig and one genome per final
+  bin, plus `__unbinned__` for the contigs in no bin, which keep all their
+  contacts (all the contigs of a run with no final bin). Each pair whose two
+  ends lie on contigs of the assembly is one contact, and the libraries are
+  summed. The genomes table holds the columns of `bin_summary.txt`; the
+  contigs table the `GC_content`, `Hit`, `Shotgun_coverage` and
+  `Restriction_site` columns of `contig_data_final.txt`, except those that
+  are `-` on every contig (`Shotgun_coverage` without `--depth`,
+  `Restriction_site` without `--enzyme`), and never the bins; and the file
+  metadata the version, command line and parameters of the run, under the
+  `metator` key. The map is written last: when it cannot be written (for
+  example, contig names that are not ASCII, which cooler cannot read, or a
+  misaligned bin summary, see below), a warning says why and the run keeps
+  its other outputs and its exit status. A map left in the output directory
+  by an earlier run is removed first, so that it cannot pass for the map of
+  this run. See the README.
 - `metator metacool` writes the same file from the pairs files,
   `contig_data_final.txt` and `bin_summary.txt` of a run. Python API:
   `metator.metacool.write_metacool`. It refuses bins named as metacooler

@@ -30,9 +30,15 @@ def _bin_names(metagenome):
     return {contig.name: names.get(contig.molecule, "ND") for contig in metagenome.contigs}
 
 
+# The contig columns of the map: those of contig_data_final.txt, as
+# write_contig_data writes it, but Restriction_site, which is - everywhere.
+CONTIG_COLUMNS = ["GC_content", "Hit", "Shotgun_coverage"]
+
+
 def write_contig_data(metagenome, path, final_bin=None):
     """A contig_data_final.txt file, laid out as metaTOR writes it (an
-    unnamed index first, Final_bin last)."""
+    unnamed index first, Final_bin last), of a run with a depth file and no
+    enzyme: Restriction_site is - on every contig."""
     final_bin = final_bin or _bin_names(metagenome)
     truth = metagenome.truth
     table = pd.DataFrame(
@@ -41,13 +47,31 @@ def write_contig_data(metagenome, path, final_bin=None):
             "Name": truth.Name.to_numpy(),
             "Size": truth.Length.to_numpy(),
             "GC_content": truth.GC.to_numpy(),
-            "Hit": 1,
+            "Hit": range(10, len(truth) + 10),
+            "Shotgun_coverage": (truth.Abundance * 3.5).to_numpy(),
+            "Restriction_site": "-",
+            "Overlapping_bin_ID": "00001",
             "Recursive_bin_contigs": "-",
             "Final_bin": truth.Name.map(final_bin).to_numpy(),
         }
     )
     table.to_csv(path, sep="\t", index=True)
     return path
+
+
+def assert_contig_columns(path, contig_data, columns=CONTIG_COLUMNS):
+    """The contigs table of the map (cooler's chroms) holds these columns of
+    the contig data, with their values and types, and no other: no bin, no
+    pandas index."""
+    contigs = metacooler.MetaCooler(str(path)).contigs
+    assert list(contigs.columns) == ["name", "length", "genome_id", *columns]
+    chroms = cooler.Cooler(str(path)).chroms()[:]
+    assert list(chroms.columns) == ["name", "length", "genome_id", *columns]
+    table = pd.read_csv(contig_data, sep="\t", index_col="Name").loc[contigs.name]
+    for column in columns:
+        assert contigs[column].dtype == table[column].dtype, column
+        assert contigs[column].tolist() == table[column].tolist(), column
+        assert chroms[column].tolist() == table[column].tolist(), column
 
 
 def write_bin_summary(metagenome, path):
@@ -152,12 +176,17 @@ def test_metacool_of_a_binning(metagenome, binning, tmp_path):
     expected = expected_pixels(metagenome.pairs, list(mc.contigs.name))
     assert pixels.to_dict() == expected.to_dict()
 
+    # What metaTOR measured on each contig, in the contigs table.
+    assert_contig_columns(out, binning["contig_data"])
+    assert contigs.GC_content.dtype == "float64" and contigs.Hit.dtype == "int64"
+
     metadata = clr.info["metadata"]
     assert metadata["metator"] == {
         "version": __version__,
         "command": "metator metacool",
         "parameters": {"threads": 1},
     }
+    assert metadata["annotate"][0]["added"] == [f"contigs.{column}" for column in CONTIG_COLUMNS]
     assert metadata["qc"]["n_pairs_read"] == len(metagenome.pairs)
     # Only the map: no P(s) table next to it.
     assert sorted(path.name for path in out.parent.iterdir()) == ["sample.metacool"]
@@ -311,6 +340,77 @@ def test_no_bin_names_are_those_of_metacooler():
             mtmc.check_bin_names(["metator_00001_00000", name.upper(), f" {name} "])
 
 
+def test_measured_contig_columns(tmp_path):
+    """The contig columns a table has, but those that are - on every contig
+    (no depth file, no enzyme): not the bins, nor the other columns."""
+    table = tmp_path / "contig_data_final.txt"
+    table.write_text(
+        "\tID\tName\tSize\tGC_content\tShotgun_coverage\tRestriction_site\tHit\tFinal_bin\n"
+        "0\t1\tc1\t100\t40.5\t-\t-\t3\tb1\n"
+        "1\t2\tc2\t200\t41.5\t-\t12\t4\tND\n"
+    )
+    assert mtmc.measured_contig_columns(str(table)) == ["GC_content", "Hit", "Restriction_site"]
+    table.write_text("Name\tSize\tShotgun_coverage\tFinal_bin\nc1\t100\t - \tb1\n")
+    assert mtmc.measured_contig_columns(str(table)) == []
+    table.write_text("Name\tSize\tFinal_bin\nc1\t100\tb1\n")
+    assert mtmc.measured_contig_columns(str(table)) == []
+
+
+@pytest.mark.parametrize(
+    "content, reason",
+    [(b"", "No columns to parse from file."), (b"Name\tSize\tGC_cont\xe9nt\n", "'utf-8' codec can't decode byte 0xe9")],
+    ids=["empty", "not UTF-8"],
+)
+def test_measured_contig_columns_unreadable_table(content, reason, tmp_path):
+    """A contig data file that pandas cannot read as a table: a
+    MetacoolError naming the file, pandas' error chained."""
+    table = tmp_path / "contig_data_final.txt"
+    table.write_bytes(content)
+    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(str(table))} cannot be read as a table: ") as error:
+        mtmc.measured_contig_columns(str(table))
+    assert reason in str(error.value)
+    assert isinstance(error.value.__cause__, ValueError)
+
+
+def test_contig_columns_the_table_has(metagenome, binning, tmp_path):
+    """A contig data file with some of the contig columns: those it has; one
+    with none of them: none, and the map all the same."""
+    table = pd.read_csv(binning["contig_data"], sep="\t", index_col=0)
+    some = tmp_path / "some_columns.txt"
+    table.drop(columns=["GC_content", "Shotgun_coverage"]).to_csv(some, sep="\t")
+    out = tmp_path / "some.metacool"
+    mtmc.write_metacool(str(binning["pairs"]), str(some), str(out))
+    metacooler.validate(str(out), full=True)
+    assert_contig_columns(out, some, ["Hit"])
+
+    none = tmp_path / "no_columns.txt"
+    table[["Name", "Size", "Final_bin"]].to_csv(none, sep="\t")
+    out = tmp_path / "none.metacool"
+    mtmc.write_metacool(str(binning["pairs"]), str(none), str(out))
+    metacooler.validate(str(out), full=True)
+    assert_contig_columns(out, none, [])
+    assert "annotate" not in cooler.Cooler(str(out)).info["metadata"]
+
+
+@pytest.mark.parametrize("force", [False, True])
+def test_contig_column_metacooler_refuses(force, binning, tmp_path):
+    """A contig column that cooler could not read (not ASCII): metacooler
+    refuses it, and no map is left, rather than a map without its contig
+    columns."""
+    contig_data = Path(binning["contig_data"])
+    lines = contig_data.read_text().splitlines(keepends=True)
+    fields = lines[1].split("\t")
+    fields[4] = "38.5é"
+    contig_data.write_text("".join([lines[0], "\t".join(fields), *lines[2:]]))
+    out = tmp_path / "map.metacool"
+    if force:
+        out.write_text("old")
+    with pytest.raises(mtmc.MetacoolError, match="GC_content") as error:
+        mtmc.write_metacool(str(binning["pairs"]), str(contig_data), str(out), force=force)
+    assert isinstance(error.value.__cause__, ValueError)
+    assert not out.exists()
+
+
 def test_read_contig_bins(tmp_path):
     table = tmp_path / "contig_data_final.txt"
     table.write_text("\tID\tName\tSize\tFinal_bin\n0\t1\t01\t100\tb1\n1\t2\tc2\t200\tND\n2\t3\tc3\t300\t-\n3\t4\tc4\t400\t\n")
@@ -408,6 +508,7 @@ def test_metacool_command(metagenome, binning, tmp_path, run_cli):
     genomes = metacooler.MetaCooler(str(out)).genomes
     assert list(genomes.name) == ["__unbinned__", *sorted(mio.read_bin_summary(binning["bin_summary"]).index)]
     assert "Completeness" in genomes.columns
+    assert_contig_columns(out, binning["contig_data"])
     assert clr.info["metadata"]["metator"] == {
         "version": __version__,
         "command": shlex.join(["metator", "metacool", *map(str, args)]),
@@ -445,6 +546,7 @@ def test_metacool_command_without_final_bin(metagenome, binning, tmp_path, run_c
     assert set(mio.read_bin_summary(binning["bin_summary"]).columns) & set(mc.genomes.columns) == set()
     assert map_pixels(out).to_dict() == expected_pixels(metagenome.pairs, list(mc.contigs.name)).to_dict()
     assert map_pixels(out).sum() == len(metagenome.pairs)
+    assert_contig_columns(out, contig_data)
     assert f"contact map of {len(metagenome.contigs)} contigs, 0 of them in 0 bins." in _logged(tmp_path)
 
 
