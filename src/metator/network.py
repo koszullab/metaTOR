@@ -249,9 +249,8 @@ def metacool_to_contacts(
         names[data["id"]] = name
 
     # Count the contacts, as precompute_network does for a library.
-    intra = contacts["id1"] == contacts["id2"]
     all_contacts = int(contacts["count"].sum())
-    inter_contacts = int(contacts["count"][~intra].sum())
+    inter_contacts = int(contacts["count"][contacts["id1"] != contacts["id2"]].sum())
     if not all_contacts:
         raise mtmc.MetacoolError(f"{metacool} holds no contact: there is no network to build.")
     logger.info(f"Information of {metacool}:")
@@ -259,12 +258,17 @@ def metacool_to_contacts(
     logger.info(f"{inter_contacts} contacts inter-contigs in the library.")
     logger.info(f"3D ratio : {inter_contacts / all_contacts}\n")
 
-    # Write the edges by contig names and sort them as compute_network sorts
-    # the pairs: the network lists its edges in the same order.
-    edges = contacts if self_contacts else contacts[~intra]
-    pd.DataFrame(
-        {"contig1": names[edges["id1"].to_numpy()], "contig2": names[edges["id2"].to_numpy()], "count": edges["count"]}
-    ).to_csv(pre_network_file, sep="\t", header=False, index=False)
+    # Write the edges by contig names, a block at a time, and sort them as
+    # compute_network sorts the pairs: the network lists its edges in the
+    # same order.
+    with open(pre_network_file, "w") as pre_network:
+        for start in range(0, len(contacts), chunksize):
+            edges = contacts.iloc[start : start + chunksize]
+            if not self_contacts:
+                edges = edges[edges["id1"] != edges["id2"]]
+            pd.DataFrame(
+                {"contig1": names[edges["id1"].to_numpy()], "contig2": names[edges["id2"].to_numpy()], "count": edges["count"]}
+            ).to_csv(pre_network, sep="\t", header=False, index=False)
     mio.sort_pairs(pre_network_file, pre_network_sorted_file, tmp_dir=tmp_dir, threads=n_cpus)
     with open(pre_network_sorted_file, "r") as sorted_edges, open(network_file, "w") as net:
         for contig1, contig2, count in csv.reader(sorted_edges, delimiter="\t"):

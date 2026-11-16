@@ -221,9 +221,10 @@ def test_partition_of_a_metacool_network(metagenome_files, tmp_path, algorithm):
 
 
 def test_contacts_by_chunk(tmp_path):
-    """The contacts do not depend on the number of pixels read at a time."""
-    pairs, assembly = TESTS_DATA_PAIRS["subset"]
-    metacool = make_metacool(tmp_path / "map.metacool", pairs, assembly, 1000)
+    """The contacts do not depend on the number of pixels read at a time
+    (a row at a time with 1: one read per contig)."""
+    pairs, assembly = TESTS_DATA_PAIRS["alignment"]
+    metacool = make_metacool(tmp_path / "map.metacool", pairs, assembly)
     contig_data, _ = mtn.create_contig_data(str(assembly))
     hits, contacts = mtn.read_metacool_contacts(str(metacool), contig_data)
     for chunksize in [1, 997]:
@@ -236,6 +237,28 @@ def test_contacts_by_chunk(tmp_path):
     assert contacts.equals(contacts.sort_values(["id1", "id2"]))
     # Every pair counts twice in the hits.
     assert hits[0] == 0 and hits.sum() == 2 * contacts["count"].sum()
+
+
+@pytest.mark.parametrize("self_contacts", [False, True])
+def test_network_by_chunk(self_contacts, tmp_path):
+    """Nor does the network, whose edges are written a block at a time.
+
+    An equivalence guard: it passes without the change that writes the
+    edges a block at a time, which keeps the network as it was."""
+    pairs, assembly = TESTS_DATA_PAIRS["subset"]
+    metacool = make_metacool(tmp_path / "map.metacool", pairs, assembly, 1000)
+    networks = []
+    for chunksize in [mtn.METACOOL_CHUNKSIZE, 9973]:
+        contig_data, _ = mtn.create_contig_data(str(assembly))
+        out = tmp_path / str(chunksize)
+        out.mkdir()
+        network, contigs = mtn.metacool_to_contacts(
+            str(metacool), contig_data, str(out), "network.txt", "contigs.txt", str(out), 1, "empirical_hit",
+            self_contacts, chunksize=chunksize
+        )  # fmt: skip
+        networks.append((Path(network).read_text(), Path(contigs).read_text()))
+    assert networks[0] == networks[1]
+    assert len(networks[0][0].splitlines()) > 2 * 9973
 
 
 def test_pixel_row_blocks():
