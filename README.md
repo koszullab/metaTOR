@@ -249,22 +249,25 @@ to `-1` (one file, or an entry of a `.mmetacool` collection, `file.mmetacool::en
 metator pipeline -S metacool -1 sample.metacool -a assembly.fa -d depth.txt -e DpnII -o binning
 ```
 
-The map can have any bin size, from one bin per contig (as the maps written by metaTOR) to fixed bins,
-and must hold the contigs of the assembly, with their lengths: the contig ids, GC contents, coverages
-and restriction sites still come from the assembly, `--depth` and `--enzyme`. The contacts between two
-contigs are those between their bins, and the hits of a contig those of its bins, so that the network
-and `contig_data_network.txt` are those of the pairs the map was made of, with one difference: a pair
-with a read on the last base of a contig, which the network of the pairs leaves out even with
-`--edge 0`, is a contact of the map (as is a pair with a read at position 0, which some pairs files
-hold). A map that cannot give this network (other contigs, or both triangles of the matrix stored) stops
-the run with an error, whose reason is logged in the log file of the run. The libraries of a map are
-already summed: no `network_N.txt` is written. `--edge` must be 0, as a map holds no read positions;
-`pipeline --scaffold`, which reads the pairs files, is refused, and `pipeline` writes no `.metacool` file
-of the bins, which is made from the pairs files. The heatmap of the final bin network
-(`plot/network_heatmap.png`) is drawn from the `.pairs.gz` files of the output directory: a run from a
-map draws none, and its log warns that no pairs alignment files were found, unless the output directory
-holds those of an earlier run (a rebinning in the directory of a run from reads, for example), from
-which the heatmap is then drawn.
+The map can have any bin size, from one bin per contig (as the maps written by metaTOR) to fixed bins.
+Its contigs must be contigs of the assembly, with their lengths: the contig ids, GC contents, coverages
+and restriction sites still come from the assembly, `--depth` and `--enzyme`. It may lack some of them,
+as a map made with a contig filter does (`metacooler create pairs --filter 'contigs.length >= 1kb'`, for
+example, which also leaves out the pairs with a read on the contigs that it drops): those get no
+contacts and no hits, as contigs that no read maps to, and the log file says how many they are. The
+contacts between two contigs are those between their bins, and the hits of a contig those of its bins,
+so that the network and `contig_data_network.txt` are those of the pairs the map holds, with one
+difference: a pair with a read on the last base of a contig, which the network of the pairs leaves out
+even with `--edge 0`, is a contact of the map (as is a pair with a read at position 0, which some pairs
+files hold). A map that cannot give this network (contigs that are not in the assembly or that have
+other lengths, or both triangles of the matrix stored) stops the run with an error, whose reason is
+logged in the log file of the run. The libraries of a map are already summed: no `network_N.txt` is
+written. `--edge` must be 0, as a map holds no read positions; `pipeline --scaffold`, which reads the
+pairs files, is refused, and `pipeline` writes no `.metacool` file of the bins, which is made from the
+pairs files. The heatmap of the final bin network (`plot/network_heatmap.png`) is drawn from the
+`.pairs.gz` files of the output directory: a run from a map draws none, and its log warns that no pairs
+alignment files were found, unless the output directory holds those of an earlier run (a rebinning in
+the directory of a run from reads, for example), from which the heatmap is then drawn.
 
 ### metator mge
 

@@ -616,8 +616,9 @@ def network(
     contact map of the contigs, at any bin size: its contacts, whose
     libraries are summed (no network per library), make the same network as
     the pairs they were made from, except for the pairs with a read on the
-    last base of a contig (or at position 0), which it keeps. --edge must
-    then be 0.
+    last base of a contig (or at position 0), which it keeps. The map may
+    lack contigs of the assembly (a map made with a contig filter, for
+    example): those get no contacts. --edge must then be 0.
 
     Note: the network is in a strict barebone form so that it can be reused
     and imported quickly into other applications etc. Verbose information

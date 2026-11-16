@@ -173,6 +173,12 @@ def metacool_to_contacts(
     pairs files: same normalizations, edges in the same order, same contig
     data file.
 
+    The map may lack contigs of the assembly (a map made with a contig
+    filter, for example, which leaves out the pairs with a read on the
+    contigs it drops): those have no contacts and 0 hits, as a contig that
+    no read of the pairs files maps to. The network is then that of the
+    pairs the map holds.
+
     It differs from the network of the pairs in two ways:
 
     * a pair with a read on the last base of a contig is a contact of the
@@ -202,8 +208,9 @@ def metacool_to_contacts(
         Dictionary of the all the contigs from the assembly (see
         create_contig_data), the contigs names are the keys to the data of the
         contig available with the following keys: "id", "length", "GC",
-        "hit", "coverage", "RS". The map must hold the same contigs, with the
-        same lengths. Their hits are set from the map.
+        "hit", "coverage", "RS". The contigs of the map must be contigs of
+        the assembly, with the same lengths, but the map may lack some. Their
+        hits are set from the map: 0 for a contig that it lacks.
     out_dir : str
         The output directory to write the network and contig data into.
     output_file_network : str
@@ -233,9 +240,9 @@ def metacool_to_contacts(
     Raises:
     -------
     metator.metacool.MetacoolError
-        If the map cannot be read, stores both triangles of the matrix, does
-        not hold the contigs of the assembly, with the same lengths, holds no
-        contact, or holds counts that are not integers (see
+        If the map cannot be read, stores both triangles of the matrix, holds
+        contigs that are not in the assembly or that have another length in
+        it, holds no contact, or holds counts that are not integers (see
         read_metacool_contacts).
     """
     network_file = join(out_dir, output_file_network)
@@ -294,8 +301,9 @@ def read_metacool_contacts(metacool, contig_data, chunksize=METACOOL_CHUNKSIZE):
         collection: ``file.mmetacool::entries/<name>``.
     contig_data : dict
         Dictionary of the all the contigs from the assembly (see
-        create_contig_data). The map must hold the same contigs, with the
-        same lengths.
+        create_contig_data). The contigs of the map must be contigs of the
+        assembly, with the same lengths, but the map may lack some: they have
+        no contacts.
     chunksize : int
         Number of pixels read at a time.
 
@@ -304,7 +312,7 @@ def read_metacool_contacts(metacool, contig_data, chunksize=METACOOL_CHUNKSIZE):
     numpy.ndarray:
         Hits of each contig, indexed by contig id (index 0 is unused): the
         sum of the pixels of its bins, a pixel between two of its bins
-        counting twice.
+        counting twice, and 0 for a contig that the map lacks.
     pandas.DataFrame:
         Contacts between two contigs, one row per contig pair in contact,
         sorted: columns id1, id2 (id1 <= id2, an intra-contig contact has
@@ -315,9 +323,9 @@ def read_metacool_contacts(metacool, contig_data, chunksize=METACOOL_CHUNKSIZE):
     metator.metacool.MetacoolError
         If the map cannot be read (a missing file, a file that is not a
         .metacool one, a .mmetacool without the entry), stores both
-        triangles of the matrix (storage-mode square), does not hold the
-        contigs of the assembly, with the same lengths, or holds counts that
-        are not integers.
+        triangles of the matrix (storage-mode square), holds contigs that are
+        not in the assembly or that have another length in it, or holds
+        counts that are not integers.
     """
     import metacooler
 
@@ -380,6 +388,10 @@ def read_metacool_contacts(metacool, contig_data, chunksize=METACOOL_CHUNKSIZE):
 def metacool_contig_ids(metacool, contigs, contig_data):
     """Id of each contig of a .metacool contact map in the contig data.
 
+    The map may lack contigs of the assembly (a map made with a contig
+    filter, for example): they get no contacts, which an INFO message says,
+    with their number and the first names.
+
     Parameters:
     -----------
     metacool : str
@@ -398,23 +410,15 @@ def metacool_contig_ids(metacool, contigs, contig_data):
     Raises:
     -------
     metator.metacool.MetacoolError
-        If the map does not hold the contigs of the assembly (with the
-        names missing from the map and those that are not in the assembly),
-        or holds them with other lengths.
+        If the map holds contigs that are not in the assembly (with their
+        names), or contigs that have another length in it.
     """
     names = [str(name) for name in contigs["name"]]
-    in_map = set(names)
-    missing = [name for name in contig_data if name not in in_map]
     extra = [name for name in names if name not in contig_data]
-    if missing or extra:
-        problems = []
-        if missing:
-            problems.append(f"{len(missing)} contig(s) of the assembly are not in it: {mtmc._shown(missing)}")
-        if extra:
-            problems.append(f"{len(extra)} of its contig(s) are not in the assembly: {mtmc._shown(extra)}")
+    if extra:
         raise mtmc.MetacoolError(
-            f"{metacool} is not a contact map of the contigs of the assembly: {'; '.join(problems)}. Build it from "
-            "pairs of reads aligned on this assembly."
+            f"{metacool} is not a contact map of the contigs of the assembly: {len(extra)} of its contig(s) are not "
+            f"in the assembly: {mtmc._shown(extra)}. Build it from pairs of reads aligned on this assembly."
         )
     wrong = [
         (name, int(length))
@@ -429,6 +433,13 @@ def metacool_contig_ids(metacool, contigs, contig_data):
         raise mtmc.MetacoolError(
             f"{metacool} is not a contact map of the contigs of the assembly: {len(wrong)} contig(s) have another "
             f"length in it: {shown}{', ...' if len(wrong) > mtmc.MAX_SHOWN else ''}."
+        )
+    in_map = set(names)
+    missing = [name for name in contig_data if name not in in_map]
+    if missing:
+        logger.info(
+            f"{len(missing)} contig(s) of the assembly are not in {metacool}: they get no contacts, as contigs that no "
+            f"read maps to: {mtmc._shown(missing)}."
         )
     return np.array([contig_data[name]["id"] for name in names], dtype=np.int64)
 

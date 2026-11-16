@@ -5,10 +5,12 @@
 
 import collections
 import gzip
+import logging
 import random
 import shutil
 from pathlib import Path
 
+import cooler
 import h5py
 import metacooler
 import numpy as np
@@ -18,6 +20,7 @@ import pytest
 import metator.metacool as mtmc
 import metator.network as mtn
 import metator.partition as mtp
+from metator.log import logger
 
 TESTS_DATA = Path(__file__).resolve().parents[1] / "tests_data"
 
@@ -35,9 +38,11 @@ BIN_SIZES = [None, 1000]
 PAIRS_HEADER = "## pairs format v1.0\n#columns: readID chr1 pos1 chr2 pos2 strand1 strand2\n"
 
 
-def make_metacool(path, pairs, assembly, binsize=None):
+def make_metacool(path, pairs, assembly, binsize=None, filters=None):
     """A .metacool file of the pairs, its contigs in the order of the
     assembly, all of them unbinned: one bin per contig without binsize.
+    With filters (metacooler's --filter), the contigs that they drop are not
+    in the map, nor are the pairs with a read on them.
 
     metacooler indexes the assembly (.fai): it reads a private copy.
     """
@@ -56,8 +61,36 @@ def make_metacool(path, pairs, assembly, binsize=None):
         contig_genome_map=None,
         contig_ordering="fasta",
         ps=False,
+        filters=filters,
         **bins,
     )
+    return path
+
+
+def filtered_metacool(path, pairs, assembly, binsize, shortest, how):
+    """A map of the pairs that lacks the contigs shorter than shortest, and
+    the pairs with a read on them, as metacooler makes it: with a contig
+    filter at creation (create pairs --filter), or cut from the map of all
+    the contigs (extract --filter, which writes a .cool file, made a map
+    again by create cool)."""
+    filters = [f"contigs.length >= {shortest}"]
+    if how == "create":
+        return make_metacool(path, pairs, assembly, binsize, filters)
+    full = make_metacool(path.with_name("full.metacool"), pairs, assembly, binsize)
+    cut = path.with_suffix(".cool")
+    metacooler.extract(str(full), filters=filters, output=str(cut))
+    metacooler.from_cool(str(cut), str(path), contig_genome_map=None, contig_ordering="cool")
+    return path
+
+
+def kept_pairs(pairs_file, contigs, path):
+    """The pairs file (header included) of the pairs whose two reads lie on
+    the given contigs."""
+    with (gzip.open if str(pairs_file).endswith(".gz") else open)(pairs_file, "rt") as pairs, open(path, "w") as kept:
+        for line in pairs:
+            fields = line.split("\t")
+            if line.startswith("#") or (fields[1] in contigs and fields[3] in contigs):
+                kept.write(line)
     return path
 
 
@@ -196,6 +229,43 @@ def test_network_of_a_metacool_with_self_contacts(dataset, binsize, tmp_path):
     assert any(line.split("\t")[0] == line.split("\t")[1] for line in from_map["network"].read_text().splitlines())
 
 
+@pytest.mark.parametrize("binsize", BIN_SIZES)
+@pytest.mark.parametrize("how", ["create", "extract"])
+def test_network_of_a_filtered_metacool(dataset, how, binsize, tmp_path):
+    """A map that lacks contigs of the assembly, made with a contig filter,
+    which leaves out the pairs with a read on the contigs it drops: its
+    network is that of the pairs it holds, whose two reads lie on the
+    contigs it keeps, and the contigs it lacks get no hits and no edges, as
+    contigs that no read maps to. The same contig data, and the same
+    network, but the outside contacts (none without them, and byte for byte
+    with self contacts)."""
+    contig_data, _ = mtn.create_contig_data(str(dataset["assembly"]))
+    lengths = {name: data["length"] for name, data in contig_data.items()}
+    shortest = int(np.median(list(lengths.values())))
+    kept = {name for name, length in lengths.items() if length >= shortest}
+    metacool = filtered_metacool(tmp_path / "map.metacool", dataset["pairs"], dataset["assembly"], binsize, shortest, how)
+    assert sorted(metacooler.MetaCooler(str(metacool)).contigs.name) == sorted(kept)
+    assert 0 < len(kept) < len(lengths)
+    pairs = {**dataset, "pairs": kept_pairs(dataset["pairs"], kept, tmp_path / "kept.pairs")}
+
+    from_pairs, from_map = both_networks(pairs, metacool, tmp_path / "raw")
+    assert from_map["contig_data"].read_text() == from_pairs["contig_data"].read_text()
+    table = pd.read_csv(from_map["contig_data"], sep="\t")
+    assert (table.Hit[~table.Name.isin(kept)] == 0).all()
+    assert table.Hit[table.Name.isin(kept)].sum() > 0
+    last_base, position_0 = outside_contacts(pairs["pairs"], contig_data)
+    pairs_edges, map_edges = network_lines(from_pairs["network"]), network_lines(from_map["network"])
+    assert weights(map_edges) == dict(collections.Counter(weights(pairs_edges)) + last_base + position_0)
+    assert [edge for edge in map_edges if edge in pairs_edges] == list(pairs_edges)
+    assert {contig for edge in map_edges for contig in edge} <= {contig_data[name]["id"] for name in kept}
+    if not (last_base or position_0):
+        assert from_map["network"].read_text() == from_pairs["network"].read_text()
+
+    from_pairs, from_map = both_networks(pairs, metacool, tmp_path / "self", self_contacts=True)
+    assert from_map["network"].read_text() == from_pairs["network"].read_text()
+    assert from_map["contig_data"].read_text() == from_pairs["contig_data"].read_text()
+
+
 @pytest.mark.parametrize("algorithm", ["louvain", "leiden"])
 def test_partition_of_a_metacool_network(metagenome_files, tmp_path, algorithm):
     """Partition makes the same bins of both networks of the mock community
@@ -318,15 +388,19 @@ PAIRS = [("a", 10, "b", 20), ("b", 30, "c", 5), ("a", 4, "a", 40)]
     [
         (
             {"a": 100, "b": 200, "d": 300, "e": 40},
-            "is not a contact map of the contigs of the assembly: 2 contig(s) of the assembly are not in it: 'd', 'e'; "
-            "1 of its contig(s) are not in the assembly: 'c'.",
+            "is not a contact map of the contigs of the assembly: 1 of its contig(s) are not in the assembly: 'c'. "
+            "Build it from pairs of reads aligned on this assembly.",
         ),
         ({"a": 100, "b": 200}, "1 of its contig(s) are not in the assembly: 'c'. Build it from pairs"),
-        ({"a": 100, "b": 200, "c": 400, "z": 8}, "1 contig(s) of the assembly are not in it: 'z'. Build it from pairs"),
         (
             {"a": 100, "b": 204, "c": 400},
             "is not a contact map of the contigs of the assembly: 2 contig(s) have another length in it: 'b' (200 bp "
             "in the map, 204 bp in the assembly), 'c' (300 bp in the map, 400 bp in the assembly).",
+        ),
+        (
+            {"a": 100, "b": 204, "c": 300, "z": 8},
+            "is not a contact map of the contigs of the assembly: 1 contig(s) have another length in it: 'b' (200 bp "
+            "in the map, 204 bp in the assembly).",
         ),
     ],
 )
@@ -336,15 +410,61 @@ def test_map_of_other_contigs(assembly, message, tmp_path):
         mtn.read_metacool_contacts(str(metacool), _contig_data(tmp_path, assembly))
     assert message in str(error.value)
     assert str(error.value).startswith(f"{metacool} is not a contact map")
+    # The contigs of the assembly that the map lacks are not a reason.
+    assert "of the assembly are not in" not in str(error.value)
 
 
-def test_many_missing_contigs_are_cut_short(tmp_path):
+@pytest.fixture
+def logged():
+    """The messages that metaTOR logs during the test, with their level."""
+    records = []
+    handler = logging.Handler()
+    handler.emit = records.append
+    logger.addHandler(handler)
+    yield lambda: [(record.levelname, record.getMessage()) for record in records]
+    logger.removeHandler(handler)
+
+
+def test_map_lacking_contigs(tmp_path, logged):
+    """A map may lack contigs of the assembly (a map made with a contig
+    filter, for example): they get no contacts and no hits, as contigs that
+    no read maps to, which an INFO message says. The ids are those of the
+    assembly."""
+    metacool = _small_map(tmp_path, {"a": 100, "b": 200, "c": 300}, PAIRS)
+    # Ids: z 1, a 2, b 3, y 4, c 5.
+    contig_data = _contig_data(tmp_path, {"z": 8, "a": 100, "b": 200, "y": 12, "c": 300})
+    hits, contacts = mtn.read_metacool_contacts(str(metacool), contig_data)
+    assert list(hits) == [0, 0, 3, 2, 0, 1]
+    assert contacts.to_dict("list") == {"id1": [2, 2, 3], "id2": [2, 3, 5], "count": [1, 1, 1]}
+    message = (
+        f"2 contig(s) of the assembly are not in {metacool}: they get no contacts, as contigs that no read maps to: 'z', 'y'."
+    )
+    assert logged() == [("INFO", message)]
+    network, contigs = mtn.metacool_to_contacts(str(metacool), contig_data, str(tmp_path), "network.txt",
+                                                "contigs.txt", str(tmp_path), 1, "None", True)  # fmt: skip
+    assert Path(network).read_text() == "2\t2\t1\n2\t3\t1\n3\t5\t1\n"
+    table = pd.read_csv(contigs, sep="\t")
+    assert list(table.Name) == ["z", "a", "b", "y", "c"] and list(table.Hit) == [0, 3, 2, 0, 1]
+    assert [entry for entry in logged() if "of the assembly are not in" in entry[1]] == [("INFO", message)] * 2
+
+
+def test_complete_map_lacks_no_contig(tmp_path, logged):
+    metacool = _small_map(tmp_path, {"a": 100, "b": 200, "c": 300}, PAIRS)
+    mtn.read_metacool_contacts(str(metacool), _contig_data(tmp_path, {"c": 300, "a": 100, "b": 200}))
+    assert logged() == []
+
+
+def test_many_contigs_are_cut_short(tmp_path, logged):
     metacool = _small_map(tmp_path, {"a": 100, "b": 200, "c": 300}, PAIRS)
     assembly = {"a": 100, "b": 200, "c": 300, **{f"x{i}": 8 for i in range(7)}}
-    with pytest.raises(
-        mtmc.MetacoolError, match=r"7 contig\(s\) of the assembly are not in it: 'x0', 'x1', 'x2', 'x3', 'x4', \.\.\."
-    ):
-        mtn.read_metacool_contacts(str(metacool), _contig_data(tmp_path, assembly))
+    mtn.read_metacool_contacts(str(metacool), _contig_data(tmp_path, assembly))
+    assert logged() == [
+        (
+            "INFO",
+            f"7 contig(s) of the assembly are not in {metacool}: they get no contacts, as contigs that no read maps "
+            "to: 'x0', 'x1', 'x2', 'x3', 'x4', ... (+2 more).",
+        )
+    ]
     lengths = {"a": 104, "b": 204, "c": 304, **{f"x{i}": 8 for i in range(7)}}
     (tmp_path / "many").mkdir()
     small = _small_map(tmp_path / "many", {**{f"x{i}": 4 for i in range(7)}, "a": 100, "b": 200, "c": 300}, PAIRS)
@@ -375,11 +495,18 @@ def test_small_map_network(tmp_path):
         (str(TESTS_DATA / "subset.pairs.gz"), f"Cannot read the contact map {TESTS_DATA / 'subset.pairs.gz'}: "),
         ("maps.mmetacool", "Cannot read the contact map maps.mmetacool: No metacool entry at root of maps.mmetacool."),
         ("maps.mmetacool::entries/lib2", "Cannot read the contact map maps.mmetacool::entries/lib2: Group "),
+        # A cooler that is not a map (what metacooler extract writes).
+        ("plain.cool", "Cannot read the contact map plain.cool: "),
     ],
 )
 def test_unreadable_map(uri, message, tmp_path):
     metacool = _small_map(tmp_path, {"a": 100, "b": 200, "c": 300}, PAIRS)
     metacooler.create_mmetacool(Path("maps.mmetacool"), {"lib1": metacool})
+    cooler.create_cooler(
+        "plain.cool",
+        pd.DataFrame({"chrom": ["a"], "start": [0], "end": [100]}),
+        pd.DataFrame({"bin1_id": [0], "bin2_id": [0], "count": [1]}),
+    )
     with pytest.raises(mtmc.MetacoolError) as error:
         mtn.read_metacool_contacts(uri, _contig_data(tmp_path, {"a": 100, "b": 200, "c": 300}))
     assert str(error.value).startswith(message)

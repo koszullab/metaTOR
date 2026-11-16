@@ -334,3 +334,48 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, metagenome_inde
     assert synthetic.adjusted_rand(truth, found) >= 0.9
     # No map of the bins from a map: it is written from pairs files.
     assert not list(mcool.glob("*.metacool"))
+
+
+def test_pipeline_from_a_filtered_metacool(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli):
+    """From a map that lacks contigs of the assembly (made with a contig
+    filter, which leaves out the pairs with a read on the contigs it drops),
+    the pipeline completes and makes the bins of a run from the pairs that
+    the map holds: the contigs it lacks have no hits and are in no bin."""
+    monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
+    truth = metagenome.truth
+    shortest = int(truth.Length.median())
+    kept = set(truth.Name[truth.Length >= shortest])
+    # The map, at 1 kb, of the contigs of shortest bp or more. metacooler
+    # indexes the assembly (.fai): it reads a private copy.
+    metacool = tmp_path / "filtered.metacool"
+    metacooler.from_pairs(str(metacool), pairs=str(metagenome_inputs["pairs"]), binsize=1000, contig_genome_map=None,
+                          fasta=str(shutil.copyfile(metagenome_inputs["assembly"], tmp_path / "map.fa")), ps=False,
+                          filters=[f"contigs.length >= {shortest}"])  # fmt: skip
+    assert set(metacooler.MetaCooler(str(metacool)).contigs.name) == kept
+    # The pairs it holds: those whose two reads lie on the contigs it keeps.
+    pairs = tmp_path / "kept.pairs"
+    with open(metagenome_inputs["pairs"]) as all_pairs, open(pairs, "w") as kept_pairs:
+        for line in all_pairs:
+            fields = line.split("\t")
+            if line.startswith("#") or (fields[1] in kept and fields[3] in kept):
+                kept_pairs.write(line)
+    common = ["-a", str(metagenome_inputs["assembly"]), "-d", str(metagenome_inputs["depth"]), "-e", "DpnII", "-s", "50000",
+              "-i", "10", "-j", "5", "-T", str(tmp_path / "tmp")]  # fmt: skip
+    random.seed(0)
+    run_cli("pipeline", "-1", str(pairs), "-S", "pair", "-o", str(tmp_path / "pair"), "--no-metacool", *common)
+    random.seed(0)
+    run_cli("pipeline", "-1", str(metacool), "-S", "metacool", "-o", str(tmp_path / "metacool"), *common)
+
+    pair, mcool = tmp_path / "pair", tmp_path / "metacool"
+    for name in ["contig_data_network.txt", "contig_data_final.txt", "bin_summary.txt", "binning.txt"]:
+        assert (mcool / name).read_text() == (pair / name).read_text(), name
+    assert sorted(p.name for p in (mcool / "final_bin_unscaffold").iterdir()) == sorted(
+        p.name for p in (pair / "final_bin_unscaffold").iterdir()
+    )
+    final = pd.read_csv(mcool / "contig_data_final.txt", sep="\t")
+    lacking = ~final.Name.isin(kept)
+    assert 0 < lacking.sum() < len(final)
+    assert (final.Hit[lacking] == 0).all() and (final.Final_bin[lacking] == "ND").all()
+    assert len(pd.read_csv(mcool / "bin_summary.txt", sep="\t")) > 0
+    (log,) = mcool.glob("metator_pipeline_*.log")
+    assert f"INFO :: {lacking.sum()} contig(s) of the assembly are not in {metacool}: they get no contacts" in log.read_text()
