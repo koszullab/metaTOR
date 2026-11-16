@@ -375,8 +375,10 @@ def test_metacool_command_existing_outfile(binning, tmp_path, run_cli):
     out = tmp_path / "map.metacool"
     out.write_text("old")
     args = ["-c", binning["contig_data"], "-o", out, binning["pairs"]]
-    run_cli("metacool", *args, exit_code=1)
-    assert f"ERROR :: {out} already exists. Use --force to overwrite it." in _logged(tmp_path)
+    message = f"{out} already exists. Use --force to overwrite it."
+    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
+        run_cli("metacool", *args)
+    assert f"ERROR :: {message}" in _logged(tmp_path)
     assert out.read_text() == "old"
     run_cli("metacool", *args, "-F")
     metacooler.validate(str(out))
@@ -391,7 +393,9 @@ ERRORS = {
 
 @pytest.mark.parametrize("case", list(ERRORS))
 def test_metacool_command_errors(case, metagenome, metagenome_network, binning, tmp_path, run_cli):
-    """Refused with a message and exit status 1, before any pair is read."""
+    """Refused before any pair is read, as metaTOR refuses an input: the
+    reason is logged as an error, in the log file of the run, and the
+    MetacoolError stops the command."""
     pairs, message = ERRORS[case]
     contig_data = binning["contig_data"]
     if case == "contig data without Final_bin":
@@ -399,14 +403,18 @@ def test_metacool_command_errors(case, metagenome, metagenome_network, binning, 
     elif case == "non-ASCII contig names":
         name = metagenome.contigs[0].name
         contig_data.write_text(contig_data.read_text().replace(f"\t{name}\t", "\tcontig_é\t"))
-    run_cli("metacool", "-c", contig_data, "-o", "map.metacool", *(pairs or [binning["pairs"]]), exit_code=1)
-    assert re.search(rf"ERROR :: .*{re.escape(message)}", _logged(tmp_path))
+    with pytest.raises(mtmc.MetacoolError, match=re.escape(message)) as error:
+        run_cli("metacool", "-c", contig_data, "-o", "map.metacool", *(pairs or [binning["pairs"]]))
+    assert f"ERROR :: {error.value}\n" in _logged(tmp_path)
     assert not (tmp_path / "map.metacool").exists()
 
 
 def test_metacool_command_threads_below_one(binning, tmp_path, monkeypatch, run_cli):
-    """-t 0: an error message, not a traceback, before any pair is read."""
+    """-t 0: refused with a message (not metacooler's ValueError), before
+    any pair is read."""
     monkeypatch.setattr(metacooler, "from_pairs", lambda *args, **kwargs: pytest.fail("pairs read"))
-    run_cli("metacool", "-c", binning["contig_data"], "-o", "map.metacool", "-t", "0", binning["pairs"], exit_code=1)
-    assert "ERROR :: The number of threads must be at least 1, got 0." in _logged(tmp_path)
+    message = "The number of threads must be at least 1, got 0."
+    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
+        run_cli("metacool", "-c", binning["contig_data"], "-o", "map.metacool", "-t", "0", binning["pairs"])
+    assert f"ERROR :: {message}" in _logged(tmp_path)
     assert not (tmp_path / "map.metacool").exists()

@@ -1492,8 +1492,9 @@ def metacool(pairsfile, contig_data, bin_summary, outfile, assembly_name, thread
             metadata=run_metadata(),
         )
     except mtmc.MetacoolError as error:
+        # The reason in the log file of the run, then the error.
         logger.error(str(error))
-        click.get_current_context().exit(1)
+        raise
 
     generate_log_footer(log_file)
 
