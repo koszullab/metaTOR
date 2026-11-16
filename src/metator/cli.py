@@ -216,7 +216,7 @@ def assembly_basename(assembly):
     return re.sub(r"(\.(fa|fas|fasta|fna))?(\.gz)?$", "", os.path.basename(os.path.normpath(assembly)))
 
 
-def pipeline_metacool(pairs_files, outdir, prefix, assembly, tmp_dir, threads):
+def pipeline_metacool(pairs_files, outdir, prefix, assembly, threads):
     """Write the contact map of a pipeline run: <outdir>/<prefix>.metacool,
     or <outdir>/metator.metacool without --prefix.
 
@@ -240,7 +240,6 @@ def pipeline_metacool(pairs_files, outdir, prefix, assembly, tmp_dir, threads):
             threads=threads,
             force=True,
             metadata=run_metadata(),
-            tmp_dir=tmp_dir,
         )
     except mtmc.MetacoolError as error:
         logger.warning(f"{outfile} is not written: {str(error).rstrip('.')}. The other outputs of the run are kept.")
@@ -1128,7 +1127,7 @@ def pipeline(
 
         # Write the contact map last, while the pairs files are still there.
         if not no_metacool:
-            pipeline_metacool(alignment_files, outdir, prefix, assembly, tmp_dir, threads)
+            pipeline_metacool(alignment_files, outdir, prefix, assembly, threads)
 
     # Delete the pairs files made from the reads or the alignments, and
     # their pypairix index.

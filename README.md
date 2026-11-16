@@ -207,7 +207,9 @@ and the tools built on it read it as any `.cool` file, and `metacooler` adds the
   several libraries are summed;
 * the genomes table holds the columns of `bin_summary.txt` (completeness, redundancy, Hi-C and
   shotgun abundances...), next to the length, contig and bin counts of each genome and the contact
-  statistics that metacooler computes while reading the pairs;
+  statistics that metacooler computes while reading the pairs. Each row of `bin_summary.txt` must
+  have as many fields as its header, as metaTOR writes it: metacooler refuses a table whose values it
+  cannot match with their columns;
 * the metadata of the file hold the version of metaTOR, the command line and its parameters, under
   the `metator` key.
 
@@ -225,10 +227,11 @@ metacooler marks a contig in no bin (`NA`, `NaN`, `N/A`, `N/D`, `-1` or `__unbin
 and `nd` in any case other than `ND`, which marks a contig in no bin): metacooler would put its contigs
 in `__unbinned__`. metaTOR's own bin names never
 are, but those of a hand-edited `contig_data_final.txt` can be. When the map cannot be written (for
-example, an assembly with contig names that are not ASCII), `metator pipeline` logs a warning saying
-why and keeps its other outputs and its exit status; `metator metacool` stops with an error. A map
-that an earlier run left in the output directory is removed before the new one is written, as it no
-longer matches the bins: a run whose map cannot be written leaves none.
+example, an assembly with contig names that are not ASCII, or a misaligned `bin_summary.txt`),
+`metator pipeline` logs a warning saying why and keeps its other outputs and its exit status;
+`metator metacool` logs the reason as an error and stops with it. A map that an earlier run left in
+the output directory is removed before the new one is written, as it no longer matches the bins: a
+run whose map cannot be written leaves none.
 
 ### metator mge
 

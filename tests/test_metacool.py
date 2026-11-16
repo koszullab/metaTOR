@@ -19,6 +19,8 @@ import metator.log as mtl
 import metator.metacool as mtmc
 from metator.version import __version__
 
+TESTS_DATA = Path(__file__).resolve().parents[1] / "tests_data"
+
 PAIRS_HEADER = "## pairs format v1.0\n#columns: readID chr1 pos1 chr2 pos2 strand1 strand2\n"
 
 
@@ -317,16 +319,43 @@ def test_read_contig_bins(tmp_path):
     assert final_bin == {"01": "b1"}
 
 
-def test_write_genomes_table(tmp_path):
-    """The bin names become genome_name; the values are copied verbatim."""
-    summary = tmp_path / "bin_summary.txt"
-    summary.write_text(
-        "\tLength\tPresent Markers\tparent\tHiC_abundance\nb1\t100.00\t3.00\t\t0.0597\nb2\t20.50\t1.00\tb0\t1.0000\n"
-    )
-    mtmc.write_genomes_table(str(summary), str(tmp_path / "genomes.tsv"))
-    assert (tmp_path / "genomes.tsv").read_text() == (
-        "genome_name\tLength\tPresent Markers\tparent\tHiC_abundance\nb1\t100.00\t3.00\t\t0.0597\nb2\t20.50\t1.00\tb0\t1.0000\n"
-    )
+@pytest.mark.parametrize(
+    "content, reason",
+    [
+        (b"", "No columns to parse from file."),
+        (b"Name\tSize\tFinal_bin\nc1\t100\tb1\nc2\t200\tb1\tb2\n", "Expected 3 fields in line 3, saw 4."),
+        (b"Name\tSize\tFinal_bin\nc\xe91\t100\tb1\n", "'utf-8' codec can't decode byte 0xe9"),
+    ],
+    ids=["empty", "row of more fields", "not UTF-8"],
+)
+def test_read_contig_bins_unreadable_table(content, reason, tmp_path):
+    """A contig data file that pandas cannot read as a table: a
+    MetacoolError naming the file, pandas' error chained."""
+    table = tmp_path / "contig_data_final.txt"
+    table.write_bytes(content)
+    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(str(table))} cannot be read as a table: ") as error:
+        mtmc.read_contig_bins(str(table))
+    assert reason in str(error.value)
+    assert isinstance(error.value.__cause__, ValueError)
+
+
+@pytest.mark.parametrize("size", ["1x00", "", "100.0"])
+def test_read_contig_bins_size_not_a_whole_number(size, tmp_path):
+    table = tmp_path / "contig_data_final.txt"
+    table.write_text(f"Name\tSize\tFinal_bin\nc1\t100\tb1\nc2\t{size}\tND\n")
+    message = f"The Size column of {table} must give the length of each contig in bp, as a whole number: "
+    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}.*'{re.escape(size)}'\\.$") as error:
+        mtmc.read_contig_bins(str(table))
+    assert isinstance(error.value.__cause__, ValueError)
+
+
+def test_outfile_in_a_file(binning, tmp_path):
+    """An outfile whose directory cannot be made: a MetacoolError, with the
+    message of the OSError."""
+    (tmp_path / "file").write_text("not a directory")
+    with pytest.raises(mtmc.MetacoolError, match=r"^\[Errno 17\] File exists: ") as error:
+        mtmc.write_metacool(str(binning["pairs"]), str(binning["contig_data"]), str(tmp_path / "file" / "map.metacool"))
+    assert isinstance(error.value.__cause__, FileExistsError)
 
 
 def test_metacooler_messages_go_to_the_log_file(metagenome, binning, tmp_path):
@@ -436,11 +465,45 @@ def test_metacool_command_existing_outfile(binning, tmp_path, run_cli):
     metacooler.validate(str(out))
 
 
+def test_metacool_command_misaligned_bin_summary(binning, tmp_path, run_cli):
+    """A bin summary whose header has more fields than its rows, as
+    tests_data/outdir/bin_summary.txt (18 and 15): metacooler cannot tell
+    which column each value belongs to. Its reason is logged, then raised
+    as a MetacoolError, and no map is left."""
+    summary = TESTS_DATA / "outdir" / "bin_summary.txt"
+    with pytest.raises(mtmc.MetacoolError, match=r"^Genomes table is misaligned: .*bin_summary\.txt\n") as error:
+        run_cli("metacool", "-c", binning["contig_data"], "-b", summary, "-o", "map.metacool", binning["pairs"])
+    assert "header names 18 column(s), but no data row has more than 15" in str(error.value)
+    assert isinstance(error.value.__cause__, ValueError)
+    assert f"ERROR :: {error.value}\n" in _logged(tmp_path)
+    assert not (tmp_path / "map.metacool").exists()
+
+
+@pytest.mark.parametrize(
+    "error",
+    [KeyError("genome_name"), FileExistsError("map.metacool exists"), OSError("No space left on device"), ValueError("bad")],
+    ids=["KeyError", "FileExistsError", "OSError", "ValueError"],
+)
+def test_metacooler_errors_are_metacool_errors(error, binning, tmp_path, monkeypatch, run_cli):
+    """What metacooler raises is logged, then raised again as a
+    MetacoolError, its message kept (not the repr of a KeyError)."""
+
+    def from_pairs(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(metacooler, "from_pairs", from_pairs)
+    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(error.args[0])}$") as raised:
+        run_cli("metacool", "-c", binning["contig_data"], "-o", "map.metacool", binning["pairs"])
+    assert raised.value.__cause__ is error
+    assert f"ERROR :: {error.args[0]}\n" in _logged(tmp_path)
+
+
 ERRORS = {
     "missing pairs file": (["missing.pairs"], "Input file(s) not found: missing.pairs."),
     "contig data without Final_bin": ([], "has no Final_bin column"),
     "non-ASCII contig names": ([], "A .metacool file needs ASCII contig names"),
     "bin named NA": ([], "Rename the 1 bin(s): 'NA'."),
+    "Size not a whole number": ([], "must give the length of each contig in bp, as a whole number: "),
 }
 
 
@@ -460,6 +523,9 @@ def test_metacool_command_errors(case, metagenome, metagenome_network, binning, 
         contig_data = write_contig_data(
             metagenome, tmp_path / "na.txt", {**_bin_names(metagenome), metagenome.contigs[0].name: "NA"}
         )
+    elif case == "Size not a whole number":
+        name = metagenome.contigs[0].name
+        contig_data.write_text(re.sub(rf"\t{name}\t\d+\t", f"\t{name}\t1x00\t", contig_data.read_text()))
     with pytest.raises(mtmc.MetacoolError, match=re.escape(message)) as error:
         run_cli("metacool", "-c", contig_data, "-o", "map.metacool", *(pairs or [binning["pairs"]]))
     assert f"ERROR :: {error.value}\n" in _logged(tmp_path)

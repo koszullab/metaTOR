@@ -372,7 +372,8 @@ def test_pipeline_from_reads(start, clean_up, stub_pipeline, tmp_path, run_cli):
     assert (contig_data, outfile) == (str(out / "contig_data_final.txt"), str(out / "metator.metacool"))
     assert kwargs["bin_summary"] == str(out / "bin_summary.txt")
     assert (kwargs["assembly_name"], kwargs["threads"], kwargs["force"]) == ("assembly", 2, True)
-    assert Path(kwargs["tmp_dir"]).parent == tmp_path / "tmp"
+    # The bin summary goes to metacooler as it is: no temporary copy.
+    assert "tmp_dir" not in kwargs
     metadata = kwargs["metadata"]
     assert metadata["command"].startswith("metator pipeline -1 a1.fq,b1.fq -2 a2.fq,b2.fq -a")
     assert metadata["parameters"]["start"] == start and metadata["parameters"]["no_metacool"] is False
@@ -402,10 +403,10 @@ def _assembly(tmp_path):
     return assembly
 
 
-def _final_tables(monkeypatch, contig, final_bin="metator_00001_00000"):
+def _final_tables(monkeypatch, contig, final_bin="metator_00001_00000", summary=None):
     """Have the stub validation also write the final contig table, where the
     contig ``contig`` is in the bin ``final_bin`` (ND: in none) and c2 is in
-    none, and the bin summary."""
+    none, and the bin summary (``summary``, if given)."""
     stub = mtcli.mtv.recursive_decontamination
 
     def recursive_decontamination(*args):
@@ -414,7 +415,7 @@ def _final_tables(monkeypatch, contig, final_bin="metator_00001_00000"):
             f"\tID\tName\tSize\tFinal_bin\n0\t1\t{contig}\t100\t{final_bin}\n1\t2\tc2\t50\tND\n"
         )
         rows = "" if final_bin == "ND" else f"{final_bin}\t0.9\n"
-        Path(out_dir, "bin_summary.txt").write_text(f"\tCompleteness\n{rows}")
+        Path(out_dir, "bin_summary.txt").write_text(summary or f"\tCompleteness\n{rows}")
         return stub(*args)
 
     monkeypatch.setattr("metator.validation.recursive_decontamination", recursive_decontamination)
@@ -437,6 +438,28 @@ def test_pipeline_non_ascii_contigs_skip_the_metacool(stub_pipeline, tmp_path, m
         f"WARNING :: {out / 'metator.metacool'} is not written: A .metacool file needs ASCII contig names (cooler reads "
         "them as ASCII text), and 1 contig name(s) are not: 'contig_é'. The other outputs of the run are kept."
     ) in logged
+    assert "Traceback" not in logged
+
+
+def test_pipeline_misaligned_bin_summary_is_a_warning(stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """metacooler refuses a bin summary whose header has more fields than its
+    rows: a warning with its reason, without traceback, no map, and the
+    other outputs of the run."""
+    monkeypatch.setattr("metator.metacool.write_metacool", mtmc_write_metacool)
+    _final_tables(monkeypatch, "c1", summary="\tCompleteness\tContigs\nmetator_00001_00000\t0.9\n")
+    pairs = tmp_path / "a.pairs"
+    pairs.write_text("## pairs format v1.0\nr1\tc1\t10\tc2\t20\t+\t-\n")
+    out = tmp_path / "out"
+    run_cli("pipeline", "-1", pairs, "-a", _assembly(tmp_path), "-S", "pair", "-o", out, "-T", tmp_path / "tmp")
+    assert not list(out.glob("*.metacool*"))
+    assert (out / "network.txt").exists() and (out / "bin_summary.txt").exists()
+    (log,) = out.glob("metator_pipeline_*.log")
+    logged = log.read_text()
+    assert (
+        f"WARNING :: {out / 'metator.metacool'} is not written: Genomes table is misaligned: {out / 'bin_summary.txt'}\n"
+        in logged
+    )
+    assert "The other outputs of the run are kept." in logged
     assert "Traceback" not in logged
 
 

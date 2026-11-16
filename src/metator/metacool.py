@@ -26,7 +26,6 @@ Core function to write the file:
 
 import logging
 import os
-import tempfile
 from contextlib import contextmanager
 
 import pandas as pd
@@ -51,6 +50,21 @@ MAX_SHOWN = 5
 
 class MetacoolError(ValueError):
     """The inputs cannot give a .metacool file; the message says why."""
+
+
+@contextmanager
+def _as_metacool_errors():
+    """Raise the ValueError, OSError (FileExistsError among them) and
+    KeyError of writing the map, metacooler's above all, as a MetacoolError,
+    its message kept: metator metacool logs the reason, then raises the
+    error."""
+    try:
+        yield
+    except KeyError as error:
+        # The str() of a KeyError is the repr() of its message.
+        raise MetacoolError(str(error.args[0]) if len(error.args) == 1 else str(error)) from error
+    except (ValueError, OSError) as error:
+        raise MetacoolError(str(error)) from error
 
 
 @contextmanager
@@ -81,6 +95,18 @@ def _shown(names):
     return shown + (f", ... (+{more} more)" if more > 0 else "")
 
 
+def _read_contig_table(contig_data, **kwargs):
+    """A contig data file as a table of text (kwargs: more keyword arguments
+    of pandas.read_csv). A file that pandas cannot read as a table (empty,
+    not UTF-8, a row with more fields than the header...) is a
+    MetacoolError naming the file, as are the other refusals of the inputs.
+    """
+    try:
+        return pd.read_csv(contig_data, sep="\t", dtype=str, keep_default_na=False, **kwargs)
+    except (ValueError, OSError) as error:
+        raise MetacoolError(f"{contig_data} cannot be read as a table: {str(error).strip().rstrip('.')}.") from error
+
+
 def read_contig_bins(contig_data):
     """Bins (one per contig) and final bin of the contigs of a contig data
     file.
@@ -99,15 +125,27 @@ def read_contig_bins(contig_data):
     dict
         Final bin of each binned contig, by contig name. The unbinned
         contigs (Final_bin ND, - or empty) are left out.
+
+    Raises
+    ------
+    MetacoolError
+        If pandas cannot read the file as a table, or it has no Name, Size
+        or Final_bin column, or a Size that is not a whole number.
     """
-    table = pd.read_csv(contig_data, sep="\t", dtype=str, keep_default_na=False)
+    table = _read_contig_table(contig_data)
     missing = [column for column in ["Name", "Size", "Final_bin"] if column not in table.columns]
     if missing:
         raise MetacoolError(
             f"{contig_data} has no {' or '.join(missing)} column: give the contig_data_final.txt file of a "
             "validation or pipeline run."
         )
-    bins = pd.DataFrame({"chrom": table["Name"], "start": 0, "end": table["Size"].astype("int64")})
+    try:
+        sizes = table["Size"].astype("int64")
+    except (ValueError, OverflowError) as error:
+        raise MetacoolError(
+            f"The Size column of {contig_data} must give the length of each contig in bp, as a whole number: {error}."
+        ) from error
+    bins = pd.DataFrame({"chrom": table["Name"], "start": 0, "end": sizes})
     final_bin = table["Final_bin"].str.strip()
     binned = ~final_bin.isin(UNBINNED)
     return bins, dict(zip(table["Name"][binned], final_bin[binned], strict=True))
@@ -149,25 +187,6 @@ def check_bin_names(bins):
         )
 
 
-def write_genomes_table(bin_summary, path):
-    """Write the bin summary as a metacooler genomes table.
-
-    The first column of the bin summary (unnamed in the bin_summary.txt
-    files of metaTOR) holds the bin names: it is renamed genome_name. The
-    values are copied as they are.
-
-    Parameters
-    ----------
-    bin_summary : str
-        Path to the bin summary file.
-    path : str
-        Path to the genomes table to write.
-    """
-    table = pd.read_csv(bin_summary, sep="\t", dtype=str, keep_default_na=False)
-    table.columns = ["genome_name", *table.columns[1:]]
-    table.to_csv(path, sep="\t", index=False)
-
-
 def write_metacool(
     pairs_files,
     contig_data,
@@ -177,7 +196,6 @@ def write_metacool(
     threads=1,
     force=False,
     metadata=None,
-    tmp_dir=None,
 ):
     """Write the contact map of the contigs as a .metacool file.
 
@@ -200,8 +218,9 @@ def write_metacool(
         Path to the .metacool file to write.
     bin_summary : str, optional
         Path to the bin_summary.txt file: its columns are added to the
-        genomes table, one row per bin. Not read when no contig is in a
-        final bin: the map has no genome but ``__unbinned__``.
+        genomes table, one row per bin, named by its first column. Each row
+        must have as many fields as the header. Not read when no contig is
+        in a final bin: the map has no genome but ``__unbinned__``.
     assembly_name : str, optional
         Name of the assembly, stored in the file.
     threads : int
@@ -211,17 +230,19 @@ def write_metacool(
     metadata : dict, optional
         Parameters of the run, stored with the version of metaTOR under the
         "metator" key of the file metadata.
-    tmp_dir : str, optional
-        Directory for the temporary genomes table. Default: the system
-        temporary directory.
 
     Raises
     ------
     MetacoolError
         If threads is below 1, the outfile exists (without force), an input
-        file is missing, the contig data has no Name, Size or Final_bin
-        column, a contig or bin name is not ASCII, or a bin name is one
-        that metacooler reads as no bin (NA, nan, -1...).
+        file is missing, the contig data cannot be read as a table or has
+        no Name, Size or Final_bin column or a Size that is not a whole
+        number, a contig or bin name is not ASCII, a bin name is one that
+        metacooler reads as no bin (NA, nan, -1...), or metacooler cannot
+        write the map (a ValueError, OSError or KeyError, message kept:
+        for example, a bin summary whose rows and header have different
+        numbers of fields, or an outfile in a directory that cannot be
+        made).
     """
     pairs_files = [str(pairs_files)] if isinstance(pairs_files, (str, os.PathLike)) else [str(p) for p in pairs_files]
     if threads < 1:
@@ -242,15 +263,9 @@ def write_metacool(
         f"Writing {outfile}: contact map of {len(bins)} contigs, {len(contig_bin)} of them in "
         f"{len(set(contig_bin.values()))} bins."
     )
-    if os.path.dirname(outfile):
-        os.makedirs(os.path.dirname(outfile), exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=tmp_dir) as tmp, _metacooler_logging():
-        genomes_table = None
-        # No final bin, no bin summary row: its columns would only be empty
-        # columns of __unbinned__.
-        if bin_summary and contig_bin:
-            genomes_table = os.path.join(tmp, "genomes.tsv")
-            write_genomes_table(bin_summary, genomes_table)
+    with _metacooler_logging(), _as_metacool_errors():
+        if os.path.dirname(outfile):
+            os.makedirs(os.path.dirname(outfile), exist_ok=True)
         metacooler.from_pairs(
             outfile,
             bins=bins,
@@ -260,7 +275,11 @@ def write_metacool(
             # not an empty table, which metacooler 0.2.0 refuses.
             contig_genome_map={name: contig_bin.get(name, "ND") for name in bins["chrom"]},
             assembly_name=assembly_name,
-            genomes_table=genomes_table,
+            # The bin names are the first column of bin_summary.txt, unnamed.
+            # No final bin, no bin summary row: its columns would only be
+            # empty columns of __unbinned__.
+            genomes_table=bin_summary if bin_summary and contig_bin else None,
+            genomes_table_format="1",
             metadata={"metator": {"version": __version__, **(metadata or {})}},
             # No P(s) table next to the file: metaTOR writes the map only.
             ps=False,
