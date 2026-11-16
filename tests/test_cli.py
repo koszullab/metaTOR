@@ -402,17 +402,19 @@ def _assembly(tmp_path):
     return assembly
 
 
-def _final_tables(monkeypatch, contig):
+def _final_tables(monkeypatch, contig, final_bin="metator_00001_00000"):
     """Have the stub validation also write the final contig table, where the
-    contig ``contig`` is binned and c2 is not, and the bin summary."""
+    contig ``contig`` is in the bin ``final_bin`` (ND: in none) and c2 is in
+    none, and the bin summary."""
     stub = mtcli.mtv.recursive_decontamination
 
     def recursive_decontamination(*args):
         out_dir = args[8]
         Path(out_dir, "contig_data_final.txt").write_text(
-            f"\tID\tName\tSize\tFinal_bin\n0\t1\t{contig}\t100\tmetator_00001_00000\n1\t2\tc2\t50\tND\n"
+            f"\tID\tName\tSize\tFinal_bin\n0\t1\t{contig}\t100\t{final_bin}\n1\t2\tc2\t50\tND\n"
         )
-        Path(out_dir, "bin_summary.txt").write_text("\tCompleteness\nmetator_00001_00000\t0.9\n")
+        rows = "" if final_bin == "ND" else f"{final_bin}\t0.9\n"
+        Path(out_dir, "bin_summary.txt").write_text(f"\tCompleteness\n{rows}")
         return stub(*args)
 
     monkeypatch.setattr("metator.validation.recursive_decontamination", recursive_decontamination)
@@ -511,6 +513,27 @@ def test_pipeline_metacool_written(stub_pipeline, tmp_path, monkeypatch, run_cli
     genomes = metacooler.MetaCooler(str(out / "metator.metacool")).genomes
     assert list(genomes.name) == ["__unbinned__", "metator_00001_00000"]
     assert list(genomes.Completeness.iloc[1:]) == [0.9]
+
+
+def test_pipeline_metacool_without_final_bin(stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """A run with no final bin keeps its map: every contig in __unbinned__,
+    with its contacts, and no column of the bin summary, which has no row."""
+    monkeypatch.setattr("metator.metacool.write_metacool", mtmc_write_metacool)
+    _final_tables(monkeypatch, "c1", final_bin="ND")
+    pairs = tmp_path / "a.pairs"
+    pairs.write_text("## pairs format v1.0\nr1\tc1\t10\tc2\t20\t+\t-\nr2\tc1\t10\tc1\t90\t+\t-\n")
+    out = tmp_path / "out"
+    run_cli("pipeline", "-1", pairs, "-a", _assembly(tmp_path), "-S", "pair", "-o", out, "-T", tmp_path / "tmp")
+    import cooler
+    import metacooler
+
+    metacooler.validate(str(out / "metator.metacool"), full=True)
+    assert cooler.Cooler(str(out / "metator.metacool")).pixels()[:]["count"].sum() == 2
+    mc = metacooler.MetaCooler(str(out / "metator.metacool"))
+    assert list(mc.genomes.name) == ["__unbinned__"] and "Completeness" not in mc.genomes.columns
+    assert sorted(mc.contigs.name) == ["c1", "c2"]
+    (log,) = out.glob("metator_pipeline_*.log")
+    assert "is not written" not in log.read_text()
 
 
 def test_pipeline_from_pairs_keeps_them(stub_pipeline, tmp_path, run_cli):

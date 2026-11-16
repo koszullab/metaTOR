@@ -199,8 +199,8 @@ A `.metacool` file is the contact map format of [metacooler](https://github.com/
 and the tools built on it read it as any `.cool` file, and `metacooler` adds the genomes:
 
 * one bin per contig, and one genome per final bin. The contigs that are in no final bin (`ND` in
-  `contig_data_final.txt`) are kept, with all their contacts, in the `__unbinned__` genome. The contigs
-  come genome by genome, the longest first;
+  `contig_data_final.txt`) are kept, with all their contacts, in the `__unbinned__` genome: all the
+  contigs, for a run with no final bin. The contigs come genome by genome, the longest first;
 * the contacts: each pair whose two ends lie on contigs of the assembly is one contact between these
   two contigs (an intra-contig contact when both ends are on the same contig). These are the raw
   contacts of the pairs files, without the filters and the normalization of the network, and those of
@@ -220,11 +220,15 @@ mc = metacooler.MetaCooler("metator.metacool")
 mc.genomes  # one row per bin, with the columns of bin_summary.txt
 ```
 
-The contig and bin names must be ASCII, as `cooler` reads them as ASCII text. When the map cannot be
-written (for example, an assembly with contig names that are not ASCII), `metator pipeline` logs a
-warning saying why and keeps its other outputs and its exit status; `metator metacool` stops with an
-error. A map that an earlier run left in the output directory is removed before the new one is written,
-as it no longer matches the bins: a run whose map cannot be written leaves none.
+The contig and bin names must be ASCII, as `cooler` reads them as ASCII text. No bin may be named as
+metacooler marks a contig in no bin (`NA`, `NaN`, `N/A`, `N/D`, `-1` or `__unbinned__` in any case,
+and `nd` in any case other than `ND`, which marks a contig in no bin): metacooler would put its contigs
+in `__unbinned__`. metaTOR's own bin names never
+are, but those of a hand-edited `contig_data_final.txt` can be. When the map cannot be written (for
+example, an assembly with contig names that are not ASCII), `metator pipeline` logs a warning saying
+why and keeps its other outputs and its exit status; `metator metacool` stops with an error. A map
+that an earlier run left in the output directory is removed before the new one is written, as it no
+longer matches the bins: a run whose map cannot be written leaves none.
 
 ### metator mge
 

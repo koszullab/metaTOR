@@ -13,18 +13,23 @@ All notable changes to this project will be documented in this file.
   chromosomes are the contigs, which `cooler` reads as any `.cool` file and
   `metacooler` by genome. It has one bin per contig and one genome per
   final bin, plus `__unbinned__` for the contigs in no bin, which keep all
-  their contacts. Each pair whose two ends lie on contigs of the assembly
-  is one contact, and the libraries are summed. The genomes table holds the
-  columns of `bin_summary.txt`, and the file metadata the version, command
-  line and parameters of the run, under the `metator` key. The map is
-  written last: when it cannot be written (for example, contig names that
+  their contacts (all the contigs of a run with no final bin). Each pair
+  whose two ends lie on contigs of the assembly is one contact, and the
+  libraries are summed. The genomes table holds the columns of
+  `bin_summary.txt`, and the file metadata the version, command line and
+  parameters of the run, under the `metator` key. The map is written
+  last: when it cannot be written (for example, contig names that
   are not ASCII, which cooler cannot read), a warning says why and the run
   keeps its other outputs and its exit status. A map left in the output
   directory by an earlier run is removed first, so that it cannot pass for
   the map of this run. See the README.
 - `metator metacool` writes the same file from the pairs files,
   `contig_data_final.txt` and `bin_summary.txt` of a run. Python API:
-  `metator.metacool.write_metacool`.
+  `metator.metacool.write_metacool`. It refuses bins named as metacooler
+  marks a contig in no bin (`NA`, `NaN`, `N/A`, `N/D`, `-1` or
+  `__unbinned__` in any case, and `nd` in any case other than `ND`, which
+  marks a contig in no bin), whose contigs metacooler would put in
+  `__unbinned__` without a word; metaTOR's own bin names never are.
 - metaTOR depends on `metacooler`.
 
 ### Changed

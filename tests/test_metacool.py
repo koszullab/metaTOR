@@ -279,6 +279,36 @@ def test_non_ascii_names_shown():
     mtmc.check_ascii_names(["contig_1"], ["metator_00001_00000"])
 
 
+NO_BIN_NAMES = ["NA", "nan", "N/A", "nd", "N/d", "-1", "__unbinned__", "__UNBINNED__"]
+
+
+def test_bin_names_read_as_no_bin_are_refused(metagenome, metagenome_files, tmp_path, monkeypatch):
+    """Bins that metacooler would silently empty into __unbinned__: refused,
+    named, before the pairs are read. ND is metaTOR's own mark of a contig
+    in no bin, not a bin name."""
+    final_bin = _bin_names(metagenome)
+    names = list(final_bin)
+    for name, bin_name in zip(names, [*NO_BIN_NAMES, "NA", "ND"], strict=False):
+        final_bin[name] = bin_name
+    contig_data = write_contig_data(metagenome, tmp_path / "contig_data_final.txt", final_bin)
+    monkeypatch.setattr(metacooler, "from_pairs", lambda *args, **kwargs: pytest.fail("pairs read"))
+    shown = r"'NA', 'nan', 'N/A', 'nd', 'N/d', \.\.\. \(\+3 more\)"
+    with pytest.raises(mtmc.MetacoolError, match=rf"in __unbinned__\. Rename the 8 bin\(s\): {shown}\.$"):
+        mtmc.write_metacool(str(metagenome_files["pairs"]), str(contig_data), str(tmp_path / "map.metacool"))
+
+
+def test_no_bin_names_are_those_of_metacooler():
+    """Every genome name that metacooler reads as no genome is refused as a
+    bin name."""
+    from metacooler.io.create import _UNBINNED_SENTINELS
+
+    assert set(_UNBINNED_SENTINELS) <= mtmc.METACOOLER_UNBINNED
+    mtmc.check_bin_names(["metator_00001_00000", "MetaTOR_MGE_00001", "ND_1", "na1"])
+    for name in mtmc.METACOOLER_UNBINNED:
+        with pytest.raises(mtmc.MetacoolError, match="Rename the 2 bin"):
+            mtmc.check_bin_names(["metator_00001_00000", name.upper(), f" {name} "])
+
+
 def test_read_contig_bins(tmp_path):
     table = tmp_path / "contig_data_final.txt"
     table.write_text("\tID\tName\tSize\tFinal_bin\n0\t1\t01\t100\tb1\n1\t2\tc2\t200\tND\n2\t3\tc3\t300\t-\n3\t4\tc4\t400\t\n")
@@ -369,6 +399,26 @@ def test_metacool_command(metagenome, binning, tmp_path, run_cli):
     assert "Created metacool file" in logged
 
 
+def test_metacool_command_without_final_bin(metagenome, binning, tmp_path, run_cli):
+    """A run with no final bin: the map of every contig, all in __unbinned__
+    with all their contacts. The bin summary has no row and adds no
+    column."""
+    contig_data = write_contig_data(metagenome, tmp_path / "no_bin.txt", dict.fromkeys(_bin_names(metagenome), "ND"))
+    summary = tmp_path / "no_bin_summary.txt"
+    summary.write_text(Path(binning["bin_summary"]).read_text().splitlines(keepends=True)[0])
+    run_cli("metacool", "-c", contig_data, "-b", summary, "-o", "map.metacool", binning["pairs"])
+
+    out = tmp_path / "map.metacool"
+    metacooler.validate(str(out), full=True)
+    mc = metacooler.MetaCooler(str(out))
+    assert list(mc.genomes.name) == ["__unbinned__"]
+    assert mc.genomes.n_contigs[0] == len(metagenome.contigs)
+    assert set(mio.read_bin_summary(binning["bin_summary"]).columns) & set(mc.genomes.columns) == set()
+    assert map_pixels(out).to_dict() == expected_pixels(metagenome.pairs, list(mc.contigs.name)).to_dict()
+    assert map_pixels(out).sum() == len(metagenome.pairs)
+    assert f"contact map of {len(metagenome.contigs)} contigs, 0 of them in 0 bins." in _logged(tmp_path)
+
+
 def _logged(directory):
     return "".join(log.read_text() for log in directory.glob("metator_metacool_*.log"))
 
@@ -390,6 +440,7 @@ ERRORS = {
     "missing pairs file": (["missing.pairs"], "Input file(s) not found: missing.pairs."),
     "contig data without Final_bin": ([], "has no Final_bin column"),
     "non-ASCII contig names": ([], "A .metacool file needs ASCII contig names"),
+    "bin named NA": ([], "Rename the 1 bin(s): 'NA'."),
 }
 
 
@@ -405,6 +456,10 @@ def test_metacool_command_errors(case, metagenome, metagenome_network, binning, 
     elif case == "non-ASCII contig names":
         name = metagenome.contigs[0].name
         contig_data.write_text(contig_data.read_text().replace(f"\t{name}\t", "\tcontig_é\t"))
+    elif case == "bin named NA":
+        contig_data = write_contig_data(
+            metagenome, tmp_path / "na.txt", {**_bin_names(metagenome), metagenome.contigs[0].name: "NA"}
+        )
     with pytest.raises(mtmc.MetacoolError, match=re.escape(message)) as error:
         run_cli("metacool", "-c", contig_data, "-o", "map.metacool", *(pairs or [binning["pairs"]]))
     assert f"ERROR :: {error.value}\n" in _logged(tmp_path)

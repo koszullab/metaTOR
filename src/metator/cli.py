@@ -1473,8 +1473,10 @@ def metacool(pairsfile, contig_data, bin_summary, outfile, assembly_name, thread
 
     Each pair whose two ends lie on contigs of the contig data file is one
     contact; the pairs files of several libraries are summed. The contig
-    and bin names must be ASCII. [cyan]pipeline[/] writes this file at the
-    end of a run.
+    and bin names must be ASCII, and no bin may be named as metacooler
+    marks a contig in no bin (NA, NaN, N/A, N/D, -1 or __unbinned__ in any
+    case, and nd in any case other than ND, which marks a contig in no
+    bin). [cyan]pipeline[/] writes this file at the end of a run.
     """
     # Generate log
     log_file = log_file_name("", "metacool")

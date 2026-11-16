@@ -10,7 +10,8 @@ chromosomes are the contigs, grouped by genome. It stays readable by
 metaTOR writes one bin per contig, and one genome per final bin: the
 ``Final_bin`` of the contig data file. The unbinned contigs, whose
 ``Final_bin`` is ``ND``, are kept with all their contacts, in metacooler's
-``__unbinned__`` genome. The columns of the bin summary (completeness,
+``__unbinned__`` genome: a run with no final bin gives a map whose contigs
+are all there. The columns of the bin summary (completeness,
 contamination, abundances...) are stored in the genomes table.
 
 Each pairs file row whose two ends lie on contigs of the contig data file
@@ -36,6 +37,13 @@ from metator.version import __version__
 # Final_bin of a contig that is in no final bin: "ND" as written by metaTOR,
 # "-" or empty when a table was edited by hand.
 UNBINNED = {"ND", "-", ""}
+
+# The genome names that metacooler reads as no genome, stripped and whatever
+# their case (_UNBINNED_SENTINELS in metacooler/io/create.py; -1 from
+# metacooler 0.2.0): it puts the contigs of a bin so named in __unbinned__,
+# without an error. metaTOR's own bin names (metator_*, MetaTOR_MGE_*) are
+# never one of them.
+METACOOLER_UNBINNED = frozenset({"__unbinned__", "na", "nan", "n/a", "nd", "n/d", "-1", ""})
 
 # How many offending names an error message shows.
 MAX_SHOWN = 5
@@ -125,6 +133,22 @@ def check_ascii_names(contigs, bins):
             )
 
 
+def check_bin_names(bins):
+    """Refuse bin names that metacooler reads as no bin.
+
+    metacooler would put the contigs of these bins in ``__unbinned__``
+    without a word (ND, metaTOR's own mark of a contig in no bin, is read
+    before: it is no bin name).
+    """
+    bad = list(dict.fromkeys(name for name in bins if name.strip().lower() in METACOOLER_UNBINNED))
+    if bad:
+        raise MetacoolError(
+            "A .metacool file cannot have bins named as metacooler marks a contig in no bin (NA, NaN, N/A, ND, N/D, -1 "
+            f"or __unbinned__, in upper or lower case): it would put their contigs in __unbinned__. Rename the {len(bad)} "
+            f"bin(s): {_shown(bad)}."
+        )
+
+
 def write_genomes_table(bin_summary, path):
     """Write the bin summary as a metacooler genomes table.
 
@@ -176,7 +200,8 @@ def write_metacool(
         Path to the .metacool file to write.
     bin_summary : str, optional
         Path to the bin_summary.txt file: its columns are added to the
-        genomes table, one row per bin.
+        genomes table, one row per bin. Not read when no contig is in a
+        final bin: the map has no genome but ``__unbinned__``.
     assembly_name : str, optional
         Name of the assembly, stored in the file.
     threads : int
@@ -195,7 +220,8 @@ def write_metacool(
     MetacoolError
         If threads is below 1, the outfile exists (without force), an input
         file is missing, the contig data has no Name, Size or Final_bin
-        column, or a contig or bin name is not ASCII.
+        column, a contig or bin name is not ASCII, or a bin name is one
+        that metacooler reads as no bin (NA, nan, -1...).
     """
     pairs_files = [str(pairs_files)] if isinstance(pairs_files, (str, os.PathLike)) else [str(p) for p in pairs_files]
     if threads < 1:
@@ -208,6 +234,7 @@ def write_metacool(
         raise MetacoolError(f"Input file(s) not found: {', '.join(map(str, missing))}.")
     bins, contig_bin = read_contig_bins(contig_data)
     check_ascii_names(bins["chrom"], contig_bin.values())
+    check_bin_names(contig_bin.values())
 
     import metacooler
 
@@ -219,14 +246,19 @@ def write_metacool(
         os.makedirs(os.path.dirname(outfile), exist_ok=True)
     with tempfile.TemporaryDirectory(dir=tmp_dir) as tmp, _metacooler_logging():
         genomes_table = None
-        if bin_summary:
+        # No final bin, no bin summary row: its columns would only be empty
+        # columns of __unbinned__.
+        if bin_summary and contig_bin:
             genomes_table = os.path.join(tmp, "genomes.tsv")
             write_genomes_table(bin_summary, genomes_table)
         metacooler.from_pairs(
             outfile,
             bins=bins,
             pairs=pairs_files,
-            contig_genome_map=contig_bin,
+            # Every contig, the unbinned ones as ND (no genome for
+            # metacooler): a run with no final bin gives a table all ND,
+            # not an empty table, which metacooler 0.2.0 refuses.
+            contig_genome_map={name: contig_bin.get(name, "ND") for name in bins["chrom"]},
             assembly_name=assembly_name,
             genomes_table=genomes_table,
             metadata={"metator": {"version": __version__, **(metadata or {})}},
