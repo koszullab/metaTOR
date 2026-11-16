@@ -154,6 +154,12 @@ metator pipeline -1 for.bam -2 rev.bam -a assembly.fa -S bam
 metator pipeline -1 alignment.pairs -a assembly.fa-S pairs
 ```
 
+* **metacool**: A `.metacool` contact map of the contigs of the assembly (see [metacooler](https://github.com/js2264/metacooler)), at any bin size: the network is read from its contacts, which sum its libraries. The edge region (`--edge`) and the scaffolding cannot be used from it, the heatmap of the final bin network is drawn only from the `.pairs.gz` files that an earlier run left in the output directory, if any, and `pipeline` writes no `.metacool` file of the bins.
+
+```sh
+metator pipeline -1 sample.metacool -a assembly.fa -S metacool
+```
+
 * **network**: A three column tsv network file with the first contig ID (1-based ids) the second contig ID and the normalised contact. This step allow you to use another custom normalization.
 
  ```sh

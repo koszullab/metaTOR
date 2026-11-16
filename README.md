@@ -95,7 +95,7 @@ number.
 There are three actions/steps in the metator pipeline, which must be run in the
 following order:
 
-* `network` : Generate metaHiC contigs network from fastq reads or bam files and normalize it.
+* `network` : Generate metaHiC contigs network from fastq reads, bam, pairs or `.metacool` files and normalize it.
 * `partition` : Perform the Louvain or Leiden community detection algorithm many times to bin contigs according to the metaHiC signal between contigs.
 * `validation` : Use miComplete to validate the bins, then do a recursive decontamination step to remove contamination.
 
@@ -238,6 +238,31 @@ example, an assembly with contig names that are not ASCII, or a misaligned `bin_
 `metator metacool` logs the reason as an error and stops with it. A map that an earlier run left in
 the output directory is removed before the new one is written, as it no longer matches the bins: a
 run whose map cannot be written leaves none.
+
+#### Starting from a contact map
+
+`metator network` and `metator pipeline` can build the network from a `.metacool` contact map of the
+contigs of the assembly, instead of reads, alignments or pairs: `--start metacool`, with the map given
+to `-1` (one file, or an entry of a `.mmetacool` collection, `file.mmetacool::entries/<name>`):
+
+```sh
+metator pipeline -S metacool -1 sample.metacool -a assembly.fa -d depth.txt -e DpnII -o binning
+```
+
+The map can have any bin size, from one bin per contig (as the maps written by metaTOR) to fixed bins,
+and must hold the contigs of the assembly, with their lengths: the contig ids, GC contents, coverages
+and restriction sites still come from the assembly, `--depth` and `--enzyme`. The contacts between two
+contigs are those between their bins, and the hits of a contig those of its bins, so that the network
+and `contig_data_network.txt` are those of the pairs the map was made of, with one difference: a pair
+with a read on the last base of a contig, which the network of the pairs leaves out even with
+`--edge 0`, is a contact of the map (as is a pair with a read at position 0, which some pairs files
+hold). The libraries of a map are already summed: no `network_N.txt` is written. `--edge` must be 0, as
+a map holds no read positions; `pipeline --scaffold`, which reads the pairs files, is refused, and
+`pipeline` writes no `.metacool` file of the bins, which is made from the pairs files. The heatmap of
+the final bin network (`plot/network_heatmap.png`) is drawn from the `.pairs.gz` files of the output
+directory: a run from a map draws none, and its log warns that no pairs alignment files were found,
+unless the output directory holds those of an earlier run (a rebinning in the directory of a run from
+reads, for example), from which the heatmap is then drawn.
 
 ### metator mge
 

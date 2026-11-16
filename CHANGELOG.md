@@ -4,6 +4,38 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+- `network` and `pipeline` can start from a `.metacool` contact map of the
+  contigs, at any bin size, instead of reads, alignments or pairs:
+  `--start metacool`, with the map given to `-1/--forward` (one file, or an
+  entry of a `.mmetacool` collection: `file.mmetacool::entries/<name>`).
+  The contacts between two contigs are the pixels between their bins, and
+  the hits of a contig the pixels of its bins (a pixel within a contig
+  counts twice, as a pair with both reads on the contig does); the network
+  is then normalized and written as from pairs, its edges in the same
+  order, with the same `contig_data_network.txt`. The contig ids, lengths,
+  GC contents, coverages and restriction sites still come from the
+  assembly, `--depth` and `--enzyme`, and a map whose contigs are not those
+  of the assembly (other names or lengths) is refused, with the names. A map
+  sums its libraries: no `network_{i}.txt` and no `hit_data_alignment.txt`
+  are written. The network heatmap is drawn only from the `.pairs.gz` files
+  that an earlier run left in the output directory, if any. `--edge` above 0
+  is refused, as a map holds no read positions, and so is
+  `pipeline --scaffold`, which reads the pairs files; `pipeline` writes no
+  `.metacool` of the bins from a map, as it is made from the pairs files.
+  The pairs path does not change.
+  The network of a map differs from that of the pairs it was made of by
+  the pairs with a read on the last base of a contig: the pairs path leaves
+  them out of the network, even with `--edge 0` (its test
+  `length - position > edge` is false there), while the map counts them;
+  so does it the pairs with a read at position 0, which a 1-based pairs
+  file should not hold but older metaTOR pairs files do. Their hits count
+  in both. With `--self-contacts`, the pairs path keeps them too, and the
+  two networks are the same. On the mock metagenome of the tests, these
+  contacts change a few edge weights, and partition makes the same bins
+  of both networks. Python API: `metator.network.metacool_to_contacts`
+  and `metator.network.read_metacool_contacts`.
+
 ## [1.4.0] - 2026-11-17
 
 ### Added
