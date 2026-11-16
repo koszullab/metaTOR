@@ -71,7 +71,7 @@ def _recursive_summary(path, completeness):
 
 def _parent(completeness):
     values = [completeness, completeness, 1.6, 1.6, 300]
-    return {"P_00001_00000": dict(zip(COLS, values), recursive=True, step=0, parent=None)}
+    return {"P_00001_00000": dict(zip(COLS, values, strict=True), recursive=True, step=0, parent=None)}
 
 
 def test_micomplete_compare_bins_keeps_every_child(tmp_path):

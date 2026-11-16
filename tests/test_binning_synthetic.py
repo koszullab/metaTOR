@@ -263,6 +263,12 @@ def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, metagenome
     assert (out / "clustering_matrix.npz").stat().st_size > 0
     scaffolds = sorted(p.name for p in (out / "scaffold_bin").glob("*_scaffolded.fa"))
     assert scaffolds == sorted(f"{name}_scaffolded.fa" for name in summary.index)
+    # The worker processes that scaffold the bins write to the log file too,
+    # whether they are forked or not (forkserver, Linux's default from Python
+    # 3.14 on, and spawn start them without the parent's log handlers).
+    (log_file,) = out.glob("metator_pipeline_*.log")
+    logged = log_file.read_text()
+    assert [name for name in summary.index if f"Scaffolding {name}..." not in logged] == []
     # Clean-up: no temporary directory, no pyfastx index, no intermediate table.
     assert not (tmp_path / "tmp").exists()
     assert not os.path.exists(f"{metagenome_inputs['assembly']}.fxi")

@@ -2,7 +2,7 @@
 # image contains exactly what was published to PyPI.
 FROM ghcr.io/mamba-org/micromamba:2.10.0
 
-ARG PY_VERSION=3.11
+ARG PY_VERSION=3.13
 
 USER root
 RUN apt-get update \

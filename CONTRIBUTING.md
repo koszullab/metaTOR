@@ -28,7 +28,7 @@ Then, after forking and cloning the repository:
 ```sh
 git clone https://github.com/koszullab/metaTOR.git
 cd metaTOR
-uv sync                       # Python 3.11 (.python-version) + dev tools, metator in editable mode
+uv sync                       # Python 3.13 (.python-version) + dev tools, metator in editable mode
 uv run pre-commit install     # optional: ruff on every commit
 ```
 

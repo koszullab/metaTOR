@@ -116,11 +116,8 @@ def test_value_names_and_choices(command):
 
 
 def test_global_options():
-    # click < 8.2 (the lock's version on Python 3.9) returns the help option's
-    # names in set order, which changes from one run to the next: compare the
-    # names, not their order.
-    found = {next(opt for opt in param["opts"] if opt.startswith("--")): sorted(param["opts"]) for param in _info()["params"]}
-    frozen = {option["long"]: sorted([option["short"], option["long"]]) for option in INVENTORY["options"]}
+    found = {param["opts"][-1]: param["opts"] for param in _info()["params"]}
+    frozen = {option["long"]: [option["short"], option["long"]] for option in INVENTORY["options"]}
     assert found == frozen
 
 

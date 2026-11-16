@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Changed
+- metaTOR supports Python 3.10 to 3.14: 3.13 and 3.14 are new, and
+  3.9 is no longer supported (see Removed). The Docker image runs
+  Python 3.13 instead of 3.11, and takes miComplete from PyPI instead of
+  bioconda, whose package requires Python < 3.12.
 - `Biopython` is no longer pinned <= 1.80: miComplete is now run through `metator._micomplete`, which restores `Bio.SeqUtils.GC` (removed in Biopython 1.82) and `distutils.spawn` (removed in Python 3.12) before running it.
 - With Biopython >= 1.87, FASTA inputs must start with a `>` header line:
   leading blank or `#` lines are rejected. `network` and `pipeline` then
@@ -78,6 +82,9 @@ All notable changes to this project will be documented in this file.
   uses it.
 
 ### Removed
+- Python 3.9 support, a breaking change for Python 3.9 users: metaTOR
+  now requires Python 3.10 or later, and pip or uv on Python 3.9 keep
+  installing 1.3.10.
 - `metator host`, which always failed since 1.3.10: it called
   `metator.host.host_detection`, which the rewrite of the `host` module
   removed. Python API: `metator.io.import_network`, used only by it.
@@ -109,6 +116,10 @@ All notable changes to this project will be documented in this file.
   (`alignment_N_sorted.pairs.gz.px2`) in the output directory, as 1.3.10
   did. The index now goes with its pairs file; pairs files given with
   `--start pair` are still kept, with their index.
+- `pipeline --scaffold` left the messages of the processes scaffolding the
+  bins (`Scaffolding <bin>...`) out of its log file wherever these
+  processes are not forked: on macOS, and on Linux from Python 3.14, whose
+  default start method is forkserver. They only reached the terminal.
 - With pandas 3, when a contaminated bin was split into several bins, only
   one of them was kept in the final bins.
 - With `--aligner bwa`, every pair carried the first mate's position for
@@ -179,8 +190,6 @@ All notable changes to this project will be documented in this file.
 - Python API: `metator.regions.Bin.get_contigs_between` named every piece
   after the bin instead of its contig, so the pieces could not be read from
   the fasta.
-- Python API: on Python 3.9, `metator.host.classify_mags` and
-  `annotate_hosts` failed with `TypeError`.
 - `validation` failed at the very end, after writing its bins, when no bin
   was contaminated: it removed `<assembly>.fxi`, which pyfastx only writes
   when a bin is re-partitioned.
