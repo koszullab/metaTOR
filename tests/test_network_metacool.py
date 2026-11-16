@@ -468,8 +468,13 @@ def test_many_contigs_are_cut_short(tmp_path, logged):
     lengths = {"a": 104, "b": 204, "c": 304, **{f"x{i}": 8 for i in range(7)}}
     (tmp_path / "many").mkdir()
     small = _small_map(tmp_path / "many", {**{f"x{i}": 4 for i in range(7)}, "a": 100, "b": 200, "c": 300}, PAIRS)
-    with pytest.raises(mtmc.MetacoolError, match=r"10 contig\(s\) have another length in it: .*bp in the assembly\), \.\.\.\.$"):
+    with pytest.raises(
+        mtmc.MetacoolError, match=r"10 contig\(s\) have another length in it: .*bp in the assembly\), \.\.\. \(\+5 more\)\.$"
+    ):
         mtn.read_metacool_contacts(str(small), _contig_data(tmp_path, lengths))
+    foreign = r"7 of its contig\(s\) are not in the assembly: 'x0', 'x1', 'x2', 'x3', 'x4', \.\.\. \(\+2 more\)\. Build it "
+    with pytest.raises(mtmc.MetacoolError, match=foreign):
+        mtn.read_metacool_contacts(str(small), _contig_data(tmp_path, {"a": 100, "b": 200, "c": 300}))
 
 
 def test_small_map_network(tmp_path):

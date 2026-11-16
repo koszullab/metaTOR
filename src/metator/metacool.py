@@ -95,11 +95,11 @@ def _metacooler_logging():
         mc_logger.level, mc_logger.propagate = saved
 
 
-def _shown(names):
-    """A few names, quoted, for an error message: the first MAX_SHOWN, then
-    how many more there are (not a bare "...", which the period ending the
-    message would make four dots)."""
-    shown = ", ".join(repr(name) for name in names[:MAX_SHOWN])
+def _shown(names, show=repr):
+    """A few names, for an error message: the first MAX_SHOWN, each written
+    by show (quoted by default), then how many more there are (not a bare
+    "...", which the period ending the message would make four dots)."""
+    shown = ", ".join(show(name) for name in names[:MAX_SHOWN])
     more = len(names) - MAX_SHOWN
     return shown + (f", ... (+{more} more)" if more > 0 else "")
 

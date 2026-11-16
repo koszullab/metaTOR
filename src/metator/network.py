@@ -421,18 +421,14 @@ def metacool_contig_ids(metacool, contigs, contig_data):
             f"in the assembly: {mtmc._shown(extra)}. Build it from pairs of reads aligned on this assembly."
         )
     wrong = [
-        (name, int(length))
+        f"{name!r} ({int(length)} bp in the map, {contig_data[name]['length']} bp in the assembly)"
         for name, length in zip(names, contigs["length"], strict=True)
         if int(length) != contig_data[name]["length"]
     ]
     if wrong:
-        shown = ", ".join(
-            f"{name!r} ({length} bp in the map, {contig_data[name]['length']} bp in the assembly)"
-            for name, length in wrong[: mtmc.MAX_SHOWN]
-        )
         raise mtmc.MetacoolError(
             f"{metacool} is not a contact map of the contigs of the assembly: {len(wrong)} contig(s) have another "
-            f"length in it: {shown}{', ...' if len(wrong) > mtmc.MAX_SHOWN else ''}."
+            f"length in it: {mtmc._shown(wrong, show=str)}."
         )
     in_map = set(names)
     missing = [name for name in contig_data if name not in in_map]
