@@ -174,6 +174,29 @@ def check_metacool_start(start, forward, edge, scaffold=False):
         raise ValueError
 
 
+def metacool_network(metacool, contig_data, outdir, tmp_dir, threads, normalization, self_contacts):
+    """network.txt and contig_data_network.txt of a .metacool map (see
+    metator.network.metacool_to_contacts). A map that cannot give them
+    stops the run, as metaTOR stops on an input it cannot use: the reason
+    is logged as an error, in the log file of the run, and its
+    MetacoolError is raised, as `metator metacool` does."""
+    try:
+        return mtn.metacool_to_contacts(
+            metacool,
+            contig_data,
+            outdir,
+            "network.txt",
+            "contig_data_network.txt",
+            tmp_dir,
+            threads,
+            normalization,
+            self_contacts,
+        )
+    except mtmc.MetacoolError as error:
+        logger.error(str(error))
+        raise
+
+
 def aligner_mode_for(aligner_mode, enzyme):
     """The cutsite mode digests the reads: without an enzyme, align
     iteratively instead."""
@@ -653,17 +676,7 @@ def network(
 
         # Build the network
         if start == "metacool":
-            mtn.metacool_to_contacts(
-                forward,
-                contig_data,
-                outdir,
-                "network.txt",
-                "contig_data_network.txt",
-                tmp_dir,
-                threads,
-                normalization,
-                self_contacts,
-            )
+            metacool_network(forward, contig_data, outdir, tmp_dir, threads, normalization, self_contacts)
         else:
             mtn.alignment_to_contacts(
                 alignment_files,
@@ -1100,16 +1113,8 @@ def pipeline(
             # From the contact map: no pairs files.
             alignment_files = []
             contig_data, _ = mtn.create_contig_data(fasta, 1, depth, enzyme)
-            network_file, contigs_data_file = mtn.metacool_to_contacts(
-                forward,
-                contig_data,
-                outdir,
-                "network.txt",
-                "contig_data_network.txt",
-                tmp_dir,
-                threads,
-                normalization,
-                False,
+            network_file, contigs_data_file = metacool_network(
+                forward, contig_data, outdir, tmp_dir, threads, normalization, False
             )
         else:
             network_file, contigs_data_file = mtn.alignment_to_contacts(

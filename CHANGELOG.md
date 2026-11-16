@@ -15,20 +15,23 @@ All notable changes to this project will be documented in this file.
   is then normalized and written as from pairs, its edges in the same
   order, with the same `contig_data_network.txt`. The contig ids, lengths,
   GC contents, coverages and restriction sites still come from the
-  assembly, `--depth` and `--enzyme`, and a map whose contigs are not those
-  of the assembly (other names or lengths) is refused, with the names. A map
-  sums its libraries: no `network_{i}.txt` and no `hit_data_alignment.txt`
-  are written. The network heatmap is drawn only from the `.pairs.gz` files
-  that an earlier run left in the output directory, if any. `--edge` above 0
-  is refused, as a map holds no read positions, and so is
-  `pipeline --scaffold`, which reads the pairs files; `pipeline` writes no
-  `.metacool` of the bins from a map, as it is made from the pairs files.
-  The pairs path does not change.
+  assembly, `--depth` and `--enzyme`. A map whose contigs are not those of
+  the assembly (other names or lengths) is refused, with the names, and so
+  is a map that stores both triangles of the matrix (storage-mode
+  `square`), which would count contacts twice: the reason is logged as an
+  error, in the log file of the run, and the run stops with that error, as
+  `metator metacool` does. A map sums its libraries: no `network_{i}.txt`
+  and no `hit_data_alignment.txt` are written. The network heatmap is drawn
+  only from the `.pairs.gz` files that an earlier run left in the output
+  directory, if any. `--edge` above 0 is refused, as a map holds no read
+  positions, and so is `pipeline --scaffold`, which reads the pairs files;
+  `pipeline` writes no `.metacool` of the bins from a map, as it is made
+  from the pairs files. The pairs path does not change.
   The network of a map differs from that of the pairs it was made of by
   the pairs with a read on the last base of a contig: the pairs path leaves
   them out of the network, even with `--edge 0` (its test
-  `length - position > edge` is false there), while the map counts them;
-  so does it the pairs with a read at position 0, which a 1-based pairs
+  `length - position > edge` is false there), while the map counts them,
+  as it does the pairs with a read at position 0, which a 1-based pairs
   file should not hold but older metaTOR pairs files do. Their hits count
   in both. With `--self-contacts`, the pairs path keeps them too, and the
   two networks are the same. On the mock metagenome of the tests, these

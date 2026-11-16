@@ -6,9 +6,11 @@ from pathlib import Path
 import gzip
 import metator.cli as mtc
 import metator.io as mio
+import metator.metacool as mtmc
 import metacooler
 import pypairix
 import pytest
+import re
 import shutil
 import os
 
@@ -189,6 +191,28 @@ def test_network_from_a_metacool(tmp_path, run_cli):
     assert not (outputs["metacool"] / "network_0.txt").exists()
     (log,) = outputs["metacool"].glob("metator_network_*.log")
     assert f"INFO :: Information of {metacool}:" in log.read_text()
+
+
+@pytest.mark.parametrize("command", ["network", "pipeline"])
+def test_metacool_of_other_contigs(command, tmp_path, run_cli):
+    """A map that cannot give the network of the assembly stops the run with
+    its MetacoolError, the reason logged as an error in the log file, as
+    metator metacool does."""
+    other = tmp_path / "other.fa"
+    other.write_text(">a\n" + "ACGT" * 100 + "\n")
+    pairs = tmp_path / "other.pairs"
+    pairs.write_text("## pairs format v1.0\n#columns: readID chr1 pos1 chr2 pos2 strand1 strand2\nr1\ta\t10\ta\t300\t+\t-\n")
+    metacool = tmp_path / "other.metacool"
+    metacooler.from_pairs(str(metacool), pairs=str(pairs), fasta=str(other), binsize=100, contig_genome_map=None,
+                          contig_ordering="fasta", ps=False)  # fmt: skip
+    assembly = shutil.copyfile(global_args["SUBSET_FASTA"], tmp_path / "assembly.fa")
+    out = tmp_path / "out"
+    message = f"{metacool} is not a contact map of the contigs of the assembly: "
+    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}") as error:
+        run_cli(command, "-1", metacool, "-a", assembly, "-S", "metacool", "-o", out, "-T", tmp_path / "tmp")
+    (log,) = out.glob(f"metator_{command}_*.log")
+    assert f"ERROR :: {error.value}\n" in log.read_text()
+    assert not (out / "network.txt").exists()
 
 
 def test_pairs(tmp_path, run_cli, monkeypatch):
