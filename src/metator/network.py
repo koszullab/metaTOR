@@ -233,9 +233,10 @@ def metacool_to_contacts(
     Raises:
     -------
     metator.metacool.MetacoolError
-        If the map cannot be read, does not hold the contigs of the assembly,
-        with the same lengths, holds no contact, or holds counts that are not
-        integers.
+        If the map cannot be read, stores both triangles of the matrix, does
+        not hold the contigs of the assembly, with the same lengths, holds no
+        contact, or holds counts that are not integers (see
+        read_metacool_contacts).
     """
     network_file = join(out_dir, output_file_network)
     contig_data_file = join(out_dir, output_file_contig_data)
@@ -313,7 +314,8 @@ def read_metacool_contacts(metacool, contig_data, chunksize=METACOOL_CHUNKSIZE):
     -------
     metator.metacool.MetacoolError
         If the map cannot be read (a missing file, a file that is not a
-        .metacool one, a .mmetacool without the entry), does not hold the
+        .metacool one, a .mmetacool without the entry), stores both
+        triangles of the matrix (storage-mode square), does not hold the
         contigs of the assembly, with the same lengths, or holds counts that
         are not integers.
     """
@@ -327,6 +329,15 @@ def read_metacool_contacts(metacool, contig_data, chunksize=METACOOL_CHUNKSIZE):
             # file, a plain cooler), a .mmetacool without its entry...
             reason = error.args[0] if isinstance(error, KeyError) and error.args else error
             raise mtmc.MetacoolError(f"Cannot read the contact map {metacool}: {reason}") from error
+        # The rows are read from their diagonal on: a map that also stores
+        # the lower triangle would count some contacts twice.
+        storage_mode = mc.info.get("storage-mode", "symmetric-upper")
+        if storage_mode != "symmetric-upper":
+            raise mtmc.MetacoolError(
+                f"{metacool} stores its contacts with storage-mode {storage_mode!r}: a network is built from a map "
+                "that stores each contact once, in the upper triangle (storage-mode 'symmetric-upper'), as "
+                "metacooler writes them."
+            )
         # Id of the contig of each bin.
         ids = metacool_contig_ids(metacool, mc.contigs, contig_data)
         with mc.open() as group:

@@ -393,6 +393,21 @@ def test_map_without_contacts(tmp_path):
                                  1, "None")  # fmt: skip
 
 
+def test_map_of_a_square_matrix(tmp_path):
+    """A map that stores both triangles of the matrix (which metacooler
+    opens, but never writes) would count some contacts twice: refused."""
+    metacool = _small_map(tmp_path, {"a": 100, "b": 200, "c": 300}, PAIRS)
+    with h5py.File(metacool, "r+") as group:
+        group.attrs["storage-mode"] = "square"
+    assert metacooler.MetaCooler(str(metacool)).info["storage-mode"] == "square"
+    with pytest.raises(
+        mtmc.MetacoolError,
+        match=r"map\.metacool stores its contacts with storage-mode 'square': a network is built from a map that stores "
+        r"each contact once, in the upper triangle \(storage-mode 'symmetric-upper'\), as metacooler writes them\.$",
+    ):
+        mtn.read_metacool_contacts(str(metacool), _contig_data(tmp_path, {"a": 100, "b": 200, "c": 300}))
+
+
 def test_map_of_float_counts(tmp_path):
     metacool = _small_map(tmp_path, {"a": 100, "b": 200, "c": 300}, PAIRS)
     with h5py.File(metacool, "r+") as group:
