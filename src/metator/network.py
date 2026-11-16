@@ -6,24 +6,35 @@
 General utility functions for handling aligment files from align module and
 generating metaHiC networks.
 
+The network can also be built from a .metacool contact map (see
+metacool_to_contacts), instead of the pairs files.
+
 Core function to build the network are:
     - alignment_to_contacts
     - compute_network
     - create_contig_data
+    - metacool_to_contacts
     - normalize_pair
     - precompute_network
+    - read_metacool_contacts
     - write_contig_data
     - write_hit_data
 """
 
 import csv
 import numpy as np
+import pandas as pd
 import re
 from Bio import SeqIO
 from Bio import SeqUtils
 from os.path import join, basename
 from metator.log import logger
 import metator.io as mio
+import metator.metacool as mtmc
+
+# Pixels of a .metacool file read at a time (about 20 bytes each): the
+# network is summed chunk by chunk, never from the whole pixel table at once.
+METACOOL_CHUNKSIZE = 1_000_000
 
 
 def alignment_to_contacts(
@@ -135,6 +146,316 @@ def alignment_to_contacts(
         write_hit_data(hit_data, hit_data_file)
 
     return network_file, contig_data_file
+
+
+def metacool_to_contacts(
+    metacool,
+    contig_data,
+    out_dir,
+    output_file_network,
+    output_file_contig_data,
+    tmp_dir,
+    n_cpus,
+    normalization,
+    self_contacts=False,
+    chunksize=METACOOL_CHUNKSIZE,
+):
+    """Generates the network file (in edgelist form) from a .metacool contact
+    map instead of pairs files: the network that alignment_to_contacts makes
+    from the pairs the map was made of.
+
+    The contacts between two contigs are the sum of the pixels between their
+    bins, whatever the bin size of the map. The hits of a contig are the sum
+    of the pixels of its bins, a pixel between two of its bins counting
+    twice, as a pair with both reads on the contig does in the pairs files.
+    The intra-contig contacts are left out of the network unless
+    self_contacts is set. The network is then normalized and written as from
+    pairs files: same normalizations, edges in the same order, same contig
+    data file.
+
+    It differs from the network of the pairs in two ways:
+
+    * a pair with a read on the last base of a contig is a contact of the
+      map, while the pairs path leaves it out of the network: its test
+      ``length - position > edge`` is false there even with edge 0. So is a
+      pair with a read at position 0, which a pairs file (1-based) should
+      not hold, but some do: metacooler puts the read on the first base
+      (with a warning), the pairs path leaves the pair out (its test
+      ``position > edge`` is false). Both count their hits. The weights of
+      the two networks can differ by these contacts, and an edge made of
+      them only is in the network of the map alone. With self_contacts, the
+      pairs path keeps them too (it applies no edge test), and the two
+      networks are the same. A pair with a read past the end of its contig,
+      which an aligner does not write, is not in the map at all (metacooler
+      leaves it out, with a warning), while the pairs path counts its hits;
+    * the map holds the contacts of all its libraries, summed: there is no
+      network_{i}.txt per library and no hit_data_alignment.txt. Nor does
+      it hold the positions of the reads: the edge region of the pairs path
+      (edge > 0) cannot be applied.
+
+    Parameters:
+    -----------
+    metacool : str
+        Path to the .metacool file, or URI of an entry of a .mmetacool
+        collection: ``file.mmetacool::entries/<name>``.
+    contig_data : dict
+        Dictionary of the all the contigs from the assembly (see
+        create_contig_data), the contigs names are the keys to the data of the
+        contig available with the following keys: "id", "length", "GC",
+        "hit", "coverage", "RS". The map must hold the same contigs, with the
+        same lengths. Their hits are set from the map.
+    out_dir : str
+        The output directory to write the network and contig data into.
+    output_file_network : str
+        The specific file name for the output network file.
+    output_file_contig_data : str
+        The specific file name for the output contig data file.
+    tmp_dir : str
+        Path to the temporary directory.
+    n_cpus : int
+        Number of cpus used to sort the edges.
+    normalization : str
+        Mode of normalization of the contact counts (see normalize_pair), or
+        "None" for the raw counts.
+    self_contacts : bool
+        Whether to keep the intra-contig contacts in the network. Default is
+        False.
+    chunksize : int
+        Number of pixels read at a time.
+
+    Returns:
+    --------
+    str:
+        Path to the network file.
+    str:
+        Path to the verbose contig data file.
+
+    Raises:
+    -------
+    metator.metacool.MetacoolError
+        If the map cannot be read, does not hold the contigs of the assembly,
+        with the same lengths, holds no contact, or holds counts that are not
+        integers.
+    """
+    network_file = join(out_dir, output_file_network)
+    contig_data_file = join(out_dir, output_file_contig_data)
+    pre_network_file = join(tmp_dir, "precompute_network_file.txt")
+    pre_network_sorted_file = join(tmp_dir, "tmp_network_sorted.txt")
+
+    hits, contacts = read_metacool_contacts(metacool, contig_data, chunksize)
+    names = np.empty(len(hits), dtype=object)
+    for name, data in contig_data.items():
+        data["hit"] = int(hits[data["id"]])
+        names[data["id"]] = name
+
+    # Count the contacts, as precompute_network does for a library.
+    intra = contacts["id1"] == contacts["id2"]
+    all_contacts = int(contacts["count"].sum())
+    inter_contacts = int(contacts["count"][~intra].sum())
+    if not all_contacts:
+        raise mtmc.MetacoolError(f"{metacool} holds no contact: there is no network to build.")
+    logger.info(f"Information of {metacool}:")
+    logger.info(f"{all_contacts} contacts in the library.")
+    logger.info(f"{inter_contacts} contacts inter-contigs in the library.")
+    logger.info(f"3D ratio : {inter_contacts / all_contacts}\n")
+
+    # Write the edges by contig names and sort them as compute_network sorts
+    # the pairs: the network lists its edges in the same order.
+    edges = contacts if self_contacts else contacts[~intra]
+    pd.DataFrame(
+        {"contig1": names[edges["id1"].to_numpy()], "contig2": names[edges["id2"].to_numpy()], "count": edges["count"]}
+    ).to_csv(pre_network_file, sep="\t", header=False, index=False)
+    mio.sort_pairs(pre_network_file, pre_network_sorted_file, tmp_dir=tmp_dir, threads=n_cpus)
+    with open(pre_network_sorted_file, "r") as sorted_edges, open(network_file, "w") as net:
+        for contig1, contig2, count in csv.reader(sorted_edges, delimiter="\t"):
+            write_edge(net, contig_data, (contig1, contig2), int(count), normalization)
+
+    write_contig_data(contig_data, contig_data_file)
+    return network_file, contig_data_file
+
+
+def read_metacool_contacts(metacool, contig_data, chunksize=METACOOL_CHUNKSIZE):
+    """Contacts between the contigs of the assembly, summed from the pixels
+    of a .metacool contact map.
+
+    The pixels are read through metacooler, a block of rows of about
+    chunksize pixels at a time, and summed by contig pair: the memory used
+    grows with the number of contig pairs in contact, not with the pixels.
+
+    Parameters:
+    -----------
+    metacool : str
+        Path to the .metacool file, or URI of an entry of a .mmetacool
+        collection: ``file.mmetacool::entries/<name>``.
+    contig_data : dict
+        Dictionary of the all the contigs from the assembly (see
+        create_contig_data). The map must hold the same contigs, with the
+        same lengths.
+    chunksize : int
+        Number of pixels read at a time.
+
+    Returns:
+    --------
+    numpy.ndarray:
+        Hits of each contig, indexed by contig id (index 0 is unused): the
+        sum of the pixels of its bins, a pixel between two of its bins
+        counting twice.
+    pandas.DataFrame:
+        Contacts between two contigs, one row per contig pair in contact,
+        sorted: columns id1, id2 (id1 <= id2, an intra-contig contact has
+        id1 == id2) and count.
+
+    Raises:
+    -------
+    metator.metacool.MetacoolError
+        If the map cannot be read (a missing file, a file that is not a
+        .metacool one, a .mmetacool without the entry), does not hold the
+        contigs of the assembly, with the same lengths, or holds counts that
+        are not integers.
+    """
+    import metacooler
+
+    with mtmc._metacooler_logging():
+        try:
+            mc = metacooler.MetaCooler(metacool)
+        except (OSError, KeyError, ValueError) as error:
+            # A missing file, a file that is not a .metacool one (a pairs
+            # file, a plain cooler), a .mmetacool without its entry...
+            reason = error.args[0] if isinstance(error, KeyError) and error.args else error
+            raise mtmc.MetacoolError(f"Cannot read the contact map {metacool}: {reason}") from error
+        # Id of the contig of each bin.
+        ids = metacool_contig_ids(metacool, mc.contigs, contig_data)
+        with mc.open() as group:
+            chrom_offset = group["indexes"]["chrom_offset"][:].astype(np.int64)
+            bin1_offset = group["indexes"]["bin1_offset"][:].astype(np.int64)
+            count_dtype = group["pixels"]["count"].dtype
+        if not np.issubdtype(count_dtype, np.integer):
+            raise mtmc.MetacoolError(
+                f"{metacool} holds contact counts of type {count_dtype}: a network is built from counts of pairs, "
+                "which are integers."
+            )
+        bin_ids = np.repeat(ids, np.diff(chrom_offset))
+        n_bins = len(bin_ids)
+        size = len(contig_data) + 1
+
+        hits = np.zeros(size, dtype=np.int64)
+        summed = (np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64))
+        pending, n_pending = [], 0
+        # As stored, without balancing: the upper triangle, row by row.
+        pixels = mc.matrix(balance=False, as_pixels=True, join=False)
+        for lo, hi in pixel_row_blocks(bin1_offset, chunksize):
+            chunk = pixels[lo:hi, lo:n_bins]
+            id1 = bin_ids[chunk["bin1_id"].to_numpy()]
+            id2 = bin_ids[chunk["bin2_id"].to_numpy()]
+            count = chunk["count"].to_numpy().astype(np.int64)
+            # Exact in float64: a chunk sums far fewer than 2**53 contacts.
+            hits += np.bincount(id1, count, size).astype(np.int64)
+            hits += np.bincount(id2, count, size).astype(np.int64)
+            pending.append(_sum_by_key(np.minimum(id1, id2) * size + np.maximum(id1, id2), count))
+            n_pending += len(pending[-1][0])
+            # Fold the sums of the chunks into the sum of the contig pairs
+            # once they outgrow it: each fold merges sorted runs.
+            if n_pending >= max(chunksize, len(summed[0])):
+                summed = _sum_by_key(*(np.concatenate(arrays) for arrays in zip(summed, *pending, strict=True)))
+                pending, n_pending = [], 0
+        keys, counts = _sum_by_key(*(np.concatenate(arrays) for arrays in zip(summed, *pending, strict=True)))
+    return hits, pd.DataFrame({"id1": keys // size, "id2": keys % size, "count": counts})
+
+
+def metacool_contig_ids(metacool, contigs, contig_data):
+    """Id of each contig of a .metacool contact map in the contig data.
+
+    Parameters:
+    -----------
+    metacool : str
+        The map, for the messages.
+    contigs : pandas.DataFrame
+        The contigs table of the map: columns name and length.
+    contig_data : dict
+        Dictionary of the all the contigs from the assembly (see
+        create_contig_data).
+
+    Returns:
+    --------
+    numpy.ndarray:
+        Id of the contigs of the map, in their order in the map.
+
+    Raises:
+    -------
+    metator.metacool.MetacoolError
+        If the map does not hold the contigs of the assembly (with the
+        names missing from the map and those that are not in the assembly),
+        or holds them with other lengths.
+    """
+    names = [str(name) for name in contigs["name"]]
+    in_map = set(names)
+    missing = [name for name in contig_data if name not in in_map]
+    extra = [name for name in names if name not in contig_data]
+    if missing or extra:
+        problems = []
+        if missing:
+            problems.append(f"{len(missing)} contig(s) of the assembly are not in it: {mtmc._shown(missing)}")
+        if extra:
+            problems.append(f"{len(extra)} of its contig(s) are not in the assembly: {mtmc._shown(extra)}")
+        raise mtmc.MetacoolError(
+            f"{metacool} is not a contact map of the contigs of the assembly: {'; '.join(problems)}. Build it from "
+            "pairs of reads aligned on this assembly."
+        )
+    wrong = [
+        (name, int(length))
+        for name, length in zip(names, contigs["length"], strict=True)
+        if int(length) != contig_data[name]["length"]
+    ]
+    if wrong:
+        shown = ", ".join(
+            f"{name!r} ({length} bp in the map, {contig_data[name]['length']} bp in the assembly)"
+            for name, length in wrong[: mtmc.MAX_SHOWN]
+        )
+        raise mtmc.MetacoolError(
+            f"{metacool} is not a contact map of the contigs of the assembly: {len(wrong)} contig(s) have another "
+            f"length in it: {shown}{', ...' if len(wrong) > mtmc.MAX_SHOWN else ''}."
+        )
+    return np.array([contig_data[name]["id"] for name in names], dtype=np.int64)
+
+
+def pixel_row_blocks(bin1_offset, chunksize):
+    """Blocks of rows of a contact map holding about chunksize pixels each.
+
+    Parameters:
+    -----------
+    bin1_offset : numpy.ndarray
+        Index of the first pixel of each row of the map, and the number of
+        pixels last (cooler's bin1_offset index).
+    chunksize : int
+        Number of pixels of a block. A row holding more is a block of its
+        own.
+
+    Yields:
+    -------
+    tuple of int:
+        First row of the block and row after its last.
+    """
+    n_bins = len(bin1_offset) - 1
+    lo = 0
+    while lo < n_bins:
+        hi = int(np.searchsorted(bin1_offset, bin1_offset[lo] + chunksize, side="right")) - 1
+        hi = min(max(hi, lo + 1), n_bins)
+        yield lo, hi
+        lo = hi
+
+
+def _sum_by_key(keys, counts):
+    """The distinct keys, sorted, and the sum of the counts of each.
+
+    A stable sort merges sorted runs (timsort): summing sorted sums again
+    costs a merge, not a sort.
+    """
+    if not len(keys):
+        return keys, counts
+    order = np.argsort(keys, kind="stable")
+    keys, counts = keys[order], counts[order]
+    starts = np.flatnonzero(np.r_[True, keys[1:] != keys[:-1]])
+    return keys[starts], np.add.reduceat(counts, starts)
 
 
 def compute_network(
