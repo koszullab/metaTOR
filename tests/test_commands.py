@@ -169,6 +169,28 @@ def test_pipeline(tmp_path, run_cli):
     assert list(contigs.columns) == ["name", "length", "genome_id", "GC_content", "Hit", "Restriction_site"]
 
 
+def test_network_from_a_metacool(tmp_path, run_cli):
+    """metator network --start metacool, on a map of the pairs of
+    tests_data at 1 kb: the network and contig data of --start pair, without
+    the network per library."""
+    # metacooler indexes the assembly (.fai): a private copy.
+    assembly = shutil.copyfile(global_args["SUBSET_FASTA"], tmp_path / "assembly.fa")
+    metacool = tmp_path / "subset.metacool"
+    metacooler.from_pairs(str(metacool), pairs=global_args["SUBSET_PAIRS"], fasta=str(assembly), binsize=1000,
+                          contig_genome_map=None, contig_ordering="fasta", ps=False)  # fmt: skip
+    outputs = {}
+    for start, forward in [("pair", global_args["SUBSET_PAIRS"]), ("metacool", metacool)]:
+        out = tmp_path / start
+        run_cli("network", "-1", forward, "-a", assembly, "-S", start, "-e", "HindIII,DpnII", "-o", out, "-T", tmp_path / "tmp")
+        outputs[start] = out
+    for name in ["network.txt", "contig_data_network.txt"]:
+        assert (outputs["metacool"] / name).read_text() == (outputs["pair"] / name).read_text()
+    assert (outputs["pair"] / "network_0.txt").exists()
+    assert not (outputs["metacool"] / "network_0.txt").exists()
+    (log,) = outputs["metacool"].glob("metator_network_*.log")
+    assert f"INFO :: Information of {metacool}:" in log.read_text()
+
+
 def test_pairs(tmp_path, run_cli, monkeypatch):
     """Plain and compressed pairs files are sorted, compressed and indexed
     next to their input, with temporary files in the working directory."""

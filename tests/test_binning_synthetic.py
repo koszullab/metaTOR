@@ -306,3 +306,31 @@ def test_pipeline_without_metacool(metagenome, metagenome_inputs, metagenome_ind
     run_cli("pipeline", *args)
     assert len(pd.read_csv(out / "bin_summary.txt", sep="\t", index_col=0)) == len(metagenome.genomes)
     assert not list(out.glob("*.metacool*"))
+
+
+def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, metagenome_indexed_pairs, tmp_path, monkeypatch, run_cli):
+    """From the contact map written by a run from pairs (one bin per contig,
+    its contigs grouped by bin), the pipeline makes the same bins: its
+    network differs by the pairs with a read on the last base of a contig,
+    which the map counts."""
+    monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
+    common = ["-a", str(metagenome_inputs["assembly"]), "-d", str(metagenome_inputs["depth"]), "-e", "DpnII", "-s", "50000",
+              "-i", "10", "-j", "5", "-T", str(tmp_path / "tmp")]  # fmt: skip
+    random.seed(0)
+    run_cli("pipeline", "-1", str(metagenome_indexed_pairs), "-S", "pair", "-o", str(tmp_path / "pair"), *common)
+    metacool = tmp_path / "pair" / "metator.metacool"
+    random.seed(0)
+    run_cli("pipeline", "-1", str(metacool), "-S", "metacool", "-o", str(tmp_path / "metacool"), *common)
+
+    pair, mcool = tmp_path / "pair", tmp_path / "metacool"
+    assert (mcool / "network.txt").read_text() != (pair / "network.txt").read_text()
+    for name in ["contig_data_network.txt", "contig_data_final.txt", "bin_summary.txt", "binning.txt"]:
+        assert (mcool / name).read_text() == (pair / name).read_text(), name
+    assert sorted(p.name for p in (mcool / "final_bin_unscaffold").iterdir()) == sorted(
+        p.name for p in (pair / "final_bin_unscaffold").iterdir()
+    )
+    final = pd.read_csv(mcool / "contig_data_final.txt", sep="\t")
+    truth, found = _genome_labels(final, metagenome, "Final_bin")
+    assert synthetic.adjusted_rand(truth, found) >= 0.9
+    # No map of the bins from a map: it is written from pairs files.
+    assert not list(mcool.glob("*.metacool"))

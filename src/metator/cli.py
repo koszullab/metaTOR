@@ -41,7 +41,7 @@ ALIGNERS = ["bowtie2", "bwa"]
 ALIGNER_MODES = ["normal", "iterative", "cutsite"]
 ALGORITHMS = ["louvain", "leiden"]
 NORMALIZATIONS = ["None", "abundance", "length", "RS", "empirical_hit", "theoritical_hit"]
-STARTS = ["fastq", "bam", "pair"]
+STARTS = ["fastq", "bam", "pair", "metacool"]
 MATRIX_FORMATS = ["graal", "bg2", "cool"]
 
 # Panel holding the options common to most commands (output, temporary
@@ -144,6 +144,33 @@ def check_reverse_reads(start, aligner, reverse):
             start,
             aligner,
         )
+        raise ValueError
+
+
+def check_metacool_start(start, forward, edge, scaffold=False):
+    """A .metacool start: one contact map, without the edge region of the
+    contigs, nor the scaffolding (pipeline), which read the pairs files."""
+    if start != "metacool":
+        return
+    if not forward:
+        logger.error("--start metacool needs the .metacool file, given with -1/--forward.")
+        raise ValueError
+    if "," in forward:
+        logger.error(
+            "--start metacool takes one .metacool file (its libraries are already summed), given with "
+            "-1/--forward: got %d files.",
+            len(forward.split(",")),
+        )
+        raise ValueError
+    if edge > 0:
+        logger.error(
+            "--edge %d cannot be applied with --start metacool: a contact map holds the contacts of bins, not the "
+            "positions of the reads. Leave --edge at 0, or start from the pairs files.",
+            edge,
+        )
+        raise ValueError
+    if scaffold:
+        logger.error("--scaffold reads the pairs files: it cannot run with --start metacool.")
         raise ValueError
 
 
@@ -295,7 +322,8 @@ def reads_options(forward_required):
             metavar="STR",
             panel="Input",
             help="Fastq file or list of Fastq separated by a comma containing the forward reads to be aligned or their "
-            "corresponding bam or pairs files.",
+            "corresponding bam or pairs files. With --start metacool, one .metacool contact map (or an entry of a "
+            ".mmetacool collection: file.mmetacool::entries/NAME) of the contigs of the assembly.",
         ),
         _option(
             "-2",
@@ -314,7 +342,8 @@ def reads_options(forward_required):
             default="fastq",
             show_default=True,
             panel="Input",
-            help="Start stage of the pipeline.",
+            help="Start stage of the pipeline. [cyan]metacool[/] builds the network from a .metacool contact map "
+            "(see --forward) instead of reads, alignments or pairs.",
         ),
         _option(
             "-d",
@@ -395,7 +424,7 @@ def network_options(normalization_short):
             metavar="INT",
             panel="Network",
             help="Distance of the edge region in base pair on the contigs where the mapping reads are not considered as "
-            "inter contigs.",
+            "inter contigs. Not available with --start metacool.",
         ),
     )
 
@@ -516,7 +545,7 @@ def cli():
 # ---------------------------------------------------------------------------
 
 
-@cli.command(short_help="Generate the metaHiC contig network from fastq, bam or pairs files and normalize it.")
+@cli.command(short_help="Generate the metaHiC contig network from fastq, bam, pairs or .metacool files and normalize it.")
 @reads_options(forward_required=True)
 @alignment_options()
 @network_options("-n")
@@ -560,6 +589,13 @@ def network(
     If multiple fastq are given, they are aligned separately and the hit
     file has a number of hits for each sample.
 
+    With [cyan]--start metacool[/], the network is built from a .metacool
+    contact map of the contigs, at any bin size: its contacts, whose
+    libraries are summed (no network per library), make the same network as
+    the pairs they were made from, except for the pairs with a read on the
+    last base of a contig (or at position 0), which it keeps. --edge must
+    then be 0.
+
     Note: the network is in a strict barebone form so that it can be reused
     and imported quickly into other applications etc. Verbose information
     about every single node in the network is written on a 'contig data'
@@ -577,6 +613,7 @@ def network(
 
         # Check if forward and reverse arguments are given:
         check_reverse_reads(start, aligner, reverse)
+        check_metacool_start(start, forward, edge)
         aligner_mode = aligner_mode_for(aligner_mode, enzyme)
         check_normalization(normalization, enzyme, depth)
 
@@ -590,10 +627,12 @@ def network(
         logger.info("Normalization: %s", normalization)
         logger.info("Minimum mapping quality: %s", min_quality)
 
-        # Do not align if pair start
+        # Do not align if pair or metacool start
         if start == "pair":
             alignment_files = forward.split(",")
             contig_data, hit_data = mtn.create_contig_data(fasta, len(alignment_files), depth, enzyme)
+        elif start == "metacool":
+            contig_data, _ = mtn.create_contig_data(fasta, 1, depth, enzyme)
         else:
             # Align pair-end reads with bowtie2
             alignment_files, contig_data, hit_data = mta.get_contact_pairs(
@@ -613,19 +652,32 @@ def network(
             )
 
         # Build the network
-        mtn.alignment_to_contacts(
-            alignment_files,
-            contig_data,
-            edge,
-            hit_data,
-            outdir,
-            "network.txt",
-            "contig_data_network.txt",
-            tmp_dir,
-            threads,
-            normalization,
-            self_contacts,
-        )
+        if start == "metacool":
+            mtn.metacool_to_contacts(
+                forward,
+                contig_data,
+                outdir,
+                "network.txt",
+                "contig_data_network.txt",
+                tmp_dir,
+                threads,
+                normalization,
+                self_contacts,
+            )
+        else:
+            mtn.alignment_to_contacts(
+                alignment_files,
+                contig_data,
+                edge,
+                hit_data,
+                outdir,
+                "network.txt",
+                "contig_data_network.txt",
+                tmp_dir,
+                threads,
+                normalization,
+                self_contacts,
+            )
 
     generate_log_footer(log_file)
 
@@ -955,13 +1007,15 @@ def pipeline(
 
     Partition the contigs from the assembly in bins from the metaHiC reads.
 
-    It's possible to start from the fastq, the bam or the pairs files. A
-    validation step decontaminates the bins when it's necessary; it is the
-    critical step for memory usage (~40G).
+    It's possible to start from the fastq, the bam or the pairs files, or
+    from a .metacool contact map of the contigs ([cyan]--start metacool[/],
+    see [cyan]metator network[/]). A validation step decontaminates the bins
+    when it's necessary; it is the critical step for memory usage (~40G).
 
     At the end, the contact map of the contigs, grouped by bin, is written
     as a .metacool file (see [cyan]metator metacool[/]), unless
-    --no-metacool is given.
+    --no-metacool is given. It is written from the pairs files: a run that
+    starts from a .metacool file writes none, and cannot scaffold.
     """
     # Private temporary directory inside --tmpdir.
     with private_tmp_dir(tmpdir, clean_up=not no_clean_up) as tmp_dir:
@@ -981,6 +1035,7 @@ def pipeline(
 
         aligner_mode = aligner_mode_for(aligner_mode, enzyme)
         check_normalization(normalization, enzyme, depth)
+        check_metacool_start(start, forward, edge, scaffold)
 
         # Sanity check for validation
         recursive_fasta_dir = join(outdir, "recursive_bin")
@@ -997,7 +1052,7 @@ def pipeline(
         bins_prefix = bin_prefix(prefix)
 
         # Manage start point.
-        start_step = {"fastq": 1, "bam": 2, "pair": 3}[start]
+        start_step = {"fastq": 1, "bam": 2, "pair": 3, "metacool": 3}[start]
 
         # Check if forward and reverse reads are given for fastq and bam start.
         check_reverse_reads(start, aligner, reverse)
@@ -1037,23 +1092,39 @@ def pipeline(
                 tmp_dir,
                 threads,
             )
-        else:
+        elif start == "pair":
             alignment_files = forward.split(",")
             contig_data, hit_data = mtn.create_contig_data(fasta, len(alignment_files), depth, enzyme)
         # Build the network
-        network_file, contigs_data_file = mtn.alignment_to_contacts(
-            alignment_files,
-            contig_data,
-            edge,
-            hit_data,
-            outdir,
-            "network.txt",
-            "contig_data_network.txt",
-            tmp_dir,
-            threads,
-            normalization,
-            False,
-        )
+        if start == "metacool":
+            # From the contact map: no pairs files.
+            alignment_files = []
+            contig_data, _ = mtn.create_contig_data(fasta, 1, depth, enzyme)
+            network_file, contigs_data_file = mtn.metacool_to_contacts(
+                forward,
+                contig_data,
+                outdir,
+                "network.txt",
+                "contig_data_network.txt",
+                tmp_dir,
+                threads,
+                normalization,
+                False,
+            )
+        else:
+            network_file, contigs_data_file = mtn.alignment_to_contacts(
+                alignment_files,
+                contig_data,
+                edge,
+                hit_data,
+                outdir,
+                "network.txt",
+                "contig_data_network.txt",
+                tmp_dir,
+                threads,
+                normalization,
+                False,
+            )
 
         # Partition the network
         clustering_matrix_partition_file, contigs_data_file = mtp.partition(
@@ -1126,7 +1197,13 @@ def pipeline(
         os.remove(fasta + ".fxi")
 
         # Write the contact map last, while the pairs files are still there.
-        if not no_metacool:
+        if start == "metacool":
+            if not no_metacool:
+                logger.info(
+                    "The contact map of the bins is not written: it is made from the pairs files, and this run "
+                    f"started from the contact map {forward}."
+                )
+        elif not no_metacool:
             pipeline_metacool(alignment_files, outdir, prefix, assembly, threads)
 
     # Delete the pairs files made from the reads or the alignments, and

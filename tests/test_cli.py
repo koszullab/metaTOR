@@ -28,13 +28,14 @@ mtmc_write_metacool = mtmc.write_metacool
 INVENTORY = json.loads((TESTS_DATA / "cli_inventory.json").read_text())["metator"]
 
 # Options whose value is one of a list, wherever they appear. --object takes
-# any column name of the contig data file.
+# any column name of the contig data file. Values added since docopt:
+# metacool (--start of network and pipeline).
 CHOICES = {
     "--aligner": ["bowtie2", "bwa"],
     "--aligner-mode": ["normal", "iterative", "cutsite"],
     "--algorithm": ["louvain", "leiden"],
     "--normalization": ["None", "abundance", "length", "RS", "empirical_hit", "theoritical_hit"],
-    "--start": ["fastq", "bam", "pair"],
+    "--start": ["fastq", "bam", "pair", "metacool"],
     "--mat-fmt": ["graal", "bg2", "cool"],
 }
 
@@ -291,6 +292,12 @@ def stub_pipeline(monkeypatch, tmp_path):
             Path(out_dir, name).write_text("x")
         return os.path.join(out_dir, network), os.path.join(out_dir, contig_data_file)
 
+    def metacool_to_contacts(metacool, contig_data, out_dir, network, contig_data_file, *args):
+        calls["metacool_to_contacts"] = (metacool, out_dir, network, contig_data_file, *args)
+        for name in [network, contig_data_file]:
+            Path(out_dir, name).write_text("x")
+        return os.path.join(out_dir, network), os.path.join(out_dir, contig_data_file)
+
     def partition(*args):
         calls["partition"] = args
         out_dir = args[6]
@@ -314,6 +321,7 @@ def stub_pipeline(monkeypatch, tmp_path):
     monkeypatch.setattr("metator.align.get_contact_pairs", get_contact_pairs)
     monkeypatch.setattr("metator.network.create_contig_data", create_contig_data)
     monkeypatch.setattr("metator.network.alignment_to_contacts", alignment_to_contacts)
+    monkeypatch.setattr("metator.network.metacool_to_contacts", metacool_to_contacts)
     monkeypatch.setattr("metator.partition.partition", partition)
     monkeypatch.setattr("metator.validation.recursive_decontamination", recursive_decontamination)
     monkeypatch.setattr("metator.io.generate_fasta_index", generate_fasta_index)
@@ -582,6 +590,107 @@ def test_pipeline_from_pairs_keeps_them(stub_pipeline, tmp_path, run_cli):
     assert calls["alignment_to_contacts"][0] == [str(path) for path in pairs]
     assert all(path.exists() and Path(f"{path}.px2").exists() for path in pairs)
     assert not (tmp_path / "tmp").exists()
+
+
+@pytest.mark.parametrize("no_metacool", [False, True])
+def test_pipeline_from_a_metacool(no_metacool, stub_pipeline, tmp_path, run_cli):
+    """From a contact map: the network is read from it, no pairs file is
+    read or written, and the map of the bins is not written (it is made
+    from pairs files). The input map stays, even where the map of the bins
+    would go."""
+    out = tmp_path / "out"
+    out.mkdir()
+    metacool = out / "metator.metacool"
+    metacool.write_text("input map")
+    options = ["--no-metacool"] if no_metacool else []
+    run_cli("pipeline", "-1", metacool, "-a", _assembly(tmp_path), "-S", "metacool", "-t", "3", "-m", "abundance",
+            "-d", TESTS_DATA / "depth.txt", "-o", out, "-T", tmp_path / "tmp", *options)  # fmt: skip
+
+    calls = stub_pipeline
+    assert "get_contact_pairs" not in calls and "alignment_to_contacts" not in calls
+    assert "write_metacool" not in calls
+    fasta, nb_alignment, depth, enzyme = calls["create_contig_data"]
+    assert (fasta, nb_alignment, depth, enzyme) == (str(tmp_path / "assembly.fa"), 1, str(TESTS_DATA / "depth.txt"), None)
+    uri, out_dir, network, contig_data, tmp_dir, threads, normalization, self_contacts = calls["metacool_to_contacts"]
+    assert (uri, out_dir, network, contig_data) == (str(metacool), str(out), "network.txt", "contig_data_network.txt")
+    assert Path(tmp_dir).parent == tmp_path / "tmp"
+    assert (threads, normalization, self_contacts) == (3, "abundance", False)
+    assert calls["partition"][5] == str(out / "network.txt")
+    assert metacool.read_text() == "input map"
+    # The contig data of the network step is kept, as from pairs files.
+    assert (out / "contig_data_network.txt").exists()
+    (log,) = out.glob("metator_pipeline_*.log")
+    message = f"The contact map of the bins is not written: it is made from the pairs files, and this run started from the contact map {metacool}."
+    assert (message in log.read_text()) == (not no_metacool)
+
+
+def test_network_from_a_metacool(monkeypatch, tmp_path, run_cli):
+    """metator network --start metacool reads the network from the map, with
+    the contig data of the assembly."""
+    calls = {}
+
+    def create_contig_data(*args):
+        calls["create_contig_data"] = args
+        return {"c1": {}}, None
+
+    def metacool_to_contacts(*args):
+        calls["metacool_to_contacts"] = args
+
+    def not_called(*args):
+        raise AssertionError("no alignment nor pairs from a metacool")
+
+    monkeypatch.setattr("metator.network.create_contig_data", create_contig_data)
+    monkeypatch.setattr("metator.network.metacool_to_contacts", metacool_to_contacts)
+    monkeypatch.setattr("metator.network.alignment_to_contacts", not_called)
+    monkeypatch.setattr("metator.align.get_contact_pairs", not_called)
+    out = tmp_path / "out"
+    run_cli("network", "-1", "maps.mmetacool::entries/lib1", "-a", _assembly(tmp_path), "-S", "metacool", "-e", "DpnII",
+            "-s", "-t", "2", "-n", "RS", "-o", out, "-T", tmp_path / "tmp")  # fmt: skip
+    assert calls["create_contig_data"] == (str(tmp_path / "assembly.fa"), 1, None, "DpnII")
+    uri, contig_data, *args = calls["metacool_to_contacts"]
+    assert uri == "maps.mmetacool::entries/lib1" and contig_data == {"c1": {}}
+    out_dir, network, contigs, tmp_dir, threads, normalization, self_contacts = args
+    assert (out_dir, network, contigs, threads, normalization, self_contacts) == (
+        str(out), "network.txt", "contig_data_network.txt", 2, "RS", True)  # fmt: skip
+    assert Path(tmp_dir).parent == tmp_path / "tmp"
+
+
+METACOOL_START_ERRORS = {
+    "edge region": (
+        ["-1", "map.metacool", "-E", "100"],
+        "--edge 100 cannot be applied with --start metacool: a contact map holds the contacts of bins, not the "
+        "positions of the reads. Leave --edge at 0, or start from the pairs files.",
+    ),
+    "several maps": (
+        ["-1", "a.metacool,b.metacool,c.metacool"],
+        "--start metacool takes one .metacool file (its libraries are already summed), given with -1/--forward: got 3 files.",
+    ),
+}
+PIPELINE_METACOOL_START_ERRORS = {
+    "no map": ([], "--start metacool needs the .metacool file, given with -1/--forward."),
+    "scaffold": (["-1", "map.metacool", "--scaffold"], "--scaffold reads the pairs files: it cannot run with --start metacool."),
+}
+
+
+@pytest.mark.parametrize(
+    "command, case",
+    [(command, case) for command in ["network", "pipeline"] for case in METACOOL_START_ERRORS]
+    + [("pipeline", case) for case in PIPELINE_METACOOL_START_ERRORS],
+)
+def test_metacool_start_refused(command, case, monkeypatch, tmp_path, run_cli):
+    """Options a contact map cannot serve are refused before any work, with
+    a message in the log file."""
+
+    def not_called(*args):
+        raise AssertionError("refused before any work")
+
+    monkeypatch.setattr("metator.network.create_contig_data", not_called)
+    args, message = {**METACOOL_START_ERRORS, **PIPELINE_METACOOL_START_ERRORS}[case]
+    out = tmp_path / "out"
+    with pytest.raises(ValueError):
+        run_cli(command, *args, "-a", TESTS_DATA / "assembly.fa", "-S", "metacool", "-o", out, "-T", tmp_path / "tmp")
+    (log,) = out.glob(f"metator_{command}_*.log")
+    assert f"ERROR :: {message}" in log.read_text()
 
 
 def test_qc_default_outdir(tmp_path, monkeypatch, run_cli):
