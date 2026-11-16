@@ -298,11 +298,11 @@ def test_bin_names_read_as_no_bin_are_refused(metagenome, metagenome_files, tmp_
 
 
 def test_no_bin_names_are_those_of_metacooler():
-    """Every genome name that metacooler reads as no genome is refused as a
-    bin name."""
+    """The bin names refused are exactly the genome names that metacooler
+    reads as no genome (-1 among them from metacooler 0.2.0)."""
     from metacooler.io.create import _UNBINNED_SENTINELS
 
-    assert set(_UNBINNED_SENTINELS) <= mtmc.METACOOLER_UNBINNED
+    assert set(_UNBINNED_SENTINELS) == mtmc.METACOOLER_UNBINNED
     mtmc.check_bin_names(["metator_00001_00000", "MetaTOR_MGE_00001", "ND_1", "na1"])
     for name in mtmc.METACOOLER_UNBINNED:
         with pytest.raises(mtmc.MetacoolError, match="Rename the 2 bin"):

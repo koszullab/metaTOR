@@ -2521,8 +2521,8 @@ wheels = [
 
 [[package]]
 name = "metacooler"
-version = "0.1.0"
-source = { git = "https://github.com/js2264/metacooler?rev=fc88f6781f2edb814173cb1ddbad9f6fc2213613#fc88f6781f2edb814173cb1ddbad9f6fc2213613" }
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
     { name = "cooler" },
@@ -2543,6 +2543,10 @@ dependencies = [
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
     { name = "scipy", version = "1.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/cc/5f/af42e1054e020b30f0bbf0123eb3932d6ffda9e694b204b2051f0a7de98d/metacooler-0.2.0.tar.gz", hash = "sha256:b0b165fe0cd3dd2b204dca17c9489e30c61f4a6069cdbb927190bd011eb736cf", size = 2331443, upload-time = "2026-11-16T22:44:39.155Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2d/58/19dba990235ad512a5058ba4df00d2d1a41c81a18bfe67e56357f5aca29c/metacooler-0.2.0-py3-none-any.whl", hash = "sha256:d9dc1f49e9a4dddd3f43a29859c1f902609aa39b71bfd5bba1c60fa0fa630a75", size = 275064, upload-time = "2026-11-16T22:44:37.512Z" },
 ]
 
 [[package]]
@@ -2616,7 +2620,7 @@ requires-dist = [
     { name = "lxml", extras = ["html-clean"], marker = "extra == 'docs'" },
     { name = "m2r", marker = "extra == 'docs'" },
     { name = "matplotlib", specifier = ">=3.9" },
-    { name = "metacooler", git = "https://github.com/js2264/metacooler?rev=fc88f6781f2edb814173cb1ddbad9f6fc2213613" },
+    { name = "metacooler", specifier = ">=0.2.0" },
     { name = "micomplete" },
     { name = "myst-parser", marker = "extra == 'docs'" },
     { name = "nbsphinx", marker = "extra == 'docs'" },

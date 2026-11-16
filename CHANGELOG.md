@@ -30,7 +30,7 @@ All notable changes to this project will be documented in this file.
   `__unbinned__` in any case, and `nd` in any case other than `ND`, which
   marks a contig in no bin), whose contigs metacooler would put in
   `__unbinned__` without a word; metaTOR's own bin names never are.
-- metaTOR depends on `metacooler`.
+- metaTOR depends on `metacooler` >= 0.2.0.
 
 ### Changed
 - metaTOR supports Python 3.10 to 3.14: 3.13 and 3.14 are new, and

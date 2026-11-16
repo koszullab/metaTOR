@@ -48,7 +48,7 @@ dependencies = [
     "micomplete",
     "pypairix",
     "rich-click>=1.9",
-    "metacooler",
+    "metacooler>=0.2.0",
 
     # NON PIP DEPENDENCIES
     #"bowtie2"
@@ -87,12 +87,6 @@ dev = [
     "ruff>=0.8",
     "ty>=0.0.38",
 ]
-
-[tool.uv.sources]
-# TEMPORARY until metacooler 0.2.0 is on PyPI; replace by "metacooler>=0.2.0"
-# above, without this table. metacooler from its devel branch, which reads
-# several pairs files in one pass (js2264/metacooler#10).
-metacooler = { git = "https://github.com/js2264/metacooler", rev = "fc88f6781f2edb814173cb1ddbad9f6fc2213613" }
 
 [project.urls]
 homepage = "https://github.com/koszullab/metator"
