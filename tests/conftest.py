@@ -126,14 +126,12 @@ def metagenome_files(metagenome, tmp_path_factory):
 @pytest.fixture(scope="session")
 def metagenome_indexed_pairs(metagenome_files, tmp_path_factory):
     """The pairs sorted, bgzipped and indexed for pypairix."""
-    if shutil.which("pairtools") is None:
-        pytest.skip("pairtools is not installed")
     import metator.io as mio
 
     directory = tmp_path_factory.mktemp("metagenome_pairs")
     pairs = directory / "synthetic.pairs"
     shutil.copyfile(metagenome_files["pairs"], pairs)
-    return Path(mio.sort_pairs_pairtools(str(pairs), tmp_dir=str(directory)))
+    return Path(mio.sort_and_index_pairs(str(pairs), tmp_dir=str(directory)))
 
 
 @pytest.fixture(scope="session")

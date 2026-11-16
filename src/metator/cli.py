@@ -1061,10 +1061,13 @@ def pipeline(
         # Delete pyfastx index:
         os.remove(fasta + ".fxi")
 
-    # Delete the pairs files made from the reads or the alignments.
+    # Delete the pairs files made from the reads or the alignments, and
+    # their pypairix index.
     if not no_clean_up and start_step < 3:
         for pair_file in alignment_files:
             os.remove(pair_file)
+            if os.path.exists(f"{pair_file}.px2"):
+                os.remove(f"{pair_file}.px2")
 
     generate_log_footer(log_file)
 
@@ -1458,8 +1461,12 @@ def scaffold(pairsfile, bin_name, input_fasta, threshold, window_size, junctions
 def pairs(pairsfile, force, remove, threads):
     """Sort, compress and index pairs files for faster access to the data.
 
-    Sort the pairs file using pairtools. Compress them using bgzip. Index
-    them using pypairix.
+    Sort the pairs files (compressed or not) by chr1, chr2, pos1 and pos2
+    using hicstuff. Compress them using bgzip. Index them using pypairix.
+    Each output goes next to its input, named after it without its last
+    extension: sample.pairs gives sample_sorted.pairs.gz and its index
+    sample_sorted.pairs.gz.px2, sample.pairs.gz gives
+    sample.pairs_sorted.pairs.gz.
     """
     # Generate log
     log_file = log_file_name("", "pairs")
@@ -1468,8 +1475,9 @@ def pairs(pairsfile, force, remove, threads):
     # Iterates on pairfiles given.
     for pairs_file in pairsfile:
         logger.info(f"Processing {pairs_file}...")
-        # Run the sort/compress/index command.
-        mio.sort_pairs_pairtools(pairs_file, threads=threads, remove=remove, force=force)
+        # Run the sort/compress/index command. Sort's temporary files go to
+        # the working directory: /tmp can be small, or in memory.
+        mio.sort_and_index_pairs(pairs_file, threads=threads, remove=remove, force=force, tmp_dir=".")
 
     generate_log_footer(log_file)
 

@@ -271,10 +271,17 @@ def stub_pipeline(monkeypatch, tmp_path):
     def get_contact_pairs(*args):
         calls["get_contact_pairs"] = args
         out_dir = args[10]
-        pairs = [os.path.join(out_dir, f"alignment_{i}.pairs") for i in range(len(args[0].split(",")))]
+        # Sorted, compressed and indexed by pypairix, as the alignment step
+        # leaves them.
+        pairs = [os.path.join(out_dir, f"alignment_{i}_sorted.pairs.gz") for i in range(len(args[0].split(",")))]
         for path in pairs:
             Path(path).write_text("## pairs format v1.0\n")
+            Path(f"{path}.px2").write_text("x")
         return pairs, {}, {}
+
+    def create_contig_data(*args):
+        calls["create_contig_data"] = args
+        return {}, {}
 
     def alignment_to_contacts(alignment_files, contig_data, edge, hit_data, out_dir, network, contig_data_file, *args):
         calls["alignment_to_contacts"] = (alignment_files, edge, out_dir, *args)
@@ -299,6 +306,7 @@ def stub_pipeline(monkeypatch, tmp_path):
         return os.path.join(tmp_dir, "index")
 
     monkeypatch.setattr("metator.align.get_contact_pairs", get_contact_pairs)
+    monkeypatch.setattr("metator.network.create_contig_data", create_contig_data)
     monkeypatch.setattr("metator.network.alignment_to_contacts", alignment_to_contacts)
     monkeypatch.setattr("metator.partition.partition", partition)
     monkeypatch.setattr("metator.validation.recursive_decontamination", recursive_decontamination)
@@ -343,11 +351,31 @@ def test_pipeline_from_reads(start, clean_up, stub_pipeline, tmp_path, run_cli):
     assert not (out / "contig_data_network.txt").exists()
     assert not (out / "contig_data_partition.txt").exists()
     assert (out / "network.txt").exists()
-    pairs = [out / "alignment_0.pairs", out / "alignment_1.pairs"]
+    # The pairs files and their pypairix index go together.
+    pairs = [out / "alignment_0_sorted.pairs.gz", out / "alignment_1_sorted.pairs.gz"]
     assert [path.exists() for path in pairs] == [not clean_up] * 2
+    assert [Path(f"{path}.px2").exists() for path in pairs] == [not clean_up] * 2
     assert (tmp_path / "tmp").exists() == (not clean_up)
     (log,) = out.glob("metator_pipeline_*.log")
     assert f"## Command used: metator pipeline -1 a1.fq,b1.fq -2 a2.fq,b2.fq -a {assembly}" in log.read_text()
+
+
+def test_pipeline_from_pairs_keeps_them(stub_pipeline, tmp_path, run_cli):
+    """From pairs files: they are inputs, kept with their pypairix index."""
+    assembly = tmp_path / "assembly.fa"
+    shutil.copyfile(TESTS_DATA / "subset.assembly.fa", assembly)
+    pairs = [tmp_path / "a_sorted.pairs.gz", tmp_path / "b_sorted.pairs.gz"]
+    for path in pairs:
+        path.write_text("## pairs format v1.0\n")
+        Path(f"{path}.px2").write_text("x")
+    out = tmp_path / "out"
+    run_cli("pipeline", "-1", ",".join(map(str, pairs)), "-a", assembly, "-S", "pair", "-o", out, "-T", tmp_path / "tmp")
+
+    calls = stub_pipeline
+    assert "get_contact_pairs" not in calls
+    assert calls["alignment_to_contacts"][0] == [str(path) for path in pairs]
+    assert all(path.exists() and Path(f"{path}.px2").exists() for path in pairs)
+    assert not (tmp_path / "tmp").exists()
 
 
 def test_qc_default_outdir(tmp_path, monkeypatch, run_cli):

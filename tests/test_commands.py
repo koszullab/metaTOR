@@ -3,7 +3,10 @@
 
 
 from pathlib import Path
+import gzip
 import metator.cli as mtc
+import metator.io as mio
+import pypairix
 import pytest
 import shutil
 import os
@@ -156,15 +159,45 @@ def test_pipeline(tmp_path, run_cli):
     run_cli("pipeline", *args.split(" "))
 
 
-def test_pairs(tmp_path, run_cli):
+def test_pairs(tmp_path, run_cli, monkeypatch):
+    """Plain and compressed pairs files are sorted, compressed and indexed
+    next to their input, with temporary files in the working directory."""
     OUT_TEST = Path(tmp_path, "out_test")
     os.makedirs(OUT_TEST, exist_ok=True)
-    pairs1 = f"{OUT_TEST}/align1.pairs"
-    pairs2 = f"{OUT_TEST}/align2.pairs"
+    pairs1 = OUT_TEST / "align1.pairs"
+    pairs2 = OUT_TEST / "align2.pairs.gz"
     pairs = "{PAIRS}".format(**global_args)
     shutil.copyfile(pairs, pairs1)
-    shutil.copyfile(pairs, pairs2)
+    with open(pairs, "rb") as source, gzip.open(pairs2, "wb") as target:
+        shutil.copyfileobj(source, target)
+    sort_calls = []
+    real_sort_pairs = mio.hio.sort_pairs
+
+    def sort_pairs(*args, **kwargs):
+        sort_calls.append(kwargs)
+        return real_sort_pairs(*args, **kwargs)
+
+    monkeypatch.setattr(mio.hio, "sort_pairs", sort_pairs)
+    run_cli("pairs", "-t", "2", pairs1, pairs2)
+    assert [(call["tmp_dir"], call["threads"]) for call in sort_calls] == [(".", 2), (".", 2)]
+    outputs = [OUT_TEST / "align1_sorted.pairs.gz", OUT_TEST / "align2.pairs_sorted.pairs.gz"]
+    with open(pairs) as handle:
+        lines = handle.read().splitlines()
+    body = sorted(line for line in lines if not line.startswith("#"))
+    contig1, _, contig2 = body[0].split("\t")[1:4]
+    for output in outputs:
+        with gzip.open(output, "rt") as handle:
+            sorted_lines = handle.read().splitlines()
+        assert "#sorted: chr1-chr2-pos1-pos2" in sorted_lines
+        assert sorted(line for line in sorted_lines if not line.startswith("#")) == body
+        assert next(pypairix.open(str(output)).query2D(contig1, 0, 10**9, contig2, 0, 10**9, 1))
+    # The outputs exist: they are kept unless --force; --remove deletes the
+    # inputs.
+    with pytest.raises(ValueError):
+        run_cli("pairs", str(pairs1))
     run_cli("pairs", "-rF", pairs1, pairs2)
+    assert not pairs1.exists() and not pairs2.exists()
+    assert all(output.exists() and Path(f"{output}.px2").exists() for output in outputs)
 
 
 def test_tmpdir_contents_survive(tmp_path, run_cli):
