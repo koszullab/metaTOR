@@ -65,9 +65,12 @@ def _metacooler_logging():
 
 
 def _shown(names):
-    """A few names, quoted, for an error message."""
+    """A few names, quoted, for an error message: the first MAX_SHOWN, then
+    how many more there are (not a bare "...", which the period ending the
+    message would make four dots)."""
     shown = ", ".join(repr(name) for name in names[:MAX_SHOWN])
-    return shown + (", ..." if len(names) > MAX_SHOWN else "")
+    more = len(names) - MAX_SHOWN
+    return shown + (f", ... (+{more} more)" if more > 0 else "")
 
 
 def read_contig_bins(contig_data):

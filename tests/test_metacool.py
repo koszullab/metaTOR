@@ -272,7 +272,9 @@ def test_non_ascii_names_are_refused(metagenome, metagenome_files, kind, tmp_pat
 
 
 def test_non_ascii_names_shown():
-    with pytest.raises(mtmc.MetacoolError, match=r"7 contig name\(s\) are not: 'é0', 'é1', 'é2', 'é3', 'é4', ...\.$"):
+    """The first names, then how many more: the message ends with one period."""
+    names = r"'é0', 'é1', 'é2', 'é3', 'é4', \.\.\. \(\+2 more\)"
+    with pytest.raises(mtmc.MetacoolError, match=rf"7 contig name\(s\) are not: {names}\.$"):
         mtmc.check_ascii_names(["ok", *[f"é{i}" for i in range(7)], "é0"], [])
     mtmc.check_ascii_names(["contig_1"], ["metator_00001_00000"])
 
