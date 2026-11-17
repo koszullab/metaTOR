@@ -69,6 +69,11 @@ All notable changes to this project will be documented in this file.
   informative: the ratios that have nothing to divide are 0, and a pie
   chart of no pair is not drawn. The ratio of informative contacts
   between contigs is logged as a percentage, as its `%` says.
+- `pipeline` and `validation` stop with a clear error when no bin of the
+  partition reached `--size` (a small assembly with the default 500 kb,
+  say). They failed in miComplete with `EmptyDataError: No columns to
+  parse from file`, leaving its working directory in the output
+  directory.
 
 ## [1.4.0] - 2026-11-17
 

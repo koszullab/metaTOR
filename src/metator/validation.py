@@ -44,6 +44,9 @@ from metator.log import logger
 from os.path import join
 from scipy import sparse
 
+# The fasta files of the bins that miComplete evaluates.
+FASTA_EXTENSIONS = (".fa", ".fasta", ".fna")
+
 
 def correct_final_bin(contigs_data, final_fasta_dir, bin_summary):
     """Function to compute the coverage of each bin.
@@ -300,7 +303,7 @@ def micomplete_quality(fasta_dir, outfile, threads):
     tmp_seq_tab = join(workdir, "micomplete_seq.tsv")
     with open(tmp_seq_tab, "w") as tab:
         for path in sorted(os.listdir(fasta_dir)):
-            if path.endswith((".fa", ".fasta", ".fna")):
+            if path.endswith(FASTA_EXTENSIONS):
                 tab.write(f"{join(fasta_dir, path)}\tfna\n")
 
     # Run miComplete (through metator._micomplete, which patches it for recent
@@ -619,6 +622,14 @@ def recursive_decontamination(
         Matrix with all the previously computed hamming distance between two
         contigs.
     """
+
+    # No bin to validate: miComplete would write no result to read.
+    if not any(path.endswith(FASTA_EXTENSIONS) for path in os.listdir(input_fasta_dir)):
+        logger.error(
+            f"{input_fasta_dir} holds no bin to validate (no .fa, .fasta or .fna file): partition writes none when "
+            "no bin reaches its minimum size (--size of partition or pipeline)."
+        )
+        raise ValueError
 
     # Create folders in the temporary directory
     tmpdir_recursive_clustering = join(temp_directory, "recursive_clustering")
