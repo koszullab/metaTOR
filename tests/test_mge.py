@@ -32,6 +32,14 @@ global_args = {
 }
 
 
+@pytest.fixture(autouse=True)
+def private_subset_assembly(private_link, monkeypatch):
+    """Each test reads the subset assembly through a link of its own (see
+    private_link): two test sessions sharing tests_data removed each
+    other's pyfastx index."""
+    monkeypatch.setitem(global_args, "SUBSET_FASTA", private_link(global_args["SUBSET_FASTA"]))
+
+
 def test_mge(tmp_dir, run_cli):
     """Test the metator mge command with subset data from pipeline output."""
     args = (

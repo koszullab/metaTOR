@@ -40,6 +40,17 @@ global_args = {
     "SUBSET_PAIRS": "tests_data/subset.pairs.gz",
     "SUBSET_MGES": "tests_data/subset.mges.txt",
 }
+
+
+@pytest.fixture(autouse=True)
+def private_assemblies(private_link, monkeypatch):
+    """Each test reads the assemblies of tests_data through links of its
+    own (see private_link): two test sessions sharing tests_data removed
+    each other's pyfastx index (FileNotFoundError)."""
+    for key in ["FASTA", "SUBSET_FASTA"]:
+        monkeypatch.setitem(global_args, key, private_link(global_args[key]))
+
+
 NORMALIZE = (
     "norm",
     ["None", "length", "abundance", "RS", "empirical_hit", "theoritical_hit"],
