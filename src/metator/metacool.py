@@ -212,6 +212,37 @@ def _check_field_counts(path):
         )
 
 
+def open_map(metacool):
+    """The metacooler.MetaCooler of a .metacool map, or of an entry of a
+    .mmetacool collection: a map that cannot be read (a missing file, a file
+    that is not a map, a collection without the entry...) is a
+    MetacoolError naming it."""
+    import metacooler
+
+    try:
+        return metacooler.MetaCooler(metacool)
+    except (OSError, KeyError, ValueError) as error:
+        reason = error.args[0] if isinstance(error, KeyError) and error.args else error
+        raise MetacoolError(f"Cannot read the contact map {metacool}: {reason}") from error
+
+
+def check_map_lengths(metacool, contigs, lengths, of, where):
+    """Refuse a map that gives contigs another length than lengths (by
+    contig name; the contigs it lacks are not checked): it is not a map of
+    the contigs of `of` (the assembly, or a contig data file), where (`where`)
+    they have these lengths."""
+    wrong = [
+        f"{str(name)!r} ({int(length)} bp in the map, {lengths[str(name)]} bp in {where})"
+        for name, length in zip(contigs["name"], contigs["length"], strict=True)
+        if str(name) in lengths and int(length) != lengths[str(name)]
+    ]
+    if wrong:
+        raise MetacoolError(
+            f"{metacool} is not a contact map of the contigs of {of}: {len(wrong)} contig(s) have another length in "
+            f"it: {_shown(wrong, show=str)}."
+        )
+
+
 def map_file(metacool):
     """The file of a .metacool map: the map, or the .mmetacool collection of
     an entry given as file.mmetacool::entries/NAME."""
@@ -464,29 +495,15 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
     bins, contig_bin, contig_columns, header = _checked_inputs(
         contig_data, outfile, force, [map_file(metacool), contig_data, bin_summary]
     )
-    sizes = dict(zip(bins["chrom"], bins["end"], strict=True))
 
     import metacooler
 
     with _metacooler_logging():
-        try:
-            contigs = metacooler.MetaCooler(metacool).contigs
-        except (OSError, KeyError, ValueError) as error:
-            reason = error.args[0] if isinstance(error, KeyError) and error.args else error
-            raise MetacoolError(f"Cannot read the contact map {metacool}: {reason}") from error
+        contigs = open_map(metacool).contigs
     names = [str(name) for name in contigs["name"]]
     # The binning of another version of the assembly (other contigs under
     # the same names) is no binning of this map.
-    wrong = [
-        f"{name!r} ({int(length)} bp in the map, {sizes[name]} bp in the contig data)"
-        for name, length in zip(names, contigs["length"], strict=True)
-        if name in sizes and int(length) != sizes[name]
-    ]
-    if wrong:
-        raise MetacoolError(
-            f"{metacool} is not a contact map of the contigs of {contig_data}: {len(wrong)} contig(s) have another "
-            f"length in it: {_shown(wrong, show=str)}."
-        )
+    check_map_lengths(metacool, contigs, dict(zip(bins["chrom"], bins["end"], strict=True)), contig_data, "the contig data")
     in_map = set(names)
     absent = [name for name in contig_bin if name not in in_map]
     if absent:

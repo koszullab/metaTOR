@@ -327,16 +327,8 @@ def read_metacool_contacts(metacool, contig_data, chunksize=METACOOL_CHUNKSIZE):
         not in the assembly or that have another length in it, or holds
         counts that are not integers.
     """
-    import metacooler
-
     with mtmc._metacooler_logging():
-        try:
-            mc = metacooler.MetaCooler(metacool)
-        except (OSError, KeyError, ValueError) as error:
-            # A missing file, a file that is not a .metacool one (a pairs
-            # file, a plain cooler), a .mmetacool without its entry...
-            reason = error.args[0] if isinstance(error, KeyError) and error.args else error
-            raise mtmc.MetacoolError(f"Cannot read the contact map {metacool}: {reason}") from error
+        mc = mtmc.open_map(metacool)
         # The rows are read from their diagonal on: a map that also stores
         # the lower triangle would count some contacts twice.
         storage_mode = mc.info.get("storage-mode", "symmetric-upper")
@@ -420,16 +412,8 @@ def metacool_contig_ids(metacool, contigs, contig_data):
             f"{metacool} is not a contact map of the contigs of the assembly: {len(extra)} of its contig(s) are not "
             f"in the assembly: {mtmc._shown(extra)}. Build it from pairs of reads aligned on this assembly."
         )
-    wrong = [
-        f"{name!r} ({int(length)} bp in the map, {contig_data[name]['length']} bp in the assembly)"
-        for name, length in zip(names, contigs["length"], strict=True)
-        if int(length) != contig_data[name]["length"]
-    ]
-    if wrong:
-        raise mtmc.MetacoolError(
-            f"{metacool} is not a contact map of the contigs of the assembly: {len(wrong)} contig(s) have another "
-            f"length in it: {mtmc._shown(wrong, show=str)}."
-        )
+    lengths = {name: data["length"] for name, data in contig_data.items()}
+    mtmc.check_map_lengths(metacool, contigs, lengths, "the assembly", "the assembly")
     in_map = set(names)
     missing = [name for name in contig_data if name not in in_map]
     if missing:
