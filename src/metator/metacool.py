@@ -119,22 +119,66 @@ def _shown(names, show=repr):
     return shown + (f", ... (+{more} more)" if more > 0 else "")
 
 
-def _read_contig_table(contig_data, **kwargs):
-    """A contig data file as a table of text (kwargs: more keyword arguments
-    of pandas.read_csv). A file that pandas cannot read as a table (empty,
-    not UTF-8...) is a MetacoolError naming the file, as are the other
-    refusals of the inputs.
+def read_contig_data(contig_data):
+    """The contigs of a contig data file, read once: their bins (one per
+    contig), their final bins and what metaTOR measured on them.
 
-    So is a row with more or fewer fields than the header, which pandas
-    would read without a word: the surplus leading fields of the first rows
-    as their index, every value then under the name of the column to its
-    left, and the fields a row lacks as empty, its contig then in no bin.
+    Parameters
+    ----------
+    contig_data : str
+        Path to the contig_data_final.txt file of a validation or pipeline
+        run: its Name, Size and Final_bin columns are read, and those of
+        CONTIG_COLUMNS that it has.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One bin per contig, from 0 to its size: columns chrom, start and
+        end.
+    dict
+        Final bin of each binned contig, by contig name. The unbinned
+        contigs (Final_bin ND, - or empty) are left out.
+    list of str
+        The columns of CONTIG_COLUMNS that the file has and fills, in that
+        order: a column that is ``-`` on every contig is left out, as
+        metaTOR measured nothing there (Shotgun_coverage without a depth
+        file, Restriction_site without an enzyme).
+    list of str
+        All the columns of the file, as pandas names them.
+
+    Raises
+    ------
+    MetacoolError
+        If pandas cannot read the file as a table (empty, not UTF-8...), or
+        would read it shifted or padded (a row with more or fewer fields
+        than the header: the surplus leading fields of the first rows as
+        their index, every value then under the name of the column to its
+        left, or the fields a row lacks as empty, its contig then in no
+        bin), or it has no Name, Size or Final_bin column, or a Size that is
+        not a whole number.
     """
     try:
         _check_field_counts(contig_data)
-        return pd.read_csv(contig_data, sep="\t", dtype=str, keep_default_na=False, **kwargs)
+        table = pd.read_csv(contig_data, sep="\t", dtype=str, keep_default_na=False)
     except (ValueError, OSError) as error:
         raise MetacoolError(f"{contig_data} cannot be read as a table: {str(error).strip().rstrip('.')}.") from error
+    missing = [column for column in ["Name", "Size", "Final_bin"] if column not in table.columns]
+    if missing:
+        raise MetacoolError(
+            f"{contig_data} has no {' or '.join(missing)} column: give the contig_data_final.txt file of a "
+            "validation or pipeline run."
+        )
+    try:
+        sizes = table["Size"].astype("int64")
+    except (ValueError, OverflowError) as error:
+        raise MetacoolError(
+            f"The Size column of {contig_data} must give the length of each contig in bp, as a whole number: {error}."
+        ) from error
+    bins = pd.DataFrame({"chrom": table["Name"], "start": 0, "end": sizes})
+    final_bin = table["Final_bin"].str.strip()
+    binned = ~final_bin.isin(UNBINNED)
+    measured = [column for column in CONTIG_COLUMNS if column in table and not table[column].str.strip().eq("-").all()]
+    return bins, dict(zip(table["Name"][binned], final_bin[binned], strict=True)), measured, list(table.columns)
 
 
 def _check_field_counts(path):
@@ -166,78 +210,6 @@ def _check_field_counts(path):
         raise ValueError(
             f"{len(ragged)} row(s) do not have the {fields} tab-separated fields of the header: {_shown(ragged, show=str)}"
         )
-
-
-def read_contig_bins(contig_data):
-    """Bins (one per contig) and final bin of the contigs of a contig data
-    file.
-
-    Parameters
-    ----------
-    contig_data : str
-        Path to the contig_data_final.txt file of a validation or pipeline
-        run: its Name, Size and Final_bin columns are read.
-
-    Returns
-    -------
-    pandas.DataFrame
-        One bin per contig, from 0 to its size: columns chrom, start and
-        end.
-    dict
-        Final bin of each binned contig, by contig name. The unbinned
-        contigs (Final_bin ND, - or empty) are left out.
-
-    Raises
-    ------
-    MetacoolError
-        If pandas cannot read the file as a table, or it has no Name, Size
-        or Final_bin column, or a Size that is not a whole number.
-    """
-    table = _read_contig_table(contig_data)
-    missing = [column for column in ["Name", "Size", "Final_bin"] if column not in table.columns]
-    if missing:
-        raise MetacoolError(
-            f"{contig_data} has no {' or '.join(missing)} column: give the contig_data_final.txt file of a "
-            "validation or pipeline run."
-        )
-    try:
-        sizes = table["Size"].astype("int64")
-    except (ValueError, OverflowError) as error:
-        raise MetacoolError(
-            f"The Size column of {contig_data} must give the length of each contig in bp, as a whole number: {error}."
-        ) from error
-    bins = pd.DataFrame({"chrom": table["Name"], "start": 0, "end": sizes})
-    final_bin = table["Final_bin"].str.strip()
-    binned = ~final_bin.isin(UNBINNED)
-    return bins, dict(zip(table["Name"][binned], final_bin[binned], strict=True))
-
-
-def measured_contig_columns(contig_data):
-    """The columns of CONTIG_COLUMNS that a contig data file has and fills.
-
-    A column that is ``-`` on every contig is left out: metaTOR measured
-    nothing there (Shotgun_coverage without a depth file, Restriction_site
-    without an enzyme).
-
-    Parameters
-    ----------
-    contig_data : str
-        Path to the contig_data_final.txt file.
-
-    Returns
-    -------
-    list of str
-        The columns, in the order of CONTIG_COLUMNS.
-
-    Raises
-    ------
-    MetacoolError
-        If pandas cannot read the file as a table.
-    """
-    header = _read_contig_table(contig_data, nrows=0).columns
-    present = [column for column in CONTIG_COLUMNS if column in header]
-    table = _read_contig_table(contig_data, usecols=present)
-    return [column for column in present if not table[column].str.strip().eq("-").all()]
 
 
 def map_file(metacool):
@@ -325,7 +297,7 @@ def write_metacool(
         and their final bins (Final_bin). Its GC_content, Hit,
         Shotgun_coverage and Restriction_site columns (CONTIG_COLUMNS) are
         stored in the contigs table, those it has and fills (see
-        measured_contig_columns).
+        read_contig_data).
     outfile : str
         Path to the .metacool file to write.
     bin_summary : str, optional
@@ -366,10 +338,9 @@ def write_metacool(
     missing = [path for path in inputs if not os.path.isfile(path)]
     if missing:
         raise MetacoolError(f"Input file(s) not found: {', '.join(map(str, missing))}.")
-    bins, contig_bin = read_contig_bins(contig_data)
+    bins, contig_bin, contig_columns, _ = read_contig_data(contig_data)
     check_ascii_names(bins["chrom"], contig_bin.values())
     check_bin_names(contig_bin.values())
-    contig_columns = measured_contig_columns(contig_data)
 
     import metacooler
 
@@ -429,7 +400,7 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
     layout genome-then-length): a map of the same genomes, in the same
     order. The genomes table holds the columns of the bin summary, and the
     contigs table the columns of the contig data that write_metacool stores
-    (see measured_contig_columns): they replace those that the input map
+    (see read_contig_data): they replace those that the input map
     carried, metaTOR's own as those of the bins of an earlier run. Its
     other columns of the contigs table are kept. The QC block is
     recomputed from the pixels when the input map has one. The assembly
@@ -495,10 +466,9 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
             f"{outfile} is the .mmetacool collection of the input map {metacool}: the map of the bins would replace "
             "the whole collection. Write it to another file."
         )
-    bins, contig_bin = read_contig_bins(contig_data)
+    bins, contig_bin, contig_columns, header = read_contig_data(contig_data)
     check_ascii_names(bins["chrom"], contig_bin.values())
     check_bin_names(contig_bin.values())
-    contig_columns = measured_contig_columns(contig_data)
     sizes = dict(zip(bins["chrom"], bins["end"], strict=True))
 
     import metacooler
@@ -565,7 +535,7 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
                     # Over the empty temporary file.
                     force=True,
                 )
-                _write_back_columns(staged, contig_data, contig_columns, genomes_table is None)
+                _write_back_columns(staged, contig_data, contig_columns, header, genomes_table is None)
                 metacooler.validate(staged, full=True)
                 os.replace(staged, outfile)
             logger.info(f"{outfile} is written: the contact map of the bins.")
@@ -587,12 +557,13 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
             raise
 
 
-def _write_back_columns(path, contig_data, contig_columns, drop_genome_columns):
+def _write_back_columns(path, contig_data, contig_columns, header, drop_genome_columns):
     """Give the map written back from an input map the metadata columns of
     this run, as metacooler annotate edits them.
 
     The columns of the contig data that metaTOR measured (contig_columns)
-    replace those that the input map carried. Its other columns that the
+    replace those that the input map carried. Its other columns (header:
+    all of them) that the
     input map carried are dropped: the bins of each step, the contig ids,
     Size..., which a map made with the contig data of an earlier run as its
     contigs table holds (metacooler create pairs --contigs-format metator),
@@ -606,7 +577,7 @@ def _write_back_columns(path, contig_data, contig_columns, drop_genome_columns):
     stored = metacooler.MetaCooler(path)
     # The columns of a contig data file but Name (the contigs' own name
     # column) and those of the map that metacooler derives.
-    of_metator = (set(_read_contig_table(contig_data, nrows=0).columns) | set(CONTIG_COLUMNS)) - {"Name"}
+    of_metator = (set(header) | set(CONTIG_COLUMNS)) - {"Name"}
     drop = [
         f"contigs.{column}"
         for column in stored.contigs.columns

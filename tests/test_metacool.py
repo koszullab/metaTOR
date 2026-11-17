@@ -350,38 +350,6 @@ def test_no_bin_names_are_those_of_metacooler():
             mtmc.check_bin_names(["metator_00001_00000", name.upper(), f" {name} "])
 
 
-def test_measured_contig_columns(tmp_path):
-    """The contig columns a table has, but those that are - on every contig
-    (no depth file, no enzyme): not the bins, nor the other columns."""
-    table = tmp_path / "contig_data_final.txt"
-    table.write_text(
-        "\tID\tName\tSize\tGC_content\tShotgun_coverage\tRestriction_site\tHit\tFinal_bin\n"
-        "0\t1\tc1\t100\t40.5\t-\t-\t3\tb1\n"
-        "1\t2\tc2\t200\t41.5\t-\t12\t4\tND\n"
-    )
-    assert mtmc.measured_contig_columns(str(table)) == ["GC_content", "Hit", "Restriction_site"]
-    table.write_text("Name\tSize\tShotgun_coverage\tFinal_bin\nc1\t100\t - \tb1\n")
-    assert mtmc.measured_contig_columns(str(table)) == []
-    table.write_text("Name\tSize\tFinal_bin\nc1\t100\tb1\n")
-    assert mtmc.measured_contig_columns(str(table)) == []
-
-
-@pytest.mark.parametrize(
-    "content, reason",
-    [(b"", "No columns to parse from file."), (b"Name\tSize\tGC_cont\xe9nt\n", "'utf-8' codec can't decode byte 0xe9")],
-    ids=["empty", "not UTF-8"],
-)
-def test_measured_contig_columns_unreadable_table(content, reason, tmp_path):
-    """A contig data file that pandas cannot read as a table: a
-    MetacoolError naming the file, pandas' error chained."""
-    table = tmp_path / "contig_data_final.txt"
-    table.write_bytes(content)
-    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(str(table))} cannot be read as a table: ") as error:
-        mtmc.measured_contig_columns(str(table))
-    assert reason in str(error.value)
-    assert isinstance(error.value.__cause__, ValueError)
-
-
 def test_contig_columns_the_table_has(metagenome, binning, tmp_path):
     """A contig data file with some of the contig columns: those it has; one
     with none of them: none, and the map all the same."""
@@ -421,12 +389,28 @@ def test_contig_column_metacooler_refuses(force, binning, tmp_path):
     assert not out.exists()
 
 
-def test_read_contig_bins(tmp_path):
+def test_read_contig_data(tmp_path):
+    """The bins and final bins of the contigs, the contig columns the table
+    has but those that are - on every contig (no depth file, no enzyme),
+    and all its columns; not the bins, nor the other columns."""
     table = tmp_path / "contig_data_final.txt"
-    table.write_text("\tID\tName\tSize\tFinal_bin\n0\t1\t01\t100\tb1\n1\t2\tc2\t200\tND\n2\t3\tc3\t300\t-\n3\t4\tc4\t400\t\n")
-    bins, final_bin = mtmc.read_contig_bins(str(table))
+    table.write_text(
+        "\tID\tName\tSize\tGC_content\tShotgun_coverage\tRestriction_site\tHit\tFinal_bin\n"
+        "0\t1\t01\t100\t40.5\t-\t-\t3\tb1\n"
+        "1\t2\tc2\t200\t41.5\t-\t12\t4\tND\n"
+        "2\t3\tc3\t300\t41.5\t-\t12\t4\t-\n"
+        "3\t4\tc4\t400\t41.5\t-\t12\t4\t\n"
+    )
+    bins, final_bin, columns, header = mtmc.read_contig_data(str(table))
     assert bins.to_dict("list") == {"chrom": ["01", "c2", "c3", "c4"], "start": [0] * 4, "end": [100, 200, 300, 400]}
     assert final_bin == {"01": "b1"}
+    assert columns == ["GC_content", "Hit", "Restriction_site"]
+    assert header == ["Unnamed: 0", "ID", "Name", "Size", "GC_content", "Shotgun_coverage", "Restriction_site", "Hit",
+                      "Final_bin"]  # fmt: skip
+    table.write_text("Name\tSize\tShotgun_coverage\tFinal_bin\nc1\t100\t - \tb1\n")
+    assert mtmc.read_contig_data(str(table))[2] == []
+    table.write_text("Name\tSize\tFinal_bin\nc1\t100\tb1\n")
+    assert mtmc.read_contig_data(str(table))[2] == []
 
 
 @pytest.mark.parametrize(
@@ -449,7 +433,7 @@ def test_read_contig_bins(tmp_path):
     ],
     ids=["empty", "row of more fields", "rows of more fields from the first", "rows of other fields", "not UTF-8"],
 )
-def test_read_contig_bins_unreadable_table(content, reason, tmp_path):
+def test_read_contig_data_unreadable_table(content, reason, tmp_path):
     """A contig data file that pandas cannot read as a table, or would read
     shifted or padded (a row with more or fewer fields than the header,
     blank lines left out and counted): a MetacoolError naming the file,
@@ -457,30 +441,30 @@ def test_read_contig_bins_unreadable_table(content, reason, tmp_path):
     table = tmp_path / "contig_data_final.txt"
     table.write_bytes(content)
     with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(str(table))} cannot be read as a table: ") as error:
-        mtmc.read_contig_bins(str(table))
+        mtmc.read_contig_data(str(table))
     assert reason in str(error.value)
     assert isinstance(error.value.__cause__, ValueError)
 
 
 @pytest.mark.parametrize("suffix, opener", [(".gz", gzip.open), (".bz2", bz2.open), (".xz", lzma.open)])
-def test_read_contig_bins_of_a_compressed_file(suffix, opener, tmp_path):
+def test_read_contig_data_of_a_compressed_file(suffix, opener, tmp_path):
     """A compressed contig data file is read, and its rows checked, as
     pandas reads it."""
     table = tmp_path / f"contig_data_final.txt{suffix}"
     with opener(table, "wt") as handle:
         handle.write("Name\tSize\tFinal_bin\nc1\t100\tb1\nc2\t200\tND\n")
-    bins, final_bin = mtmc.read_contig_bins(str(table))
+    bins, final_bin, *_ = mtmc.read_contig_data(str(table))
     assert bins.to_dict("list") == {"chrom": ["c1", "c2"], "start": [0, 0], "end": [100, 200]}
     assert final_bin == {"c1": "b1"}
     with opener(table, "wt") as handle:
         handle.write("Name\tSize\tFinal_bin\nc1\t100\tb1\tb2\n")
     message = r"1 row\(s\) do not have the 3 tab-separated fields of the header: line 2 \(4\)\.$"
     with pytest.raises(mtmc.MetacoolError, match=message):
-        mtmc.read_contig_bins(str(table))
+        mtmc.read_contig_data(str(table))
 
 
 @pytest.mark.parametrize("suffix", [".zip", ".tar.gz"])
-def test_read_contig_bins_of_an_archive(suffix, tmp_path):
+def test_read_contig_data_of_an_archive(suffix, tmp_path):
     """A contig data file in a zip or tar archive is read by pandas, its
     rows not counted: the check reads no archive (it took a .tar.gz for a
     gzip file, and the tar headers for fields)."""
@@ -494,31 +478,31 @@ def test_read_contig_bins_of_an_archive(suffix, tmp_path):
         source.write_text(content)
         with tarfile.open(table, "w:gz") as archive:
             archive.add(source, arcname=source.name)
-    bins, final_bin = mtmc.read_contig_bins(str(table))
+    bins, final_bin, *_ = mtmc.read_contig_data(str(table))
     assert list(bins.chrom) == ["c1"] and final_bin == {"c1": "b1"}
 
 
-def test_read_contig_bins_header_with_a_trailing_tab(tmp_path):
+def test_read_contig_data_header_with_a_trailing_tab(tmp_path):
     """A header that ends in a tab names an empty last column: the rows may
     leave it out, as pandas and metacooler read them. A row with more fields
     than the header is still refused."""
     table = tmp_path / "contig_data_final.txt"
     table.write_text("Name\tSize\tFinal_bin\t\nc1\t100\tb1\nc2\t200\tND\t\n")
-    bins, final_bin = mtmc.read_contig_bins(str(table))
+    bins, final_bin, *_ = mtmc.read_contig_data(str(table))
     assert list(bins.chrom) == ["c1", "c2"] and final_bin == {"c1": "b1"}
     table.write_text("Name\tSize\tFinal_bin\t\nc1\t100\tb1\t\tx\n")
     message = r"1 row\(s\) do not have the 3 to 4 tab-separated fields of the header: line 2 \(5\)\.$"
     with pytest.raises(mtmc.MetacoolError, match=message):
-        mtmc.read_contig_bins(str(table))
+        mtmc.read_contig_data(str(table))
 
 
 @pytest.mark.parametrize("size", ["1x00", "", "100.0"])
-def test_read_contig_bins_size_not_a_whole_number(size, tmp_path):
+def test_read_contig_data_size_not_a_whole_number(size, tmp_path):
     table = tmp_path / "contig_data_final.txt"
     table.write_text(f"Name\tSize\tFinal_bin\nc1\t100\tb1\nc2\t{size}\tND\n")
     message = f"The Size column of {table} must give the length of each contig in bp, as a whole number: "
     with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}.*'{re.escape(size)}'\\.$") as error:
-        mtmc.read_contig_bins(str(table))
+        mtmc.read_contig_data(str(table))
     assert isinstance(error.value.__cause__, ValueError)
 
 
