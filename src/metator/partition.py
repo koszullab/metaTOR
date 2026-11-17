@@ -30,12 +30,12 @@ Deprecated Spinglass functions:
 import igraph as ig
 import multiprocessing
 import numpy as np
-import os
 import pandas as pd
-import subprocess as sp
+import pyfastx
 
 # from cdlib import algorithms
 from functools import partial
+import metator.io as mio
 from metator.log import logger
 from os.path import join
 from scipy import sparse
@@ -243,7 +243,7 @@ def detect_core_bins(output_partition, iterations):
     return core_bins_contigs, core_bins_iterations
 
 
-def generate_fasta(assembly, overlapping_bins, contigs_data, size, output_dir, tmpdir, prefix):
+def generate_fasta(assembly, overlapping_bins, contigs_data, size, output_dir, prefix):
     """Generate the fasta files of each bins from the assembly.
 
     Parameters:
@@ -261,13 +261,12 @@ def generate_fasta(assembly, overlapping_bins, contigs_data, size, output_dir, t
     output_dir : str
         Path to the output directory where the fasta of all the bin will be
         written.
-    tmpdir : str
-        Path to the temporary directory to write the temporary contigs list
-        files.
     prefix : str
         Sample prefix to use.
     """
 
+    # Indexed (<assembly>.fxi) only when a bin is extracted from it.
+    fasta = None
     nb_bins = 0
     length_bins = 0
     # For each bin create a list of the contigs and extract them from the
@@ -283,16 +282,10 @@ def generate_fasta(assembly, overlapping_bins, contigs_data, size, output_dir, t
             length_bins += length_bin
             for contig_id in list_contigs_id:
                 list_contigs_name.append(contigs_data.loc[contig_id - 1, "Name"])
-            # Define the output file.
-            output_file = join(output_dir, f"{prefix}_{bin_id:05d}_{0:05d}.fa")
             # Create the fasta file.
-            contigs_file = join(tmpdir, f"{prefix}_{bin_id:05d}_{0:05d}.txt")
-            with open(contigs_file, "w") as f:
-                for contig_name in list_contigs_name:
-                    f.write("%s\n" % contig_name)
-            cmd = "pyfastx extract {0} -l {1} > {2}".format(assembly, contigs_file, output_file)
-            process = sp.Popen(cmd, shell=True)
-            process.communicate()
+            if fasta is None:
+                fasta = pyfastx.Fasta(assembly)
+            mio.write_contigs(fasta, list_contigs_name, join(output_dir, f"{prefix}_{bin_id:05d}_{0:05d}.fa"))
     logger.info(f"{nb_bins} bins have been extracted")
     logger.info(f"Total size of the extracted bins: {round(length_bins / 10**6, 3)}Mb")
 
@@ -447,7 +440,6 @@ def partition(
     overlapping_parameter,
     resolution_parameter,
     size,
-    temp_directory,
     threads,
     prefix,
 ):
@@ -480,8 +472,6 @@ def partition(
         parameters, smaller the bins will be in the output.
     size : int
         Threshold size in base pair of the output bins.
-    temp_directory : str
-        Path to the directory used to write temporary files.
     threads : int
         Number of threads to use.
     prefix : str
@@ -495,12 +485,6 @@ def partition(
     str:
         Path to the new contig data file with the bin informations in it.
     """
-
-    # Create partition folders in the temporary directory
-    temp_directory = join(temp_directory, "partition")
-    os.makedirs(temp_directory, exist_ok=True)
-    temp_directory_bins = join(temp_directory, "partition_bins")
-    os.makedirs(temp_directory_bins, exist_ok=True)
 
     # Perform the iterations of Louvain or Leiden to partition the network.
     logger.info("Start iterations:")
@@ -543,7 +527,6 @@ def partition(
         contigs_data,
         size,
         fasta_dir,
-        temp_directory_bins,
         prefix,
     )
 

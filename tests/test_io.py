@@ -13,6 +13,7 @@ import zipfile
 import metator.io as mio
 import numpy as np
 import pandas as pd
+import pyfastx
 import pypairix
 import pysam
 import pytest
@@ -455,3 +456,28 @@ def test_sort_and_index_pairs_synthetic(metagenome, metagenome_files, tmp_path):
     first, second = (c.name for c in metagenome.molecule("genome_4").contigs[:2])
     found, expected = _count_query(pypairix.open(sorted_pairs), metagenome, first, second)
     assert found == expected > 0
+
+
+def test_write_contigs(tmp_path):
+    """The records of the contigs, in the order given, each as it is in the
+    fasta file (description and line breaks kept), as `pyfastx extract`
+    writes them. A contig that is not in the file is an error, not a missing
+    record."""
+    fasta = tmp_path / "assembly.fa"
+    fasta.write_text(">c1 first contig\nACGT\nAC\n>c2\nGGGG\n>c3\nTT\n")
+    out = tmp_path / "out.fa"
+    mio.write_contigs(pyfastx.Fasta(str(fasta)), ["c3", "c1"], str(out))
+    assert out.read_text() == ">c3\nTT\n>c1 first contig\nACGT\nAC\n"
+    with pytest.raises(KeyError, match="c4"):
+        mio.write_contigs(pyfastx.Fasta(str(fasta)), ["c2", "c4"], str(out))
+
+
+def test_write_contigs_numeric_names(tmp_path):
+    """Contigs named by numbers, as pandas reads them from a contig data
+    file (integers): written by name, not taken for the index of a record
+    (pyfastx reads an integer key so)."""
+    fasta = tmp_path / "assembly.fa"
+    fasta.write_text(">1\nAAAA\n>2\nCCCC\n>3\nGGGG\n")
+    out = tmp_path / "out.fa"
+    mio.write_contigs(pyfastx.Fasta(str(fasta)), pd.Series([1, 2]), str(out))
+    assert out.read_text() == ">1\nAAAA\n>2\nCCCC\n"

@@ -18,10 +18,11 @@ Core function to partition mges contigs:
     - update_mge_data
 """
 
+import io
 import numpy as np
 import pandas as pd
+import pyfastx
 import pypairix
-import subprocess as sp
 from metator.log import logger
 from os.path import join
 from typing import List, Tuple
@@ -220,10 +221,10 @@ def generate_mge_bins_pairs(
     return mges_data, mge_bins
 
 
-def generate_mges_fasta(fasta: str, mge_bins: dict, out_file: str, tmp_dir: str):
+def generate_mges_fasta(fasta: str, mge_bins: dict, out_file: str):
     """Generate the fasta file with one sequence entry for each bin. The
     sequences are generated like that to be accepted by QC tools as one MgeMAG. In
-    the sequences 180 "N" spacers are added between two contigs.
+    the sequences 200 "N" spacers are added between two contigs.
 
     Parameters:
     -----------
@@ -235,42 +236,23 @@ def generate_mges_fasta(fasta: str, mge_bins: dict, out_file: str, tmp_dir: str)
     out_file : str
         Path to the output file where the fasta of all the mges bins will be
         written.
-    tmp_dir : str
-        Path to the temporary directory to write the temporary contigs list
-        files.
     """
 
     nb_bins = 0
     # For each bin create a list of the contigs and extract them from the
     # fasta to create a new fasta file with only the bin.
+    sequences = pyfastx.Fasta(fasta)
     with open(out_file, "w") as out:
         for bin_id in mge_bins:
-            # Extract the list of the contigs from the contigs data file.
-            list_contigs_name = mge_bins[bin_id]["Contigs"]
             nb_bins += 1
-            # Create a temporary fasta file.
-            contigs_file = join(tmp_dir, f"MetaTOR_MGE_{bin_id:05d}.txt")
-            temp_file = join(tmp_dir, f"MetaTOR_MGE_{bin_id:05d}.fa")
-            with open(contigs_file, "w") as f:
-                for contig_name in list_contigs_name:
-                    f.write("%s\n" % contig_name)
-            cmd = f"pyfastx extract {fasta} -l {contigs_file} > {temp_file}"
-            process = sp.Popen(cmd, shell=True)
-            process.communicate()
-
-            # Concatenated the fasta in one sequence entry with 180
-            # "N" spacer between contigs.
-            with open(temp_file, "r") as tmp:
-                start = True
-                for line in tmp:
-                    if line.startswith(">"):
-                        if start:
-                            start = False
-                            out.write((f">MetaTOR_MGE_{bin_id:05d}\n"))
-                        else:
-                            out.write("N" * 200)
-                    else:
-                        out.write(line)
+            # Concatenate the contigs of the bin in one sequence entry, with
+            # 200 "N" in place of the header of each contig after the first.
+            # The lines of a record are read as a file in text mode: ended
+            # by "\n", whatever the line ends of the assembly.
+            for i, contig_name in enumerate(mge_bins[bin_id]["Contigs"]):
+                _, *lines = io.StringIO(sequences[str(contig_name)].raw, newline=None)
+                out.write(f">MetaTOR_MGE_{bin_id:05d}\n" if i == 0 else "N" * 200)
+                out.writelines(lines)
     logger.info(f"{nb_bins} bins have been extracted")
 
     return mge_bins
@@ -282,13 +264,12 @@ def mge_binning(
     mges_list_id: List[int],
     out_dir: str,
     pairs_files: List[str],
-    tmp_dir: str,
     threshold_bin: float = 0.8,
     random: bool = False,
 ):
     """Main function to bin mges contigs.
 
-    Generates a fasta file where each entry is a mge bin, with 180bp "N" as
+    Generates a fasta file where each entry is a mge bin, with 200bp "N" as
     spacers between contigs.
 
     Parameters:
@@ -308,39 +289,26 @@ def mge_binning(
     pairs_files : List of str
         List of the path of the pairs file from the alignment. If possible index
         them first using pypairix.
-    tmp_dir : str
-        Path to temporary directory for intermediate files.
     threshold_bin : float
         Threshold of score to bin contigs. [Default: .8]
     random : bool
         If enabled, make a random shuffling of the bins.
     """
 
-    # Create output and temporary files.
-    contigs_file = join(tmp_dir, "mge_contigs.txt")
-    temp_fasta = join(tmp_dir, "mges.fa")
+    # Create output files.
     mge_data_file = join(out_dir, "mges_bin_summary.tsv")
     fasta_mges_bins = join(out_dir, "mges_binned.fa")
 
     # Import contigs data from `metator partition/validation`.
     mges_data = pd.DataFrame(contigs_data.loc[mges_list_id, :])
-
-    with open(contigs_file, "w") as f:
-        for contig_name in list(mges_data.Name):
-            f.write("%s\n" % contig_name)
-
-    # Extract fasta to have sequences at the same order as the depth file.
-    cmd = "pyfastx extract {0} -l {1} > {2}".format(fasta_mges_contigs, contigs_file, temp_fasta)
-    process = sp.Popen(cmd, shell=True)
-    process.communicate()
     mges_data, mge_bins = generate_mge_bins_pairs(mges_data, pairs_files, threshold_bin)
 
     if random:
         # Shuffle to simulate random bins. Uncomment to do it
         mges_data, mge_bins = shuffle_mge_bins(mges_data)
 
-    # Generate MGE fasta (one sequence per mgeMAG, with 180bp "N" as spacers).
-    mge_bins = generate_mges_fasta(fasta_mges_contigs, mge_bins, fasta_mges_bins, tmp_dir)
+    # Generate MGE fasta (one sequence per mgeMAG, with 200bp "N" as spacers).
+    mge_bins = generate_mges_fasta(fasta_mges_contigs, mge_bins, fasta_mges_bins)
 
     summary = generate_bin_summary(mges_data, mge_bins, mge_data_file)
     return summary

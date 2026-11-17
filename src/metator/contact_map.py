@@ -19,7 +19,7 @@ import metator.io as mio
 from metator.log import logger
 from os.path import join
 import pandas as pd
-import subprocess as sp
+import pyfastx
 
 
 class MetatorObject:
@@ -186,29 +186,17 @@ class MetatorObject:
             except ValueError:
                 self.name = str(name)
 
-    def write_fasta(self, tmp_dir, out_dir):
+    def write_fasta(self, out_dir):
         """Method to write the new fasta with only the contigs of interest in
         the outdir directory.
 
         Parameters:
         -----------
-        tmp_dir : str
-            Path to the temporary directory to write the list of contigs of the
-            object.
         out_dir : str
             Path to the output directory where to write the new fasta file.
         """
-        # Create a fasta ouput file.
         self.fasta = join(out_dir, f"{self.name}.fa")
-        # Write a contigs used by pyfastx extract.
-        contigs_list = join(tmp_dir, f"{self.name}.txt")
-        with open(contigs_list, "w") as file:
-            for contig_name in self.contigs:
-                file.write("%s\n" % contig_name)
-        # Extract contigs from the fastq.
-        cmd = "pyfastx extract {0} -l {1} > {2}".format(self.assembly, contigs_list, self.fasta)
-        process = sp.Popen(cmd, shell=True)
-        process.communicate()
+        mio.write_contigs(pyfastx.Fasta(self.assembly), self.contigs, self.fasta)
 
 
 def extract_pairs(metator_data):
@@ -333,7 +321,7 @@ def generate_contact_map(
     metator_data.set_contigs()
     if min_size > 0:
         metator_data.set_large_contigs()
-    metator_data.write_fasta(tmp_dir, out_dir)
+    metator_data.write_fasta(out_dir)
     metator_data.pairs = join(tmp_dir, name + ".pairs")
 
     # Extract pairs of the bin.

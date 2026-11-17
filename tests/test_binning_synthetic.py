@@ -94,7 +94,6 @@ def test_partition_recovers_the_genomes(metagenome, metagenome_inputs, metagenom
         0.8,
         1.0,
         50_000,
-        str(tmp_path),
         1,
         "metator",
     )

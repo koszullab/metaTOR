@@ -172,3 +172,17 @@ def test_contact_map_without_pairs(metagenome, metagenome_inputs, metagenome_ind
     )
     assert n_pairs == 0
     assert not list(tmp_path.glob("*.mat.tsv"))
+
+
+def test_metator_object_write_fasta(tmp_path, monkeypatch):
+    """The fasta of an object, the records of its contigs, is written
+    without the pyfastx command, which is not on the PATH here."""
+    monkeypatch.setenv("PATH", str(tmp_path))
+    # A private copy of the assembly: pyfastx indexes it (.fxi) in place.
+    assembly = tmp_path / "assembly.fa"
+    shutil.copyfile("tests_data/assembly.fa", assembly)
+    obj = mtcm.MetatorObject("contig", "NODE_522", str(assembly), CONTIG_DATA, [])
+    obj.contigs = ["NODE_1404", "NODE_522"]
+    obj.write_fasta(str(tmp_path))
+    names = [line[1:] for line in Path(obj.fasta).read_text().splitlines() if line.startswith(">")]
+    assert names == ["NODE_1404", "NODE_522"]

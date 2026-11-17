@@ -26,6 +26,15 @@ All notable changes to this project will be documented in this file.
   `metator.metacool.reassign_metacool`. The README shows the route from
   the pairs of `hicstuff` through `metacooler create pairs`.
 
+### Changed
+- Python API: `metator.partition.partition` no longer takes
+  `temp_directory`, nor `generate_fasta` and
+  `metator.validation.update_contigs_data_recursive` `tmpdir`, nor
+  `metator.mge.mge_binning`, `generate_mges_fasta` and
+  `MetatorObject.write_fasta` `tmp_dir`: they only held the contig lists
+  of the `pyfastx` command. `partition` and `mge` write no temporary file
+  any more.
+
 ### Fixed
 - `metator metacool` and the map of `pipeline` refuse a
   `contig_data_final.txt` whose rows have more or fewer fields than its
@@ -35,6 +44,13 @@ All notable changes to this project will be documented in this file.
 - `pipeline` checks its arguments and its assembly before replacing the
   bins of an earlier run with `--force`: a refused run no longer empties
   `overlapping_bin/`, `recursive_bin/` and `final_bin_unscaffold/` first.
+- The fasta files of the bins (`partition`, `validation`, `pipeline`), of
+  the MGE bins (`mge`) and of `contactmap` are written with pyfastx's
+  Python API (`metator.io.write_contigs`), byte for byte as before. The
+  `pyfastx` command wrote them through the shell: without it on the `PATH`
+  (a virtual environment used without activating it), every file was
+  empty, without an error. A contig missing from the assembly now stops
+  the run with `KeyError`, where the command left it out of its bin.
 
 ## [1.4.0] - 2026-11-17
 

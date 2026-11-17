@@ -396,10 +396,6 @@ def recursive_clustering(
         Dictionnary with recursive bin_id as key and parent bin as values.
     """
 
-    # Create temporary folders.
-    tmpdir_binning = join(tmpdir, "recursive_bins")
-    os.makedirs(tmpdir_binning, exist_ok=True)
-
     # Default no contamination
     contamination = False
 
@@ -479,7 +475,6 @@ def recursive_clustering(
             recursive_bins,
             assembly,
             recursive_fasta_dir,
-            tmpdir_binning,
             size,
             contamination,
             parent_dict,
@@ -798,7 +793,6 @@ def update_contigs_data_recursive(
     recursive_bins,
     assembly,
     outdir,
-    tmpdir,
     size,
     contamination,
     parent_dict,
@@ -821,8 +815,6 @@ def update_contigs_data_recursive(
         Path to the fasta file.
     outdir : str
         Path to the output directory to write the new fasta.
-    tmpdir : str
-        Path to the file where to write the temporary contigs list.
     size : int
         Size threshold to generate fasta.
     contamination : boolean
@@ -846,6 +838,8 @@ def update_contigs_data_recursive(
 
     # Add recursive bin information
     rec_id = 1
+    # Indexed (<assembly>.fxi) only when a bin is extracted from it.
+    fasta = None
 
     # Extract last recursive ID.
     over_id = contigs_data.loc[recursive_bins[1][0] - 1, "Overlapping_bin_ID"]
@@ -883,13 +877,9 @@ def update_contigs_data_recursive(
             list_contigs = list(contigs_data.loc[recursive_bin, "Name"])
 
             # Generate the fasta
-            contigs_file = join(tmpdir, f"{prefix}_{oc_id:05d}_{rec_final_id:05d}.txt")
-            with open(contigs_file, "w") as f:
-                for contig in list_contigs:
-                    f.write("{0}\n".format(contig))
-            cmd = "pyfastx extract {0} -l {1} > {2}".format(assembly, contigs_file, output_file)
-            process = sp.Popen(cmd, shell=True)
-            process.communicate()
+            if fasta is None:
+                fasta = pyfastx.Fasta(assembly)
+            mio.write_contigs(fasta, list_contigs, output_file)
 
             # Add one to the recursive id
             rec_id += 1

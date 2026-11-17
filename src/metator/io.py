@@ -25,6 +25,7 @@ This mdoule contains all core I/O functions:
     - sort_and_index_pairs
     - sort_pairs
     - write_bin_summary
+    - write_contigs
     - write_mge_data
 """
 
@@ -550,6 +551,32 @@ def remove_pyfastx_index(fasta):
         os.remove(f"{fasta}.fxi")
     except FileNotFoundError:
         pass
+
+
+def write_contigs(fasta, names, out_file):
+    """Write the records of some contigs of a fasta file, in the given order,
+    each as it is in the file, as `pyfastx extract` writes them.
+
+    Parameters:
+    -----------
+    fasta : pyfastx.Fasta
+        The fasta file, read through its pyfastx index (<fasta>.fxi, which
+        pyfastx writes next to it).
+    names : iterable
+        Names of the contigs. Read as text: pyfastx reads an integer key as
+        the index of a record, and pandas reads a column of names such as
+        1, 2... as integers.
+    out_file : str
+        Path to the fasta file to write.
+
+    Raises:
+    -------
+    KeyError
+        If a contig is not in the fasta file.
+    """
+    with open(out_file, "w") as out:
+        for name in names:
+            out.write(fasta[str(name)].raw)
 
 
 def retrieve_fasta(in_file, aligner, tmpdir):

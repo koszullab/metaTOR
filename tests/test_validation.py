@@ -147,31 +147,29 @@ def test_recursive_clustering_worker_subnetwork(tmp_path):
     assert sorted(partition) == [1, 2, 3, 5]
 
 
-def test_update_contigs_data_recursive():
-    tmp_dir = "tmp_partition_validation_2"
-    contamination = False
-    parent_dict = dict()
-    os.makedirs(tmp_dir, exist_ok=True)
-    (
-        contamination,
-        contig_data,
-        parent_dict,
-    ) = mtv.update_contigs_data_recursive(
+def test_update_contigs_data_recursive(tmp_path, monkeypatch):
+    """The fasta of the recursive bins are written without the pyfastx
+    command, which is not on the PATH here (the files were empty)."""
+    monkeypatch.setenv("PATH", str(tmp_path))
+    # A private copy of the assembly: pyfastx indexes it (.fxi) in place.
+    shutil.copyfile(assembly, tmp_path / "assembly.fa")
+    out = tmp_path / "bins"
+    out.mkdir()
+    contamination, contig_data, _ = mtv.update_contigs_data_recursive(
         "MetaTOR_00002_00000",
         contigs_data,
         recursive_bins,
-        assembly,
-        tmp_dir,
-        tmp_dir,
+        str(tmp_path / "assembly.fa"),
+        str(out),
         500000,
-        contamination,
-        parent_dict,
+        False,
+        dict(),
         "MetaTOR",
     )
     assert contamination
     assert len(np.unique(contig_data.Recursive_bin_ID)) > 1
-    assert len(os.listdir(tmp_dir)) == 4
-    shutil.rmtree(tmp_dir)
+    assert sorted(os.listdir(out)) == ["MetaTOR_00002_00001.fa", "MetaTOR_00002_00002.fa"]
+    assert all(path.read_text().startswith(">") for path in out.iterdir())
 
 
 def test_write_bins_contigs():
