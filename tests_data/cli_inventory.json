@@ -526,6 +526,14 @@
       "required": false
      },
      {
+      "short": null,
+      "long": "--no-metacool",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
       "short": "-m",
       "long": "--normalization",
       "takes_value": true,
@@ -849,6 +857,65 @@
       "takes_value": true,
       "metavar": "DIR",
       "default": null,
+      "required": false
+     }
+    ]
+   },
+   "metacool": {
+    "positional": [
+     {
+      "name": "pairsfile",
+      "required": true,
+      "repeatable": true
+     }
+    ],
+    "options": [
+     {
+      "short": "-n",
+      "long": "--assembly-name",
+      "takes_value": true,
+      "metavar": "STR",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": "-b",
+      "long": "--bin-summary",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": "-c",
+      "long": "--contig-data",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": true
+     },
+     {
+      "short": "-F",
+      "long": "--force",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-o",
+      "long": "--outfile",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": true
+     },
+     {
+      "short": "-t",
+      "long": "--threads",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "1",
       "required": false
      }
     ]

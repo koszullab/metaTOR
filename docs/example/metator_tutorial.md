@@ -114,6 +114,8 @@ The Software will give you the output in the metator folder, the full descriptio
 |MetaTOR_1_4|o__Clostridiales|98.66|0.57|2859491|131|66245|143889|37.22|89.63|k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales;f__Lachnospiraceae_2;g__Lachnospira|6.04E+01|
 |MetaTOR_2_0|o__Clostridiales|92.95|10.37|3471666|1456|4479|85988|47.64|88.54|k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales;f__Lachnospiraceae;g__Blautia|3.59E+01|
 
+The contact map of all the contigs, grouped by MAG, is in `metator.metacool`, a [metacooler](https://github.com/js2264/metacooler) file that [cooler](https://github.com/open2c/cooler) reads too: one bin per contig, one genome per MAG, the columns of the bin summary in its genomes table, the GC content and Hi-C hits of each contig in its contigs table (plus shotgun coverage with `--depth` and restriction sites with `--enzyme`; see the [README](https://github.com/koszullab/metator/blob/master/README.md#contact-map)).
+
 If give you some binning plot summary too:
 
 |Bins completion/contamination distribution|Bins size quality distribution|

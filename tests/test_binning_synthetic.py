@@ -7,6 +7,8 @@ import random
 import shutil
 from pathlib import Path
 
+import cooler
+import metacooler
 import pandas as pd
 import pytest
 
@@ -269,7 +271,38 @@ def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, metagenome
     (log_file,) = out.glob("metator_pipeline_*.log")
     logged = log_file.read_text()
     assert [name for name in summary.index if f"Scaffolding {name}..." not in logged] == []
+    # The contact map, written by default: one bin per contig, one genome
+    # per bin (the bin summary columns with it), and every pair a contact.
+    metacool = out / "metator.metacool"
+    metacooler.validate(str(metacool))
+    clr = cooler.Cooler(str(metacool))
+    assert clr.pixels()[:]["count"].sum() == len(metagenome.pairs)
+    assert clr.info["metadata"]["metator"]["parameters"]["start"] == "pair"
+    mc = metacooler.MetaCooler(str(metacool))
+    assert sorted(mc.contigs.name) == sorted(final.Name)
+    assert dict(zip(mc.contigs.name, mc.contigs.genome_id.map(mc.genomes.name), strict=True)) == dict(host_bin)
+    assert sorted(mc.genomes.name) == sorted(summary.index)
+    assert mc.genomes.set_index("name").Completeness[summary.index].to_numpy() == pytest.approx(summary.Completeness.to_numpy())
+    # What metaTOR measured on each contig (with a depth file and an
+    # enzyme: the four columns), not its bins.
+    columns = ["GC_content", "Hit", "Shotgun_coverage", "Restriction_site"]
+    assert list(mc.contigs.columns) == ["name", "length", "genome_id", *columns]
+    measured = final.set_index("Name").loc[mc.contigs.name, columns]
+    for column in columns:
+        assert mc.contigs[column].tolist() == measured[column].tolist(), column
     # Clean-up: no temporary directory, no pyfastx index, no intermediate table.
     assert not (tmp_path / "tmp").exists()
     assert not os.path.exists(f"{metagenome_inputs['assembly']}.fxi")
     assert not (out / "contig_data_partition.txt").exists()
+
+
+def test_pipeline_without_metacool(metagenome, metagenome_inputs, metagenome_indexed_pairs, tmp_path, monkeypatch, run_cli):
+    """--no-metacool: the bins, and no contact map."""
+    random.seed(0)
+    monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
+    out = tmp_path / "out"
+    args = ["-1", str(metagenome_indexed_pairs), "-a", str(metagenome_inputs["assembly"]), "-S", "pair", "-s", "50000",
+            "-i", "5", "-j", "2", "-p", "sample", "-o", str(out), "-T", str(tmp_path / "tmp"), "--no-metacool"]  # fmt: skip
+    run_cli("pipeline", *args)
+    assert len(pd.read_csv(out / "bin_summary.txt", sep="\t", index_col=0)) == len(metagenome.genomes)
+    assert not list(out.glob("*.metacool*"))

@@ -18,7 +18,7 @@ import metator.main as mtm
 from metator.version import __version__
 from tests.ansi import plain
 
-COMMANDS = ["network", "partition", "validation", "pipeline", "qc", "contactmap", "scaffold", "pairs", "mge"]
+COMMANDS = ["network", "partition", "validation", "pipeline", "qc", "contactmap", "metacool", "scaffold", "pairs", "mge"]
 
 
 def _run(monkeypatch, *argv):
