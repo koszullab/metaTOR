@@ -178,24 +178,19 @@ def check_metacool_start(start, forward, edge, scaffold=False):
         raise ValueError
 
 
-def metacool_network(metacool, contig_data, outdir, tmp_dir, threads, normalization, self_contacts):
-    """network.txt and contig_data_network.txt of a .metacool map (see
+def contig_network(start, forward, alignment_files, contig_data, hit_data, edge, outdir, tmp_dir, threads, *args):
+    """network.txt and contig_data_network.txt of a run (args: normalization
+    and self contacts): from its pairs files, or, with --start metacool,
+    from the .metacool map given to --forward (see
     metator.network.metacool_to_contacts). A map that cannot give them
     stops the run, as metaTOR stops on an input it cannot use: the reason
     is logged as an error, in the log file of the run, and its
     MetacoolError is raised, as `metator metacool` does."""
+    files = ("network.txt", "contig_data_network.txt")
+    if start != "metacool":
+        return mtn.alignment_to_contacts(alignment_files, contig_data, edge, hit_data, outdir, *files, tmp_dir, threads, *args)
     try:
-        return mtn.metacool_to_contacts(
-            metacool,
-            contig_data,
-            outdir,
-            "network.txt",
-            "contig_data_network.txt",
-            tmp_dir,
-            threads,
-            normalization,
-            self_contacts,
-        )
+        return mtn.metacool_to_contacts(forward, contig_data, outdir, *files, tmp_dir, threads, *args)
     except mtmc.MetacoolError as error:
         logger.error(str(error))
         raise
@@ -298,33 +293,22 @@ def pipeline_metacool(pairs_files, outdir, prefix, assembly, threads, metacool=N
         elif os.path.lexists(outfile):
             logger.info(f"Removing {outfile}, the contact map of an earlier run.")
             os.remove(outfile)
+        contig_data = join(outdir, "contig_data_final.txt")
+        shared = {"bin_summary": join(outdir, "bin_summary.txt"), "force": True, "metadata": run_metadata()}
         if metacool:
-            mtmc.reassign_metacool(
-                metacool,
-                join(outdir, "contig_data_final.txt"),
-                outfile,
-                bin_summary=join(outdir, "bin_summary.txt"),
-                force=True,
-                metadata=run_metadata(),
-            )
+            mtmc.reassign_metacool(metacool, contig_data, outfile, **shared)
         else:
             mtmc.write_metacool(
-                pairs_files,
-                join(outdir, "contig_data_final.txt"),
-                outfile,
-                bin_summary=join(outdir, "bin_summary.txt"),
-                assembly_name=assembly_basename(assembly),
-                threads=threads,
-                force=True,
-                metadata=run_metadata(),
+                pairs_files, contig_data, outfile, assembly_name=assembly_basename(assembly), threads=threads, **shared
             )
-    except mtmc.MetacoolError as error:
-        logger.warning(f"{outfile} is not written: {str(error).rstrip('.')}.{kept} The other outputs of the run are kept.")
     except Exception as error:
+        # A MetacoolError says why; another error is unexpected: its type
+        # and traceback go to the log too.
+        unexpected = not isinstance(error, mtmc.MetacoolError)
+        reason = f"{type(error).__name__}: {error}" if unexpected else str(error)
         logger.warning(
-            f"{outfile} is not written: {type(error).__name__}: {str(error).rstrip('.')}.{kept} The other outputs of the run "
-            "are kept.",
-            exc_info=True,
+            f"{outfile} is not written: {reason.rstrip('.')}.{kept} The other outputs of the run are kept.",
+            exc_info=unexpected,
         )
 
 
@@ -680,11 +664,10 @@ def network(
         logger.info("Minimum mapping quality: %s", min_quality)
 
         # Do not align if pair or metacool start
-        if start == "pair":
-            alignment_files = forward.split(",")
-            contig_data, hit_data = mtn.create_contig_data(fasta, len(alignment_files), depth, enzyme)
-        elif start == "metacool":
-            contig_data, _ = mtn.create_contig_data(fasta, 1, depth, enzyme)
+        if start in ["pair", "metacool"]:
+            # A map has no pairs files: its libraries are summed.
+            alignment_files = forward.split(",") if start == "pair" else []
+            contig_data, hit_data = mtn.create_contig_data(fasta, len(alignment_files) or 1, depth, enzyme)
         else:
             # Align pair-end reads with bowtie2
             alignment_files, contig_data, hit_data = mta.get_contact_pairs(
@@ -704,22 +687,10 @@ def network(
             )
 
         # Build the network
-        if start == "metacool":
-            metacool_network(forward, contig_data, outdir, tmp_dir, threads, normalization, self_contacts)
-        else:
-            mtn.alignment_to_contacts(
-                alignment_files,
-                contig_data,
-                edge,
-                hit_data,
-                outdir,
-                "network.txt",
-                "contig_data_network.txt",
-                tmp_dir,
-                threads,
-                normalization,
-                self_contacts,
-            )
+        contig_network(
+            start, forward, alignment_files, contig_data, hit_data, edge, outdir, tmp_dir, threads, normalization,
+            self_contacts,
+        )  # fmt: skip
 
     generate_log_footer(log_file)
 
@@ -1139,31 +1110,14 @@ def pipeline(
                 tmp_dir,
                 threads,
             )
-        elif start == "pair":
-            alignment_files = forward.split(",")
-            contig_data, hit_data = mtn.create_contig_data(fasta, len(alignment_files), depth, enzyme)
-        # Build the network
-        if start == "metacool":
-            # From the contact map: no pairs files.
-            alignment_files = []
-            contig_data, _ = mtn.create_contig_data(fasta, 1, depth, enzyme)
-            network_file, contigs_data_file = metacool_network(
-                forward, contig_data, outdir, tmp_dir, threads, normalization, False
-            )
         else:
-            network_file, contigs_data_file = mtn.alignment_to_contacts(
-                alignment_files,
-                contig_data,
-                edge,
-                hit_data,
-                outdir,
-                "network.txt",
-                "contig_data_network.txt",
-                tmp_dir,
-                threads,
-                normalization,
-                False,
-            )
+            # A map has no pairs files: its libraries are summed.
+            alignment_files = forward.split(",") if start == "pair" else []
+            contig_data, hit_data = mtn.create_contig_data(fasta, len(alignment_files) or 1, depth, enzyme)
+        # Build the network
+        network_file, contigs_data_file = contig_network(
+            start, forward, alignment_files, contig_data, hit_data, edge, outdir, tmp_dir, threads, normalization, False
+        )
 
         # Partition the network
         clustering_matrix_partition_file, contigs_data_file = mtp.partition(
