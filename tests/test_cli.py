@@ -5,6 +5,7 @@
 
 import json
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -18,8 +19,9 @@ from metator.version import __version__
 
 TESTS_DATA = Path(__file__).resolve().parents[1] / "tests_data"
 
-# The writer itself, which the stub pipeline replaces.
+# The writers themselves, which the stub pipeline replaces.
 mtmc_write_metacool = mtmc.write_metacool
+mtmc_reassign_metacool = mtmc.reassign_metacool
 
 # The docopt command line that rich-click replaced (that of 1.3.10, with the
 # mge options renamed and host removed), as docopt read it: see the commit
@@ -326,6 +328,10 @@ def stub_pipeline(monkeypatch, tmp_path):
         # The pairs files must still be there.
         calls["write_metacool"] = (pairs_files, [os.path.exists(path) for path in pairs_files], contig_data, outfile, kwargs)
 
+    def reassign_metacool(metacool, contig_data, outfile, **kwargs):
+        # The input map must still be there.
+        calls["reassign_metacool"] = (metacool, os.path.exists(metacool), contig_data, outfile, kwargs)
+
     monkeypatch.setattr("metator.align.get_contact_pairs", get_contact_pairs)
     monkeypatch.setattr("metator.network.create_contig_data", create_contig_data)
     monkeypatch.setattr("metator.network.alignment_to_contacts", alignment_to_contacts)
@@ -334,6 +340,7 @@ def stub_pipeline(monkeypatch, tmp_path):
     monkeypatch.setattr("metator.validation.recursive_decontamination", recursive_decontamination)
     monkeypatch.setattr("metator.io.generate_fasta_index", generate_fasta_index)
     monkeypatch.setattr("metator.metacool.write_metacool", write_metacool)
+    monkeypatch.setattr("metator.metacool.reassign_metacool", reassign_metacool)
     return calls
 
 
@@ -603,9 +610,9 @@ def test_pipeline_from_pairs_keeps_them(stub_pipeline, tmp_path, run_cli):
 @pytest.mark.parametrize("no_metacool", [False, True])
 def test_pipeline_from_a_metacool(no_metacool, stub_pipeline, tmp_path, run_cli):
     """From a contact map: the network is read from it, no pairs file is
-    read or written, and the map of the bins is not written (it is made
-    from pairs files). The input map stays, even where the map of the bins
-    would go."""
+    read or written, and the map of the bins is written back from it. When
+    the input map is where the map of the bins goes, it is not removed
+    first: it is replaced once the new map is validated."""
     out = tmp_path / "out"
     out.mkdir()
     metacool = out / "metator.metacool"
@@ -628,8 +635,128 @@ def test_pipeline_from_a_metacool(no_metacool, stub_pipeline, tmp_path, run_cli)
     # The contig data of the network step is kept, as from pairs files.
     assert (out / "contig_data_network.txt").exists()
     (log,) = out.glob("metator_pipeline_*.log")
-    message = f"The contact map of the bins is not written: it is made from the pairs files, and this run started from the contact map {metacool}."
-    assert (message in log.read_text()) == (not no_metacool)
+    logged = log.read_text()
+    assert "Removing" not in logged
+    if no_metacool:
+        assert "reassign_metacool" not in calls and "is the input map" not in logged
+        return
+    source, existed, contig_data, outfile, kwargs = calls["reassign_metacool"]
+    assert (source, existed, contig_data, outfile) == (str(metacool), True, str(out / "contig_data_final.txt"), str(metacool))
+    assert (kwargs["bin_summary"], kwargs["force"]) == (str(out / "bin_summary.txt"), True)
+    assert kwargs["metadata"]["parameters"]["start"] == "metacool"
+    assert kwargs["metadata"]["command"].startswith(f"metator pipeline -1 {metacool} -a")
+    assert f"INFO :: {metacool} is the input map {metacool}: it is replaced once the map of the bins is validated." in logged
+
+
+def _contig_map(path, lengths=None):
+    """A .metacool map of the contigs c1 and c2 of the stub validation's
+    tables (see _final_tables), made before any binning: every contig in
+    __unbinned__, one bin per contig."""
+    import metacooler
+    import pandas as pd
+
+    lengths = lengths or {"c1": 100, "c2": 50}
+    pairs = path.with_suffix(".pairs")
+    pairs.write_text("## pairs format v1.0\nr1\tc1\t10\tc2\t20\t+\t-\nr2\tc1\t10\tc1\t90\t+\t-\n")
+    bins = pd.DataFrame({"chrom": list(lengths), "start": 0, "end": list(lengths.values())})
+    metacooler.from_pairs(str(path), pairs=str(pairs), bins=bins, contig_genome_map=None, ps=False)
+    pairs.unlink()
+    return path
+
+
+@pytest.mark.parametrize("where", ["elsewhere", "outfile"])
+def test_pipeline_metacool_written_from_a_map(where, stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """With the real writer, from the tables of the (stub) validation: the
+    map of the bins, from the input map, which it replaces when it is the
+    outfile."""
+    monkeypatch.setattr("metator.metacool.reassign_metacool", mtmc_reassign_metacool)
+    _final_tables(monkeypatch, "c1")
+    out = tmp_path / "out"
+    out.mkdir()
+    metacool = _contig_map((out if where == "outfile" else tmp_path) / "metator.metacool")
+    before = metacool.read_bytes()
+    run_cli("pipeline", "-1", metacool, "-a", _assembly(tmp_path), "-S", "metacool", "-o", out, "-T", tmp_path / "tmp")
+    import cooler
+    import metacooler
+
+    outfile = out / "metator.metacool"
+    metacooler.validate(str(outfile), full=True)
+    assert cooler.Cooler(str(outfile)).pixels()[:]["count"].sum() == 2
+    mc = metacooler.MetaCooler(str(outfile))
+    assert list(mc.genomes.name) == ["__unbinned__", "metator_00001_00000"]
+    assert list(mc.genomes.Completeness.iloc[1:]) == [0.9]
+    assert dict(zip(mc.contigs.name, mc.contigs.GC_content, strict=True)) == {"c1": 40.5, "c2": 35.0}
+    assert (metacool.read_bytes() == before) == (where == "elsewhere")
+    assert sorted(path.name for path in out.iterdir() if "metacool" in path.name) == ["metator.metacool"]
+    (log,) = out.glob("metator_pipeline_*.log")
+    assert "is not written" not in log.read_text()
+
+
+def test_pipeline_metacool_from_a_map_failure_keeps_it(stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """A map of the bins that cannot be written from the input map, which is
+    the outfile (here, a contig of another length in the contig data): a
+    warning that says why and that it is still the input map, left as it
+    was, and the run keeps its other outputs."""
+    monkeypatch.setattr("metator.metacool.reassign_metacool", mtmc_reassign_metacool)
+    _final_tables(monkeypatch, "c1")
+    out = tmp_path / "out"
+    out.mkdir()
+    metacool = _contig_map(out / "metator.metacool", {"c1": 120, "c2": 50})
+    before = metacool.read_bytes()
+    run_cli("pipeline", "-1", metacool, "-a", _assembly(tmp_path), "-S", "metacool", "-o", out, "-T", tmp_path / "tmp")
+    assert metacool.read_bytes() == before
+    assert sorted(path.name for path in out.iterdir() if "metacool" in path.name) == ["metator.metacool"]
+    assert (out / "network.txt").exists() and (out / "bin_summary.txt").exists()
+    (log,) = out.glob("metator_pipeline_*.log")
+    logged = log.read_text()
+    assert (
+        f"WARNING :: {metacool} is not written: {metacool} is not a contact map of the contigs of "
+        f"{out / 'contig_data_final.txt'}: 1 contig(s) have another length in it: 'c1' (120 bp in the map, 100 bp in the "
+        "contig data). It is still the input map of the run. The other outputs of the run are kept."
+    ) in logged
+    assert "Traceback" not in logged
+
+
+@pytest.mark.parametrize(
+    "error", [ValueError("pixels out of order"), RuntimeError("unexpected failure")], ids=["ValueError", "RuntimeError"]
+)
+def test_pipeline_metacool_from_a_map_metacooler_failure(error, stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """metacooler fails while it writes the map of the bins over the input
+    map (its validation, here): it logs that it left its partial file for
+    inspection, and the run says that the temporary files, this partial
+    file among them, were removed: in its warning for one of the errors
+    that metacooler is expected to raise (a ValueError here), in a warning
+    of its own before it for another (a RuntimeError, whose traceback the
+    warning shows). The input map is left as it was, and no other file is
+    left beside it."""
+    monkeypatch.setattr("metator.metacool.reassign_metacool", mtmc_reassign_metacool)
+    _final_tables(monkeypatch, "c1")
+    out = tmp_path / "out"
+    out.mkdir()
+    metacool = _contig_map(out / "metator.metacool")
+    before = metacool.read_bytes()
+
+    def validate(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr("metacooler.io.reassign.validate", validate)
+    run_cli("pipeline", "-1", metacool, "-a", _assembly(tmp_path), "-S", "metacool", "-o", out, "-T", tmp_path / "tmp")
+    assert metacool.read_bytes() == before
+    assert sorted(path.name for path in out.iterdir() if "metacool" in path.name) == ["metator.metacool"]
+    (log,) = out.glob("metator_pipeline_*.log")
+    logged = log.read_text()
+    (staged,) = re.findall(r"ERROR :: Creation failed\. The partial file was left at (\S+)\.partial for inspection", logged)
+    assert Path(staged).parent == out and Path(staged).name.startswith(".metator.metacool.")
+    removed = f"The temporary files of the map, {staged} and metacooler's partial file {staged}.partial, were removed."
+    kept = "It is still the input map of the run. The other outputs of the run are kept."
+    if isinstance(error, ValueError):
+        assert f"WARNING :: {metacool} is not written: pixels out of order. {removed} {kept}" in logged
+        assert "Traceback" not in logged
+    else:
+        assert f"WARNING :: {removed}\n" in logged
+        warning = f"WARNING :: {metacool} is not written: RuntimeError: unexpected failure. {kept}\nTraceback"
+        assert warning in logged
+        assert logged.index(removed) < logged.index(warning)
 
 
 def test_network_from_a_metacool(monkeypatch, tmp_path, run_cli):

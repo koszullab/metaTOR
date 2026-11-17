@@ -266,36 +266,60 @@ def assembly_basename(assembly):
     return re.sub(r"(\.(fa|fas|fasta|fna))?(\.gz)?$", "", os.path.basename(os.path.normpath(assembly)))
 
 
-def pipeline_metacool(pairs_files, outdir, prefix, assembly, threads):
+def pipeline_metacool(pairs_files, outdir, prefix, assembly, threads, metacool=None):
     """Write the contact map of a pipeline run: <outdir>/<prefix>.metacool,
     or <outdir>/metator.metacool without --prefix.
+
+    From the pairs files of the run or, for a run that started from a
+    .metacool map (metacool), from that map: its bins and contacts, grouped
+    by final bin (see metator.metacool.reassign_metacool).
 
     The map is an extra output, written last: when it cannot be written, a
     warning says why, and the run keeps its other outputs and its exit
     status. A map of the same name left by an earlier run is removed first:
     this run has replaced the tables it was made from, so it must not stay
-    behind, passing for this run's, when the new map cannot be written.
+    behind, passing for this run's, when the new map cannot be written. An
+    outfile that is the input map of the run (the same path, or a symbolic
+    link to it or from it) is not: it is only replaced once the new map has
+    been written and validated, and stays as it was when it cannot be. A
+    symbolic link at the outfile is replaced, not its target.
     """
     outfile = join(outdir, f"{prefix or 'metator'}.metacool")
+    # What the warning adds when the new map is not written.
+    kept = ""
     try:
-        if os.path.lexists(outfile):
+        if metacool and mtmc.is_input_map(metacool, outfile):
+            kept = " It is still the input map of the run."
+            logger.info(f"{outfile} is the input map {metacool}: it is replaced once the map of the bins is validated.")
+        elif os.path.lexists(outfile):
             logger.info(f"Removing {outfile}, the contact map of an earlier run.")
             os.remove(outfile)
-        mtmc.write_metacool(
-            pairs_files,
-            join(outdir, "contig_data_final.txt"),
-            outfile,
-            bin_summary=join(outdir, "bin_summary.txt"),
-            assembly_name=assembly_basename(assembly),
-            threads=threads,
-            force=True,
-            metadata=run_metadata(),
-        )
+        if metacool:
+            mtmc.reassign_metacool(
+                metacool,
+                join(outdir, "contig_data_final.txt"),
+                outfile,
+                bin_summary=join(outdir, "bin_summary.txt"),
+                force=True,
+                metadata=run_metadata(),
+            )
+        else:
+            mtmc.write_metacool(
+                pairs_files,
+                join(outdir, "contig_data_final.txt"),
+                outfile,
+                bin_summary=join(outdir, "bin_summary.txt"),
+                assembly_name=assembly_basename(assembly),
+                threads=threads,
+                force=True,
+                metadata=run_metadata(),
+            )
     except mtmc.MetacoolError as error:
-        logger.warning(f"{outfile} is not written: {str(error).rstrip('.')}. The other outputs of the run are kept.")
+        logger.warning(f"{outfile} is not written: {str(error).rstrip('.')}.{kept} The other outputs of the run are kept.")
     except Exception as error:
         logger.warning(
-            f"{outfile} is not written: {type(error).__name__}: {str(error).rstrip('.')}. The other outputs of the run are kept.",
+            f"{outfile} is not written: {type(error).__name__}: {str(error).rstrip('.')}.{kept} The other outputs of the run "
+            "are kept.",
             exc_info=True,
         )
 
@@ -1202,15 +1226,12 @@ def pipeline(
         # Delete pyfastx index:
         os.remove(fasta + ".fxi")
 
-        # Write the contact map last, while the pairs files are still there.
-        if start == "metacool":
-            if not no_metacool:
-                logger.info(
-                    "The contact map of the bins is not written: it is made from the pairs files, and this run "
-                    f"started from the contact map {forward}."
-                )
-        elif not no_metacool:
-            pipeline_metacool(alignment_files, outdir, prefix, assembly, threads)
+        # Write the contact map last, while the pairs files are still there:
+        # from the input map for a run that started from one.
+        if not no_metacool:
+            pipeline_metacool(
+                alignment_files, outdir, prefix, assembly, threads, metacool=forward if start == "metacool" else None
+            )
 
     # Delete the pairs files made from the reads or the alignments, and
     # their pypairix index.

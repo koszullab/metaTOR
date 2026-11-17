@@ -22,12 +22,19 @@ intra-contig contact when both ends are on one contig: the map holds the
 raw contacts, without the filters and normalization of the network. The
 pairs files of several libraries are summed into one map.
 
-Core function to write the file:
-    - write_metacool
+A run that started from a .metacool map of the contigs (made before any
+binning) has no pairs files: its map is written from that map instead, with
+its bins and contacts, grouped by final bin in the same way.
+
+Core functions to write the file:
+    - write_metacool, from the pairs files
+    - reassign_metacool, from a .metacool map
 """
 
 import logging
 import os
+import re
+import tempfile
 from contextlib import contextmanager
 
 import pandas as pd
@@ -52,6 +59,11 @@ METACOOLER_UNBINNED = frozenset({"__unbinned__", "na", "nan", "n/a", "nd", "n/d"
 # reassign carries the contigs columns into the map of another binning, where
 # a bin column would be stale.
 CONTIG_COLUMNS = ["GC_content", "Hit", "Shotgun_coverage", "Restriction_site"]
+
+# The columns of the genomes table that metacooler derives from the contigs,
+# with the qc_* columns (_GENOMES_RESERVED_COLUMNS in metacooler/io/create.py):
+# the other columns are metadata, as those of the bin summary.
+DERIVED_GENOME_COLUMNS = frozenset({"name", "length", "n_contigs", "n_bins"})
 
 # How many offending names an error message shows.
 MAX_SHOWN = 5
@@ -186,6 +198,26 @@ def measured_contig_columns(contig_data):
     present = [column for column in CONTIG_COLUMNS if column in header]
     table = _read_contig_table(contig_data, usecols=present)
     return [column for column in present if not table[column].str.strip().eq("-").all()]
+
+
+def map_file(metacool):
+    """The file of a .metacool map: the map, or the .mmetacool collection of
+    an entry given as file.mmetacool::entries/NAME."""
+    return str(metacool).split("::", 1)[0]
+
+
+def is_entry(metacool):
+    """Whether metacool names an entry inside a file (a .mmetacool
+    collection): file::group with a group other than the root of the file
+    (file::/ is the file itself, as metacooler reads it)."""
+    return "::" in str(metacool) and str(metacool).split("::", 1)[1].strip().strip("/") != ""
+
+
+def is_input_map(metacool, outfile):
+    """Whether outfile is the file of the map metacool: the same path, or a
+    symbolic link to it or from it."""
+    source = map_file(metacool)
+    return os.path.exists(outfile) and os.path.exists(source) and os.path.samefile(source, outfile)
 
 
 def non_ascii_names(names):
@@ -342,3 +374,250 @@ def write_metacool(
                 # No map without the columns of its contigs.
                 os.remove(outfile)
                 raise
+
+
+def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=False, metadata=None):
+    """Write the contact map of the final bins from a .metacool map of the
+    contigs, without pairs files.
+
+    The bins and contacts are those of the input map, at its bin size (one
+    bin per contig, or a fixed size), made before any binning (by
+    metacooler create pairs without --contigs, for example). Each contig
+    goes to its final bin, the unbinned ones and those that the contig data
+    lacks to ``__unbinned__``, and the contigs are grouped by genome, then
+    from the longest, as write_metacool groups them (metacooler reassign,
+    layout genome-then-length): a map of the same genomes, in the same
+    order. The genomes table holds the columns of the bin summary, and the
+    contigs table the columns of the contig data that write_metacool stores
+    (see measured_contig_columns): they replace those that the input map
+    carried, metaTOR's own as those of the bins of an earlier run. Its
+    other columns of the contigs table are kept. The QC block is
+    recomputed from the pixels when the input map has one. The assembly
+    name and the history of the commands are those of the input map.
+
+    The map is written to a temporary file next to outfile, then given
+    metacooler's full validation, and only then moved to outfile, which it
+    replaces: a symbolic link at outfile is replaced, not its target.
+    outfile may thus be the input map itself (the same path, or a symbolic
+    link to it or from it): outfile is only replaced by a valid map of the
+    bins, and an input map that outfile links to is left as it was. On any
+    failure, outfile is left as it was, and the temporary files are
+    removed, metacooler's partial file among them.
+
+    Parameters
+    ----------
+    metacool : str
+        Path to the input .metacool file, or URI of an entry of a
+        .mmetacool collection: ``file.mmetacool::entries/<name>``.
+    contig_data : str
+        Path to the contig_data_final.txt file: the final bin of the
+        contigs (Name, Final_bin), their size (Size, which must be their
+        length in the map), and what metaTOR measured on them.
+    outfile : str
+        Path to the .metacool file to write.
+    bin_summary : str, optional
+        Path to the bin_summary.txt file: its columns are added to the
+        genomes table, one row per bin, named by its first column. Not read
+        when no contig of the map is in a final bin: the map then has no
+        genome but ``__unbinned__``, and no column of the genomes table
+        that the input map carried.
+    force : bool
+        Whether to replace an existing outfile.
+    metadata : dict, optional
+        Parameters of the run, stored with the version of metaTOR under the
+        "metator" key of the file metadata.
+
+    Raises
+    ------
+    MetacoolError
+        If the outfile exists (without force) or is the .mmetacool
+        collection of the input map, an input file is missing, the contig
+        data cannot be read as a table or has no Name, Size or Final_bin
+        column or a Size that is not a whole number, a contig or bin name is
+        not ASCII, a bin name is one that metacooler reads as no bin (NA,
+        nan, -1...), the map cannot be read or gives a contig another length
+        than the contig data, or metacooler cannot write the map (a
+        ValueError, OSError or KeyError, message kept; when metacooler has
+        left its partial file, which it logs as left for inspection, the
+        message then says that it was removed). An error of another type is
+        raised as it is; when metacooler has left its partial file, a
+        warning logged before it says that the file was removed.
+    """
+    metacool, outfile = str(metacool), str(outfile)
+    if os.path.exists(outfile) and not force:
+        raise MetacoolError(f"{outfile} already exists. Use --force to overwrite it.")
+    inputs = [map_file(metacool), contig_data] + ([bin_summary] if bin_summary else [])
+    missing = [path for path in inputs if not os.path.isfile(path)]
+    if missing:
+        raise MetacoolError(f"Input file(s) not found: {', '.join(map(str, missing))}.")
+    if is_entry(metacool) and is_input_map(metacool, outfile):
+        raise MetacoolError(
+            f"{outfile} is the .mmetacool collection of the input map {metacool}: the map of the bins would replace "
+            "the whole collection. Write it to another file."
+        )
+    bins, contig_bin = read_contig_bins(contig_data)
+    check_ascii_names(bins["chrom"], contig_bin.values())
+    check_bin_names(contig_bin.values())
+    contig_columns = measured_contig_columns(contig_data)
+    sizes = dict(zip(bins["chrom"], bins["end"], strict=True))
+
+    import metacooler
+
+    with _metacooler_logging():
+        try:
+            contigs = metacooler.MetaCooler(metacool).contigs
+        except (OSError, KeyError, ValueError) as error:
+            reason = error.args[0] if isinstance(error, KeyError) and error.args else error
+            raise MetacoolError(f"Cannot read the contact map {metacool}: {reason}") from error
+    names = [str(name) for name in contigs["name"]]
+    # The binning of another version of the assembly (other contigs under
+    # the same names) is no binning of this map.
+    wrong = [
+        f"{name!r} ({int(length)} bp in the map, {sizes[name]} bp in the contig data)"
+        for name, length in zip(names, contigs["length"], strict=True)
+        if name in sizes and int(length) != sizes[name]
+    ]
+    if wrong:
+        raise MetacoolError(
+            f"{metacool} is not a contact map of the contigs of {contig_data}: {len(wrong)} contig(s) have another "
+            f"length in it: {_shown(wrong, show=str)}."
+        )
+    in_map = set(names)
+    absent = [name for name in contig_bin if name not in in_map]
+    if absent:
+        logger.warning(
+            f"{len(absent)} binned contig(s) of {contig_data} are not in {metacool}, and not in the map of the bins "
+            f"either: {_shown(absent)}."
+        )
+    # Every contig of the map, the unbinned ones as ND (no genome for
+    # metacooler): never an empty table, which metacooler refuses.
+    assignment = {name: contig_bin.get(name, "ND") for name in names}
+    final_bins = set(assignment.values()) - {"ND"}
+    genomes_table = bin_summary if bin_summary and final_bins else None
+    logger.info(
+        f"Writing {outfile} from the contact map {metacool}: {len(names)} contigs, "
+        f"{sum(value != 'ND' for value in assignment.values())} of them in {len(final_bins)} bins."
+    )
+    with _metacooler_logging():
+        with _as_metacool_errors():
+            directory = os.path.dirname(outfile) or "."
+            os.makedirs(directory, exist_ok=True)
+            handle, staged = tempfile.mkstemp(prefix=f".{os.path.basename(outfile)}.", suffix=".tmp", dir=directory)
+            os.close(handle)
+        try:
+            with _as_metacool_errors():
+                metacooler.reassign(
+                    metacool,
+                    assignment,
+                    staged,
+                    # The contigs of no final bin go to __unbinned__,
+                    # whatever genome the input map gave them.
+                    missing="unbinned",
+                    # Grouped as write_metacool groups the contigs, whatever
+                    # the order of the input map: the pixels are remapped.
+                    layout="genome-then-length",
+                    # The bin names are the first column of bin_summary.txt,
+                    # unnamed. Given, it replaces the columns of the genomes
+                    # table that the input map carried.
+                    genomes_table=genomes_table,
+                    genomes_table_format="1",
+                    metadata={"metator": {"version": __version__, **(metadata or {})}},
+                    # Over the empty temporary file.
+                    force=True,
+                )
+                _write_back_columns(staged, contig_data, contig_columns, genomes_table is None)
+                metacooler.validate(staged, full=True)
+                os.replace(staged, outfile)
+            logger.info(f"{outfile} is written: the contact map of the bins.")
+        except BaseException as error:
+            # metacooler leaves its own partial file next to the one it
+            # writes, and logs, at ERROR, that it is left there for
+            # inspection: the error then says that it is removed, or, for
+            # an error of another type (raised as it is), a warning.
+            partial = f"{staged}.partial"
+            left = os.path.lexists(partial)
+            for path in [staged, partial]:
+                if os.path.lexists(path):
+                    os.remove(path)
+            if left:
+                removed = f"The temporary files of the map, {staged} and metacooler's partial file {partial}, were removed."
+                if isinstance(error, MetacoolError):
+                    raise MetacoolError(f"{str(error).rstrip('.')}. {removed}") from error.__cause__
+                logger.warning(removed)
+            raise
+
+
+def _write_back_columns(path, contig_data, contig_columns, drop_genome_columns):
+    """Give the map written back from an input map the metadata columns of
+    this run, as metacooler annotate edits them.
+
+    The columns of the contig data that metaTOR measured (contig_columns)
+    replace those that the input map carried. Its other columns that the
+    input map carried are dropped: the bins of each step, the contig ids,
+    Size..., which a map made with the contig data of an earlier run as its
+    contigs table holds (metacooler create pairs --contigs-format metator),
+    and one of CONTIG_COLUMNS that this run did not measure
+    (Shotgun_coverage without a depth file...). So are, with
+    drop_genome_columns (no bin summary given), the metadata columns of the
+    genomes table: they describe the bins of another run.
+    """
+    import metacooler
+
+    stored = metacooler.MetaCooler(path)
+    # The columns of a contig data file but Name (the contigs' own name
+    # column) and those of the map that metacooler derives.
+    of_metator = (set(_read_contig_table(contig_data, nrows=0).columns) | set(CONTIG_COLUMNS)) - {"Name"}
+    drop = [
+        f"contigs.{column}"
+        for column in stored.contigs.columns
+        if column in of_metator - set(contig_columns) - {"name", "length", "genome_id"}
+    ]
+    if drop_genome_columns:
+        drop += [
+            f"genomes.{column}"
+            for column in stored.genomes.columns
+            if column not in DERIVED_GENOME_COLUMNS and not column.startswith("qc_")
+        ]
+    if not contig_columns and not drop:
+        return
+    with _rows_of_other_contigs_ignored(contig_data):
+        metacooler.annotate(
+            path,
+            contigs_table=contig_data if contig_columns else None,
+            contigs_table_format="Name",
+            # Named one by one: the other columns of the table are bins, or
+            # the unnamed pandas index.
+            columns=[f"contigs.{column}" for column in contig_columns] or None,
+            drop=drop or None,
+            # The values of this run, on every contig of the map: a contig
+            # that the contig data lacks has none.
+            replace=True,
+            missing="na",
+            inplace=True,
+        )
+
+
+@contextmanager
+def _rows_of_other_contigs_ignored(contig_data):
+    """Drop the warning of metacooler annotate about the rows of contig_data
+    that name no contig of the map.
+
+    The contig data of a run lists every contig of the assembly, and a map
+    may lack some of them (a map made with a contig filter): annotate would
+    warn about its rows that name them, "Contigs table (contig_data): N of M
+    row(s) match no contig of the map". Its other messages are kept, and
+    annotate reads contig_data itself: they name it, as does the history of
+    the map (metadata["annotate"]).
+    """
+    # The wording of metacooler 0.2.0 (metacooler.io.collect, _resolve_contig_metadata).
+    pattern = re.compile(rf"Contigs table \({re.escape(str(contig_data))}\): \d+ of \d+ row\(s\) match no contig\b")
+
+    def kept(record):
+        return not (record.levelno == logging.WARNING and pattern.match(record.getMessage()))
+
+    mc_logger = logging.getLogger("metacooler")
+    mc_logger.addFilter(kept)
+    try:
+        yield
+    finally:
+        mc_logger.removeFilter(kept)

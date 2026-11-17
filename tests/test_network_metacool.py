@@ -5,7 +5,6 @@
 
 import collections
 import gzip
-import logging
 import random
 import shutil
 from pathlib import Path
@@ -20,7 +19,6 @@ import pytest
 import metator.metacool as mtmc
 import metator.network as mtn
 import metator.partition as mtp
-from metator.log import logger
 
 TESTS_DATA = Path(__file__).resolve().parents[1] / "tests_data"
 
@@ -412,17 +410,6 @@ def test_map_of_other_contigs(assembly, message, tmp_path):
     assert str(error.value).startswith(f"{metacool} is not a contact map")
     # The contigs of the assembly that the map lacks are not a reason.
     assert "of the assembly are not in" not in str(error.value)
-
-
-@pytest.fixture
-def logged():
-    """The messages that metaTOR logs during the test, with their level."""
-    records = []
-    handler = logging.Handler()
-    handler.emit = records.append
-    logger.addHandler(handler)
-    yield lambda: [(record.levelname, record.getMessage()) for record in records]
-    logger.removeHandler(handler)
 
 
 def test_map_lacking_contigs(tmp_path, logged):
