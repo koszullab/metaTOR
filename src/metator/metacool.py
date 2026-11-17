@@ -31,10 +31,8 @@ Core functions to write the file:
     - reassign_metacool, from a .metacool map
 """
 
-import bz2
 import gzip
 import logging
-import lzma
 import os
 import re
 import tempfile
@@ -67,6 +65,10 @@ CONTIG_COLUMNS = ["GC_content", "Hit", "Shotgun_coverage", "Restriction_site"]
 # with the qc_* columns (_GENOMES_RESERVED_COLUMNS in metacooler/io/create.py):
 # the other columns are metadata, as those of the bin summary.
 DERIVED_GENOME_COLUMNS = frozenset({"name", "length", "n_contigs", "n_bins"})
+
+# The compressions that pandas infers from the end of a file name, in any
+# case. Of these, metacooler reads only gzip, from a name that ends in .gz.
+PANDAS_COMPRESSIONS = (".tar", ".tar.gz", ".tar.bz2", ".tar.xz", ".gz", ".bz2", ".zip", ".xz", ".zst")
 
 # How many offending names an error message shows.
 MAX_SHOWN = 5
@@ -149,7 +151,10 @@ def read_contig_data(contig_data):
     Raises
     ------
     MetacoolError
-        If pandas cannot read the file as a table (empty, not UTF-8...), or
+        If the file is compressed otherwise than with gzip as .gz (pandas
+        would read it, but not metacooler, which reads it again to store the
+        contig columns), or pandas cannot read it as a table (empty, not
+        UTF-8...), or
         would read it shifted or padded (a row with more or fewer fields
         than the header: the surplus leading fields of the first rows as
         their index, every value then under the name of the column to its
@@ -157,6 +162,12 @@ def read_contig_data(contig_data):
         bin), or it has no Name, Size or Final_bin column, or a Size that is
         not a whole number.
     """
+    name = str(contig_data)
+    if name.lower().endswith(PANDAS_COMPRESSIONS) and (not name.endswith(".gz") or name.lower().endswith(".tar.gz")):
+        raise MetacoolError(
+            f"{contig_data} is compressed in a way that metacooler, which reads it again to store the contig columns, "
+            "cannot read: give it plain, or compressed with gzip as .gz."
+        )
     try:
         _check_field_counts(contig_data)
         table = pd.read_csv(contig_data, sep="\t", dtype=str, keep_default_na=False)
@@ -188,13 +199,9 @@ def _check_field_counts(path):
 
     A header that ends in empty names (a trailing tab) may have more fields
     than the rows: pandas reads the fields they lack as empty, in columns
-    that have no name, as metacooler reads such a table. A file compressed
-    as gzip, bzip2 or xz is read as pandas reads it; one compressed
-    otherwise is not checked."""
-    name = str(path)
-    if name.endswith((".zip", ".zst", ".tar", ".tgz", ".tar.gz", ".tar.bz2", ".tar.xz")):
-        return
-    opener = {".gz": gzip.open, ".bz2": bz2.open, ".xz": lzma.open}.get(os.path.splitext(name)[1], open)
+    that have no name, as metacooler reads such a table. The file is plain,
+    or compressed with gzip if its name ends in .gz."""
+    opener = gzip.open if str(path).endswith(".gz") else open
     header, ragged = None, []
     with opener(path, "rb") as handle:
         for number, line in enumerate(handle, 1):

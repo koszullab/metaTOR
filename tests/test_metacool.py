@@ -370,6 +370,35 @@ def test_contig_column_metacooler_refuses(force, binning, tmp_path):
     assert not out.exists()
 
 
+@pytest.mark.parametrize("suffix", [".gz", ".bz2"])
+def test_maps_of_a_compressed_contig_data(suffix, metagenome, binning, tmp_path):
+    """A contig data file compressed with gzip as .gz: both maps, with its
+    contig columns, as metacooler reads it too (this case passed before the
+    refusal of other compressions, which it guards). Compressed with bzip2:
+    refused before any work, rather than once the map is written, when
+    metacooler failed to read it."""
+    contig_data = tmp_path / f"contig_data_final.txt{suffix}"
+    opener = {".gz": gzip.open, ".bz2": bz2.open}[suffix]
+    with opener(contig_data, "wb") as handle:
+        handle.write(Path(binning["contig_data"]).read_bytes())
+    from_pairs = tmp_path / "pairs.metacool"
+    from_map = tmp_path / "map.metacool"
+    unbinned = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
+    if suffix == ".bz2":
+        with pytest.raises(mtmc.MetacoolError, match="compressed in a way that metacooler"):
+            mtmc.write_metacool(str(binning["pairs"]), str(contig_data), str(from_pairs))
+        with pytest.raises(mtmc.MetacoolError, match="compressed in a way that metacooler"):
+            mtmc.reassign_metacool(str(unbinned), str(contig_data), str(from_map))
+        assert not from_pairs.exists() and not from_map.exists()
+        return
+    mtmc.write_metacool(str(binning["pairs"]), str(contig_data), str(from_pairs))
+    mtmc.reassign_metacool(str(unbinned), str(contig_data), str(from_map))
+    for out in [from_pairs, from_map]:
+        metacooler.validate(str(out), full=True)
+        assert_contig_columns(out, binning["contig_data"])
+        assert assignment(out) == final_bins(metagenome)
+
+
 def test_read_contig_data(tmp_path):
     """The bins and final bins of the contigs, the contig columns the table
     has but those that are - on every contig (no depth file, no enzyme),
@@ -427,40 +456,52 @@ def test_read_contig_data_unreadable_table(content, reason, tmp_path):
     assert isinstance(error.value.__cause__, ValueError)
 
 
-@pytest.mark.parametrize("suffix, opener", [(".gz", gzip.open), (".bz2", bz2.open), (".xz", lzma.open)])
-def test_read_contig_data_of_a_compressed_file(suffix, opener, tmp_path):
-    """A compressed contig data file is read, and its rows checked, as
-    pandas reads it."""
-    table = tmp_path / f"contig_data_final.txt{suffix}"
-    with opener(table, "wt") as handle:
+def test_read_contig_data_of_a_gzipped_file(tmp_path):
+    """A contig data file compressed with gzip is read, and its rows
+    checked, as pandas reads it."""
+    table = tmp_path / "contig_data_final.txt.gz"
+    with gzip.open(table, "wt") as handle:
         handle.write("Name\tSize\tFinal_bin\nc1\t100\tb1\nc2\t200\tND\n")
     bins, final_bin, *_ = mtmc.read_contig_data(str(table))
     assert bins.to_dict("list") == {"chrom": ["c1", "c2"], "start": [0, 0], "end": [100, 200]}
     assert final_bin == {"c1": "b1"}
-    with opener(table, "wt") as handle:
+    with gzip.open(table, "wt") as handle:
         handle.write("Name\tSize\tFinal_bin\nc1\t100\tb1\tb2\n")
     message = r"1 row\(s\) do not have the 3 tab-separated fields of the header: line 2 \(4\)\.$"
     with pytest.raises(mtmc.MetacoolError, match=message):
         mtmc.read_contig_data(str(table))
 
 
-@pytest.mark.parametrize("suffix", [".zip", ".tar.gz"])
-def test_read_contig_data_of_an_archive(suffix, tmp_path):
-    """A contig data file in a zip or tar archive is read by pandas, its
-    rows not counted: the check reads no archive (it took a .tar.gz for a
-    gzip file, and the tar headers for fields)."""
-    table = tmp_path / f"contig_data_final.txt{suffix}"
+@pytest.mark.parametrize("suffix", [".bz2", ".xz", ".zip", ".tar.gz", ".GZ"])
+def test_read_contig_data_compressed_otherwise(suffix, tmp_path):
+    """A contig data file that pandas reads compressed otherwise than with
+    gzip as .gz is refused: metacooler, which reads it again to store the
+    contig columns, cannot (the map failed there, once written)."""
     content = "Name\tSize\tFinal_bin\nc1\t100\tb1\n"
+    table = tmp_path / f"contig_data_final.txt{suffix}"
+    source = tmp_path / "contig_data_final.txt"
+    source.write_text(content)
     if suffix == ".zip":
         with zipfile.ZipFile(table, "w") as archive:
-            archive.writestr("contig_data_final.txt", content)
-    else:
-        source = tmp_path / "contig_data_final.txt"
-        source.write_text(content)
+            archive.write(source, arcname=source.name)
+    elif suffix == ".tar.gz":
         with tarfile.open(table, "w:gz") as archive:
             archive.add(source, arcname=source.name)
-    bins, final_bin, *_ = mtmc.read_contig_data(str(table))
-    assert list(bins.chrom) == ["c1"] and final_bin == {"c1": "b1"}
+    else:
+        opener = {".bz2": bz2.open, ".xz": lzma.open, ".GZ": gzip.open}[suffix]
+        with opener(table, "wt") as handle:
+            handle.write(content)
+    assert pd.read_csv(table, sep="\t", dtype=str).to_dict("list") == {
+        "Name": ["c1"],
+        "Size": ["100"],
+        "Final_bin": ["b1"],
+    }
+    message = (
+        f"{table} is compressed in a way that metacooler, which reads it again to store the contig columns, cannot "
+        "read: give it plain, or compressed with gzip as .gz."
+    )
+    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
+        mtmc.read_contig_data(str(table))
 
 
 def test_read_contig_data_header_with_a_trailing_tab(tmp_path):

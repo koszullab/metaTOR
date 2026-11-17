@@ -29,7 +29,9 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - `metator metacool` and the map of `pipeline` refuse a
   `contig_data_final.txt` whose rows have more or fewer fields than its
-  header, which they read shifted or padded, without a word.
+  header, which they read shifted or padded, without a word, and one
+  compressed otherwise than with gzip as `.gz`, which metacooler failed to
+  read once the map was written.
 - `pipeline` checks its arguments and its assembly before replacing the
   bins of an earlier run with `--force`: a refused run no longer empties
   `overlapping_bin/`, `recursive_bin/` and `final_bin_unscaffold/` first.
