@@ -979,8 +979,8 @@ def test_map_of_the_bins_from_a_cut_map(binned, metagenome, binning, tmp_path, l
     assert cooler.Cooler(str(out)).info["metadata"]["qc"]["source"] == "pixels"
     warnings = [message for level, message in logged() if level == "WARNING"]
     # The contig data lists contigs that the map lacks: annotate reads it,
-    # its warning about their rows is dropped, and the history of the map
-    # names the contig data.
+    # ignoring their rows without a warning (unmatched="ignore"), and the
+    # history of the map names the contig data.
     assert not [message for message in warnings if "Contigs table" in message]
     assert cooler.Cooler(str(out)).info["metadata"]["annotate"][-1]["contigs_table"] == str(contig_data)
     assert not [path.name for path in tmp_path.iterdir() if path.name.startswith(".")]
@@ -995,8 +995,8 @@ def test_map_of_the_bins_from_a_cut_map(binned, metagenome, binning, tmp_path, l
 
 
 def test_map_of_the_bins_from_a_cut_map_other_warnings(metagenome, binning, tmp_path, logged):
-    """Only the warning of metacooler annotate about the rows of the contig
-    data that name no contig of the map is dropped: another warning about
+    """Only the rows of the contig data that name no contig of the map are
+    ignored without a warning: another warning of metacooler annotate about
     the table, a contig described by two rows here, names the contig data,
     as does the history of the map."""
     truth = metagenome.truth
@@ -1019,31 +1019,6 @@ def test_map_of_the_bins_from_a_cut_map_other_warnings(metagenome, binning, tmp_
         f"Contigs table ({contig_data}): 1 contig(s) are described by more than one row; the last row wins: {twice!r}"
     ]
     assert cooler.Cooler(str(out)).info["metadata"]["annotate"][-1]["contigs_table"] == str(contig_data)
-
-
-def test_rows_of_other_contigs_ignored(tmp_path, logged):
-    """The filter drops the warning of metacooler annotate about the rows of
-    the contig data that name no contig of the map, and that one only:
-    neither the same warning about another table, nor another message about
-    the contig data, nor this message at another level. It is removed on
-    exit."""
-    contig_data = str(tmp_path / "contig_data_final.txt")
-    other = str(tmp_path / "other.txt")
-    unmatched = "Contigs table ({}): 3 of 10 row(s) match no contig of the map and are ignored, e.g. 'c1'."
-    mc_logger = logging.getLogger("metacooler")
-    with mtmc._metacooler_logging(), mtmc._rows_of_other_contigs_ignored(contig_data):
-        mc_logger.warning(unmatched.format(contig_data))
-        mc_logger.warning(unmatched.format(other))
-        mc_logger.warning(f"Contigs table ({contig_data}): 1 contig(s) are described by more than one row")
-        mc_logger.error(unmatched.format(contig_data))
-    with mtmc._metacooler_logging():
-        mc_logger.warning(unmatched.format(contig_data))
-    assert logged() == [
-        ("WARNING", unmatched.format(other)),
-        ("WARNING", f"Contigs table ({contig_data}): 1 contig(s) are described by more than one row"),
-        ("ERROR", unmatched.format(contig_data)),
-        ("WARNING", unmatched.format(contig_data)),
-    ]
 
 
 def test_map_of_the_bins_from_an_mmetacool_entry(metagenome, binning, tmp_path):

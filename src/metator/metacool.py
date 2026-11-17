@@ -34,7 +34,6 @@ Core functions to write the file:
 import gzip
 import logging
 import os
-import re
 import tempfile
 from contextlib import contextmanager
 
@@ -628,44 +627,21 @@ def _write_back_columns(path, contig_data, contig_columns, header):
     ]
     if not contig_columns and not drop:
         return
-    with _rows_of_other_contigs_ignored(contig_data):
-        metacooler.annotate(
-            path,
-            contigs_table=contig_data if contig_columns else None,
-            contigs_table_format="Name",
-            # Named one by one: the other columns of the table are bins, or
-            # the unnamed pandas index.
-            columns=[f"contigs.{column}" for column in contig_columns] or None,
-            drop=drop or None,
-            # The values of this run, on every contig of the map: a contig
-            # that the contig data lacks has none.
-            replace=True,
-            missing="na",
-            inplace=True,
-        )
-
-
-@contextmanager
-def _rows_of_other_contigs_ignored(contig_data):
-    """Drop the warning of metacooler annotate about the rows of contig_data
-    that name no contig of the map.
-
-    The contig data of a run lists every contig of the assembly, and a map
-    may lack some of them (a map made with a contig filter): annotate would
-    warn about its rows that name them, "Contigs table (contig_data): N of M
-    row(s) match no contig of the map". Its other messages are kept, and
-    annotate reads contig_data itself: they name it, as does the history of
-    the map (metadata["annotate"]).
-    """
-    # The wording of metacooler 0.2.0 (metacooler.io.collect, _resolve_contig_metadata).
-    pattern = re.compile(rf"Contigs table \({re.escape(str(contig_data))}\): \d+ of \d+ row\(s\) match no contig\b")
-
-    def kept(record):
-        return not (record.levelno == logging.WARNING and pattern.match(record.getMessage()))
-
-    mc_logger = logging.getLogger("metacooler")
-    mc_logger.addFilter(kept)
-    try:
-        yield
-    finally:
-        mc_logger.removeFilter(kept)
+    metacooler.annotate(
+        path,
+        contigs_table=contig_data if contig_columns else None,
+        contigs_table_format="Name",
+        # Named one by one: the other columns of the table are bins, or the
+        # unnamed pandas index.
+        columns=[f"contigs.{column}" for column in contig_columns] or None,
+        drop=drop or None,
+        # The values of this run, on every contig of the map: a contig that
+        # the contig data lacks has none.
+        replace=True,
+        missing="na",
+        # The contig data of a run lists every contig of the assembly, and a
+        # map may lack some (a map made with a contig filter): no warning
+        # about the rows that name them.
+        unmatched="ignore",
+        inplace=True,
+    )

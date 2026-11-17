@@ -441,8 +441,8 @@ def test_pipeline_from_a_filtered_metacool(metagenome, metagenome_inputs, tmp_pa
     assert cooler.Cooler(str(written)).pixels()[:]["count"].sum() == cooler.Cooler(str(metacool)).pixels()[:]["count"].sum()
     # What metaTOR measured on the contigs of the map. contig_data_final.txt
     # lists the contigs that the map lacks too: metacooler annotate reads it,
-    # as the history of the map says, and its warning about their rows is
-    # dropped.
+    # as the history of the map says, and ignores their rows without a
+    # warning.
     columns = ["GC_content", "Hit", "Shotgun_coverage", "Restriction_site"]
     assert [column for column in mc.contigs.columns if not column.startswith("qc_")] == ["name", "length", "genome_id", *columns]
     measured = final.set_index("Name").loc[mc.contigs.name, columns]
