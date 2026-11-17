@@ -360,6 +360,17 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, metagenome_inde
     assert metadata["qc"]["source"] == "pixels"
     assert [entry["source"] for entry in metadata["reassign"]] == [str(metacool)]
 
+    # The same map, written by metator metacool from the input map and the
+    # tables of the run: a run step by step can write it too.
+    command = tmp_path / "command.metacool"
+    run_cli("metacool", "-c", mcool / "contig_data_final.txt", "-b", mcool / "bin_summary.txt", "-o", command, metacool)
+    metacooler.validate(str(command), full=True)
+    clr = cooler.Cooler(str(command))
+    for table in ["bins", "pixels", "chroms"]:
+        pd.testing.assert_frame_equal(getattr(clr, table)()[:], getattr(cooler.Cooler(str(written)), table)()[:])
+    pd.testing.assert_frame_equal(metacooler.MetaCooler(str(command)).genomes, genomes)
+    assert clr.info["metadata"]["qc"] == metadata["qc"]
+
 
 def test_pipeline_from_a_filtered_metacool(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli):
     """From a map that lacks contigs of the assembly (made with a contig

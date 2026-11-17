@@ -65,6 +65,9 @@ CONTIG_COLUMNS = ["GC_content", "Hit", "Shotgun_coverage", "Restriction_site"]
 # case. Of these, metacooler reads only gzip, from a name that ends in .gz.
 PANDAS_COMPRESSIONS = (".tar", ".tar.gz", ".tar.bz2", ".tar.xz", ".gz", ".bz2", ".zip", ".xz", ".zst")
 
+# The first bytes of an HDF5 file, as h5py writes it (cooler, metacooler).
+HDF5_SIGNATURE = b"\x89HDF\r\n\x1a\n"
+
 # How many offending names an error message shows.
 MAX_SHOWN = 5
 
@@ -249,6 +252,20 @@ def map_file(metacool):
     """The file of a .metacool map: the map, or the .mmetacool collection of
     an entry given as file.mmetacool::entries/NAME."""
     return str(metacool).split("::", 1)[0]
+
+
+def is_map(path):
+    """Whether path is a contact map rather than a pairs file: the URI of
+    one inside a file (file::group), or an HDF5 file, which a pairs file
+    never is. A .metacool map is one; so are a .mmetacool collection and a
+    .cool file, which open_map then refuses with metacooler's reason."""
+    if "::" in str(path):
+        return True
+    try:
+        with open(path, "rb") as handle:
+            return handle.read(len(HDF5_SIGNATURE)) == HDF5_SIGNATURE
+    except OSError:
+        return False
 
 
 def is_entry(metacool):

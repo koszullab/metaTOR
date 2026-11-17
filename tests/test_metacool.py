@@ -608,6 +608,63 @@ def test_metacool_command(metagenome, binning, tmp_path, run_cli):
     assert "Created metacool file" in logged
 
 
+@pytest.mark.parametrize("case", ["map and pairs", "assembly name"])
+def test_metacool_command_from_a_map_refused(case, metagenome, binning, tmp_path, run_cli):
+    """From a .metacool map: alone (a map sums its libraries already), and
+    without --assembly-name (the map keeps that of the input map). Refused
+    before anything is written, logged, then raised."""
+    metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
+    args = {"map and pairs": [metacool, binning["pairs"]], "assembly name": ["-n", "assembly", metacool]}[case]
+    message = {
+        "map and pairs": "metator metacool writes the map from pairs files, or from one .metacool map: got 2 files, "
+        "1 of them .metacool maps.",
+        "assembly name": f"--assembly-name names the assembly of a map written from pairs files: the map written "
+        f"from {metacool} keeps the assembly name of that map.",
+    }[case]
+    out = tmp_path / "map.metacool"
+    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
+        run_cli("metacool", "-c", binning["contig_data"], "-o", out, *args)
+    assert f"ERROR :: {message}" in _logged(tmp_path)
+    assert not out.exists()
+
+
+def test_metacool_command_from_an_mmetacool_entry(metagenome, binning, tmp_path, run_cli):
+    """From an entry of a .mmetacool collection (file::entries/NAME): the
+    map of the bins, with the contacts of the entry."""
+    metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
+    collection = tmp_path / "maps.mmetacool"
+    metacooler.create_mmetacool(collection, {"lib1": metacool})
+    out = tmp_path / "bins.metacool"
+    run_cli("metacool", "-c", binning["contig_data"], "-b", binning["bin_summary"], "-o", out, f"{collection}::entries/lib1")
+
+    metacooler.validate(str(out), full=True)
+    assert assignment(out) == final_bins(metagenome)
+    assert contig_contacts(out) == contig_contacts(metacool)
+
+
+@pytest.mark.parametrize("kind", ["collection", "cooler"])
+def test_metacool_command_from_another_hdf5_file(kind, metagenome, binning, tmp_path, run_cli):
+    """From an HDF5 file that is no .metacool map: a .mmetacool collection,
+    whose entries the error lists, or a .cool file. Taken for a map, not
+    read as a pairs file, and refused with metacooler's reason, logged,
+    then raised."""
+    metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
+    if kind == "collection":
+        path = tmp_path / "maps.mmetacool"
+        metacooler.create_mmetacool(path, {"lib1": metacool})
+        reason = "entries/lib1"
+    else:
+        path = tmp_path / "contigs.cool"
+        clr = cooler.Cooler(str(metacool))
+        cooler.create_cooler(str(path), clr.bins()[:][["chrom", "start", "end"]], clr.pixels()[:])
+        reason = "metacooler-format"
+    out = tmp_path / "map.metacool"
+    with pytest.raises(mtmc.MetacoolError, match=f"^Cannot read the contact map {re.escape(str(path))}: .*{reason}") as error:
+        run_cli("metacool", "-c", binning["contig_data"], "-o", out, path)
+    assert f"ERROR :: {error.value}" in _logged(tmp_path)
+    assert not out.exists()
+
+
 def test_metacool_command_without_final_bin(metagenome, binning, tmp_path, run_cli):
     """A run with no final bin: the map of every contig, all in __unbinned__
     with all their contacts. The bin summary has no row and adds no
