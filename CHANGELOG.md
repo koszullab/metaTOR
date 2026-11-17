@@ -55,6 +55,9 @@ All notable changes to this project will be documented in this file.
   assembly only when it is there: they failed at their very end, with
   `FileNotFoundError`, when another run sharing the assembly had removed
   it.
+- The network heatmap of `pipeline` and `validation` reads only the files
+  of the output directory whose name ends in `.pairs.gz`: an unescaped dot
+  also took, for example, `alignment_sorted_pairs.gz` for a pairs file.
 
 ## [1.4.0] - 2026-11-17
 
