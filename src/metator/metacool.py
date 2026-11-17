@@ -290,9 +290,9 @@ def check_bin_names(bins):
     bad = list(dict.fromkeys(name for name in bins if name.strip().lower() in METACOOLER_UNBINNED))
     if bad:
         raise MetacoolError(
-            "A .metacool file cannot have bins named as metacooler marks a contig in no bin (NA, NaN, N/A, ND, N/D, -1 "
-            f"or __unbinned__, in upper or lower case): it would put their contigs in __unbinned__. Rename the {len(bad)} "
-            f"bin(s): {_shown(bad)}."
+            "A .metacool file cannot have bins named as metacooler marks a contig in no bin (NA, NaN, N/A, N/D, -1 or "
+            "__unbinned__ in any case, and nd in any case other than ND, which marks a contig in no bin): it would put "
+            f"their contigs in __unbinned__. Rename the {len(bad)} bin(s): {_shown(bad)}."
         )
 
 

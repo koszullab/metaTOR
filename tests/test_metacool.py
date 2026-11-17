@@ -329,7 +329,12 @@ def test_bin_names_read_as_no_bin_are_refused(metagenome, metagenome_files, tmp_
     contig_data = write_contig_data(metagenome, tmp_path / "contig_data_final.txt", final_bin)
     monkeypatch.setattr(metacooler, "from_pairs", lambda *args, **kwargs: pytest.fail("pairs read"))
     shown = r"'NA', 'nan', 'N/A', 'nd', 'N/d', \.\.\. \(\+3 more\)"
-    with pytest.raises(mtmc.MetacoolError, match=rf"in __unbinned__\. Rename the 8 bin\(s\): {shown}\.$"):
+    message = (
+        "A .metacool file cannot have bins named as metacooler marks a contig in no bin (NA, NaN, N/A, N/D, -1 or "
+        "__unbinned__ in any case, and nd in any case other than ND, which marks a contig in no bin): it would put "
+        "their contigs in __unbinned__. Rename the 8 bin(s): "
+    )
+    with pytest.raises(mtmc.MetacoolError, match=rf"^{re.escape(message)}{shown}\.$"):
         mtmc.write_metacool(str(metagenome_files["pairs"]), str(contig_data), str(tmp_path / "map.metacool"))
 
 
