@@ -142,6 +142,10 @@ All notable changes to this project will be documented in this file.
   whatever the reason (no high-quality MAG, no contig of more than 100 kb,
   or no pair between them), and logs the thresholds given with
   `--threshold` too.
+- `metator metacool`, and the map that `pipeline` writes, no longer leave
+  metacooler's partial file (`<outfile>.partial`) next to the outfile
+  when metacooler cannot write the map: metacooler removes it and says so
+  at INFO, where it logged, at ERROR, that it left it for inspection.
 - `metator metacool` and the map of `pipeline` refuse a
   `contig_data_final.txt` whose rows have more or fewer fields than its
   header, which they read shifted or padded, without a word, and one

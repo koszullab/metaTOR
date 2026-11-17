@@ -1269,9 +1269,9 @@ def test_map_of_the_bins_replaces_the_input_map(how, metagenome, binning, tmp_pa
 
 
 def _fail_in_reassign(uri, table, output, **kwargs):
-    """metacooler.reassign, failing once it has started to write its partial
-    file next to the output."""
-    Path(f"{output}.partial").write_text("partial")
+    """metacooler.reassign, failing as it does when it cannot write: told
+    to remove its partial file (keep_partial=False), it leaves none."""
+    assert kwargs["keep_partial"] is False
     raise OSError("No space left on device")
 
 
@@ -1279,14 +1279,24 @@ def _fail_in_validate(path, full=True):
     raise ValueError("pixels out of order")
 
 
+def removed_partial(messages):
+    """The file that metacooler was writing, from its INFO line: it removed
+    its partial file (keep_partial=False)."""
+    (staged,) = [
+        re.match(r"Creation failed; the partial file (\S+)\.partial was removed and \1 was not written\.$", message)[1]
+        for level, message in messages
+        if level == "INFO" and message.startswith("Creation failed")
+    ]
+    return staged
+
+
 @pytest.mark.parametrize("failure", ["reassign", "validate", "in metacooler"])
 @pytest.mark.parametrize("how", ["path", "link to the outfile"])
 def test_input_map_kept_when_the_map_of_the_bins_fails(how, failure, metagenome, binning, tmp_path, monkeypatch, logged):
     """When the map of the bins cannot be written or does not validate, the
     input map (the outfile) is left byte for byte as it was, and no
-    temporary file stays next to it. When metacooler has left its partial
-    file, which it logs as left for inspection, the error says that it was
-    removed."""
+    temporary file stays next to it: metacooler removes the partial file it
+    was writing, and says so at INFO, not that it is left for inspection."""
     out = tmp_path / "out"
     out.mkdir()
     outfile = unbinned_map(out / "metator.metacool", metagenome, binning["pairs"])
@@ -1306,28 +1316,19 @@ def test_input_map_kept_when_the_map_of_the_bins_fails(how, failure, metagenome,
         # partial file first.
         monkeypatch.setattr("metacooler.io.reassign.validate", _fail_in_validate)
         message = "pixels out of order"
-    expected = message
-    if failure != "validate":
-        # The temporary file, next to the outfile, and the partial file that
-        # metacooler (or the stub) writes next to it.
-        staged = "(" + re.escape(str(out / ".metator.metacool.")) + r"\w+\.tmp)"
-        expected = (
-            rf"{message}\. The temporary files of the map, {staged} and metacooler's partial file \1\.partial, were removed\."
-        )
-    with pytest.raises(mtmc.MetacoolError, match=f"^{expected}$") as raised:
+    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$") as raised:
         mtmc.reassign_metacool(
             str(metacool), str(binning["contig_data"]), str(outfile), bin_summary=str(binning["bin_summary"]), force=True
         )
     assert str(raised.value.__cause__) == message
     assert outfile.read_bytes() == before
     assert sorted(path.name for path in out.iterdir()) == ["metator.metacool"]
+    messages = logged()
+    assert not [message for level, message in messages if level == "ERROR" and "for inspection" in message]
     if failure == "in metacooler":
-        # metacooler has logged that it left the partial file it was writing.
-        staged = re.match(expected, str(raised.value)).group(1)
-        assert (
-            "ERROR",
-            f"Creation failed. The partial file was left at {staged}.partial for inspection; {staged} was not written.",
-        ) in logged()
+        # The temporary file of the map, next to the outfile.
+        staged = removed_partial(messages)
+        assert Path(staged).parent == out and Path(staged).name.startswith(".metator.metacool.")
 
 
 def _fail_unexpectedly(path, full=True):
@@ -1337,9 +1338,9 @@ def _fail_unexpectedly(path, full=True):
 def test_partial_file_removed_on_an_unexpected_error(metagenome, binning, tmp_path, monkeypatch, logged):
     """An error of another type than those metacooler is expected to raise,
     within metacooler reassign once it has started its partial file (in its
-    validation, here), is raised as it is: a warning says that the partial
-    file, which metacooler logs as left for inspection, was removed. The
-    input map (the outfile) is left as it was, and no other file is left."""
+    validation, here), is raised as it is: metacooler removes its partial
+    file, the temporary file of the map is removed, and the input map (the
+    outfile) is left as it was, with no other file next to it."""
     out = tmp_path / "out"
     out.mkdir()
     outfile = unbinned_map(out / "metator.metacool", metagenome, binning["pairs"])
@@ -1352,13 +1353,27 @@ def test_partial_file_removed_on_an_unexpected_error(metagenome, binning, tmp_pa
     assert outfile.read_bytes() == before
     assert sorted(path.name for path in out.iterdir()) == ["metator.metacool"]
     messages = logged()
-    left = [message for level, message in messages if level == "ERROR" and "partial file was left" in message]
-    (staged,) = [
-        re.match(r"Creation failed\. The partial file was left at (\S+)\.partial for inspection", message)[1] for message in left
-    ]
+    staged = removed_partial(messages)
     assert Path(staged).parent == out and Path(staged).name.startswith(".metator.metacool.")
-    removed = f"The temporary files of the map, {staged} and metacooler's partial file {staged}.partial, were removed."
-    assert messages[-1] == ("WARNING", removed)
+    assert [message for level, message in messages if level in ("WARNING", "ERROR")] == []
+
+
+def test_metacool_failure_leaves_no_partial_file(metagenome, binning, tmp_path, monkeypatch, logged):
+    """When metacooler cannot write the map of the pairs (its validation
+    fails, here), write_metacool raises the reason, and leaves neither the
+    map nor metacooler's partial file next to the outfile."""
+    out = tmp_path / "out"
+    out.mkdir()
+    outfile = out / "metator.metacool"
+    monkeypatch.setattr("metacooler.io.create.validate", _fail_in_validate)
+    with pytest.raises(mtmc.MetacoolError, match=r"^pixels out of order$"):
+        mtmc.write_metacool(
+            str(binning["pairs"]), str(binning["contig_data"]), str(outfile), bin_summary=str(binning["bin_summary"])
+        )
+    assert list(out.iterdir()) == []
+    messages = logged()
+    assert removed_partial(messages) == str(outfile)
+    assert not [message for level, message in messages if level == "ERROR"]
 
 
 def test_map_of_the_bins_existing_outfile(metagenome, binning, tmp_path):

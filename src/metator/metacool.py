@@ -392,7 +392,8 @@ def write_metacool(
         KeyError, message kept: for example, a bin summary whose rows and
         header have different numbers of fields, or an outfile in a
         directory that cannot be made). No map is left when the contig
-        columns cannot be stored.
+        columns cannot be stored, and no partial file of metacooler when it
+        cannot write the map.
     """
     pairs_files = [str(pairs_files)] if isinstance(pairs_files, (str, os.PathLike)) else [str(p) for p in pairs_files]
     if threads < 1:
@@ -428,6 +429,9 @@ def write_metacool(
             # No P(s) table next to the file: metaTOR writes the map only.
             ps=False,
             nproc=threads,
+            # On a failure, metacooler removes the partial file it writes
+            # next to the outfile.
+            keep_partial=False,
         )
         try:
             _write_back_columns(outfile, contig_data, contig_columns, header)
@@ -505,11 +509,8 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
         not ASCII, a bin name is one that metacooler reads as no bin (NA,
         nan, -1...), the map cannot be read or gives a contig another length
         than the contig data, or metacooler cannot write the map (a
-        ValueError, OSError or KeyError, message kept; when metacooler has
-        left its partial file, which it logs as left for inspection, the
-        message then says that it was removed). An error of another type is
-        raised as it is; when metacooler has left its partial file, a
-        warning logged before it says that the file was removed.
+        ValueError, OSError or KeyError, message kept). An error of another
+        type is raised as it is.
     """
     metacool, outfile = str(metacool), str(outfile)
     if is_entry(metacool) and is_input_map(metacool, outfile):
@@ -578,26 +579,17 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
                     metadata={"metator": {"version": __version__, **(metadata or {})}},
                     # Over the empty temporary file.
                     force=True,
+                    # On a failure, metacooler removes the partial file it
+                    # writes next to the temporary file.
+                    keep_partial=False,
                 )
                 _write_back_columns(staged, contig_data, contig_columns, header)
                 metacooler.validate(staged, full=True)
                 os.replace(staged, outfile)
             logger.info(f"{outfile} is written: the contact map of the bins.")
-        except BaseException as error:
-            # metacooler leaves its own partial file next to the one it
-            # writes, and logs, at ERROR, that it is left there for
-            # inspection: the error then says that it is removed, or, for
-            # an error of another type (raised as it is), a warning.
-            partial = f"{staged}.partial"
-            left = os.path.lexists(partial)
-            for path in [staged, partial]:
-                if os.path.lexists(path):
-                    os.remove(path)
-            if left:
-                removed = f"The temporary files of the map, {staged} and metacooler's partial file {partial}, were removed."
-                if isinstance(error, MetacoolError):
-                    raise MetacoolError(f"{str(error).rstrip('.')}. {removed}") from error.__cause__
-                logger.warning(removed)
+        except BaseException:
+            if os.path.lexists(staged):
+                os.remove(staged)
             raise
 
 
