@@ -5,7 +5,6 @@
 
 import collections
 import gzip
-import random
 import shutil
 from pathlib import Path
 
@@ -18,7 +17,6 @@ import pytest
 
 import metator.metacool as mtmc
 import metator.network as mtn
-import metator.partition as mtp
 
 TESTS_DATA = Path(__file__).resolve().parents[1] / "tests_data"
 
@@ -119,19 +117,6 @@ def outside_contacts(pairs_file, contig_data):
     return last_base, position_0
 
 
-def network_lines(path):
-    """The lines of a network file, by edge (contig ids), in their order."""
-    lines = {}
-    for line in Path(path).read_text().splitlines():
-        id1, id2, _ = line.split("\t")
-        lines[(int(id1), int(id2))] = line
-    return lines
-
-
-def weights(lines):
-    return {edge: int(line.split("\t")[2]) for edge, line in lines.items()}
-
-
 def both_networks(data, metacool, out, normalization="None", self_contacts=False):
     """network.txt and contig_data_network.txt of the pairs and of the
     metacool, written in out/pairs and out/metacool."""
@@ -171,57 +156,33 @@ def dataset(request, metagenome_files):
 
 @pytest.mark.parametrize("binsize", BIN_SIZES)
 def test_network_of_a_metacool(dataset, binsize, tmp_path):
-    """The network of a metacool is that of its pairs: the same hits, and the
-    same contacts but those of the pairs with a read on the last base of a
-    contig or at position 0, which only the metacool counts."""
+    """The network of a metacool is that of its pairs at edge 0, byte for
+    byte, with the same contig data: the pairs with a read on the last base
+    of a contig (the mock metagenome) or at position 0 (alignment.pairs)
+    count in both. A metacool sums its libraries: no network per library."""
     metacool = make_metacool(tmp_path / "map.metacool", dataset["pairs"], dataset["assembly"], binsize)
     from_pairs, from_map = both_networks(dataset, metacool, tmp_path / "raw")
-
-    # The same hits, hence the same contig data table.
+    assert from_map["network"].read_text() == from_pairs["network"].read_text()
     assert from_map["contig_data"].read_text() == from_pairs["contig_data"].read_text()
-
-    # The weights differ by the outside contacts, exactly.
+    # What each data set holds: the contacts that the pairs path left out.
     contig_data, _ = mtn.create_contig_data(str(dataset["assembly"]))
     last_base, position_0 = outside_contacts(dataset["pairs"], contig_data)
-    pairs_edges, map_edges = network_lines(from_pairs["network"]), network_lines(from_map["network"])
-    assert weights(map_edges) == dict(collections.Counter(weights(pairs_edges)) + last_base + position_0)
-    # The edges of the pairs come in the same order; an edge made of outside
-    # contacts only is in the network of the map alone.
-    assert [edge for edge in map_edges if edge in pairs_edges] == list(pairs_edges)
-    assert set(map_edges) - set(pairs_edges) == set(last_base + position_0) - set(pairs_edges)
-    # What each data set holds.
-    if dataset["name"] == "synthetic":
-        assert last_base and not position_0
-    elif dataset["name"] == "alignment":
-        assert position_0 and not last_base
-        assert set(map_edges) > set(pairs_edges)
-    else:
-        assert not last_base and not position_0
-        assert from_map["network"].read_text() == from_pairs["network"].read_text()
-
-    # No network per library: a metacool sums its libraries.
+    assert (bool(last_base), bool(position_0)) == ((True, False) if dataset["name"] == "synthetic" else (False, True))
     assert sorted(path.name for path in from_map["dir"].glob("network*.txt")) == ["network.txt"]
     assert sorted(path.name for path in from_pairs["dir"].glob("network*.txt")) == ["network.txt", "network_0.txt"]
 
 
 def test_normalized_network_of_a_metacool(dataset, tmp_path):
-    """Normalized (empirical_hit, the default): the edges without outside
-    contacts have the same lines, in the same order."""
+    """Normalized (empirical_hit, the default): the same network, byte for
+    byte."""
     metacool = make_metacool(tmp_path / "map.metacool", dataset["pairs"], dataset["assembly"], 1000)
     from_pairs, from_map = both_networks(dataset, metacool, tmp_path / "norm", normalization="empirical_hit")
-    contig_data, _ = mtn.create_contig_data(str(dataset["assembly"]))
-    outside = sum(outside_contacts(dataset["pairs"], contig_data), collections.Counter())
-    pairs_edges, map_edges = network_lines(from_pairs["network"]), network_lines(from_map["network"])
-    same = [edge for edge in pairs_edges if edge not in outside]
-    assert len(same) > 0.9 * len(pairs_edges)
-    assert [map_edges[edge] for edge in same] == [pairs_edges[edge] for edge in same]
-    assert all(map_edges[edge] != pairs_edges[edge] for edge in pairs_edges if edge in outside)
+    assert from_map["network"].read_text() == from_pairs["network"].read_text()
 
 
 @pytest.mark.parametrize("binsize", BIN_SIZES)
 def test_network_of_a_metacool_with_self_contacts(dataset, binsize, tmp_path):
-    """With the intra-contig contacts, the pairs path applies no edge test:
-    the two networks are the same, byte for byte."""
+    """With the intra-contig contacts: the same network, byte for byte."""
     metacool = make_metacool(tmp_path / "map.metacool", dataset["pairs"], dataset["assembly"], binsize)
     from_pairs, from_map = both_networks(dataset, metacool, tmp_path / "self", self_contacts=True)
     assert from_map["network"].read_text() == from_pairs["network"].read_text()
@@ -238,9 +199,8 @@ def test_network_of_a_filtered_metacool(dataset, how, binsize, tmp_path):
     which leaves out the pairs with a read on the contigs it drops: its
     network is that of the pairs it holds, whose two reads lie on the
     contigs it keeps, and the contigs it lacks get no hits and no edges, as
-    contigs that no read maps to. The same contig data, and the same
-    network, but the outside contacts (none without them, and byte for byte
-    with self contacts)."""
+    contigs that no read maps to: the same contig data and network, byte for
+    byte, with and without self contacts."""
     contig_data, _ = mtn.create_contig_data(str(dataset["assembly"]))
     lengths = {name: data["length"] for name, data in contig_data.items()}
     shortest = int(np.median(list(lengths.values())))
@@ -250,46 +210,13 @@ def test_network_of_a_filtered_metacool(dataset, how, binsize, tmp_path):
     assert 0 < len(kept) < len(lengths)
     pairs = {**dataset, "pairs": kept_pairs(dataset["pairs"], kept, tmp_path / "kept.pairs")}
 
-    from_pairs, from_map = both_networks(pairs, metacool, tmp_path / "raw")
-    assert from_map["contig_data"].read_text() == from_pairs["contig_data"].read_text()
+    for out, self_contacts in [("raw", False), ("self", True)]:
+        from_pairs, from_map = both_networks(pairs, metacool, tmp_path / out, self_contacts=self_contacts)
+        assert from_map["network"].read_text() == from_pairs["network"].read_text()
+        assert from_map["contig_data"].read_text() == from_pairs["contig_data"].read_text()
     table = pd.read_csv(from_map["contig_data"], sep="\t")
     assert (table.Hit[~table.Name.isin(kept)] == 0).all()
     assert table.Hit[table.Name.isin(kept)].sum() > 0
-    last_base, position_0 = outside_contacts(pairs["pairs"], contig_data)
-    pairs_edges, map_edges = network_lines(from_pairs["network"]), network_lines(from_map["network"])
-    assert weights(map_edges) == dict(collections.Counter(weights(pairs_edges)) + last_base + position_0)
-    assert [edge for edge in map_edges if edge in pairs_edges] == list(pairs_edges)
-    assert {contig for edge in map_edges for contig in edge} <= {contig_data[name]["id"] for name in kept}
-    if not (last_base or position_0):
-        assert from_map["network"].read_text() == from_pairs["network"].read_text()
-
-    from_pairs, from_map = both_networks(pairs, metacool, tmp_path / "self", self_contacts=True)
-    assert from_map["network"].read_text() == from_pairs["network"].read_text()
-    assert from_map["contig_data"].read_text() == from_pairs["contig_data"].read_text()
-
-
-@pytest.mark.parametrize("algorithm", ["louvain", "leiden"])
-def test_partition_of_a_metacool_network(metagenome_files, tmp_path, algorithm):
-    """Partition makes the same bins of both networks of the mock community
-    (which differ by the contacts of reads on the last base of contigs)."""
-    data = {"pairs": metagenome_files["pairs"], "assembly": metagenome_files["assembly"], "depth": str(metagenome_files["depth"]),
-            "enzyme": "DpnII"}  # fmt: skip
-    metacool = make_metacool(tmp_path / "map.metacool", data["pairs"], data["assembly"], 1000)
-    networks = both_networks(data, metacool, tmp_path / "networks", normalization="empirical_hit")
-    assert networks[0]["network"].read_text() != networks[1]["network"].read_text()
-    tables = []
-    for start, network in zip(["pairs", "metacool"], networks, strict=True):
-        random.seed(0)  # igraph draws from Python's random module.
-        out = tmp_path / f"partition_{start}"
-        (out / "overlapping_bin").mkdir(parents=True)
-        # A private copy of the assembly: pyfastx indexes it in place.
-        assembly = shutil.copyfile(data["assembly"], out / "assembly.fa")
-        _, table = mtp.partition(algorithm, str(assembly), False, str(network["contig_data"]), 10,
-                                 str(network["network"]), str(out), str(out / "overlapping_bin"), 0.8, 1.0, 50_000,
-                                 1, "metator")  # fmt: skip
-        tables.append(pd.read_csv(table, sep="\t"))
-    pd.testing.assert_frame_equal(tables[0], tables[1])
-    assert tables[0].Overlapping_bin_ID.nunique() > 1
 
 
 def test_contacts_by_chunk(tmp_path):

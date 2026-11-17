@@ -626,9 +626,7 @@ def network(
 
     With [cyan]--start metacool[/], the network is built from a .metacool
     contact map of the contigs, whose libraries are summed (see the
-    README): that of the pairs it was made of, but for the pairs with a read
-    on the last base of a contig or at position 0, which it keeps. --edge
-    must then be 0.
+    README): that of the pairs it was made of. --edge must then be 0.
 
     Note: the network is in a strict barebone form so that it can be reused
     and imported quickly into other applications etc. Verbose information
