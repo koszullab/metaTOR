@@ -828,6 +828,49 @@ def test_metacool_start_refused(command, case, monkeypatch, tmp_path, run_cli):
     assert f"ERROR :: {message}" in log.read_text()
 
 
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["-S", "metacool", "-1", "map.metacool", "-E", "100"],
+        ["-S", "metacool", "-1", "map.metacool", "--scaffold"],
+        ["-S", "pair", "-1", "a.pairs", "-m", "abundance"],
+        ["-S", "fastq", "-1", "a.fq"],
+        ["-S", "pair", "-1", "a.pairs", "-p", "bad.prefix"],
+        ["-S", "pair", "-1", "a.pairs", "-a", "missing.fa"],
+    ],
+    ids=["edge region", "scaffold", "normalization without depth", "no reverse reads", "prefix", "no assembly"],
+)
+def test_pipeline_refused_keeps_the_bins_of_an_earlier_run(args, tmp_path, run_cli):
+    """A refused run with --force (a rebinning into the same directory)
+    stops before replacing the bins of the earlier run."""
+    out = tmp_path / "out"
+    bins = [out / name / "bin.fa" for name in ["overlapping_bin", "recursive_bin", "final_bin_unscaffold"]]
+    for path in bins:
+        path.parent.mkdir(parents=True)
+        path.write_text(">c1\nACGT\n")
+    with pytest.raises(ValueError):
+        run_cli("pipeline", "-a", TESTS_DATA / "assembly.fa", *args, "-o", out, "-F", "-T", tmp_path / "tmp")
+    assert all(path.exists() for path in bins)
+
+
+def test_pipeline_refuses_earlier_bins_before_the_index(tmp_path, monkeypatch, run_cli):
+    """Without --force, the bins of an earlier run are refused before the
+    index of the assembly is built (an hour on a large metagenome)."""
+
+    def generate_fasta_index(*args):
+        raise AssertionError("index built before the refusal")
+
+    monkeypatch.setattr("metator.io.generate_fasta_index", generate_fasta_index)
+    out = tmp_path / "out"
+    (out / "recursive_bin").mkdir(parents=True)
+    assembly = tmp_path / "assembly.fa"
+    shutil.copyfile(TESTS_DATA / "subset.assembly.fa", assembly)
+    with pytest.raises(ValueError):
+        run_cli("pipeline", "-1", "a.fq", "-2", "b.fq", "-a", assembly, "-S", "fastq", "-o", out, "-T", tmp_path / "tmp")
+    (log,) = out.glob("metator_pipeline_*.log")
+    assert f"ERROR :: {out / 'recursive_bin'} already existed." in log.read_text()
+
+
 def test_qc_default_outdir(tmp_path, monkeypatch, run_cli):
     """Without --outdir, qc writes to ./metator_qc_<prefix>."""
     calls = []

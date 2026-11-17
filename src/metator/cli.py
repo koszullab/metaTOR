@@ -107,21 +107,25 @@ def private_tmp_dir(tmpdir, clean_up=True):
             os.rmdir(base)
 
 
-def make_output_dir(path, force):
-    """Create an output directory of bins; an existing one is replaced with
-    --force, or refused.
-    """
-    if not exists(path):
-        os.makedirs(path)
-    elif force:
-        shutil.rmtree(path)
-        os.makedirs(path)
-    else:
+def refuse_output_dir(path, force):
+    """Refuse an existing output directory of bins, unless --force replaces
+    it."""
+    if exists(path) and not force:
         logger.error(
             "%s already existed. Remove directory or use -F argument to overwrite it.",
             path,
         )
         raise ValueError
+
+
+def make_output_dir(path, force):
+    """Create an output directory of bins; an existing one is replaced with
+    --force, or refused.
+    """
+    refuse_output_dir(path, force)
+    if exists(path):
+        shutil.rmtree(path)
+    os.makedirs(path)
 
 
 def check_normalization(normalization, enzyme, depth):
@@ -1066,8 +1070,6 @@ def pipeline(
         # Defined the output directory and output file names.
         outdir = outdir or "."
         os.makedirs(outdir, exist_ok=True)
-        overlapping_fasta_dir = join(outdir, "overlapping_bin")
-        make_output_dir(overlapping_fasta_dir, force)
 
         # Enable file logging
         log_file = log_file_name(outdir, "pipeline")
@@ -1077,29 +1079,17 @@ def pipeline(
         overlapping_parameter = overlap / 100
         recursive_overlapping_parameter = rec_overlap / 100
 
+        # Check the arguments, and the assembly below, before replacing the
+        # bins of an earlier run (--force): a refused run leaves them as they
+        # were.
         aligner_mode = aligner_mode_for(aligner_mode, enzyme)
         check_normalization(normalization, enzyme, depth)
         check_metacool_start(start, forward, edge, scaffold)
-
-        # Sanity check for validation
-        recursive_fasta_dir = join(outdir, "recursive_bin")
-        make_output_dir(recursive_fasta_dir, force)
-        final_fasta_dir = join(outdir, "final_bin_unscaffold")
-        make_output_dir(final_fasta_dir, force)
-
-        # Sanity check for scaffolding
-        if scaffold:
-            scaffold_fasta_dir = join(outdir, "scaffold_bin")
-            make_output_dir(scaffold_fasta_dir, force)
-
-        # Create prefix.
+        check_reverse_reads(start, aligner, reverse)
         bins_prefix = bin_prefix(prefix)
 
         # Manage start point.
         start_step = {"fastq": 1, "bam": 2, "pair": 3, "metacool": 3}[start]
-
-        # Check if forward and reverse reads are given for fastq and bam start.
-        check_reverse_reads(start, aligner, reverse)
 
         # Print information of the workflow:
         if start_step == 1:
@@ -1114,9 +1104,22 @@ def pipeline(
         logger.info(f"Recursive partition iterations: {rec_iter}")
         logger.info(f"Recursive overlapping parameter: {recursive_overlapping_parameter}\n")
 
+        # The bins of an earlier run: refused now without --force, before
+        # the index of the assembly is built, and replaced only once the
+        # assembly is checked.
+        overlapping_fasta_dir = join(outdir, "overlapping_bin")
+        recursive_fasta_dir = join(outdir, "recursive_bin")
+        final_fasta_dir = join(outdir, "final_bin_unscaffold")
+        scaffold_fasta_dir = join(outdir, "scaffold_bin")
+        bin_dirs = [overlapping_fasta_dir, recursive_fasta_dir, final_fasta_dir] + ([scaffold_fasta_dir] if scaffold else [])
+        for path in bin_dirs:
+            refuse_output_dir(path, force)
+
         # Check what is the reference. If a fasta is given build the index. If a
         # bowtie2 index is given, retreive the fasta.
         index, fasta = reference_files(assembly, aligner, start, tmp_dir)
+        for path in bin_dirs:
+            make_output_dir(path, force)
 
         # Run the whole workflow
         if start_step <= 2:

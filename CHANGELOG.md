@@ -74,6 +74,12 @@ All notable changes to this project will be documented in this file.
   header, naming the lines. They read it without a word: shifted by a
   column when the first rows have one more field, and a short row
   padded with empty fields, its contig then in no bin.
+- `pipeline` checks its arguments and its assembly before replacing the
+  bins of an earlier run with `--force`: a refused run (a normalization
+  without `--depth` or `--enzyme`, fastq without reverse reads, a
+  `--prefix` with a dot, an assembly that is neither a fasta nor an index,
+  an option that a `.metacool` start cannot serve) no longer empties
+  `overlapping_bin/`, `recursive_bin/` and `final_bin_unscaffold/` first.
 
 ## [1.4.0] - 2026-11-17
 

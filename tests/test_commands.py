@@ -421,14 +421,15 @@ def test_pipeline_refuses_existing_outputs(existing, tmp_path, run_cli):
 
 
 def test_pipeline_force_replaces_outputs(tmp_path, run_cli):
-    """With --force the output directories are emptied, then the run goes on
-    (here up to the missing reverse reads)."""
+    """With --force the output directories are emptied once the arguments
+    and the assembly are checked, then the run goes on (here up to the
+    missing pairs file)."""
     for existing in ["overlapping_bin", "recursive_bin", "final_bin_unscaffold", "scaffold_bin"]:
         (tmp_path / "out" / existing).mkdir(parents=True)
         (tmp_path / "out" / existing / "stale.fa").write_text(">old\nA\n")
-    args = ["-a", global_args["FASTA"], "-1", "r1.fq", "--scaffold", "-F", "-o", str(tmp_path / "out"),
-            "-T", str(tmp_path / "tmp")]  # fmt: skip
-    with pytest.raises(ValueError):
+    args = ["-a", global_args["FASTA"], "-1", str(tmp_path / "missing.pairs"), "-S", "pair", "--scaffold", "-F",
+            "-o", str(tmp_path / "out"), "-T", str(tmp_path / "tmp")]  # fmt: skip
+    with pytest.raises(FileNotFoundError):
         run_cli("pipeline", *args)
     assert not list((tmp_path / "out").glob("*/stale.fa"))
 
