@@ -296,13 +296,116 @@ def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, metagenome
     assert not (out / "contig_data_partition.txt").exists()
 
 
-def test_pipeline_without_metacool(metagenome, metagenome_inputs, metagenome_indexed_pairs, tmp_path, monkeypatch, run_cli):
-    """--no-metacool: the bins, and no contact map."""
-    random.seed(0)
+def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, metagenome_indexed_pairs, tmp_path, monkeypatch, run_cli):
+    """From the contact map written by a run from pairs (one bin per contig,
+    its contigs grouped by bin), the pipeline makes the same bins: its
+    network differs by the pairs with a read on the last base of a contig,
+    which the map counts. It writes the map of its bins back from the input
+    map: the map of the run from pairs, but for its QC, recomputed from the
+    pixels, and its provenance."""
     monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
-    out = tmp_path / "out"
-    args = ["-1", str(metagenome_indexed_pairs), "-a", str(metagenome_inputs["assembly"]), "-S", "pair", "-s", "50000",
-            "-i", "5", "-j", "2", "-p", "sample", "-o", str(out), "-T", str(tmp_path / "tmp"), "--no-metacool"]  # fmt: skip
-    run_cli("pipeline", *args)
-    assert len(pd.read_csv(out / "bin_summary.txt", sep="\t", index_col=0)) == len(metagenome.genomes)
-    assert not list(out.glob("*.metacool*"))
+    common = ["-a", str(metagenome_inputs["assembly"]), "-d", str(metagenome_inputs["depth"]), "-e", "DpnII", "-s", "50000",
+              "-i", "10", "-j", "5", "-T", str(tmp_path / "tmp")]  # fmt: skip
+    random.seed(0)
+    run_cli("pipeline", "-1", str(metagenome_indexed_pairs), "-S", "pair", "-o", str(tmp_path / "pair"), *common)
+    metacool = tmp_path / "pair" / "metator.metacool"
+    random.seed(0)
+    run_cli("pipeline", "-1", str(metacool), "-S", "metacool", "-o", str(tmp_path / "metacool"), *common)
+
+    pair, mcool = tmp_path / "pair", tmp_path / "metacool"
+    assert (mcool / "network.txt").read_text() != (pair / "network.txt").read_text()
+    for name in ["contig_data_network.txt", "contig_data_final.txt", "bin_summary.txt", "binning.txt"]:
+        assert (mcool / name).read_text() == (pair / name).read_text(), name
+    assert sorted(p.name for p in (mcool / "final_bin_unscaffold").iterdir()) == sorted(
+        p.name for p in (pair / "final_bin_unscaffold").iterdir()
+    )
+    final = pd.read_csv(mcool / "contig_data_final.txt", sep="\t")
+    truth, found = _genome_labels(final, metagenome, "Final_bin")
+    assert synthetic.adjusted_rand(truth, found) >= 0.9
+    # The map of the bins, written back from the input map.
+    assert sorted(path.name for path in mcool.glob("*.metacool*")) == ["metator.metacool"]
+    written, expected = mcool / "metator.metacool", pair / "metator.metacool"
+    metacooler.validate(str(written), full=True)
+    clr, ref = cooler.Cooler(str(written)), cooler.Cooler(str(expected))
+    for table in ["bins", "pixels"]:
+        pd.testing.assert_frame_equal(getattr(clr, table)()[:], getattr(ref, table)()[:])
+    # The contigs table that metacooler reassign rebuilds stores genome_id
+    # after the columns that it carries from the input map.
+    chroms, ref_chroms = clr.chroms()[:], ref.chroms()[:]
+    assert list(chroms.columns) == ["name", "length", "GC_content", "Hit", "Shotgun_coverage", "Restriction_site", "genome_id"]
+    pd.testing.assert_frame_equal(chroms[ref_chroms.columns], ref_chroms)
+    genomes, ref_genomes = metacooler.MetaCooler(str(written)).genomes, metacooler.MetaCooler(str(expected)).genomes
+    columns = [column for column in ref_genomes.columns if not column.startswith("qc_")]
+    pd.testing.assert_frame_equal(genomes[columns], ref_genomes[columns])
+    metadata = clr.info["metadata"]
+    assert metadata["metator"]["parameters"]["start"] == "metacool"
+    assert metadata["qc"]["source"] == "pixels"
+    assert [entry["source"] for entry in metadata["reassign"]] == [str(metacool)]
+
+
+def test_pipeline_from_a_filtered_metacool(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli):
+    """From a map that lacks contigs of the assembly (made with a contig
+    filter, which leaves out the pairs with a read on the contigs it drops),
+    the pipeline completes and makes the bins of a run from the pairs that
+    the map holds: the contigs it lacks have no hits and are in no bin."""
+    monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
+    truth = metagenome.truth
+    shortest = int(truth.Length.median())
+    kept = set(truth.Name[truth.Length >= shortest])
+    # The map, at 1 kb, of the contigs of shortest bp or more. metacooler
+    # indexes the assembly (.fai): it reads a private copy.
+    metacool = tmp_path / "filtered.metacool"
+    metacooler.from_pairs(str(metacool), pairs=str(metagenome_inputs["pairs"]), binsize=1000, contig_genome_map=None,
+                          fasta=str(shutil.copyfile(metagenome_inputs["assembly"], tmp_path / "map.fa")), ps=False,
+                          filters=[f"contigs.length >= {shortest}"])  # fmt: skip
+    assert set(metacooler.MetaCooler(str(metacool)).contigs.name) == kept
+    # The pairs it holds: those whose two reads lie on the contigs it keeps.
+    pairs = tmp_path / "kept.pairs"
+    with open(metagenome_inputs["pairs"]) as all_pairs, open(pairs, "w") as kept_pairs:
+        for line in all_pairs:
+            fields = line.split("\t")
+            if line.startswith("#") or (fields[1] in kept and fields[3] in kept):
+                kept_pairs.write(line)
+    common = ["-a", str(metagenome_inputs["assembly"]), "-d", str(metagenome_inputs["depth"]), "-e", "DpnII", "-s", "50000",
+              "-i", "10", "-j", "5", "-T", str(tmp_path / "tmp")]  # fmt: skip
+    random.seed(0)
+    run_cli("pipeline", "-1", str(pairs), "-S", "pair", "-o", str(tmp_path / "pair"), "--no-metacool", *common)
+    random.seed(0)
+    run_cli("pipeline", "-1", str(metacool), "-S", "metacool", "-o", str(tmp_path / "metacool"), *common)
+
+    pair, mcool = tmp_path / "pair", tmp_path / "metacool"
+    for name in ["contig_data_network.txt", "contig_data_final.txt", "bin_summary.txt", "binning.txt"]:
+        assert (mcool / name).read_text() == (pair / name).read_text(), name
+    assert sorted(p.name for p in (mcool / "final_bin_unscaffold").iterdir()) == sorted(
+        p.name for p in (pair / "final_bin_unscaffold").iterdir()
+    )
+    final = pd.read_csv(mcool / "contig_data_final.txt", sep="\t")
+    lacking = ~final.Name.isin(kept)
+    assert 0 < lacking.sum() < len(final)
+    assert (final.Hit[lacking] == 0).all() and (final.Final_bin[lacking] == "ND").all()
+    assert len(pd.read_csv(mcool / "bin_summary.txt", sep="\t")) > 0
+    (log,) = mcool.glob("metator_pipeline_*.log")
+    assert f"INFO :: {lacking.sum()} contig(s) of the assembly are not in {metacool}: they get no contacts" in log.read_text()
+    # The map of the bins, from the map: its contigs, at 1 kb, in their bins.
+    written = mcool / "metator.metacool"
+    metacooler.validate(str(written), full=True)
+    mc = metacooler.MetaCooler(str(written))
+    assert mc.binsize == 1000 and set(mc.contigs.name) == kept
+    final_bin = final.set_index("Name").Final_bin.replace("ND", "__unbinned__")
+    assert (
+        dict(zip(mc.contigs.name, mc.contigs.genome_id.map(mc.genomes.name), strict=True))
+        == final_bin[~lacking.to_numpy()].to_dict()
+    )
+    assert cooler.Cooler(str(written)).pixels()[:]["count"].sum() == cooler.Cooler(str(metacool)).pixels()[:]["count"].sum()
+    # What metaTOR measured on the contigs of the map. contig_data_final.txt
+    # lists the contigs that the map lacks too: metacooler annotate reads it,
+    # as the history of the map says, and its warning about their rows is
+    # dropped.
+    columns = ["GC_content", "Hit", "Shotgun_coverage", "Restriction_site"]
+    assert list(mc.contigs.columns) == ["name", "length", "genome_id", *columns]
+    measured = final.set_index("Name").loc[mc.contigs.name, columns]
+    for column in columns:
+        assert mc.contigs[column].tolist() == measured[column].tolist(), column
+    assert "Contigs table" not in log.read_text()
+    assert mc.metadata["annotate"][-1]["contigs_table"] == str(mcool / "contig_data_final.txt")
+    assert not [path.name for path in mcool.iterdir() if path.name.startswith(".")]

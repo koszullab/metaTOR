@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 from pathlib import Path
@@ -169,3 +170,16 @@ def metagenome_inputs(metagenome_files, tmp_path):
         copies[key] = directory / path.name
         shutil.copyfile(path, copies[key])
     return copies
+
+
+@pytest.fixture
+def logged():
+    """The messages that metaTOR logs during the test, with their level."""
+    from metator.log import logger
+
+    records = []
+    handler = logging.Handler()
+    handler.emit = records.append
+    logger.addHandler(handler)
+    yield lambda: [(record.levelname, record.getMessage()) for record in records]
+    logger.removeHandler(handler)

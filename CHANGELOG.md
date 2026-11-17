@@ -4,6 +4,38 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+- `network` and `pipeline` start from a `.metacool` contact map with
+  `--start metacool`, the map given to `-1` (a file, or an entry
+  `file.mmetacool::entries/<name>`), at any bin size. The network is that
+  of the pairs the map was made of, but for the pairs with a read on the
+  last base of a contig or at position 0, which the map keeps and the
+  pairs path leaves out, even at `--edge 0` (with `--self-contacts`, the
+  two are the same). A map may lack contigs of the assembly, which get no
+  contacts; a map of other contigs or lengths, or that stores both
+  triangles, is refused, and so are `--edge` above 0, several maps and
+  `pipeline --scaffold`. A map sums its libraries: no `network_{i}.txt`
+  or `hit_data_alignment.txt`. Python API:
+  `metator.network.metacool_to_contacts`, `read_metacool_contacts`.
+- A `pipeline` run from a map writes the map of its bins from it, with
+  `metacooler reassign`: its bins and contacts, grouped by final bin as
+  from pairs, with this run's genome and contig columns. Its contact
+  statistics are recomputed from the pixels (at one bin per contig, every
+  intra-contig contact then counts as short-range). The output may be
+  the input map, replaced only once the new map is validated. Python API:
+  `metator.metacool.reassign_metacool`. The README shows the route from
+  the pairs of `hicstuff` through `metacooler create pairs`.
+
+### Fixed
+- `metator metacool` and the map of `pipeline` refuse a
+  `contig_data_final.txt` whose rows have more or fewer fields than its
+  header, which they read shifted or padded, without a word, and one
+  compressed otherwise than with gzip as `.gz`, which metacooler failed to
+  read once the map was written.
+- `pipeline` checks its arguments and its assembly before replacing the
+  bins of an earlier run with `--force`: a refused run no longer empties
+  `overlapping_bin/`, `recursive_bin/` and `final_bin_unscaffold/` first.
+
 ## [1.4.0] - 2026-11-17
 
 ### Added
