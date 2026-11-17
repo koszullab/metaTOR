@@ -51,6 +51,10 @@ All notable changes to this project will be documented in this file.
   (a virtual environment used without activating it), every file was
   empty, without an error. A contig missing from the assembly now stops
   the run with `KeyError`, where the command left it out of its bin.
+- `pipeline`, `contactmap` and `mge` remove the pyfastx index of the
+  assembly only when it is there: they failed at their very end, with
+  `FileNotFoundError`, when another run sharing the assembly had removed
+  it.
 
 ## [1.4.0] - 2026-11-17
 

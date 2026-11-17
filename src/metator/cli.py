@@ -1178,7 +1178,7 @@ def pipeline(
                 pool.map(task, bin_summary.index)
 
         # Delete pyfastx index:
-        os.remove(fasta + ".fxi")
+        mio.remove_pyfastx_index(fasta)
 
         # Write the contact map last, while the pairs files are still there:
         # from the input map for a run that started from one.
@@ -1485,7 +1485,7 @@ def contactmap(
 
     if not no_clean_up:
         # Delete pyfastx index:
-        os.remove(assembly + ".fxi")
+        mio.remove_pyfastx_index(assembly)
 
     generate_log_footer(log_file)
 
@@ -1744,6 +1744,6 @@ def mge(pairsfile, assembly, contigs, binning, mges, threshold_bin, random, outd
 
     if not no_clean_up:
         # Delete pyfastx index:
-        os.remove(assembly + ".fxi")
+        mio.remove_pyfastx_index(assembly)
 
     generate_log_footer(log_file)
