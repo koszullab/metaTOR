@@ -144,6 +144,11 @@ def parse_fasta(fasta):
         raise ValueError(f"Not a FASTA file: {fasta}") from err
 
 
+def _percent(part, whole):
+    """part as a percentage of whole, 0 when whole is 0."""
+    return 100 * part / whole if whole else 0
+
+
 def hic_quality(
     contigs,
     n_mags,
@@ -258,21 +263,24 @@ def hic_quality(
         rat_info = 100 * (n_informative_intra + n_informative_inter) / (n_intra_mags + n_inter_mags)
         noise_ratio = 100 * n_inter_mags / (n_inter_mags + n_intra_mags)
     else:
-        logger.warning("No pairs have benn extracted. All scores set to 0.")
+        logger.warning("No pairs have been extracted. All scores set to 0.")
         rat_info = 0
         noise_ratio = 0
-    if n_mags > 1:
+    # No pair at all (or none within the MAGs, or none informative): the
+    # scores and ratios that would divide by 0 are 0.
+    if n_mags > 1 and n_intra_mags + n_inter_mags > 0:
         noise_score = (n_inter_mags / (n_mags * (n_mags - 1) * 0.5)) / (
             n_intra_mags / n_mags + n_inter_mags / (n_mags * (n_mags - 1) * 0.5)
         )
     else:
         noise_score = 0
+    n_informative = n_informative_intra + n_informative_inter
     logger.info(f"Number of MAGs: {n_mags}")
-    logger.info(f"Religated ratio: {100 * n_religated / n_intra_mags:.2f}%.")
-    logger.info(f"Loop ratio: {100 * n_loops / n_intra_mags:.2f}%.")
-    logger.info(f"Weirds ratio: {100 * n_weirds / n_intra_mags:.2f}%.")
+    logger.info(f"Religated ratio: {_percent(n_religated, n_intra_mags):.2f}%.")
+    logger.info(f"Loop ratio: {_percent(n_loops, n_intra_mags):.2f}%.")
+    logger.info(f"Weirds ratio: {_percent(n_weirds, n_intra_mags):.2f}%.")
     logger.info(f"Informative contacts estimation: {rat_info:.2f}%.")
-    logger.info(f"Ratio inter/intra contigs: {n_informative_inter / (n_informative_intra + n_informative_inter):.2f}%.")
+    logger.info(f"Ratio inter/intra contigs: {_percent(n_informative_inter, n_informative):.2f}%.")
     logger.info(f"Noise contact ratio: {noise_ratio:.2f}%")
     logger.info(f"Noise score: {noise_score:.2E}")
 

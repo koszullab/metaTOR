@@ -188,6 +188,26 @@ def test_hic_quality_counts(large_contigs, tmp_path):
     )
 
 
+def test_hic_quality_without_pairs(large_contigs, tmp_path, caplog):
+    """No pair on the contigs of the high-quality MAGs: every count, score
+    and ratio is 0, with a warning, not a ZeroDivisionError."""
+    _, files, _, directory = large_contigs
+    contigs_data = mio.read_contig_data(str(directory / "contig_data_final.txt"))
+    names = list(contigs_data.Name)
+    assert mtq.extract_pairs([], str(tmp_path / "hq.pairs"), names, contigs_data) == 0
+    contigs = dict(zip(names, contigs_data.Final_bin, strict=True))
+    camembert = tmp_path / "camembert.pdf"
+    with caplog.at_level("INFO", logger="metator"):
+        counts = mtq.hic_quality(
+            contigs, 2, str(tmp_path / "hq.pairs"), str(tmp_path / "hq_idx.pairs"), str(files["assembly"]), ["DpnII"],
+            plot=True, plot_cam=str(camembert), threshold=["3", "3"],
+        )  # fmt: skip
+    assert counts == (0, 0, 0, 0, 0, 0, 0)
+    assert "No pairs have been extracted" in caplog.text
+    assert "Noise score: 0.00E+00" in caplog.text and "Ratio inter/intra contigs: 0.00%." in caplog.text
+    assert f"No pair to plot: {camembert} is not drawn." in caplog.text and not camembert.exists()
+
+
 def test_qc_command(large_contigs, tmp_path, run_cli):
     """From the metator output directory, with automatic thresholds and plots."""
     _, files, pairs, directory = large_contigs

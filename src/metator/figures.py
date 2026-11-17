@@ -275,9 +275,12 @@ def figure_camembert_quality(
     """Functon to plot nice hicstuff camembert from metator high quality
     contigs.
     """
-    plt.figure(2, figsize=(6, 6))
     # The slices will be ordered and plotted counter-clockwise.
     total = n_inter_mags + n_intra_mags
+    if not total:
+        logger.warning(f"No pair to plot: {out_file} is not drawn.")
+        return
+    plt.figure(2, figsize=(6, 6))
     fracs = [
         n_religated,
         n_loops,

@@ -58,6 +58,11 @@ All notable changes to this project will be documented in this file.
 - The network heatmap of `pipeline` and `validation` reads only the files
   of the output directory whose name ends in `.pairs.gz`: an unescaped dot
   also took, for example, `alignment_sorted_pairs.gz` for a pairs file.
+- `qc` no longer fails with `ZeroDivisionError` when none of the pairs
+  between its high-quality MAGs falls within one of them, or none is
+  informative: the ratios that have nothing to divide are 0, and a pie
+  chart of no pair is not drawn. The ratio of informative contacts
+  between contigs is logged as a percentage, as its `%` says.
 
 ## [1.4.0] - 2026-11-17
 
