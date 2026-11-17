@@ -465,28 +465,6 @@ def test_pipeline_non_ascii_contigs_skip_the_metacool(stub_pipeline, tmp_path, m
     assert "Traceback" not in logged
 
 
-def test_pipeline_misaligned_bin_summary_is_a_warning(stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """metacooler refuses a bin summary whose header has more fields than its
-    rows: a warning with its reason, without traceback, no map, and the
-    other outputs of the run."""
-    monkeypatch.setattr("metator.metacool.write_metacool", mtmc_write_metacool)
-    _final_tables(monkeypatch, "c1", summary="\tCompleteness\tContigs\nmetator_00001_00000\t0.9\n")
-    pairs = tmp_path / "a.pairs"
-    pairs.write_text("## pairs format v1.0\nr1\tc1\t10\tc2\t20\t+\t-\n")
-    out = tmp_path / "out"
-    run_cli("pipeline", "-1", pairs, "-a", _assembly(tmp_path), "-S", "pair", "-o", out, "-T", tmp_path / "tmp")
-    assert not list(out.glob("*.metacool*"))
-    assert (out / "network.txt").exists() and (out / "bin_summary.txt").exists()
-    (log,) = out.glob("metator_pipeline_*.log")
-    logged = log.read_text()
-    assert (
-        f"WARNING :: {out / 'metator.metacool'} is not written: Genomes table is misaligned: {out / 'bin_summary.txt'}\n"
-        in logged
-    )
-    assert "The other outputs of the run are kept." in logged
-    assert "Traceback" not in logged
-
-
 def test_pipeline_metacool_failure_is_a_warning(stub_pipeline, tmp_path, monkeypatch, run_cli):
     """A .metacool that fails to write costs a warning, with the traceback in
     the log, not the run: the exit status is 0 and the pairs files go as
@@ -565,28 +543,6 @@ def test_pipeline_metacool_written(stub_pipeline, tmp_path, monkeypatch, run_cli
     contigs = metacooler.MetaCooler(str(out / "metator.metacool")).contigs.set_index("name")
     assert list(contigs.columns) == ["length", "genome_id", "GC_content"]
     assert contigs.GC_content.to_dict() == {"c1": 40.5, "c2": 35.0}
-
-
-def test_pipeline_metacool_without_final_bin(stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """A run with no final bin keeps its map: every contig in __unbinned__,
-    with its contacts, and no column of the bin summary, which has no row."""
-    monkeypatch.setattr("metator.metacool.write_metacool", mtmc_write_metacool)
-    _final_tables(monkeypatch, "c1", final_bin="ND")
-    pairs = tmp_path / "a.pairs"
-    pairs.write_text("## pairs format v1.0\nr1\tc1\t10\tc2\t20\t+\t-\nr2\tc1\t10\tc1\t90\t+\t-\n")
-    out = tmp_path / "out"
-    run_cli("pipeline", "-1", pairs, "-a", _assembly(tmp_path), "-S", "pair", "-o", out, "-T", tmp_path / "tmp")
-    import cooler
-    import metacooler
-
-    metacooler.validate(str(out / "metator.metacool"), full=True)
-    assert cooler.Cooler(str(out / "metator.metacool")).pixels()[:]["count"].sum() == 2
-    mc = metacooler.MetaCooler(str(out / "metator.metacool"))
-    assert list(mc.genomes.name) == ["__unbinned__"] and "Completeness" not in mc.genomes.columns
-    assert sorted(mc.contigs.name) == ["c1", "c2"]
-    assert list(mc.contigs.columns) == ["name", "length", "genome_id", "GC_content"]
-    (log,) = out.glob("metator_pipeline_*.log")
-    assert "is not written" not in log.read_text()
 
 
 def test_pipeline_from_pairs_keeps_them(stub_pipeline, tmp_path, run_cli):

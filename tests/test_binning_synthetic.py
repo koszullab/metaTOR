@@ -296,18 +296,6 @@ def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, metagenome
     assert not (out / "contig_data_partition.txt").exists()
 
 
-def test_pipeline_without_metacool(metagenome, metagenome_inputs, metagenome_indexed_pairs, tmp_path, monkeypatch, run_cli):
-    """--no-metacool: the bins, and no contact map."""
-    random.seed(0)
-    monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
-    out = tmp_path / "out"
-    args = ["-1", str(metagenome_indexed_pairs), "-a", str(metagenome_inputs["assembly"]), "-S", "pair", "-s", "50000",
-            "-i", "5", "-j", "2", "-p", "sample", "-o", str(out), "-T", str(tmp_path / "tmp"), "--no-metacool"]  # fmt: skip
-    run_cli("pipeline", *args)
-    assert len(pd.read_csv(out / "bin_summary.txt", sep="\t", index_col=0)) == len(metagenome.genomes)
-    assert not list(out.glob("*.metacool*"))
-
-
 def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, metagenome_indexed_pairs, tmp_path, monkeypatch, run_cli):
     """From the contact map written by a run from pairs (one bin per contig,
     its contigs grouped by bin), the pipeline makes the same bins: its

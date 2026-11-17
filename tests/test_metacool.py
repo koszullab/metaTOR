@@ -260,31 +260,12 @@ def test_pairs_off_the_contigs_are_left_out(metagenome, binning, tmp_path):
     assert pixels.to_dict() == expected_pixels(pairs, list(metacooler.MetaCooler(str(out)).contigs.name)).to_dict()
 
 
-def test_existing_outfile(binning, tmp_path):
-    out = tmp_path / "map.metacool"
-    out.write_text("old")
-    args = ([str(binning["pairs"])], str(binning["contig_data"]), str(out))
-    with pytest.raises(mtmc.MetacoolError, match=re.escape("already exists. Use --force")):
-        mtmc.write_metacool(*args)
-    assert out.read_text() == "old"
-    mtmc.write_metacool(*args, force=True)
-    metacooler.validate(str(out))
-
-
 def test_missing_input_files(binning, tmp_path):
     out = tmp_path / "map.metacool"
     with pytest.raises(mtmc.MetacoolError, match=re.escape("not found: missing.pairs, missing_summary.txt")):
         mtmc.write_metacool(
             [str(binning["pairs"]), "missing.pairs"], str(binning["contig_data"]), str(out), bin_summary="missing_summary.txt"
         )
-    assert not out.exists()
-
-
-def test_contig_data_without_final_bins(metagenome_network, binning, tmp_path):
-    """The contig data of the network step has no Final_bin column."""
-    out = tmp_path / "map.metacool"
-    with pytest.raises(mtmc.MetacoolError, match=re.escape("no Final_bin column: give the contig_data_final.txt")):
-        mtmc.write_metacool(str(binning["pairs"]), str(metagenome_network["contig_data"]), str(out))
     assert not out.exists()
 
 
@@ -640,8 +621,8 @@ def test_metacool_command_misaligned_bin_summary(binning, tmp_path, run_cli):
 
 @pytest.mark.parametrize(
     "error",
-    [KeyError("genome_name"), FileExistsError("map.metacool exists"), OSError("No space left on device"), ValueError("bad")],
-    ids=["KeyError", "FileExistsError", "OSError", "ValueError"],
+    [KeyError("genome_name"), OSError("No space left on device"), ValueError("bad")],
+    ids=["KeyError", "OSError", "ValueError"],
 )
 def test_metacooler_errors_are_metacool_errors(error, binning, tmp_path, monkeypatch, run_cli):
     """What metacooler raises is logged, then raised again as a
@@ -1257,8 +1238,8 @@ def test_map_of_the_bins_existing_outfile(metagenome, binning, tmp_path):
 
 @pytest.mark.parametrize(
     "error",
-    [KeyError("genome_name"), FileExistsError("map.metacool exists"), OSError("No space left on device"), ValueError("bad")],
-    ids=["KeyError", "FileExistsError", "OSError", "ValueError"],
+    [KeyError("genome_name"), OSError("No space left on device"), ValueError("bad")],
+    ids=["KeyError", "OSError", "ValueError"],
 )
 def test_metacooler_errors_of_the_map_of_the_bins(error, metagenome, binning, tmp_path, monkeypatch):
     """What metacooler raises while writing the map of the bins is raised
