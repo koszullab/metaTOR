@@ -140,10 +140,9 @@ def test_command_help(command, help_option, run_cli):
 
 def test_network_help_of_a_metacool_start(run_cli):
     """--edge must be 0 with --start metacool, as a map holds no read
-    positions: the help says so right after what a map gives, not after
-    the contigs that a map may lack, which do not call for it."""
+    positions: the help says so right after what a map gives."""
     output = " ".join(run_cli("network", "--help").output.split())
-    assert "which it keeps. --edge must then be 0. The map may lack contigs of the assembly" in output
+    assert "which it keeps. --edge must then be 0." in output
 
 
 def test_group_help(run_cli):

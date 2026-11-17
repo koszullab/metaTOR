@@ -625,12 +625,10 @@ def network(
     file has a number of hits for each sample.
 
     With [cyan]--start metacool[/], the network is built from a .metacool
-    contact map of the contigs, at any bin size: its contacts, whose
-    libraries are summed (no network per library), make the same network as
-    the pairs they were made from, except for the pairs with a read on the
-    last base of a contig (or at position 0), which it keeps. --edge must
-    then be 0. The map may lack contigs of the assembly (a map made with a
-    contig filter, for example): those get no contacts.
+    contact map of the contigs, whose libraries are summed (see the
+    README): that of the pairs it was made of, but for the pairs with a read
+    on the last base of a contig or at position 0, which it keeps. --edge
+    must then be 0.
 
     Note: the network is in a strict barebone form so that it can be reused
     and imported quickly into other applications etc. Verbose information
@@ -1026,15 +1024,10 @@ def pipeline(
     when it's necessary; it is the critical step for memory usage (~40G).
 
     At the end, the contact map of the contigs, grouped by bin, is written
-    as a .metacool file (see [cyan]metator metacool[/]), unless
-    --no-metacool is given: from the pairs files, or from the input map of
-    a run that starts from a .metacool file. That map gives its bins and
-    contacts, its assembly name and command history; its contact
-    statistics are recomputed from its pixels, if it has them. The map of
-    the bins may go where the input map is: the map already there is
-    replaced only once the new one is written and validated (a symbolic
-    link there is replaced, not the file it points to). A run from a
-    .metacool file cannot scaffold.
+    as a .metacool file (see [cyan]metator metacool[/] and the README),
+    unless --no-metacool is given: from the pairs files, or from the input
+    map of a run that starts from a .metacool file, which it may replace. A
+    run from a .metacool file cannot scaffold.
     """
     # Private temporary directory inside --tmpdir.
     with private_tmp_dir(tmpdir, clean_up=not no_clean_up) as tmp_dir:
@@ -1529,23 +1522,17 @@ def contactmap(
 def metacool(pairsfile, contig_data, bin_summary, outfile, assembly_name, threads, force):
     """Write the contact map of a metaTOR run as a .metacool file.
 
-    A .metacool file is the contact map format of metacooler: a cooler
-    whose chromosomes are the contigs, grouped by genome, which
-    [cyan]cooler[/] reads as any cooler and [cyan]metacooler[/] by genome.
-    The map has one bin per contig and one genome per final bin of the
-    contig data file. The unbinned contigs keep all their contacts, in
-    metacooler's [cyan]__unbinned__[/] genome. The columns of the bin
-    summary (completeness, contamination, abundances...) are stored in the
-    genomes table, and the GC_content, Hit, Shotgun_coverage and
-    Restriction_site columns of the contig data in the contigs table
-    (except those that are - on every contig).
+    A .metacool file is the contact map of metacooler: a cooler whose
+    chromosomes are the contigs, one bin per contig, grouped by genome: one
+    genome per final bin of the contig data file, and [cyan]__unbinned__[/]
+    for the other contigs, with all their contacts. The README says what
+    else it holds. The pairs files of several libraries are summed.
 
-    Each pair whose two ends lie on contigs of the contig data file is one
-    contact; the pairs files of several libraries are summed. The contig
-    and bin names must be ASCII, and no bin may be named as metacooler
-    marks a contig in no bin (NA, NaN, N/A, N/D, -1 or __unbinned__ in any
-    case, and nd in any case other than ND, which marks a contig in no
-    bin). [cyan]pipeline[/] writes this file at the end of a run.
+    The contig and bin names must be ASCII, and no bin may be named as
+    metacooler marks a contig in no bin (NA, NaN, N/A, N/D, -1 or
+    __unbinned__ in any case, and nd in any case other than ND, which marks
+    a contig in no bin). [cyan]pipeline[/] writes this file at the end of a
+    run.
     """
     # Generate log
     log_file = log_file_name("", "metacool")

@@ -5,80 +5,33 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
-- `network` and `pipeline` can start from a `.metacool` contact map of the
-  contigs, at any bin size, instead of reads, alignments or pairs:
-  `--start metacool`, with the map given to `-1/--forward` (one file, or an
-  entry of a `.mmetacool` collection: `file.mmetacool::entries/<name>`).
-  The contacts between two contigs are the pixels between their bins, and
-  the hits of a contig the pixels of its bins (a pixel within a contig
-  counts twice, as a pair with both reads on the contig does); the network
-  is then normalized and written as from pairs, its edges in the same
-  order, with the same `contig_data_network.txt`. The contig ids, lengths,
-  GC contents, coverages and restriction sites still come from the
-  assembly, `--depth` and `--enzyme`. A map may lack contigs of the
-  assembly, as one made with a contig filter does
-  (`metacooler create pairs --filter`, which also leaves out the pairs with
-  a read on the contigs it drops): those get no contacts and no hits, as
-  contigs that no read maps to, and an INFO line counts them. A map that
-  holds contigs that are not in the assembly, or with other lengths, is
-  refused, with their names, and so is a map that stores both triangles of
-  the matrix (storage-mode `square`), which would count contacts twice:
-  the reason is logged as an error, in the log file of the run, and the
-  run stops with that error, as `metator metacool` does. A map sums its
-  libraries: no `network_{i}.txt` and no `hit_data_alignment.txt` are
-  written. `pipeline` draws the network heatmap only from the `.pairs.gz`
-  files that an earlier run left in the output directory, if any. `--edge`
-  above 0 is refused, as a map holds no read positions, and so is
-  `pipeline --scaffold`, which reads the pairs files. The pairs path does
-  not change.
-  The network of a map differs from that of the pairs it was made of by
-  the pairs with a read on the last base of a contig: the pairs path leaves
-  them out of the network, even with `--edge 0` (its test
-  `length - position > edge` is false there), while the map counts them,
-  as it does the pairs with a read at position 0, which a 1-based pairs
-  file should not hold but older metaTOR pairs files do. Their hits count
-  in both. With `--self-contacts`, the pairs path keeps them too, and the
-  two networks are the same. On the mock metagenome of the tests, these
-  contacts change a few edge weights, and partition makes the same bins
-  of both networks. Python API: `metator.network.metacool_to_contacts`
-  and `metator.network.read_metacool_contacts`.
-- A `pipeline` run that starts from a `.metacool` map writes the map of its
-  bins (`metator.metacool`, or `<prefix>.metacool`) from that map, as a new
-  file, with `metacooler reassign`: the bins and contacts of the input map,
-  at its bin size, one genome per final bin and `__unbinned__` for the
-  other contigs, grouped genome by genome and from the longest contig as
-  in the map of a run from pairs. The columns of `bin_summary.txt` and
-  those of `contig_data_final.txt` replace those the input map had; with
-  no final bin, its genome columns are dropped. The contact statistics are
-  computed again from the pixels, and only when the input map has them
-  (a pixel holds no read positions: at one bin per contig, every
-  intra-contig contact counts as short-range, and the numbers of pairs
-  read and left out are lost). The assembly name and the history of the
-  commands are those of the input map. On a map with one bin per contig of
-  all the contigs, the map is that of a run from its pairs, but for the
-  contact statistics, the assembly name and the history. A contig data
-  file whose `Size` is not the length in the map of a contig is refused.
-  The map of the bins may go where the input map is (the same path, or a
-  symbolic link): it is then written next to the outfile, given
-  metacooler's full validation, and only then moved over the outfile,
-  which is left as it was, with a warning, when the new map cannot be
-  written. A symbolic link at the outfile is replaced, not its target: an
-  input map that it links to is left as it was. Python API:
-  `metator.metacool.reassign_metacool`. The README shows how to make the
-  map from the pairs files of `hicstuff pipeline` (without `-f` or `-D`)
-  with `metacooler create pairs` and no `--contigs`.
+- `network` and `pipeline` start from a `.metacool` contact map with
+  `--start metacool`, the map given to `-1` (a file, or an entry
+  `file.mmetacool::entries/<name>`), at any bin size. The network is that
+  of the pairs the map was made of, but for the pairs with a read on the
+  last base of a contig or at position 0, which the map keeps and the
+  pairs path leaves out, even at `--edge 0` (with `--self-contacts`, the
+  two are the same). A map may lack contigs of the assembly, which get no
+  contacts; a map of other contigs or lengths, or that stores both
+  triangles, is refused, and so are `--edge` above 0, several maps and
+  `pipeline --scaffold`. A map sums its libraries: no `network_{i}.txt`
+  or `hit_data_alignment.txt`. Python API:
+  `metator.network.metacool_to_contacts`, `read_metacool_contacts`.
+- A `pipeline` run from a map writes the map of its bins from it, with
+  `metacooler reassign`: its bins and contacts, grouped by final bin as
+  from pairs, with this run's genome and contig columns. Its contact
+  statistics are recomputed from the pixels (at one bin per contig, every
+  intra-contig contact then counts as short-range). The output may be
+  the input map, replaced only once the new map is validated. Python API:
+  `metator.metacool.reassign_metacool`. The README shows the route from
+  the pairs of `hicstuff` through `metacooler create pairs`.
 
 ### Fixed
 - `metator metacool` and the map of `pipeline` refuse a
   `contig_data_final.txt` whose rows have more or fewer fields than its
-  header, naming the lines. They read it without a word: shifted by a
-  column when the first rows have one more field, and a short row
-  padded with empty fields, its contig then in no bin.
+  header, which they read shifted or padded, without a word.
 - `pipeline` checks its arguments and its assembly before replacing the
-  bins of an earlier run with `--force`: a refused run (a normalization
-  without `--depth` or `--enzyme`, fastq without reverse reads, a
-  `--prefix` with a dot, an assembly that is neither a fasta nor an index,
-  an option that a `.metacool` start cannot serve) no longer empties
+  bins of an earlier run with `--force`: a refused run no longer empties
   `overlapping_bin/`, `recursive_bin/` and `final_bin_unscaffold/` first.
 
 ## [1.4.0] - 2026-11-17
