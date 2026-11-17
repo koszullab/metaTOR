@@ -68,7 +68,8 @@ def alignment_to_contacts(
         need to be updated later.
     edge : int
         Distance of the edge region in base pair on the contigs where the
-        mapping reads are not considered as inter contigs.
+        mapping reads are not considered as inter contigs. With 0, there is
+        no edge region (see precompute_network).
     hit_data : dict:
         Dictionary for hit information on each contigs.
     out_dir : str
@@ -179,25 +180,14 @@ def metacool_to_contacts(
     no read of the pairs files maps to. The network is then that of the
     pairs the map holds.
 
-    It differs from the network of the pairs in two ways:
-
-    * a pair with a read on the last base of a contig is a contact of the
-      map, while the pairs path leaves it out of the network: its test
-      ``length - position > edge`` is false there even with edge 0. So is a
-      pair with a read at position 0, which a pairs file (1-based) should
-      not hold, but some do: metacooler puts the read on the first base
-      (with a warning), the pairs path leaves the pair out (its test
-      ``position > edge`` is false). Both count their hits. The weights of
-      the two networks can differ by these contacts, and an edge made of
-      them only is in the network of the map alone. With self_contacts, the
-      pairs path keeps them too (it applies no edge test), and the two
-      networks are the same. A pair with a read past the end of its contig,
-      which an aligner does not write, is not in the map at all (metacooler
-      leaves it out, with a warning), while the pairs path counts its hits;
-    * the map holds the contacts of all its libraries, summed: there is no
-      network_{i}.txt per library and no hit_data_alignment.txt. Nor does
-      it hold the positions of the reads: the edge region of the pairs path
-      (edge > 0) cannot be applied.
+    It is the network of the pairs at edge 0, byte for byte: a pair with a
+    read on the first or the last base of a contig counts in both (and at
+    position 0, which a 1-based pairs file should not hold but some do,
+    where metacooler puts the read on the first base), a pair with a read
+    past the end of its contig in neither. But the map holds the contacts
+    of all its libraries, summed: there is no network_{i}.txt per library
+    and no hit_data_alignment.txt. Nor does it hold the positions of the
+    reads: the edge region of the pairs path (edge > 0) cannot be applied.
 
     Parameters:
     -----------
@@ -714,7 +704,10 @@ def precompute_network(
         need to be updated later.
     edge : int
         Distance of the edge region in base pair on the contigs where the
-        mapping reads are not considered as inter contigs.
+        mapping reads are not considered as inter contigs. With 0, there is
+        no edge region: the network counts the pairs as a .metacool map of
+        them does. A pair with a read past the end of its contig counts
+        nowhere, its hits neither, whatever the edge.
     hit_data : dict
         Dictionary with the count of hits for each alignment file.
     out_file : str
@@ -745,6 +738,7 @@ def precompute_network(
         for i, alignment_file in enumerate(alignment_files):
             all_contacts_temp = 0
             inter_contacts_temp = 0
+            past_end = 0
             out_file_sample = join(tmp_dir, "prenetwork" + str(i) + ".txt")
             out_files_list.append(out_file_sample)
 
@@ -765,6 +759,11 @@ def precompute_network(
                     pos1, pos2 = int(p[2]), int(p[4])
                     len1 = contig_data[contig1]["length"]
                     len2 = contig_data[contig2]["length"]
+                    # A read past the end of its contig makes no contact, as
+                    # metacooler leaves it out of a map.
+                    if pos1 > len1 or pos2 > len2:
+                        past_end += 1
+                        continue
                     id1 = contig_data[contig1]["id"]
                     id2 = contig_data[contig2]["id"]
 
@@ -791,9 +790,11 @@ def precompute_network(
                             pre_net.write("\t".join(map(str, [contig2, contig1])) + "\n")
                             pre_net_sample.write("\t".join(map(str, [contig2, contig1])) + "\n")
                     # Write only intercontigs pairs with both reads not mapping
-                    # on the edges of the contigs (defined by edge).
+                    # on the edges of the contigs (defined by edge): with
+                    # edge 0, there is no edge, from the first base (or 0,
+                    # which some pairs files hold) to the last one.
                     else:
-                        if (pos1 > edge) and (pos2 > edge) and (len1 - pos1 > edge) and (len2 - pos2 > edge):
+                        if not edge or (pos1 > edge and pos2 > edge and len1 - pos1 > edge and len2 - pos2 > edge):
                             if id1 < id2:
                                 inter_contacts_temp += 1
                                 pre_net.write("\t".join(map(str, [contig1, contig2])) + "\n")
@@ -807,6 +808,8 @@ def precompute_network(
             all_contacts += all_contacts_temp
             inter_contacts += inter_contacts_temp
             logger.info(f"Information of {basename(alignment_file)}:")
+            if past_end:
+                logger.info(f"{past_end} pairs with a read past the end of its contig are left out.")
             logger.info(f"{all_contacts_temp} contacts in the library.")
             logger.info(f"{inter_contacts_temp} contacts inter-contigs in the library.")
             logger.info(f"3D ratio : {inter_contacts_temp / all_contacts_temp}\n")

@@ -257,10 +257,8 @@ as a map made with a contig filter does (`metacooler create pairs --filter 'cont
 example, which also leaves out the pairs with a read on the contigs that it drops): those get no
 contacts and no hits, as contigs that no read maps to, and the log file says how many they are. The
 contacts between two contigs are those between their bins, and the hits of a contig those of its bins,
-so that the network and `contig_data_network.txt` are those of the pairs the map holds, with one
-difference: a pair with a read on the last base of a contig, which the network of the pairs leaves out
-even with `--edge 0`, is a contact of the map (as is a pair with a read at position 0, which some pairs
-files hold). A map that cannot give this network (contigs that are not in the assembly or that have
+so that the network and `contig_data_network.txt` are those of the pairs the map holds, byte for byte,
+at `--edge 0`. A map that cannot give this network (contigs that are not in the assembly or that have
 other lengths, or both triangles of the matrix stored) stops the run with an error, whose reason is
 logged in the log file of the run. The libraries of a map are already summed: no `network_N.txt` is
 written. `--edge` must be 0, as a map holds no read positions; `pipeline --scaffold`, which reads the

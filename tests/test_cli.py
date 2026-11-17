@@ -142,7 +142,7 @@ def test_network_help_of_a_metacool_start(run_cli):
     """--edge must be 0 with --start metacool, as a map holds no read
     positions: the help says so right after what a map gives."""
     output = " ".join(run_cli("network", "--help").output.split())
-    assert "which it keeps. --edge must then be 0." in output
+    assert "that of the pairs it was made of. --edge must then be 0." in output
 
 
 def test_group_help(run_cli):

@@ -78,7 +78,9 @@ def test_alignment_to_contacts():
 
 
 def _expected_network(pairs_file, contig_data, edge=0):
-    """Inter-contig contacts per contig pair, counted straight from a pairs file."""
+    """Inter-contig contacts per contig pair, counted straight from a pairs
+    file: not a pair with a read past the end of its contig, and with edge
+    0, every other pair (no edge region)."""
     expected = collections.Counter()
     with open(pairs_file) as pairs:
         for line in pairs:
@@ -88,7 +90,9 @@ def _expected_network(pairs_file, contig_data, edge=0):
             c1, pos1, c2, pos2 = fields[1], int(fields[2]), fields[3], int(fields[4])
             len1, len2 = contig_data[c1]["length"], contig_data[c2]["length"]
             id1, id2 = contig_data[c1]["id"], contig_data[c2]["id"]
-            inside = pos1 > edge and pos2 > edge and len1 - pos1 > edge and len2 - pos2 > edge
+            if pos1 > len1 or pos2 > len2:
+                continue
+            inside = not edge or (pos1 > edge and pos2 > edge and len1 - pos1 > edge and len2 - pos2 > edge)
             if id1 != id2 and inside:
                 expected[(min(id1, id2), max(id1, id2))] += 1
     return expected
@@ -257,6 +261,32 @@ def test_precompute_network():
     assert beta == "NODE_11843"
     os.remove(tmp_file)
     shutil.rmtree(tmp_dir)
+
+
+@pytest.mark.parametrize("edge", [0, 10])
+def test_edge_region(edge, tmp_path):
+    """At edge 0, there is no edge region: a pair with a read at position 0
+    or on the last base of its contig is a contact, as in a .metacool map
+    of the pairs. A pair with a read past the end of its contig is none, at
+    any edge, and its hits do not count either (metacooler leaves it out of
+    a map). Above 0, the reads within edge bp of a contig end make no
+    edge, but count their hits."""
+    assembly_file = tmp_path / "assembly.fa"
+    assembly_file.write_text(">c1\n" + "A" * 100 + "\n>c2\n" + "C" * 200 + "\n")
+    pairs = tmp_path / "test.pairs"
+    pairs.write_text(
+        "## pairs format v1.0\n"
+        "r1\tc1\t50\tc2\t100\t+\t-\n"  # inside
+        "r2\tc1\t0\tc2\t100\t+\t-\n"  # position 0
+        "r3\tc1\t100\tc2\t200\t+\t-\n"  # last bases
+        "r4\tc1\t5\tc2\t195\t+\t-\n"  # within 10 bp of an end
+        "r5\tc1\t101\tc2\t50\t+\t-\n"  # past the end of c1
+    )
+    contig_data, hit_data = mtn.create_contig_data(str(assembly_file), 1)
+    mtn.alignment_to_contacts([str(pairs)], contig_data, edge, hit_data, str(tmp_path), "network.txt", "contigs.txt",
+                              str(tmp_path), 1, "None", False)  # fmt: skip
+    assert (tmp_path / "network.txt").read_text() == f"1\t2\t{4 if edge == 0 else 1}\n"
+    assert contig_data["c1"]["hit"] == contig_data["c2"]["hit"] == 4
 
 
 def test_write_contig_data():

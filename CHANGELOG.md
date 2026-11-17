@@ -8,10 +8,8 @@ All notable changes to this project will be documented in this file.
 - `network` and `pipeline` start from a `.metacool` contact map with
   `--start metacool`, the map given to `-1` (a file, or an entry
   `file.mmetacool::entries/<name>`), at any bin size. The network is that
-  of the pairs the map was made of, but for the pairs with a read on the
-  last base of a contig or at position 0, which the map keeps and the
-  pairs path leaves out, even at `--edge 0` (with `--self-contacts`, the
-  two are the same). A map may lack contigs of the assembly, which get no
+  of the pairs the map was made of, byte for byte at `--edge 0` (see
+  Changed). A map may lack contigs of the assembly, which get no
   contacts; a map of other contigs or lengths, or that stores both
   triangles, is refused, and so are `--edge` above 0, several maps and
   `pipeline --scaffold`. A map sums its libraries: no `network_{i}.txt`
@@ -34,6 +32,15 @@ All notable changes to this project will be documented in this file.
   `MetatorObject.write_fasta` `tmp_dir`: they only held the contig lists
   of the `pyfastx` command. `partition` and `mge` write no temporary file
   any more.
+- At `--edge 0` (the default), the network of pairs files counts the pairs
+  as metacooler counts them in a map: a pair with a read on the last base
+  of a contig, or at position 0 (which a 1-based pairs file should not
+  hold, but some do), is a contact; a pair with a read past the end of its
+  contig is none, at any `--edge`, and its hits no longer count. The
+  network of a `.metacool` map is then that of its pairs, byte for byte.
+  On `tests_data/alignment.pairs`, 360 of 13,415 edges change (298 new,
+  62 of another weight), from its 472 pairs between two contigs with a
+  read at position 0.
 
 ### Removed
 - Python API: the CheckM functions (`metator.validation.checkm` and
