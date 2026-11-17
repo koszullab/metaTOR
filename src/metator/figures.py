@@ -25,7 +25,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pandas as pd
-import re
 from matplotlib.patches import Patch
 from metator.log import logger
 from os.path import join
@@ -276,9 +275,12 @@ def figure_camembert_quality(
     """Functon to plot nice hicstuff camembert from metator high quality
     contigs.
     """
-    plt.figure(2, figsize=(6, 6))
     # The slices will be ordered and plotted counter-clockwise.
     total = n_inter_mags + n_intra_mags
+    if not total:
+        logger.warning(f"No pair to plot: {out_file} is not drawn.")
+        return
+    plt.figure(2, figsize=(6, 6))
     fracs = [
         n_religated,
         n_loops,
@@ -630,7 +632,7 @@ def plot_figures(out_dir, contigs_data, bin_summary, threshold):
     pairs_files = []
     list_files = os.listdir(out_dir)
     for file in list_files:
-        if re.search(".pairs.gz$", file):
+        if file.endswith(".pairs.gz"):
             pairs_files.append(join(out_dir, file))
 
     # Plot heatmap with a binning of 50kb.

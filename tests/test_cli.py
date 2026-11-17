@@ -826,6 +826,31 @@ def test_pipeline_refuses_earlier_bins_before_the_index(tmp_path, monkeypatch, r
     assert f"ERROR :: {out / 'recursive_bin'} already existed." in log.read_text()
 
 
+def test_pipeline_without_pyfastx_index(stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """No bin passed the size threshold, so pyfastx never indexed the
+    assembly: the run ends without removing an index that is not there (it
+    used to fail at its very end, with FileNotFoundError)."""
+    monkeypatch.setattr("metator.validation.recursive_decontamination", lambda *args: os.path.join(args[8], "clustering_matrix"))
+    assembly = tmp_path / "assembly.fa"
+    shutil.copyfile(TESTS_DATA / "subset.assembly.fa", assembly)
+    pairs = tmp_path / "a_sorted.pairs.gz"
+    pairs.write_text("## pairs format v1.0\n")
+    out = tmp_path / "out"
+    run_cli("pipeline", "-1", pairs, "-a", assembly, "-S", "pair", "-o", out, "-T", tmp_path / "tmp")
+    assert (out / "network.txt").exists() and not Path(f"{assembly}.fxi").exists()
+
+
+def test_mge_without_pyfastx_index(tmp_path, monkeypatch, run_cli):
+    """No MGE bin, so pyfastx never indexed the assembly: mge ends without
+    removing an index that is not there."""
+    monkeypatch.setattr("metator.mge.mge_binning", lambda **kwargs: None)
+    assembly = tmp_path / "assembly.fa"
+    shutil.copyfile(TESTS_DATA / "subset.assembly.fa", assembly)
+    run_cli("mge", "-a", assembly, "-c", "tests_data/contig_data_final.txt", "-b", "tests_data/binning.txt",
+            "-m", "tests_data/subset.mges.txt", "a.pairs")  # fmt: skip
+    assert not Path(f"{assembly}.fxi").exists()
+
+
 def test_qc_default_outdir(tmp_path, monkeypatch, run_cli):
     """Without --outdir, qc writes to ./metator_qc_<prefix>."""
     calls = []

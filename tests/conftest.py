@@ -34,6 +34,36 @@ def _run_in_tmp_path(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
 
+@pytest.fixture
+def private_link(tmp_path):
+    """Make links to files of tests_data, each test its own, and check at
+    teardown that no file was written to through them.
+
+    pyfastx writes its index (.fxi) next to the path it is given, and the
+    commands remove it at the end, so two test sessions reading one
+    assembly of tests_data removed it from under each other. The links are
+    in a directory of their own: in tmp_path itself, a link would take the
+    name of a file the test writes there (a copy named assembly.fa), which
+    would then be written through the link, into tests_data."""
+    directory = tmp_path / "private_links"
+    targets = {}
+
+    def link(path):
+        target = Path(path).resolve()
+        directory.mkdir(exist_ok=True)
+        new = directory / Path(path).name
+        new.symlink_to(target)
+        targets[target] = target.stat()
+        return str(new)
+
+    yield link
+    for target, before in targets.items():
+        after = target.stat()
+        assert (after.st_size, after.st_mtime_ns) == (before.st_size, before.st_mtime_ns), (
+            f"{target} was written to through its link"
+        )
+
+
 @pytest.fixture(autouse=True)
 def _close_figures():
     """Close the figures a test leaves open.

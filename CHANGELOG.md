@@ -26,6 +26,21 @@ All notable changes to this project will be documented in this file.
   `metator.metacool.reassign_metacool`. The README shows the route from
   the pairs of `hicstuff` through `metacooler create pairs`.
 
+### Changed
+- Python API: `metator.partition.partition` no longer takes
+  `temp_directory`, nor `generate_fasta` and
+  `metator.validation.update_contigs_data_recursive` `tmpdir`, nor
+  `metator.mge.mge_binning`, `generate_mges_fasta` and
+  `MetatorObject.write_fasta` `tmp_dir`: they only held the contig lists
+  of the `pyfastx` command. `partition` and `mge` write no temporary file
+  any more.
+
+### Removed
+- Python API: the CheckM functions (`metator.validation.checkm` and
+  `checkm_compare_bins`, `metator.io.check_checkm` and
+  `read_results_checkm`), unused since miComplete replaced CheckM, and
+  `metator.partition.spinglass_partition`, whose body was commented out.
+
 ### Fixed
 - `metator metacool` and the map of `pipeline` refuse a
   `contig_data_final.txt` whose rows have more or fewer fields than its
@@ -35,6 +50,30 @@ All notable changes to this project will be documented in this file.
 - `pipeline` checks its arguments and its assembly before replacing the
   bins of an earlier run with `--force`: a refused run no longer empties
   `overlapping_bin/`, `recursive_bin/` and `final_bin_unscaffold/` first.
+- The fasta files of the bins (`partition`, `validation`, `pipeline`), of
+  the MGE bins (`mge`) and of `contactmap` are written with pyfastx's
+  Python API (`metator.io.write_contigs`), byte for byte as before. The
+  `pyfastx` command wrote them through the shell: without it on the `PATH`
+  (a virtual environment used without activating it), every file was
+  empty, without an error. A contig missing from the assembly now stops
+  the run with `KeyError`, where the command left it out of its bin.
+- `pipeline`, `contactmap` and `mge` remove the pyfastx index of the
+  assembly only when it is there: they failed at their very end, with
+  `FileNotFoundError`, when another run sharing the assembly had removed
+  it.
+- The network heatmap of `pipeline` and `validation` reads only the files
+  of the output directory whose name ends in `.pairs.gz`: an unescaped dot
+  also took, for example, `alignment_sorted_pairs.gz` for a pairs file.
+- `qc` no longer fails with `ZeroDivisionError` when none of the pairs
+  between its high-quality MAGs falls within one of them, or none is
+  informative: the ratios that have nothing to divide are 0, and a pie
+  chart of no pair is not drawn. The ratio of informative contacts
+  between contigs is logged as a percentage, as its `%` says.
+- `pipeline` and `validation` stop with a clear error when no bin of the
+  partition reached `--size` (a small assembly with the default 500 kb,
+  say). They failed in miComplete with `EmptyDataError: No columns to
+  parse from file`, leaving its working directory in the output
+  directory.
 
 ## [1.4.0] - 2026-11-17
 

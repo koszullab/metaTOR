@@ -764,7 +764,7 @@ def partition(
     samples.
     """
     # Private temporary directory inside --tmpdir.
-    with private_tmp_dir(tmpdir, clean_up=not no_clean_up) as tmp_dir:
+    with private_tmp_dir(tmpdir, clean_up=not no_clean_up):
         # Defined the output directory.
         outdir = outdir or "."
         os.makedirs(outdir, exist_ok=True)
@@ -791,7 +791,6 @@ def partition(
             overlap / 100,
             res_param,
             size,
-            tmp_dir,
             threads,
             bins_prefix,
         )
@@ -1125,7 +1124,6 @@ def pipeline(
             overlapping_parameter,
             res_param,
             size,
-            tmp_dir,
             threads,
             bins_prefix,
         )
@@ -1180,7 +1178,7 @@ def pipeline(
                 pool.map(task, bin_summary.index)
 
         # Delete pyfastx index:
-        os.remove(fasta + ".fxi")
+        mio.remove_pyfastx_index(fasta)
 
         # Write the contact map last, while the pairs files are still there:
         # from the input map for a run that started from one.
@@ -1487,7 +1485,7 @@ def contactmap(
 
     if not no_clean_up:
         # Delete pyfastx index:
-        os.remove(assembly + ".fxi")
+        mio.remove_pyfastx_index(assembly)
 
     generate_log_footer(log_file)
 
@@ -1715,7 +1713,7 @@ def mge(pairsfile, assembly, contigs, binning, mges, threshold_bin, random, outd
 
     Command will return the updated MGE data and the MGE fasta.
 
-    The MGE fasta will contain one entry by MGE MAG, with 180 "N" spacers
+    The MGE fasta will contain one entry by MGE MAG, with 200 "N" spacers
     between contigs.
     """
     # Generate log
@@ -1723,7 +1721,7 @@ def mge(pairsfile, assembly, contigs, binning, mges, threshold_bin, random, outd
     generate_log_header(log_file)
 
     # Private temporary directory inside --tmpdir.
-    with private_tmp_dir(tmpdir, clean_up=not no_clean_up) as tmp_dir:
+    with private_tmp_dir(tmpdir, clean_up=not no_clean_up):
         # Defined the output directory and output file names.
         outdir = outdir or "."
         os.makedirs(outdir, exist_ok=True)
@@ -1740,13 +1738,12 @@ def mge(pairsfile, assembly, contigs, binning, mges, threshold_bin, random, outd
             mges_list_id=mges_list_id,
             out_dir=outdir,
             pairs_files=list(pairsfile),
-            tmp_dir=tmp_dir,
             threshold_bin=threshold_bin,
             random=random,
         )
 
     if not no_clean_up:
         # Delete pyfastx index:
-        os.remove(assembly + ".fxi")
+        mio.remove_pyfastx_index(assembly)
 
     generate_log_footer(log_file)

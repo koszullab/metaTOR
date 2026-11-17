@@ -114,21 +114,23 @@ def test_detect_core_bins():
     assert (cc_iterations == core_bins_iterations).all().all()
 
 
-def test_generate_fasta():
-    # Test fasta generation.
-    tmp_dir = "tmp_partition_fasta"
-    os.makedirs(tmp_dir, exist_ok=True)
-    mtp.generate_fasta(
-        assembly,
-        overlapping_bins,
-        contigs_data,
-        50_000,
-        tmp_dir,
-        tmp_dir,
-        "MetaTOR",
-    )
-    assert len(os.listdir(tmp_dir)) == 10
-    shutil.rmtree(tmp_dir)
+def test_generate_fasta(tmp_path, monkeypatch):
+    """One fasta per bin of 50 kb or more, the records of its contigs. They
+    are written with pyfastx's Python API: through its command, which the
+    shell did not find without the virtual environment on the PATH (as
+    here), the files were empty."""
+    monkeypatch.setenv("PATH", str(tmp_path))
+    # A private copy of the assembly: pyfastx indexes it (.fxi) in place.
+    shutil.copyfile(assembly, tmp_path / "assembly.fa")
+    out = tmp_path / "bins"
+    out.mkdir()
+    mtp.generate_fasta(str(tmp_path / "assembly.fa"), overlapping_bins, contigs_data, 50_000, str(out), "MetaTOR")
+    big = [b for b, ids in overlapping_bins.items() if int(contigs_data.loc[ids[0] - 1, "Overlapping_bin_size"]) >= 50_000]
+    assert sorted(os.listdir(out)) == [f"MetaTOR_{b:05d}_00000.fa" for b in sorted(big)]
+    for path in out.iterdir():
+        contigs = overlapping_bins[int(path.name.split("_")[1])]
+        names = [line[1:].split()[0] for line in path.read_text().splitlines() if line.startswith(">")]
+        assert names == [contigs_data.loc[contig_id - 1, "Name"] for contig_id in contigs]
 
 
 # Number of the 5 iterations in which two core bins of core_bins_iterations

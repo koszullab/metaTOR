@@ -94,7 +94,6 @@ def test_partition_recovers_the_genomes(metagenome, metagenome_inputs, metagenom
         0.8,
         1.0,
         50_000,
-        str(tmp_path),
         1,
         "metator",
     )
@@ -218,6 +217,25 @@ def test_partition_without_bin_above_the_size_threshold(metagenome_inputs, metag
     ]  # fmt: skip
     run_cli("partition", *args)
     assert list((tmp_path / "out" / "overlapping_bin").iterdir()) == []
+
+
+def test_pipeline_without_bin_above_the_size_threshold(
+    metagenome_inputs, metagenome_indexed_pairs, tmp_path, monkeypatch, run_cli
+):
+    """No bin of the partition reaches --size: the run stops before
+    miComplete (which found no bin, then failed to read its empty results),
+    saying why in its log file."""
+    calls = []
+    monkeypatch.setattr("metator.validation.micomplete_quality", lambda *args: calls.append(args))
+    out = tmp_path / "out"
+    args = ["-1", str(metagenome_indexed_pairs), "-a", str(metagenome_inputs["assembly"]), "-S", "pair", "-s", "10000000",
+            "-i", "2", "-o", str(out), "-T", str(tmp_path / "tmp")]  # fmt: skip
+    with pytest.raises(ValueError):
+        run_cli("pipeline", *args)
+    assert not calls
+    (log,) = out.glob("metator_pipeline_*.log")
+    message = f"{out / 'overlapping_bin'} holds no bin to validate (no .fa, .fasta or .fna file): partition writes none"
+    assert f"ERROR :: {message}" in log.read_text()
 
 
 def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, metagenome_indexed_pairs, tmp_path, monkeypatch, run_cli):

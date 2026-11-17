@@ -286,7 +286,7 @@ def test_partition_of_a_metacool_network(metagenome_files, tmp_path, algorithm):
         assembly = shutil.copyfile(data["assembly"], out / "assembly.fa")
         _, table = mtp.partition(algorithm, str(assembly), False, str(network["contig_data"]), 10,
                                  str(network["network"]), str(out), str(out / "overlapping_bin"), 0.8, 1.0, 50_000,
-                                 str(out), 1, "metator")  # fmt: skip
+                                 1, "metator")  # fmt: skip
         tables.append(pd.read_csv(table, sep="\t"))
     pd.testing.assert_frame_equal(tables[0], tables[1])
     assert tables[0].Overlapping_bin_ID.nunique() > 1

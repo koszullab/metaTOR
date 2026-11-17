@@ -66,6 +66,15 @@ def test_plot_figures_reads_compressed_pairs(binned_output):
     assert (out_dir / "plot" / "network_heatmap.png").stat().st_size > 0
 
 
+def test_plot_figures_takes_only_pairs_files(binned_output):
+    """A file whose name only looks like that of a pairs file
+    (alignment_0_sorted_pairs.gz) is not taken for one: no heatmap."""
+    out_dir, contigs_data, bin_summary = binned_output
+    (out_dir / "alignment_0_sorted.pairs.gz").rename(out_dir / "alignment_0_sorted_pairs.gz")
+    mtf.plot_figures(str(out_dir), contigs_data, bin_summary, 50_000)
+    assert not (out_dir / "plot" / "network_heatmap.png").exists()
+
+
 def test_plot_figures_with_shotgun_coverage(binned_output):
     """With --depth, the shotgun coverage boxplot is drawn too."""
     out_dir, contigs_data, bin_summary = binned_output

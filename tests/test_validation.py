@@ -7,7 +7,6 @@ import pandas as pd
 import pickle
 import pytest
 import os
-import re
 import shutil
 
 threads = 8
@@ -147,31 +146,29 @@ def test_recursive_clustering_worker_subnetwork(tmp_path):
     assert sorted(partition) == [1, 2, 3, 5]
 
 
-def test_update_contigs_data_recursive():
-    tmp_dir = "tmp_partition_validation_2"
-    contamination = False
-    parent_dict = dict()
-    os.makedirs(tmp_dir, exist_ok=True)
-    (
-        contamination,
-        contig_data,
-        parent_dict,
-    ) = mtv.update_contigs_data_recursive(
+def test_update_contigs_data_recursive(tmp_path, monkeypatch):
+    """The fasta of the recursive bins are written without the pyfastx
+    command, which is not on the PATH here (the files were empty)."""
+    monkeypatch.setenv("PATH", str(tmp_path))
+    # A private copy of the assembly: pyfastx indexes it (.fxi) in place.
+    shutil.copyfile(assembly, tmp_path / "assembly.fa")
+    out = tmp_path / "bins"
+    out.mkdir()
+    contamination, contig_data, _ = mtv.update_contigs_data_recursive(
         "MetaTOR_00002_00000",
         contigs_data,
         recursive_bins,
-        assembly,
-        tmp_dir,
-        tmp_dir,
+        str(tmp_path / "assembly.fa"),
+        str(out),
         500000,
-        contamination,
-        parent_dict,
+        False,
+        dict(),
         "MetaTOR",
     )
     assert contamination
     assert len(np.unique(contig_data.Recursive_bin_ID)) > 1
-    assert len(os.listdir(tmp_dir)) == 4
-    shutil.rmtree(tmp_dir)
+    assert sorted(os.listdir(out)) == ["MetaTOR_00002_00001.fa", "MetaTOR_00002_00002.fa"]
+    assert all(path.read_text().startswith(">") for path in out.iterdir())
 
 
 def test_write_bins_contigs():
@@ -180,48 +177,6 @@ def test_write_bins_contigs():
     print(np.unique(list(contig_data["Final_bin"])))
     assert len(np.unique(list(contig_data["Final_bin"]))) == 2
     os.remove(binning_file)
-
-
-# ChekM deprecated functions.
-
-
-def test_checkm_compare_bins():
-    # Test checkM compare bins deprecated function.
-    checkm_summary = mtv.checkm_compare_bins(
-        overlapping_checkm_file="tests_data/outdir_checkM/overlapping_checkm_results.txt",
-        overlapping_taxonomy_file="tests_data/outdir_checkM/overlapping_checkm_taxonomy.txt",
-        recursive_checkm_file="tests_data/outdir_checkM/recursif_checkm_results.txt",
-        recursive_taxonomy_file="tests_data/outdir_checkM/recursif_checkm_taxonomy.txt",
-        prefix="MetaTOR",
-    )
-    over = mio.read_results_checkm(
-        "tests_data/outdir_checkM/overlapping_checkm_results.txt",
-        "tests_data/outdir_checkM/overlapping_checkm_taxonomy.txt",
-    )
-    rec = mio.read_results_checkm(
-        "tests_data/outdir_checkM/recursif_checkm_results.txt",
-        "tests_data/outdir_checkM/recursif_checkm_taxonomy.txt",
-    )
-
-    # Assert there is the rigth numbers of keys for a bin:
-    keys = list(checkm_summary.keys())
-    assert len(checkm_summary[keys[0]]) == 10
-
-    # Assert there are no more keys then available:
-    test_over = [re.search("_0", key) is not None for key in keys]
-    assert sum(test_over) <= len(over)
-    assert len(checkm_summary) - sum(test_over) <= len(rec)
-
-    # Assert there are no duplicates  (one bin from overlapping and from
-    # recursive)
-    over_id = []
-    rec_id = []
-    for i in range(len(test_over)):
-        if test_over[i]:
-            over_id.append(int(keys[i].split("_")[1]))
-        else:
-            rec_id.append(int(keys[i].split("_")[1]))
-    assert not (set(over_id) & set(rec_id))
 
 
 def test_bin_abundances_are_percentages():

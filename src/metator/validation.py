@@ -24,10 +24,6 @@ Functions in this module:
     - recursive_decontamination
     - update_contigs_data_recursive
     - write_bins_contigs
-
-CheckM deprecated functions:
-    - checkm
-    - checkm_compare_bins
 """
 
 import logging
@@ -47,6 +43,9 @@ from importlib.metadata import version
 from metator.log import logger
 from os.path import join
 from scipy import sparse
+
+# The fasta files of the bins that miComplete evaluates.
+FASTA_EXTENSIONS = (".fa", ".fasta", ".fna")
 
 
 def correct_final_bin(contigs_data, final_fasta_dir, bin_summary):
@@ -304,7 +303,7 @@ def micomplete_quality(fasta_dir, outfile, threads):
     tmp_seq_tab = join(workdir, "micomplete_seq.tsv")
     with open(tmp_seq_tab, "w") as tab:
         for path in sorted(os.listdir(fasta_dir)):
-            if path.endswith((".fa", ".fasta", ".fna")):
+            if path.endswith(FASTA_EXTENSIONS):
                 tab.write(f"{join(fasta_dir, path)}\tfna\n")
 
     # Run miComplete (through metator._micomplete, which patches it for recent
@@ -362,7 +361,7 @@ def recursive_clustering(
     recursive_fasta_dir : str
         Path to the directory where to write the decontaminated fasta.
     algorithm : str
-        Algorithm to use, either louvain, leiden or spinglass.
+        Algorithm to use, either louvain or leiden.
     tmpdir : str
         Path the temp directory.
     bin_summary : dict
@@ -395,10 +394,6 @@ def recursive_clustering(
     dict
         Dictionnary with recursive bin_id as key and parent bin as values.
     """
-
-    # Create temporary folders.
-    tmpdir_binning = join(tmpdir, "recursive_bins")
-    os.makedirs(tmpdir_binning, exist_ok=True)
 
     # Default no contamination
     contamination = False
@@ -479,7 +474,6 @@ def recursive_clustering(
             recursive_bins,
             assembly,
             recursive_fasta_dir,
-            tmpdir_binning,
             size,
             contamination,
             parent_dict,
@@ -585,8 +579,8 @@ def recursive_decontamination(
     Parameters:
     -----------
     algorithm : str
-        Algorithm to use to recursively partition the network. Either leiden,
-        louvain or spinglass.
+        Algorithm to use to recursively partition the network. Either leiden
+        or louvain.
     assembly : str
         Path to the assembly file used for the partition.
     cluster_matrix : bool
@@ -628,6 +622,14 @@ def recursive_decontamination(
         Matrix with all the previously computed hamming distance between two
         contigs.
     """
+
+    # No bin to validate: miComplete would write no result to read.
+    if not any(path.endswith(FASTA_EXTENSIONS) for path in os.listdir(input_fasta_dir)):
+        logger.error(
+            f"{input_fasta_dir} holds no bin to validate (no .fa, .fasta or .fna file): partition writes none when "
+            "no bin reaches its minimum size (--size of partition or pipeline)."
+        )
+        raise ValueError
 
     # Create folders in the temporary directory
     tmpdir_recursive_clustering = join(temp_directory, "recursive_clustering")
@@ -798,7 +800,6 @@ def update_contigs_data_recursive(
     recursive_bins,
     assembly,
     outdir,
-    tmpdir,
     size,
     contamination,
     parent_dict,
@@ -821,8 +822,6 @@ def update_contigs_data_recursive(
         Path to the fasta file.
     outdir : str
         Path to the output directory to write the new fasta.
-    tmpdir : str
-        Path to the file where to write the temporary contigs list.
     size : int
         Size threshold to generate fasta.
     contamination : boolean
@@ -846,6 +845,8 @@ def update_contigs_data_recursive(
 
     # Add recursive bin information
     rec_id = 1
+    # Indexed (<assembly>.fxi) only when a bin is extracted from it.
+    fasta = None
 
     # Extract last recursive ID.
     over_id = contigs_data.loc[recursive_bins[1][0] - 1, "Overlapping_bin_ID"]
@@ -883,13 +884,9 @@ def update_contigs_data_recursive(
             list_contigs = list(contigs_data.loc[recursive_bin, "Name"])
 
             # Generate the fasta
-            contigs_file = join(tmpdir, f"{prefix}_{oc_id:05d}_{rec_final_id:05d}.txt")
-            with open(contigs_file, "w") as f:
-                for contig in list_contigs:
-                    f.write("{0}\n".format(contig))
-            cmd = "pyfastx extract {0} -l {1} > {2}".format(assembly, contigs_file, output_file)
-            process = sp.Popen(cmd, shell=True)
-            process.communicate()
+            if fasta is None:
+                fasta = pyfastx.Fasta(assembly)
+            mio.write_contigs(fasta, list_contigs, output_file)
 
             # Add one to the recursive id
             rec_id += 1
@@ -951,134 +948,3 @@ def write_bins_contigs(bin_summary, contigs_data, outfile, prefix):
             except KeyError:
                 pass
     return contigs_data
-
-
-#############################################
-# Deprecated functions for checkM validation.
-#############################################
-
-
-def checkm(fasta_dir, outfile, taxonomy_file, tmpdir, threads):
-    """Function to evaluate fasta bins using CheckM. Write the checkM results
-    summary in the outfile and the taxonomy results in the the taxonomy file.
-
-    Parameters:
-    -----------
-    fasta_dir : str
-        Path to the input fasta of the bins to evaluate.
-    outfile : str
-        Path to the file where the results of checkm will be written.
-    taxonomy_file : str
-        path to the file where checkm taxonomy results will be written.
-    tmpdir : str
-        Path to the temporary directory where CheckM intermediary files will be
-        written.
-    threads : int
-        Numbers of threads to use for CheckM.
-    """
-
-    logger.info("Start CheckM validation.")
-
-    # Build CheckM tree
-    cmd = "checkm tree -q -t {0} -x fa {1} {2}".format(threads, fasta_dir, tmpdir)
-    logger.info(cmd)
-    process = sp.Popen(cmd, shell=True)
-    process.communicate()
-
-    # Build taxonomy values of the bins
-    cmd = "checkm tree_qa {0} -q -o 1 -f {1}".format(tmpdir, taxonomy_file)
-    logger.info(cmd)
-    process = sp.Popen(cmd, shell=True)
-    process.communicate()
-
-    # Build lineage marker set
-    markers_set = join(tmpdir, "markers.txt")
-    cmd = "checkm lineage_set -q {0} {1}".format(tmpdir, markers_set)
-    logger.info(cmd)
-    process = sp.Popen(cmd, shell=True)
-    process.communicate()
-
-    # Compute the analysis
-    cmd = "checkm analyze -q -x fa -t {0} {1} {2} {3}".format(threads, markers_set, fasta_dir, tmpdir)
-    logger.info(cmd)
-    process = sp.Popen(cmd, shell=True)
-    process.communicate()
-
-    # Write the summary file
-    cmd = "checkm qa -q {0} {1} -o 2 > {2}".format(markers_set, tmpdir, outfile)
-    logger.info(cmd)
-    process = sp.Popen(cmd, shell=True)
-    _out, _err = process.communicate()
-
-
-def checkm_compare_bins(
-    overlapping_checkm_file,
-    overlapping_taxonomy_file,
-    recursive_checkm_file,
-    recursive_taxonomy_file,
-    prefix,
-):
-    """Compare the completness and contamination of the bins from the first step
-    and from the recursive step. If the recursive step decrease the completion
-    of one bin without decreasing its contamination, it will kept the bin before
-    the recursive step. Moreover if the completion goes below 50% with the
-    recursive it will not take the recursive bins.
-
-    Parameters:
-    -----------
-    overlapping_checkm_file : str
-        Path to the checkm summary from the overlapping step.
-    overlapping_taxonomy_file : str
-        path to the overlapping checkm taxonomy results file.
-    recursive_checkm_file : str
-        Path to the checkm summary from the recursive step.
-    recursive_taxonomy_file : str
-        path to the recursive checkm taxonomy results file.
-    prefix : str
-        Sample prefix to use.
-
-    Returns:
-    --------
-    dict:
-        Dictionnary with the informations of the final bins kept by MetaTOR.
-    """
-
-    # Load the checkm summary
-    checkm_summary_overlapping = mio.read_results_checkm(overlapping_checkm_file, overlapping_taxonomy_file)
-    checkm_summary_recursive = mio.read_results_checkm(recursive_checkm_file, recursive_taxonomy_file)
-
-    # Prepare a dictionnary for a final summary.
-    checkm_summary = dict()
-
-    # Retrieve maximum completness of the recursive bins.
-    for recursive_bin in checkm_summary_recursive:
-        overlapping_bin = "_".join([f"{prefix}", recursive_bin.split("_")[-2], "0"])
-        try:
-            checkm_summary_overlapping[overlapping_bin]["max_rec_completness"] = max(
-                float(checkm_summary_recursive[recursive_bin]["completness"]),
-                checkm_summary_overlapping[overlapping_bin]["max_rec_completness"],
-            )
-            checkm_summary_overlapping[overlapping_bin]["rec_id"].append(recursive_bin)
-        except KeyError:
-            checkm_summary_overlapping[overlapping_bin]["max_rec_completness"] = float(
-                checkm_summary_recursive[recursive_bin]["completness"]
-            )
-            checkm_summary_overlapping[overlapping_bin]["rec_id"] = [recursive_bin]
-
-    # If there are some recursive bins which have not loose too much completion
-    # write their information otherwise keep the original bins.
-    for overlapping_bin in checkm_summary_overlapping:
-        try:
-            max_rec = checkm_summary_overlapping[overlapping_bin]["max_rec_completness"]
-            over = float(checkm_summary_overlapping[overlapping_bin]["completness"])
-            if (max_rec > (over / 2)) & (max_rec > 50):
-                for rec_id in checkm_summary_overlapping[overlapping_bin]["rec_id"]:
-                    checkm_summary[rec_id] = checkm_summary_recursive[rec_id]
-            else:
-                checkm_summary_overlapping[overlapping_bin].pop("max_rec_completness")
-                checkm_summary_overlapping[overlapping_bin].pop("rec_id")
-                checkm_summary[overlapping_bin] = checkm_summary_overlapping[overlapping_bin]
-        except KeyError:
-            checkm_summary[overlapping_bin] = checkm_summary_overlapping[overlapping_bin]
-
-    return checkm_summary

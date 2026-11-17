@@ -32,6 +32,14 @@ global_args = {
 }
 
 
+@pytest.fixture(autouse=True)
+def private_subset_assembly(private_link, monkeypatch):
+    """Each test reads the subset assembly through a link of its own (see
+    private_link): two test sessions sharing tests_data removed each
+    other's pyfastx index."""
+    monkeypatch.setitem(global_args, "SUBSET_FASTA", private_link(global_args["SUBSET_FASTA"]))
+
+
 def test_mge(tmp_dir, run_cli):
     """Test the metator mge command with subset data from pipeline output."""
     args = (
@@ -148,17 +156,29 @@ def _mge_binning(metagenome, metagenome_inputs, metagenome_network, pairs, tmp_p
     contigs_data, mges_list_id = mio.import_contig_data_mges(
         str(metagenome_network["contig_data"]), mio.import_anvio_binning(str(binning)), names
     )
-    out, tmp = tmp_path / "out", tmp_path / "tmp"
+    out = tmp_path / "out"
     out.mkdir()
-    tmp.mkdir()
-    summary = mtm.mge_binning(
-        str(metagenome_inputs["assembly"]), contigs_data, mges_list_id, str(out), [str(pairs)], str(tmp), 0.8, random
-    )
+    summary = mtm.mge_binning(str(metagenome_inputs["assembly"]), contigs_data, mges_list_id, str(out), [str(pairs)], 0.8, random)
     return summary, out
 
 
-def test_mge_binning(metagenome, metagenome_inputs, metagenome_network, metagenome_indexed_pairs, tmp_path):
-    """The two contigs of the phage form one MGE bin, the plasmid another."""
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_generate_mges_fasta(newline, tmp_path):
+    """One entry per MGE bin, its contigs (named by numbers here, read by
+    name) joined by 200 N, every line ended by a line feed, whatever the
+    line ends of the assembly; a header holding a form feed is one line."""
+    fasta = tmp_path / "assembly.fa"
+    fasta.write_bytes(newline.join([">1 desc\x0cmore", "AAAA", "AA", ">2", "CCCC", ">3", "GGGG", ""]).encode())
+    out = tmp_path / "mges.fa"
+    mtm.generate_mges_fasta(str(fasta), {1: {"Contigs": [3, 1]}, 2: {"Contigs": [2]}}, str(out))
+    assert out.read_bytes() == (">MetaTOR_MGE_00001\nGGGG\n" + "N" * 200 + "AAAA\nAA\n>MetaTOR_MGE_00002\nCCCC\n").encode()
+
+
+def test_mge_binning(metagenome, metagenome_inputs, metagenome_network, metagenome_indexed_pairs, tmp_path, monkeypatch):
+    """The two contigs of the phage form one MGE bin, the plasmid another.
+    The fasta of the bins is written without the pyfastx command, which is
+    not on the PATH here."""
+    monkeypatch.setenv("PATH", str(tmp_path))
     summary, out = _mge_binning(metagenome, metagenome_inputs, metagenome_network, metagenome_indexed_pairs, tmp_path)
     found = {frozenset(contigs.split(",")) for contigs in summary.Contigs}
     assert found == {frozenset(c.name for c in mge.contigs) for mge in metagenome.mges}
