@@ -268,6 +268,22 @@ def check_bin_names(bins):
         )
 
 
+def _checked_inputs(contig_data, outfile, force, inputs):
+    """What both writers check before any work, in this order: the outfile
+    (replaced only with force), the input files (None for one not given),
+    then the contig data and its names. Returns what read_contig_data
+    reads."""
+    if os.path.exists(outfile) and not force:
+        raise MetacoolError(f"{outfile} already exists. Use --force to overwrite it.")
+    missing = [path for path in inputs if path and not os.path.isfile(path)]
+    if missing:
+        raise MetacoolError(f"Input file(s) not found: {', '.join(map(str, missing))}.")
+    bins, contig_bin, contig_columns, header = read_contig_data(contig_data)
+    check_ascii_names(bins["chrom"], contig_bin.values())
+    check_bin_names(contig_bin.values())
+    return bins, contig_bin, contig_columns, header
+
+
 def write_metacool(
     pairs_files,
     contig_data,
@@ -332,15 +348,9 @@ def write_metacool(
     pairs_files = [str(pairs_files)] if isinstance(pairs_files, (str, os.PathLike)) else [str(p) for p in pairs_files]
     if threads < 1:
         raise MetacoolError(f"The number of threads must be at least 1, got {threads}.")
-    if os.path.exists(outfile) and not force:
-        raise MetacoolError(f"{outfile} already exists. Use --force to overwrite it.")
-    inputs = [*pairs_files, contig_data] + ([bin_summary] if bin_summary else [])
-    missing = [path for path in inputs if not os.path.isfile(path)]
-    if missing:
-        raise MetacoolError(f"Input file(s) not found: {', '.join(map(str, missing))}.")
-    bins, contig_bin, contig_columns, _ = read_contig_data(contig_data)
-    check_ascii_names(bins["chrom"], contig_bin.values())
-    check_bin_names(contig_bin.values())
+    bins, contig_bin, contig_columns, header = _checked_inputs(
+        contig_data, outfile, force, [*pairs_files, contig_data, bin_summary]
+    )
 
     import metacooler
 
@@ -370,21 +380,12 @@ def write_metacool(
             ps=False,
             nproc=threads,
         )
-        if contig_columns:
-            try:
-                metacooler.annotate(
-                    outfile,
-                    contigs_table=contig_data,
-                    contigs_table_format="Name",
-                    # Named one by one: the other columns of the table are
-                    # bins, or the unnamed pandas index.
-                    columns=[f"contigs.{column}" for column in contig_columns],
-                    inplace=True,
-                )
-            except BaseException:
-                # No map without the columns of its contigs.
-                os.remove(outfile)
-                raise
+        try:
+            _write_back_columns(outfile, contig_data, contig_columns, header, drop_genome_columns=False)
+        except BaseException:
+            # No map without the columns of its contigs.
+            os.remove(outfile)
+            raise
 
 
 def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=False, metadata=None):
@@ -455,20 +456,14 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
         warning logged before it says that the file was removed.
     """
     metacool, outfile = str(metacool), str(outfile)
-    if os.path.exists(outfile) and not force:
-        raise MetacoolError(f"{outfile} already exists. Use --force to overwrite it.")
-    inputs = [map_file(metacool), contig_data] + ([bin_summary] if bin_summary else [])
-    missing = [path for path in inputs if not os.path.isfile(path)]
-    if missing:
-        raise MetacoolError(f"Input file(s) not found: {', '.join(map(str, missing))}.")
     if is_entry(metacool) and is_input_map(metacool, outfile):
         raise MetacoolError(
             f"{outfile} is the .mmetacool collection of the input map {metacool}: the map of the bins would replace "
             "the whole collection. Write it to another file."
         )
-    bins, contig_bin, contig_columns, header = read_contig_data(contig_data)
-    check_ascii_names(bins["chrom"], contig_bin.values())
-    check_bin_names(contig_bin.values())
+    bins, contig_bin, contig_columns, header = _checked_inputs(
+        contig_data, outfile, force, [map_file(metacool), contig_data, bin_summary]
+    )
     sizes = dict(zip(bins["chrom"], bins["end"], strict=True))
 
     import metacooler
@@ -520,9 +515,6 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
                     metacool,
                     assignment,
                     staged,
-                    # The contigs of no final bin go to __unbinned__,
-                    # whatever genome the input map gave them.
-                    missing="unbinned",
                     # Grouped as write_metacool groups the contigs, whatever
                     # the order of the input map: the pixels are remapped.
                     layout="genome-then-length",
@@ -558,16 +550,16 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
 
 
 def _write_back_columns(path, contig_data, contig_columns, header, drop_genome_columns):
-    """Give the map written back from an input map the metadata columns of
-    this run, as metacooler annotate edits them.
+    """Give a map the metadata columns of this run, as metacooler annotate
+    edits them: the map that write_metacool has just written, or the map
+    written back from an input map.
 
     The columns of the contig data that metaTOR measured (contig_columns)
-    replace those that the input map carried. Its other columns (header:
-    all of them) that the
-    input map carried are dropped: the bins of each step, the contig ids,
-    Size..., which a map made with the contig data of an earlier run as its
-    contigs table holds (metacooler create pairs --contigs-format metator),
-    and one of CONTIG_COLUMNS that this run did not measure
+    replace those that the map carried. Its other columns (header: all of
+    them) that the map carried are dropped: the bins of each step, the
+    contig ids, Size..., which a map made with the contig data of an earlier
+    run as its contigs table holds (metacooler create pairs --contigs-format
+    metator), and one of CONTIG_COLUMNS that this run did not measure
     (Shotgun_coverage without a depth file...). So are, with
     drop_genome_columns (no bin summary given), the metadata columns of the
     genomes table: they describe the bins of another run.
