@@ -61,11 +61,6 @@ METACOOLER_UNBINNED = frozenset({"__unbinned__", "na", "nan", "n/a", "nd", "n/d"
 # a bin column would be stale.
 CONTIG_COLUMNS = ["GC_content", "Hit", "Shotgun_coverage", "Restriction_site"]
 
-# The columns of the genomes table that metacooler derives from the contigs,
-# with the qc_* columns (_GENOMES_RESERVED_COLUMNS in metacooler/io/create.py):
-# the other columns are metadata, as those of the bin summary.
-DERIVED_GENOME_COLUMNS = frozenset({"name", "length", "n_contigs", "n_bins"})
-
 # The compressions that pandas infers from the end of a file name, in any
 # case. Of these, metacooler reads only gzip, from a name that ends in .gz.
 PANDAS_COMPRESSIONS = (".tar", ".tar.gz", ".tar.bz2", ".tar.xz", ".gz", ".bz2", ".zip", ".xz", ".zst")
@@ -419,7 +414,7 @@ def write_metacool(
             nproc=threads,
         )
         try:
-            _write_back_columns(outfile, contig_data, contig_columns, header, drop_genome_columns=False)
+            _write_back_columns(outfile, contig_data, contig_columns, header)
         except BaseException:
             # No map without the columns of its contigs.
             os.remove(outfile)
@@ -467,10 +462,11 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
         Path to the .metacool file to write.
     bin_summary : str, optional
         Path to the bin_summary.txt file: its columns are added to the
-        genomes table, one row per bin, named by its first column. Not read
-        when no contig of the map is in a final bin: the map then has no
-        genome but ``__unbinned__``, and no column of the genomes table
-        that the input map carried.
+        genomes table, one row per bin, named by its first column. It is not
+        read when no contig of the map is in a final bin (the map then has
+        no genome but ``__unbinned__``). Without it, the genomes table has
+        none of the columns that the input map carried, only those that
+        metacooler derives.
     force : bool
         Whether to replace an existing outfile.
     metadata : dict, optional
@@ -522,7 +518,6 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
     # metacooler): never an empty table, which metacooler refuses.
     assignment = {name: contig_bin.get(name, "ND") for name in names}
     final_bins = set(assignment.values()) - {"ND"}
-    genomes_table = bin_summary if bin_summary and final_bins else None
     logger.info(
         f"Writing {outfile} from the contact map {metacool}: {len(names)} contigs, "
         f"{sum(value != 'ND' for value in assignment.values())} of them in {len(final_bins)} bins."
@@ -534,7 +529,18 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
             handle, staged = tempfile.mkstemp(prefix=f".{os.path.basename(outfile)}.", suffix=".tmp", dir=directory)
             os.close(handle)
         try:
-            with _as_metacool_errors():
+            with _as_metacool_errors(), tempfile.TemporaryDirectory() as scratch:
+                if bin_summary and final_bins:
+                    genomes_table = bin_summary
+                else:
+                    # Without a bin summary or without a bin, the bin names
+                    # alone: the genome columns that the input map carried
+                    # (those of an earlier run's bins) are then replaced by
+                    # none, where metacooler would keep them and warn that
+                    # they no longer describe their bins.
+                    genomes_table = os.path.join(scratch, "bins.txt")
+                    with open(genomes_table, "w") as handle:
+                        handle.write("".join(f"{name}\n" for name in ["bin", *sorted(final_bins)]))
                 metacooler.reassign(
                     metacool,
                     assignment,
@@ -542,16 +548,16 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
                     # Grouped as write_metacool groups the contigs, whatever
                     # the order of the input map: the pixels are remapped.
                     layout="genome-then-length",
-                    # The bin names are the first column of bin_summary.txt,
-                    # unnamed. Given, it replaces the columns of the genomes
-                    # table that the input map carried.
+                    # The bin names are the first column of the table,
+                    # unnamed in bin_summary.txt. It replaces the columns of
+                    # the genomes table that the input map carried.
                     genomes_table=genomes_table,
                     genomes_table_format="1",
                     metadata={"metator": {"version": __version__, **(metadata or {})}},
                     # Over the empty temporary file.
                     force=True,
                 )
-                _write_back_columns(staged, contig_data, contig_columns, header, genomes_table is None)
+                _write_back_columns(staged, contig_data, contig_columns, header)
                 metacooler.validate(staged, full=True)
                 os.replace(staged, outfile)
             logger.info(f"{outfile} is written: the contact map of the bins.")
@@ -573,7 +579,7 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
             raise
 
 
-def _write_back_columns(path, contig_data, contig_columns, header, drop_genome_columns):
+def _write_back_columns(path, contig_data, contig_columns, header):
     """Give a map the metadata columns of this run, as metacooler annotate
     edits them: the map that write_metacool has just written, or the map
     written back from an input map.
@@ -584,9 +590,7 @@ def _write_back_columns(path, contig_data, contig_columns, header, drop_genome_c
     contig ids, Size..., which a map made with the contig data of an earlier
     run as its contigs table holds (metacooler create pairs --contigs-format
     metator), and one of CONTIG_COLUMNS that this run did not measure
-    (Shotgun_coverage without a depth file...). So are, with
-    drop_genome_columns (no bin summary given), the metadata columns of the
-    genomes table: they describe the bins of another run.
+    (Shotgun_coverage without a depth file...).
     """
     import metacooler
 
@@ -599,12 +603,6 @@ def _write_back_columns(path, contig_data, contig_columns, header, drop_genome_c
         for column in stored.contigs.columns
         if column in of_metator - set(contig_columns) - {"name", "length", "genome_id"}
     ]
-    if drop_genome_columns:
-        drop += [
-            f"genomes.{column}"
-            for column in stored.genomes.columns
-            if column not in DERIVED_GENOME_COLUMNS and not column.startswith("qc_")
-        ]
     if not contig_columns and not drop:
         return
     with _rows_of_other_contigs_ignored(contig_data):

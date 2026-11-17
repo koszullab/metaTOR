@@ -976,10 +976,11 @@ def test_map_of_the_bins_from_a_map_without_qc(metagenome, binning, tmp_path):
 
 
 @pytest.mark.parametrize("source", ["unbinned", "binned"])
-def test_map_of_no_bin_from_a_map(source, metagenome, binning, tmp_path):
+def test_map_of_no_bin_from_a_map(source, metagenome, binning, tmp_path, logged):
     """A run with no final bin: every contig of the map in __unbinned__, its
     only genome, with no column of a bin summary, even when the input map
-    is that of an earlier binning, whose bin summary columns would be stale."""
+    is that of an earlier binning, whose bin summary columns would be stale
+    (and no warning of metacooler that __unbinned__ keeps them)."""
     if source == "unbinned":
         metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
     else:
@@ -996,6 +997,33 @@ def test_map_of_no_bin_from_a_map(source, metagenome, binning, tmp_path):
     assert set(assignment(out).values()) == {"__unbinned__"} and len(mc.contigs) == len(metagenome.contigs)
     assert_contig_columns(out, contig_data)
     assert contig_contacts(out) == contig_contacts(metacool)
+    # From a map of no bin either, no contig moves: metacooler 0.2.0 then
+    # warns that only the provenance differs.
+    warnings = [message for level, message in logged() if level == "WARNING"]
+    assert [message for message in warnings if not message.startswith("No contig changes genome")] == []
+
+
+def test_map_of_the_bins_without_a_bin_summary(metagenome, binning, tmp_path, logged):
+    """From the map of an earlier binning, another binning without a bin
+    summary: no column of the earlier bin summary in the genomes table, and
+    no warning of metacooler that a bin keeps them, which metaTOR's
+    command, with no genomes table to give, could not act on. No file is
+    left but the map."""
+    earlier = mtmc_map(binning, tmp_path)
+    final_bin = _bin_names(metagenome)
+    merged = {final_bin[genome.contigs[0].name] for genome in metagenome.genomes[:2]}
+    final_bin = {name: ("metator_00099_00000" if bin_name in merged else bin_name) for name, bin_name in final_bin.items()}
+    contig_data = write_contig_data(metagenome, tmp_path / "new.txt", final_bin)
+    out = tmp_path / "bins.metacool"
+    before = set(tmp_path.iterdir())
+    mtmc.reassign_metacool(str(earlier), str(contig_data), str(out))
+
+    metacooler.validate(str(out), full=True)
+    assert assignment(out) == {name: (bin_name if bin_name != "ND" else "__unbinned__") for name, bin_name in final_bin.items()}
+    assert list(genomes_without_qc(out).columns) == ["name", "length", "n_contigs", "n_bins"]
+    assert_contig_columns(out, contig_data)
+    assert [message for level, message in logged() if level == "WARNING"] == []
+    assert set(tmp_path.iterdir()) - before == {out}
 
 
 def test_map_of_the_bins_replaces_the_columns_of_the_input_map(metagenome, binning, tmp_path):
