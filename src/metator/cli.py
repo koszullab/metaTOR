@@ -1052,8 +1052,14 @@ def pipeline(
 
     At the end, the contact map of the contigs, grouped by bin, is written
     as a .metacool file (see [cyan]metator metacool[/]), unless
-    --no-metacool is given. It is written from the pairs files: a run that
-    starts from a .metacool file writes none, and cannot scaffold.
+    --no-metacool is given: from the pairs files, or from the input map of
+    a run that starts from a .metacool file. That map gives its bins and
+    contacts, its assembly name and command history; its contact
+    statistics are recomputed from its pixels, if it has them. The map of
+    the bins may go where the input map is: the map already there is
+    replaced only once the new one is written and validated (a symbolic
+    link there is replaced, not the file it points to). A run from a
+    .metacool file cannot scaffold.
     """
     # Private temporary directory inside --tmpdir.
     with private_tmp_dir(tmpdir, clean_up=not no_clean_up) as tmp_dir:

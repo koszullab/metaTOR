@@ -154,9 +154,19 @@ metator pipeline -1 for.bam -2 rev.bam -a assembly.fa -S bam
 metator pipeline -1 alignment.pairs -a assembly.fa-S pairs
 ```
 
-* **metacool**: A `.metacool` contact map of the contigs of the assembly (see [metacooler](https://github.com/js2264/metacooler)), at any bin size: the network is read from its contacts, which sum its libraries. It may lack some contigs of the assembly (a map made with a contig filter, for example), which then get no contacts. The edge region (`--edge`) and the scaffolding cannot be used from it, the heatmap of the final bin network is drawn only from the `.pairs.gz` files that an earlier run left in the output directory, if any, and `pipeline` writes no `.metacool` file of the bins.
+* **metacool**: A `.metacool` contact map of the contigs of the assembly (see [metacooler](https://github.com/js2264/metacooler)), at any bin size: the network is read from its contacts, which sum its libraries. It may lack some contigs of the assembly (a map made with a contig filter, for example), which then get no contacts. The edge region (`--edge`) and the scaffolding cannot be used from it, and the heatmap of the final bin network is drawn only from the `.pairs.gz` files that an earlier run left in the output directory, if any. `pipeline` writes the map of the bins from it: its bins and contacts, one genome per MAG, grouped as in the map of a run from pairs, with the columns of the bin summary and of the contig data; its contact statistics are computed again from the pixels (only when the input map has them), and its assembly name and command history are those of the input map. When the map of the bins goes where the input map is (to bin its contigs again in the same output directory), it replaces the outfile only once it is written and validated; a symbolic link there is replaced, not its target.
 
 ```sh
+metator pipeline -1 sample.metacool -a assembly.fa -S metacool
+```
+
+The map can be made from the pairs files of [hicstuff](https://github.com/koszullab/hicstuff) (aligned without `-f` or `-D`, which leave out pairs that metaTOR keeps), with `metacooler create pairs` and no `--contigs`, so that every contig is in no genome yet (see the [README](https://github.com/koszullab/metator/blob/master/README.md#from-hicstuff-to-metator-through-metacooler)):
+
+```sh
+hicstuff pipeline -g assembly.fa -e DpnII -o hicstuff_L1 -P L1 L1_R1.fq.gz L1_R2.fq.gz
+samtools faidx assembly.fa
+awk -v OFS='\t' '{print $1, 0, $2}' assembly.fa.fai > contigs.bed
+metacooler create pairs --pairs hicstuff_L1/L1.valid_idx.pairs.gz --bins contigs.bed --no-ps --assembly-name assembly -o sample.metacool
 metator pipeline -1 sample.metacool -a assembly.fa -S metacool
 ```
 

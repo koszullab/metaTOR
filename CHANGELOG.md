@@ -26,12 +26,11 @@ All notable changes to this project will be documented in this file.
   the reason is logged as an error, in the log file of the run, and the
   run stops with that error, as `metator metacool` does. A map sums its
   libraries: no `network_{i}.txt` and no `hit_data_alignment.txt` are
-  written. The network heatmap is drawn only from the `.pairs.gz` files that
-  an earlier run left in the output directory, if any. `--edge` above 0 is
-  refused, as a map holds no read positions, and so is
-  `pipeline --scaffold`, which reads the pairs files; `pipeline` writes no
-  `.metacool` of the bins from a map, as it is made from the pairs files.
-  The pairs path does not change.
+  written. `pipeline` draws the network heatmap only from the `.pairs.gz`
+  files that an earlier run left in the output directory, if any. `--edge`
+  above 0 is refused, as a map holds no read positions, and so is
+  `pipeline --scaffold`, which reads the pairs files. The pairs path does
+  not change.
   The network of a map differs from that of the pairs it was made of by
   the pairs with a read on the last base of a contig: the pairs path leaves
   them out of the network, even with `--edge 0` (its test
@@ -43,6 +42,31 @@ All notable changes to this project will be documented in this file.
   contacts change a few edge weights, and partition makes the same bins
   of both networks. Python API: `metator.network.metacool_to_contacts`
   and `metator.network.read_metacool_contacts`.
+- A `pipeline` run that starts from a `.metacool` map writes the map of its
+  bins (`metator.metacool`, or `<prefix>.metacool`) from that map, as a new
+  file, with `metacooler reassign`: the bins and contacts of the input map,
+  at its bin size, one genome per final bin and `__unbinned__` for the
+  other contigs, grouped genome by genome and from the longest contig as
+  in the map of a run from pairs. The columns of `bin_summary.txt` and
+  those of `contig_data_final.txt` replace those the input map had; with
+  no final bin, its genome columns are dropped. The contact statistics are
+  computed again from the pixels, and only when the input map has them
+  (a pixel holds no read positions: at one bin per contig, every
+  intra-contig contact counts as short-range, and the numbers of pairs
+  read and left out are lost). The assembly name and the history of the
+  commands are those of the input map. On a map with one bin per contig of
+  all the contigs, the map is that of a run from its pairs, but for the
+  contact statistics, the assembly name and the history. A contig data
+  file whose `Size` is not the length in the map of a contig is refused.
+  The map of the bins may go where the input map is (the same path, or a
+  symbolic link): it is then written next to the outfile, given
+  metacooler's full validation, and only then moved over the outfile,
+  which is left as it was, with a warning, when the new map cannot be
+  written. A symbolic link at the outfile is replaced, not its target: an
+  input map that it links to is left as it was. Python API:
+  `metator.metacool.reassign_metacool`. The README shows how to make the
+  map from the pairs files of `hicstuff pipeline` (without `-f` or `-D`)
+  with `metacooler create pairs` and no `--contigs`.
 
 ## [1.4.0] - 2026-11-17
 
