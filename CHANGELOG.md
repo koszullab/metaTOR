@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## [1.4.0] - 2026-11-17
+
 ### Added
 - `pipeline` writes the contact map of all the contigs, grouped by bin, as
   `metator.metacool` in its output directory (`<prefix>.metacool` with

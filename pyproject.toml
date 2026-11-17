@@ -170,7 +170,7 @@ allowed-unresolved-imports = ["pypairix", "pyfastx"]
 [tool.bumpversion]
 # src/metator/version.py is the single source of truth for the version; this
 # current_version is bump-my-version's bookkeeping copy, kept in sync with it.
-current_version = "1.3.10"
+current_version = "1.4.0"
 commit = true
 tag = true
 tag_name = "v{new_version}"
