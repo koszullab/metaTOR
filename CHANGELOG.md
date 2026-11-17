@@ -68,6 +68,13 @@ All notable changes to this project will be documented in this file.
   map from the pairs files of `hicstuff pipeline` (without `-f` or `-D`)
   with `metacooler create pairs` and no `--contigs`.
 
+### Fixed
+- `metator metacool` and the map of `pipeline` refuse a
+  `contig_data_final.txt` whose rows have more or fewer fields than its
+  header, naming the lines. They read it without a word: shifted by a
+  column when the first rows have one more field, and a short row
+  padded with empty fields, its contig then in no bin.
+
 ## [1.4.0] - 2026-11-17
 
 ### Added

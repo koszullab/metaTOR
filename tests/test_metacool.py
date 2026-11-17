@@ -2,10 +2,15 @@
 # file, on the mock metagenome of tests/synthetic.py. Its genome contigs are
 # binned by genome and its MGE contigs left unbinned.
 
+import bz2
+import gzip
 import logging
+import lzma
 import re
 import shlex
 import shutil
+import tarfile
+import zipfile
 from pathlib import Path
 
 import cooler
@@ -423,20 +428,83 @@ def test_read_contig_bins(tmp_path):
     "content, reason",
     [
         (b"", "No columns to parse from file."),
-        (b"Name\tSize\tFinal_bin\nc1\t100\tb1\nc2\t200\tb1\tb2\n", "Expected 3 fields in line 3, saw 4."),
+        (
+            b"Name\tSize\tFinal_bin\nc1\t100\tb1\nc2\t200\tb1\tb2\n",
+            ": 1 row(s) do not have the 3 tab-separated fields of the header: line 3 (4).",
+        ),
+        (
+            b"Name\tSize\tFinal_bin\n0\tc1\t100\tb1\n1\tc2\t200\tND\n",
+            ": 2 row(s) do not have the 3 tab-separated fields of the header: line 2 (4), line 3 (4).",
+        ),
+        (
+            b"\nName\tSize\tFinal_bin\n\nc1\t100\tb1\n  \nc2\t200\n\t\t\t\n",
+            ": 2 row(s) do not have the 3 tab-separated fields of the header: line 6 (2), line 7 (4).",
+        ),
         (b"Name\tSize\tFinal_bin\nc\xe91\t100\tb1\n", "'utf-8' codec can't decode byte 0xe9"),
     ],
-    ids=["empty", "row of more fields", "not UTF-8"],
+    ids=["empty", "row of more fields", "rows of more fields from the first", "rows of other fields", "not UTF-8"],
 )
 def test_read_contig_bins_unreadable_table(content, reason, tmp_path):
-    """A contig data file that pandas cannot read as a table: a
-    MetacoolError naming the file, pandas' error chained."""
+    """A contig data file that pandas cannot read as a table, or would read
+    shifted or padded (a row with more or fewer fields than the header,
+    blank lines left out and counted): a MetacoolError naming the file,
+    the cause chained."""
     table = tmp_path / "contig_data_final.txt"
     table.write_bytes(content)
     with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(str(table))} cannot be read as a table: ") as error:
         mtmc.read_contig_bins(str(table))
     assert reason in str(error.value)
     assert isinstance(error.value.__cause__, ValueError)
+
+
+@pytest.mark.parametrize("suffix, opener", [(".gz", gzip.open), (".bz2", bz2.open), (".xz", lzma.open)])
+def test_read_contig_bins_of_a_compressed_file(suffix, opener, tmp_path):
+    """A compressed contig data file is read, and its rows checked, as
+    pandas reads it."""
+    table = tmp_path / f"contig_data_final.txt{suffix}"
+    with opener(table, "wt") as handle:
+        handle.write("Name\tSize\tFinal_bin\nc1\t100\tb1\nc2\t200\tND\n")
+    bins, final_bin = mtmc.read_contig_bins(str(table))
+    assert bins.to_dict("list") == {"chrom": ["c1", "c2"], "start": [0, 0], "end": [100, 200]}
+    assert final_bin == {"c1": "b1"}
+    with opener(table, "wt") as handle:
+        handle.write("Name\tSize\tFinal_bin\nc1\t100\tb1\tb2\n")
+    message = r"1 row\(s\) do not have the 3 tab-separated fields of the header: line 2 \(4\)\.$"
+    with pytest.raises(mtmc.MetacoolError, match=message):
+        mtmc.read_contig_bins(str(table))
+
+
+@pytest.mark.parametrize("suffix", [".zip", ".tar.gz"])
+def test_read_contig_bins_of_an_archive(suffix, tmp_path):
+    """A contig data file in a zip or tar archive is read by pandas, its
+    rows not counted: the check reads no archive (it took a .tar.gz for a
+    gzip file, and the tar headers for fields)."""
+    table = tmp_path / f"contig_data_final.txt{suffix}"
+    content = "Name\tSize\tFinal_bin\nc1\t100\tb1\n"
+    if suffix == ".zip":
+        with zipfile.ZipFile(table, "w") as archive:
+            archive.writestr("contig_data_final.txt", content)
+    else:
+        source = tmp_path / "contig_data_final.txt"
+        source.write_text(content)
+        with tarfile.open(table, "w:gz") as archive:
+            archive.add(source, arcname=source.name)
+    bins, final_bin = mtmc.read_contig_bins(str(table))
+    assert list(bins.chrom) == ["c1"] and final_bin == {"c1": "b1"}
+
+
+def test_read_contig_bins_header_with_a_trailing_tab(tmp_path):
+    """A header that ends in a tab names an empty last column: the rows may
+    leave it out, as pandas and metacooler read them. A row with more fields
+    than the header is still refused."""
+    table = tmp_path / "contig_data_final.txt"
+    table.write_text("Name\tSize\tFinal_bin\t\nc1\t100\tb1\nc2\t200\tND\t\n")
+    bins, final_bin = mtmc.read_contig_bins(str(table))
+    assert list(bins.chrom) == ["c1", "c2"] and final_bin == {"c1": "b1"}
+    table.write_text("Name\tSize\tFinal_bin\t\nc1\t100\tb1\t\tx\n")
+    message = r"1 row\(s\) do not have the 3 to 4 tab-separated fields of the header: line 2 \(5\)\.$"
+    with pytest.raises(mtmc.MetacoolError, match=message):
+        mtmc.read_contig_bins(str(table))
 
 
 @pytest.mark.parametrize("size", ["1x00", "", "100.0"])

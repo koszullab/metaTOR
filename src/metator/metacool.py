@@ -31,7 +31,10 @@ Core functions to write the file:
     - reassign_metacool, from a .metacool map
 """
 
+import bz2
+import gzip
 import logging
+import lzma
 import os
 import re
 import tempfile
@@ -119,13 +122,50 @@ def _shown(names, show=repr):
 def _read_contig_table(contig_data, **kwargs):
     """A contig data file as a table of text (kwargs: more keyword arguments
     of pandas.read_csv). A file that pandas cannot read as a table (empty,
-    not UTF-8, a row with more fields than the header...) is a
-    MetacoolError naming the file, as are the other refusals of the inputs.
+    not UTF-8...) is a MetacoolError naming the file, as are the other
+    refusals of the inputs.
+
+    So is a row with more or fewer fields than the header, which pandas
+    would read without a word: the surplus leading fields of the first rows
+    as their index, every value then under the name of the column to its
+    left, and the fields a row lacks as empty, its contig then in no bin.
     """
     try:
+        _check_field_counts(contig_data)
         return pd.read_csv(contig_data, sep="\t", dtype=str, keep_default_na=False, **kwargs)
     except (ValueError, OSError) as error:
         raise MetacoolError(f"{contig_data} cannot be read as a table: {str(error).strip().rstrip('.')}.") from error
+
+
+def _check_field_counts(path):
+    """Raise a ValueError naming the rows of a tab-separated table whose
+    number of fields is not that of its header (its first line that is not
+    blank: pandas skips the empty lines and those of spaces).
+
+    A header that ends in empty names (a trailing tab) may have more fields
+    than the rows: pandas reads the fields they lack as empty, in columns
+    that have no name, as metacooler reads such a table. A file compressed
+    as gzip, bzip2 or xz is read as pandas reads it; one compressed
+    otherwise is not checked."""
+    name = str(path)
+    if name.endswith((".zip", ".zst", ".tar", ".tgz", ".tar.gz", ".tar.bz2", ".tar.xz")):
+        return
+    opener = {".gz": gzip.open, ".bz2": bz2.open, ".xz": lzma.open}.get(os.path.splitext(name)[1], open)
+    header, ragged = None, []
+    with opener(path, "rb") as handle:
+        for number, line in enumerate(handle, 1):
+            if not line.strip(b" \r\n"):
+                continue
+            count = line.count(b"\t") + 1
+            if header is None:
+                header = (len(line.rstrip(b"\r\n").rstrip(b"\t").split(b"\t")), count)
+            elif not header[0] <= count <= header[1]:
+                ragged.append(f"line {number} ({count})")
+    if ragged:
+        fields = str(header[1]) if header[0] == header[1] else f"{header[0]} to {header[1]}"
+        raise ValueError(
+            f"{len(ragged)} row(s) do not have the {fields} tab-separated fields of the header: {_shown(ragged, show=str)}"
+        )
 
 
 def read_contig_bins(contig_data):
