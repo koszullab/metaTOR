@@ -7,7 +7,6 @@ import pandas as pd
 import pickle
 import pytest
 import os
-import re
 import shutil
 
 threads = 8
@@ -178,48 +177,6 @@ def test_write_bins_contigs():
     print(np.unique(list(contig_data["Final_bin"])))
     assert len(np.unique(list(contig_data["Final_bin"]))) == 2
     os.remove(binning_file)
-
-
-# ChekM deprecated functions.
-
-
-def test_checkm_compare_bins():
-    # Test checkM compare bins deprecated function.
-    checkm_summary = mtv.checkm_compare_bins(
-        overlapping_checkm_file="tests_data/outdir_checkM/overlapping_checkm_results.txt",
-        overlapping_taxonomy_file="tests_data/outdir_checkM/overlapping_checkm_taxonomy.txt",
-        recursive_checkm_file="tests_data/outdir_checkM/recursif_checkm_results.txt",
-        recursive_taxonomy_file="tests_data/outdir_checkM/recursif_checkm_taxonomy.txt",
-        prefix="MetaTOR",
-    )
-    over = mio.read_results_checkm(
-        "tests_data/outdir_checkM/overlapping_checkm_results.txt",
-        "tests_data/outdir_checkM/overlapping_checkm_taxonomy.txt",
-    )
-    rec = mio.read_results_checkm(
-        "tests_data/outdir_checkM/recursif_checkm_results.txt",
-        "tests_data/outdir_checkM/recursif_checkm_taxonomy.txt",
-    )
-
-    # Assert there is the rigth numbers of keys for a bin:
-    keys = list(checkm_summary.keys())
-    assert len(checkm_summary[keys[0]]) == 10
-
-    # Assert there are no more keys then available:
-    test_over = [re.search("_0", key) is not None for key in keys]
-    assert sum(test_over) <= len(over)
-    assert len(checkm_summary) - sum(test_over) <= len(rec)
-
-    # Assert there are no duplicates  (one bin from overlapping and from
-    # recursive)
-    over_id = []
-    rec_id = []
-    for i in range(len(test_over)):
-        if test_over[i]:
-            over_id.append(int(keys[i].split("_")[1]))
-        else:
-            rec_id.append(int(keys[i].split("_")[1]))
-    assert not (set(over_id) & set(rec_id))
 
 
 def test_bin_abundances_are_percentages():

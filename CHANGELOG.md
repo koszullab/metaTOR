@@ -35,6 +35,12 @@ All notable changes to this project will be documented in this file.
   of the `pyfastx` command. `partition` and `mge` write no temporary file
   any more.
 
+### Removed
+- Python API: the CheckM functions (`metator.validation.checkm` and
+  `checkm_compare_bins`, `metator.io.check_checkm` and
+  `read_results_checkm`), unused since miComplete replaced CheckM, and
+  `metator.partition.spinglass_partition`, whose body was commented out.
+
 ### Fixed
 - `metator metacool` and the map of `pipeline` refuse a
   `contig_data_final.txt` whose rows have more or fewer fields than its

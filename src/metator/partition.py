@@ -23,8 +23,6 @@ Core functions to partition the network are:
     - read_network
     - update_contigs_data
 
-Deprecated Spinglass functions:
-    - spinglass_partition
 """
 
 import igraph as ig
@@ -33,7 +31,6 @@ import numpy as np
 import pandas as pd
 import pyfastx
 
-# from cdlib import algorithms
 from functools import partial
 import metator.io as mio
 from metator.log import logger
@@ -643,39 +640,3 @@ def update_contigs_data(contig_data_file, core_bins_contigs, overlapping_bins, o
     contigs_data.to_csv(contig_data_file_2, sep="\t", header=True, index=False)
 
     return contigs_data, contig_data_file_2
-
-
-# Deprecated Spinglass functions:
-
-
-def spinglass_partition(
-    subnetwork,
-    spins=2,
-):
-    """Use spinglass function from cdlib to partition the network.
-
-    This function is only used in the validation step as it will take a long
-    time to run on a large network.
-
-    Parameters:
-    -----------
-    subnetwork : igraph.Graph
-        Network of interaction of a contaminated bins.
-    spins : int
-        Number of expected MAGs in the contaminated bins.
-
-    Returns:
-    dict:
-        Dictionnary with the id of the contig as key and the clustering result
-        as values.
-    """
-    # Partition the network using spingalss algorithm.
-    # coms = algorithms.spinglass(subnetwork, spins)
-
-    # Extract the clusters.
-    # output_partition = {}
-    # for ids, list_contigs in enumerate(coms.communities):
-    #     for contig in list_contigs:
-    #         output_partition[contig] = str(ids)
-
-    # return output_partition

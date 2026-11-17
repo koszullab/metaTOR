@@ -4,7 +4,6 @@
 """Core tools to build I/O for metator
 
 This mdoule contains all core I/O functions:
-    - check_checkm
     - check_fasta_index
     - check_is_fasta
     - check_pypairix
@@ -19,7 +18,6 @@ This mdoule contains all core I/O functions:
     - read_bin_summary
     - read_compressed
     - read_contig_data
-    - read_results_checkm
     - remove_pyfastx_index
     - retrieve_fasta
     - sort_and_index_pairs
@@ -48,23 +46,6 @@ from Bio.Restriction import RestrictionBatch
 from metator.log import logger
 from os.path import join, exists, isfile
 from random import getrandbits
-
-
-def check_checkm():
-    """
-    Function to test if CheckM is in the path.
-
-    Returns:
-    --------
-    bool:
-        True if checkM found in the path, False otherwise.
-    """
-    try:
-        sp.check_output("checkm", stderr=sp.STDOUT, shell=True)
-    except sp.CalledProcessError:
-        logger.error("Cannot find 'checkm' in your path please install it or add it in your path.")
-        return False
-    return True
 
 
 def check_fasta_index(ref, mode="bowtie2"):
@@ -484,58 +465,6 @@ def read_contig_data(contig_data_file):
     data = pd.read_csv(contig_data_file, sep="\t")
     data = data.set_index("Name", drop=False)
     return data
-
-
-def read_results_checkm(checkm_file, checkm_taxonomy_file):
-    """Function to transform the output summary file of checkm into a
-    dictionnary.
-
-    Parameters:
-    -----------
-    checkm_file : str
-        Path to the summary output file of CheckM.
-
-    Returns:
-    --------
-    dict:
-        Dictionnary of the output of checkm with binID as keys and with three
-        values lineage, completness and contamination.
-    """
-
-    # Create an empty dictionnary
-    checkm_summary = dict()
-
-    # Read the checkm summary file.
-    with open(checkm_file, "r") as checkm_lines:
-        for line in checkm_lines:
-            # Only keep informative lines which start with a space.
-            if line[0] == " ":
-                line = line.split()
-                checkm_summary[line[0]] = {
-                    "lineage": line[1],
-                    "completness": line[6],
-                    "contamination": line[7],
-                    "size": line[9],
-                    "contigs": line[12],
-                    "N50": line[14],
-                    "longest_contig": line[18],
-                    "GC": line[19],
-                    "coding_density": line[21],
-                    "taxonomy": "-",
-                }
-
-    # Read the taxonomy file.
-    with open(checkm_taxonomy_file, "r") as checkm_lines:
-        for line in checkm_lines:
-            # Only keep informative lines which start with a space.
-            if line[0] == " ":
-                line = line.split()
-                checkm_summary[line[0]]["taxonomy"] = line[3]
-
-    # remove the bin header
-    checkm_summary.pop("Bin")
-
-    return checkm_summary
 
 
 def remove_pyfastx_index(fasta):

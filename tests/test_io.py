@@ -256,16 +256,6 @@ def test_save_sparse_matrix_requires_coo(tmp_path):
         mio.save_sparse_matrix(sparse.csr_matrix(np.eye(2)), tmp_path / "matrix.txt")
 
 
-def test_check_checkm(monkeypatch):
-    def missing(*args, **kwargs):
-        raise sp.CalledProcessError(127, "checkm")
-
-    monkeypatch.setattr(mio.sp, "check_output", missing)
-    assert not mio.check_checkm()
-    monkeypatch.setattr(mio.sp, "check_output", lambda *args, **kwargs: b"CheckM v1.2")
-    assert mio.check_checkm()
-
-
 def test_check_fasta_index_other_mode():
     assert mio.check_fasta_index("ref.fa", mode="minimap2") == "ref.fa"
 
