@@ -151,9 +151,11 @@ def both_networks(data, metacool, out, normalization="None", self_contacts=False
     return outputs["pairs"], outputs["metacool"]
 
 
-@pytest.fixture(params=["synthetic", *TESTS_DATA_PAIRS])
+@pytest.fixture(params=["synthetic", "alignment"])
 def dataset(request, metagenome_files):
-    """Pairs, assembly, depth file and enzyme of a data set."""
+    """Pairs, assembly, depth file and enzyme of a data set. The pairs of
+    subset.pairs.gz, the largest, go through test_commands.py
+    (test_network_from_a_metacool) and the tests by chunk."""
     if request.param == "synthetic":
         files = metagenome_files
         return {
@@ -228,7 +230,9 @@ def test_network_of_a_metacool_with_self_contacts(dataset, binsize, tmp_path):
 
 
 @pytest.mark.parametrize("binsize", BIN_SIZES)
-@pytest.mark.parametrize("how", ["create", "extract"])
+@pytest.mark.parametrize(
+    "dataset, how", [("synthetic", "create"), ("synthetic", "extract"), ("alignment", "create")], indirect=["dataset"]
+)
 def test_network_of_a_filtered_metacool(dataset, how, binsize, tmp_path):
     """A map that lacks contigs of the assembly, made with a contig filter,
     which leaves out the pairs with a read on the contigs it drops: its
