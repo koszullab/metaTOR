@@ -453,9 +453,15 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
     contigs table the columns of the contig data that write_metacool stores
     (see read_contig_data): they replace those that the input map
     carried, metaTOR's own as those of the bins of an earlier run. Its
-    other columns of the contigs table are kept. The QC block is
-    recomputed from the pixels when the input map has one. The assembly
-    name and the history of the commands are those of the input map.
+    other columns of the contigs table are kept. The QC block of the input
+    map, when it has one, is carried over to the bins: metacooler keeps the
+    counts within each contig (measured on the reads, for a map made from
+    pairs files) and counts the contacts between contigs again. A map
+    written by metacooler 0.2.0, with no count per contig, has its block
+    computed again from the pixels (at one bin per contig, every contact
+    within a contig then counts as short-range), which metacooler warns
+    about for a map made from pairs files. The assembly name and the
+    history of the commands are those of the input map.
 
     The map is written to a temporary file next to outfile, then given
     metacooler's full validation, and only then moved to outfile, which it

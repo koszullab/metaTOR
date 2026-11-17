@@ -64,14 +64,27 @@ def write_contig_data(metagenome, path, final_bin=None):
     return path
 
 
+# The QC counts of each contig, which metacooler (0.3.0) stores with the
+# QC block.
+QC_CONTIG_COLUMNS = ["qc_intra_contig_short", "qc_intra_contig_long"]
+
+
+def without_qc(columns):
+    """The columns of a contigs table but metacooler's QC columns."""
+    return [column for column in columns if not column.startswith("qc_")]
+
+
 def assert_contig_columns(path, contig_data, columns=CONTIG_COLUMNS):
     """The contigs table of the map (cooler's chroms) holds these columns of
     the contig data, with their values and types, and no other: no bin, no
-    pandas index."""
+    pandas index. Besides, metacooler's QC counts of each contig, when the
+    map has a QC block."""
     contigs = metacooler.MetaCooler(str(path)).contigs
-    assert list(contigs.columns) == ["name", "length", "genome_id", *columns]
+    assert without_qc(contigs.columns) == ["name", "length", "genome_id", *columns]
+    has_qc = "qc" in cooler.Cooler(str(path)).info["metadata"]
+    assert [column for column in contigs.columns if column.startswith("qc_")] == (QC_CONTIG_COLUMNS if has_qc else [])
     chroms = cooler.Cooler(str(path)).chroms()[:]
-    assert list(chroms.columns) == ["name", "length", "genome_id", *columns]
+    assert list(chroms.columns) == list(contigs.columns)
     table = pd.read_csv(contig_data, sep="\t", index_col="Name").loc[contigs.name]
     for column in columns:
         assert contigs[column].dtype == table[column].dtype, column
@@ -844,9 +857,9 @@ def final_bins(metagenome):
 def test_map_of_the_bins_from_a_map(metagenome, binning, tmp_path):
     """From a map of the contigs made before any binning (one bin per
     contig, in the order of the assembly): the map that write_metacool
-    writes from the pairs, but for its QC, recomputed from the pixels, and
-    its provenance. The input map is only read, and nothing but the map is
-    left next to it."""
+    writes from the pairs, QC included (metacooler 0.3.0 carries it over to
+    the bins), but for its provenance. The input map is only read, and
+    nothing but the map is left next to it."""
     metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
     before = metacool.read_bytes()
     expected = tmp_path / "pairs.metacool"
@@ -863,13 +876,40 @@ def test_map_of_the_bins_from_a_map(metagenome, binning, tmp_path):
     metadata = clr.info["metadata"]
     assert metadata["metator"] == {"version": __version__, "command": "metator pipeline"}
     assert metacooler.MetaCooler(str(out)).info["ordering"] == "genome-then-length"
-    # The QC of the pixels; the assembly and the history of the input map.
-    assert metadata["qc"]["source"] == "pixels" and metadata["qc"]["n_contacts"] == len(metagenome.pairs)
+    # The QC block and columns that write_metacool measures on the pairs with
+    # the final bins: metacooler carries the intra-contig counts of the input
+    # map over, read positions included, and measures the others again. The
+    # assembly and the history are those of the input map.
+    assert metadata["qc"]["source"] == "pairs" and metadata["qc"]["n_pairs_read"] == len(metagenome.pairs)
+    assert metadata["qc"] == cooler.Cooler(str(expected)).info["metadata"]["qc"]
+    pd.testing.assert_frame_equal(metacooler.MetaCooler(str(out)).genomes, metacooler.MetaCooler(str(expected)).genomes)
     assert [entry["source"] for entry in metadata["reassign"]] == [str(metacool)]
     assert clr.info["genome-assembly"] == cooler.Cooler(str(metacool)).info["genome-assembly"]
     assert sorted(path.name for path in out.parent.iterdir()) == ["bins.metacool"]
     # Read and written as the map of the pairs (not the private temporary file).
     assert out.stat().st_mode == expected.stat().st_mode
+
+
+def test_map_of_the_bins_from_a_map_of_metacooler_0_2_0(metagenome, binning, tmp_path, logged):
+    """From a map written by metacooler 0.2.0, which holds no QC count per
+    contig (here, a map of 0.3.0 without its two columns): metacooler
+    computes the QC block of the bins again from the pixels, and warns that
+    what only the reads gave is lost. The map of the bins is written."""
+    import h5py
+
+    metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
+    with h5py.File(metacool, "r+") as handle:
+        for column in QC_CONTIG_COLUMNS:
+            del handle["contigs"][column]
+    out = tmp_path / "bins.metacool"
+    mtmc.reassign_metacool(str(metacool), str(binning["contig_data"]), str(out), bin_summary=str(binning["bin_summary"]))
+
+    metacooler.validate(str(out), full=True)
+    qc = cooler.Cooler(str(out)).info["metadata"]["qc"]
+    assert qc["source"] == "pixels" and "n_pairs_read" not in qc
+    (warning,) = [message for level, message in logged() if level == "WARNING"]
+    assert warning.startswith("Recomputing the source's QC block from the pixels")
+    assert "intra_contig_long drops to 0" in warning
 
 
 def test_map_of_the_bins_from_a_1kb_map(metagenome, binning, tmp_path):
@@ -1054,10 +1094,9 @@ def test_map_of_no_bin_from_a_map(source, metagenome, binning, tmp_path, logged)
     assert set(assignment(out).values()) == {"__unbinned__"} and len(mc.contigs) == len(metagenome.contigs)
     assert_contig_columns(out, contig_data)
     assert contig_contacts(out) == contig_contacts(metacool)
-    # From a map of no bin either, no contig moves: metacooler 0.2.0 then
-    # warns that only the provenance differs.
-    warnings = [message for level, message in logged() if level == "WARNING"]
-    assert [message for message in warnings if not message.startswith("No contig changes genome")] == []
+    # From a map of no bin either, no contig moves: metacooler says so at
+    # INFO, as it is given a genomes table (the bin names, here none).
+    assert [message for level, message in logged() if level == "WARNING"] == []
 
 
 def test_map_of_the_bins_without_a_bin_summary(metagenome, binning, tmp_path, logged):
@@ -1114,7 +1153,7 @@ def test_map_of_the_bins_replaces_the_columns_of_the_input_map(metagenome, binni
     assert assignment(out) == {name: (bin_name if bin_name != "ND" else "__unbinned__") for name, bin_name in final_bin.items()}
     assert list(genomes_without_qc(out).columns) == ["name", "length", "n_contigs", "n_bins", "Contamination"]
     contigs = metacooler.MetaCooler(str(out)).contigs
-    assert list(contigs.columns) == ["name", "length", "genome_id", "GC_content", "Hit", "taxon", "Restriction_site"]
+    assert without_qc(contigs.columns) == ["name", "length", "genome_id", "GC_content", "Hit", "taxon", "Restriction_site"]
     # Read back from the file, as metacooler does: the float parser of
     # pandas 2 can differ from the in-memory value in the last place.
     measured = pd.read_csv(contig_data, sep="\t", index_col="Name").loc[contigs.name]
@@ -1152,7 +1191,7 @@ def test_map_of_the_bins_drops_the_columns_of_an_earlier_run(metagenome, binning
     metacooler.validate(str(out), full=True)
     assert assignment(out) == final_bins(metagenome)
     contigs = metacooler.MetaCooler(str(out)).contigs
-    assert sorted(contigs.columns) == sorted(["name", "length", "genome_id", *CONTIG_COLUMNS, "taxon"])
+    assert sorted(without_qc(contigs.columns)) == sorted(["name", "length", "genome_id", *CONTIG_COLUMNS, "taxon"])
 
 
 @pytest.mark.parametrize("source", ["unbinned", "binned"])

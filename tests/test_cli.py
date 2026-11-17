@@ -541,7 +541,7 @@ def test_pipeline_metacool_written(stub_pipeline, tmp_path, monkeypatch, run_cli
     # The contig columns of the contig data: its GC_content (Hit is - on
     # every contig), not its ID or Final_bin.
     contigs = metacooler.MetaCooler(str(out / "metator.metacool")).contigs.set_index("name")
-    assert list(contigs.columns) == ["length", "genome_id", "GC_content"]
+    assert [column for column in contigs.columns if not column.startswith("qc_")] == ["length", "genome_id", "GC_content"]
     assert contigs.GC_content.to_dict() == {"c1": 40.5, "c2": 35.0}
 
 

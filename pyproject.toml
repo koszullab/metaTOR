@@ -48,7 +48,7 @@ dependencies = [
     "micomplete",
     "pypairix",
     "rich-click>=1.9",
-    "metacooler>=0.2.0",
+    "metacooler>=0.3.0",
 
     # NON PIP DEPENDENCIES
     #"bowtie2"

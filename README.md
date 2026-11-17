@@ -222,8 +222,9 @@ and the tools built on it read it as any `.cool` file, and `metacooler` adds the
 * the contigs table (the chromosomes table of `cooler`) holds what metaTOR measured on each contig:
   the `GC_content`, `Hit`, `Shotgun_coverage` and `Restriction_site` columns of
   `contig_data_final.txt`, except those that are `-` on every contig (`Shotgun_coverage` of a run
-  without `--depth`, `Restriction_site` of a run without `--enzyme`). The bins of the contigs are not
-  stored there: the genome of a contig is its final bin;
+  without `--depth`, `Restriction_site` of a run without `--enzyme`), and the contact statistics that
+  metacooler computes within each contig (`qc_intra_contig_short`, `qc_intra_contig_long`). The bins
+  of the contigs are not stored there: the genome of a contig is its final bin;
 * the metadata of the file hold the version of metaTOR, the command line and its parameters, under
   the `metator` key.
 
@@ -284,16 +285,19 @@ At the end of such a run, `pipeline` writes the map of its bins (`metator.metaco
 * the genomes table holds the columns of `bin_summary.txt`, and the contigs table the columns of
   `contig_data_final.txt` described above: they replace those that the input map had (the map of an
   earlier binning, for example). With no final bin, the genome columns of the input map are dropped;
-* the contact statistics (the `qc` block of the metadata and the `qc_*` columns of the genomes table)
-  are computed again from the pixels, and only when the input map has them. A pixel holds no read
-  positions: at one bin per contig, every contact within a contig counts as short-range, and the
-  numbers of pairs read and left out are not known;
+* the contact statistics (the `qc` block of the metadata and the `qc_*` columns of the genomes and
+  contigs tables) are those of the input map, when it has them, carried over to the bins: metacooler
+  keeps the counts within each contig (measured on the reads, for a map made from pairs files) and
+  counts the contacts between contigs again. A map written by metacooler 0.2.0 holds no count per
+  contig: its statistics are computed again from the pixels, which hold no read positions (at one bin
+  per contig, every contact within a contig then counts as short-range, and the numbers of pairs read
+  and left out are lost, which metacooler warns about for a map made from pairs files);
 * the assembly name and the history of the commands are those of the input map (`unknown` when
   `metacooler create pairs` had no `--assembly-name`).
 
 On a map with one bin per contig of all the contigs of the assembly, the map of the bins is the map
-that a run from the pairs of the map writes, but for its contact statistics, its assembly name and its
-history. The map of the bins may go where the input map is, to bin its contigs again in the same
+that a run from the pairs of the map writes, contact statistics included, but for its assembly name and
+its history. The map of the bins may go where the input map is, to bin its contigs again in the same
 output directory (`-S metacool -1 binning/metator.metacool -o binning -F`, or a symbolic link to it):
 the new map is written next to the outfile and checked (`metacooler`'s full validation) before it
 replaces the outfile, which is left as it was, with a warning, when the new map cannot be written. A

@@ -318,7 +318,7 @@ def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, metagenome
     # What metaTOR measured on each contig (with a depth file and an
     # enzyme: the four columns), not its bins.
     columns = ["GC_content", "Hit", "Shotgun_coverage", "Restriction_site"]
-    assert list(mc.contigs.columns) == ["name", "length", "genome_id", *columns]
+    assert [column for column in mc.contigs.columns if not column.startswith("qc_")] == ["name", "length", "genome_id", *columns]
     measured = final.set_index("Name").loc[mc.contigs.name, columns]
     for column in columns:
         assert mc.contigs[column].tolist() == measured[column].tolist(), column
@@ -332,8 +332,8 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, metagenome_inde
     """From the contact map written by a run from pairs (one bin per contig,
     its contigs grouped by bin), the pipeline makes the same network, byte
     for byte, and the same bins. It writes the map of its bins back from the input
-    map: the map of the run from pairs, but for its QC, recomputed from the
-    pixels, and its provenance."""
+    map: the map of the run from pairs, QC included (metacooler 0.3.0
+    carries it over to the bins), but for its provenance."""
     monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
     common = ["-a", str(metagenome_inputs["assembly"]), "-d", str(metagenome_inputs["depth"]), "-e", "DpnII", "-s", "50000",
               "-i", "10", "-j", "5", "-T", str(tmp_path / "tmp")]  # fmt: skip
@@ -362,14 +362,15 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, metagenome_inde
     # The contigs table that metacooler reassign rebuilds stores genome_id
     # after the columns that it carries from the input map.
     chroms, ref_chroms = clr.chroms()[:], ref.chroms()[:]
-    assert list(chroms.columns) == ["name", "length", "GC_content", "Hit", "Shotgun_coverage", "Restriction_site", "genome_id"]
+    assert [column for column in chroms.columns if not column.startswith("qc_")] == [
+        "name", "length", "GC_content", "Hit", "Shotgun_coverage", "Restriction_site", "genome_id"]  # fmt: skip
     pd.testing.assert_frame_equal(chroms[ref_chroms.columns], ref_chroms)
+    # The QC block and columns of the run from pairs, carried over.
     genomes, ref_genomes = metacooler.MetaCooler(str(written)).genomes, metacooler.MetaCooler(str(expected)).genomes
-    columns = [column for column in ref_genomes.columns if not column.startswith("qc_")]
-    pd.testing.assert_frame_equal(genomes[columns], ref_genomes[columns])
+    pd.testing.assert_frame_equal(genomes, ref_genomes)
     metadata = clr.info["metadata"]
     assert metadata["metator"]["parameters"]["start"] == "metacool"
-    assert metadata["qc"]["source"] == "pixels"
+    assert metadata["qc"] == ref.info["metadata"]["qc"] and metadata["qc"]["source"] == "pairs"
     assert [entry["source"] for entry in metadata["reassign"]] == [str(metacool)]
 
     # The same map, written by metator metacool from the input map and the
@@ -443,7 +444,7 @@ def test_pipeline_from_a_filtered_metacool(metagenome, metagenome_inputs, tmp_pa
     # as the history of the map says, and its warning about their rows is
     # dropped.
     columns = ["GC_content", "Hit", "Shotgun_coverage", "Restriction_site"]
-    assert list(mc.contigs.columns) == ["name", "length", "genome_id", *columns]
+    assert [column for column in mc.contigs.columns if not column.startswith("qc_")] == ["name", "length", "genome_id", *columns]
     measured = final.set_index("Name").loc[mc.contigs.name, columns]
     for column in columns:
         assert mc.contigs[column].tolist() == measured[column].tolist(), column

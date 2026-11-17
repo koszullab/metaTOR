@@ -17,18 +17,24 @@ All notable changes to this project will be documented in this file.
   `metator.network.metacool_to_contacts`, `read_metacool_contacts`.
 - A `pipeline` run from a map writes the map of its bins from it, with
   `metacooler reassign`: its bins and contacts, grouped by final bin as
-  from pairs, with this run's genome and contig columns. Its contact
-  statistics are recomputed from the pixels (at one bin per contig, every
-  intra-contig contact then counts as short-range). The output may be
-  the input map, replaced only once the new map is validated. Python API:
-  `metator.metacool.reassign_metacool`. The README shows the route from
-  the pairs of `hicstuff` through `metacooler create pairs`.
+  from pairs, with this run's genome and contig columns, and the contact
+  statistics of the input map, carried over to the bins (a map written
+  by metacooler 0.2.0 has them computed again from the pixels: at one bin
+  per contig, every intra-contig contact then counts as short-range).
+  The output may be the input map, replaced only once the new map is
+  validated. Python API: `metator.metacool.reassign_metacool`. The README
+  shows the route from the pairs of `hicstuff` through `metacooler create
+  pairs`.
 - `metator metacool` writes this map from a `.metacool` map given in place
   of the pairs files, so that a run step by step (`network -S metacool`,
   `partition`, `validation`) can write the map that `pipeline -S
   metacool` writes.
 
 ### Changed
+- metaTOR requires metacooler 0.3.0. The `.metacool` maps it writes also
+  store the contact statistics of each contig (the `qc_intra_contig_short`
+  and `qc_intra_contig_long` columns of the contigs table), which
+  `metacooler reassign` carries over to the bins.
 - Python API: `metator.partition.partition` no longer takes
   `temp_directory`, nor `generate_fasta` and
   `metator.validation.update_contigs_data_recursive` `tmpdir`, nor
