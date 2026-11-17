@@ -23,6 +23,10 @@ All notable changes to this project will be documented in this file.
   the input map, replaced only once the new map is validated. Python API:
   `metator.metacool.reassign_metacool`. The README shows the route from
   the pairs of `hicstuff` through `metacooler create pairs`.
+- `metator metacool` writes this map from a `.metacool` map given in place
+  of the pairs files, so that a run step by step (`network -S metacool`,
+  `partition`, `validation`) can write the map that `pipeline -S
+  metacool` writes.
 
 ### Changed
 - Python API: `metator.partition.partition` no longer takes

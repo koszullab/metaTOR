@@ -1494,7 +1494,14 @@ def contactmap(
 
 
 @cli.command(short_help="Write the contact map of the contigs, grouped by bin, as a .metacool file.")
-@pairsfile_argument()
+@click.argument(
+    "pairsfile",
+    nargs=-1,
+    required=True,
+    help="Pairs file(s) of the run, or one .metacool map of its contigs (or an entry of a .mmetacool collection: "
+    "file.mmetacool::entries/NAME), the map that a run with --start metacool started from.",
+    panel="Input",
+)
 @_option(
     "-c",
     "--contig-data",
@@ -1512,7 +1519,12 @@ def contactmap(
     help="Path to the bin_summary.txt file from MetaTOR output: its columns are added to the genomes table.",
 )
 @_option("-o", "--outfile", required=True, metavar="FILE", help="Path to the .metacool file to write.")
-@_option("-n", "--assembly-name", metavar="STR", help="Name of the assembly, stored in the file.")
+@_option(
+    "-n",
+    "--assembly-name",
+    metavar="STR",
+    help="Name of the assembly, stored in the file. A map written from a .metacool map keeps its name.",
+)
 @threads_option(help="Number of threads binning the pairs.")
 @force_option("Overwrite the output file if it exists.")
 def metacool(pairsfile, contig_data, bin_summary, outfile, assembly_name, threads, force):
@@ -1523,6 +1535,11 @@ def metacool(pairsfile, contig_data, bin_summary, outfile, assembly_name, thread
     genome per final bin of the contig data file, and [cyan]__unbinned__[/]
     for the other contigs, with all their contacts. The README says what
     else it holds. The pairs files of several libraries are summed.
+
+    It is written from the pairs files of the run or, for a run that
+    started from a .metacool map of the contigs ([cyan]--start metacool[/],
+    run step by step: network, partition, validation), from that map: the
+    map that [cyan]pipeline[/] writes at the end of such a run.
 
     The contig and bin names must be ASCII, and no bin may be named as
     metacooler marks a contig in no bin (NA, NaN, N/A, N/D, -1 or
@@ -1535,16 +1552,32 @@ def metacool(pairsfile, contig_data, bin_summary, outfile, assembly_name, thread
     generate_log_header(log_file)
 
     try:
-        mtmc.write_metacool(
-            list(pairsfile),
-            contig_data,
-            outfile,
-            bin_summary=bin_summary,
-            assembly_name=assembly_name,
-            threads=threads,
-            force=force,
-            metadata=run_metadata(),
-        )
+        maps = [path for path in pairsfile if mtmc.is_map(path)]
+        if maps:
+            # The map of the bins written from the map of the contigs, as
+            # pipeline --start metacool writes it.
+            if len(pairsfile) > 1:
+                raise mtmc.MetacoolError(
+                    f"metator metacool writes the map from pairs files, or from one .metacool map: got "
+                    f"{len(pairsfile)} files, {len(maps)} of them .metacool maps."
+                )
+            if assembly_name:
+                raise mtmc.MetacoolError(
+                    f"--assembly-name names the assembly of a map written from pairs files: the map written from "
+                    f"{maps[0]} keeps the assembly name of that map."
+                )
+            mtmc.reassign_metacool(maps[0], contig_data, outfile, bin_summary=bin_summary, force=force, metadata=run_metadata())
+        else:
+            mtmc.write_metacool(
+                list(pairsfile),
+                contig_data,
+                outfile,
+                bin_summary=bin_summary,
+                assembly_name=assembly_name,
+                threads=threads,
+                force=force,
+                metadata=run_metadata(),
+            )
     except mtmc.MetacoolError as error:
         # The reason in the log file of the run, then the error.
         logger.error(str(error))

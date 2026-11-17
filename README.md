@@ -195,6 +195,14 @@ from the pairs files, `contig_data_final.txt` and `bin_summary.txt` of a run:
 metator metacool -c contig_data_final.txt -b bin_summary.txt -o sample.metacool alignment_0_sorted.pairs.gz alignment_1_sorted.pairs.gz
 ```
 
+or, for a run that started from a contact map step by step (`network -S metacool`, `partition`,
+`validation`), from that map, as `pipeline -S metacool` writes it (the map keeps its assembly name, so
+`--assembly-name` is refused):
+
+```sh
+metator metacool -c contig_data_final.txt -b bin_summary.txt -o binning.metacool sample.metacool
+```
+
 A `.metacool` file is the contact map format of [metacooler](https://github.com/js2264/metacooler): a
 [cooler](https://github.com/open2c/cooler) whose chromosomes are the contigs, grouped by genome. `cooler`
 and the tools built on it read it as any `.cool` file, and `metacooler` adds the genomes:
