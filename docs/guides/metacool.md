@@ -7,9 +7,22 @@ them: the map of the contigs, in no bin yet (every contig in `__unbinned__`,
 the longest first), with their contacts, the contact statistics that
 metacooler measures on the reads and what metaTOR measures on the assembly
 (`GC_content`, and `Shotgun_coverage` and `Restriction_site` with `--depth`
-and `--enzyme`). At the end of the run, it writes the map of the bins over
-it, from the final tables, with `metacooler reassign`; `--no-metacool`
-removes it instead. Its file is larger than that of a map written from the
+and `--enzyme`). A run with one library reads its network from this map, as a
+run from a map does (see [Starting from a contact map](#starting-from-a-contact-map)):
+`network.txt` and `contig_data_network.txt` are those of its pairs files, byte
+for byte, as `pipeline` counts every pair (`--edge` must be 0, whatever the
+start). It still writes `network_0.txt`, the network of its library, as a copy
+of `network.txt`: its pairs files give the same bytes. A run with several
+libraries still reads its pairs files, for the network of each library
+(`network_N.txt`) and `hit_data_alignment.txt`, which a map of their sum
+cannot give: a later version reads them from one map per library, in a
+`.mmetacool` collection. So a pair on a contig that the assembly lacks is
+left out of a run with one library, as metacooler warns (it counts them, with
+the pairs that have a read past the end of their contig), and the run goes
+on; with several libraries, it stops the run, with a `KeyError`, as it did
+with one. At the end of the run, `pipeline` writes the map of the bins over
+the map of the contigs, from the final tables, with `metacooler reassign`;
+`--no-metacool` removes the map instead. Its file is larger than that of a map written from the
 pairs in one go (by 12 to 32% on our test data), for the same data: the
 columns measured on the assembly, dropped and written again at the end, leave
 free space in it. A `.metacool` file is the contact map format of
@@ -124,14 +137,17 @@ index again, for an assembly given as an index). metacooler, which builds the
 map, finds the compression of a pairs file from the suffix of its name only,
 in any case: it reads a file named `.gz` or `.bgz` as gzip, `.bz2` as bzip2,
 `.zst` or `.zstd` as zstd and `.lz4` as LZ4, and a file of any other name as
-plain text. metaTOR, which reads the network from the pairs files, finds the
-compression of a file from its first bytes, and reads plain, gzip, bzip2 and
-zip files. So a run from pairs refuses, before any work, an empty pairs file;
-a zip archive, which metacooler cannot read; a gzip file whose name ends with
-neither `.gz` nor `.bgz`, and a bzip2 file whose name does not end with
-`.bz2`; a plain file named as a gzip or bzip2 file; and a zstd or LZ4 file,
-which metaTOR cannot read: rename, decompress or recompress the file (with
-gzip, named `.gz`). metacooler also needs the header lines of a pairs file
+plain text. metaTOR, which reads the network of several libraries from their
+pairs files, and the pairs files of `--scaffold`, finds the compression of a
+file from its first bytes, and reads plain, gzip, bzip2 and zip files. So a
+run from pairs refuses, before any work, an empty pairs file; a zip archive,
+which metacooler cannot read; a gzip file whose name ends with neither `.gz`
+nor `.bgz`, and a bzip2 file whose name does not end with `.bz2`; a plain
+file named as a gzip or bzip2 file; and, with several libraries or
+`--scaffold`, a zstd or LZ4 file, which metaTOR cannot read: rename,
+decompress or recompress the file (with gzip, named `.gz`). zstd and LZ4
+files work with one library only, without `--scaffold`: its network comes
+from the map. metacooler also needs the header lines of a pairs file
 (those that start with `#`) at its top only, and the same number of fields on
 every row: give the pairs files of several libraries comma-separated, one file
 per library, rather than concatenated. A run from pairs that metacooler cannot

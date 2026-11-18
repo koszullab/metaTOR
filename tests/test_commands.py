@@ -7,6 +7,7 @@ import gzip
 import metator.cli as mtc
 import metator.io as mio
 import metator.metacool as mtmc
+import metator.network as mtn
 import metacooler
 import pypairix
 import pytest
@@ -203,6 +204,79 @@ def test_network_from_a_metacool(tmp_path, run_cli):
     assert not (outputs["metacool"] / "network_0.txt").exists()
     (log,) = outputs["metacool"].glob("metator_network_*.log")
     assert f"INFO :: Information of {metacool}:" in log.read_text()
+
+
+# The network of pairs files, which network_from_a_map forbids in a run.
+PAIRS_NETWORK = mtn.alignment_to_contacts
+
+# Pipeline runs of one library: their arguments, and the pairs file they
+# build their map from (the run's own, made from alignments or reads).
+PIPELINE_RUNS = {
+    "pairs at position 0": (["-1", "{PAIRS}", "-a", "{FASTA}", "-d", "{DEPTH}", "-S", "pair"], "{PAIRS}"),
+    "subset pairs": (["-1", "{SUBSET_PAIRS}", "-a", "{SUBSET_FASTA}", "-S", "pair"], "{SUBSET_PAIRS}"),
+    "bam": (
+        ["-1", "{BAM_FOR}", "-2", "{BAM_REV}", "-a", "{FASTA}", "-d", "{DEPTH}", "-S", "bam"],
+        "{OUT}/alignment_0_sorted.pairs.gz",
+    ),
+    "fastq": (
+        ["-1", "{FASTQ_FOR}", "-2", "{FASTQ_REV}", "-a", "{FASTA}", "-d", "{DEPTH}", "-S", "fastq", "-t", "4"],
+        "{OUT}/alignment_0_sorted.pairs.gz",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(PIPELINE_RUNS))
+def test_pipeline_network_is_that_of_its_pairs(case, network_from_a_map, tmp_path, run_cli):
+    """A run with one library reads its network from the map of its
+    contigs, which it built from its pairs file: a pairs file of tests_data
+    (alignment.pairs holds reads at position 0), or the one it made of
+    alignments (bam) or reads (fastq). Its network files, network.txt,
+    network_0.txt (the network of its library, a copy of network.txt) and
+    contig_data_network.txt, are, byte for byte, those that the pairs path
+    (alignment_to_contacts, which metator network runs) writes from that
+    pairs file at --edge 0. The run stops at the partition, after which a
+    run from alignments or reads removes contig_data_network.txt."""
+    out = tmp_path / "out"
+    fields = {**global_args, "OUT": out}
+    args, pairs = [arg.format(**fields) for arg in PIPELINE_RUNS[case][0]], PIPELINE_RUNS[case][1].format(**fields)
+    with pytest.raises(RuntimeError, match=r"^network built$"):
+        run_cli("pipeline", *args, "-e", "HindIII,DpnII", "-o", out, "-T", tmp_path / "tmp")
+    assert network_from_a_map == [str(out / "metator.metacool")]
+
+    # The network of the same pairs file, from the pairs.
+    depth = args[args.index("-d") + 1] if "-d" in args else None
+    contig_data, hit_data = mtn.create_contig_data(args[args.index("-a") + 1], 1, depth, "HindIII,DpnII")
+    expected = tmp_path / "expected"
+    (expected / "tmp").mkdir(parents=True)
+    PAIRS_NETWORK([pairs], contig_data, 0, hit_data, str(expected), "network.txt", "contig_data_network.txt",
+                  str(expected / "tmp"), 1, "empirical_hit", False)  # fmt: skip
+    for directory in [out, expected]:
+        assert sorted(path.name for path in directory.glob("network*.txt")) == ["network.txt", "network_0.txt"]
+    for name in ["network.txt", "network_0.txt", "contig_data_network.txt"]:
+        assert (out / name).read_bytes() == (expected / name).read_bytes(), name
+
+
+def test_pipeline_network_of_zstd_pairs(network_from_a_map, tmp_path, run_cli):
+    """A run from a zstd pairs file of one library, which metacooler reads
+    (metaTOR does not): its network, read from its map, is that of the same
+    pairs, plain, byte for byte, network_0.txt included."""
+    import pyarrow as pa
+
+    pairs = tmp_path / "alignment.pairs.zst"
+    with pa.output_stream(str(pairs), compression="zstd") as out:
+        out.write(Path(global_args["PAIRS"]).read_bytes())
+    run = tmp_path / "out"
+    with pytest.raises(RuntimeError, match=r"^network built$"):
+        run_cli("pipeline", "-1", pairs, "-a", global_args["FASTA"], "-d", global_args["DEPTH"], "-S", "pair",
+                "-e", "HindIII,DpnII", "-o", run, "-T", tmp_path / "tmp")  # fmt: skip
+    assert network_from_a_map == [str(run / "metator.metacool")]
+    contig_data, hit_data = mtn.create_contig_data(global_args["FASTA"], 1, global_args["DEPTH"], "HindIII,DpnII")
+    expected = tmp_path / "expected"
+    (expected / "tmp").mkdir(parents=True)
+    PAIRS_NETWORK([global_args["PAIRS"]], contig_data, 0, hit_data, str(expected), "network.txt",
+                  "contig_data_network.txt", str(expected / "tmp"), 1, "empirical_hit", False)  # fmt: skip
+    for name in ["network.txt", "network_0.txt", "contig_data_network.txt"]:
+        assert (run / name).read_bytes() == (expected / name).read_bytes(), name
 
 
 @pytest.mark.parametrize("command", ["network", "pipeline"])

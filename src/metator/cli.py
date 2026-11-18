@@ -202,22 +202,25 @@ METACOOLER_PAIRS_CODECS = {".gz": "gzip", ".bgz": "gzip", ".bz2": "bzip2", ".zst
 SNIFFED_CODECS = {"gz": "gzip", "bz2": "bzip2", "zip": "zip"}
 
 
-def check_pairs_compression(start, forward):
+def check_pairs_compression(start, forward, scaffold=False):
     """Refuse, before any work, a pairs file given to a run from pairs (-1)
     that metacooler, which builds the contact map of the contigs from it,
-    or metaTOR, which reads the network from it, could not read. metacooler
-    finds the compression of a pairs file from the suffix of its name only,
-    in any case (METACOOLER_PAIRS_CODECS); metaTOR finds it from the first
-    bytes of the file (SNIFFED_CODECS), and reads no zstd or lz4. Refused:
-    an empty file; a zip archive, which metacooler cannot read; a gzip or
-    bzip2 file whose name does not end with its extension; a plain file
-    named as a gzip or bzip2 file; and a file named as a zstd or lz4 file,
-    which metaTOR cannot read. The reason, with what to do, is logged as an
-    error, then ValueError is raised. A file that is not there is left to
-    the map, which stops on it."""
+    or metaTOR, which reads the network of several libraries from their
+    pairs files and the pairs files of --scaffold, could not read.
+    metacooler finds the compression of a pairs file from the suffix of its
+    name only, in any case (METACOOLER_PAIRS_CODECS); metaTOR finds it from
+    the first bytes of the file (SNIFFED_CODECS), and reads no zstd or lz4.
+    Refused: an empty file; a zip archive, which metacooler cannot read; a
+    gzip or bzip2 file whose name does not end with its extension; a plain
+    file named as a gzip or bzip2 file; and, with several libraries or
+    --scaffold, a file named as a zstd or lz4 file, which metaTOR cannot
+    read (one library reads its network from the map). The reason, with
+    what to do, is logged as an error, then ValueError is raised. A file
+    that is not there is left to the map, which stops on it."""
     if start != "pair":
         return
-    for path in forward.split(","):
+    files = forward.split(",")
+    for path in files:
         if not os.path.isfile(path):
             continue
         suffix = Path(path).suffix
@@ -242,12 +245,15 @@ def check_pairs_compression(start, forward):
                 f"is not compressed, but metacooler, which builds the contact map of the contigs, would decompress it "
                 f"with {named}, from its {suffix} extension: rename it without {suffix}, or compress it with {named}."
             )
-        elif named in ("zstd", "lz4"):
+        elif named in ("zstd", "lz4") and (len(files) > 1 or scaffold):
             article = "an" if named == "lz4" else "a"
+            reader = (
+                "the network of several libraries from their pairs files" if len(files) > 1 else "the pairs files for --scaffold"
+            )
             reason = (
                 f"is named as {article} {named} file, which metacooler, which builds the contact map of the contigs, reads, "
-                "but not metaTOR, which reads the network from the pairs files: decompress it, or compress it with "
-                "gzip and name it .gz."
+                f"but not metaTOR, which reads {reader}: decompress it, or compress it with gzip and name it .gz (zstd "
+                "and lz4 work with one library only, without --scaffold)."
             )
         else:
             continue
@@ -280,22 +286,43 @@ def check_inputs_not_the_map(start, forward, reverse, metacool):
                 raise ValueError
 
 
-def contig_network(start, forward, alignment_files, contig_data, hit_data, edge, outdir, tmp_dir, threads, *args):
+def contig_network(metacool, alignment_files, contig_data, hit_data, edge, outdir, tmp_dir, threads, *args):
     """network.txt and contig_data_network.txt of a run (args: normalization
-    and self contacts): from its pairs files, or, with --start metacool,
-    from the .metacool map given to --forward (see
-    metator.network.metacool_to_contacts). A map that cannot give them
-    stops the run, as metaTOR stops on an input it cannot use: the reason
-    is logged as an error, in the log file of the run, and its
+    and self contacts): from the .metacool map metacool (see
+    metator.network.metacool_to_contacts) or, without one (None), from the
+    pairs files (alignment_files), at --edge edge, with the network of each
+    library (network_{i}.txt). The map is the one given to --forward
+    with --start metacool, or the map of its contigs that a pipeline run
+    built from its pairs files (see network_map). A map that cannot give
+    them stops the run, as metaTOR stops on an input it cannot use: the
+    reason is logged as an error, in the log file of the run, and its
     MetacoolError is raised, as `metator metacool` does."""
     files = ("network.txt", "contig_data_network.txt")
-    if start != "metacool":
+    if metacool is None:
         return mtn.alignment_to_contacts(alignment_files, contig_data, edge, hit_data, outdir, *files, tmp_dir, threads, *args)
     try:
-        return mtn.metacool_to_contacts(forward, contig_data, outdir, *files, tmp_dir, threads, *args)
+        return mtn.metacool_to_contacts(metacool, contig_data, outdir, *files, tmp_dir, threads, *args)
     except mtmc.MetacoolError as error:
         logger.error(str(error))
         raise
+
+
+def network_map(start, forward, alignment_files, metacool):
+    """The .metacool map that a pipeline run reads its network from: the
+    map given to --forward with --start metacool, or metacool, the map of
+    its contigs that a run from reads, alignments or pairs built from the
+    pairs files of its one library (see pipeline_contig_map): the network
+    of those pairs, byte for byte, as --edge is 0. Such a run still writes
+    network_0.txt, the network of its library, as a copy of network.txt:
+    the pairs path writes the same bytes there. None for a run with
+    several libraries, which still reads its pairs files for now: the
+    network of each library (network_{i}.txt) and its hits
+    (hit_data_alignment.txt), which a map of their sum cannot give. A
+    later version reads them from one map per library, in a .mmetacool
+    collection."""
+    if start == "metacool":
+        return forward
+    return metacool if len(alignment_files) == 1 else None
 
 
 def aligner_mode_for(aligner_mode, enzyme):
@@ -422,8 +449,9 @@ def _failure(error):
 PAIRS_FILES_NEEDS = (
     "metacooler, which builds it, needs each pairs file given to -1 with its header lines (those that start with #) "
     "at its top only and the same number of fields on every row, plain or compressed and named by its extension, "
-    "in any case: gzip (.gz or .bgz) or bzip2 (.bz2). Give the pairs files of several libraries comma-separated, "
-    "one file per library, rather than concatenated."
+    "in any case: gzip (.gz or .bgz), bzip2 (.bz2) or, with one library and without --scaffold, zstd (.zst or .zstd) "
+    "or lz4 (.lz4). Give the pairs files of several libraries comma-separated, one file per library, rather than "
+    "concatenated."
 )
 
 
@@ -897,10 +925,10 @@ def network(
                 threads,
             )
 
-        # Build the network
+        # Build the network: from the pairs files, or from the input map.
         contig_network(
-            start, forward, alignment_files, contig_data, hit_data, edge, outdir, tmp_dir, threads, normalization,
-            self_contacts,
+            forward if start == "metacool" else None, alignment_files, contig_data, hit_data, edge, outdir, tmp_dir,
+            threads, normalization, self_contacts,
         )  # fmt: skip
 
     generate_log_footer(log_file)
@@ -1200,7 +1228,8 @@ def validation(
     is_flag=True,
     help="Do not keep the contact map of the contigs, grouped by bin, as <prefix>.metacool (metator.metacool "
     "without --prefix): a run from reads, alignments or pairs still builds the map of its contigs from the pairs "
-    "files (a map that cannot be built stops the run), and removes it at the end.",
+    "files (a map that cannot be built stops the run), reads the network of one library from it, and removes it at "
+    "the end.",
 )
 def pipeline(
     forward,
@@ -1247,10 +1276,13 @@ def pipeline(
     As soon as it has the pairs files, the run builds the contact map of
     the contigs, in no bin yet, as a .metacool file (see
     [cyan]metator metacool[/] and the README): a map that cannot be built
-    stops the run. At the end, the map of the bins (the contigs grouped by
-    bin) is written over it or, with --no-metacool, it is removed. A run
-    from a .metacool file writes the map of its bins from that map, which
-    it may replace, and cannot scaffold.
+    stops the run. A run with one library reads its network from it; with
+    several, the network still comes from the pairs files, with the
+    network of each library. At the end, the map of the bins (the contigs
+    grouped by bin) is written over it or, with --no-metacool, it is
+    removed. A run from a .metacool file reads its network from that map,
+    writes the map of its bins from it, which it may replace, and cannot
+    scaffold.
     """
     # Private temporary directory inside --tmpdir.
     with private_tmp_dir(tmpdir, clean_up=not no_clean_up) as tmp_dir:
@@ -1275,7 +1307,7 @@ def pipeline(
         check_metacool_start(start, forward, edge, scaffold)
         metacool_file = metacool_path(outdir, prefix)
         check_inputs_not_the_map(start, forward, reverse, metacool_file)
-        check_pairs_compression(start, forward)
+        check_pairs_compression(start, forward, scaffold)
         check_reverse_reads(start, aligner, reverse)
         bins_prefix = bin_prefix(prefix)
 
@@ -1344,10 +1376,27 @@ def pipeline(
             pipeline_contig_map(
                 alignment_files, contig_data, metacool_file, assembly, threads, tmp_dir, given_pairs=start == "pair"
             )
-        # Build the network
+        # Build the network: from the input map or the map of the contigs,
+        # but for a run with several libraries (see network_map).
+        network_source = network_map(start, forward, alignment_files, metacool_file)
         network_file, contigs_data_file = contig_network(
-            start, forward, alignment_files, contig_data, hit_data, edge, outdir, tmp_dir, threads, normalization, False
+            network_source,
+            alignment_files,
+            contig_data,
+            hit_data,
+            edge,
+            outdir,
+            tmp_dir,
+            threads,
+            normalization,
+            False,
         )
+        # network_0.txt, the network of the one library of a run that read
+        # its network from the map of its contigs: a copy of network.txt,
+        # whose bytes the pairs path writes there too. A run from a map
+        # writes none: its libraries are summed.
+        if start != "metacool" and network_source is not None:
+            shutil.copyfile(network_file, join(outdir, "network_0.txt"))
 
         # Partition the network
         clustering_matrix_partition_file, contigs_data_file = mtp.partition(

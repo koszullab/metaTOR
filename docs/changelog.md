@@ -63,21 +63,43 @@ All notable changes to this project will be documented in this file.
   not ASCII, which it gives, before it builds its index or aligns a read:
   the map, which needs ASCII names, could only be built once the reads
   were aligned. From pairs, it refuses an empty pairs file, and one that
-  metacooler, which builds the map, or metaTOR, which reads the network
-  from it, could not read (metacooler goes by the suffix of its name, in
-  any case, metaTOR by the first bytes of the file): a zip archive, a gzip
-  file whose name ends with neither `.gz` nor `.bgz`, a bzip2 file whose
-  name does not end with `.bz2`, a plain file named as one of them, and a
-  zstd or LZ4 file (`.zst`, `.zstd`, `.lz4`), which metaTOR cannot read. A
-  map that metacooler cannot build from the pairs files of a run from
-  pairs stops the run with what it needs of them: their header lines at
-  their top only, the same number of fields on every row, one file per
-  library given comma-separated rather than files concatenated.
+  metacooler, which builds the map, or metaTOR, which reads the network of
+  several libraries from their pairs files and the pairs files of
+  `--scaffold`, could not read (metacooler goes by the suffix of its name,
+  in any case, metaTOR by the first bytes of the file): a zip archive, a
+  gzip file whose name ends with neither `.gz` nor `.bgz`, a bzip2 file
+  whose name does not end with `.bz2`, a plain file named as one of them,
+  and, with several libraries or `--scaffold`, a zstd or LZ4 file (`.zst`,
+  `.zstd`, `.lz4`), which metaTOR cannot read: they work with one library
+  only, whose network comes from the map. A map that metacooler cannot
+  build from the pairs files of a run from pairs stops the run with what
+  it needs of them: their header lines at their top only, the same number
+  of fields on every row, one file per library given comma-separated
+  rather than files concatenated.
 - `pipeline` refuses an `--edge` other than 0 before any work, whatever
   the start (it refused one above 0 with `--start metacool` only, and
   took a negative one as 0): it counts every pair, as its contact map
   does, which holds the contacts of bins, not the positions of
   the reads. `metator network` still applies `--edge` to pairs files.
+- `pipeline` from reads, alignments or pairs with one library reads
+  `network.txt` and `contig_data_network.txt` from its map of the
+  contigs, as a run from a map does, instead of parsing its pairs files
+  again: the same files, byte for byte. It still writes `network_0.txt`,
+  the network of its library, as a copy of `network.txt`, the bytes its
+  pairs files give. A run with several libraries still reads its pairs
+  files, for the network of each library (`network_N.txt`) and
+  `hit_data_alignment.txt`, which a map of their sum cannot give, until it
+  can read them from one map per library, in a `.mmetacool` collection.
+  With one library, a pair on a contig that the assembly lacks is left
+  out, as metacooler warns, where the run stopped on a `KeyError` (as it
+  still does with several libraries), and pairs that make no contact stop
+  the run with an error that says so, where it stopped on a
+  `ZeroDivisionError`. Its log names the map ("Information of
+  <outdir>/metator.metacool:") instead of the pairs file, with the same
+  counts, and no longer has the line that counted the pairs with a read
+  past the end of their contig ("N pairs with a read past the end of its
+  contig are left out."): metacooler's warning, which stays, counts them
+  with the other pairs it leaves out.
 - metaTOR requires metacooler 0.3.0. The `.metacool` maps it writes also
   store the contact statistics of each contig (the `qc_intra_contig_short`
   and `qc_intra_contig_long` columns of the contigs table), which
