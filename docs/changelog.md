@@ -110,6 +110,22 @@ All notable changes to this project will be documented in this file.
   partitioned again, and a bin made at an earlier recursive step `False`.
 - The validation, and `pipeline --scaffold`, leave no pyfastx index
   (`<bin>.fa.fxi`) next to the fasta files of the final bins.
+- The depth file (`--depth`) is read by contig name: it was read line by
+  line, in the order of the assembly, and a depth file in another order
+  gave the contigs the length and coverage of others, without a word. A
+  depth file that lacks a contig of the assembly, or gives it another
+  length, stops the run with an error, and the lengths of the contigs come
+  from the assembly.
+- `network` and `pipeline` read an assembly compressed with gzip, which
+  they refused as not being a FASTA file.
+- The index of the assembly is that of its own name only
+  (`assembly.fa.amb`... for bwa, `assembly.fa.1.bt2`... for bowtie2): with
+  bwa, any bwa index of the directory of the assembly, that of another
+  assembly for instance, was taken for its index, and with bowtie2 any
+  index whose name starts with that of the assembly.
+- `network --self-contacts` leaves out the contacts between contigs within
+  `--edge` of a contig end, as without `--self-contacts`: `--edge` was
+  ignored with it.
 - `metator metacool` and the map of `pipeline` refuse a
   `contig_data_final.txt` whose rows have more or fewer fields than its
   header, which they read shifted or padded, without a word, and one

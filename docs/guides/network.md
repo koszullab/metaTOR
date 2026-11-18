@@ -56,8 +56,7 @@ each contig in each library go to `hit_data_alignment.txt`.
 Each pair with its mates on two different contigs adds a contact between
 them. `--edge` (`-E`, 0 by default) leaves out the pairs with a mate within
 that many base pairs of the end of its contig; `--self-contacts` (`-s`) adds
-the contacts of each contig with itself, and then keeps every pair, whatever
-`--edge`.
+the contacts of each contig with itself, which `--edge` does not concern.
 
 `network.txt` holds the network, one line per pair of contigs in contact: the
 IDs of the two contigs (as in the contig data table, from 1) and the

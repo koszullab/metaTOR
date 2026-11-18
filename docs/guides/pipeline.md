@@ -55,8 +55,6 @@ bowtie2 or bwa index (with bwa, `<basename>.fa` or `<basename>.fasta` must be
 next to it). From a FASTA file, an index found next to it (as
 `bwa index assembly.fa` or `bowtie2-build assembly.fa assembly.fa` writes it)
 is used, and otherwise one is built in the temporary directory, at every run.
-With bwa, any bwa index in the directory of the assembly is taken for its
-index: keep the index of another assembly elsewhere.
 
 ## Outputs
 

@@ -1,6 +1,7 @@
 # Test for network module
 
 import collections
+import gzip
 import metator.io as mio
 import numpy as np
 import metator.network as mtn
@@ -9,6 +10,7 @@ import pytest
 import os
 import shutil
 from os.path import join
+from pathlib import Path
 
 
 assembly = "tests_data/assembly.fa"
@@ -287,6 +289,68 @@ def test_edge_region(edge, tmp_path):
                               str(tmp_path), 1, "None", False)  # fmt: skip
     assert (tmp_path / "network.txt").read_text() == f"1\t2\t{4 if edge == 0 else 1}\n"
     assert contig_data["c1"]["hit"] == contig_data["c2"]["hit"] == 4
+
+
+@pytest.mark.parametrize("edge", [0, 10])
+def test_edge_region_with_self_contacts(edge, tmp_path):
+    """With self contacts, the pairs within a contig are kept, and --edge
+    leaves out the contacts between contigs near a contig end, as without:
+    it was ignored with --self-contacts."""
+    assembly_file = tmp_path / "assembly.fa"
+    assembly_file.write_text(">c1\n" + "A" * 100 + "\n>c2\n" + "C" * 200 + "\n")
+    pairs = tmp_path / "test.pairs"
+    pairs.write_text(
+        "## pairs format v1.0\n"
+        "r1\tc1\t50\tc2\t100\t+\t-\n"  # inside
+        "r4\tc1\t5\tc2\t195\t+\t-\n"  # within 10 bp of an end
+        "r6\tc1\t5\tc1\t60\t+\t-\n"  # within c1, near its start
+    )
+    contig_data, hit_data = mtn.create_contig_data(str(assembly_file), 1)
+    mtn.alignment_to_contacts([str(pairs)], contig_data, edge, hit_data, str(tmp_path), "network.txt", "contigs.txt",
+                              str(tmp_path), 1, "None", True)  # fmt: skip
+    assert (tmp_path / "network.txt").read_text() == f"1\t1\t1\n1\t2\t{2 if edge == 0 else 1}\n"
+
+
+def test_create_contig_data_reads_the_depth_file_by_name(tmp_path):
+    """The depth file is read by contig name: in another order, it gives the
+    same lengths and coverages. It was read line by line, in the order of
+    the assembly, and gave each contig the coverage of another."""
+    header, *lines = Path(depth_file).read_text().splitlines(keepends=True)
+    reversed_depth = tmp_path / "depth.txt"
+    reversed_depth.write_text(header + "".join(reversed(lines)))
+    expected, _ = mtn.create_contig_data(assembly, 1, depth_file, "DpnII")
+    found, _ = mtn.create_contig_data(assembly, 1, str(reversed_depth), "DpnII")
+    assert found == expected
+    assert found["NODE_522"]["coverage"] == 4.76595
+
+
+@pytest.mark.parametrize(
+    "case, message",
+    [
+        ("missing", "1 contigs of the assembly are not in the depth file"),
+        ("other length", "1 contigs of the assembly have another length in the depth file"),
+    ],
+)
+def test_create_contig_data_refuses_the_depth_file_of_another_assembly(case, message, tmp_path, caplog):
+    header, first, *lines = Path(depth_file).read_text().splitlines(keepends=True)
+    if case == "other length":
+        name, length, *rest = first.split("\t")
+        lines.append("\t".join([name, str(int(length) + 1), *rest]))
+    other = tmp_path / "depth.txt"
+    other.write_text(header + "".join(lines))
+    with caplog.at_level("INFO", logger="metator_logger"), pytest.raises(ValueError, match="is not that of the assembly"):
+        mtn.create_contig_data(assembly, 1, str(other))
+    assert f"{message} {other}, such as NODE_522" in caplog.text
+
+
+def test_create_contig_data_from_a_compressed_assembly(tmp_path):
+    """A gzipped assembly gives the same contig data as the uncompressed one."""
+    compressed = tmp_path / "assembly.fa.gz"
+    with open(assembly, "rb") as fasta, gzip.open(compressed, "wb") as gz:
+        shutil.copyfileobj(fasta, gz)
+    assert mtn.create_contig_data(str(compressed), 2, depth_file, "DpnII") == mtn.create_contig_data(
+        assembly, 2, depth_file, "DpnII"
+    )
 
 
 def test_write_contig_data():

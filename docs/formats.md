@@ -6,9 +6,8 @@ The files metaTOR reads and writes. Every table is tab-separated.
 
 ### Assembly
 
-An uncompressed FASTA file of the contigs (`network` and `pipeline` refuse a
-compressed one), or the basename of its bowtie2
-or bwa index (`--assembly`). Contig names must be ASCII for the contact map
+A FASTA file of the contigs, compressed with gzip or not, or the basename of
+its bowtie2 or bwa index (`--assembly`). Contig names must be ASCII for the contact map
 of the bins (see [Names and failures](guides/metacool.md#names-and-failures)).
 
 ### Depth
@@ -21,11 +20,11 @@ contigName	contigLen	totalAvgDepth	sample.bam	sample.bam-var
 NODE_522	22786	4.76595	4.76595	15.5294
 ```
 
-metaTOR reads its lines in the order of the contigs of the assembly, not by
-name: they must list the same contigs, in the same order, as
-`jgi_summarize_bam_contig_depths` does from reads aligned on that assembly.
-It takes the size of each contig from the second column and its coverage
-from the third.
+metaTOR reads the length and the coverage of each contig, by name, from the
+first three columns. It must hold every contig of the assembly, with its
+length, as `jgi_summarize_bam_contig_depths` writes it from reads aligned on
+that assembly: a run with the depth file of another assembly stops with an
+error.
 
 ### Pairs
 

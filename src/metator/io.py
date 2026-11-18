@@ -37,7 +37,6 @@ import pandas as pd
 import pathlib
 import pypairix
 import pysam
-import re
 import shutil
 import subprocess as sp
 import zipfile
@@ -68,15 +67,20 @@ def check_fasta_index(ref, mode="bowtie2"):
         The bowtie2 or bwa index basename. None if no index was found
     """
     ref = pathlib.Path(ref)
+    # The files of the index of ref itself: those of another index of its
+    # directory (another assembly's) are not its index.
     if mode == "bowtie2":
-        # Bowtie2 should have 6 index files
-        bt2_idx_files = list(ref.parent.glob("{}*bt2*".format(ref.name)))
-        index = None if len(bt2_idx_files) < 6 else bt2_idx_files
+        # Bowtie2 has 6 index files, .bt2l for a large index.
+        suffixes = ["1", "2", "3", "4", "rev.1", "rev.2"]
+        index = None
+        for ext in ["bt2", "bt2l"]:
+            bt2_idx_files = [pathlib.Path(f"{ref}.{suffix}.{ext}") for suffix in suffixes]
+            if all(path.is_file() for path in bt2_idx_files):
+                index = bt2_idx_files
+                break
     elif mode == "bwa":
-        refdir = str(ref.parent)
-        refdir_files = os.listdir(refdir)
-        bwa_idx_files = [join(refdir, f) for f in refdir_files if re.search(r".*\.(sa|pac|bwt|ann|amb)$", f)]
-        index = None if len(bwa_idx_files) < 5 else bwa_idx_files
+        bwa_idx_files = [pathlib.Path(f"{ref}.{ext}") for ext in ["amb", "ann", "bwt", "pac", "sa"]]
+        index = bwa_idx_files if all(path.is_file() for path in bwa_idx_files) else None
     else:
         index = [ref]
     if index is not None:
@@ -103,7 +107,7 @@ def check_is_fasta(in_file):
         True if the input is in fasta format, False otherwise
     """
     try:
-        with open(in_file, "r") as handle:
+        with read_compressed(in_file) as handle:
             test = any(SeqIO.parse(handle, "fasta"))
     # Biopython >= 1.87 raises ValueError on any text before the first '>'
     # line, blank or '#' lines included. Earlier versions skipped that text

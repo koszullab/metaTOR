@@ -35,6 +35,29 @@ def test_check_fasta_index(tmp_path, monkeypatch):
     assert mio.check_fasta_index("../missing") is None
 
 
+def test_check_fasta_index_of_the_reference_only(tmp_path):
+    """Only the index of the reference itself is its index: another index of
+    its directory, that of another assembly, was taken for it."""
+    for suffix in ["1.bt2", "2.bt2", "3.bt2", "4.bt2", "rev.1.bt2", "rev.2.bt2"]:
+        (tmp_path / f"other.fa.{suffix}").touch()
+        (tmp_path / f"assembly.fa2.{suffix}").touch()
+    for suffix in ["amb", "ann", "bwt", "pac", "sa"]:
+        (tmp_path / f"other.fa.{suffix}").touch()
+    fasta = str(tmp_path / "assembly.fa")
+    assert mio.check_fasta_index(fasta, mode="bwa") is None
+    assert mio.check_fasta_index(fasta, mode="bowtie2") is None
+    # A large bowtie2 index.
+    for suffix in ["1", "2", "3", "4", "rev.1", "rev.2"]:
+        (tmp_path / f"assembly.fa.{suffix}.bt2l").touch()
+    assert mio.check_fasta_index(fasta, mode="bowtie2") == fasta
+    # An incomplete bwa index.
+    for suffix in ["amb", "ann", "bwt", "pac"]:
+        (tmp_path / f"assembly.fa.{suffix}").touch()
+    assert mio.check_fasta_index(fasta, mode="bwa") is None
+    (tmp_path / "assembly.fa.sa").touch()
+    assert mio.check_fasta_index(fasta, mode="bwa") == fasta
+
+
 def test_check_is_fasta(tmp_path):
     fasta = tmp_path / "contigs.fa"
     fasta.write_text(">c1\nACGT\n")
@@ -43,6 +66,11 @@ def test_check_is_fasta(tmp_path):
     assert mio.check_is_fasta(str(fasta))
     assert not mio.check_is_fasta(str(other))
     assert not mio.check_is_fasta(str(tmp_path / "missing.fa"))
+    # A gzipped fasta is a fasta.
+    compressed = tmp_path / "contigs.fa.gz"
+    with gzip.open(compressed, "wt") as gz:
+        gz.write(">c1\nACGT\n")
+    assert mio.check_is_fasta(str(compressed))
 
 
 def test_check_pypairix():
