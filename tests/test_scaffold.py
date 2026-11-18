@@ -2,6 +2,7 @@
 # order and orientation, are put back together from their Hi-C contacts.
 
 import shutil
+from pathlib import Path
 
 import numpy as np
 import pyfastx
@@ -131,6 +132,19 @@ def test_parallel_scaffold_default_outputs(tmp_path):
     mts.parallel_scaffold("bin_1", str(final_dir), [str(pairs)], str(out_dir), "NNNNN")
     _assert_scaffold_is_the_genome(out_dir / "bin_1_scaffolded.fa", community, "NNNNN")
     assert (out_dir / "bin_1_info_frags.txt").stat().st_size > 0
+    # pyfastx indexed the fasta of the bin: the index is not left next to it.
+    assert sorted(path.name for path in final_dir.iterdir()) == ["bin_1.fa"]
+
+
+def test_scaffold_keeps_an_existing_index(tmp_path):
+    """An index of the bin that was there before the scaffolding stays."""
+    community = _genome(seed=8, circular=True)
+    assembly, pairs = _inputs(community, tmp_path / "inputs")
+    pyfastx.Fasta(str(assembly))
+    out_fasta = tmp_path / "scaffold.fa"
+    mts.get_scaffolds("bin", str(assembly), [str(pairs)], str(out_fasta), str(tmp_path / "frags.txt"), junctions="NNNNN")
+    _assert_scaffold_is_the_genome(out_fasta, community, "NNNNN")
+    assert Path(f"{assembly}.fxi").exists()
 
 
 def test_scaffold_joins_contig_starts(tmp_path):

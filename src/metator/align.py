@@ -147,10 +147,9 @@ def get_contact_pairs(
 ):
     """General function to do the whole alignment of both fastq.
 
-    The Function write at the output directory location given as an argument and
-    return a tsv file of the aligned reads with 9 columns: ReadID, ContigA,
-    Position_startA, Position_endA, StrandA, ContigB, Position_startB,
-    Position_endB, StrandB. The name of the file will be alignment.txt.
+    The function writes, in the output directory, the pairs of each library
+    i, sorted, compressed and indexed: alignment_<i>_sorted.pairs.gz, with 7
+    columns: readID, chr1, pos1, chr2, pos2, strand1, strand2.
 
     Two start stages are possible, from fastq or bam files.
 
@@ -190,9 +189,7 @@ def get_contact_pairs(
     Returns
     -------
     list of str:
-        List of path of the Files with the table containing the alignement data
-        of the pairs: ReadID, ContigA, Position_startA, Position_endA, StrandA,
-        ContigB, Position_startB, Position_endB, StrandB.
+        List of the paths of the pairs files, one per library.
     dict:
         Dictionnary of the all the contigs from the assembly, the contigs names
         are the keys to the data of the contig available with the following
@@ -202,9 +199,10 @@ def get_contact_pairs(
         Dictionnary for hit information on each contigs.
     """
 
-    # Iterates on all the input files:
+    # Iterates on all the input files. A BAM file of bwa holds both mates: it
+    # has no reverse file.
     for_list = for_in.split(",")
-    rev_list = rev_in.split(",")
+    rev_list = rev_in.split(",") if rev_in else []
     out_file_list = []
     total_aligned_pairs = 0
 
@@ -344,21 +342,22 @@ def max_read_length(fastq):
 
 
 def merge_alignment(forward_aligned, reverse_aligned, contig_data, out_file):
-    """Merge forward and reverse alignment into one file with only pairs which
-    have both reads are aligned on the genome with 9 columns: ReadID, ContigA,
-    Position_startA, Position_endA, StrandA, ContigB, Position_startB,
-    Position_endB, StrandB.
+    """Merge the forward and reverse alignments into a pairs file of the pairs
+    whose two reads are aligned, with 7 columns: readID, chr1, pos1, chr2,
+    pos2, strand1, strand2. The positions are 1-based, and each pair is
+    written in the upper triangle: the first contig of the assembly first,
+    or the leftmost read first on the same contig.
 
     Parameters
     ----------
-    forward_alignement : str
-        File with the table containing the data of the forward reads kept after
-        the alignment. With five columns: ReadID, Contig, Position_start,
-        Position_end, strand.
-    reverse_alignement : str
-        File with the table containing the data of the forward reads kept after
-        the alignment. With five columns: ReadID, Contig, Position_start,
-        Position_end, strand.
+    forward_aligned : str
+        File with the table of the forward reads kept after the alignment,
+        sorted by read name as ``samtools sort -n`` sorts them (see
+        process_bamfile). With four columns: ReadID, Contig, Position_start
+        (0-based), Strand.
+    reverse_aligned : str
+        File with the table of the reverse reads kept after the alignment,
+        sorted and with columns as forward_aligned.
     contig_data : dict
         Dictionary of the all the contigs from the assembly, the contigs names
         are the keys to the data of the contig available with the following
@@ -369,10 +368,8 @@ def merge_alignment(forward_aligned, reverse_aligned, contig_data, out_file):
 
     Returns
     -------
-    str:
-        File with the table containing the alignement data of the pairs: ReadID,
-        ContigA, Position_startA, Position_endA, StrandA, ContigB,
-        Position_startB, Position_endB, StrandB
+    int:
+        Number of pairs written.
     """
 
     # Open files for reading and writing.
@@ -447,9 +444,9 @@ def process_bamfile(alignment, min_qual, filtered_out):
 
     Reads all the reads in the input BAM alignment file. Keep reads in the
     output if they are aligned with a good quality (greater than min quality
-    threshold given) saving their only some columns: ReadID, Contig,
-    Position_start, Position_end, strand to save memory. Only the first such
-    alignment of a read is kept.
+    threshold given) saving only four columns: ReadID, Contig, Position_start
+    (0-based), Strand, to save memory. Only the first such alignment of a read
+    is kept.
 
     Parameters
     ----------
@@ -499,10 +496,11 @@ def process_bamfile(alignment, min_qual, filtered_out):
 def process_bwa_bamfile(alignment, min_qual, contig_data, out_file):
     """Filter alignment BAM files
 
-    Reads all the reads in the input BAM alignment file. Keep reads in the
-    output if they are aligned with a good quality (greater than min quality
-    threshold given) saving their only some columns: ReadID, Contig,
-    Position_start, Position_end, strand to save memory.
+    Reads the input BAM alignment file of bwa, whose two mates of each pair
+    follow each other (sorted by read name), and writes the pairs whose two
+    reads are aligned with a good quality (greater than min quality threshold
+    given) as a pairs file of 7 columns: readID, chr1, pos1, chr2, pos2,
+    strand1, strand2. The supplementary alignments are skipped.
 
     Parameters
     ----------

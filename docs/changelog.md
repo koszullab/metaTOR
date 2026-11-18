@@ -45,14 +45,97 @@ All notable changes to this project will be documented in this file.
   On `tests_data/alignment.pairs`, 360 of 13,415 edges change (298 new,
   62 of another weight), from its 472 pairs between two contigs with a
   read at position 0.
+- The documentation moves from Read the Docs to GitHub Pages, at
+  <https://koszullab.github.io/metator/>: Markdown pages in `docs/`, built
+  by Zensical with chromokit, the look of metacooler's documentation
+  (`uv sync --extra docs`, then `uv run zensical serve`). It holds a
+  quickstart, the concepts of the binning, a guide per step and command,
+  the CLI reference, the file formats, and the Python API reference,
+  written from the docstrings. The tutorials of `docs/example/` are guides
+  in `docs/guides/`, brought up to date with the commands and outputs of
+  this version, the changelog is `docs/changelog.md`, and `CONTRIBUTING.md`
+  points to the contributing guide of the site. `tests/test_docs.py` checks
+  the CLI reference against the CLI. The docstrings that disagreed with
+  their code (`metator.align.get_contact_pairs`, `merge_alignment`,
+  `process_bamfile` and `process_bwa_bamfile`,
+  `metator.scaffold.parallel_scaffold` and
+  `metator.validation.correct_final_bin`) are corrected.
+- Python API: `metator.validation.recursive_clustering` takes the
+  clustering matrix of the earlier recursive steps (`clustering_matrix`)
+  and returns it, updated, instead of writing
+  `clustering_matrix_recursive.npz`, which `recursive_decontamination`
+  writes once, at the end.
 
 ### Removed
 - Python API: the CheckM functions (`metator.validation.checkm` and
   `checkm_compare_bins`, `metator.io.check_checkm` and
   `read_results_checkm`), unused since miComplete replaced CheckM, and
   `metator.partition.spinglass_partition`, whose body was commented out.
+- The Sphinx documentation of Read the Docs (`docs/conf.py`,
+  `docs/index.rst`, `docs/api/*.rst`, `docs/requirements.txt`...), and the
+  scripts of the curation tutorial, `docs/example/scripts/`:
+  `anvio_figures.py` read CheckM's results with `read_results_checkm`,
+  removed above, and `checkM.sh` ran CheckM. The curation guide checks the
+  curated bins with miComplete, through the Python API, instead.
 
 ### Fixed
+- `network` and `pipeline --start bam --aligner bwa` no longer fail without
+  `--reverse` (`AttributeError: 'NoneType' object has no attribute
+  'split'`): a BAM file of bwa holds both mates. `pipeline` requires
+  `--forward`, as `network` does: a run without it failed with the same
+  error.
+- `validation` and `pipeline --cluster-matrix` no longer fail as soon as a
+  bin is partitioned again (`ValueError: axis 1 index … exceeds matrix
+  dimension 2`): the clustering matrix of the recursive partition was built
+  2 columns wide. It now holds the pairs of contigs of every bin partitioned
+  again, with the values of its latest partition: each recursive step
+  overwrote the matrix of the steps before, usually with an empty one, as
+  the last step partitions no bin.
+- `binning.txt` holds every contig of the final bins, as
+  `contig_data_final.txt` does: the contigs of a bin partitioned again but
+  kept whole, which had gone to a recursive part, were left out. Python
+  API: `metator.validation.write_bins_contigs` writes the `Final_bin` of the
+  contigs, and no longer takes `prefix`.
+- The log of the validation counts the bins in the quality classes of
+  `plot/bins_size_distribution.png` (`metator.figures.bin_quality`, the
+  contamination being the weighted redundancy − 1). It counted as HQ the
+  bins of 90% completeness or more with a contamination above 5%, and as MQ
+  those of 5% or less, and divided the contamination by the completeness,
+  where the plot does not.
+- `metator validation --help` and the docstrings of `metator.validation`
+  give the rule of the recursive partition: a weighted completeness of 33%,
+  not 50%, and the completeness its parts must keep.
+- The `recursive` column of `bin_summary.txt` says whether the bin comes
+  from the recursive partition: every bin read `True` when no bin was
+  partitioned again, and a bin made at an earlier recursive step `False`.
+- The validation, and `pipeline --scaffold`, leave no pyfastx index
+  (`<bin>.fa.fxi`) next to the fasta files of the final bins.
+- The depth file (`--depth`) is read by contig name: it was read line by
+  line, in the order of the assembly, and a depth file in another order
+  gave the contigs the length and coverage of others, without a word. A
+  depth file that lacks a contig of the assembly, or gives it another
+  length, stops the run with an error, and the lengths of the contigs come
+  from the assembly.
+- `network` and `pipeline` read an assembly compressed with gzip, which
+  they refused as not being a FASTA file.
+- The index of the assembly is that of its own name only
+  (`assembly.fa.amb`... for bwa, `assembly.fa.1.bt2`... for bowtie2): with
+  bwa, any bwa index of the directory of the assembly, that of another
+  assembly for instance, was taken for its index, and with bowtie2 any
+  index whose name starts with that of the assembly.
+- `network --self-contacts` leaves out the contacts between contigs within
+  `--edge` of a contig end, as without `--self-contacts`: `--edge` was
+  ignored with it.
+- `contactmap --object recursive_bin` selects the recursive bin within its
+  overlapping bin: recursive bins are numbered within their overlapping
+  bin, and the recursive bins of the same number of every overlapping bin
+  were mapped together. It needs the name of the bin
+  (`metator_00012_00003`), and the names of bins with a `--prefix` holding
+  `_` are read right. The fasta file of the map is named after `--name`.
+- `qc` says why it checks nothing: it logged `No MAGs have been found.`
+  whatever the reason (no high-quality MAG, no contig of more than 100 kb,
+  or no pair between them), and logs the thresholds given with
+  `--threshold` too.
 - `metator metacool` and the map of `pipeline` refuse a
   `contig_data_final.txt` whose rows have more or fewer fields than its
   header, which they read shifted or padded, without a word, and one

@@ -11,7 +11,7 @@
 Metagenomic Tridimensional Organisation-based Reassembly - A set of scripts that streamlines the processing and binning of metagenomic metaHiC datasets.
 
 <p align="center">
-  <img src="docs/example/images/metator_logo.png" width="200">
+  <img src="docs/images/metator_logo.png" width="200">
 </p>
 
 1. [Installation](#installation)
@@ -112,7 +112,7 @@ There are a number of other, optional, miscellaneous actions:
 
 ### Principle of MetaTOR pipeline
 
-![pipeline](docs/example/images/pipeline.png)
+![pipeline](docs/images/pipeline.png)
 
 ### Output files
 
@@ -332,7 +332,7 @@ metator pipeline -S metacool -1 sample.metacool -a assembly.fa -e DpnII -o binni
 
 #### Principle of mge binning
 
-![pipeline](docs/example/images/metator_mge.png)
+![pipeline](docs/images/metator_mge.png)
 
 #### Usage of mge
 
@@ -357,9 +357,9 @@ This is the summary of the data of the final mge bins build with the specific co
 
 different tutorials are available to explain how to use metator:
 
-* metator pipeline: [here](docs/example/metator_tutorial.md)
-* [Anvio](https://merenlab.org/software/anvio/) manual curation of the contaminated bins: [here](docs/example/manual_curation_of_metator_MAGs.md).
-* Visualization of the MAGs with the contactmap modules of MetaTOR: [here](docs/example/MAG_visualization_and_scaffolding.md).
+* metator pipeline: [here](docs/guides/pipeline.md)
+* [Anvio](https://merenlab.org/software/anvio/) manual curation of the contaminated bins: [here](docs/guides/curation.md).
+* Visualization of the MAGs with the contactmap modules of MetaTOR: [here](docs/guides/visualisation.md).
 
 
 ## Contributions 

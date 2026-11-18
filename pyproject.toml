@@ -59,22 +59,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# The documentation site (docs/, zensical.toml): `uv sync --extra docs`, then
+# `uv run zensical serve`.
 docs = [
-    'autodoc',
-    'sphinx-autoapi',
-    "autodocsumm",
-    "sphinxcontrib-napoleon",
-    "m2r",
-    "recommonmark",
-    "Sphinx>=1.6",
-    "sphinx-autobuild",
-    "sphinx-click",
-    "furo",
-    "pydata-sphinx-theme",
-    "sphinx-rtd-theme",
-    "myst-parser",
-    "nbsphinx",
-    "lxml[html_clean]",
+    "zensical>=0.0.43",
+    "mkdocstrings[python]>=0.25",
 ]
 
 [dependency-groups]
@@ -90,9 +79,9 @@ dev = [
 
 [project.urls]
 homepage = "https://github.com/koszullab/metator"
-documentation = "https://github.com/koszullab/metator"
+documentation = "https://koszullab.github.io/metator"
 repository = "https://github.com/koszullab/metator"
-changelog = "https://github.com/koszullab/metaTOR/blob/master/CHANGELOG.md"
+changelog = "https://koszullab.github.io/metator/changelog/"
 
 [project.scripts]
 metator = "metator.cli:cli"
@@ -106,7 +95,7 @@ path = "src/metator/version.py"
 exclude = [
     "/.github",
     "/tests_data",
-    "/docs/example/images",
+    "/docs/images",
 ]
 
 [tool.ruff]
@@ -183,7 +172,13 @@ search = '__version__ = "{current_version}"'
 replace = '__version__ = "{new_version}"'
 
 [[tool.bumpversion.files]]
+# The version the documentation's header and footer show.
+filename = "zensical.toml"
+search = 'release = "{current_version}"'
+replace = 'release = "{new_version}"'
+
+[[tool.bumpversion.files]]
 # Promote the "Unreleased" entries to a dated section and open a fresh one.
-filename = "CHANGELOG.md"
+filename = "docs/changelog.md"
 search = "## Unreleased"
 replace = "## Unreleased\n\n## [{new_version}] - {now:%Y-%m-%d}"

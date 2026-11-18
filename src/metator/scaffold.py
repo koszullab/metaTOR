@@ -24,7 +24,7 @@ import pyfastx
 from metator.regions import Bin, Scaffold
 from metator.log import logger
 from typing import List, Optional
-from os.path import join
+from os.path import exists, join
 
 
 def get_scaffolds(
@@ -65,6 +65,9 @@ def get_scaffolds(
     junctions : Optional[str]
         Sequence to put between two contigs. [Default: None]
     """
+    # pyfastx indexes the fasta of the bin next to it: the index is removed at
+    # the end, unless it was there before.
+    indexed = exists(f"{fasta_bin}.fxi")
     fasta = pyfastx.Fasta(fasta_bin)
     bin = Bin(bin_name, fasta)
     pairs_data = []
@@ -85,6 +88,8 @@ def get_scaffolds(
         junctions = ""
     write_info_frags(scaffolds, out_info)
     write_scaffolds_fasta(scaffolds, out_fasta, fasta, junctions)
+    if not indexed:
+        mio.remove_pyfastx_index(fasta_bin)
 
 
 def parallel_scaffold(
@@ -103,13 +108,12 @@ def parallel_scaffold(
         Name of the bin
     final_fasta_dir : str
         Folder path to the fasta sequences of the bin contigs.
-    alignment_files : str
+    alignment_files : List of str
         List of path to the pair file to pair file. If not sorted and indexed it
         will be sorted and indexed.
     scaffold_fasta_dir : str
-        Folder path to write the fasta and table output.
-    out_info : str
-        Path to write the info frags file.
+        Folder path to write the fasta and table output: <bin_name>_scaffolded.fa
+        and <bin_name>_info_frags.txt.
     junctions : Optional[str]
         Sequence to put between two contigs. [Default: None]
     """

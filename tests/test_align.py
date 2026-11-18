@@ -197,6 +197,29 @@ def test_process_bwa_bamfile(tmp_path):
     ]
 
 
+def test_get_contact_pairs_bwa_bam_without_reverse(tmp_path):
+    """The BAM file of bwa holds both mates: --start bam needs no reverse
+    file with bwa. Without one, the run failed (AttributeError: 'NoneType'
+    object has no attribute 'split')."""
+    assembly = tmp_path / "assembly.fa"
+    assembly.write_text(f">c1\n{'ACGT' * 2_500}\n>c2\n{'ACGT' * 5_000}\n")
+    bam = tmp_path / "alignment.bam"
+    _write_bam(bam, [("r1", 0, 100, 65), ("r1", 1, 5000, 145), ("r2", 1, 300, 65), ("r2", 1, 200, 129)])
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    pairs_files, contig_data, hit_data = mta.get_contact_pairs(
+        str(bam), None, None, str(assembly), "bwa", "normal", 30, "bam", None, None, str(out_dir), str(tmp_path), 1
+    )
+    (pairs_file,) = pairs_files
+    with gzip.open(pairs_file, "rt") as pairs:
+        rows = [line.split() for line in pairs if not line.startswith("#")]
+    assert sorted(rows) == [
+        ["r1", "c1", "101", "c2", "5001", "+", "-"],
+        ["r2", "c2", "201", "c2", "301", "+", "+"],
+    ]
+    assert sorted(contig_data) == ["c1", "c2"] and hit_data is None
+
+
 def test_process_bamfile(tmp_path):
     """Keeps primary alignments (flag 0 or 16) above the quality threshold."""
     bam = tmp_path / "for.bam"

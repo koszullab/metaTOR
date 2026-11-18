@@ -491,7 +491,7 @@
       "takes_value": true,
       "metavar": "STR",
       "default": null,
-      "required": false
+      "required": true
      },
      {
       "short": "-i",

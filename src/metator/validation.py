@@ -6,10 +6,12 @@ decontaminate them.
 
 General functions to validate bins completion using miComplete and make
 recursive iterations of Louvain or Leiden to try to partition contaminated bins.
-Only bins with more than 50% completion and 5% contamination are subject to the
-recursive step. If the recursive step gave worst results than the first
-(decrease of the completion with no decrease of the contamination), it will keep
-the original bin.
+Only bins with a weighted completeness of at least 33% and a contamination,
+(weighted redundancy - 1) / weighted completeness, of at least 5% are subject to
+the recursive step. Its bins replace the original bin when the most complete of
+them keeps enough of its completeness, more than 0.4 + (c - 0.4) / 1.6 for a
+bin of completeness c; otherwise the original bin is kept. The step repeats on
+the new bins, 9 times at most.
 
 
 Functions in this module:
@@ -22,6 +24,7 @@ Functions in this module:
     - recursive_clustering
     - recursive_clustering_worker
     - recursive_decontamination
+    - replace_clustering_values
     - update_contigs_data_recursive
     - write_bins_contigs
 """
@@ -49,14 +52,18 @@ FASTA_EXTENSIONS = (".fa", ".fasta", ".fna")
 
 
 def correct_final_bin(contigs_data, final_fasta_dir, bin_summary):
-    """Function to compute the coverage of each bin.
+    """Function to set the final bin of each contig from the fasta files of
+    the final bins: the contigs of <final_fasta_dir>/<bin>.fa get the bin as
+    Final_bin.
 
     Parameters:
     -----------
-    bin_summary : dict
-        Dictionnary with the informations of the final bins kept by MetaTOR.
     contigs_data : pandas.core.frame.DataFrame
         Dataframe with the contigs informations.
+    final_fasta_dir : str
+        Path to the directory of the fasta files of the final bins.
+    bin_summary : dict
+        Dictionnary with the informations of the final bins kept by MetaTOR.
 
     Returns:
     --------
@@ -66,9 +73,9 @@ def correct_final_bin(contigs_data, final_fasta_dir, bin_summary):
     contigs_data = contigs_data.set_index("Name", drop=False)
     for bin_name in bin_summary:
         fasta_file = join(final_fasta_dir, f"{bin_name}.fa")
-        fasta = pyfastx.Fasta(fasta_file)
-        for seq in fasta:
-            contigs_data.loc[seq.name, "Final_bin"] = bin_name
+        # Read without an index, which would be left next to the bin.
+        for name, _ in pyfastx.Fasta(fasta_file, build_index=False):
+            contigs_data.loc[name, "Final_bin"] = bin_name
     contigs_data = contigs_data.reset_index(drop=True)
     return contigs_data
 
@@ -124,59 +131,35 @@ def get_bin_coverage(bin_summary, contigs_data):
 
 
 def give_results_info(bin_summary):
-    """Function to return the general information about the binning results.
+    """Function to return the general information about the binning results:
+    the number and total size of the bins of each quality class (see
+    metator.figures.bin_quality), in the log.
 
     Parameters:
     -----------
     bin_summary : dict
         Dictionnary with the summary results of the kept bins.
     """
-
-    # Defined categories of the bins
-    HQ = 0  # Completness >= 90 and Contamination <= 5
-    total_size_HQ = 0
-    MQ = 0  # Completness >= 70 and Contamination <= 10
-    total_size_MQ = 0
-    LQ = 0  # Completness >= 50 and Contamination <= 10
-    total_size_LQ = 0
-    conta_bins = 0  # Completness >= 50 and Contamination > 10
-    total_size_conta_bins = 0
-    others = 0  # Not determined bins.
-    total_size_others = 0
-
-    # Class each bin in a category
-    for bin_name in bin_summary:
-        completness = float(bin_summary[bin_name]["Weighted completeness"])
-        contamination = float(bin_summary[bin_name]["Weighted redundancy"])
-        size = int(bin_summary[bin_name]["Length"])
-        if completness >= 0.5:
-            if ((contamination - 1) / completness) > 0.1:
-                conta_bins += 1
-                total_size_conta_bins += size
-            else:
-                if completness >= 0.9 and ((contamination - 1) / completness) > 0.05:
-                    HQ += 1
-                    total_size_HQ += size
-                elif completness >= 0.7:
-                    MQ += 1
-                    total_size_MQ += size
-                else:
-                    LQ += 1
-                    total_size_LQ += size
-        else:
-            others += 1
-            total_size_others += size
-    total = HQ + MQ + LQ + conta_bins + others
-    total_size = total_size_HQ + total_size_MQ + total_size_LQ + total_size_conta_bins + total_size_others
+    # Count the bins and their size in each quality class.
+    counts = {quality: [0, 0] for quality in ("HQ", "MQ", "LQ", "Contaminated", "Other")}
+    for info in bin_summary.values():
+        quality = mtf.bin_quality(info["Weighted completeness"], info["Weighted redundancy"])
+        counts[quality][0] += 1
+        counts[quality][1] += int(info["Length"])
+    total = sum(count for count, _ in counts.values())
+    total_size = sum(size for _, size in counts.values())
 
     # Return info in the logger:
     logger.info("{0} bins have been kept after the recursive iterations.".format(total))
     logger.info("Total size of the extracted bins: {0}".format(total_size))
-    logger.info("HQ MAGs: {0}\tTotal Size: {1}".format(HQ, total_size_HQ))
-    logger.info("MQ MAGs: {0}\tTotal Size: {1}".format(MQ, total_size_MQ))
-    logger.info("LQ MAGs: {0}\tTotal Size: {1}".format(LQ, total_size_LQ))
-    logger.info("Contaminated potential MAGs: {0}\tTotal Size: {1}".format(conta_bins, total_size_conta_bins))
-    logger.info("Others bins: {0}\tTotal Size: {1}".format(others, total_size_others))
+    for quality, label in (
+        ("HQ", "HQ MAGs"),
+        ("MQ", "MQ MAGs"),
+        ("LQ", "LQ MAGs"),
+        ("Contaminated", "Contaminated potential MAGs"),
+        ("Other", "Others bins"),
+    ):
+        logger.info("{0}: {1}\tTotal Size: {2}".format(label, *counts[quality]))
 
 
 def merge_micomplete(out_bact105, out_arch131, outfile):
@@ -341,6 +324,7 @@ def recursive_clustering(
     size,
     threads,
     prefix,
+    clustering_matrix=None,
 ):
     """Function to run recursive iterations on contaminated bins in order to try
     to improve the quality of the bins using Louvain or Leiden algorithm.
@@ -372,13 +356,16 @@ def recursive_clustering(
         Metator full network: one row per edge, with the columns contig1,
         contig2 and weight.
     cluster_matrix : bool
-        If True, build the clustering matrix and save it.
+        If True, build the clustering matrix.
     size : int
         Size threshold in base pairs of the bins.
     threads : int
         Number of threads to use.
     prefix : str
         Sample prefix to use.
+    clustering_matrix : scipy.sparse.coo_matrix or None
+        With cluster_matrix, the clustering matrix of the earlier recursive
+        steps, which this step updates; None for the first step.
 
     Returns:
     --------
@@ -389,8 +376,10 @@ def recursive_clustering(
         the recursive partition separated by a semicolon and as values the list
         of the id of the contigs.
     scipy.sparse.coo.coo_matrix:
-        Matrix with all the previously computed hamming distance between two
-        contigs.
+        With cluster_matrix, the clustering matrix of the recursive steps so
+        far: for each two contigs of a bin partitioned again, the share of the
+        iterations of its latest partition that put them together (see
+        replace_clustering_values). None otherwise.
     dict
         Dictionnary with recursive bin_id as key and parent bin as values.
     """
@@ -398,9 +387,11 @@ def recursive_clustering(
     # Default no contamination
     contamination = False
 
-    # Create an empty matrix
+    # The clustering matrix of the earlier steps, or an empty one: row and
+    # column i are the contig of ID i.
     N = len(contigs_data.ID)
-    clustering_matrix = sparse.coo_matrix((N + 1, N + 1), dtype=np.float32)
+    if cluster_matrix and clustering_matrix is None:
+        clustering_matrix = sparse.coo_matrix((N + 1, N + 1), dtype=np.float32)
 
     # Put iterations to on eif spinglass partition used.
     if algorithm == "spinglass":
@@ -421,6 +412,9 @@ def recursive_clustering(
                         bin_ids.append(bin_id)
         except KeyError:
             continue
+
+    # The contigs of each bin, before their recursive bins change their IDs.
+    bins_contigs = {bin_id: bin_contig_ids(bin_id, contigs_data) for bin_id in bin_ids}
 
     # Iterate on cmicomplete summary to find conatminated bins:
     # pool = multiprocessing.Pool(processes=threads)
@@ -480,20 +474,75 @@ def recursive_clustering(
             prefix,
         )
 
-        # Build the clustering matrix of the subnetwork and add it.
-        if cluster_matrix > 0:
-            clustering_matrix += mtp.build_clustering_matrix(recursive_core_bins, hamming_distance, cluster_matrix)
+        # The clustering matrix of the subnetwork: its values replace those
+        # of the pairs of contigs of the bin.
+        if cluster_matrix:
+            clustering_matrix = replace_clustering_values(
+                clustering_matrix,
+                bins_contigs[bin_id],
+                mtp.build_clustering_matrix(recursive_core_bins, hamming_distance, N),
+            )
 
         logger.info("Recursive step for {0} is done.".format(bin_id))
 
-    # Save the clustering matrix
-    if cluster_matrix:
-        clustering_matrix_file = join(outdir, "clustering_matrix_recursive")
-        sparse.save_npz(clustering_matrix_file, clustering_matrix)
-    else:
-        clustering_matrix_file = None
+    return contamination, contigs_data, clustering_matrix, parent_dict
 
-    return contamination, contigs_data, clustering_matrix_file, parent_dict
+
+def bin_contig_ids(bin_id, contigs_data):
+    """Function to list the IDs of the contigs of a bin from the contigs data:
+    those of its overlapping bin and recursive bin, given by its name
+    (<prefix>_<overlapping bin ID>_<recursive bin ID>).
+
+    Parameters:
+    -----------
+    bin_id : str
+        Name of the bin.
+    contigs_data : pandas.DataFrame
+        Table with all the data from the contigs.
+
+    Returns:
+    --------
+    list of int:
+        IDs of the contigs of the bin.
+    """
+    over_bin_id = str(bin_id.split("_")[-2])
+    rec_bin_id = str(bin_id.split("_")[-1])
+    mask = (contigs_data["Overlapping_bin_ID"] == over_bin_id) & (contigs_data["Recursive_bin_ID"].apply(str) == rec_bin_id)
+    return list(contigs_data.loc[mask, "ID"])
+
+
+def replace_clustering_values(clustering_matrix, contig_ids, bin_matrix):
+    """Function to replace, in the clustering matrix, the values of the pairs
+    of contigs of a bin by those of the clustering matrix of its partition.
+
+    A bin partitioned again at a later recursive step is a part of a bin
+    partitioned before: its pairs of contigs keep the values of its latest
+    partition, and the pairs that this partition never puts together lose
+    theirs.
+
+    Parameters:
+    -----------
+    clustering_matrix : scipy.sparse.coo_matrix
+        Clustering matrix of the recursive partitions so far.
+    contig_ids : list of int
+        IDs of the contigs of the bin.
+    bin_matrix : scipy.sparse.coo_matrix
+        Clustering matrix of the partition of the bin, of the same shape: the
+        share of the iterations that put each two of its contigs together.
+
+    Returns:
+    --------
+    scipy.sparse.coo_matrix:
+        The clustering matrix, updated.
+    """
+    matrix = clustering_matrix.tocoo()
+    inside = np.isin(matrix.row, contig_ids) & np.isin(matrix.col, contig_ids)
+    kept = sparse.coo_matrix(
+        (matrix.data[~inside], (matrix.row[~inside], matrix.col[~inside])),
+        shape=matrix.shape,
+        dtype=np.float32,
+    )
+    return (kept + bin_matrix.astype(np.float32)).tocoo()
 
 
 def recursive_clustering_worker(
@@ -530,12 +579,9 @@ def recursive_clustering_worker(
 
     logger.info("Bin in progress: {0}".format(bin_id))
     subnetwork_file = join(tmpdir_subnetwork, "subnetwork_" + bin_id + ".txt")
-    over_bin_id = str(bin_id.split("_")[-2])
-    rec_bin_id = str(bin_id.split("_")[-1])
 
     # Extract contigs
-    mask = (contigs_data["Overlapping_bin_ID"] == over_bin_id) & (contigs_data["Recursive_bin_ID"].apply(str) == rec_bin_id)
-    list_contigs = list(contigs_data.loc[mask, "ID"])
+    list_contigs = bin_contig_ids(bin_id, contigs_data)
 
     # Extract subnetwork: the edges between two contigs of the bin.
     subnetwork = network[network["contig1"].isin(list_contigs) & network["contig2"].isin(list_contigs)]
@@ -685,6 +731,7 @@ def recursive_decontamination(
     # Recursively remove contamination.
     contamination = True
     step = 1
+    clustering_matrix = None
 
     logger.info("Starts recursive decontamition step:")
 
@@ -701,7 +748,7 @@ def recursive_decontamination(
         (
             contamination,
             contigs_data,
-            clustering_matrix_file,
+            clustering_matrix,
             parent_dict,
         ) = recursive_clustering(
             assembly,
@@ -719,6 +766,7 @@ def recursive_decontamination(
             size,
             threads,
             prefix,
+            clustering_matrix=clustering_matrix,
         )
 
         # Put back the info log
@@ -754,6 +802,18 @@ def recursive_decontamination(
         if step == 10:
             contamination = False
 
+    # Whether each final bin comes from the recursive partition: the flag
+    # marked the bins to examine at the next step.
+    for info in bin_summary.values():
+        info["recursive"] = info["step"] > 0
+
+    # Save the clustering matrix of the recursive partitions.
+    if cluster_matrix:
+        clustering_matrix_file = join(outdir, "clustering_matrix_recursive")
+        sparse.save_npz(clustering_matrix_file, clustering_matrix)
+    else:
+        clustering_matrix_file = None
+
     # Create fasta directory and copy final bins.
     if not os.path.exists(final_fasta_dir):
         os.makedirs(final_fasta_dir)
@@ -775,7 +835,7 @@ def recursive_decontamination(
 
     # Write relevant bins/contigs information for anvio.
     binning_file = join(outdir, "binning.txt")
-    contigs_data = write_bins_contigs(bin_summary, contigs_data, binning_file, prefix)
+    contigs_data = write_bins_contigs(bin_summary, contigs_data, binning_file)
 
     # Compute the abundance of the mags.
     bin_summary = get_bin_coverage(bin_summary, contigs_data)
@@ -894,57 +954,29 @@ def update_contigs_data_recursive(
     return contamination, contigs_data, parent_dict
 
 
-def write_bins_contigs(bin_summary, contigs_data, outfile, prefix):
-    """Function to write a table with the nodes kept in the bins and their bin
-    id. The file is adapted to be added in anvio.
+def write_bins_contigs(bin_summary, contigs_data, outfile):
+    """Function to write a table with the contigs of the final bins and their
+    bin, without header: the binning that anvio imports.
+
+    The bin of each contig is the Final_bin column of the contigs data, which
+    correct_final_bin sets from the fasta files of the final bins. Deriving it
+    from the IDs of the overlapping and recursive bins of the contigs left out
+    the contigs of a bin that was partitioned again but kept whole.
 
     Parameters:
     -----------
     bin_summary : dict
         Dictionnary with the informations of the final bins kept by MetaTOR.
     contigs_data : pandas.core.frame.DataFrame
-        Dataframe with the contigs informations.
+        Dataframe with the contigs informations, with their final bin.
     outfile : str
         Path where to write the output file.
-    prefix : str
-        Sample prefix to use.
 
     Returns:
     --------
     pandas.core.frame.DataFrame
-        Dataframe with the contigs informations with the final bin information.
+        Dataframe with the contigs informations, as given.
     """
-
-    # Create a list with the id of the bins
-    list_bin_id = dict()
-    for bin_name in bin_summary:
-        over_id = bin_name.split("_")[-2]
-        rec_id = bin_name.split("_")[-1]
-        try:
-            list_bin_id[over_id].append(rec_id)
-        except KeyError:
-            list_bin_id[over_id] = [rec_id]
-
-    # Write the contigs id with their bins id in table file
-    with open(outfile, "w") as f:
-        for i in contigs_data.index:
-            over_id = str(contigs_data.loc[i, "Overlapping_bin_ID"])
-            rec_id = str(contigs_data.loc[i, "Recursive_bin_ID"])
-            try:
-                rec_ids = list_bin_id[over_id]
-                binned = False
-                # Case of a recursive bin
-                if rec_id in rec_ids:
-                    binned = True
-                # Case where the recursive bins where not kept.
-                elif rec_ids == ["0"]:
-                    rec_id = "0"
-                    binned = True
-
-                if binned:
-                    final_bin = f"{prefix}_{over_id}_{rec_id}"
-                    contigs_data.loc[i, "Final_bin"] = final_bin
-                    f.write("{0}\t{1}\n".format(contigs_data.loc[i, "Name"], final_bin))
-            except KeyError:
-                pass
+    binned = contigs_data[contigs_data["Final_bin"].isin(list(bin_summary))]
+    binned[["Name", "Final_bin"]].to_csv(outfile, sep="\t", header=False, index=False)
     return contigs_data

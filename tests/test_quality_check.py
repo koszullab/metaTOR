@@ -208,6 +208,33 @@ def test_hic_quality_without_pairs(large_contigs, tmp_path, caplog):
     assert f"No pair to plot: {camembert} is not drawn." in caplog.text and not camembert.exists()
 
 
+@pytest.mark.parametrize(
+    "case, message",
+    [
+        ("no MAG", "No high-quality MAG (weighted completeness above 70%, weighted redundancy under 1.15): no quality check."),
+        ("no large contig", "The 2 high-quality MAGs have no contig longer than 100 kb: no quality check."),
+        ("no pair", "No pair between the contigs longer than 100 kb of the high-quality MAGs: no quality check."),
+    ],
+)
+def test_quality_check_without_pairs_says_why(case, message, large_contigs, tmp_path, caplog):
+    """Without pairs to check, the log says why: it said "No MAGs have been
+    found." whatever the reason."""
+    _, files, _, directory = large_contigs
+    contig_data = pd.read_csv(directory / "contig_data_final.txt", sep="\t")
+    summary = pd.read_csv(directory / "bin_summary.txt", sep="\t", index_col=0)
+    if case == "no MAG":
+        summary["Weighted completeness"] = 0.4
+    if case == "no large contig":
+        contig_data["Size"] = 50_000
+    contig_data.to_csv(tmp_path / "contig_data.txt", sep="\t", index=False)
+    summary.to_csv(tmp_path / "bin_summary.txt", sep="\t")
+    with caplog.at_level("INFO", logger="metator_logger"):
+        mtq.quality_check(str(tmp_path / "contig_data.txt"), str(tmp_path / "bin_summary.txt"), str(files["assembly"]),
+                          [], str(tmp_path), str(tmp_path), "sample", False, ["DpnII"], None)  # fmt: skip
+    assert "0 pairs have been extracted." in caplog.text
+    assert message in caplog.text
+
+
 def test_qc_command(large_contigs, tmp_path, run_cli):
     """From the metator output directory, with automatic thresholds and plots."""
     _, files, pairs, directory = large_contigs

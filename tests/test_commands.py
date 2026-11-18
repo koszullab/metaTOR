@@ -388,8 +388,8 @@ def test_network_bad_choices(case, tmp_path, run_cli):
 
 
 PIPELINE_ERRORS = {
-    "RS without enzyme": ["-m", "RS"],
-    "abundance without depth": ["-m", "abundance"],
+    "RS without enzyme": ["-1", "r1.fq", "-2", "r2.fq", "-m", "RS"],
+    "abundance without depth": ["-1", "r1.fq", "-2", "r2.fq", "-m", "abundance"],
     "fastq without reverse reads": ["-1", "r1.fq", "-S", "fastq"],
     "assembly neither fasta nor index": ["-1", "x.pairs", "-S", "pair", "-a", "missing.fa"],
 }

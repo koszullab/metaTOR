@@ -537,6 +537,30 @@ def write_edge(net, contig_data, pair, n_occ, normalization):
     net.write(f"{contig_data[pair[0]]['id']}\t{contig_data[pair[1]]['id']}\t{weight}\n")
 
 
+def read_depth(depth_file):
+    """Read the depth file of jgi_summarize_bam_contig_depths (MetaBAT2): the
+    length and the mean coverage of each contig, by name.
+
+    Parameters:
+    -----------
+    depth_file : str
+        Path to the depth file: a header line, then one line per contig, with
+        its name, length and mean coverage in its first three columns.
+
+    Returns:
+    --------
+    dict:
+        The length (int) and the coverage (float) of each contig, by name.
+    """
+    depths = {}
+    with open(depth_file, "r") as depth:
+        next(depth, None)
+        for line in depth:
+            fields = line.rstrip("\n").split("\t")
+            depths[fields[0]] = (int(fields[1]), float(fields[2]))
+    return depths
+
+
 def create_contig_data(assembly, nb_alignment=1, depth_file=None, enzyme=None):
     """Create a dictionnary with data on each Contig.
 
@@ -548,7 +572,8 @@ def create_contig_data(assembly, nb_alignment=1, depth_file=None, enzyme=None):
         Numbers of alignment files.  [Default: 1]
     depth_file : str or None
         Path to the depth.txt file from jgi_summarize_bam_contig_depths from
-        Metabat2 Software. [Default: None]
+        Metabat2 Software, read by contig name: it must hold every contig of
+        the assembly, with its length. [Default: None]
     enzyme : str or None
         String that contains the names of the enzyme separated by a comma.
         [Default: None]
@@ -575,36 +600,28 @@ def create_contig_data(assembly, nb_alignment=1, depth_file=None, enzyme=None):
     if enzyme:
         pattern = mio.get_restriction_site(enzyme)
 
+    # The length and coverage of each contig in the depth file, by name.
+    depths = read_depth(depth_file) if depth_file else None
+    missing, other_length = [], []
+
     global_id = 1
-    if depth_file:
-        with open(depth_file, "r") as depth:
-            line = depth.readline()
-            for contig in SeqIO.parse(assembly, "fasta"):
-                line = depth.readline().split("\t")
-                gc_content = int(SeqUtils.gc_fraction(contig.seq) * 100 * 10**13) / 10**13
-                contig_data[contig.id] = {
-                    "id": global_id,
-                    "length": int(line[1]),
-                    "GC": gc_content,
-                    "hit": 0,
-                    "coverage": float(line[2]),
-                    "RS": (len(re.findall(pattern, str(contig.seq))) + 1) if enzyme else "-",
-                }
-                if nb_alignment > 1:
-                    hit_data[contig.id] = {
-                        "id": global_id,
-                        "hit": [0] * nb_alignment,
-                    }
-                global_id += 1
-    else:
-        for contig in SeqIO.parse(assembly, "fasta"):
+    with mio.read_compressed(assembly) as fasta:
+        for contig in SeqIO.parse(fasta, "fasta"):
             gc_content = int(SeqUtils.gc_fraction(contig.seq) * 100 * 10**13) / 10**13
+            coverage = "-"
+            if depths is not None:
+                if contig.id not in depths:
+                    missing.append(contig.id)
+                elif depths[contig.id][0] != len(contig.seq):
+                    other_length.append(contig.id)
+                else:
+                    coverage = depths[contig.id][1]
             contig_data[contig.id] = {
                 "id": global_id,
                 "length": len(contig.seq),
                 "GC": gc_content,
                 "hit": 0,
-                "coverage": "-",
+                "coverage": coverage,
                 "RS": (len(re.findall(pattern, str(contig.seq))) + 1) if enzyme else "-",
             }
             if nb_alignment > 1:
@@ -613,6 +630,15 @@ def create_contig_data(assembly, nb_alignment=1, depth_file=None, enzyme=None):
                     "hit": [0] * nb_alignment,
                 }
             global_id += 1
+
+    # A depth file of another assembly would give the contigs wrong coverages.
+    for contigs, problem in [(missing, "are not in"), (other_length, "have another length in")]:
+        if contigs:
+            logger.error(
+                f"{len(contigs)} contigs of the assembly {problem} the depth file {depth_file}, such as {contigs[0]}: "
+                "give the depth file of this assembly."
+            )
+            raise ValueError(f"The depth file {depth_file} is not that of the assembly {assembly}.")
 
     return contig_data, hit_data
 
@@ -775,34 +801,22 @@ def precompute_network(
                         hit_data[contig1]["hit"][i] += 1
                         hit_data[contig2]["hit"][i] += 1
 
-                    # Write the file used for the computation of the network.
-                    # Write all pairs if self contacts.
-                    if self_contacts:
-                        if id1 == id2:
+                    # Write the file used for the computation of the network:
+                    # the pairs within a contig with self contacts, and the
+                    # pairs between two contigs with both reads out of the
+                    # edges of their contig (defined by edge): with edge 0,
+                    # there is no edge, from the first base (or 0, which some
+                    # pairs files hold) to the last one. The edges concern the
+                    # contacts between contigs, self contacts or not.
+                    if id1 == id2:
+                        if self_contacts:
                             pre_net.write("\t".join(map(str, [contig1, contig2])) + "\n")
                             pre_net_sample.write("\t".join(map(str, [contig1, contig2])) + "\n")
-                        if id1 < id2:
-                            inter_contacts_temp += 1
-                            pre_net.write("\t".join(map(str, [contig1, contig2])) + "\n")
-                            pre_net_sample.write("\t".join(map(str, [contig1, contig2])) + "\n")
-                        elif id1 > id2:
-                            inter_contacts_temp += 1
-                            pre_net.write("\t".join(map(str, [contig2, contig1])) + "\n")
-                            pre_net_sample.write("\t".join(map(str, [contig2, contig1])) + "\n")
-                    # Write only intercontigs pairs with both reads not mapping
-                    # on the edges of the contigs (defined by edge): with
-                    # edge 0, there is no edge, from the first base (or 0,
-                    # which some pairs files hold) to the last one.
-                    else:
-                        if not edge or (pos1 > edge and pos2 > edge and len1 - pos1 > edge and len2 - pos2 > edge):
-                            if id1 < id2:
-                                inter_contacts_temp += 1
-                                pre_net.write("\t".join(map(str, [contig1, contig2])) + "\n")
-                                pre_net_sample.write("\t".join(map(str, [contig1, contig2])) + "\n")
-                            elif id1 > id2:
-                                inter_contacts_temp += 1
-                                pre_net.write("\t".join(map(str, [contig2, contig1])) + "\n")
-                                pre_net_sample.write("\t".join(map(str, [contig2, contig1])) + "\n")
+                    elif not edge or (pos1 > edge and pos2 > edge and len1 - pos1 > edge and len2 - pos2 > edge):
+                        inter_contacts_temp += 1
+                        first, second = (contig1, contig2) if id1 < id2 else (contig2, contig1)
+                        pre_net.write("\t".join(map(str, [first, second])) + "\n")
+                        pre_net_sample.write("\t".join(map(str, [first, second])) + "\n")
 
             # Count contacts and return sample informations.
             all_contacts += all_contacts_temp

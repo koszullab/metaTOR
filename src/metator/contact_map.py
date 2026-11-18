@@ -67,6 +67,8 @@ class MetatorObject:
         self.contigs_data = contig_data_file
         self.pairs_files = pairs
         self.min_size = min_size
+        # The name given, which names the output files.
+        self.label = str(name)
         self.set_metator_object(metator_object, name)
         self.contigs = None
         self.large_contigs = None
@@ -100,6 +102,10 @@ class MetatorObject:
             # Bin ids are written zero-padded ("00008") and read back as strings
             # or integers depending on the column: compare them as numbers.
             selected = pd.to_numeric(column, errors="coerce") == int(self.name)
+            # Recursive bins are numbered within their overlapping bin.
+            if self.overlapping is not None:
+                overlapping = pd.to_numeric(contigs_data["Overlapping_bin_ID"], errors="coerce")
+                selected &= overlapping == int(self.overlapping)
         else:
             selected = column.astype(str) == str(self.name)
         self.contigs = list(contigs_data["Name"][selected])
@@ -128,8 +134,13 @@ class MetatorObject:
             "final_bin" or "other".
         name : str
             Name of the object. Could be the name of a contig, an id of a bin or
-            the name of the bin. Example: "NODE_1" or "MetaTOR_1_0".
+            the name of the bin. Example: "NODE_1" or "MetaTOR_1_0". A
+            recursive bin is numbered within its overlapping bin: it needs its
+            name, <prefix>_<overlapping bin ID>_<recursive bin ID>, whose prefix
+            may hold "_" (--prefix).
         """
+        # The overlapping bin of a recursive bin.
+        self.overlapping = None
         if metator_object == "contig":
             self.object = "Name"
             self.name = name
@@ -146,36 +157,25 @@ class MetatorObject:
                 raise ValueError from object_no_exist
         elif metator_object == "overlapping_bin":
             self.object = "Overlapping_bin_ID"
-            try:
-                int(name)
-                self.name = str(name)
-            except ValueError:
-                self.name = str(name.split("_")[1])
-                try:
-                    int(self.name)
-                except ValueError as object_no_exist:
-                    logger.error(
-                        "Overlapping bin name should be either numerical ID or \
-                        a name like 'MetaTOR_1' or 'MetaTOR_1_0'."
-                    )
-                    raise ValueError from object_no_exist
+            # A numeric ID, or a name: <prefix>_<ID> or
+            # <prefix>_<ID>_<recursive bin ID>, whose prefix may hold "_".
+            fields = str(name).split("_")
+            self.name = fields[-2] if len(fields) >= 3 else fields[-1]
+            if not self.name.isdigit():
+                logger.error("Overlapping bin name should be either numerical ID or a name like 'MetaTOR_1' or 'MetaTOR_1_0'.")
+                raise ValueError
         elif metator_object == "recursive_bin":
             self.object = "Recursive_bin_ID"
-            try:
-                int(name)
-                self.name = str(name)
-            except ValueError:
-                self.name = str(name.split("_")[2])
-                try:
-                    int(self.name)
-                except ValueError as object_no_exist:
-                    logger.error(
-                        "Overlapping bin name should be either numerical ID or \
-                        a name like 'MetaTOR_1_1'."
-                    )
-                    raise ValueError from object_no_exist
-                if int(self.name) <= 0:
-                    logger.error("A recursive bin should have an id bigger than 0.")
+            fields = str(name).split("_")
+            if len(fields) < 3 or not (fields[-2].isdigit() and fields[-1].isdigit()):
+                logger.error(
+                    "A recursive bin is numbered within its overlapping bin: give its name, "
+                    "<prefix>_<overlapping bin ID>_<recursive bin ID>, such as 'metator_00012_00003'."
+                )
+                raise ValueError
+            self.overlapping, self.name = fields[-2], fields[-1]
+            if int(self.name) <= 0:
+                logger.error("A recursive bin should have an id bigger than 0.")
         elif metator_object == "final_bin":
             self.object = "Final_bin"
             self.name = name
@@ -195,7 +195,7 @@ class MetatorObject:
         out_dir : str
             Path to the output directory where to write the new fasta file.
         """
-        self.fasta = join(out_dir, f"{self.name}.fa")
+        self.fasta = join(out_dir, f"{self.label}.fa")
         mio.write_contigs(pyfastx.Fasta(self.assembly), self.contigs, self.fasta)
 
 

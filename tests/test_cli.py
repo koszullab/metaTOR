@@ -26,7 +26,8 @@ mtmc_reassign_metacool = mtmc.reassign_metacool
 # The docopt command line that rich-click replaced (that of 1.3.10, with the
 # mge options renamed and host removed), as docopt read it: see the commit
 # that added the file. Commands and options added since are added to it:
-# metacool, and the --no-metacool option of pipeline.
+# metacool, and the --no-metacool option of pipeline; and the --forward of
+# pipeline is required, as every start needs it.
 INVENTORY = json.loads((TESTS_DATA / "cli_inventory.json").read_text())["metator"]
 
 # Options whose value is one of a list, wherever they appear. --object takes
@@ -756,8 +757,8 @@ METACOOL_START_ERRORS = {
         "--start metacool takes one .metacool file (its libraries are already summed), given with -1/--forward: got 3 files.",
     ),
 }
+# A run without a map is refused by click: --forward is required.
 PIPELINE_METACOOL_START_ERRORS = {
-    "no map": ([], "--start metacool needs the .metacool file, given with -1/--forward."),
     "scaffold": (["-1", "map.metacool", "--scaffold"], "--scaffold reads the pairs files: it cannot run with --start metacool."),
 }
 

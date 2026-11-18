@@ -106,7 +106,7 @@ def extract_pairs(pairs_files, out_file, contigs, contigs_data):
                     for pairs_line in pairs_lines:
                         n_pairs += 1
                         output_pairs.write("\t".join(pairs_line[:7]) + "\n")
-    logger.info(f"{n_pairs} have been extracted.")
+    logger.info(f"{n_pairs} pairs have been extracted.")
     return n_pairs
 
 
@@ -221,7 +221,7 @@ def hic_quality(
             fig_path=plot_event,
             prefix=prefix,
         )
-        logger.info("Filtering with thresholds: uncuts={0} loops={1}".format(uncut_thr, loop_thr))
+    logger.info("Filtering with thresholds: uncuts={0} loops={1}".format(uncut_thr, loop_thr))
     # Filter reads and save metrics on informative reads
     n_religated = 0
     n_loops = 0
@@ -373,8 +373,12 @@ def quality_check(
             plot_cam=plot_cam,
             threshold=threshold,
         )
+    elif n_mags == 0:
+        logger.info("No high-quality MAG (weighted completeness above 70%, weighted redundancy under 1.15): no quality check.")
+    elif not hq_contigs:
+        logger.info(f"The {n_mags} high-quality MAGs have no contig longer than 100 kb: no quality check.")
     else:
-        logger.info("No MAGs have been found.")
+        logger.info("No pair between the contigs longer than 100 kb of the high-quality MAGs: no quality check.")
     # Plot normalised contact map.
     # plot_contact_map()
     return 0
