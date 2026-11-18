@@ -42,7 +42,7 @@ metator pipeline [OPTIONS]
 | Option | Default | Description |
 |---|---|---|
 | `-1, --forward` | *required* | The R1 reads (FASTQ), or their alignments (BAM), or the pairs files, of each library, separated by commas. With `--start metacool`, one `.metacool` contact map, or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`). |
-| `-2, --reverse` | none | The R2 reads, or their alignments, in the same order. Not needed from pairs files, a contact map, or BAM files of bwa. |
+| `-2, --reverse` | none | The R2 reads, or their alignments, in the same order. Not needed from pairs files or a contact map. From BAM files of bwa, give the same files as to `--forward`: metaTOR 1.4.0 fails without them, though it reads only `--forward`. |
 | `-a, --assembly` | *required* | The assembly: a FASTA file, or the basename of its bowtie2 or bwa index. |
 | `-S, --start` | `fastq` | What `--forward` and `--reverse` are: `fastq`, `bam`, `pair` or `metacool`. |
 | `-d, --depth` | none | The coverage of the contigs, from `jgi_summarize_bam_contig_depths` of MetaBAT2. |
@@ -57,7 +57,7 @@ metator pipeline [OPTIONS]
 | `-O, --overlap` | `80` | The percentage of iterations in which two core bins must fall together to be merged into one overlapping bin. |
 | `-r, --res-param` | `1.0` | The resolution of the Leiden algorithm. |
 | `-s, --size` | `500000` | The size, in bp, a bin must reach to be kept. |
-| `-C, --cluster-matrix` | off | Write the clustering matrices (`clustering_matrix*.npz`). |
+| `-C, --cluster-matrix` | off | Write the clustering matrices (`clustering_matrix*.npz`). In metaTOR 1.4.0, the run fails with it as soon as a bin is partitioned again. |
 | `-j, --rec-iter` | `10` | The iterations of the recursive partition of the contaminated bins. |
 | `-P, --rec-overlap` | `90` | The overlap threshold of the recursive partition, in percent. |
 | `-v, --scaffold` | off | Scaffold the final bins, into `scaffold_bin/`. Refused with `--start metacool`. |
@@ -180,7 +180,7 @@ enough of its completeness.
 | `-O, --overlap` | `90` | The overlap threshold of the recursive partition, in percent. |
 | `-r, --res-param` | `1.0` | The resolution of the Leiden algorithm. |
 | `-s, --size` | `500000` | The size, in bp, a bin must reach to be kept. |
-| `-C, --cluster-matrix` | off | Write `clustering_matrix_recursive.npz`. |
+| `-C, --cluster-matrix` | off | Write `clustering_matrix_recursive.npz`. In metaTOR 1.4.0, the run fails with it as soon as a bin is partitioned again. |
 | `-o, --outdir` | `./` | The output directory. |
 | `-p, --prefix` | none | Name the bins `<prefix>_metator_…`. |
 | `-F, --force` | off | Replace `recursive_bin/` and `final_bin/`. |

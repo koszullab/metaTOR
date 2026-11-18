@@ -95,7 +95,7 @@ recursive_bin
 | `final_bin_unscaffold/` | One FASTA file per final bin: the result |
 | `bin_summary.txt` | One row per final bin: size, GC content, completeness, redundancy, N50, Hi-C abundance… |
 | `contig_data_final.txt` | One row per contig: its size, GC content, hits, and the bins it went through |
-| `binning.txt` | Each binned contig and its final bin, as anvi'o imports a binning |
+| `binning.txt` | The contigs of the final bins and their bin, as anvi'o imports a binning |
 | `metator.metacool` | The contact map of all the contigs, grouped by bin |
 | `network.txt` | The normalised network of contigs |
 | `plot/` | Plots of the bins' quality and size, and the heatmap of the bins' network |
@@ -116,9 +116,9 @@ metator_00009_00000	24472.00	60.11	0.00	0.00	0.00	9.00	4643.00
 
 Completeness and redundancy are miComplete's, as fractions: a complete
 genome without contamination has a completeness and a redundancy of 1. The
-bins of this test library hold one marker gene at most, so they are
-classed as *Others*; on a real sample, the log counts the high-, medium- and
-low-quality MAGs.
+bins of this test library hold a few marker genes at most (a completeness
+under 10%), so they are classed as *Others*; on a real sample, the log counts
+the high-, medium- and low-quality MAGs.
 
 ## Step 4: open the contact map
 
@@ -146,7 +146,7 @@ bins = mio.read_bin_summary("binning/bin_summary.txt")   # pandas.DataFrame
 contigs = mio.read_contig_data("binning/contig_data_final.txt")
 
 mc = metacooler.MetaCooler("binning/metator.metacool")
-mc.genomes   # one row per bin, with the columns of bin_summary.txt
+mc.genomes   # one row per bin, and __unbinned__, with the columns of bin_summary.txt
 mc.contigs   # one row per contig: GC content, hits, coverage, restriction sites
 ```
 

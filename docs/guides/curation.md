@@ -13,12 +13,15 @@ directory `binning` of a run with `--aligner bwa` and two libraries.
 
 ## 1. The contigs database
 
-The database holds only the contigs of the final bins, extracted with
+The database holds only the contigs of the final bins. Take them, with their
+bin, from `contig_data_final.txt` (`binning.txt` holds the same, but can miss
+some: see [File formats](../formats.md#binningtxt)), and extract them with
 [pyfastx](https://github.com/lmdu/pyfastx), which is installed with metaTOR:
 
 ```bash
 mkdir -p anvio
-cut -f 1 binning/binning.txt > anvio/contigs.txt
+awk -F '\t' 'NR > 1 && $NF != "ND" {print $3 "\t" $NF}' binning/contig_data_final.txt > anvio/bins.txt
+cut -f 1 anvio/bins.txt > anvio/contigs.txt
 pyfastx extract -l anvio/contigs.txt -o anvio/contigs.fa assembly.fa
 ```
 
@@ -71,10 +74,11 @@ With `--aligner bowtie2`, each mate has its BAM file: profile
 
 ## 3. The bins of metaTOR
 
-`binning.txt` is an anvi'o collection, a contig and its bin per line:
+`anvio/bins.txt`, as `binning.txt`, is an anvi'o collection, a contig and its bin per
+line:
 
 ```bash
-anvi-import-collection binning/binning.txt -c anvio/contigs.db -p anvio/merged/PROFILE.db \
+anvi-import-collection anvio/bins.txt -c anvio/contigs.db -p anvio/merged/PROFILE.db \
     -C metator --contigs-mode
 ```
 

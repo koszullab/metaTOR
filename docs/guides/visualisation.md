@@ -61,10 +61,10 @@ The outputs are named after the bin:
 | File | What it holds |
 |---|---|
 | `<name>.fa` | The contigs of the map |
-| `<name>.mat.tsv` | The map, in graal or bg2 format |
-| `<name>.cool` | The map, with `--mat-fmt cool` |
+| `<name>.mat.tsv` | The map, in graal format |
+| `<name>.bg2`, `<name>.cool` | The map, with `--mat-fmt bg2` or `cool` |
 | `<name>.frags.tsv`, `<name>.chr.tsv` | Its restriction fragments and contigs |
-| `<name>.valid_idx.pairs.gz` | Its pairs, with the fragment of each mate |
+| `<name>.valid_idx.pairs.gz` | Its pairs, with the fragment of each mate (`<name>.valid_idx_filtered.pairs.gz` with `--filter`, `<name>.valid_idx_pcrfree.pairs.gz` with `--pcr-dup`) |
 | `metator_contactmap_<date>.log`, `<name>.hicstuff_<date>.log` | The logs of metaTOR and hicstuff |
 
 `--mat-fmt cool` runs the `cooler` command, installed with metaTOR: run it in

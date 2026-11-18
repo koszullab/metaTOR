@@ -6,7 +6,8 @@ The files metaTOR reads and writes. Every table is tab-separated.
 
 ### Assembly
 
-A FASTA file of the contigs, compressed or not, or the basename of its bowtie2
+An uncompressed FASTA file of the contigs (`network` and `pipeline` refuse a
+compressed one), or the basename of its bowtie2
 or bwa index (`--assembly`). Contig names must be ASCII for the contact map
 of the bins (see [Names and failures](guides/metacool.md#names-and-failures)).
 
@@ -66,7 +67,7 @@ with a header. Each step adds its columns to those of the step before:
 | `Name` | network | Its name |
 | `Size` | network | Its length, in bp |
 | `GC_content` | network | Its GC content, in percent |
-| `Hit` | network | Its hits: the read ends that align on it, in all libraries |
+| `Hit` | network | Its hits: the ends of the pairs that lie on it, in all libraries (a pair within the contig counts twice) |
 | `Shotgun_coverage` | network | Its coverage in the depth file, `-` without `--depth` |
 | `Restriction_site` | network | Its number of restriction sites plus one (its restriction fragments), `-` without `--enzyme` |
 | `Core_bin_ID`, `Core_bin_contigs`, `Core_bin_size` | partition | Its core bin: the ID, number of contigs and size in bp of the bin |
@@ -81,8 +82,8 @@ with a header. Each step adds its columns to those of the step before:
 ```
 
 `contig_data_final.txt` starts with a column without header, the row number
-from 0. A contig without hits has `-` in the columns of its core and
-overlapping bins. As
+from 0. A contig with no edge in the network (no hits, or no contact with
+another contig) has `-` in the columns of its core and overlapping bins. As
 inputs, the tables are read by the headers of their columns: other columns
 may be added, in any order, such as the bins of another binning for
 `metator contactmap --object`.
@@ -119,9 +120,9 @@ first columns are those of miComplete:
 | `Weighted completeness`, `Weighted redundancy` | The same, with miComplete's weights of the markers of the set |
 | `Contigs`, `N50`, `L50`, `N90`, `L90` | Its number of contigs, and the N50, L50, N90 and L90 of their sizes |
 | `CDs` | Its number of coding sequences, found by prodigal |
-| `recursive` | Whether the bin comes from the recursive partition. When no bin is partitioned again, every bin reads `True` |
+| `recursive` | Whether the bin comes from the last recursive step that split bins: in metaTOR 1.4.0, every bin reads `True` when no bin is partitioned again, and a bin made at an earlier step reads `False` |
 | `step` | The recursive step that made the bin, 0 for an overlapping bin |
-| `parent` | The overlapping bin it was split from, empty otherwise |
+| `parent` | The bin it was split from (an overlapping bin at step 1, a recursive bin after), empty otherwise |
 | `HiC_abundance` | The share of the hits of all the contigs that are on the bin, in percent |
 | `SG_abundance` | The share of the shotgun reads (size × coverage) of all the contigs that are on the bin, in percent; with `--depth` only |
 
@@ -142,6 +143,17 @@ partition, divide it by the weighted completeness (see
 Each contig of a final bin and its bin, without header: the collection that
 anvi'o imports (see [Curating MAGs with anvi'o](guides/curation.md)).
 
+!!! warning "`binning.txt` can miss contigs"
+
+    When a contaminated bin is partitioned again but kept whole, its contigs
+    that went to a recursive part are left out of `binning.txt` in
+    metaTOR 1.4.0, though `contig_data_final.txt` gives their bin. The full
+    binning is in `contig_data_final.txt`:
+
+    ```bash
+    awk -F '\t' 'NR > 1 && $NF != "ND" {print $3 "\t" $NF}' contig_data_final.txt > bins.txt
+    ```
+
 ```text
 NODE_522	metator_00001_00000
 NODE_2487	metator_00007_00000
@@ -159,16 +171,19 @@ up to `CDs`, and the marker set kept, `Bacteria` or `Archaea`.
 With `--cluster-matrix`, `clustering_matrix_partition.npz`,
 `clustering_matrix_recursive.npz` and, in `pipeline`, `clustering_matrix.npz`
 (the mean of both) hold how often each two contigs were binned together, from
-0 to 1, as a sparse matrix of scipy (`scipy.sparse.load_npz`). Row and
+0 to 1, as a sparse matrix of scipy (`scipy.sparse.load_npz`). In metaTOR
+1.4.0, only the matrix of the partition is right: see the
+[warning](guides/binning.md#validation) on the recursive ones. Row and
 column *i* are the contig of ID *i* (row and column 0 are empty), and only the
 upper triangle is stored. See
 [The clustering matrices](guides/python.md#the-clustering-matrices).
 
 ### FASTA files of the bins
 
-`overlapping_bin/`, `recursive_bin/` and `final_bin/` (`final_bin_unscaffold/`
-in `pipeline`) hold one FASTA file per bin, `<bin>.fa`, with the records of
-its contigs as they are in the assembly. The final bins also hold the pyfastx
+`overlapping_bin/`, `recursive_bin/step_<n>/` (the recursive bins of step
+`n`) and `final_bin/` (`final_bin_unscaffold/` in `pipeline`) hold one FASTA
+file per bin, `<bin>.fa`, with the records of its contigs as they are in the
+assembly. The final bins also hold the pyfastx
 index of each, `<bin>.fa.fxi`, which the validation leaves there.
 
 ## The contact map of the bins

@@ -82,7 +82,8 @@ uv run zensical build     # the site, in site/
 
 Every push to `master` builds the site and deploys it
 ([docs.yml](https://github.com/koszullab/metaTOR/blob/master/.github/workflows/docs.yml));
-pull requests build it, with warnings, without deploying.
+pull requests to `master` build it, without deploying. The build is strict:
+a warning, such as a link to a page that does not exist, fails it.
 
 ## Changelog
 

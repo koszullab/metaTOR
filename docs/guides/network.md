@@ -45,8 +45,9 @@ hicstuff cutsite -F R1.fq.gz -R R2.fq.gz -p cut/sample -e DpnII -t 16
 
 Before building the network, metaTOR measures every contig of the assembly,
 in the **contig data** table (`contig_data_network.txt`): its size, its GC
-content, its **hits** (the read ends that align on it, in all libraries), its
-number of restriction sites (with `--enzyme`, `-` otherwise) and its shotgun
+content, its **hits** (the ends of the pairs that lie on it, in all libraries:
+a pair within the contig counts twice), its number of restriction sites plus
+one, that is of restriction fragments (with `--enzyme`, `-` otherwise), and its shotgun
 coverage (with `--depth`, `-` otherwise). With several libraries, the hits of
 each contig in each library go to `hit_data_alignment.txt`.
 
@@ -55,7 +56,8 @@ each contig in each library go to `hit_data_alignment.txt`.
 Each pair with its mates on two different contigs adds a contact between
 them. `--edge` (`-E`, 0 by default) leaves out the pairs with a mate within
 that many base pairs of the end of its contig; `--self-contacts` (`-s`) adds
-the contacts of each contig with itself.
+the contacts of each contig with itself, and then keeps every pair, whatever
+`--edge`.
 
 `network.txt` holds the network, one line per pair of contigs in contact: the
 IDs of the two contigs (as in the contig data table, from 1) and the
@@ -76,7 +78,7 @@ contigs by a factor of the two:
 | `None` | Nothing: the raw contacts | |
 | `length` | √(hits<sub>A</sub>/length<sub>A</sub> × hits<sub>B</sub>/length<sub>B</sub>) | |
 | `abundance` | √(coverage<sub>A</sub> × coverage<sub>B</sub>) | `--depth` |
-| `RS` | 0.01 × √(hits<sub>A</sub>/RS<sub>A</sub> × hits<sub>B</sub>/RS<sub>B</sub>), RS being the restriction sites | `--enzyme` |
+| `RS` | 0.01 × √(hits<sub>A</sub>/RS<sub>A</sub> × hits<sub>B</sub>/RS<sub>B</sub>), RS being the restriction fragments (sites + 1) | `--enzyme` |
 | `theoritical_hit` | The geometric mean of the hits expected from coverage, length and restriction sites | `--depth`, `--enzyme` |
 
 `empirical_hit` needs no model of the library and works best in our

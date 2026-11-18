@@ -39,7 +39,7 @@ import metacooler
 
 clr = cooler.Cooler("binning/metator.metacool")
 mc = metacooler.MetaCooler("binning/metator.metacool")
-mc.genomes  # one row per bin, with the columns of bin_summary.txt
+mc.genomes  # one row per bin, and __unbinned__, with the columns of bin_summary.txt
 mc.contigs  # one row per contig, with its GC content and Hi-C hits
 ```
 

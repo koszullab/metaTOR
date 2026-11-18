@@ -20,7 +20,7 @@ metator partition -a assembly.fa -c binning/contig_data_network.txt \
 | `--algorithm` (`-A`) | `louvain` | The community detection algorithm: `louvain` or `leiden`. Louvain is faster, and gave better bins in our benchmarks on gut and seawater samples |
 | `--iterations` (`-i`) | 100 | How many times the network is partitioned. More iterations split the contigs into more, smaller core bins; 100 is enough to find every bin in our benchmarks |
 | `--overlap` (`-O`) | 80 | Two core bins are merged into one overlapping bin when they fall in the same community in at least this percentage of the iterations. A higher threshold gives less contaminated, but less complete, bins |
-| `--res-param` (`-r`) | 1.0 | The resolution of the Leiden algorithm (Constant Potts Model): the higher, the more, smaller communities |
+| `--res-param` (`-r`) | 1.0 | The resolution of the modularity that the Leiden algorithm optimises (1 is plain modularity, as in Louvain): the higher, the more, smaller communities |
 | `--size` (`-s`) | 500000 | The size, in base pairs, an overlapping bin must reach to be written |
 | `--cluster-matrix` (`-C`) | off | Also write `clustering_matrix_partition.npz`: how often each two contigs fell in the same community |
 | `--prefix` (`-p`) | none | Names the bins `<prefix>_metator_…` |
@@ -53,23 +53,34 @@ contigs:
 | `--iterations` (`-i`) of `validation`, `--rec-iter` (`-j`) of `pipeline` | 10 | How many times each contaminated bin is partitioned |
 | `--overlap` (`-O`) of `validation`, `--rec-overlap` (`-P`) of `pipeline` | 90 | The overlap threshold of the recursive partition |
 | `--algorithm`, `--res-param`, `--size`, `--prefix` | | As in the partition |
-| `--cluster-matrix` (`-C`) | off | Also write `clustering_matrix_recursive.npz` (and, in `pipeline`, `clustering_matrix.npz`, the mean of both) |
+| `--cluster-matrix` (`-C`) | off | Also write `clustering_matrix_recursive.npz` (and, in `pipeline`, `clustering_matrix.npz`, the mean of both). See the warning below |
 
 The parts of a bin, its **recursive bins**, are checked with miComplete in
 turn. They replace the bin when the most complete of them keeps enough of its
 completeness: more than 0.4 + (c − 0.4) / 1.6, for a bin of completeness c.
 Otherwise the bin is kept whole. The step repeats on the recursive bins that
-are still contaminated, until none is replaced.
+are still contaminated, until none is replaced, for 9 steps at most.
+
+A part is a recursive bin only when it is larger than `--size`: when a bin is
+replaced by its recursive bins, the contigs of its smaller parts are left out
+of the final bins (`ND`).
+
+!!! warning "`--cluster-matrix` in `validation` and `pipeline`"
+
+    In metaTOR 1.4.0, `validation` and `pipeline` fail with
+    `--cluster-matrix` as soon as a bin is partitioned again, and write a
+    recursive clustering matrix of zeros when none is. The clustering matrix
+    of the partition, `partition --cluster-matrix`, is not affected.
 
 ## Outputs
 
 | File | What it holds |
 |---|---|
 | `final_bin/` (`final_bin_unscaffold/` in `pipeline`) | One FASTA file per final bin |
-| `recursive_bin/` | One FASTA file per recursive bin |
+| `recursive_bin/` | One FASTA file per recursive bin, in `step_<n>/` for step `n` |
 | `bin_summary.txt` | One row per final bin, with miComplete's measures and the bin's abundance |
 | `contig_data_final.txt` | The contig data table, with the recursive and final bin of each contig |
-| `binning.txt` | Each binned contig and its final bin, without header |
+| `binning.txt` | The contigs of the final bins and their bin, without header (it can miss some: see [File formats](../formats.md#binningtxt)) |
 | `overlapping_micomplete_results.txt` | miComplete's results on the overlapping bins |
 | `recursive_micomplete_step_<n>.txt` | miComplete's results on the recursive bins of step `n` |
 | `plot/` | The plots of the bins (below) |

@@ -24,12 +24,13 @@ Institut Pasteur.
   table of their quality. It can also start from BAM files, a pairs file or a
   `.metacool` contact map.
 - **Robust partitions.** The network is partitioned many times with the
-  Louvain (or Leiden) algorithm; contigs that always fall together form a
-  bin, so that a single run of a randomised algorithm decides nothing.
+  Louvain (or Leiden) algorithm: the contigs that always fall together form
+  core bins, and the core bins that fall together in most runs form a bin,
+  so that a single run of a randomised algorithm decides nothing.
 - **Validation and recursive decontamination.** Each bin is checked with
   [miComplete](https://pypi.org/project/micomplete/): the bins it finds
-  contaminated are partitioned again, on their own, and kept split only when
-  the parts are better.
+  contaminated are partitioned again, on their own, and replaced by their
+  parts when the most complete part keeps enough of their completeness.
 - **The contact map of the bins.** A run ends with a
   [metacooler](https://github.com/js2264/metacooler) file, a
   [cooler](https://github.com/open2c/cooler) of all the contigs grouped by

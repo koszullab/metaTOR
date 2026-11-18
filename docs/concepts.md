@@ -52,9 +52,9 @@ The three steps are also three commands, `metator network`,
 ## Contig data and hits
 
 metaTOR first measures every contig of the assembly: its size, its GC
-content, its number of restriction sites (with `--enzyme`), its shotgun
-coverage (with `--depth`), and its number of **hits**, the read ends that
-align on it. These go to the **contig data** table, which every step reads and
+content, its number of restriction fragments (with `--enzyme`), its shotgun
+coverage (with `--depth`), and its number of **hits**, the ends of the pairs
+that lie on it (a pair within the contig counts twice). These go to the **contig data** table, which every step reads and
 extends with the bins of the contig.
 
 ## The network
@@ -95,7 +95,7 @@ contamination, (redundancy − 1) / completeness, reaches 5% is partitioned
 again, on the network of its own contigs, with `--rec-iter` iterations (10)
 and an overlap of `--rec-overlap` percent (90). Its parts, the **recursive
 bins**, replace it when the most complete of them keeps enough of its
-completeness; the step repeats until no bin is replaced.
+completeness; the step repeats until no bin is replaced, for 9 steps at most.
 
 The **final bins** are the bins left: the overlapping bins that were not
 split, and the recursive bins of those that were. A final bin is named after

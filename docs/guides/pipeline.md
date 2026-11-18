@@ -35,7 +35,7 @@ not use it.
 | `--start` | `--forward`, `--reverse` | The run starts with |
 |---|---|---|
 | `fastq` (default) | The R1 and R2 reads, in FASTQ files | Aligning the reads |
-| `bam` | The alignments: with bowtie2, one BAM file per mate; with bwa (`--aligner bwa`), one BAM file of both mates, given to `--forward` | Pairing the mates |
+| `bam` | The alignments: with bowtie2, one BAM file per mate; with bwa (`--aligner bwa`), one BAM file of both mates, given to `--forward` and, in metaTOR 1.4.0, to `--reverse` too, which fails without it | Pairing the mates |
 | `pair` | One pairs file per library, given to `--forward` | Building the network |
 | `metacool` | One `.metacool` contact map of the contigs, given to `--forward` | Building the network |
 
@@ -51,9 +51,12 @@ and strand of each mate. A run from a contact map is described in
 [The contact map of the bins](metacool.md#starting-from-a-contact-map).
 
 `--assembly` (`-a`) is the assembly, as a FASTA file, or the basename of its
-bowtie2 or bwa index. From a FASTA file, an index found next to it (as
+bowtie2 or bwa index (with bwa, `<basename>.fa` or `<basename>.fasta` must be
+next to it). From a FASTA file, an index found next to it (as
 `bwa index assembly.fa` or `bowtie2-build assembly.fa assembly.fa` writes it)
 is used, and otherwise one is built in the temporary directory, at every run.
+With bwa, any bwa index in the directory of the assembly is taken for its
+index: keep the index of another assembly elsewhere.
 
 ## Outputs
 
@@ -64,17 +67,17 @@ The pipeline writes into `--outdir` (`-o`, the current directory by default):
 | `final_bin_unscaffold/` | One FASTA file per final bin |
 | `bin_summary.txt` | One row per final bin: size, GC content, miComplete's completeness and redundancy, N50, abundance… |
 | `contig_data_final.txt` | One row per contig: its measures, and the core, overlapping, recursive and final bins it belongs to |
-| `binning.txt` | Each binned contig and its final bin |
+| `binning.txt` | The contigs of the final bins and their bin (it can miss some: see [File formats](../formats.md#binningtxt)) |
 | `metator.metacool` | The contact map of all the contigs, grouped by bin (`<prefix>.metacool` with `--prefix`) |
 | `network.txt` | The normalised network of contigs, all libraries summed |
 | `network_<i>.txt` | The network of library `i`, from 0 |
 | `alignment_<i>.bam` | With bwa: the alignments of library `i`, both mates, sorted by read name |
 | `alignment_<i>_for.bam`, `alignment_<i>_rev.bam` | With bowtie2, or in iterative mode: the alignments of each mate |
 | `overlapping_bin/` | The FASTA files of the overlapping bins, before validation |
-| `recursive_bin/` | The FASTA files of the recursive bins |
+| `recursive_bin/` | The FASTA files of the recursive bins, in `step_<n>/` for step `n` |
 | `overlapping_micomplete_results.txt` | miComplete's results on the overlapping bins |
 | `recursive_micomplete_step_<n>.txt` | miComplete's results on the recursive bins of step `n` |
-| `clustering_matrix*.npz` | With `--cluster-matrix`: how often each two contigs were binned together |
+| `clustering_matrix*.npz` | With `--cluster-matrix`: how often each two contigs were binned together (see the [warning](binning.md#validation) on the recursive ones) |
 | `scaffold_bin/` | With `--scaffold`: the final bins, scaffolded |
 | `plot/` | Plots of the bins' quality, size, GC content and coverage, and the heatmap of the bins' network |
 | `metator_pipeline_<date>.log` | The log of the run |
