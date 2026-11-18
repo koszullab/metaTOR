@@ -199,9 +199,10 @@ def get_contact_pairs(
         Dictionnary for hit information on each contigs.
     """
 
-    # Iterates on all the input files:
+    # Iterates on all the input files. A BAM file of bwa holds both mates: it
+    # has no reverse file.
     for_list = for_in.split(",")
-    rev_list = rev_in.split(",")
+    rev_list = rev_in.split(",") if rev_in else []
     out_file_list = []
     total_aligned_pairs = 0
 

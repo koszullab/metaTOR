@@ -156,9 +156,6 @@ def check_metacool_start(start, forward, edge, scaffold=False):
     contigs, nor the scaffolding (pipeline), which read the pairs files."""
     if start != "metacool":
         return
-    if not forward:
-        logger.error("--start metacool needs the .metacool file, given with -1/--forward.")
-        raise ValueError
     if "," in forward:
         logger.error(
             "--start metacool takes one .metacool file (its libraries are already summed), given with "
@@ -347,13 +344,13 @@ def assembly_option(help):
     return _option("-a", "--assembly", required=True, metavar="FILE", panel="Input", help=help)
 
 
-def reads_options(forward_required):
+def reads_options():
     """Inputs of the network step: reads, alignments or pairs."""
     return _options(
         _option(
             "-1",
             "--forward",
-            required=forward_required,
+            required=True,
             metavar="STR",
             panel="Input",
             help="Fastq file or list of Fastq separated by a comma containing the forward reads to be aligned or their "
@@ -367,7 +364,7 @@ def reads_options(forward_required):
             panel="Input",
             help="Fastq file or list of Fastq separated by a comma containing the reverse reads to be aligned or their "
             "corresponding bam files. Forward and reverse reads need to have the same identifier (read names). Not "
-            "needed from pairs files.",
+            "needed from pairs files, a .metacool map, or the bam files of bwa, which hold both mates.",
         ),
         assembly_option(ASSEMBLY_INDEX_HELP),
         _option(
@@ -581,7 +578,7 @@ def cli():
 
 
 @cli.command(short_help="Generate the metaHiC contig network from fastq, bam, pairs or .metacool files and normalize it.")
-@reads_options(forward_required=True)
+@reads_options()
 @alignment_options()
 @network_options("-n")
 @_option(
@@ -924,7 +921,7 @@ def validation(
 
 
 @cli.command(short_help="Run network, partition and validation (and scaffold the bins) in one command line.")
-@reads_options(forward_required=False)
+@reads_options()
 @alignment_options()
 @network_options("-m")
 @partition_options(

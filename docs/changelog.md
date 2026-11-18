@@ -74,6 +74,11 @@ All notable changes to this project will be documented in this file.
   curated bins with miComplete, through the Python API, instead.
 
 ### Fixed
+- `network` and `pipeline --start bam --aligner bwa` no longer fail without
+  `--reverse` (`AttributeError: 'NoneType' object has no attribute
+  'split'`): a BAM file of bwa holds both mates. `pipeline` requires
+  `--forward`, as `network` does: a run without it failed with the same
+  error.
 - `metator metacool` and the map of `pipeline` refuse a
   `contig_data_final.txt` whose rows have more or fewer fields than its
   header, which they read shifted or padded, without a word, and one

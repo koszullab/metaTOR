@@ -42,7 +42,7 @@ metator pipeline [OPTIONS]
 | Option | Default | Description |
 |---|---|---|
 | `-1, --forward` | *required* | The R1 reads (FASTQ), or their alignments (BAM), or the pairs files, of each library, separated by commas. With `--start metacool`, one `.metacool` contact map, or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`). |
-| `-2, --reverse` | none | The R2 reads, or their alignments, in the same order. Not needed from pairs files or a contact map. From BAM files of bwa, give the same files as to `--forward`: metaTOR 1.4.0 fails without them, though it reads only `--forward`. |
+| `-2, --reverse` | none | The R2 reads, or their alignments, in the same order. Not needed from pairs files, a contact map, or the BAM files of bwa, which hold both mates. |
 | `-a, --assembly` | *required* | The assembly: a FASTA file, or the basename of its bowtie2 or bwa index. |
 | `-S, --start` | `fastq` | What `--forward` and `--reverse` are: `fastq`, `bam`, `pair` or `metacool`. |
 | `-d, --depth` | none | The coverage of the contigs, from `jgi_summarize_bam_contig_depths` of MetaBAT2. |

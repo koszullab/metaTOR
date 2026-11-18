@@ -35,7 +35,7 @@ not use it.
 | `--start` | `--forward`, `--reverse` | The run starts with |
 |---|---|---|
 | `fastq` (default) | The R1 and R2 reads, in FASTQ files | Aligning the reads |
-| `bam` | The alignments: with bowtie2, one BAM file per mate; with bwa (`--aligner bwa`), one BAM file of both mates, given to `--forward` and, in metaTOR 1.4.0, to `--reverse` too, which fails without it | Pairing the mates |
+| `bam` | The alignments: with bowtie2, one BAM file per mate; with bwa (`--aligner bwa`), one BAM file of both mates, given to `--forward` | Pairing the mates |
 | `pair` | One pairs file per library, given to `--forward` | Building the network |
 | `metacool` | One `.metacool` contact map of the contigs, given to `--forward` | Building the network |
 
