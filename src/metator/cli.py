@@ -14,9 +14,11 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import sys
+import threading
 import time
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from functools import partial
 from os.path import dirname, exists, join
 from pathlib import Path
@@ -477,6 +479,121 @@ def assembly_basename(assembly):
     return re.sub(r"(\.(fa|fas|fasta|fna))?(\.gz)?$", "", os.path.basename(os.path.normpath(assembly)))
 
 
+@contextmanager
+def terminated_as_interrupted():
+    """Stop a run on SIGTERM as on Ctrl-C, so that it cleans up after itself:
+    the lock of its map, the map it was writing next to it, its temporary
+    files. A job scheduler sends SIGTERM at its time limit, or when a job is
+    cancelled; by default, Python dies on it without a word, as on SIGKILL.
+    The exit status is that of a process killed by SIGTERM, 143. Only the
+    main thread can set a signal handler: elsewhere, the run is as it is.
+    A process that the run forks inherits the handler: it dies of SIGTERM,
+    as it would without it (a multiprocessing pool ends its workers so, and
+    a worker that raised SystemExit in its exit handlers printed a
+    traceback)."""
+    if threading.current_thread() is not threading.main_thread() or signal.getsignal(signal.SIGTERM) is None:
+        # Off the main thread, or under a handler that a host embedding
+        # Python set from C, which could not be restored.
+        yield
+        return
+    run = os.getpid()
+
+    def stop(signum, frame):
+        if os.getpid() != run:
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
+            os.kill(os.getpid(), signal.SIGTERM)
+            return
+        raise SystemExit(128 + signal.SIGTERM)
+
+    previous = signal.signal(signal.SIGTERM, stop)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+
+
+def run_map_path(start, forward, outdir, prefix, output_map=None, force=False, no_metacool=False):
+    """The map a pipeline run writes: output_map when given, else the file of
+    the input map of a run from a map (updated in place: a map given as
+    file::/, the root of the file, is the file), else the map of a run from
+    reads, alignments or pairs (metacool_path). The directory of output_map
+    is made, as the map will be written there.
+
+    Raises
+    ------
+    MetacoolError
+        If output_map is given with no_metacool (no map is written), names
+        an entry of a collection or a directory, is the collection of the
+        input map (an entry), or exists and is not the input map, without
+        force; if the input map is not there; or if the input map is an
+        entry of a .mmetacool collection, without output_map: updating it in
+        place would rewrite the whole collection; if the directory of
+        output_map cannot be made; or if the map of a run from reads,
+        alignments or pairs would be a URI (:: in its output directory or
+        prefix).
+    """
+    reason = None
+    if start == "metacool" and not os.path.exists(mtmc.map_file(forward)):
+        reason = f"Cannot read the contact map {forward}: no such file."
+    elif output_map and no_metacool:
+        reason = f"--no-metacool writes no map: drop --output-map {output_map}, or --no-metacool."
+    elif output_map and "::" in str(output_map):
+        reason = f"--output-map takes the path of a .metacool file, not an entry of a collection: {output_map}."
+    elif output_map and os.path.isdir(output_map):
+        reason = f"{output_map} is a directory: --output-map takes the path of a .metacool file."
+    elif output_map and start == "metacool" and mtmc.is_entry(forward) and mtmc.is_input_map(forward, output_map):
+        reason = (
+            f"{output_map} is the collection of the input map {forward}: a run does not replace a collection with "
+            "the map of its clusters; give --output-map another file."
+        )
+    elif output_map:
+        in_place = start == "metacool" and mtmc.is_input_map(forward, output_map)
+        if os.path.lexists(output_map) and not force and not in_place:
+            reason = f"{output_map} exists: give -F to replace it with the map of this run, or another --output-map."
+    if reason:
+        logger.error(reason)
+        raise mtmc.MetacoolError(reason)
+    if output_map:
+        make_map_directory(output_map, "--output-map")
+        return output_map
+    if start == "metacool":
+        if mtmc.is_entry(forward):
+            message = (
+                f"{forward} is an entry of a .mmetacool collection, which a run does not update in place: write the "
+                "map of its clusters to another file with --output-map."
+            )
+            logger.error(message)
+            raise mtmc.MetacoolError(message)
+        # The file itself: file::/ (the root of the file) names it too.
+        return mtmc.map_file(forward)
+    path = metacool_path(outdir, prefix)
+    if "::" in path:
+        # Refused now, not once the map of the contigs is built (after the
+        # alignment of a run from reads).
+        reason = f"{path}, the map of this run, is not the path of a file: give -o/--outdir and --prefix without ::."
+        logger.error(reason)
+        raise mtmc.MetacoolError(reason)
+    return path
+
+
+def make_map_directory(path, option):
+    """Make the directory of the map at path, where the run will write it
+    (given with option): a path that is no file's (a URI, file::group, see
+    metator.metacool._check_paths), before any directory is made, and a
+    directory that cannot be made are refused, the reason logged."""
+    if "::" in str(path):
+        reason = f"{path} is not the path of a file: a map is written to a file of its own, not to a group inside one."
+        logger.error(reason)
+        raise mtmc.MetacoolError(reason)
+    directory = os.path.dirname(os.path.abspath(path))
+    try:
+        os.makedirs(directory, exist_ok=True)
+    except OSError as error:
+        reason = f"The directory of {option} {path} cannot be made ({error.strerror}): write the map elsewhere."
+        logger.error(reason)
+        raise mtmc.MetacoolError(reason) from error
+
+
 def metacool_path(outdir, prefix):
     """The contact map of a pipeline run: <outdir>/<prefix>.metacool, or
     <outdir>/metator.metacool without --prefix."""
@@ -585,32 +702,37 @@ def pipeline_contig_map(pairs_files, contig_data, outfile, assembly, threads, tm
 
 
 def pipeline_metacool(metacool, outdir, outfile, contig_map=False, columns_from_map=()):
-    """Write the contact map of the bins of a pipeline run at outfile (see
-    metacool_path), from a .metacool map of its contigs and the final
-    tables of the run (see metator.metacool.reassign_metacool): the map that
-    the run built from its pairs files (contig_map, at outfile), or the
-    input map of a run that started from one, whose columns it read
-    (columns_from_map: stored in the metadata of the new map).
+    """Write the contact map of the clusters of a pipeline run at outfile
+    (see run_map_path), from a .metacool map of its contigs and the final
+    tables of the run (see metator.metacool.reassign_metacool): the map
+    that the run built from its pairs files (contig_map, at outfile), or the
+    input map of a run that started from one, which outfile is by default,
+    whose columns it read (columns_from_map: stored in the metadata of the
+    new map).
 
-    The map is an extra output, written last: when it cannot be written, a
-    warning says why, and the run keeps its other outputs and its exit
-    status. outfile is only replaced once the new map has been written and
+    outfile is only replaced once the new map has been written and
     validated: the map of the contigs that the run built stays there, in no
-    bin, when the map of the bins cannot be written, and so does an input
-    map at outfile (the same path, or a symbolic link to it or from it).
+    cluster, and so does an input map at outfile (the same path, or a
+    symbolic link to it or from it), when the new map cannot be written.
     Another map of the same name, left by an earlier run, is removed first:
     this run has replaced the tables it was made from, so it must not stay
     behind, passing for this run's, when the new map cannot be written. A
     symbolic link at the outfile is replaced, not its target.
+
+    Raises
+    ------
+    MetacoolError
+        If the map cannot be written: the reason, and what is kept, is
+        logged as an error first. The other outputs of the run are kept.
     """
-    # What the warning adds when the new map is not written.
+    # What the error adds when the new map is not written.
     kept = ""
     try:
         if contig_map:
-            kept = "It is still the contact map of the contigs of the run, in no bin. "
+            kept = "It is still the contact map of the contigs of the run, in no cluster. "
         elif mtmc.is_input_map(metacool, outfile):
-            kept = "It is still the input map of the run. "
-            logger.info(f"{outfile} is the input map {metacool}: it is replaced once the map of the bins is validated.")
+            kept = "It is still the input map of the run, as it was. "
+            logger.info(f"{outfile} is the input map {metacool}: it is replaced once the map of the clusters is validated.")
         elif os.path.lexists(outfile):
             logger.info(f"Removing {outfile}, the contact map of an earlier run.")
             os.remove(outfile)
@@ -624,7 +746,9 @@ def pipeline_metacool(metacool, outdir, outfile, contig_map=False, columns_from_
         )
     except Exception as error:
         reason, unexpected = _failure(error)
-        logger.warning(f"{outfile} is not written: {reason}. {kept}The other outputs of the run are kept.", exc_info=unexpected)
+        message = f"{outfile} is not written: {reason}. {kept}The other outputs of the run are kept."
+        logger.error(message, exc_info=unexpected)
+        raise mtmc.MetacoolError(message) from error
 
 
 # ---------------------------------------------------------------------------
@@ -1306,17 +1430,24 @@ def validation(
 )
 @outdir_option(help="The output directory to write the bam files the network and contig data into. Default: current directory.")
 @prefix_option()
-@force_option("If enabled, would remove the directories of bins in the output directory.")
+@force_option("Replace the directories of clusters of an earlier run in the output directory, and an existing --output-map.")
 @tmpdir_option()
 @threads_option(help="Number of parallel threads allocated for the alignment.")
 @no_clean_up_option()
 @_option(
     "--no-metacool",
     is_flag=True,
-    help="Do not keep the contact map of the contigs, grouped by bin, as <prefix>.metacool (metator.metacool "
-    "without --prefix): a run from reads, alignments or pairs still builds the map of its contigs from the pairs "
-    "files (a map that cannot be built stops the run), reads its networks from it, and removes it at the end, with "
-    "the maps of its libraries (<prefix>.mmetacool) when it has several.",
+    help="Do not keep the contact map of the contigs, grouped by cluster: a run from reads, alignments or pairs "
+    "still builds the map of its contigs from the pairs files (a map that cannot be built stops the run), reads its "
+    "networks from it, and removes it at the end, with the maps of its libraries (<prefix>.mmetacool) when it has "
+    "several; a run from a map leaves that map as it was.",
+)
+@_option(
+    "--output-map",
+    metavar="FILE",
+    help="Write the contact map of the clusters to FILE (replaced only with -F). By default, a run from a .metacool "
+    "map updates that map in place, and any other run writes <outdir>/<prefix>.metacool (metator.metacool without "
+    "--prefix).",
 )
 def pipeline(
     forward,
@@ -1347,6 +1478,7 @@ def pipeline(
     threads,
     no_clean_up,
     no_metacool,
+    output_map,
 ):
     """Launch the full metaTOR pipeline.
 
@@ -1370,11 +1502,12 @@ def pipeline(
     removed. A run from a .metacool file reads its network from that map,
     and the restriction sites and the coverage of the contigs from its
     Restriction_site and Shotgun_coverage columns, unless --enzyme and
-    --depth are given; it writes the map of its bins from it, which it may
-    replace, and cannot scaffold.
+    --depth are given; it updates that map in place with the map of its
+    clusters (or writes --output-map), and cannot scaffold.
     """
-    # Private temporary directory inside --tmpdir.
-    with private_tmp_dir(tmpdir, clean_up=not no_clean_up) as tmp_dir:
+    # Private temporary directory inside --tmpdir, and the lock of the map
+    # the run writes, held until its end.
+    with terminated_as_interrupted(), private_tmp_dir(tmpdir, clean_up=not no_clean_up) as tmp_dir, ExitStack() as held:
         # Defined the output directory and output file names.
         outdir = outdir or "."
         os.makedirs(outdir, exist_ok=True)
@@ -1397,13 +1530,17 @@ def pipeline(
             check_normalization(normalization, enzyme, depth)
         check_pipeline_edge(edge)
         check_metacool_start(start, forward, edge, scaffold)
+        metacool_file = run_map_path(start, forward, outdir, prefix, output_map, force, no_metacool)
         if start == "metacool":
             check_normalization(normalization, enzyme, depth, forward)
-        metacool_file = metacool_path(outdir, prefix)
         check_inputs_not_the_map(start, forward, reverse, metacool_file)
         check_pairs_compression(start, forward, scaffold)
         check_reverse_reads(start, aligner, reverse)
         bins_prefix = bin_prefix(prefix)
+        # A run that writes its map holds the map's lock from now on: a second
+        # run on the same map is refused before any work.
+        if not (start == "metacool" and no_metacool):
+            held.enter_context(mtmc.map_lock(metacool_file))
 
         # Manage start point.
         start_step = {"fastq": 1, "bam": 2, "pair": 3, "metacool": 3}[start]
@@ -1944,6 +2081,18 @@ def metacool(pairsfile, contig_data, bin_summary, outfile, assembly_name, thread
     log_file = log_file_name("", "metacool")
     generate_log_header(log_file)
 
+    # Its map is locked as a pipeline run locks the map it writes: the two
+    # cannot write one map at once (map_lock logs its refusal). The map's
+    # directory is made first, as the writers make it.
+    make_map_directory(outfile, "-o/--outfile")
+    with terminated_as_interrupted(), mtmc.map_lock(outfile, elsewhere="another -o/--outfile"):
+        _write_metacool_command(pairsfile, contig_data, bin_summary, outfile, assembly_name, threads, force)
+
+    generate_log_footer(log_file)
+
+
+def _write_metacool_command(pairsfile, contig_data, bin_summary, outfile, assembly_name, threads, force):
+    """The map of metator metacool, written once its lock is held."""
     try:
         maps = [path for path in pairsfile if mtmc.is_map(path)]
         if maps:
@@ -1975,8 +2124,6 @@ def metacool(pairsfile, contig_data, bin_summary, outfile, assembly_name, thread
         # The reason in the log file of the run, then the error.
         logger.error(str(error))
         raise
-
-    generate_log_footer(log_file)
 
 
 # ---------------------------------------------------------------------------

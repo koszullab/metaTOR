@@ -64,11 +64,12 @@ metator pipeline [OPTIONS]
 | `-J, --junctions` | `NNNNN` | The sequence between two contigs of a scaffold. |
 | `-o, --outdir` | the current directory | The output directory. |
 | `-p, --prefix` | none | Name the bins `<prefix>_metator_…`, the map `<prefix>.metacool` and, with several libraries, the maps of the libraries `<prefix>.mmetacool`. Letters, digits, `_` and `-` only. |
-| `-F, --force` | off | Replace the directories of bins of an earlier run. |
+| `-F, --force` | off | Replace the directories of clusters of an earlier run, and an existing `--output-map` file. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory, where the index of the assembly is built. |
 | `-t, --threads` | `1` | Threads for the alignment, the partition and miComplete. |
 | `-N, --no-clean-up` | off | Keep the temporary files, and the pairs files of the run. |
-| `--no-metacool` | off | Do not keep the contact map of the contigs, grouped by bin, `metator.metacool` (`<prefix>.metacool` with `--prefix`): a run from reads, alignments or pairs still builds the map of its contigs from the pairs files (a map that cannot be built stops the run), reads its networks from it, and removes it at the end, with the maps of its libraries (`<prefix>.mmetacool`) when it has several. |
+| `--no-metacool` | off | Do not keep the contact map of the contigs, grouped by cluster: a run from reads, alignments or pairs still builds the map of its contigs from the pairs files (a map that cannot be built stops the run), reads its networks from it, and removes it at the end, with the maps of its libraries (`<prefix>.mmetacool`) when it has several; a run from a map leaves that map as it was. |
+| `--output-map` | none | Write the contact map of the clusters to this file (replaced only with `-F`). By default, a run from a `.metacool` map updates that map in place, and any other run writes `<outdir>/<prefix>.metacool` (`metator.metacool` without `--prefix`). |
 
 The validation is the step that needs the most memory: miComplete runs
 prodigal and hmmer on every bin.

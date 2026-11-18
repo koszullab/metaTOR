@@ -20,6 +20,8 @@ All notable changes to this project will be documented in this file.
   stopped on a `KeyError`. `--no-metacool` removes both files at the end.
   Python API: `metator.metacool.write_library_maps`, and `libraries` of
   `metator.network.metacool_to_contacts`.
+- `pipeline --output-map FILE` writes the map of the clusters to FILE
+  (replaced only with `-F`).
 - `network` and `pipeline` start from a `.metacool` contact map with
   `--start metacool`, the map given to `-1` (a file, or an entry
   `file.mmetacool::entries/<name>`), at any bin size. The network is that
@@ -70,6 +72,27 @@ All notable changes to this project will be documented in this file.
   `check_map_contigs`.
 
 ### Changed
+- **Breaking:** a `pipeline` run from a `.metacool` map updates that map
+  in place, where it wrote a new map at `<outdir>/<prefix>.metacool`: the
+  map of the clusters is written next to it, validated in full, then
+  renamed over it (a symbolic link is replaced, not its target), so a run
+  that stops, for any reason, leaves it as it was. `--output-map FILE`
+  writes it elsewhere and leaves the input map alone; a run from an entry
+  of a `.mmetacool` collection needs it. While a run writes a map,
+  `<map>.lock` holds it: a second run that would write the same map stops
+  before any work, naming the run that holds it, and a lock left by a run
+  that died on the same host is removed with a warning; `metator metacool`
+  locks the map it writes too. So the directory of the map must be
+  writable, and a map whose directory is not is refused before any work:
+  write it elsewhere with `--output-map`. A map updated in place keeps its
+  mode. SIGTERM (a job scheduler's time limit) stops a run as
+  Ctrl-C does, so it cleans up after itself. `--output-map` refuses,
+  before any work: `--no-metacool`, which writes no map; an entry of a
+  collection, a directory, and the collection of an input entry.
+- **Breaking:** a map of the clusters that cannot be written stops
+  `pipeline` with the reason, logged as an error (it was a warning, and
+  the run went on to exit 0). The other outputs of the run are kept, and
+  so is the map it would have replaced.
 - `pipeline` from reads, alignments or pairs reads its pairs files into
   its `.metacool` map once, as soon as it has them: the map of the
   contigs, every contig in `__unbinned__`, with their contacts, the

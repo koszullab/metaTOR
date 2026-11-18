@@ -66,7 +66,7 @@ The pipeline writes into `--outdir` (`-o`, the current directory by default):
 | `bin_summary.txt` | One row per final bin: size, GC content, miComplete's completeness and redundancy, N50, abundance… |
 | `contig_data_final.txt` | One row per contig: its measures, and the core, overlapping, recursive and final bins it belongs to |
 | `binning.txt` | The contigs of the final bins and their bin |
-| `metator.metacool` | The contact map of all the contigs, grouped by bin (`<prefix>.metacool` with `--prefix`) |
+| `metator.metacool` | The contact map of all the contigs, grouped by cluster (`<prefix>.metacool` with `--prefix`): from reads, alignments or pairs; a run from a map updates that map instead, or writes `--output-map` |
 | `metator.mmetacool` | With several libraries, the contact map of each library, in no bin (`<prefix>.mmetacool` with `--prefix`) |
 | `network.txt` | The normalised network of contigs, all libraries summed |
 | `network_<i>.txt` | The network of library `i`, from 0 |
@@ -100,7 +100,7 @@ A run refuses to overwrite the bins of an earlier one unless given `--force`
 | `--iterations`, `--overlap` | 100, 80 | See [Partition](binning.md#partition) |
 | `--rec-iter`, `--rec-overlap` | 10, 90 | See [Validation](binning.md#validation) |
 | `--size` | 500000 | The size, in base pairs, a bin must reach to be kept |
-| `--prefix` | none | Names the bins `<prefix>_metator_…`, the map `<prefix>.metacool` and, with several libraries, the maps of the libraries `<prefix>.mmetacool` |
+| `--prefix` | none | Names the bins `<prefix>_metator_…`, the map `<prefix>.metacool` of a run from reads, alignments or pairs and, with several libraries, the maps of the libraries `<prefix>.mmetacool` |
 | `--threads` | 1 | Threads for the alignment and the partition |
 | `--tmpdir` | `./tmp` | Where the index and the temporary files go; deleted at the end, unless `--no-clean-up` |
 

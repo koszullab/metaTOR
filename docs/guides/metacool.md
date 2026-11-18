@@ -113,9 +113,9 @@ but those of a hand-edited `contig_data_final.txt` can be. Each row of
 `bin_summary.txt` must have as many fields as its header, as metaTOR writes
 it.
 
-When the map of the bins cannot be written, `metator pipeline` logs a warning
-saying why and keeps its other outputs and its exit status; `metator metacool`
-logs the reason as an error and stops with it. `pipeline` removes a map that
+When the map of the clusters cannot be written, `metator pipeline` and
+`metator metacool` log the reason as an error and stop with it; `pipeline`
+keeps its other outputs. `pipeline` removes a map that
 an earlier run left in the output directory before it builds the map of the
 contigs in its place (`--no-metacool` or not), as it no longer matches the
 bins: from then on, the map there is this run's, or there is none. So a run
@@ -217,8 +217,9 @@ metator pipeline -S metacool -1 sample.metacool -a assembly.fa -d depth.txt -e D
   the output directory: a run from a map draws none, and warns that no pairs
   file was found, unless an earlier run left its pairs files there.
 
-At the end of such a run, `pipeline` writes the map of its bins from the input
-map, with `metacooler reassign`, as a new file:
+At the end of such a run, `pipeline` updates the input map in place with the
+map of its clusters, with `metacooler reassign` (`--output-map FILE` writes it
+to FILE instead):
 
 - the bins and contacts of the input map, at its bin size; one genome per
   final bin and `__unbinned__` for the other contigs, grouped genome by genome,
@@ -237,11 +238,19 @@ map, with `metacooler reassign`, as a new file:
   out are lost, which metacooler warns about for a map made from pairs files);
 - the assembly name and the history of the commands of the input map.
 
-The map of the bins may go where the input map is, to bin its contigs again in
-the same output directory (`-S metacool -1 binning/metator.metacool -o binning
--F`): the new map is written next to it and validated before it replaces it,
-and the old map is left as it was, with a warning, when the new one cannot be
-written. A symbolic link there is replaced, not its target.
+The input map is replaced only once the map of the clusters is written next to
+it and validated in full. When it cannot be, the run stops with the reason, and
+the input map is left as it was, as it is when the run stops for any other
+reason (Ctrl-C included). A symbolic link is replaced, not its target.
+`--output-map FILE` leaves the input map as it was: a run from an entry of a
+`.mmetacool` collection needs it, as a run does not update a collection in
+place, and a FILE that exists is replaced only with `-F`.
+
+While a run writes a map, a lock file next to it (`<map>.lock`) holds it: a
+second run that would write the same map stops before any work, naming the run
+that holds it. A lock that a run left behind on the same host when it died is
+removed, with a warning; one from another host is not: remove it once that
+run is over.
 
 ## From hicstuff to metaTOR through metacooler
 
@@ -264,7 +273,7 @@ metacooler create pairs --pairs hicstuff_L1/L1.valid_idx.pairs.gz \
     --pairs hicstuff_L2/L2.valid_idx.pairs.gz --bins contigs.bed --no-ps \
     --assembly-name assembly -o sample.metacool
 
-# 3. Bin the contigs; binning/metator.metacool is the map of the bins.
+# 3. Cluster the contigs: sample.metacool becomes the map of the clusters, in place.
 metator pipeline -S metacool -1 sample.metacool -a assembly.fa -e DpnII -o binning
 ```
 

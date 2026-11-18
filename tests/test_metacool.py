@@ -1329,7 +1329,7 @@ def test_map_of_the_bins_replaces_the_input_map(how, metagenome, binning, tmp_pa
     metacooler.validate(str(outfile), full=True)
     assert_same_map(outfile, mtmc_map(binning, tmp_path))
     assert sorted(path.name for path in out.iterdir()) == ["metator.metacool"]
-    assert ("INFO", f"{outfile} is written: the contact map of the bins.") in logged()
+    assert ("INFO", f"{outfile} is written: the contact map of the clusters.") in logged()
     if how == "outfile a link":
         # The input map itself is left as it was.
         assert metacool.read_bytes() == before
@@ -1950,3 +1950,16 @@ def test_the_maps_of_the_libraries_refuse(metagenome_inputs, tmp_path, case, mes
         collection.write_text("an earlier run's")
     with pytest.raises(mtmc.MetacoolError, match=re.escape(message)):
         mtmc.write_library_maps(pairs, contig_data, str(out), str(collection), **kwargs)
+
+
+@pytest.mark.parametrize("mode", [0o600, 0o640, 0o444])
+def test_a_map_updated_in_place_keeps_its_mode(metagenome, binning, tmp_path, mode):
+    """The map of the clusters takes the mode of the file it replaces: a
+    private map stays private, a read-only one read-only (it got the mode
+    of a new file)."""
+    metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
+    metacool.chmod(mode)
+    mtmc.reassign_metacool(
+        str(metacool), str(binning["contig_data"]), str(metacool), bin_summary=str(binning["bin_summary"]), force=True
+    )
+    assert metacool.stat().st_mode & 0o777 == mode
