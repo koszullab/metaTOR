@@ -19,6 +19,7 @@ import time
 from contextlib import contextmanager
 from functools import partial
 from os.path import dirname, exists, join
+from pathlib import Path
 
 import rich_click as click
 from scipy.sparse import load_npz, save_npz
@@ -192,6 +193,68 @@ def check_pipeline_edge(edge):
         raise ValueError
 
 
+# The compression that metacooler gives a pairs file, from the suffix of its
+# name only, in any case (metacooler.io.create._PAIRS_CODECS): it reads a file
+# of any other name as plain text, whatever its first bytes.
+METACOOLER_PAIRS_CODECS = {".gz": "gzip", ".bgz": "gzip", ".bz2": "bzip2", ".zst": "zstd", ".zstd": "zstd", ".lz4": "lz4"}
+# The compressions that metaTOR finds from the first bytes of a file
+# (metator.io.file_compression), whatever its name: it reads no zstd or lz4.
+SNIFFED_CODECS = {"gz": "gzip", "bz2": "bzip2", "zip": "zip"}
+
+
+def check_pairs_compression(start, forward):
+    """Refuse, before any work, a pairs file given to a run from pairs (-1)
+    that metacooler, which builds the contact map of the contigs from it,
+    or metaTOR, which reads the network from it, could not read. metacooler
+    finds the compression of a pairs file from the suffix of its name only,
+    in any case (METACOOLER_PAIRS_CODECS); metaTOR finds it from the first
+    bytes of the file (SNIFFED_CODECS), and reads no zstd or lz4. Refused:
+    an empty file; a zip archive, which metacooler cannot read; a gzip or
+    bzip2 file whose name does not end with its extension; a plain file
+    named as a gzip or bzip2 file; and a file named as a zstd or lz4 file,
+    which metaTOR cannot read. The reason, with what to do, is logged as an
+    error, then ValueError is raised. A file that is not there is left to
+    the map, which stops on it."""
+    if start != "pair":
+        return
+    for path in forward.split(","):
+        if not os.path.isfile(path):
+            continue
+        suffix = Path(path).suffix
+        named = METACOOLER_PAIRS_CODECS.get(suffix.lower())
+        found = SNIFFED_CODECS.get(mio.file_compression(path))
+        if os.path.getsize(path) == 0:
+            reason = "is empty: give the pairs file of its library, or leave it out of -1."
+        elif found == "zip":
+            reason = (
+                "is a zip archive, which metacooler, which builds the contact map of the contigs, cannot read: "
+                "decompress it, and give the pairs file itself, plain or compressed with gzip and named .gz."
+            )
+        elif found and found != named:
+            wanted = ".gz" if found == "gzip" else ".bz2"
+            reason = (
+                f"is compressed with {found}, but metacooler, which builds the contact map of the contigs, finds "
+                f"the compression of a pairs file from its name only: rename it so that its name ends with {wanted}, "
+                "or decompress it."
+            )
+        elif not found and named in ("gzip", "bzip2"):
+            reason = (
+                f"is not compressed, but metacooler, which builds the contact map of the contigs, would decompress it "
+                f"with {named}, from its {suffix} extension: rename it without {suffix}, or compress it with {named}."
+            )
+        elif named in ("zstd", "lz4"):
+            article = "an" if named == "lz4" else "a"
+            reason = (
+                f"is named as {article} {named} file, which metacooler, which builds the contact map of the contigs, reads, "
+                "but not metaTOR, which reads the network from the pairs files: decompress it, or compress it with "
+                "gzip and name it .gz."
+            )
+        else:
+            continue
+        logger.error(f"{path} {reason}")
+        raise ValueError
+
+
 def check_inputs_not_the_map(start, forward, reverse, metacool):
     """The files given to a pipeline run from reads, alignments or pairs
     (-1, -2): none may be its contact map (metacool: the same path, or a
@@ -244,17 +307,49 @@ def aligner_mode_for(aligner_mode, enzyme):
     return aligner_mode
 
 
-def reference_files(assembly, aligner, start, tmp_dir):
+def check_ascii_contigs(fasta, index=None, aligner=None):
+    """Refuse an assembly whose contig names are not ASCII, before any
+    alignment: the contact map of the contigs, which a pipeline run builds,
+    needs them in ASCII (metator.metacool.check_ascii_names, whose message
+    is logged), and could only be built once the reads are aligned. The
+    names are those that the network step reads
+    (metator.io.read_fasta_names). The reason, with what to do (rename the
+    contigs), is logged as an error, then ValueError is raised. The
+    assembly is named as it was given: the fasta, or the index of aligner
+    whose fasta was retrieved (index), which is to be built again once its
+    contigs are renamed."""
+    try:
+        mtmc.check_ascii_names(mio.read_fasta_names(fasta), [])
+    except mtmc.MetacoolError as error:
+        reason = str(error)
+    else:
+        return
+    if index is None:
+        assembly, rebuild = fasta, ""
+    else:
+        assembly, rebuild = f"the {aligner} index {index}", ", build the index again"
+    logger.error(
+        f"The contig names of {assembly} cannot be used: {reason} Rename these contigs to ASCII names, in the "
+        f"assembly and in the alignments or pairs files made from it{rebuild}, then run pipeline again."
+    )
+    raise ValueError
+
+
+def reference_files(assembly, aligner, start, tmp_dir, ascii_names=False):
     """Index and fasta of the assembly.
 
     The assembly is a fasta, whose index is built when the reads are
     aligned (fastq start), or the basename of a bowtie2 or bwa index, whose
-    fasta is retrieved.
+    fasta is retrieved. With ascii_names (a pipeline run that builds the
+    map of its contigs), its contig names are checked as soon as its fasta
+    is known, before the index is built (see check_ascii_contigs).
     """
     index = mio.check_fasta_index(assembly, mode=aligner)
     if index is None:
         if mio.check_is_fasta(assembly):
             fasta = assembly
+            if ascii_names:
+                check_ascii_contigs(fasta)
             # Starting from bam or pairs files skips the index generation.
             if start == "fastq":
                 index = mio.generate_fasta_index(fasta, aligner, tmp_dir)
@@ -263,6 +358,8 @@ def reference_files(assembly, aligner, start, tmp_dir):
             raise ValueError
     else:
         fasta = mio.retrieve_fasta(index, aligner, tmp_dir)
+        if ascii_names:
+            check_ascii_contigs(fasta, index=assembly, aligner=aligner)
     return index, fasta
 
 
@@ -310,36 +407,60 @@ def metacool_path(outdir, prefix):
     return join(outdir, f"{prefix or 'metator'}.metacool")
 
 
-def _map_not_written(outfile, error, consequence, asked=True):
-    """Log that the map at outfile is not written, saying why, then what
-    follows: a warning, or a line at INFO for a map that was not asked for
-    (asked: --no-metacool not given). A MetacoolError says why; another
-    error is unexpected: it is a warning all the same, with its type and
-    traceback."""
+def _failure(error):
+    """What the failure of a map says: the message of a MetacoolError, or,
+    for another error, which is unexpected, its type and message. Returns
+    it without its final period, and whether the error is unexpected (its
+    traceback then goes to the log too)."""
     unexpected = not isinstance(error, mtmc.MetacoolError)
     reason = f"{type(error).__name__}: {error}" if unexpected else str(error)
-    log = logger.warning if asked or unexpected else logger.info
-    log(f"{outfile} is not written: {reason.rstrip('.')}. {consequence}", exc_info=unexpected)
+    return reason.rstrip("."), unexpected
 
 
-def pipeline_contig_map(pairs_files, contig_data, outfile, assembly, threads, tmp_dir, no_metacool=False):
+# What metacooler needs of the pairs files given to a run from pairs, which
+# the run says when it stops on pairs files that metacooler cannot read.
+PAIRS_FILES_NEEDS = (
+    "metacooler, which builds it, needs each pairs file given to -1 with its header lines (those that start with #) "
+    "at its top only and the same number of fields on every row, plain or compressed and named by its extension, "
+    "in any case: gzip (.gz or .bgz) or bzip2 (.bz2). Give the pairs files of several libraries comma-separated, "
+    "one file per library, rather than concatenated."
+)
+
+
+def _pairs_unreadable(error):
+    """Whether the map of the contigs failed on the content of its pairs
+    files: metacooler reads them with pyarrow, whose errors (a parse error,
+    on a header line amid the pairs or a row with one more field, for
+    example) write_contig_map turns into a MetacoolError. pyarrow is no
+    dependency of metaTOR: it is looked up once metacooler has loaded it."""
+    pyarrow = sys.modules.get("pyarrow")
+    return pyarrow is not None and isinstance(error, mtmc.MetacoolError) and isinstance(error.__cause__, pyarrow.ArrowException)
+
+
+def pipeline_contig_map(pairs_files, contig_data, outfile, assembly, threads, tmp_dir, given_pairs=False):
     """Build the contact map of the contigs of a pipeline run from its pairs
     files, as soon as it has them, at outfile (see metacool_path): every
     contig in no bin yet (see metator.metacool.write_contig_map). At the end
     of the run, pipeline_metacool writes the map of the bins over it or,
-    with --no-metacool, the run removes it. Returns whether it is built.
+    with --no-metacool, the run removes it. given_pairs: the pairs files
+    are those given to a run from pairs (--start pair), not those that the
+    run made from reads or alignments; when metacooler cannot read them,
+    the error also says what it needs of them (PAIRS_FILES_NEEDS).
 
     A map of the same name left by an earlier run is removed first: this
     run replaces the tables it was made from, so it must not stay behind,
-    passing for this run's, when this one cannot be built. The map is an
-    extra output: when it cannot be built, a warning says why (a line at
-    INFO with --no-metacool, unless the error is unexpected), nothing is
-    left at outfile, and the run goes on without it (no map of the bins is
-    written at its end). Once built, it stays at outfile, in no bin, until
-    the map of the bins replaces it: when that map cannot be written, and
-    when the run stops with an error before its end (--no-metacool or not).
-    A symbolic link at outfile is removed, not its target. The inputs of the
-    run are not at outfile: check_inputs_not_the_map refuses them first.
+    passing for this run's, when this one cannot be built. A map that
+    cannot be built stops the run, --no-metacool or not, whatever the number
+    of libraries: the reason is logged as an error, in the log file of the
+    run (with the type and the traceback of an unexpected error, which is
+    not a MetacoolError), then the error is raised as it is. Nothing is left
+    at outfile: metacooler removes its partial file, and write_contig_map a
+    map whose columns it cannot store. Once built, the map stays at outfile,
+    in no bin, until the map of the bins replaces it: when that map cannot
+    be written, and when the run stops with an error before its end
+    (--no-metacool or not). A symbolic link at outfile is removed, not its
+    target. The inputs of the run are not at outfile:
+    check_inputs_not_the_map refuses them first.
     """
     try:
         if os.path.lexists(outfile):
@@ -356,12 +477,10 @@ def pipeline_contig_map(pairs_files, contig_data, outfile, assembly, threads, tm
             tmp_dir=tmp_dir,
         )
     except Exception as error:
-        if no_metacool:
-            _map_not_written(outfile, error, "The run goes on without it.", asked=False)
-        else:
-            _map_not_written(outfile, error, "The run goes on without it, and writes no map of the bins.")
-        return False
-    return True
+        reason, unexpected = _failure(error)
+        needs = f" {PAIRS_FILES_NEEDS}" if given_pairs and _pairs_unreadable(error) else ""
+        logger.error(f"The contact map of the contigs cannot be built at {outfile}: {reason}.{needs}", exc_info=unexpected)
+        raise
 
 
 def pipeline_metacool(metacool, outdir, outfile, contig_map=False):
@@ -402,7 +521,8 @@ def pipeline_metacool(metacool, outdir, outfile, contig_map=False):
             metadata=run_metadata(),
         )
     except Exception as error:
-        _map_not_written(outfile, error, f"{kept}The other outputs of the run are kept.")
+        reason, unexpected = _failure(error)
+        logger.warning(f"{outfile} is not written: {reason}. {kept}The other outputs of the run are kept.", exc_info=unexpected)
 
 
 # ---------------------------------------------------------------------------
@@ -1080,7 +1200,7 @@ def validation(
     is_flag=True,
     help="Do not keep the contact map of the contigs, grouped by bin, as <prefix>.metacool (metator.metacool "
     "without --prefix): a run from reads, alignments or pairs still builds the map of its contigs from the pairs "
-    "files, and removes it at the end.",
+    "files (a map that cannot be built stops the run), and removes it at the end.",
 )
 def pipeline(
     forward,
@@ -1126,11 +1246,11 @@ def pipeline(
 
     As soon as it has the pairs files, the run builds the contact map of
     the contigs, in no bin yet, as a .metacool file (see
-    [cyan]metator metacool[/] and the README). At the end, the map of the
-    bins (the contigs grouped by bin) is written over it or, with
-    --no-metacool, it is removed. A run from a .metacool file writes the
-    map of its bins from that map, which it may replace, and cannot
-    scaffold.
+    [cyan]metator metacool[/] and the README): a map that cannot be built
+    stops the run. At the end, the map of the bins (the contigs grouped by
+    bin) is written over it or, with --no-metacool, it is removed. A run
+    from a .metacool file writes the map of its bins from that map, which
+    it may replace, and cannot scaffold.
     """
     # Private temporary directory inside --tmpdir.
     with private_tmp_dir(tmpdir, clean_up=not no_clean_up) as tmp_dir:
@@ -1155,6 +1275,7 @@ def pipeline(
         check_metacool_start(start, forward, edge, scaffold)
         metacool_file = metacool_path(outdir, prefix)
         check_inputs_not_the_map(start, forward, reverse, metacool_file)
+        check_pairs_compression(start, forward)
         check_reverse_reads(start, aligner, reverse)
         bins_prefix = bin_prefix(prefix)
 
@@ -1186,8 +1307,10 @@ def pipeline(
             refuse_output_dir(path, force)
 
         # Check what is the reference. If a fasta is given build the index. If a
-        # bowtie2 index is given, retreive the fasta.
-        index, fasta = reference_files(assembly, aligner, start, tmp_dir)
+        # bowtie2 index is given, retreive the fasta. Its contig names are
+        # checked first, but for a run from a map: the map of the contigs
+        # needs them in ASCII.
+        index, fasta = reference_files(assembly, aligner, start, tmp_dir, ascii_names=start != "metacool")
         for path in bin_dirs:
             make_output_dir(path, force)
 
@@ -1215,10 +1338,12 @@ def pipeline(
             contig_data, hit_data = mtn.create_contig_data(fasta, len(alignment_files) or 1, depth, enzyme)
         # The contact map of the contigs, built once from the pairs files as
         # soon as the run has them: the map of the bins is written over it at
-        # the end. A run from a map writes the map of its bins from that map.
-        contig_map = start != "metacool" and pipeline_contig_map(
-            alignment_files, contig_data, metacool_file, assembly, threads, tmp_dir, no_metacool
-        )
+        # the end. A map that cannot be built stops the run. A run from a map
+        # writes the map of its bins from that map.
+        if start != "metacool":
+            pipeline_contig_map(
+                alignment_files, contig_data, metacool_file, assembly, threads, tmp_dir, given_pairs=start == "pair"
+            )
         # Build the network
         network_file, contigs_data_file = contig_network(
             start, forward, alignment_files, contig_data, hit_data, edge, outdir, tmp_dir, threads, normalization, False
@@ -1295,14 +1420,14 @@ def pipeline(
 
         # The map of the bins, written last: over the map of the contigs that
         # the run built, or from the input map of a run that started from one.
-        if no_metacool:
-            if contig_map:
-                logger.info(f"Removing {metacool_file}, the contact map of the contigs (--no-metacool).")
-                os.remove(metacool_file)
-        elif contig_map:
+        if start == "metacool":
+            if not no_metacool:
+                pipeline_metacool(forward, outdir, metacool_file)
+        elif no_metacool:
+            logger.info(f"Removing {metacool_file}, the contact map of the contigs (--no-metacool).")
+            os.remove(metacool_file)
+        else:
             pipeline_metacool(metacool_file, outdir, metacool_file, contig_map=True)
-        elif start == "metacool":
-            pipeline_metacool(forward, outdir, metacool_file)
 
     # Delete the pairs files made from the reads or the alignments, and
     # their pypairix index.

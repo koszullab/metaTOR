@@ -7,6 +7,7 @@ This mdoule contains all core I/O functions:
     - check_fasta_index
     - check_is_fasta
     - check_pypairix
+    - file_compression
     - generate_fasta_index
     - generate_temp_dir
     - get_pairs_data
@@ -18,6 +19,7 @@ This mdoule contains all core I/O functions:
     - read_bin_summary
     - read_compressed
     - read_contig_data
+    - read_fasta_names
     - remove_pyfastx_index
     - retrieve_fasta
     - sort_and_index_pairs
@@ -131,6 +133,29 @@ def check_pypairix():
         logger.error("Cannot find 'pypairix' installed.")
         raise AttributeError("pypairix has no build_index")
     return True
+
+
+# The first bytes of the compressed files that read_compressed opens.
+COMPRESSION_MAGIC = {
+    b"\x1f\x8b\x08": "gz",
+    b"\x42\x5a\x68": "bz2",
+    b"\x50\x4b\x03\x04": "zip",
+}
+
+
+def file_compression(filename):
+    """The compression of a file, found from its first bytes, whatever its
+    name, as read_compressed opens it: "gz", "bz2", "zip", or
+    "uncompressed" for any other file.
+
+    Function from hicstuff.io (https://github.com/koszullab/hicstuff/)
+    """
+    with open(filename, "rb") as f:
+        file_start = f.read(max(len(magic) for magic in COMPRESSION_MAGIC))
+    for magic, filetype in COMPRESSION_MAGIC.items():
+        if file_start.startswith(magic):
+            return filetype
+    return "uncompressed"
 
 
 def generate_fasta_index(fasta, aligner, outdir):
@@ -414,29 +439,8 @@ def read_compressed(filename):
         The handle to access the input file's content
     """
 
-    # Standard header bytes for diff compression formats
-    comp_bytes = {
-        b"\x1f\x8b\x08": "gz",
-        b"\x42\x5a\x68": "bz2",
-        b"\x50\x4b\x03\x04": "zip",
-    }
-
-    max_len = max(len(x) for x in comp_bytes)
-
-    def file_type(filename):
-        """Guess file type
-
-        Compare header bytes with those in the file and return type.
-        """
-        with open(filename, "rb") as f:
-            file_start = f.read(max_len)
-        for magic, filetype in comp_bytes.items():
-            if file_start.startswith(magic):
-                return filetype
-        return "uncompressed"
-
     # Open file with appropriate function
-    comp = file_type(filename)
+    comp = file_compression(filename)
     if comp == "gz":
         return gzip.open(filename, "rt")
     elif comp == "bz2":
@@ -469,6 +473,18 @@ def read_contig_data(contig_data_file):
     data = pd.read_csv(contig_data_file, sep="\t")
     data = data.set_index("Name", drop=False)
     return data
+
+
+def read_fasta_names(fasta):
+    """The names of the sequences of a fasta file, in their order, as
+    Biopython names its records (SeqIO.parse, which create_contig_data reads
+    the assembly with): the first word of each header line. Only the header
+    lines are looked at."""
+    with open(fasta, "r") as handle:
+        for line in handle:
+            if line.startswith(">"):
+                words = line[1:].split(None, 1)
+                yield words[0] if words else ""
 
 
 def remove_pyfastx_index(fasta):

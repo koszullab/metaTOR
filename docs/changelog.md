@@ -51,12 +51,28 @@ All notable changes to this project will be documented in this file.
   `--no-metacool` or not (it was removed at the end, and left there with
   `--no-metacool`): an input of the run that is that map, and from pairs a
   contact map, are refused before any work. A map of the contigs that
-  cannot be built leaves none, with a warning (at INFO with
-  `--no-metacool`), and the run goes on; a map of the bins that cannot be
-  written over it, and a run that stops with an error once it is built,
-  leave the map of the contigs, in no bin, which a new run can start from
+  cannot be built stops the run before its network, `--no-metacool` or
+  not, whatever the number of libraries, with the reason logged as an
+  error, and leaves none; a map of the bins that cannot be written over
+  it, and a run that stops with an error once it is built, leave the map
+  of the contigs, in no bin, which a new run can start from
   (`--start metacool`, with `-F` in the same output directory). Python
   API: `metator.metacool.write_contig_map`.
+- `pipeline` checks what the map of the contigs needs before any work. A
+  run that is not from a map refuses an assembly whose contig names are
+  not ASCII, which it gives, before it builds its index or aligns a read:
+  the map, which needs ASCII names, could only be built once the reads
+  were aligned. From pairs, it refuses an empty pairs file, and one that
+  metacooler, which builds the map, or metaTOR, which reads the network
+  from it, could not read (metacooler goes by the suffix of its name, in
+  any case, metaTOR by the first bytes of the file): a zip archive, a gzip
+  file whose name ends with neither `.gz` nor `.bgz`, a bzip2 file whose
+  name does not end with `.bz2`, a plain file named as one of them, and a
+  zstd or LZ4 file (`.zst`, `.zstd`, `.lz4`), which metaTOR cannot read. A
+  map that metacooler cannot build from the pairs files of a run from
+  pairs stops the run with what it needs of them: their header lines at
+  their top only, the same number of fields on every row, one file per
+  library given comma-separated rather than files concatenated.
 - `pipeline` refuses an `--edge` other than 0 before any work, whatever
   the start (it refused one above 0 with `--start metacool` only, and
   took a negative one as 0): it counts every pair, as its contact map
@@ -230,11 +246,10 @@ All notable changes to this project will be documented in this file.
   `Restriction_site` without `--enzyme`), and never the bins; and the file
   metadata the version, command line and parameters of the run, under the
   `metator` key. The map is written last: when it cannot be written (for
-  example, contig names that are not ASCII, which cooler cannot read, or a
-  misaligned bin summary, see below), a warning says why and the run keeps
-  its other outputs and its exit status. A map left in the output directory
-  by an earlier run is removed first, so that it cannot pass for the map of
-  this run. See the README.
+  example, from a misaligned bin summary, see below), a warning says why
+  and the run keeps its other outputs and its exit status. A map left in
+  the output directory by an earlier run is removed first, so that it
+  cannot pass for the map of this run. See the README.
 - `metator metacool` writes the same file from the pairs files,
   `contig_data_final.txt` and `bin_summary.txt` of a run. Python API:
   `metator.metacool.write_metacool`. It refuses bins named as metacooler

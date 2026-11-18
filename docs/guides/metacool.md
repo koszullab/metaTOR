@@ -93,27 +93,49 @@ but those of a hand-edited `contig_data_final.txt` can be. Each row of
 `bin_summary.txt` must have as many fields as its header, as metaTOR writes
 it.
 
-When the map cannot be written, `metator pipeline` logs a warning saying why
-(a line at INFO with `--no-metacool`, for a reason that `metator metacool`
-would give) and keeps its other outputs and its exit status; `metator
-metacool` logs the reason as an error and stops with it. `pipeline` removes a
-map that an earlier run left in the output directory before it builds the map
-of the contigs in its place (`--no-metacool` or not), as it no longer matches
-the bins: from then on, the map there is this run's, or there is none. So a
-run from reads, alignments or pairs refuses, before any work, an input that is
+When the map of the bins cannot be written, `metator pipeline` logs a warning
+saying why and keeps its other outputs and its exit status; `metator metacool`
+logs the reason as an error and stops with it. `pipeline` removes a map that
+an earlier run left in the output directory before it builds the map of the
+contigs in its place (`--no-metacool` or not), as it no longer matches the
+bins: from then on, the map there is this run's, or there is none. So a run
+from reads, alignments or pairs refuses, before any work, an input that is
 that map (or a symbolic link to it or from it), and, from pairs, a contact
 map: start from a map with `--start metacool`. A map of the contigs that
-cannot be built (for example, from an assembly with contig names that are not
-ASCII) leaves none, and the run goes on without a map. When the map of the
-bins cannot be written over it (for example, from a misaligned
-`bin_summary.txt`), the map of the contigs stays, in no bin. So it does when
-the run stops with an error once it is built (in the partition or the
-validation, for example), `--no-metacool` or not: a new run can start from it,
-without aligning the reads again, with `--start metacool -1
-<outdir>/metator.metacool` (`<outdir>/<prefix>.metacool` with `--prefix`) and
-`-F`, which replaces the bin directories that the stopped run left in the
-output directory. `--edge` then stays at 0 and `--scaffold` is not available
+cannot be built (for example, from pairs files that metacooler cannot read,
+see below) stops the run before its network, `--no-metacool` or not, whatever
+the number of libraries: the reason is logged as an error, in the log file of
+the run, and no map is left. When the map of the bins cannot be written over
+it (for example, from a misaligned `bin_summary.txt`), the map of the contigs
+stays, in no bin. So it does when the run stops with an error once it is
+built (in the partition or the validation, for example), `--no-metacool` or
+not: a new run can start from it, without aligning the reads again, with
+`--start metacool -1 <outdir>/metator.metacool` (`<outdir>/<prefix>.metacool`
+with `--prefix`) and `-F`, which replaces the bin directories that the
+stopped run left in the output directory; `--scaffold` is not available then
 (see [Starting from a contact map](#starting-from-a-contact-map)).
+
+`pipeline` checks what the map of the contigs needs before any work. Its
+contig names must be ASCII: a run that is not from a map refuses an assembly
+with other contig names, which it gives, before it builds the index of the
+assembly or aligns a read; rename these contigs to ASCII names, in the
+assembly and in the alignments or pairs files made from it (and build its
+index again, for an assembly given as an index). metacooler, which builds the
+map, finds the compression of a pairs file from the suffix of its name only,
+in any case: it reads a file named `.gz` or `.bgz` as gzip, `.bz2` as bzip2,
+`.zst` or `.zstd` as zstd and `.lz4` as LZ4, and a file of any other name as
+plain text. metaTOR, which reads the network from the pairs files, finds the
+compression of a file from its first bytes, and reads plain, gzip, bzip2 and
+zip files. So a run from pairs refuses, before any work, an empty pairs file;
+a zip archive, which metacooler cannot read; a gzip file whose name ends with
+neither `.gz` nor `.bgz`, and a bzip2 file whose name does not end with
+`.bz2`; a plain file named as a gzip or bzip2 file; and a zstd or LZ4 file,
+which metaTOR cannot read: rename, decompress or recompress the file (with
+gzip, named `.gz`). metacooler also needs the header lines of a pairs file
+(those that start with `#`) at its top only, and the same number of fields on
+every row: give the pairs files of several libraries comma-separated, one file
+per library, rather than concatenated. A run from pairs that metacooler cannot
+read stops with the reason and these needs.
 
 ## Starting from a contact map
 
