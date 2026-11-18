@@ -584,6 +584,31 @@ def test_one_pairs_file_as_a_path(binning, tmp_path):
 # The metacool command.
 
 
+def test_is_map(binning, tmp_path):
+    """A map is an HDF5 file, or the URI of a map inside one (file::group),
+    whatever the name: a pairs file may have :: in its name, and a URI is
+    no map when its file is no HDF5 file (or no file)."""
+    metacool = tmp_path / "map.metacool"
+    mtmc.write_metacool(str(binning["pairs"]), str(binning["contig_data"]), str(metacool))
+    colons = shutil.copyfile(binning["pairs"], tmp_path / "lib::L1.pairs")
+    named = shutil.copyfile(metacool, tmp_path / "lib::L1.metacool")
+    assert [mtmc.is_map(path) for path in [metacool, named, f"{metacool}::/", f"{metacool}::entries/a"]] == [True] * 4
+    pairs = binning["pairs"]
+    others = [pairs, colons, f"{pairs}::/", tmp_path / "missing.metacool", f"{tmp_path}/missing::x", tmp_path]
+    assert [mtmc.is_map(path) for path in others] == [False] * 6
+
+
+def test_metacool_command_from_a_pairs_file_named_with_colons(metagenome, binning, tmp_path, run_cli):
+    """A pairs file whose name holds :: is a pairs file, not the URI of a
+    map inside a file: the map is written from its pairs."""
+    pairs = shutil.copyfile(binning["pairs"], tmp_path / "lib::L1.pairs")
+    out = tmp_path / "out.metacool"
+    run_cli("metacool", "-c", binning["contig_data"], "-b", binning["bin_summary"], "-o", out, pairs)
+    metacooler.validate(str(out), full=True)
+    assert map_pixels(out).sum() == len(metagenome.pairs)
+    assert "reassign" not in cooler.Cooler(str(out)).info["metadata"]
+
+
 def test_metacool_command(metagenome, binning, tmp_path, run_cli):
     pairs = metagenome.pairs
     half = len(pairs) // 2

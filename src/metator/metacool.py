@@ -262,18 +262,27 @@ def map_file(metacool):
     return str(metacool).split("::", 1)[0]
 
 
-def is_map(path):
-    """Whether path is a contact map rather than a pairs file: the URI of
-    one inside a file (file::group), or an HDF5 file, which a pairs file
-    never is. A .metacool map is one; so are a .mmetacool collection and a
-    .cool file, which open_map then refuses with metacooler's reason."""
-    if "::" in str(path):
-        return True
+def _is_hdf5(path):
+    """Whether path is a file that starts as an HDF5 file does."""
     try:
         with open(path, "rb") as handle:
             return handle.read(len(HDF5_SIGNATURE)) == HDF5_SIGNATURE
     except OSError:
         return False
+
+
+def is_map(path):
+    """Whether path is a contact map rather than a pairs file: an HDF5
+    file, which a pairs file never is, or the URI of a map inside one
+    (file::group). A path that is a file is a map only when it is an HDF5
+    file, whatever its name: a pairs file may have :: in its name. A URI is
+    one only when the path is no file and its file part is an HDF5 file. A
+    .metacool map is a map; so are a .mmetacool collection and a .cool
+    file, which open_map then refuses with metacooler's reason."""
+    path = str(path)
+    if os.path.isfile(path):
+        return _is_hdf5(path)
+    return "::" in path and _is_hdf5(map_file(path))
 
 
 def is_entry(metacool):
