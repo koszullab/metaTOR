@@ -49,14 +49,19 @@ FASTA_EXTENSIONS = (".fa", ".fasta", ".fna")
 
 
 def correct_final_bin(contigs_data, final_fasta_dir, bin_summary):
-    """Function to compute the coverage of each bin.
+    """Function to set the final bin of each contig from the fasta files of
+    the final bins: the contigs of <final_fasta_dir>/<bin>.fa get the bin as
+    Final_bin. pyfastx writes the index of each of these files next to it
+    (<bin>.fa.fxi).
 
     Parameters:
     -----------
-    bin_summary : dict
-        Dictionnary with the informations of the final bins kept by MetaTOR.
     contigs_data : pandas.core.frame.DataFrame
         Dataframe with the contigs informations.
+    final_fasta_dir : str
+        Path to the directory of the fasta files of the final bins.
+    bin_summary : dict
+        Dictionnary with the informations of the final bins kept by MetaTOR.
 
     Returns:
     --------

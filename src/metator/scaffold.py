@@ -103,13 +103,12 @@ def parallel_scaffold(
         Name of the bin
     final_fasta_dir : str
         Folder path to the fasta sequences of the bin contigs.
-    alignment_files : str
+    alignment_files : List of str
         List of path to the pair file to pair file. If not sorted and indexed it
         will be sorted and indexed.
     scaffold_fasta_dir : str
-        Folder path to write the fasta and table output.
-    out_info : str
-        Path to write the info frags file.
+        Folder path to write the fasta and table output: <bin_name>_scaffolded.fa
+        and <bin_name>_info_frags.txt.
     junctions : Optional[str]
         Sequence to put between two contigs. [Default: None]
     """
