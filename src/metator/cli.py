@@ -26,6 +26,7 @@ import rich_click as click
 from scipy.sparse import load_npz, save_npz
 
 import metator.align as mta
+import metator.clusters as mtcl
 import metator.contact_map as mtc
 import metator.io as mio
 import metator.log as mtl
@@ -684,11 +685,11 @@ def pipeline_contig_map(pairs_files, contig_data, outfile, assembly, threads, tm
 def pipeline_metacool(metacool, outdir, outfile, contig_map=False, columns_from_map=()):
     """Write the contact map of the clusters of a pipeline run at outfile
     (see run_map_path), from a .metacool map of its contigs and the final
-    tables of the run (see metator.metacool.reassign_metacool): the map
-    that the run built from its pairs files (contig_map, at outfile), or the
-    input map of a run that started from one, which outfile is by default,
-    whose columns it read (columns_from_map: stored in the metadata of the
-    new map).
+    tables of the run (see metator.metacool.reassign_metacool), with its
+    clustering rounds (see metator.clusters): the map that the run built
+    from its pairs files (contig_map, at outfile), or the input map of a
+    run that started from one, which outfile is by default, whose columns
+    it read (columns_from_map: stored in the metadata of the new map).
 
     outfile is only replaced once the new map has been written and
     validated: the map of the contigs that the run built stays there, in no
@@ -723,6 +724,7 @@ def pipeline_metacool(metacool, outdir, outfile, contig_map=False, columns_from_
             bin_summary=join(outdir, "bin_summary.txt"),
             force=True,
             metadata=run_metadata(columns_from_map),
+            rounds=mtcl.read_rounds(outdir),
         )
     except Exception as error:
         reason, unexpected = _failure(error)

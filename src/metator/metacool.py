@@ -748,7 +748,7 @@ def _named_library(i, pairs_file):
         raise MetacoolError(f"Library {i}, {pairs_file}: {reason}") from error
 
 
-def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=False, metadata=None):
+def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=False, metadata=None, rounds=None):
     """Write the contact map of the final bins from a .metacool map of the
     contigs, without pairs files.
 
@@ -806,6 +806,11 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
     metadata : dict, optional
         Parameters of the run, stored with the version of metaTOR under the
         "metator" key of the file metadata.
+    rounds : tuple of pandas.DataFrame, optional
+        The clustering rounds of the run, as metator.clusters.read_rounds
+        reads them: stored in the /clusters group of the map (see
+        store_rounds), which replaces the rounds that the input map held.
+        Without them, the map keeps none.
 
     Raises
     ------
@@ -892,6 +897,7 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
                     keep_partial=False,
                 )
                 _write_back_columns(staged, contig_data, contig_columns, header)
+                store_rounds(staged, rounds)
                 metacooler.validate(staged, full=True)
                 # The map keeps the mode of the file it replaces (that of the
                 # target of a symbolic link): a private map stays private.
@@ -952,6 +958,53 @@ def _write_back_columns(path, contig_data, contig_columns, header):
         # about the rows that name them.
         unmatched="ignore",
         inplace=True,
+    )
+
+
+def store_rounds(path, rounds):
+    """Store the clustering rounds of a run in the /clusters group of a map,
+    in place of those it held: the overlapping, recursive and final clusters
+    of metator.clusters, with their contigs, their parents and their columns
+    (those of miComplete, and of the bin summary for the final clusters).
+
+    Each round is stored with the tool and the version that made it. A text
+    column holds an empty text where a round has no value, as HDF5 stores no
+    missing text. The contigs of a cluster that the map lacks (a map made
+    with a contig filter) are left out, with a warning.
+
+    Parameters
+    ----------
+    path : str
+        Path to the .metacool file, written in place.
+    rounds : tuple of pandas.DataFrame, or None
+        The clusters and their contigs (see metator.clusters.read_rounds).
+        None removes the rounds that the map held.
+    """
+    import metacooler
+
+    if rounds is None:
+        metacooler.drop_clusters(path)
+        return
+    clusters, members = rounds
+    names = set(metacooler.MetaCooler(path).contigs["name"].astype(str))
+    absent = members["contig"].astype(str).map(lambda name: name not in names)
+    if absent.any():
+        logger.warning(
+            f"{int(absent.sum())} contig(s) of the clusters of the run are not in {path}, and not in its clusters "
+            f"either: {_shown(sorted(set(members.loc[absent, 'contig'])))}."
+        )
+        members = members[~absent]
+    order = list(dict.fromkeys(clusters["round"]))
+    steps = {name: "partition" if name == "overlapping" else "validation" for name in order}
+    stored = clusters.copy()
+    for column in stored.columns:
+        if column not in ("parent_round", "parent") and not pd.api.types.is_numeric_dtype(stored[column]):
+            stored[column] = stored[column].astype(object).where(stored[column].notna(), "").astype(str)
+    metacooler.write_clusters(
+        path,
+        [{"name": name, "tool": "metaTOR", "version": __version__, "step": steps[name]} for name in order],
+        stored,
+        members,
     )
 
 

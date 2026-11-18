@@ -81,7 +81,8 @@ metacooler dump -t genomes -H binning/metator.metacool
 
 `metator metacool` writes the same file from the pairs files,
 `contig_data_final.txt` and `bin_summary.txt` of a run, for a run made step by
-step, or one that skipped the map, but for the history that it stores (the
+step, or one that skipped the map, but for the clustering rounds, which it does
+not store, the history that it stores (the
 `annotate` and `reassign` keys of its metadata) and the type of its counts with
 several libraries (64-bit integers, which `metator metacool` stores as 32-bit
 ones):
@@ -244,6 +245,30 @@ second run that would write the same map stops before any work, naming the run
 that holds it. A lock that a run left behind on the same host when it died is
 removed, with a warning; one from another host is not: remove it once that
 run is over.
+
+## Clustering rounds
+
+A run reaches its final clusters in rounds:
+
+- `overlapping`: the overlapping clusters of the partition that reach
+  `--size`, which miComplete checks;
+- `recursive_1`, `recursive_2`...: the clusters that each step of the
+  validation makes by partitioning a contaminated cluster again, its parent;
+- `final`: the final clusters, each the cluster of the same name of the round
+  it comes from.
+
+The validation writes them all next to its other tables, in the output
+directory: `clusters.txt`, one row per cluster of every round (its round and
+name, the round and name of its parent, `NA` for none, and the columns of
+miComplete), and `cluster_members.txt`, one row per contig of a cluster (its
+round, cluster and contig). A contig is in at most one cluster of a round.
+
+The map of the clusters stores both in its `/clusters` group (metacooler
+0.4.0), next to the final clusters, which its genomes and contigs tables hold:
+`metacooler dump -t clusters` and `-t members` write them out, and
+`MetaCooler.clusters` and `MetaCooler.cluster_members()` read them. A map
+holds the rounds of the run that wrote it, and those only: `metator
+metacool`, which writes a map from the tables of a run, stores none.
 
 ## From hicstuff to metaTOR through metacooler
 

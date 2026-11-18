@@ -208,8 +208,10 @@ map of the contigs, from the final tables, with `metacooler reassign`; `--no-met
 instead (the `.mmetacool` collection too). Its file is larger than that of a map written from the pairs
 in one go (by 12 to 32% on our test data), for the same data: the columns measured on the assembly,
 dropped and written again at the end, leave free space in it. A run that started from a contact map updates that map in place (or writes `--output-map`, see
-[Starting from a contact map](#starting-from-a-contact-map)). `metator metacool` writes the same file from the pairs files,
-`contig_data_final.txt` and `bin_summary.txt` of a run, but for the history that it stores (the
+[Starting from a contact map](#starting-from-a-contact-map)). The map also stores the clustering rounds of the run (the
+overlapping, recursive and final clusters, with their contigs), which the run writes as `clusters.txt` and
+`cluster_members.txt` too. `metator metacool` writes the same file from the pairs files,
+`contig_data_final.txt` and `bin_summary.txt` of a run, but for the clustering rounds, which it does not store, the history that it stores (the
 `annotate` and `reassign` keys of its metadata) and the type of its counts with several libraries (64-bit
 integers, which `metator metacool` stores as 32-bit ones):
 

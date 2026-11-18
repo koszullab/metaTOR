@@ -20,6 +20,14 @@ All notable changes to this project will be documented in this file.
   stopped on a `KeyError`. `--no-metacool` removes both files at the end.
   Python API: `metator.metacool.write_library_maps`, and `libraries` of
   `metator.network.metacool_to_contacts`.
+- The clustering rounds of a run: the validation writes `clusters.txt`,
+  every cluster of every round (`overlapping`, `recursive_<k>`, `final`)
+  with the round and name of its parent and miComplete's columns, and
+  `cluster_members.txt`, the contigs of each. The map of the clusters
+  stores both in its `/clusters` group (metacooler 0.4.0), so that the
+  intermediate clusters are kept without being written into its genomes
+  and contigs tables, which hold the final ones. `metator metacool` stores
+  none. Python API: `metator.clusters`.
 - `pipeline --output-map FILE` writes the map of the clusters to FILE
   (replaced only with `-F`).
 - `network` and `pipeline` start from a `.metacool` contact map with

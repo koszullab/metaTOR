@@ -1682,6 +1682,75 @@ def _lock(metacool, pid, host=None, started="2026-11-18T10:00:00+0000"):
     return lock
 
 
+def _rounds_tables(monkeypatch, members):
+    """Have the stub validation also write the clustering rounds of the run
+    (see metator.clusters): metator_00001_00000, an overlapping cluster of
+    the contigs members, which is also the final cluster of c1."""
+    import metator.clusters as mtcl
+
+    stub = mtcli.mtv.recursive_decontamination
+
+    def recursive_decontamination(*args):
+        result = stub(*args)
+        rounds = mtcl.Rounds()
+        rounds.add(mtcl.OVERLAPPING, "metator_00001_00000", members, columns={"Completeness": 0.9, "Lineage": "x"})
+        rounds.close_round(mtcl.OVERLAPPING)
+        rounds.add(mtcl.FINAL, "metator_00001_00000", ["c1"], parent="metator_00001_00000", columns={"step": 0})
+        rounds.write(args[8])
+        return result
+
+    monkeypatch.setattr("metator.validation.recursive_decontamination", recursive_decontamination)
+
+
+def test_pipeline_from_a_map_stores_its_rounds(stub_pipeline, tmp_path, monkeypatch, run_cli, caplog):
+    """The map of the clusters holds the clustering rounds of the run in its
+    /clusters group: its clusters, their parents and columns, and their
+    contigs, those that the map lacks left out with a warning."""
+    import metacooler
+
+    monkeypatch.setattr("metator.metacool.reassign_metacool", mtmc_reassign_metacool)
+    _final_tables(monkeypatch, "c1")
+    _rounds_tables(monkeypatch, ["c1", "c2", "c9"])
+    metacool = _contig_map(tmp_path / "input.metacool")
+    run_cli("pipeline", *_map_run(metacool, tmp_path))
+    metacooler.validate(str(metacool), full=True)
+    mc = metacooler.MetaCooler(str(metacool))
+    rounds = mc.cluster_rounds
+    assert [entry["name"] for entry in rounds] == ["overlapping", "final"]
+    assert {entry["tool"] for entry in rounds} == {"metaTOR"} and rounds[0]["step"] == "partition"
+    assert rounds[1] == {"name": "final", "tool": "metaTOR", "version": __version__, "step": "validation"}
+    clusters = mc.clusters
+    assert list(clusters.parent_round.fillna("-")) == ["-", "overlapping"]
+    assert list(clusters.Completeness.iloc[:1]) == [0.9] and list(clusters.Lineage) == ["x", ""]
+    members = mc.cluster_members()
+    assert sorted(zip(members["round"], members.contig, strict=True)) == [
+        ("final", "c1"),
+        ("overlapping", "c1"),
+        ("overlapping", "c2"),
+    ]
+    (log,) = (tmp_path / "out").glob("metator_pipeline_*.log")
+    assert "1 contig(s) of the clusters of the run are not in" in log.read_text()
+
+
+def test_pipeline_from_a_map_without_rounds_drops_those_it_held(stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """The rounds of an earlier run describe the clusters it replaced: a run
+    that wrote none (here, the stub validation) leaves the map with none."""
+    import metacooler
+    import pandas as pd
+
+    monkeypatch.setattr("metator.metacool.reassign_metacool", mtmc_reassign_metacool)
+    _final_tables(monkeypatch, "c1")
+    metacool = _contig_map(tmp_path / "input.metacool")
+    metacooler.write_clusters(
+        str(metacool),
+        ["earlier"],
+        pd.DataFrame({"round": ["earlier"], "name": ["x"]}),
+        pd.DataFrame({"round": ["earlier"], "cluster": ["x"], "contig": ["c2"]}),
+    )
+    run_cli("pipeline", *_map_run(metacool, tmp_path))
+    assert metacooler.MetaCooler(str(metacool)).cluster_rounds == []
+
+
 def test_pipeline_from_a_map_to_an_existing_output_map(stub_pipeline, tmp_path, monkeypatch, run_cli):
     """--output-map replaces a file only with -F: refused before any work,
     else the map of the clusters replaces it, the input map left as it was."""

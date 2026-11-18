@@ -76,6 +76,7 @@ The pipeline writes into `--outdir` (`-o`, the current directory by default):
 | `recursive_bin/` | The FASTA files of the recursive bins, in `step_<n>/` for step `n` |
 | `overlapping_micomplete_results.txt` | miComplete's results on the overlapping bins |
 | `recursive_micomplete_step_<n>.txt` | miComplete's results on the recursive bins of step `n` |
+| `clusters.txt`, `cluster_members.txt` | Every cluster of every round (overlapping, recursive, final), with its parent and miComplete's columns, and the contigs of each: see [Clustering rounds](metacool.md#clustering-rounds) |
 | `clustering_matrix*.npz` | With `--cluster-matrix`: how often each two contigs were binned together |
 | `scaffold_bin/` | With `--scaffold`: the final bins, scaffolded |
 | `plot/` | Plots of the bins' quality, size, GC content and coverage, and the heatmap of the bins' network |

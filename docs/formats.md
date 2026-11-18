@@ -154,6 +154,28 @@ hold miComplete's results on the overlapping bins and on the recursive bins
 of each step: three comment lines (`##`), then the columns of the bin summary
 up to `CDs`, and the marker set kept, `Bacteria` or `Archaea`.
 
+### Clustering rounds
+
+`clusters.txt` holds every cluster of every round of the run, in the order
+they were made: `overlapping` (the overlapping clusters that miComplete
+checks), `recursive_<k>` (those that step `k` of the validation makes by
+partitioning a contaminated cluster again) and `final`. Tab-separated, with a
+header: the round, the name, the round and name of its parent (the cluster it
+was split from, or for a final cluster the cluster it is; `NA` for none), then
+miComplete's columns, `NA` where the cluster has none.
+
+```text
+round	name	parent_round	parent	Length	GC-content	...	Completeness	...
+overlapping	metator_00001_00000	NA	NA	2817353.0	52.30	...	0.9655	...
+recursive_1	metator_00002_00001	overlapping	metator_00002_00000	1504321.0	41.80	...	0.7103	...
+final	metator_00001_00000	overlapping	metator_00001_00000	2817353.0	52.30	...	0.9655	...
+```
+
+`cluster_members.txt` holds the contigs of each: one row per contig of a
+cluster, with its round, cluster and contig, under a header. The map of the
+clusters stores both (see
+[Clustering rounds](guides/metacool.md#clustering-rounds)).
+
 ### Clustering matrices
 
 With `--cluster-matrix`, `clustering_matrix_partition.npz`,

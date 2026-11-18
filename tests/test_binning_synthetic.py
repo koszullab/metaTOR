@@ -473,7 +473,7 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, metagenome_inde
     its contigs grouped by cluster), the pipeline makes the same network,
     byte for byte, and the same clusters. It updates the input map in place
     (a copy of the map of the run from pairs): the map of the run from
-    pairs, QC included, but for its provenance."""
+    pairs, QC and clustering rounds included, but for its provenance."""
     monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
     common = ["-a", str(metagenome_inputs["assembly"]), "-d", str(metagenome_inputs["depth"]), "-e", "DpnII", "-s", "50000",
               "-i", "10", "-j", "5", "-T", str(tmp_path / "tmp")]  # fmt: skip
@@ -485,7 +485,8 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, metagenome_inde
     run_cli("pipeline", "-1", str(metacool), "-S", "metacool", "-o", str(tmp_path / "metacool"), *common)
 
     pair, mcool = tmp_path / "pair", tmp_path / "metacool"
-    for name in ["network.txt", "contig_data_network.txt", "contig_data_final.txt", "bin_summary.txt", "binning.txt"]:
+    for name in ["network.txt", "contig_data_network.txt", "contig_data_final.txt", "bin_summary.txt", "binning.txt",
+                 "clusters.txt", "cluster_members.txt"]:  # fmt: skip
         assert (mcool / name).read_text() == (pair / name).read_text(), name
     assert sorted(p.name for p in (mcool / "final_bin_unscaffold").iterdir()) == sorted(
         p.name for p in (pair / "final_bin_unscaffold").iterdir()
@@ -519,9 +520,26 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, metagenome_inde
     # The history of the input map, whose map of the clusters was written
     # over the map of its contigs, then that of this run.
     assert [entry["source"] for entry in metadata["reassign"]] == [str(expected), str(metacool)]
+    # The clustering rounds of the run, those of the run from pairs: the
+    # overlapping clusters that miComplete checked, each recursive step, and
+    # the final clusters, the map's genomes.
+    mc, ref_mc = metacooler.MetaCooler(str(written)), metacooler.MetaCooler(str(expected))
+    assert mc.cluster_rounds == ref_mc.cluster_rounds
+    names = [entry["name"] for entry in mc.cluster_rounds]
+    assert names[0] == "overlapping" and names[-1] == "final"
+    assert all(name == f"recursive_{step}" for step, name in enumerate(names[1:-1], start=1))
+    pd.testing.assert_frame_equal(mc.clusters, ref_mc.clusters)
+    pd.testing.assert_frame_equal(_members(mc), _members(ref_mc))
+    overlapping = mc.clusters[mc.clusters["round"] == "overlapping"]
+    assert set(overlapping.name) == {path.stem for path in (mcool / "overlapping_bin").glob("*.fa")}
+    genome_of = dict(zip(mc.contigs.name, mc.contigs.genome_id.map(mc.genomes.name), strict=True))
+    final_members = mc.cluster_members("final")
+    assert set(final_members.cluster) == set(mc.genomes.name) - {"__unbinned__"}
+    assert all(genome_of[contig] == cluster for cluster, contig in zip(final_members.cluster, final_members.contig, strict=True))
 
     # The same map, written by metator metacool from the map and the tables
-    # of the run: a run step by step can write it too.
+    # of the run: a run step by step can write it too (but for the rounds,
+    # which metator metacool does not store).
     command = tmp_path / "command.metacool"
     run_cli("metacool", "-c", mcool / "contig_data_final.txt", "-b", mcool / "bin_summary.txt", "-o", command, expected)
     metacooler.validate(str(command), full=True)
@@ -639,6 +657,11 @@ def test_pipeline_from_a_filtered_metacool(metagenome, metagenome_inputs, tmp_pa
     assert "Contigs table" not in log.read_text()
     assert mc.metadata["annotate"][-1]["contigs_table"] == str(mcool / "contig_data_final.txt")
     assert not [path.name for path in mcool.iterdir() if path.name.startswith(".")]
+
+
+def _members(mc):
+    """The contigs of the clusters of a map, by name, in a fixed order."""
+    return mc.cluster_members().sort_values(["round", "cluster", "contig"]).reset_index(drop=True)
 
 
 def _read_by_cooler_and_metacooler(path):
