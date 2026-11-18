@@ -106,8 +106,8 @@ final bin are marked `ND`, not determined.
 ## Bin quality
 
 At the end of the validation, the log counts the final bins in five classes,
-from their weighted completeness and their contamination, (weighted
-redundancy − 1) / weighted completeness, as in the recursive partition:
+from their weighted completeness and their contamination, the weighted
+redundancy − 1, and the plot `plot/bins_size_distribution.png` shows them:
 
 | Class | Completeness | Contamination |
 |---|---|---|
@@ -117,17 +117,9 @@ redundancy − 1) / weighted completeness, as in the recursive partition:
 | Contaminated potential MAGs | ≥ 50% | > 10% |
 | Others | < 50% | |
 
-!!! warning "The HQ and MQ counts of metaTOR 1.4.0"
-
-    The log of metaTOR 1.4.0 counts a bin with a completeness of 90% or more
-    as HQ when its contamination lies between 5% and 10%, and as MQ when it
-    is 5% or less: its HQ count holds the wrong bins. The bins themselves,
-    `bin_summary.txt` and the plots are not affected.
-
-The plot of the classes, `plot/bins_size_distribution.png`, applies the same
-thresholds to the weighted redundancy − 1, not divided by the completeness:
-a bin of 60% completeness and 1.08 of weighted redundancy is contaminated in
-the log (8 / 60 = 13%), and a low-quality MAG on the plot (8%).
+The recursive partition measures the contamination of a bin otherwise,
+relative to its completeness: (weighted redundancy − 1) / weighted
+completeness.
 
 ## The contact map of the bins
 

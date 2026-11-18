@@ -11,6 +11,7 @@ import cooler
 import metacooler
 import pandas as pd
 import pytest
+from scipy import sparse
 
 import metator.network as mtn
 import metator.partition as mtp
@@ -161,6 +162,7 @@ def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenom
         "-i", "10",
         "-t", "1",
         "-F",
+        "-C",
     ]  # fmt: skip
     run_cli("validation", *args)
     assert not (out / "recursive_bin" / "metator_00009_00000.fa").exists()
@@ -181,11 +183,23 @@ def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenom
     hits = final.groupby("Final_bin").Hit.sum()[summary.index]
     hic = summary.HiC_abundance.astype(float)
     assert (hic / hic.sum()).to_numpy() == pytest.approx((hits / hits.sum()).to_numpy(), rel=1e-3)
-    # The final fasta files are the final bins.
-    assert sorted(p.stem for p in (out / "final_bin").glob("*.fa")) == sorted(summary.index)
+    # The final fasta files are the final bins, and nothing else.
+    assert sorted(p.name for p in (out / "final_bin").iterdir()) == sorted(f"{name}.fa" for name in summary.index)
     binning = pd.read_csv(out / "binning.txt", sep="\t", header=None, names=["Name", "Bin"])
     assert set(binning.Bin) == set(summary.index)
+    assert sorted(binning.Name) == sorted(final.Name[final.Final_bin != "ND"])
     assert (out / "plot" / "bins_distribution.png").stat().st_size > 0
+    # The bins of the split are recursive bins, of step 1; the others are not.
+    assert list(summary.recursive) == list(summary.step > 0)
+    assert summary.recursive.any() and not summary.recursive.all()
+    # The clustering matrix of the recursive partition: a row and a column per
+    # contig ID, and values only between contigs of the bin partitioned again.
+    # It was 2 columns wide, and validation failed with --cluster-matrix.
+    matrix = sparse.load_npz(out / "clustering_matrix_recursive.npz").tocoo()
+    assert matrix.shape == (len(final) + 1, len(final) + 1)
+    split = set(final.ID[final.Overlapping_bin_ID == 1])
+    assert matrix.nnz > 0 and set(matrix.row) | set(matrix.col) <= split
+    assert 0 < matrix.data.min() and matrix.data.max() <= 1
 
 
 def test_validation_without_contaminated_bin(metagenome, metagenome_inputs, metagenome_network, tmp_path, monkeypatch, run_cli):

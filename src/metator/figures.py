@@ -139,15 +139,48 @@ def figures_bins_distribution(bin_summary, out_file):
     plt.close()
 
 
+def bin_quality(completeness, redundancy):
+    """The quality class of a bin, from miComplete's weighted completeness and
+    weighted redundancy, its contamination being the redundancy minus 1:
+
+        - "HQ" (high quality MAG): >= 90% completion ; <= 5% contamination
+        - "MQ" (medium quality MAG): >= 70% completion ; <= 10% contamination
+        - "LQ" (low quality MAG): >= 50% completion ; <= 10% contamination
+        - "Contaminated": >= 50% completion ; > 10% contamination
+        - "Other": < 50% completion
+
+    The plot of the quality of the bins and the log of the validation both
+    count the bins in these classes.
+
+    Parameters:
+    -----------
+    completeness : float
+        Weighted completeness of the bin, from 0 to 1.
+    redundancy : float
+        Weighted redundancy of the bin, 1 for no duplicated marker.
+
+    Returns:
+    --------
+    str:
+        The class of the bin: "HQ", "MQ", "LQ", "Contaminated" or "Other".
+    """
+    completeness, redundancy = float(completeness), float(redundancy)
+    if completeness < 0.5:
+        return "Other"
+    if redundancy > 1.1:
+        return "Contaminated"
+    if completeness >= 0.9 and redundancy <= 1.05:
+        return "HQ"
+    if completeness >= 0.7:
+        return "MQ"
+    return "LQ"
+
+
 def figures_bins_size_distribution(bin_summary, total_size, threshold, out_file):
     """Function to plot a camembert of the fraction of size corresponding
-    to each quality of bins. We defined 6 categories:
-        - High quality MAGs (HQ MAGs): >= 90% completion ; < 5% contamination
-        - Medium quality MAGs (MQ MAGs): >= 70% completion ; < 10% contamination
-        - Low quality MAGs (LQ MAGs): >= 50% completion ; < 10% contamination
-        - Contaminated bins: >= 50% completion ; >= 10% contamination
-        - Bins superior to size threshold but with less 50% completion.
-        - Unbinned contigs
+    to each quality of bins: the classes of bin_quality (HQ, MQ and LQ MAGs,
+    contaminated bins, and other bins, with less than 50% completion), and the
+    unbinned contigs.
 
     Parameters:
     -----------
@@ -167,32 +200,12 @@ def figures_bins_size_distribution(bin_summary, total_size, threshold, out_file)
         [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [None, 0]],
         columns=["bins", "size"],
     )
+    rows = {"HQ": 0, "MQ": 1, "LQ": 2, "Contaminated": 3, "Other": 4}
     for i in range(len(bin_summary)):
-        completness = float(bin_summary.loc[i, "Weighted completeness"])
-        contamination = float(bin_summary.loc[i, "Weighted redundancy"])
-        size = int(bin_summary.loc[i, "Length"])
-        if completness >= 0.5:
-            if contamination > 1.1:
-                mags_summary.loc[3, "bins"] += 1
-                mags_summary.loc[3, "size"] += size
-                bin_summary.loc[i, "MAG_quality"] = "Contaminated"
-            else:
-                if completness >= 0.9 and contamination <= 1.05:
-                    mags_summary.loc[0, "bins"] += 1
-                    mags_summary.loc[0, "size"] += size
-                    bin_summary.loc[i, "MAG_quality"] = "HQ"
-                elif completness >= 0.7:
-                    mags_summary.loc[1, "bins"] += 1
-                    mags_summary.loc[1, "size"] += size
-                    bin_summary.loc[i, "MAG_quality"] = "MQ"
-                else:
-                    mags_summary.loc[2, "bins"] += 1
-                    mags_summary.loc[2, "size"] += size
-                    bin_summary.loc[i, "MAG_quality"] = "LQ"
-        else:
-            mags_summary.loc[4, "bins"] += 1
-            mags_summary.loc[4, "size"] += size
-            bin_summary.loc[i, "MAG_quality"] = "Other"
+        quality = bin_quality(bin_summary.loc[i, "Weighted completeness"], bin_summary.loc[i, "Weighted redundancy"])
+        mags_summary.loc[rows[quality], "bins"] += 1
+        mags_summary.loc[rows[quality], "size"] += int(bin_summary.loc[i, "Length"])
+        bin_summary.loc[i, "MAG_quality"] = quality
     mags_summary.loc[5, "size"] = total_size - sum(mags_summary["size"])
     # Plot the camembert of the size ratio.
     labels = [

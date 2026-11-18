@@ -53,7 +53,7 @@ contigs:
 | `--iterations` (`-i`) of `validation`, `--rec-iter` (`-j`) of `pipeline` | 10 | How many times each contaminated bin is partitioned |
 | `--overlap` (`-O`) of `validation`, `--rec-overlap` (`-P`) of `pipeline` | 90 | The overlap threshold of the recursive partition |
 | `--algorithm`, `--res-param`, `--size`, `--prefix` | | As in the partition |
-| `--cluster-matrix` (`-C`) | off | Also write `clustering_matrix_recursive.npz` (and, in `pipeline`, `clustering_matrix.npz`, the mean of both). See the warning below |
+| `--cluster-matrix` (`-C`) | off | Also write `clustering_matrix_recursive.npz`: how often each two contigs of a bin partitioned again fell together, in its latest partition (and, in `pipeline`, `clustering_matrix.npz`, the mean of both matrices) |
 
 The parts of a bin, its **recursive bins**, are checked with miComplete in
 turn. They replace the bin when the most complete of them keeps enough of its
@@ -65,13 +65,6 @@ A part is a recursive bin only when it is larger than `--size`: when a bin is
 replaced by its recursive bins, the contigs of its smaller parts are left out
 of the final bins (`ND`).
 
-!!! warning "`--cluster-matrix` in `validation` and `pipeline`"
-
-    In metaTOR 1.4.0, `validation` and `pipeline` fail with
-    `--cluster-matrix` as soon as a bin is partitioned again, and write a
-    recursive clustering matrix of zeros when none is. The clustering matrix
-    of the partition, `partition --cluster-matrix`, is not affected.
-
 ## Outputs
 
 | File | What it holds |
@@ -80,7 +73,7 @@ of the final bins (`ND`).
 | `recursive_bin/` | One FASTA file per recursive bin, in `step_<n>/` for step `n` |
 | `bin_summary.txt` | One row per final bin, with miComplete's measures and the bin's abundance |
 | `contig_data_final.txt` | The contig data table, with the recursive and final bin of each contig |
-| `binning.txt` | The contigs of the final bins and their bin, without header (it can miss some: see [File formats](../formats.md#binningtxt)) |
+| `binning.txt` | The contigs of the final bins and their bin, without header |
 | `overlapping_micomplete_results.txt` | miComplete's results on the overlapping bins |
 | `recursive_micomplete_step_<n>.txt` | miComplete's results on the recursive bins of step `n` |
 | `plot/` | The plots of the bins (below) |

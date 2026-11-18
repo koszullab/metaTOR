@@ -60,6 +60,11 @@ All notable changes to this project will be documented in this file.
   `process_bamfile` and `process_bwa_bamfile`,
   `metator.scaffold.parallel_scaffold` and
   `metator.validation.correct_final_bin`) are corrected.
+- Python API: `metator.validation.recursive_clustering` takes the
+  clustering matrix of the earlier recursive steps (`clustering_matrix`)
+  and returns it, updated, instead of writing
+  `clustering_matrix_recursive.npz`, which `recursive_decontamination`
+  writes once, at the end.
 
 ### Removed
 - Python API: the CheckM functions (`metator.validation.checkm` and
@@ -79,6 +84,32 @@ All notable changes to this project will be documented in this file.
   'split'`): a BAM file of bwa holds both mates. `pipeline` requires
   `--forward`, as `network` does: a run without it failed with the same
   error.
+- `validation` and `pipeline --cluster-matrix` no longer fail as soon as a
+  bin is partitioned again (`ValueError: axis 1 index … exceeds matrix
+  dimension 2`): the clustering matrix of the recursive partition was built
+  2 columns wide. It now holds the pairs of contigs of every bin partitioned
+  again, with the values of its latest partition: each recursive step
+  overwrote the matrix of the steps before, usually with an empty one, as
+  the last step partitions no bin.
+- `binning.txt` holds every contig of the final bins, as
+  `contig_data_final.txt` does: the contigs of a bin partitioned again but
+  kept whole, which had gone to a recursive part, were left out. Python
+  API: `metator.validation.write_bins_contigs` writes the `Final_bin` of the
+  contigs, and no longer takes `prefix`.
+- The log of the validation counts the bins in the quality classes of
+  `plot/bins_size_distribution.png` (`metator.figures.bin_quality`, the
+  contamination being the weighted redundancy − 1). It counted as HQ the
+  bins of 90% completeness or more with a contamination above 5%, and as MQ
+  those of 5% or less, and divided the contamination by the completeness,
+  where the plot does not.
+- `metator validation --help` and the docstrings of `metator.validation`
+  give the rule of the recursive partition: a weighted completeness of 33%,
+  not 50%, and the completeness its parts must keep.
+- The `recursive` column of `bin_summary.txt` says whether the bin comes
+  from the recursive partition: every bin read `True` when no bin was
+  partitioned again, and a bin made at an earlier recursive step `False`.
+- The validation, and `pipeline --scaffold`, leave no pyfastx index
+  (`<bin>.fa.fxi`) next to the fasta files of the final bins.
 - `metator metacool` and the map of `pipeline` refuse a
   `contig_data_final.txt` whose rows have more or fewer fields than its
   header, which they read shifted or padded, without a word, and one

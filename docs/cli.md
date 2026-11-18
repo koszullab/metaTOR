@@ -57,7 +57,7 @@ metator pipeline [OPTIONS]
 | `-O, --overlap` | `80` | The percentage of iterations in which two core bins must fall together to be merged into one overlapping bin. |
 | `-r, --res-param` | `1.0` | The resolution of the Leiden algorithm. |
 | `-s, --size` | `500000` | The size, in bp, a bin must reach to be kept. |
-| `-C, --cluster-matrix` | off | Write the clustering matrices (`clustering_matrix*.npz`). In metaTOR 1.4.0, the run fails with it as soon as a bin is partitioned again. |
+| `-C, --cluster-matrix` | off | Write the clustering matrices (`clustering_matrix*.npz`). |
 | `-j, --rec-iter` | `10` | The iterations of the recursive partition of the contaminated bins. |
 | `-P, --rec-overlap` | `90` | The overlap threshold of the recursive partition, in percent. |
 | `-v, --scaffold` | off | Scaffold the final bins, into `scaffold_bin/`. Refused with `--start metacool`. |
@@ -165,9 +165,9 @@ metator validation [OPTIONS]
 ```
 
 A bin is partitioned again when its weighted completeness reaches 33% and its
-contamination, (weighted redundancy − 1) / weighted completeness, reaches 5%
-(`--help` says 50%). Its parts replace it when the most complete of them keeps
-enough of its completeness.
+contamination, (weighted redundancy − 1) / weighted completeness, reaches 5%.
+Its parts replace it when the most complete of them keeps enough of its
+completeness.
 
 | Option | Default | Description |
 |---|---|---|
@@ -180,7 +180,7 @@ enough of its completeness.
 | `-O, --overlap` | `90` | The overlap threshold of the recursive partition, in percent. |
 | `-r, --res-param` | `1.0` | The resolution of the Leiden algorithm. |
 | `-s, --size` | `500000` | The size, in bp, a bin must reach to be kept. |
-| `-C, --cluster-matrix` | off | Write `clustering_matrix_recursive.npz`. In metaTOR 1.4.0, the run fails with it as soon as a bin is partitioned again. |
+| `-C, --cluster-matrix` | off | Write `clustering_matrix_recursive.npz`. |
 | `-o, --outdir` | `./` | The output directory. |
 | `-p, --prefix` | none | Name the bins `<prefix>_metator_…`. |
 | `-F, --force` | off | Replace `recursive_bin/` and `final_bin/`. |

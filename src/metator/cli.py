@@ -863,10 +863,11 @@ def validation(
     miComplete. The command returns new decontaminated fasta and summary
     files of the decontamination.
 
-    Only bins with more than 50% completion and 5% contamination are subject
-    to the recursive step. If the recursive step gave worst results than the
-    first (decrease of the completion with no decrease of the
-    contamination), it will keep the original bin.
+    Only bins with a weighted completeness of at least 33% and a
+    contamination, (weighted redundancy - 1) / weighted completeness, of at
+    least 5% are subject to the recursive step. Its bins replace the
+    original bin when the most complete of them keeps enough of its
+    completeness; otherwise the original bin is kept.
     """
     # Launch miComplete to evaluate the completion and the contamination. If
     # asked rerun Louvain to try to reduce the contamination, rerun miComplete

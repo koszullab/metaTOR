@@ -120,7 +120,7 @@ first columns are those of miComplete:
 | `Weighted completeness`, `Weighted redundancy` | The same, with miComplete's weights of the markers of the set |
 | `Contigs`, `N50`, `L50`, `N90`, `L90` | Its number of contigs, and the N50, L50, N90 and L90 of their sizes |
 | `CDs` | Its number of coding sequences, found by prodigal |
-| `recursive` | Whether the bin comes from the last recursive step that split bins: in metaTOR 1.4.0, every bin reads `True` when no bin is partitioned again, and a bin made at an earlier step reads `False` |
+| `recursive` | Whether the bin comes from the recursive partition |
 | `step` | The recursive step that made the bin, 0 for an overlapping bin |
 | `parent` | The bin it was split from (an overlapping bin at step 1, a recursive bin after), empty otherwise |
 | `HiC_abundance` | The share of the hits of all the contigs that are on the bin, in percent |
@@ -133,26 +133,15 @@ metator_00001_00000	49021.00	62.03	1.00	0.01	1.00	0.02	1.00	15.00	9019.00	2.00	1
 
 Each marker set, bacterial (105 markers) and archaeal (131), is tried on
 every bin, which keeps the one that gives it the higher weighted
-completeness. The plots take the weighted redundancy minus one as the
-contamination of a bin; the log of the validation, and the recursive
-partition, divide it by the weighted completeness (see
+completeness. The quality classes of the log and of the plots take the
+weighted redundancy minus one as the contamination of a bin; the recursive
+partition divides it by the weighted completeness (see
 [Bin quality](concepts.md#bin-quality)).
 
 ### binning.txt
 
 Each contig of a final bin and its bin, without header: the collection that
 anvi'o imports (see [Curating MAGs with anvi'o](guides/curation.md)).
-
-!!! warning "`binning.txt` can miss contigs"
-
-    When a contaminated bin is partitioned again but kept whole, its contigs
-    that went to a recursive part are left out of `binning.txt` in
-    metaTOR 1.4.0, though `contig_data_final.txt` gives their bin. The full
-    binning is in `contig_data_final.txt`:
-
-    ```bash
-    awk -F '\t' 'NR > 1 && $NF != "ND" {print $3 "\t" $NF}' contig_data_final.txt > bins.txt
-    ```
 
 ```text
 NODE_522	metator_00001_00000
@@ -171,11 +160,11 @@ up to `CDs`, and the marker set kept, `Bacteria` or `Archaea`.
 With `--cluster-matrix`, `clustering_matrix_partition.npz`,
 `clustering_matrix_recursive.npz` and, in `pipeline`, `clustering_matrix.npz`
 (the mean of both) hold how often each two contigs were binned together, from
-0 to 1, as a sparse matrix of scipy (`scipy.sparse.load_npz`). In metaTOR
-1.4.0, only the matrix of the partition is right: see the
-[warning](guides/binning.md#validation) on the recursive ones. Row and
-column *i* are the contig of ID *i* (row and column 0 are empty), and only the
-upper triangle is stored. See
+0 to 1, as a sparse matrix of scipy (`scipy.sparse.load_npz`). The recursive
+matrix holds the pairs of contigs of the bins partitioned again, each with the
+values of the latest partition of its bin. Row and column *i* are the contig
+of ID *i* (row and column 0 are empty), and only the upper triangle is
+stored. See
 [The clustering matrices](guides/python.md#the-clustering-matrices).
 
 ### FASTA files of the bins

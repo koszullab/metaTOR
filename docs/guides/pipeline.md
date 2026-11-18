@@ -67,7 +67,7 @@ The pipeline writes into `--outdir` (`-o`, the current directory by default):
 | `final_bin_unscaffold/` | One FASTA file per final bin |
 | `bin_summary.txt` | One row per final bin: size, GC content, miComplete's completeness and redundancy, N50, abundance… |
 | `contig_data_final.txt` | One row per contig: its measures, and the core, overlapping, recursive and final bins it belongs to |
-| `binning.txt` | The contigs of the final bins and their bin (it can miss some: see [File formats](../formats.md#binningtxt)) |
+| `binning.txt` | The contigs of the final bins and their bin |
 | `metator.metacool` | The contact map of all the contigs, grouped by bin (`<prefix>.metacool` with `--prefix`) |
 | `network.txt` | The normalised network of contigs, all libraries summed |
 | `network_<i>.txt` | The network of library `i`, from 0 |
@@ -77,7 +77,7 @@ The pipeline writes into `--outdir` (`-o`, the current directory by default):
 | `recursive_bin/` | The FASTA files of the recursive bins, in `step_<n>/` for step `n` |
 | `overlapping_micomplete_results.txt` | miComplete's results on the overlapping bins |
 | `recursive_micomplete_step_<n>.txt` | miComplete's results on the recursive bins of step `n` |
-| `clustering_matrix*.npz` | With `--cluster-matrix`: how often each two contigs were binned together (see the [warning](binning.md#validation) on the recursive ones) |
+| `clustering_matrix*.npz` | With `--cluster-matrix`: how often each two contigs were binned together |
 | `scaffold_bin/` | With `--scaffold`: the final bins, scaffolded |
 | `plot/` | Plots of the bins' quality, size, GC content and coverage, and the heatmap of the bins' network |
 | `metator_pipeline_<date>.log` | The log of the run |
