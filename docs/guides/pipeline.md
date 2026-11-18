@@ -1,0 +1,152 @@
+# Running the pipeline
+
+`metator pipeline` bins the contigs of an assembly from a metaHiC library, in
+one command: it aligns the reads, builds the network of contigs, partitions
+it, and validates the bins. This page lists its inputs, the files it writes,
+and how to run its steps one by one. The [CLI reference](../cli.md#pipeline)
+lists every option, and [Concepts](../concepts.md) explains the steps.
+
+```bash
+metator pipeline --aligner bwa --enzyme DpnII --depth depth.txt --threads 16 \
+    --forward R1.fq.gz --reverse R2.fq.gz --assembly assembly.fa --outdir binning
+```
+
+## Before the run: the assembly
+
+metaTOR bins the contigs of an assembly; it does not assemble. Build the
+assembly from a shotgun library of the same sample, with
+[MEGAHIT](https://github.com/voutcn/megahit) or
+[metaSPAdes](https://github.com/ablab/spades) for instance, and drop the
+contigs shorter than 500 bp, which carry too few contacts to bin:
+
+```bash
+megahit -1 shotgun_R1.fq.gz -2 shotgun_R2.fq.gz --min-contig-len 500 -o assembly
+```
+
+The shotgun coverage of the contigs, which `--depth` reads, comes from
+`jgi_summarize_bam_contig_depths` of MetaBAT2, run on the shotgun reads
+aligned back to the assembly. It is optional: the default normalisation does
+not use it.
+
+## Inputs
+
+`--start` (`-S`) says what `--forward` (`-1`) and `--reverse` (`-2`) are:
+
+| `--start` | `--forward`, `--reverse` | The run starts with |
+|---|---|---|
+| `fastq` (default) | The R1 and R2 reads, in FASTQ files | Aligning the reads |
+| `bam` | The alignments: with bowtie2, one BAM file per mate; with bwa (`--aligner bwa`), one BAM file of both mates, given to `--forward` | Pairing the mates |
+| `pair` | One pairs file per library, given to `--forward` | Building the network |
+| `metacool` | One `.metacool` contact map of the contigs, given to `--forward` | Building the network |
+
+Several libraries are given as comma-separated lists, in the same order in
+`--forward` and `--reverse`: `-1 L1_R1.fq.gz,L2_R1.fq.gz -2 L1_R2.fq.gz,L2_R2.fq.gz`.
+Each library is aligned on its own, and their contacts are summed in the
+network.
+
+The BAM files of `--start bam` must be sorted by read name, both files of a
+library in the same order. A pairs file of `--start pair` has the 7 columns of
+the [pairs format](../formats.md#pairs): read name, then the contig, position
+and strand of each mate. A run from a contact map is described in
+[The contact map of the bins](metacool.md#starting-from-a-contact-map).
+
+`--assembly` (`-a`) is the assembly, as a FASTA file, or the basename of its
+bowtie2 or bwa index. From a FASTA file, an index found next to it (as
+`bwa index assembly.fa` or `bowtie2-build assembly.fa assembly.fa` writes it)
+is used, and otherwise one is built in the temporary directory, at every run.
+
+## Outputs
+
+The pipeline writes into `--outdir` (`-o`, the current directory by default):
+
+| File | What it holds |
+|---|---|
+| `final_bin_unscaffold/` | One FASTA file per final bin |
+| `bin_summary.txt` | One row per final bin: size, GC content, miComplete's completeness and redundancy, N50, abundance… |
+| `contig_data_final.txt` | One row per contig: its measures, and the core, overlapping, recursive and final bins it belongs to |
+| `binning.txt` | Each binned contig and its final bin |
+| `metator.metacool` | The contact map of all the contigs, grouped by bin (`<prefix>.metacool` with `--prefix`) |
+| `network.txt` | The normalised network of contigs, all libraries summed |
+| `network_<i>.txt` | The network of library `i`, from 0 |
+| `alignment_<i>.bam` | With bwa: the alignments of library `i`, both mates, sorted by read name |
+| `alignment_<i>_for.bam`, `alignment_<i>_rev.bam` | With bowtie2, or in iterative mode: the alignments of each mate |
+| `overlapping_bin/` | The FASTA files of the overlapping bins, before validation |
+| `recursive_bin/` | The FASTA files of the recursive bins |
+| `overlapping_micomplete_results.txt` | miComplete's results on the overlapping bins |
+| `recursive_micomplete_step_<n>.txt` | miComplete's results on the recursive bins of step `n` |
+| `clustering_matrix*.npz` | With `--cluster-matrix`: how often each two contigs were binned together |
+| `scaffold_bin/` | With `--scaffold`: the final bins, scaffolded |
+| `plot/` | Plots of the bins' quality, size, GC content and coverage, and the heatmap of the bins' network |
+| `metator_pipeline_<date>.log` | The log of the run |
+
+The pairs files of each library, `alignment_<i>_sorted.pairs.gz` and their
+index, are deleted at the end of the run, after the contact map is written:
+keep them with `--no-clean-up` (`-N`), for `metator contactmap`, `qc`,
+`scaffold` or `mge` later. [File formats](../formats.md) describes each table.
+
+A run refuses to overwrite the bins of an earlier one unless given `--force`
+(`-F`).
+
+## Choosing the options
+
+| Option | Default | When to change it |
+|---|---|---|
+| `--aligner`, `--aligner-mode` | `bowtie2`, `normal` | `--aligner bwa` is recommended; see [Aligning the reads](network.md#aligning-the-reads) |
+| `--enzyme` | none | Give the enzyme of the library: it counts the restriction sites of the contigs, for the `RS` and `theoritical_hit` normalisations and `--aligner-mode cutsite` |
+| `--depth` | none | Give it for the `abundance` and `theoritical_hit` normalisations, and the shotgun abundance of the bins |
+| `--normalization` | `empirical_hit` | See [Normalising the network](network.md#normalising-the-network) |
+| `--iterations`, `--overlap` | 100, 80 | See [Partition](binning.md#partition) |
+| `--rec-iter`, `--rec-overlap` | 10, 90 | See [Validation](binning.md#validation) |
+| `--size` | 500000 | The size, in base pairs, a bin must reach to be kept |
+| `--prefix` | none | Names the bins `<prefix>_metator_…` and the map `<prefix>.metacool` |
+| `--threads` | 1 | Threads for the alignment and the partition |
+| `--tmpdir` | `./tmp` | Where the index and the temporary files go; deleted at the end, unless `--no-clean-up` |
+
+The validation is the step that needs the most memory and time: miComplete
+runs prodigal and hmmer on every bin.
+
+## Running the steps one by one
+
+The three steps of the pipeline are also commands of their own, to run one
+after the other, or to rerun the partition with other parameters without
+aligning the reads again:
+
+```bash
+# 1. Align the reads and build the network: network.txt, contig_data_network.txt
+metator network -1 R1.fq.gz -2 R2.fq.gz -a assembly.fa -b bwa -e DpnII -d depth.txt \
+    -t 16 -o binning
+
+# 2. Partition it: overlapping_bin/, contig_data_partition.txt
+metator partition -a assembly.fa -c binning/contig_data_network.txt \
+    -n binning/network.txt -t 16 -o binning
+
+# 3. Validate the bins: final_bin/, bin_summary.txt, contig_data_final.txt
+metator validation -a assembly.fa -c binning/contig_data_partition.txt \
+    -n binning/network.txt -f binning/overlapping_bin -t 16 -o binning
+```
+
+Run step by step, the final bins go to `final_bin/`, and the intermediate
+tables stay. `metator network` keeps the pairs files; `metator metacool`
+writes the contact map of the bins from them (see
+[The contact map of the bins](metacool.md)).
+
+To bin without validating, run the first two steps alone: the bins are then
+the overlapping bins of `overlapping_bin/`, and `contig_data_partition.txt`
+gives the bin of each contig.
+
+## The log
+
+The log starts with the version of metaTOR, the date and the command, then
+the parameters, and records each step: the pairs aligned, the contacts between
+contigs, the core and overlapping bins found, the bins validated, and at the
+end the number of bins in each quality class (see
+[Bin quality](../concepts.md#bin-quality)).
+
+```console
+INFO :: 61974 contacts in the library.
+INFO :: 28510 contacts inter-contigs in the library.
+INFO :: 3D ratio : 0.46003162616581145
+```
+
+The **3D ratio** is the share of the contacts that join two different
+contigs: the signal binning uses.

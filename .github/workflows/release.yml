@@ -1,7 +1,7 @@
 name: Release
 
 # Tags are created by bump-my-version (see CONTRIBUTING.md), which bumps
-# src/metator/version.py and CHANGELOG.md in the same commit.
+# src/metator/version.py and docs/changelog.md in the same commit.
 on:
   push:
     tags:
@@ -95,7 +95,7 @@ jobs:
           awk -v ver="${{ needs.build.outputs.version }}" '
             /^## / { if (found) exit; if (index($0, "## [" ver "]") == 1) { found=1 }; next }
             found { print }
-          ' CHANGELOG.md > release-notes.md
+          ' docs/changelog.md > release-notes.md
 
       - uses: softprops/action-gh-release@v3
         with:

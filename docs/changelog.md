@@ -45,12 +45,33 @@ All notable changes to this project will be documented in this file.
   On `tests_data/alignment.pairs`, 360 of 13,415 edges change (298 new,
   62 of another weight), from its 472 pairs between two contigs with a
   read at position 0.
+- The documentation moves from Read the Docs to GitHub Pages, at
+  <https://koszullab.github.io/metator/>: Markdown pages in `docs/`, built
+  by Zensical with chromokit, the look of metacooler's documentation
+  (`uv sync --extra docs`, then `uv run zensical serve`). It holds a
+  quickstart, the concepts of the binning, a guide per step and command,
+  the CLI reference, the file formats, and the Python API reference,
+  written from the docstrings. The tutorials of `docs/example/` are guides
+  in `docs/guides/`, brought up to date with the commands and outputs of
+  this version, the changelog is `docs/changelog.md`, and `CONTRIBUTING.md`
+  points to the contributing guide of the site. `tests/test_docs.py` checks
+  the CLI reference against the CLI. The docstrings that disagreed with
+  their code (`metator.align.get_contact_pairs`, `merge_alignment`,
+  `process_bamfile` and `process_bwa_bamfile`,
+  `metator.scaffold.parallel_scaffold` and
+  `metator.validation.correct_final_bin`) are corrected.
 
 ### Removed
 - Python API: the CheckM functions (`metator.validation.checkm` and
   `checkm_compare_bins`, `metator.io.check_checkm` and
   `read_results_checkm`), unused since miComplete replaced CheckM, and
   `metator.partition.spinglass_partition`, whose body was commented out.
+- The Sphinx documentation of Read the Docs (`docs/conf.py`,
+  `docs/index.rst`, `docs/api/*.rst`, `docs/requirements.txt`...), and the
+  scripts of the curation tutorial, `docs/example/scripts/`:
+  `anvio_figures.py` read CheckM's results with `read_results_checkm`,
+  removed above, and `checkM.sh` ran CheckM. The curation guide checks the
+  curated bins with miComplete, through the Python API, instead.
 
 ### Fixed
 - `metator metacool` and the map of `pipeline` refuse a
