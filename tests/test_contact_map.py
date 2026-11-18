@@ -49,9 +49,11 @@ def test_contactmap_default_outdir(tmp_path, monkeypatch, run_cli):
         ("contig", "NODE_1", "Name", "NODE_1"),
         ("core_bin", 3, "Core_bin_ID", "3"),
         ("overlapping_bin", "MetaTOR_7_0", "Overlapping_bin_ID", "7"),
+        ("overlapping_bin", "MetaTOR_7", "Overlapping_bin_ID", "7"),
+        ("overlapping_bin", "sample_metator_00007_00002", "Overlapping_bin_ID", "00007"),
         ("recursive_bin", "MetaTOR_7_2", "Recursive_bin_ID", "2"),
-        ("recursive_bin", "4", "Recursive_bin_ID", "4"),
-        ("recursive_bin", "0", "Recursive_bin_ID", "0"),  # logged as an error
+        ("recursive_bin", "sample_metator_00007_00002", "Recursive_bin_ID", "00002"),
+        ("recursive_bin", "MetaTOR_7_0", "Recursive_bin_ID", "0"),  # logged as an error
         ("final_bin", "MetaTOR_7_2", "Final_bin", "MetaTOR_7_2"),
         ("Other", "12", "Other", 12),
         ("Other", "group_a", "Other", "group_a"),
@@ -65,11 +67,41 @@ def test_metator_object_names(metator_object, name, column, expected):
 
 @pytest.mark.parametrize(
     "metator_object, name",
-    [("core_bin", "MetaTOR_1"), ("overlapping_bin", "MetaTOR_x_0"), ("recursive_bin", "MetaTOR_1_x")],
+    [
+        ("core_bin", "MetaTOR_1"),
+        ("overlapping_bin", "MetaTOR_x_0"),
+        ("recursive_bin", "MetaTOR_1_x"),
+        # A recursive bin ID alone: recursive bins are numbered within their overlapping bin.
+        ("recursive_bin", "4"),
+        ("recursive_bin", "MetaTOR_4"),
+    ],
 )
 def test_metator_object_invalid_names(metator_object, name):
     with pytest.raises(ValueError):
         mtcm.MetatorObject(metator_object, name, "unused.fa", CONTIG_DATA, [])
+
+
+def test_recursive_bin_within_its_overlapping_bin(tmp_path):
+    """Recursive bins are numbered within their overlapping bin: a recursive
+    bin is the contigs of its recursive bin in its overlapping bin. The
+    recursive bins of the same ID of every overlapping bin were selected,
+    and a prefixed name (--prefix) failed."""
+    table = tmp_path / "contig_data_final.txt"
+    pd.DataFrame(
+        {
+            "ID": [1, 2, 3, 4],
+            "Name": ["c1", "c2", "c3", "c4"],
+            "Size": [10, 20, 30, 40],
+            "Overlapping_bin_ID": ["00001", "00001", "00002", "00002"],
+            "Recursive_bin_ID": ["00001", "00002", "00001", "00001"],
+        }
+    ).to_csv(table, sep="\t", index=False)
+    obj = mtcm.MetatorObject("recursive_bin", "my_sample_metator_00002_00001", "unused.fa", str(table), [], min_size=0)
+    obj.set_contigs()
+    assert (obj.contigs, obj.contigs_size) == (["c3", "c4"], [30, 40])
+    obj = mtcm.MetatorObject("overlapping_bin", "my_sample_metator_00001_00000", "unused.fa", str(table), [], min_size=0)
+    obj.set_contigs()
+    assert obj.contigs == ["c1", "c2"]
 
 
 def test_metator_object_unknown_column():

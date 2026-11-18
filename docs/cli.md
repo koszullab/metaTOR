@@ -238,7 +238,7 @@ metator contactmap [OPTIONS] PAIRSFILE...
 | `-a, --assembly` | *required* | A FASTA file holding the contigs of the map: the assembly, or the bin. |
 | `-c, --contig-data` | *required* | `contig_data_final.txt`, or a contig data table with a column of other bins. |
 | `-e, --enzyme` | *required* | The restriction enzymes of the library: the map is at the resolution of their fragments. |
-| `-n, --name` | *required* | The name of the contig or bin, or the numeric ID of a core, overlapping or recursive bin. |
+| `-n, --name` | *required* | The name of the contig or bin, or the numeric ID of a core or overlapping bin. A recursive bin needs its name (`metator_00012_00003`): recursive bins are numbered within their overlapping bin. |
 | `-O, --object` | `final_bin` | What `--name` is: `contig`, `core_bin`, `overlapping_bin`, `recursive_bin`, `final_bin`, or the header of a column of the contig data table. |
 | `-m, --mat-fmt` | `graal` | The format of the map: `graal`, `bg2` or `cool`. |
 | `-f, --filter` | off | Leave out the uncuts and loops. |

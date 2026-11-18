@@ -126,6 +126,16 @@ All notable changes to this project will be documented in this file.
 - `network --self-contacts` leaves out the contacts between contigs within
   `--edge` of a contig end, as without `--self-contacts`: `--edge` was
   ignored with it.
+- `contactmap --object recursive_bin` selects the recursive bin within its
+  overlapping bin: recursive bins are numbered within their overlapping
+  bin, and the recursive bins of the same number of every overlapping bin
+  were mapped together. It needs the name of the bin
+  (`metator_00012_00003`), and the names of bins with a `--prefix` holding
+  `_` are read right. The fasta file of the map is named after `--name`.
+- `qc` says why it checks nothing: it logged `No MAGs have been found.`
+  whatever the reason (no high-quality MAG, no contig of more than 100 kb,
+  or no pair between them), and logs the thresholds given with
+  `--threshold` too.
 - `metator metacool` and the map of `pipeline` refuse a
   `contig_data_final.txt` whose rows have more or fewer fields than its
   header, which they read shifted or padded, without a word, and one

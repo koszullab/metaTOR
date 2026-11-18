@@ -46,7 +46,8 @@ INFO :: 503 pairs used to build a contact map of 161 bins with 145 nonzero entri
 |---|---|
 | `final_bin` (default) | The name of a final bin: `metator_00007_00000` |
 | `contig` | The name of a contig |
-| `core_bin`, `overlapping_bin`, `recursive_bin` | The numeric ID of the bin, as in the contig data table: `12` |
+| `core_bin`, `overlapping_bin` | The numeric ID of the bin, as in the contig data table: `12`; or, for an overlapping bin, the name of a bin made from it: `metator_00012_00000` |
+| `recursive_bin` | The name of the bin, `metator_00012_00003`: recursive bins are numbered within their overlapping bin |
 | The header of a column of the contig data table | A value of that column: to map bins made elsewhere, add them to the table as a column, `Other` for instance |
 
 | Option | Default | Effect |

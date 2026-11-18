@@ -1362,7 +1362,8 @@ def qc(
     required=True,
     metavar="STR",
     panel="Input",
-    help="Name of the metator object or its numerical ID for the core bin, overlapping bin or recursive bin objects. "
+    help="Name of the metator object, or its numerical ID for the core bin and overlapping bin objects. A recursive "
+    "bin is numbered within its overlapping bin: give its name. "
     'Example: "NODE_1", "MetaTOR_1_0" or 8.',
 )
 @_option(

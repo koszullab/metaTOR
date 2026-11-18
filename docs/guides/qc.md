@@ -60,7 +60,7 @@ The results are in the log, `metator_qc_<date>.log`. On a simulated
 metagenome of two genomes, in contigs larger than 100 kb:
 
 ```console
-INFO :: 30000 have been extracted.
+INFO :: 30000 pairs have been extracted.
 INFO :: Filtering with thresholds: uncuts=2 loops=2
 INFO :: Number of MAGs: 2
 INFO :: Religated ratio: 4.77%.
@@ -83,4 +83,5 @@ INFO :: Noise score: 1.74E-02
 
 When no MAG passes, or none has a contig longer than 100 kb, as on the small
 test library of the [Quickstart](../quickstart.md), no pair is extracted, and
-the log says `No MAGs have been found.`
+the log says why, such as `The 2 high-quality MAGs have no contig longer than
+100 kb: no quality check.`
