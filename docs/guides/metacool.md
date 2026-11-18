@@ -125,8 +125,9 @@ map, with `metacooler reassign`, as a new file:
 - the bins and contacts of the input map, at its bin size; one genome per
   final bin and `__unbinned__` for the other contigs, grouped genome by genome,
   the longest first, as in the map of a run from pairs;
-- the columns of `bin_summary.txt` and `contig_data_final.txt`, which replace
-  those the input map had (the map of an earlier binning, for example);
+- the columns of `bin_summary.txt` and `contig_data_final.txt`, last, as in
+  the map of a run from pairs: they replace those the input map had (the map
+  of an earlier binning, for example);
 - the contact statistics (the `qc` block of the metadata and the `qc_*`
   columns of the genomes and contigs tables) of the input map, when it has
   them, carried over to the bins: metacooler keeps the counts within each

@@ -1127,8 +1127,10 @@ def test_map_of_the_bins_replaces_the_columns_of_the_input_map(metagenome, binni
     metacooler.validate(str(out), full=True)
     assert assignment(out) == {name: (bin_name if bin_name != "ND" else "__unbinned__") for name, bin_name in final_bin.items()}
     assert list(genomes_without_qc(out).columns) == ["name", "length", "n_contigs", "n_bins", "Contamination"]
+    # metaTOR's columns last, in their order, after the column it does not
+    # write.
     contigs = metacooler.MetaCooler(str(out)).contigs
-    assert without_qc(contigs.columns) == ["name", "length", "genome_id", "GC_content", "Hit", "taxon", "Restriction_site"]
+    assert without_qc(contigs.columns) == ["name", "length", "genome_id", "taxon", "GC_content", "Hit", "Restriction_site"]
     # Read back from the file, as metacooler does: the float parser of
     # pandas 2 can differ from the in-memory value in the last place.
     measured = pd.read_csv(contig_data, sep="\t", index_col="Name").loc[contigs.name]
@@ -1137,6 +1139,47 @@ def test_map_of_the_bins_replaces_the_columns_of_the_input_map(metagenome, binni
     assert contigs.set_index("name").taxon.to_dict() == {
         name: f"t_{i % 3}" for i, name in enumerate(metagenome.truth.Name)
     }  # fmt: skip
+
+
+@pytest.mark.parametrize("earlier_bins", ["same", "other"])
+def test_map_of_the_bins_from_the_map_of_an_earlier_run(earlier_bins, metagenome, binning, tmp_path):
+    """From the map of an earlier run, which carries metaTOR's contig
+    columns: the map that write_metacool writes from the pairs, contigs table
+    included, metaTOR's columns last, as there. metacooler reassign stores
+    the columns that it carries before the QC columns when it groups the
+    contigs again (other bins): the contigs table is then that of the map
+    of the pairs, column for column. When it relabels them in place (the
+    same bins), it writes genome_id again, after the other columns, and the
+    QC columns stay where they were: the contigs table is that of the map
+    of the pairs but for the place of genome_id."""
+    earlier = tmp_path / "earlier.metacool"
+    if earlier_bins == "same":
+        shutil.copyfile(mtmc_map(binning, tmp_path), earlier)
+    else:
+        # The first two genomes in one bin.
+        final_bin = _bin_names(metagenome)
+        merged = {final_bin[genome.contigs[0].name] for genome in metagenome.genomes[:2]}
+        final_bin = {name: ("metator_00099_00000" if bin_name in merged else bin_name) for name, bin_name in final_bin.items()}
+        contig_data = write_contig_data(metagenome, tmp_path / "earlier.txt", final_bin)
+        mtmc.write_metacool(str(binning["pairs"]), str(contig_data), str(earlier))
+    out = tmp_path / "bins.metacool"
+    mtmc.reassign_metacool(str(earlier), str(binning["contig_data"]), str(out), bin_summary=str(binning["bin_summary"]))
+
+    metacooler.validate(str(out), full=True)
+    expected = mtmc_map(binning, tmp_path)
+    clr, ref = cooler.Cooler(str(out)), cooler.Cooler(str(expected))
+    for table in ["bins", "pixels"]:
+        pd.testing.assert_frame_equal(getattr(clr, table)()[:], getattr(ref, table)()[:])
+    chroms, ref_chroms = clr.chroms()[:], ref.chroms()[:]
+    assert list(ref_chroms.columns) == ["name", "length", "genome_id", *QC_CONTIG_COLUMNS, *CONTIG_COLUMNS]
+    if earlier_bins == "same":
+        assert list(chroms.columns) == ["name", "length", *QC_CONTIG_COLUMNS, "genome_id", *CONTIG_COLUMNS]
+        chroms = chroms[ref_chroms.columns]
+    pd.testing.assert_frame_equal(chroms, ref_chroms)
+    assert_contig_columns(out, binning["contig_data"])
+    # The genomes, QC block and columns included, carried over to the bins.
+    pd.testing.assert_frame_equal(metacooler.MetaCooler(str(out)).genomes, metacooler.MetaCooler(str(expected)).genomes)
+    assert clr.info["metadata"]["qc"] == ref.info["metadata"]["qc"]
 
 
 def test_map_of_the_bins_drops_the_columns_of_an_earlier_run(metagenome, binning, tmp_path):

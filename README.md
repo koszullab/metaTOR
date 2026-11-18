@@ -283,8 +283,9 @@ At the end of such a run, `pipeline` writes the map of its bins (`metator.metaco
   for the other contigs; the contigs grouped genome by genome, the longest first, whatever the order
   of the input map, as in the map of a run from pairs;
 * the genomes table holds the columns of `bin_summary.txt`, and the contigs table the columns of
-  `contig_data_final.txt` described above: they replace those that the input map had (the map of an
-  earlier binning, for example). With no final bin, the genome columns of the input map are dropped;
+  `contig_data_final.txt` described above, last, as in the map of a run from pairs: they replace those
+  that the input map had (the map of an earlier binning, for example). With no final bin, the genome
+  columns of the input map are dropped;
 * the contact statistics (the `qc` block of the metadata and the `qc_*` columns of the genomes and
   contigs tables) are those of the input map, when it has them, carried over to the bins: metacooler
   keeps the counts within each contig (measured on the reads, for a map made from pairs files) and

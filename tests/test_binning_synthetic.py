@@ -359,11 +359,14 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, metagenome_inde
     clr, ref = cooler.Cooler(str(written)), cooler.Cooler(str(expected))
     for table in ["bins", "pixels"]:
         pd.testing.assert_frame_equal(getattr(clr, table)()[:], getattr(ref, table)()[:])
-    # The contigs table that metacooler reassign rebuilds stores genome_id
-    # after the columns that it carries from the input map.
+    # The contigs table of the input map: metacooler reassign relabels its
+    # contigs in place (the same bins), and writes genome_id again, after the
+    # other columns; metaTOR then stores its own columns last, as in the map
+    # of the pairs.
     chroms, ref_chroms = clr.chroms()[:], ref.chroms()[:]
-    assert [column for column in chroms.columns if not column.startswith("qc_")] == [
-        "name", "length", "GC_content", "Hit", "Shotgun_coverage", "Restriction_site", "genome_id"]  # fmt: skip
+    columns = ["name", "length", "genome_id", "GC_content", "Hit", "Shotgun_coverage", "Restriction_site"]
+    for table in [chroms, ref_chroms]:
+        assert [column for column in table.columns if not column.startswith("qc_")] == columns
     pd.testing.assert_frame_equal(chroms[ref_chroms.columns], ref_chroms)
     # The QC block and columns of the run from pairs, carried over.
     genomes, ref_genomes = metacooler.MetaCooler(str(written)).genomes, metacooler.MetaCooler(str(expected)).genomes

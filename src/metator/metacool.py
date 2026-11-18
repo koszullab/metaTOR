@@ -454,17 +454,18 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
     layout genome-then-length): a map of the same genomes, in the same
     order. The genomes table holds the columns of the bin summary, and the
     contigs table the columns of the contig data that write_metacool stores
-    (see read_contig_data): they replace those that the input map
-    carried, metaTOR's own as those of the bins of an earlier run. Its
-    other columns of the contigs table are kept. The QC block of the input
-    map, when it has one, is carried over to the bins: metacooler keeps the
-    counts within each contig (measured on the reads, for a map made from
-    pairs files) and counts the contacts between contigs again. A map
-    written by metacooler 0.2.0, with no count per contig, has its block
-    computed again from the pixels (at one bin per contig, every contact
-    within a contig then counts as short-range), which metacooler warns
-    about for a map made from pairs files. The assembly name and the
-    history of the commands are those of the input map.
+    (see read_contig_data), last, as write_metacool stores them: they
+    replace those that the input map carried, metaTOR's own as those of the
+    bins of an earlier run. Its other columns of the contigs table are
+    kept. The QC block of the input map, when it has one, is carried over
+    to the bins: metacooler keeps the counts within each contig (measured
+    on the reads, for a map made from pairs files) and counts the contacts
+    between contigs again. A map written by metacooler 0.2.0, with no count
+    per contig, has its block computed again from the pixels (at one bin
+    per contig, every contact within a contig then counts as short-range),
+    which metacooler warns about for a map made from pairs files. The
+    assembly name and the history of the commands are those of the input
+    map.
 
     The map is written to a temporary file next to outfile, then given
     metacooler's full validation, and only then moved to outfile, which it
@@ -599,12 +600,19 @@ def _write_back_columns(path, contig_data, contig_columns, header):
     written back from an input map.
 
     The columns of the contig data that metaTOR measured (contig_columns)
-    replace those that the map carried. Its other columns (header: all of
-    them) that the map carried are dropped: the bins of each step, the
-    contig ids, Size..., which a map made with the contig data of an earlier
-    run as its contigs table holds (metacooler create pairs --contigs-format
-    metator), and one of CONTIG_COLUMNS that this run did not measure
-    (Shotgun_coverage without a depth file...).
+    are stored last, in their order, as write_metacool stores them in the
+    map it writes from the pairs files: the columns of a contig data file
+    (header: all of them) that the map carried are dropped first, then
+    those of this run are added. metacooler reassign stores the columns
+    that it carries from its input map before genome_id or before the QC
+    columns of the contigs: replaced where they were, they would list the
+    columns of the map of the bins in another order than in the map of the
+    pairs. The dropped columns are also those that this run does not
+    store: the bins of each step, the contig ids, Size..., which a map made
+    with the contig data of an earlier run as its contigs table holds
+    (metacooler create pairs --contigs-format metator), and one of
+    CONTIG_COLUMNS that this run did not measure (Shotgun_coverage without
+    a depth file...).
     """
     import metacooler
 
@@ -612,25 +620,21 @@ def _write_back_columns(path, contig_data, contig_columns, header):
     # The columns of a contig data file but Name (the contigs' own name
     # column) and those of the map that metacooler derives.
     of_metator = (set(header) | set(CONTIG_COLUMNS)) - {"Name"}
-    drop = [
-        f"contigs.{column}"
-        for column in stored.contigs.columns
-        if column in of_metator - set(contig_columns) - {"name", "length", "genome_id"}
-    ]
-    if not contig_columns and not drop:
+    carried = [f"contigs.{column}" for column in stored.contigs.columns if column in of_metator - {"name", "length", "genome_id"}]
+    if carried:
+        metacooler.annotate(path, drop=carried, inplace=True)
+    if not contig_columns:
         return
+    # Columns that the map no longer has: annotate adds them, with the values
+    # of this run on every contig of the map (none on a contig that the
+    # contig data lacks).
     metacooler.annotate(
         path,
-        contigs_table=contig_data if contig_columns else None,
+        contigs_table=contig_data,
         contigs_table_format="Name",
         # Named one by one: the other columns of the table are bins, or the
         # unnamed pandas index.
-        columns=[f"contigs.{column}" for column in contig_columns] or None,
-        drop=drop or None,
-        # The values of this run, on every contig of the map: a contig that
-        # the contig data lacks has none.
-        replace=True,
-        missing="na",
+        columns=[f"contigs.{column}" for column in contig_columns],
         # The contig data of a run lists every contig of the assembly, and a
         # map may lack some (a map made with a contig filter): no warning
         # about the rows that name them.
