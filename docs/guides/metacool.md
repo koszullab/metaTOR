@@ -141,8 +141,10 @@ metator pipeline -S metacool -1 sample.metacool -a assembly.fa -d depth.txt -e D
   are. A map of other contigs or lengths, or that stores both triangles of the
   matrix, stops the run with an error.
 - **Its libraries are already summed**: no `network_<i>.txt` is written.
-  `--edge` must be 0, as a map holds no read positions, and
-  `pipeline --scaffold`, which reads the pairs files, is refused.
+  `--edge` must be 0, as a map holds no read positions (`pipeline` refuses
+  any other value, whatever the start: it counts every pair, as its map does;
+  `metator network` applies it to pairs files), and `pipeline --scaffold`,
+  which reads the pairs files, is refused.
 - **The heatmap** of the bins' network is drawn from the `.pairs.gz` files of
   the output directory: a run from a map draws none, and warns that no pairs
   file was found, unless an earlier run left its pairs files there.

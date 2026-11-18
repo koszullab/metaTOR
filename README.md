@@ -266,9 +266,8 @@ it (for example, from a misaligned `bin_summary.txt`), the map of the contigs st
 does when the run stops with an error once it is built (in the partition or the validation, for
 example), `--no-metacool` or not: a new run can start from it, without aligning the reads again, with
 `--start metacool -1 <outdir>/metator.metacool` (`<outdir>/<prefix>.metacool` with `--prefix`) and
-`-F`, which replaces the bin directories that the stopped run left in the output directory. `--edge`
-then stays at 0 and `--scaffold` is not available (see
-[Starting from a contact map](#starting-from-a-contact-map)).
+`-F`, which replaces the bin directories that the stopped run left in the output directory;
+`--scaffold` is not available then (see [Starting from a contact map](#starting-from-a-contact-map)).
 
 #### Starting from a contact map
 
@@ -291,8 +290,10 @@ so that the network and `contig_data_network.txt` are those of the pairs the map
 at `--edge 0`. A map that cannot give this network (contigs that are not in the assembly or that have
 other lengths, or both triangles of the matrix stored) stops the run with an error, whose reason is
 logged in the log file of the run. The libraries of a map are already summed: no `network_N.txt` is
-written. `--edge` must be 0, as a map holds no read positions; `pipeline --scaffold`, which reads the
-pairs files, is refused. The heatmap of the final bin network (`plot/network_heatmap.png`) is drawn from
+written. `--edge` must be 0, as a map holds no read positions (`pipeline` refuses any other value,
+whatever the start: it counts every pair, as its map does; `metator network` applies it to pairs files);
+`pipeline --scaffold`, which reads the pairs files, is refused. The heatmap of the final bin network
+(`plot/network_heatmap.png`) is drawn from
 the `.pairs.gz` files of the output directory: a run from a map draws none, and its log warns that no
 pairs alignment files were found, unless the output directory holds those of an earlier run (a rebinning
 in the directory of a run from reads, for example), from which the heatmap is then drawn.

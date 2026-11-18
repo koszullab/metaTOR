@@ -51,7 +51,7 @@ metator pipeline [OPTIONS]
 | `-e, --enzyme` | none | The restriction enzymes of the library. |
 | `-q, --min-quality` | `30` | The minimum mapping quality of both mates of a pair. |
 | `-m, --normalization` | `empirical_hit` | `None`, `abundance`, `length`, `RS`, `empirical_hit` or `theoritical_hit`. `RS` and `theoritical_hit` need `--enzyme`; `abundance` and `theoritical_hit` need `--depth`. See [Normalising the network](guides/network.md#normalising-the-network). |
-| `-E, --edge` | `0` | Leave out the pairs with a mate within this many bp of the end of its contig. Must be 0 with `--start metacool`. |
+| `-E, --edge` | `0` | Only 0 in `pipeline`, whatever the start: it counts every pair, as its contact map does (`metator network` applies `--edge` to pairs files). |
 | `-A, --algorithm` | `louvain` | The partition algorithm: `louvain` or `leiden`. |
 | `-i, --iterations` | `100` | The iterations of the partition. |
 | `-O, --overlap` | `80` | The percentage of iterations in which two core bins must fall together to be merged into one overlapping bin. |
@@ -109,7 +109,7 @@ metator network [OPTIONS]
 | `-e, --enzyme` | none | The restriction enzymes of the library. |
 | `-q, --min-quality` | `30` | The minimum mapping quality of both mates of a pair. |
 | `-n, --normalization` | `empirical_hit` | As `--normalization` (`-m`) in `pipeline`. |
-| `-E, --edge` | `0` | As in `pipeline`. |
+| `-E, --edge` | `0` | Leave out the pairs with a mate within this many bp of the end of its contig. Not available with `--start metacool`. |
 | `-s, --self-contacts` | off | Count the contacts of each contig with itself. |
 | `-o, --outdir` | the current directory | The output directory. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory. |

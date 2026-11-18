@@ -1036,14 +1036,18 @@ def test_network_from_a_metacool(monkeypatch, tmp_path, run_cli):
 
 
 METACOOL_START_ERRORS = {
+    "several maps": (
+        ["-1", "a.metacool,b.metacool,c.metacool"],
+        "--start metacool takes one .metacool file (its libraries are already summed), given with -1/--forward: got 3 files.",
+    ),
+}
+# pipeline refuses an edge region whatever the start: see
+# test_pipeline_refuses_an_edge_region.
+NETWORK_METACOOL_START_ERRORS = {
     "edge region": (
         ["-1", "map.metacool", "-E", "100"],
         "--edge 100 cannot be applied with --start metacool: a contact map holds the contacts of bins, not the "
         "positions of the reads. Leave --edge at 0, or start from the pairs files.",
-    ),
-    "several maps": (
-        ["-1", "a.metacool,b.metacool,c.metacool"],
-        "--start metacool takes one .metacool file (its libraries are already summed), given with -1/--forward: got 3 files.",
     ),
 }
 # A run without a map is refused by click: --forward is required.
@@ -1055,6 +1059,7 @@ PIPELINE_METACOOL_START_ERRORS = {
 @pytest.mark.parametrize(
     "command, case",
     [(command, case) for command in ["network", "pipeline"] for case in METACOOL_START_ERRORS]
+    + [("network", case) for case in NETWORK_METACOOL_START_ERRORS]
     + [("pipeline", case) for case in PIPELINE_METACOOL_START_ERRORS],
 )
 def test_metacool_start_refused(command, case, monkeypatch, tmp_path, run_cli):
@@ -1065,7 +1070,7 @@ def test_metacool_start_refused(command, case, monkeypatch, tmp_path, run_cli):
         raise AssertionError("refused before any work")
 
     monkeypatch.setattr("metator.network.create_contig_data", not_called)
-    args, message = {**METACOOL_START_ERRORS, **PIPELINE_METACOOL_START_ERRORS}[case]
+    args, message = {**METACOOL_START_ERRORS, **NETWORK_METACOOL_START_ERRORS, **PIPELINE_METACOOL_START_ERRORS}[case]
     out = tmp_path / "out"
     with pytest.raises(ValueError):
         run_cli(command, *args, "-a", TESTS_DATA / "assembly.fa", "-S", "metacool", "-o", out, "-T", tmp_path / "tmp")
@@ -1073,17 +1078,74 @@ def test_metacool_start_refused(command, case, monkeypatch, tmp_path, run_cli):
     assert f"ERROR :: {message}" in log.read_text()
 
 
+PIPELINE_EDGE_ERROR = (
+    "--edge {} cannot be applied by pipeline, which counts every pair, as its contact map does: a map holds the "
+    "contacts of bins, not the positions of the reads. Leave --edge at 0, or build the network with metator network, "
+    "then run metator partition and metator validation."
+)
+
+
+@pytest.mark.parametrize(
+    "start, inputs",
+    [
+        ("fastq", ["-1", "a.fq", "-2", "b.fq"]),
+        ("bam", ["-1", "a.bam", "-2", "b.bam"]),
+        ("pair", ["-1", "a.pairs"]),
+        ("pair", ["-1", "a.pairs,b.pairs"]),
+        ("metacool", ["-1", "map.metacool"]),
+    ],
+    ids=["fastq", "bam", "pair", "pairs of two libraries", "metacool"],
+)
+@pytest.mark.parametrize("edge", ["100", "-5"], ids=["above 0", "negative"])
+def test_pipeline_refuses_an_edge_region(start, inputs, edge, stub_pipeline, tmp_path, run_cli):
+    """pipeline refuses an --edge other than 0 before any work, whatever
+    the start and the number of libraries: it counts every pair, as its
+    contact map does. A negative --edge, which counted every pair as 0
+    does, is refused too, as the help says "Only 0". --start metacool gets
+    this message too, not the one of metator network, which would send it
+    to the pairs files."""
+    out = tmp_path / "out"
+    with pytest.raises(ValueError):
+        run_cli("pipeline", *inputs, "-a", _assembly(tmp_path), "-S", start, f"--edge={edge}", "-o", out, "-T", tmp_path / "tmp")
+    assert not stub_pipeline and not (out / "overlapping_bin").exists()
+    (log,) = out.glob("metator_pipeline_*.log")
+    logged = log.read_text()
+    assert f"ERROR :: {PIPELINE_EDGE_ERROR.format(edge)}\n" in logged
+    assert logged.count("ERROR ::") == 1
+
+
+@pytest.mark.parametrize("edge", [100, -5], ids=["above 0", "negative"])
+def test_network_keeps_the_edge_region(edge, stub_pipeline, tmp_path, run_cli):
+    """A guard: metator network still applies --edge to the pairs files
+    (alignment_to_contacts), a negative one included."""
+    run_cli("network", "-1", "a.pairs", "-a", _assembly(tmp_path), "-S", "pair", f"--edge={edge}", "-o", tmp_path / "out",
+            "-T", tmp_path / "tmp")  # fmt: skip
+    alignment_files, edge_arg, *_ = stub_pipeline["alignment_to_contacts"]
+    assert (alignment_files, edge_arg) == (["a.pairs"], edge)
+
+
 @pytest.mark.parametrize(
     "args",
     [
         ["-S", "metacool", "-1", "map.metacool", "-E", "100"],
+        ["-S", "pair", "-1", "a.pairs", "-E", "100"],
+        ["-S", "pair", "-1", "a.pairs", "--edge=-5"],
         ["-S", "metacool", "-1", "map.metacool", "--scaffold"],
         ["-S", "pair", "-1", "a.pairs", "-m", "abundance"],
         ["-S", "fastq", "-1", "a.fq"],
         ["-S", "pair", "-1", "a.pairs", "-p", "bad.prefix"],
         ["-S", "pair", "-1", "a.pairs", "-a", "missing.fa"],
     ],
-    ids=["edge region", "scaffold", "normalization without depth", "no reverse reads", "prefix", "no assembly"],
+    ids=[
+        "edge region",
+        "edge region from pairs",
+        "negative edge region",
+        "scaffold",
+        "normalization without depth",
+        "no reverse reads",
+        "prefix",
+        "no assembly",
+    ],
 )
 def test_pipeline_refused_keeps_the_bins_of_an_earlier_run(args, tmp_path, run_cli):
     """A refused run with --force (a rebinning into the same directory)

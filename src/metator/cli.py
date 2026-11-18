@@ -175,6 +175,23 @@ def check_metacool_start(start, forward, edge, scaffold=False):
         raise ValueError
 
 
+def check_pipeline_edge(edge):
+    """No edge region in pipeline, whatever the start: --edge is 0, or the
+    run is refused, a negative --edge too (it counted every pair, as 0
+    does). pipeline counts every pair, as its contact map does, which
+    holds the contacts of bins, not the positions of the reads, so that it
+    can read its network from a map. metator network still applies --edge
+    to pairs files."""
+    if edge != 0:
+        logger.error(
+            "--edge %d cannot be applied by pipeline, which counts every pair, as its contact map does: a map holds "
+            "the contacts of bins, not the positions of the reads. Leave --edge at 0, or build the network with "
+            "metator network, then run metator partition and metator validation.",
+            edge,
+        )
+        raise ValueError
+
+
 def check_inputs_not_the_map(start, forward, reverse, metacool):
     """The files given to a pipeline run from reads, alignments or pairs
     (-1, -2): none may be its contact map (metacool: the same path, or a
@@ -508,9 +525,12 @@ def alignment_options():
     )
 
 
-def network_options(normalization_short):
+EDGE_HELP = "Distance of the edge region in base pair on the contigs where the mapping reads are not considered as inter contigs."
+
+
+def network_options(normalization_short, edge_help):
     """Options of the network step; the short alias of --normalization is -n
-    in network, -m in pipeline."""
+    in network, -m in pipeline, and --edge says what each accepts."""
     return _options(
         _option(
             normalization_short,
@@ -534,8 +554,7 @@ def network_options(normalization_short):
             show_default=True,
             metavar="INT",
             panel="Network",
-            help="Distance of the edge region in base pair on the contigs where the mapping reads are not considered as "
-            "inter contigs. Not available with --start metacool.",
+            help=edge_help,
         ),
     )
 
@@ -659,7 +678,7 @@ def cli():
 @cli.command(short_help="Generate the metaHiC contig network from fastq, bam, pairs or .metacool files and normalize it.")
 @reads_options()
 @alignment_options()
-@network_options("-n")
+@network_options("-n", edge_help=f"{EDGE_HELP} Not available with --start metacool.")
 @_option(
     "-s",
     "--self-contacts",
@@ -1003,7 +1022,11 @@ def validation(
 @cli.command(short_help="Run network, partition and validation (and scaffold the bins) in one command line.")
 @reads_options()
 @alignment_options()
-@network_options("-m")
+@network_options(
+    "-m",
+    edge_help=f"{EDGE_HELP} Only 0 in pipeline, whatever the start: it counts every pair, as its contact map does. "
+    "metator network applies it to pairs files.",
+)
 @partition_options(
     iterations=100,
     overlap=80,
@@ -1097,6 +1120,9 @@ def pipeline(
     from a .metacool contact map of the contigs ([cyan]--start metacool[/],
     see [cyan]metator network[/]). A validation step decontaminates the bins
     when it's necessary; it is the critical step for memory usage (~40G).
+    Whatever the start, the network counts every pair, as a contact map
+    does: --edge must be 0 ([cyan]metator network[/] applies it to pairs
+    files).
 
     As soon as it has the pairs files, the run builds the contact map of
     the contigs, in no bin yet, as a .metacool file (see
@@ -1125,6 +1151,7 @@ def pipeline(
         # were.
         aligner_mode = aligner_mode_for(aligner_mode, enzyme)
         check_normalization(normalization, enzyme, depth)
+        check_pipeline_edge(edge)
         check_metacool_start(start, forward, edge, scaffold)
         metacool_file = metacool_path(outdir, prefix)
         check_inputs_not_the_map(start, forward, reverse, metacool_file)

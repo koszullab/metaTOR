@@ -57,6 +57,11 @@ All notable changes to this project will be documented in this file.
   leave the map of the contigs, in no bin, which a new run can start from
   (`--start metacool`, with `-F` in the same output directory). Python
   API: `metator.metacool.write_contig_map`.
+- `pipeline` refuses an `--edge` other than 0 before any work, whatever
+  the start (it refused one above 0 with `--start metacool` only, and
+  took a negative one as 0): it counts every pair, as its contact map
+  does, which holds the contacts of bins, not the positions of
+  the reads. `metator network` still applies `--edge` to pairs files.
 - metaTOR requires metacooler 0.3.0. The `.metacool` maps it writes also
   store the contact statistics of each contig (the `qc_intra_contig_short`
   and `qc_intra_contig_long` columns of the contigs table), which
