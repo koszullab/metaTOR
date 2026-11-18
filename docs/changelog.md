@@ -101,12 +101,9 @@ All notable changes to this project will be documented in this file.
   `metacooler reassign`, where `write_metacool` read every pairs file
   again: the map is the one it wrote before, and that `metator metacool`
   writes from the pairs, but for its history (the `annotate` and
-  `reassign` keys of its metadata), the type of its counts with several
+  `reassign` keys of its metadata) and the type of its counts with several
   libraries (64-bit integers, which `metator metacool` stores as 32-bit
-  ones) and, when the final bins leave the
-  contigs in the order of the map of the contigs (for example, no final
-  bin, or one bin holding every contig), the place of its `genome_id`
-  column, after the `qc_*` columns. Its file is larger, for the same data
+  ones). Its file is larger, for the same data
   (by 12 to 32% on our test data): the columns measured on the assembly,
   dropped and written again at the end, leave free space in it.
   `--no-metacool` builds it all the same and removes it at the end. An
@@ -126,19 +123,15 @@ All notable changes to this project will be documented in this file.
   not ASCII, which it gives, before it builds its index or aligns a read:
   the map, which needs ASCII names, could only be built once the reads
   were aligned. From pairs, it refuses an empty pairs file, and one that
-  metacooler, which builds the map, or metaTOR, which reads the network of
-  several libraries from their pairs files and the pairs files of
-  `--scaffold`, could not read (metacooler goes by the suffix of its name,
-  in any case, metaTOR by the first bytes of the file): a zip archive, a
-  gzip file whose name ends with neither `.gz` nor `.bgz`, a bzip2 file
-  whose name does not end with `.bz2`, a plain file named as one of them,
-  and, with `--scaffold`, a zstd or LZ4 file (`.zst`, `.zstd`, `.lz4`),
-  which the scaffolding cannot read: without it, they work, as the
-  networks come from the maps. A map that metacooler cannot
-  build from the pairs files of a run from pairs stops the run with what
-  it needs of them: their header lines at their top only, the same number
-  of fields on every row, one file per library given comma-separated
-  rather than files concatenated.
+  metacooler, which builds the map, or metaTOR, which reads the pairs files
+  of `--scaffold`, could not read (both go by the first bytes of the file,
+  whatever its name): a zip archive and, with `--scaffold`, a zstd or LZ4
+  file, which the scaffolding cannot read: without it, they work, as the
+  networks come from the maps. A map that metacooler cannot build from the
+  pairs files of a run from pairs stops the run with what it needs of them:
+  the same number of fields on every row (their header lines may come
+  anywhere, so files of one assembly concatenated are one library), and one
+  file per library, given comma-separated.
 - `pipeline` refuses an `--edge` other than 0 before any work, whatever
   the start (it refused one above 0 with `--start metacool` only, and
   took a negative one as 0): it counts every pair, as its contact map

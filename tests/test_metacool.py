@@ -1174,10 +1174,9 @@ def test_map_of_the_bins_from_the_map_of_an_earlier_run(earlier_bins, metagenome
     included, metaTOR's columns last, as there. metacooler reassign stores
     the columns that it carries before the QC columns when it groups the
     contigs again (other bins): the contigs table is then that of the map
-    of the pairs, column for column. When it relabels them in place (the
-    same bins), it writes genome_id again, after the other columns, and the
-    QC columns stay where they were: the contigs table is that of the map
-    of the pairs but for the place of genome_id."""
+    of the pairs, column for column; and so it is when it relabels them in
+    place (the same bins), which keeps the order of the columns that
+    create writes, genome_id third (metacooler 0.4.0)."""
     earlier = tmp_path / "earlier.metacool"
     if earlier_bins == "same":
         shutil.copyfile(mtmc_map(binning, tmp_path), earlier)
@@ -1198,9 +1197,6 @@ def test_map_of_the_bins_from_the_map_of_an_earlier_run(earlier_bins, metagenome
         pd.testing.assert_frame_equal(getattr(clr, table)()[:], getattr(ref, table)()[:])
     chroms, ref_chroms = clr.chroms()[:], ref.chroms()[:]
     assert list(ref_chroms.columns) == ["name", "length", "genome_id", *QC_CONTIG_COLUMNS, *CONTIG_COLUMNS]
-    if earlier_bins == "same":
-        assert list(chroms.columns) == ["name", "length", *QC_CONTIG_COLUMNS, "genome_id", *CONTIG_COLUMNS]
-        chroms = chroms[ref_chroms.columns]
     pd.testing.assert_frame_equal(chroms, ref_chroms)
     assert_contig_columns(out, binning["contig_data"])
     # The genomes, QC block and columns included, carried over to the bins.
@@ -1618,8 +1614,8 @@ def test_map_of_the_bins_from_the_map_of_the_contigs(final, metagenome, metageno
     final bins leave the contigs in the order of the map of the contigs (for
     example, no final bin, one bin holding every contig, or the longest
     contigs in the first bin and the others in the second), metacooler
-    relabels them where they are, and writes genome_id again, after the QC
-    columns of the contigs."""
+    relabels them where they are, in the order of the columns that create
+    writes, genome_id third (metacooler 0.4.0)."""
     pairs = str(metagenome_inputs["pairs"])
     contig_data = assembly_contig_data(metagenome_inputs)
     out = tmp_path / "out"
@@ -1647,9 +1643,6 @@ def test_map_of_the_bins_from_the_map_of_the_contigs(final, metagenome, metageno
     chroms, ref_chroms = clr.chroms()[:], ref.chroms()[:]
     columns = ["GC_content", "Hit", "Shotgun_coverage", "Restriction_site"]
     assert list(ref_chroms.columns) == ["name", "length", "genome_id", *QC_CONTIG_COLUMNS, *columns]
-    if final != "bins":
-        assert list(chroms.columns) == ["name", "length", *QC_CONTIG_COLUMNS, "genome_id", *columns]
-        chroms = chroms[ref_chroms.columns]
     pd.testing.assert_frame_equal(chroms, ref_chroms)
     pd.testing.assert_frame_equal(metacooler.MetaCooler(str(outfile)).genomes, metacooler.MetaCooler(str(expected)).genomes)
     info, ref_info = dict(clr.info), dict(ref.info)

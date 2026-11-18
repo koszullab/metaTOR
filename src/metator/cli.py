@@ -21,7 +21,6 @@ import time
 from contextlib import ExitStack, contextmanager
 from functools import partial
 from os.path import dirname, exists, join
-from pathlib import Path
 
 import rich_click as click
 from scipy.sparse import load_npz, save_npz
@@ -237,63 +236,45 @@ def check_pipeline_edge(edge):
         raise ValueError
 
 
-# The compression that metacooler gives a pairs file, from the suffix of its
-# name only, in any case (metacooler.io.create._PAIRS_CODECS): it reads a file
-# of any other name as plain text, whatever its first bytes.
-METACOOLER_PAIRS_CODECS = {".gz": "gzip", ".bgz": "gzip", ".bz2": "bzip2", ".zst": "zstd", ".zstd": "zstd", ".lz4": "lz4"}
 # The compressions that metaTOR finds from the first bytes of a file
 # (metator.io.file_compression), whatever its name: it reads no zstd or lz4.
 SNIFFED_CODECS = {"gz": "gzip", "bz2": "bzip2", "zip": "zip"}
+# The first bytes of a zstd file and of an LZ4 frame, which metacooler reads
+# (it finds the compression of a pairs file from its first bytes too,
+# whatever its name), but not metaTOR.
+UNREAD_BY_METATOR = {b"\x28\xb5\x2f\xfd": "zstd", b"\x04\x22\x4d\x18": "lz4"}
 
 
 def check_pairs_compression(start, forward, scaffold=False):
     """Refuse, before any work, a pairs file given to a run from pairs (-1)
     that metacooler, which builds the contact maps of the contigs from it,
     or metaTOR, which reads the pairs files of --scaffold, could not read.
-    metacooler finds the compression of a pairs file from the suffix of its
-    name only, in any case (METACOOLER_PAIRS_CODECS); metaTOR finds it from
-    the first bytes of the file (SNIFFED_CODECS), and reads no zstd or lz4.
-    Refused: an empty file; a zip archive, which metacooler cannot read; a
-    gzip or bzip2 file whose name does not end with its extension; a plain
-    file named as a gzip or bzip2 file; and, with --scaffold, a file named
-    as a zstd or lz4 file, which metaTOR cannot read (the network comes
-    from the maps, whatever the number of libraries). The reason, with
-    what to do, is logged as an error, then ValueError is raised. A file
-    that is not there is left to the map, which stops on it."""
+    Both find the compression of a pairs file from its first bytes,
+    whatever its name; metaTOR reads no zstd or lz4 (UNREAD_BY_METATOR).
+    Refused: an empty file; a zip archive, which metacooler cannot read;
+    and, with --scaffold, a zstd or lz4 file (the network comes from the
+    maps, whatever the number of libraries). The reason, with what to do, is
+    logged as an error, then ValueError is raised. A file that is not there
+    is left to the map, which stops on it."""
     if start != "pair":
         return
-    files = forward.split(",")
-    for path in files:
+    for path in forward.split(","):
         if not os.path.isfile(path):
             continue
-        suffix = Path(path).suffix
-        named = METACOOLER_PAIRS_CODECS.get(suffix.lower())
-        found = SNIFFED_CODECS.get(mio.file_compression(path))
+        with open(path, "rb") as handle:
+            unread = UNREAD_BY_METATOR.get(handle.read(4))
         if os.path.getsize(path) == 0:
             reason = "is empty: give the pairs file of its library, or leave it out of -1."
-        elif found == "zip":
+        elif SNIFFED_CODECS.get(mio.file_compression(path)) == "zip":
             reason = (
                 "is a zip archive, which metacooler, which builds the contact map of the contigs, cannot read: "
-                "decompress it, and give the pairs file itself, plain or compressed with gzip and named .gz."
+                "decompress it, and give the pairs file itself, plain or compressed with gzip."
             )
-        elif found and found != named:
-            wanted = ".gz" if found == "gzip" else ".bz2"
+        elif unread and scaffold:
             reason = (
-                f"is compressed with {found}, but metacooler, which builds the contact map of the contigs, finds "
-                f"the compression of a pairs file from its name only: rename it so that its name ends with {wanted}, "
-                "or decompress it."
-            )
-        elif not found and named in ("gzip", "bzip2"):
-            reason = (
-                f"is not compressed, but metacooler, which builds the contact map of the contigs, would decompress it "
-                f"with {named}, from its {suffix} extension: rename it without {suffix}, or compress it with {named}."
-            )
-        elif named in ("zstd", "lz4") and scaffold:
-            article = "an" if named == "lz4" else "a"
-            reason = (
-                f"is named as {article} {named} file, which metacooler, which builds the contact map of the contigs, reads, "
-                "but not metaTOR, which reads the pairs files for --scaffold: decompress it, or compress it with gzip and "
-                "name it .gz (zstd and lz4 work without --scaffold)."
+                f"is compressed with {unread}, which metacooler, which builds the contact map of the contigs, reads, "
+                "but not metaTOR, which reads the pairs files for --scaffold: decompress it, or compress it with gzip "
+                "(zstd and lz4 work without --scaffold)."
             )
         else:
             continue
@@ -613,11 +594,10 @@ def _failure(error):
 # What metacooler needs of the pairs files given to a run from pairs, which
 # the run says when it stops on pairs files that metacooler cannot read.
 PAIRS_FILES_NEEDS = (
-    "metacooler, which builds it, needs each pairs file given to -1 with its header lines (those that start with #) "
-    "at its top only and the same number of fields on every row, plain or compressed and named by its extension, "
-    "in any case: gzip (.gz or .bgz), bzip2 (.bz2) or, without --scaffold, zstd (.zst or .zstd) "
-    "or lz4 (.lz4). Give the pairs files of several libraries comma-separated, one file per library, rather than "
-    "concatenated."
+    "metacooler, which builds it, needs the same number of fields on every row of each pairs file given to -1 (its "
+    "header lines, which start with #, may come anywhere, as in pairs files of one assembly concatenated into one "
+    "library), plain or compressed with gzip, bzip2 or, without --scaffold, zstd or lz4. Give the pairs files of "
+    "several libraries comma-separated, one file per library."
 )
 
 

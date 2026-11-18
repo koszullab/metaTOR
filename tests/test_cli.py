@@ -17,6 +17,7 @@ import click
 import pytest
 
 import metator.cli as mtcli
+import metator.io as mio
 import metator.metacool as mtmc
 from metator.version import __version__
 
@@ -676,67 +677,35 @@ def _write_pairs(path, codec):
 # The first bytes of a zstd and an lz4 file, which metaTOR does not know.
 ZSTD_START, LZ4_START = b"\x28\xb5\x2f\xfd", b"\x04\x22\x4d\x18"
 
-# Pairs files that metacooler, which goes by their name, or metaTOR, which
-# finds their compression from their first bytes and reads no zstd or lz4,
-# cannot read, given as the second library: their name, what they hold, and
-# what the refusal says, after their path.
-MISNAMED_PAIRS = {
+# Pairs files that metacooler or metaTOR, which both find their compression
+# from their first bytes, whatever their name, cannot read, given as the
+# second library: their name, what they hold, and what the refusal says,
+# after their path.
+UNREADABLE_PAIRS = {
     "empty, named .gz": ("a.pairs.gz", "empty", "is empty: give the pairs file of its library, or leave it out of -1."),
     "empty": ("a.pairs", "empty", "is empty: give the pairs file of its library, or leave it out of -1."),
     "zip archive": (
         "a.pairs.zip",
         "zip",
         "is a zip archive, which metacooler, which builds the contact map of the contigs, cannot read: decompress "
-        "it, and give the pairs file itself, plain or compressed with gzip and named .gz.",
+        "it, and give the pairs file itself, plain or compressed with gzip.",
     ),
-    "gzip without .gz": (
-        "a.pairs",
-        "gzip",
-        "is compressed with gzip, but metacooler, which builds the contact map of the contigs, finds the compression "
-        "of a pairs file from its name only: rename it so that its name ends with .gz, or decompress it.",
-    ),
-    "bzip2 without .bz2": (
-        "a.pairs",
-        "bzip2",
-        "is compressed with bzip2, but metacooler, which builds the contact map of the contigs, finds the "
-        "compression of a pairs file from its name only: rename it so that its name ends with .bz2, or decompress it.",
-    ),
-    "gzip named .zst": (
-        "a.pairs.zst",
-        "gzip",
-        "is compressed with gzip, but metacooler, which builds the contact map of the contigs, finds the compression "
-        "of a pairs file from its name only: rename it so that its name ends with .gz, or decompress it.",
-    ),
-    "plain named .gz": (
+    "zip archive, named .gz": (
         "a.pairs.gz",
-        "plain",
-        "is not compressed, but metacooler, which builds the contact map of the contigs, would decompress it with "
-        "gzip, from its .gz extension: rename it without .gz, or compress it with gzip.",
-    ),
-    "plain named .bz2": (
-        "a.pairs.bz2",
-        "plain",
-        "is not compressed, but metacooler, which builds the contact map of the contigs, would decompress it with "
-        "bzip2, from its .bz2 extension: rename it without .bz2, or compress it with bzip2.",
-    ),
-    # metacooler goes by the suffix in any case.
-    "plain named .GZ": (
-        "a.pairs.GZ",
-        "plain",
-        "is not compressed, but metacooler, which builds the contact map of the contigs, would decompress it with "
-        "gzip, from its .GZ extension: rename it without .GZ, or compress it with gzip.",
+        "zip",
+        "is a zip archive, which metacooler, which builds the contact map of the contigs, cannot read: decompress "
+        "it, and give the pairs file itself, plain or compressed with gzip.",
     ),
 }
 
 
-@pytest.mark.parametrize("case", list(MISNAMED_PAIRS))
+@pytest.mark.parametrize("case", list(UNREADABLE_PAIRS))
 def test_pipeline_refuses_pairs_files_metacooler_cannot_read(case, stub_pipeline, tmp_path, run_cli):
-    """From pairs, a pairs file whose compression metacooler, which builds
-    the map of the contigs, would not find from its name is refused before
-    any work, with what to do, in the log file of the run: the bins of an
-    earlier run stay, even with -F. Each file is checked: the faulty one is
-    the second library here."""
-    name, codec, message = MISNAMED_PAIRS[case]
+    """From pairs, a pairs file that metacooler, which builds the map of the
+    contigs, cannot read is refused before any work, with what to do, in the
+    log file of the run: the bins of an earlier run stay, even with -F. Each
+    file is checked: the faulty one is the second library here."""
+    name, codec, message = UNREADABLE_PAIRS[case]
     good = _write_pairs(tmp_path / "good.pairs.gz", "gzip")
     bad = _write_pairs(tmp_path / name, codec)
     out = tmp_path / "out"
@@ -779,6 +748,13 @@ def test_pipeline_zstd_and_lz4_pairs_of_several_libraries(name, codec, stub_pipe
         ("a.pairs.zst", ZSTD_START),
         ("a.pairs.zstd", ZSTD_START),
         ("a.pairs.LZ4", LZ4_START),
+        ("a.pairs", "gzip"),
+        ("a.pairs", "bzip2"),
+        ("a.pairs.zst", "gzip"),
+        ("a.pairs.gz", "plain"),
+        ("a.pairs.bz2", "plain"),
+        ("a.pairs.GZ", "plain"),
+        ("a.pairs", ZSTD_START),
         ("missing.pairs", None),
     ],
     ids=[
@@ -792,69 +768,95 @@ def test_pipeline_zstd_and_lz4_pairs_of_several_libraries(name, codec, stub_pipe
         "zstd",
         "zstd named .zstd",
         "lz4 named .LZ4",
+        "gzip without .gz",
+        "bzip2 without .bz2",
+        "gzip named .zst",
+        "plain named .gz",
+        "plain named .bz2",
+        "plain named .GZ",
+        "zstd without .zst",
         "missing",
     ],
 )
 def test_pipeline_pairs_files_metacooler_reads(name, codec, stub_pipeline, tmp_path, run_cli):
-    """A guard: a pairs file that metacooler and metaTOR both read goes on
-    to the map of the contigs: plain under any other name, gzip named .gz or
-    .bgz, bzip2 named .bz2, the suffix in any case, as metacooler matches
-    it; and, from one library, whose network comes from the map, zstd and
-    lz4, which metacooler reads (metaTOR, which does not, does not know
-    their first bytes). A missing file is left to the map, which stops on
-    it."""
+    """A pairs file that metacooler reads goes on to the map of the
+    contigs, whatever its name: metacooler finds its compression from its
+    first bytes, as metaTOR does (a gzip file without .gz, a plain file
+    named .gz were refused, as metacooler went by the name). zstd and lz4,
+    which metacooler reads but not metaTOR, go on too without --scaffold.
+    A missing file is left to the map, which stops on it."""
     pairs = _write_pairs(tmp_path / name, codec) if codec else tmp_path / name
     run_cli("pipeline", "-1", pairs, "-a", _assembly(tmp_path), "-S", "pair", "-o", tmp_path / "out", "-T", tmp_path / "tmp")
     assert stub_pipeline["write_contig_map"][0] == [str(pairs)]
 
 
 @pytest.mark.parametrize("libraries", [1, 2])
-def test_pipeline_refuses_zstd_and_lz4_pairs_with_scaffold(libraries, stub_pipeline, tmp_path, run_cli):
+@pytest.mark.parametrize("name, codec, found", [("lib{i}.pairs.lz4", LZ4_START, "lz4"), ("lib{i}.pairs", ZSTD_START, "zstd")])
+def test_pipeline_refuses_zstd_and_lz4_pairs_with_scaffold(libraries, name, codec, found, stub_pipeline, tmp_path, run_cli):
     """With --scaffold, which reads the pairs files, zstd and lz4 pairs
-    files are refused before any work, whatever the number of libraries."""
-    pairs = [_write_pairs(tmp_path / f"lib{i}.pairs.lz4", LZ4_START) for i in range(libraries)]
+    files are refused before any work, whatever the number of libraries and
+    their name: by their first bytes."""
+    pairs = [_write_pairs(tmp_path / name.format(i=i), codec) for i in range(libraries)]
     out = tmp_path / "out"
     with pytest.raises(ValueError):
         run_cli("pipeline", "-1", ",".join(map(str, pairs)), "-a", _assembly(tmp_path), "-S", "pair", "--scaffold",
                 "-o", out, "-T", tmp_path / "tmp")  # fmt: skip
     assert not stub_pipeline
     message = (
-        f"{pairs[0]} is named as an lz4 file, which metacooler, which builds the contact map of the contigs, reads, "
-        "but not metaTOR, which reads the pairs files for --scaffold: decompress it, or compress it with gzip and "
-        "name it .gz (zstd and lz4 work without --scaffold)."
+        f"{pairs[0]} is compressed with {found}, which metacooler, which builds the contact map of the contigs, reads, "
+        "but not metaTOR, which reads the pairs files for --scaffold: decompress it, or compress it with gzip "
+        "(zstd and lz4 work without --scaffold)."
     )
     (log,) = out.glob("metator_pipeline_*.log")
     assert f"ERROR :: {message}\n" in log.read_text()
 
 
-def test_metacooler_pairs_codecs():
-    """The compressions that check_pairs_compression gives a pairs file
-    from its name are those of metacooler, which builds the map from it."""
-    from metacooler.io.create import _PAIRS_CODECS
+@pytest.mark.parametrize("codec", ["plain", "gzip", "bzip2", ZSTD_START, LZ4_START])
+def test_metacooler_pairs_codecs(codec, tmp_path):
+    """The compression of a pairs file is found from its first bytes, by
+    metacooler, which builds the map from it, as by metaTOR: those that
+    metaTOR cannot read (UNREAD_BY_METATOR) are those that metacooler finds
+    as zstd and lz4, whatever the name. metacooler went by the name, which
+    the previous version of this test pinned."""
+    from metacooler.io.create import _pairs_codec
 
-    assert mtcli.METACOOLER_PAIRS_CODECS == {
-        suffix: {"bz2": "bzip2"}.get(codec, codec) for suffix, codec in _PAIRS_CODECS.items()
-    }
+    path = _write_pairs(tmp_path / "a.pairs.gz", codec)
+    found = _pairs_codec(path)
+    unread = mtcli.UNREAD_BY_METATOR.get(path.read_bytes()[:4])
+    assert unread == (found if found in ("zstd", "lz4") else None)
+    assert {"gz": "gzip", "bz2": "bz2"}.get(mio.file_compression(str(path))) == (found if found in ("gzip", "bz2") else None)
+
+
+def test_pipeline_reads_pairs_files_concatenated(stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """Pairs files of one assembly concatenated with cat, whose second
+    header sits amid the pairs, are one library: metacooler skips the
+    header lines below the top, and the map of the contigs holds the pairs
+    of both (metacooler 0.4.0; the run stopped on that header line)."""
+    monkeypatch.setattr("metator.metacool.write_contig_map", mtmc_write_contig_map)
+    _contig_data(monkeypatch, {"c1": (100, 40.5), "c2": (50, 35.0)})
+    pairs = _pairs(tmp_path)
+    pairs.write_text(pairs.read_text() * 2)
+    out = tmp_path / "out"
+    run_cli("pipeline", "-1", pairs, "-a", _assembly(tmp_path), "-S", "pair", "-o", out, "-T", tmp_path / "tmp")
+    import cooler
+
+    # The two pairs of _pairs, twice.
+    assert cooler.Cooler(str(out / "metator.metacool")).pixels()[:]["count"].sum() == 4
 
 
 @pytest.mark.parametrize("libraries", [1, 2])
-@pytest.mark.parametrize("case", ["libraries concatenated", "a row with one more field"])
-def test_pipeline_says_what_metacooler_needs_of_pairs_files(case, libraries, stub_pipeline, tmp_path, monkeypatch, run_cli):
+def test_pipeline_says_what_metacooler_needs_of_pairs_files(libraries, stub_pipeline, tmp_path, monkeypatch, run_cli):
     """From pairs, pairs files that metacooler cannot read stop the run on
     the map of the contigs, with the reason that metacooler gives (its CSV
-    reader, pyarrow, stops on a header line amid the pairs of two files
-    concatenated, or on a row with one more field) and what it needs of
-    them, in the log file of the run: with several libraries too, whose
+    reader, pyarrow, stops on a row with one more field) and what it needs
+    of them, in the log file of the run: with several libraries too, whose
     error also names the library."""
     monkeypatch.setattr("metator.metacool.write_contig_map", mtmc_write_contig_map)
     monkeypatch.setattr("metator.metacool.write_library_maps", mtmc_write_library_maps)
     _contig_data(monkeypatch, {"c1": (100, 40.5), "c2": (50, 35.0)})
     pairs = _pairs(tmp_path)
     text = pairs.read_text()
-    if case == "libraries concatenated":
-        pairs.write_text(text + text)
-    else:
-        pairs.write_text(text.rstrip("\n") + "\tx\n")
+    pairs.write_text(text.rstrip("\n") + "\tx\n")
     given = [pairs]
     if libraries == 2:
         good = tmp_path / "good.pairs"

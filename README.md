@@ -210,10 +210,8 @@ in one go (by 12 to 32% on our test data), for the same data: the columns measur
 dropped and written again at the end, leave free space in it. A run that started from a contact map updates that map in place (or writes `--output-map`, see
 [Starting from a contact map](#starting-from-a-contact-map)). `metator metacool` writes the same file from the pairs files,
 `contig_data_final.txt` and `bin_summary.txt` of a run, but for the history that it stores (the
-`annotate` and `reassign` keys of its metadata), the type of its counts with several libraries (64-bit
-integers, which `metator metacool` stores as 32-bit ones) and, when the final bins leave the contigs in
-the order of the map of the contigs (for example, no final bin, or one bin holding every contig), the
-place of the `genome_id` column, which metacooler then writes after the `qc_*` columns:
+`annotate` and `reassign` keys of its metadata) and the type of its counts with several libraries (64-bit
+integers, which `metator metacool` stores as 32-bit ones):
 
 ```sh
 metator metacool -c contig_data_final.txt -b bin_summary.txt -o sample.metacool alignment_0_sorted.pairs.gz alignment_1_sorted.pairs.gz
@@ -289,19 +287,16 @@ stopped run left in the output directory; `--scaffold` is not available then (se
 run that is not from a map refuses an assembly with other contig names, which it gives, before it builds
 the index of the assembly or aligns a read; rename these contigs to ASCII names, in the assembly and in
 the alignments or pairs files made from it (and build its index again, for an assembly given as an
-index). metacooler, which builds the map, finds the compression of a pairs file from the suffix of its
-name only, in any case: it reads a file named `.gz` or `.bgz` as gzip, `.bz2` as bzip2, `.zst` or `.zstd`
-as zstd and `.lz4` as LZ4, and a file of any other name as plain text. metaTOR, which reads the pairs
-files of `--scaffold`, finds the compression of a file from its first bytes, and reads plain, gzip, bzip2
-and zip files. So a run from pairs refuses, before any work, an empty pairs file; a zip archive, which
-metacooler cannot read; a gzip file whose name ends with neither `.gz` nor `.bgz`, and a bzip2 file whose
-name does not end with `.bz2`; a plain file named as a gzip or bzip2 file; and, with `--scaffold`, a zstd
-or LZ4 file, which metaTOR cannot read: rename, decompress or recompress the file (with gzip, named
-`.gz`). zstd and LZ4 files work without `--scaffold`: the networks come from the maps. metacooler also
-needs the header lines of a pairs file (those that start with `#`) at its top only, and the same number
-of fields on every row: give the pairs files of several libraries comma-separated, one file per library,
-rather than concatenated. A run from pairs that metacooler cannot read stops with the reason and these
-needs.
+index). metacooler, which builds the map, and metaTOR, which reads the pairs files of `--scaffold`, both
+find the compression of a pairs file from its first bytes, whatever its name: metacooler reads plain,
+gzip, bzip2, zstd and LZ4 files, metaTOR plain, gzip, bzip2 and zip ones. So a run from pairs refuses,
+before any work, an empty pairs file; a zip archive, which metacooler cannot read; and, with
+`--scaffold`, a zstd or LZ4 file, which metaTOR cannot read: decompress the file, or compress it with
+gzip. zstd and LZ4 files work without `--scaffold`: the networks come from the maps. metacooler also
+needs the same number of fields on every row of a pairs file; its header lines (those that start with
+`#`) may come anywhere, so pairs files of one assembly concatenated with `cat` are one library. Give the
+pairs files of several libraries comma-separated, one file per library. A run from pairs that metacooler
+cannot read stops with the reason and these needs.
 
 #### Starting from a contact map
 
