@@ -15,7 +15,7 @@ metator --version
 |---|---|
 | Several libraries | Comma-separated lists, in the same order in `--forward` and `--reverse`: `-1 L1_R1.fq.gz,L2_R1.fq.gz -2 L1_R2.fq.gz,L2_R2.fq.gz`. |
 | Several enzymes | Separated by commas: `DpnII,HinfI`. |
-| Pairs files | `qc`, `contactmap`, `metacool`, `scaffold` and `mge` take the pairs files of a run as arguments: `alignment_<i>_sorted.pairs.gz`, which `metator network` writes and `metator pipeline` keeps with `--no-clean-up`. |
+| Pairs files | `qc`, `contactmap`, `metacool`, `scaffold` and `mge` take the pairs files of a run as arguments: `alignment_<i>_sorted.pairs.gz`, which `metator network` writes and `metator pipeline` keeps with `--no-clean-up`. `qc`, `contactmap` and `metacool` take one `.metacool` contact map in their place, for what a map gives; `mge` stores its MGE clusters in the map given with `--map`. |
 | `-F, --force` | Replace the outputs of an earlier run. Without it, a command refuses to overwrite them. |
 | `-T, --tmpdir` | Each run works in a directory of its own inside it, removed at the end, unless `--no-clean-up` or the run fails. In `scaffold`, `-T` is `--threshold`. |
 | `-N, --no-clean-up` | Keep the temporary files. In `qc`, it is `-n`. |
@@ -255,24 +255,38 @@ metator metacool -c binning/contig_data_final.txt -b binning/bin_summary.txt \
 
 ### `contactmap` { #contactmap }
 
-Build the contact map of one contig or bin, with hicstuff. **API:**
-`metator.contact_map.generate_contact_map`. **Guide:**
+Build the contact map of one contig or bin, with hicstuff from the pairs
+files, or from a contact map. **API:**
+`metator.contact_map.generate_contact_map`,
+`metator.contact_map.extract_contact_map`. **Guide:**
 [Viewing and scaffolding MAGs](guides/visualisation.md#the-contact-map-of-a-bin).
 
 ```console
 metator contactmap [OPTIONS] PAIRSFILE...
 ```
 
+`PAIRSFILE` is the pairs files of the run, or, in their place, one
+`.metacool` contact map of the run (or an entry of a `.mmetacool`
+collection, `file.mmetacool::entries/<name>`). From the pairs files, the map
+is at the resolution of the restriction fragments of `--enzyme`; from a map,
+it is the map of the contigs as `metacooler extract` writes it,
+`<name>.cool`, at the bins of the map (one per contig in a map of metaTOR),
+with the contacts of the pairs that the map holds. A map holds no read
+positions: `--filter`, `--pcr-dup` and a `--mat-fmt` other than `cool` are
+refused, and `--enzyme` is not used. A map with pairs files, several maps, a
+map of other contig lengths than the contig data table, and a map that
+stores both triangles of the matrix are refused too.
+
 | Option | Default | Description |
 |---|---|---|
 | `-a, --assembly` | *required* | A FASTA file holding the contigs of the map: the assembly, or the bin. |
 | `-c, --contig-data` | *required* | `contig_data_final.txt`, or a contig data table with a column of other bins. |
-| `-e, --enzyme` | *required* | The restriction enzymes of the library: the map is at the resolution of their fragments. |
+| `-e, --enzyme` | *required* | The restriction enzymes of the library: the map is at the resolution of their fragments. Not used from a map. |
 | `-n, --name` | *required* | The name of the contig or bin, or the numeric ID of a core or overlapping bin. A recursive bin needs its name (`metator_00012_00003`): recursive bins are numbered within their overlapping bin. |
 | `-O, --object` | `final_bin` | What `--name` is: `contig`, `core_bin`, `overlapping_bin`, `recursive_bin`, `final_bin`, or the header of a column of the contig data table. |
-| `-m, --mat-fmt` | `graal` | The format of the map: `graal`, `bg2` or `cool`. |
-| `-f, --filter` | off | Leave out the uncuts and loops. |
-| `-D, --pcr-dup` | off | Leave out the PCR duplicates. |
+| `-m, --mat-fmt` | `graal` | The format of the map: `graal`, `bg2` or `cool`. From a map, `cool` only, the default then. |
+| `-f, --filter` | off | Leave out the uncuts and loops. Refused from a map. |
+| `-D, --pcr-dup` | off | Leave out the PCR duplicates. Refused from a map. |
 | `-s, --min-size` | `5000` | Leave out the contigs shorter than this, in bp. |
 | `-o, --outdir` | `./contact_map_<name>` | The output directory. |
 | `-F, --force` | off | Replace the outputs. |
@@ -283,6 +297,10 @@ metator contactmap [OPTIONS] PAIRSFILE...
 ```bash
 metator contactmap -a assembly.fa -c binning/contig_data_final.txt -e DpnII \
     -n metator_00007_00000 binning/alignment_0_sorted.pairs.gz
+
+# From the map of the run: metator_00007_00000/metator_00007_00000.cool
+metator contactmap -a assembly.fa -c binning/contig_data_final.txt -e DpnII \
+    -n metator_00007_00000 -o metator_00007_00000 binning/metator.metacool
 ```
 
 ### `scaffold` { #scaffold }
@@ -343,15 +361,27 @@ uncuts, loops, informative contacts, noise. **API:**
 metator qc [OPTIONS] PAIRSFILE...
 ```
 
+`PAIRSFILE` is the pairs files of the run, or, in their place, one
+`.metacool` contact map of the run (or an entry of a `.mmetacool`
+collection). From a map, `qc` measures the noise of the library only, that of
+the pairs the map holds: the contacts within contigs, within MAGs and between
+MAGs, the noise contact ratio and the noise score. The events of the pairs
+within a contig (uncuts, loops, weirds, informative contacts) need the
+positions and strands of their reads, which a map does not hold: they are not
+measured, the log says so, and `--threshold` and `--plot` are refused;
+`--assembly` and `--enzyme` are not used. A map with pairs files, several
+maps, a map of other contig lengths than the contig data table, and a map
+that stores both triangles of the matrix are refused too.
+
 | Option | Default | Description |
 |---|---|---|
-| `-a, --assembly` | *required* | The assembly, as a FASTA file. |
-| `-e, --enzyme` | *required* | The restriction enzymes of the library. |
+| `-a, --assembly` | *required* | The assembly, as a FASTA file. Not read from a map. |
+| `-e, --enzyme` | *required* | The restriction enzymes of the library. Not used from a map. |
 | `-O, --metator-dir` | the current directory | The output directory of the run, where `bin_summary.txt` and `contig_data_final.txt` are. |
 | `-b, --bin-summary` | `<metator-dir>/bin_summary.txt` | The bin summary. |
 | `-c, --contig-data` | `<metator-dir>/contig_data_final.txt` | The contig data table. |
-| `-t, --threshold` | set from the library | The uncut and loop thresholds, in restriction sites: `uncuts,loops`. |
-| `-P, --plot` | off | Write the plots of the events. |
+| `-t, --threshold` | set from the library | The uncut and loop thresholds, in restriction sites: `uncuts,loops`. Refused from a map. |
+| `-P, --plot` | off | Write the plots of the events. Refused from a map. |
 | `-p, --prefix` | none | The name of the sample, on the plots and their files. |
 | `-o, --outdir` | `./metator_qc` or `./metator_qc_<prefix>` | The output directory. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory. |
@@ -359,17 +389,33 @@ metator qc [OPTIONS] PAIRSFILE...
 
 ```bash
 metator qc -a assembly.fa -e DpnII -O binning -p sample -P binning/alignment_0_sorted.pairs.gz
+
+# The noise only, from the map of the run
+metator qc -a assembly.fa -e DpnII -O binning -p sample binning/metator.metacool
 ```
 
 ### `mge` { #mge }
 
 Bin the contigs of mobile genetic elements from the contacts between them.
-**API:** `metator.mge.mge_binning`. **Guide:**
-[Binning mobile genetic elements](guides/mge.md).
+**API:** `metator.mge.mge_binning`, `metator.metacool.write_round`.
+**Guide:** [Binning mobile genetic elements](guides/mge.md).
 
 ```console
 metator mge [OPTIONS] PAIRSFILE...
 ```
+
+`PAIRSFILE` is the pairs files of the run: the contacts within an MGE contig
+are counted between reads more than 1 kb apart, which a contact map does not
+tell, so a map given in their place is refused. With `--map MAP`, the run
+also stores its MGE clusters in the contact map of the run: as the round
+`mge` of its clustering rounds, with the columns of `mges_bin_summary.tsv`
+and the contigs of each cluster, in place of the round `mge` of an earlier
+run, after the rounds of the binning run, which are kept; its genomes and
+contigs tables, the final clusters, are left as they were. The map is updated
+in place, or written to `--output-map`, as `metator partition MAP` writes it
+(see [Step by step](guides/metacool.md#step-by-step)), and refused as it
+refuses it, before any work. `--random` is refused with `--map`. A run that
+replaces the clusters of the map drops the round `mge`, with a warning.
 
 | Option | Default | Description |
 |---|---|---|
@@ -377,13 +423,20 @@ metator mge [OPTIONS] PAIRSFILE...
 | `-c, --contigs` | *required* | The contig data table of the run. |
 | `-b, --binning` | *required* | The bins of the contigs: `binning.txt`, or a collection exported by anvi'o. |
 | `-m, --mges` | *required* | The MGE contigs, one name per line. |
+| `--map` | none | A `.metacool` contact map of the run, or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`), that the run stores its MGE clusters in. |
 | `-s, --threshold-bin` | `0.8` | The score above which two contigs, or bins, are merged. |
-| `-r, --random` | off | Shuffle the contigs between the bins: a random binning of the same shape. |
+| `-r, --random` | off | Shuffle the contigs between the bins: a random binning of the same shape. Refused with `--map`. |
 | `-o, --outdir` | the current directory | The output directory. |
+| `-F, --force` | off | Replace an existing `--output-map` file. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory. |
 | `-N, --no-clean-up` | off | Keep the temporary files, and the index of the assembly. |
+| `--output-map` | none | With `--map`: write the map with the MGE clusters to this file (replaced only with `-F`), and leave `MAP` as it was. |
 
 ```bash
 metator mge -a assembly.fa -c binning/contig_data_final.txt -b binning/binning.txt \
     -m mges.txt -o mge binning/alignment_0_sorted.pairs.gz
+
+# Also store the MGE clusters in the map of the run
+metator mge -a assembly.fa -c binning/contig_data_final.txt -b binning/binning.txt \
+    -m mges.txt -o mge --map binning/metator.metacool binning/alignment_0_sorted.pairs.gz
 ```

@@ -45,6 +45,7 @@ metator mge -a assembly.fa -c binning/contig_data_final.txt -b binning/binning.t
 | `--threshold-bin` (`-s`) | 0.8 | The score above which two contigs, or bins, are merged. A lower threshold merges more |
 | `--random` (`-r`) | off | Shuffle the contigs between the bins, keeping the number of contigs of each: a random binning of the same shape, to compare the real one with |
 | `--outdir` (`-o`) | current directory | Where the two outputs go |
+| `--map` | none | Also store the MGE clusters in this contact map of the run (see [In the contact map of the run](#in-the-contact-map-of-the-run)) |
 
 ## Outputs
 
@@ -58,6 +59,66 @@ The binning score of an MGE bin is the lowest score at which its contigs were
 merged (`NA` for a single contig). The record of a bin holds a single
 sequence, so that the tools that check the quality of an MGE genome, which
 expect one sequence per genome, read each bin as one.
+
+## In the contact map of the run
+
+`--map MAP` also stores the MGE clusters in the `.metacool` contact map of
+the run, that of `metator pipeline` (see
+[The contact map of the bins](metacool.md)):
+
+```bash
+metator mge -a assembly.fa -c binning/contig_data_final.txt -b binning/binning.txt \
+    -m mges.txt -o mge --map binning/metator.metacool binning/alignment_0_sorted.pairs.gz
+```
+
+They become the round `mge` of the clustering rounds of the map (see
+[Clustering rounds](metacool.md#clustering-rounds)), after the rounds of the
+binning run (`overlapping`, `recursive_<k>`, `final`), which are kept: their
+clusters, contigs and values. Each row of `mges_bin_summary.tsv` is a
+cluster, named as its record (`MetaTOR_MGE_00001`), with its contigs and the
+columns of the summary: its length and number of contigs, which metacooler
+computes from its contigs, and the GC content, hits, binning score and host
+columns, as written (`NA` is a missing value: no number, or an empty text).
+The round records the version of metaTOR and the command line and
+parameters of the run. The clusters of every round are one table, where a
+column that a round lacks is missing in its rows: so a column of whole
+numbers, or of booleans, of the rounds of the binning run, which the round
+`mge` lacks, is stored as decimals, or as text (`True`, `False`), from then
+on. The genomes and contigs tables of the map, the final MAGs, are left as
+they were, and so is the rest of the map: its contacts, contact statistics
+and metadata.
+
+```python
+import metacooler
+
+mc = metacooler.MetaCooler("binning/metator.metacool")
+mc.clusters[mc.clusters["round"] == "mge"]  # one row per MGE cluster
+mc.cluster_members("mge")                   # their contigs
+```
+
+A second run replaces the round `mge`, and only it. The map is updated as
+`metator partition MAP` updates it (see
+[Step by step](metacool.md#step-by-step)): written next to it, validated in
+full, then renamed over it, keeping its mode (a symbolic link is replaced,
+not its target), and locked while the run writes it; `--output-map FILE`
+writes the map to FILE instead (replaced only with `-F`), and leaves `MAP` as
+it was, which a run from an entry of a `.mmetacool` collection needs. What
+`partition MAP` refuses is refused before any work, with the reason in the
+log: a map that is not there or that metacooler cannot open, a map of other
+contigs or lengths than the contig data (`-c`), an entry without
+`--output-map`, an `--output-map` that is one of the inputs of the run (even
+with `-F`) or that exists without `-F`, a map that another run holds, and
+`--output-map` without `--map`. So are `--random`, a random binning to
+compare the real one with, which is not stored in a map, and a map given in
+place of the pairs files: the contacts within an MGE contig are counted
+between reads more than 1 kb apart, which a map does not tell, so `mge`
+reads the pairs files, with or without `--map`.
+
+The round `mge` belongs to the binning that it was made with (`-b`, the
+final clusters of the run). A run that replaces the clusters of the map
+drops it, with a warning that says so: `partition MAP`, `validation MAP`,
+`pipeline MAP` and `metator metacool MAP`. Run `mge --map` again with the
+new clusters to store their MGE clusters.
 
 ## The hosts
 

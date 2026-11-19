@@ -1096,6 +1096,22 @@
       "required": true
      },
      {
+      "short": "-F",
+      "long": "--force",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": null,
+      "long": "--map",
+      "takes_value": true,
+      "metavar": "MAP",
+      "default": null,
+      "required": false
+     },
+     {
       "short": "-m",
       "long": "--mges",
       "takes_value": true,
@@ -1116,6 +1132,14 @@
       "long": "--outdir",
       "takes_value": true,
       "metavar": "DIR",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": null,
+      "long": "--output-map",
+      "takes_value": true,
+      "metavar": "FILE",
       "default": null,
       "required": false
      },

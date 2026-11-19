@@ -113,8 +113,57 @@ All notable changes to this project will be documented in this file.
   `metator.metacool.write_rounds`, `metator.clusters.overlapping_round`,
   `Rounds.tables`, and the `names` of `metator.metacool.store_rounds` (a
   round with no cluster).
+- `qc` and `contactmap` take the `.metacool` contact map of the run (a
+  file, or an entry of a collection) in place of their pairs files, for
+  what a map gives: the contacts between contigs, those of the pairs it
+  was made of. `metator qc MAP` measures the noise of the library, the
+  contacts within contigs, within MAGs and between MAGs, the noise
+  contact ratio and the noise score, each equal to what `qc` measures
+  from the pairs files, when their pairs are in the upper triangle, as
+  metaTOR's alignment writes them; the events of the pairs within a
+  contig, which need the positions and strands of their reads, are not
+  measured, which the log says. `metator contactmap MAP` writes the
+  contact map of its contigs as `metacooler extract` writes it,
+  `<name>.cool`, at the bins of the map (one per contig in a map of
+  metaTOR): hicstuff's map of its restriction fragments from the pairs
+  files, summed by pair of contigs. Refused before any work, the reason
+  logged as an error: a map with pairs files or several maps, a map that
+  metacooler cannot open, and the options that need the read positions
+  (`qc --threshold` and `--plot`, `contactmap --filter`, `--pcr-dup` and
+  a `--mat-fmt` other than `cool`); then, before `contactmap` writes or
+  replaces an output, a map that gives a contig another length than the
+  contig data table, or that stores both triangles. `--enzyme` is not
+  used, and a contig that the map lacks has no contacts, with a warning.
+  Python API: `metator.quality_check.extract_map_pairs`, `map_quality`,
+  `noise_metrics`; `metator.contact_map.extract_contact_map`;
+  `metator.metacool.contig_contacts`, `held_contigs`, `extract_contigs`.
+- `mge --map MAP` stores the MGE clusters of the run in the contact map
+  of the run, as the round `mge` of its clustering rounds: one cluster
+  per row of `mges_bin_summary.tsv`, with its contigs and its columns
+  (its length and number of contigs computed by metacooler), and the
+  version, command line and parameters of the run, after the rounds of
+  the binning run, which are kept, in place of the round `mge` of an
+  earlier run. A column of whole numbers, or of booleans, of the rounds
+  of the binning run, which the round `mge` lacks, is stored as
+  decimals, or as text, from then on, as any column with a missing value
+  is. The genomes and contigs tables, the final clusters, and the rest
+  of the map are left as they were. The map is written as
+  `partition MAP` writes it, in place or to `--output-map FILE`
+  (replaced only with `-F`, new to `mge`), and locked while it is
+  written; what `partition MAP` refuses is refused before any work (a
+  map of other contigs or lengths than the contig data, an
+  `--output-map` that is one of the inputs of the run), and so are a map
+  given in place of the pairs files, which `mge` reads for the contacts
+  within each MGE contig, and `--random` with `--map`. A run that
+  replaces the clusters of the map (`partition MAP`, `validation MAP`,
+  `pipeline MAP`, `metator metacool MAP`) drops the round `mge`, made
+  with the clusters it replaces, with a warning. Python API:
+  `metator.metacool.write_round`, `metator.clusters.mge_round`.
 
 ### Changed
+- `qc` logs the pairs within contigs, within MAGs and between MAGs that
+  its noise contact ratio and noise score are computed from, from the
+  pairs files as from a map.
 - The heatmap of the network of the final clusters
   (`plot/network_heatmap.png`) is drawn from the contact map of a
   `pipeline` run, whatever it started from: a run from a map drew none.
