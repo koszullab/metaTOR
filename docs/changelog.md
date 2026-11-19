@@ -82,6 +82,25 @@ All notable changes to this project will be documented in this file.
   `check_map_contigs`.
 
 ### Changed
+- The heatmap of the network of the final clusters
+  (`plot/network_heatmap.png`) is drawn from the contact map of a
+  `pipeline` run, whatever it started from: a run from a map drew none.
+  The contacts of a bin of the map, with another bin or within itself,
+  are spread over the 50 kb windows that it covers, as a map holds no
+  read positions; those within a window are left out, as from the pairs.
+  A heatmap that cannot be drawn is a warning, and the run goes on: it
+  stopped the run. The image is saved at about one pixel per window,
+  where it was saved at 2000 dpi whatever its size, with lines at least
+  a pixel wide between the clusters: on two libraries of MK01 (3,263
+  windows), the matrix takes about 5 s where the pairs files took 51 s,
+  and the heatmap step peaks at 1.8 GB of memory where the image at 2000
+  dpi took it to 5.8 GB. The SCN normalization makes two copies of the
+  matrix, where hicstuff's made several at each iteration. `metator
+  validation`, run step by step, still draws it from the pairs files of
+  its output directory. Python API: `metator.figures.build_matrix_map`,
+  `heatmap_windows`, `normalize_scn`, `plot_heatmap`; `plot_figures` and
+  `metator.validation.recursive_decontamination` take the map
+  (`metacool`).
 - **Breaking:** a `pipeline` run from a `.metacool` map updates that map
   in place, where it wrote a new map at `<outdir>/<prefix>.metacool`: the
   map of the clusters is written next to it, validated in full, then

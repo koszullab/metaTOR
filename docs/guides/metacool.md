@@ -205,9 +205,8 @@ refused before any work.
     the assembly is read when the column lacks contigs.
 - **Its libraries are already summed**: no `network_<i>.txt` is written.
   `pipeline --scaffold`, which reads the pairs files, is refused.
-- **The heatmap** of the bins' network is drawn from the `.pairs.gz` files of
-  the output directory: a run from a map draws none, and warns that no pairs
-  file was found, unless an earlier run left its pairs files there.
+- **The heatmap** of the network of the final clusters is drawn from the
+  map, as for every run of `pipeline` (see [Plots](binning.md#plots)).
 
 At the end of such a run, `pipeline` updates the input map in place with the
 map of its clusters, with `metacooler reassign` (`--output-map FILE` writes it

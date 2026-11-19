@@ -6,6 +6,7 @@
 General utility functions to plot some figures to describe metator output.
 
 Core functions to plot the firgures are:
+    - build_matrix_map
     - build_matrix_network
     - figures_bins_distribution
     - figures_bins_size_distribution
@@ -14,12 +15,13 @@ Core functions to plot the firgures are:
     - figures_mags_HiC_cov_boxplots
     - figures_mags_SG_cov_boxplots
     - generates_frags_network
+    - heatmap_windows
     - network_heatmap
     - plot_figures
+    - plot_heatmap
     - reindex_df
 """
 
-import hicstuff.hicstuff as hcs
 import metator.io as mio
 import matplotlib.pyplot as plt
 import numpy as np
@@ -75,8 +77,142 @@ def build_matrix_network(pairs_files, info_contigs, N, bin_size):
                         matrix[frag2, frag1] += 1
                 except KeyError:
                     continue
-    matrix_norm = hcs.normalize_dense(matrix + matrix.T, norm="SCN", iterations=100)
-    return matrix_norm
+    return normalize_scn(matrix + matrix.T)
+
+
+def heatmap_windows(bins, contigs_data, bin_summary, bin_size):
+    """The windows of the heatmap that the bins of a map cover.
+
+    The MAGs are laid end to end in the order of bin_summary, the contigs of
+    each in the order of contigs_data, and cut into windows of bin_size bp,
+    the windows of build_matrix_network (generates_frags_network): MAG m
+    starts at the window after the last of the MAG before it, and spans
+    Length // bin_size + 1 windows. A bin of the map covers the windows that
+    its stretch of its contig falls in, each for the share of the bin that
+    falls there: a map holds no read positions, so the contacts of a bin are
+    spread over its windows as its length is.
+
+    Parameters:
+    -----------
+    bins : pandas.DataFrame
+        The bins of the map, in its order: chrom (the contig name), start
+        and end.
+    contigs_data : pandas.DataFrame
+        Table with all the data from the contigs: Name, Size and Final_bin
+        (ND for a contig in no MAG).
+    bin_summary : dict
+        The MAGs, in their order, by name, with their Length.
+    bin_size : int
+        Size of a window, in bp.
+
+    Returns:
+    --------
+    scipy.sparse.csr_matrix:
+        One row per bin of the map, one column per window: the share of the
+        bin in the window. The bins of the contigs in no MAG have none.
+    list of int:
+        The first window of each MAG.
+    int:
+        The number of windows.
+    """
+    from scipy.sparse import csr_matrix
+
+    spans = np.array([int(info["Length"]) // bin_size + 1 for info in bin_summary.values()], dtype=np.int64)
+    mag_starts = np.cumsum(spans) - spans
+    first_window = dict(zip(bin_summary, mag_starts.tolist(), strict=True))
+    # Where each contig of a MAG starts in the MAG laid end to end.
+    final = contigs_data[contigs_data["Final_bin"] != "ND"]
+    sizes = final["Size"].astype(np.int64)
+    offsets = sizes.groupby(final["Final_bin"].to_numpy()).cumsum() - sizes
+    placed = pd.DataFrame(
+        {"offset": offsets.to_numpy(), "window": final["Final_bin"].map(first_window).to_numpy()},
+        index=final["Name"].astype(str).to_numpy(),
+    )
+    on_contig = placed.reindex(bins["chrom"].astype(str).to_numpy())
+    kept = on_contig["window"].notna().to_numpy() & (bins["end"] > bins["start"]).to_numpy()
+    rows = np.flatnonzero(kept)
+    begin = (on_contig["offset"].to_numpy()[kept] + bins["start"].to_numpy()[kept]).astype(np.int64)
+    end = (on_contig["offset"].to_numpy()[kept] + bins["end"].to_numpy()[kept]).astype(np.int64)
+    first, last = begin // bin_size, (end - 1) // bin_size
+    # One entry per window that a bin covers: most cover one or two.
+    counts = (last - first + 1).astype(np.int64)
+    bin_rows = np.repeat(rows, counts)
+    within = np.arange(counts.sum()) - np.repeat(np.cumsum(counts) - counts, counts)
+    windows = np.repeat(first, counts) + within
+    lows = np.maximum(np.repeat(begin, counts), windows * bin_size)
+    highs = np.minimum(np.repeat(end, counts), (windows + 1) * bin_size)
+    shares = (highs - lows) / np.repeat(end - begin, counts)
+    columns = windows + np.repeat(on_contig["window"].to_numpy()[kept].astype(np.int64), counts)
+    size = int(sum(spans))
+    return csr_matrix((shares, (bin_rows, columns)), shape=(len(bins), size)), mag_starts.tolist(), size
+
+
+def build_matrix_map(metacool, contigs_data, bin_summary, bin_size, chunksize=10_000_000):
+    """Build the matrix of the heatmap from the pixels of a .metacool map of
+    the contigs, at any bin size: the matrix that build_matrix_network
+    builds from the pairs the map holds, but for where the contacts fall
+    within a bin of the map, which holds no read positions: the contacts of
+    a bin, with another bin or within itself, are spread over its windows
+    by their shares (see heatmap_windows), as reads that fall anywhere in
+    it. As in build_matrix_network, the contacts within a window are left
+    out. The matrix is normalized as build_matrix_network normalizes it.
+
+    Parameters:
+    -----------
+    metacool : str
+        Path to the .metacool file, or URI of an entry of a .mmetacool
+        collection.
+    contigs_data : pandas.DataFrame
+        Table with all the data from the contigs (see heatmap_windows).
+    bin_summary : dict
+        The MAGs, in their order, by name, with their Length.
+    bin_size : int
+        Size of a window of the heatmap, in bp.
+    chunksize : int
+        Number of pixels read at a time.
+
+    Returns:
+    --------
+    numpy.array:
+        Normalized dense matrix of the windows of the MAGs.
+    list of int:
+        The first window of each MAG.
+    """
+    import metator.metacool as mtmc
+
+    with mtmc._metacooler_logging():
+        mc = mtmc.open_map(metacool)
+        windows, mag_starts, size = heatmap_windows(mc.bins()[:], contigs_data, bin_summary, bin_size)
+        matrix = np.zeros((size, size))
+        for chunk in mc.iter_pixels(chunksize=chunksize):
+            counts = chunk["count"].to_numpy().astype(np.float64)
+            first = windows[chunk["bin1_id"].to_numpy()].multiply(counts[:, None]).tocsr()
+            matrix += (first.T @ windows[chunk["bin2_id"].to_numpy()]).toarray()
+    # The map stores each contact once, in the upper triangle of its bins
+    # (its diagonal included), as build_matrix_network counts each pair
+    # once; the contacts within a window are left out, as there.
+    matrix += matrix.T
+    np.fill_diagonal(matrix, 0)
+    return normalize_scn(matrix), mag_starts
+
+
+def normalize_scn(matrix, iterations=100):
+    """The SCN normalization of hicstuff (hicstuff.hicstuff.normalize_dense,
+    norm "SCN") of a symmetric matrix, to within rounding, but in place:
+    each iteration divides the rows, then the columns, by their sums, those
+    of a sum of 0 left as they are, and the result is made symmetric, the
+    mean of the matrix and its transpose. It makes two copies of the
+    matrix, where hicstuff makes several temporary ones at each iteration
+    (a mask, a matrix of the sums, the masked values)."""
+    matrix = np.array(matrix, np.float64)
+    for _ in range(iterations):
+        sums = matrix.sum(axis=1)
+        np.divide(matrix, sums[:, None], out=matrix, where=sums[:, None] != 0)
+        sums = matrix.sum(axis=0)
+        np.divide(matrix, sums[None, :], out=matrix, where=sums[None, :] != 0)
+    symmetric = matrix + matrix.T
+    symmetric /= 2
+    return symmetric
 
 
 def figures_bins_distribution(bin_summary, out_file):
@@ -589,13 +725,19 @@ def network_heatmap(matrix, out_file=None, mag_starts=None):
         "cmap": "viridis",
         "interpolation": "none",
     }
-    li_kwargs = {"ls": ":", "alpha": 0.8, "c": "white", "linewidth": 0.1}
     plt.figure()
     plt.imshow(matrix, **im_kwargs)
     plt.colorbar()
     plt.axis("off")
+    # Saved at about one pixel per window, from 100 to 2000 dpi. It was
+    # saved at 2000 dpi whatever its size, several pixels a window, which
+    # took gigabytes of memory to draw a few thousand windows.
+    axes = plt.gca().get_window_extent().transformed(plt.gcf().dpi_scale_trans.inverted())
+    dpi = int(min(2000, max(100, np.ceil(len(matrix) / axes.height))))
 
-    # Add line between MAGs.
+    # Add line between MAGs: a pixel wide at that dpi, at least 0.1 pt (they
+    # were 0.1 pt, which is no pixel below 720 dpi).
+    li_kwargs = {"ls": ":", "alpha": 0.8, "c": "white", "linewidth": max(0.1, 72 / dpi)}
     if mag_starts is not None:
         for pos in mag_starts:
             plt.axvline(pos, **li_kwargs)
@@ -603,14 +745,58 @@ def network_heatmap(matrix, out_file=None, mag_starts=None):
 
     # Save or show the file.
     if out_file:
-        plt.savefig(out_file, bbox_inches="tight", pad_inches=0.0, dpi=2000)
+        plt.savefig(out_file, bbox_inches="tight", pad_inches=0.0, dpi=dpi)
         plt.close()
     else:
         plt.show()
 
 
-def plot_figures(out_dir, contigs_data, bin_summary, threshold):
+def plot_heatmap(out_dir, plot_dir, contigs_data, bin_summary, metacool=None):
+    """Draw the heatmap of the network of the MAGs, network_heatmap.png in
+    plot_dir, in windows of 50 kb: from metacool, the .metacool map of the
+    contigs of the run (see build_matrix_map), or, without one, from the
+    pairs files of out_dir (see build_matrix_network).
+
+    It is a figure: one that cannot be drawn is a warning, and the run goes
+    on. The warning gives the message of a MetacoolError, or the type,
+    message and traceback of another error, which is unexpected. With no
+    MAG, none is drawn.
+    """
+    from metator.metacool import MetacoolError
+
+    if not bin_summary:
+        logger.info("No MAG: the heatmap of the clusters is not drawn.")
+        return
+    heatmap_file = join(plot_dir, "network_heatmap.png")
+    bin_size = 50000
+    pairs_files = [join(out_dir, file) for file in os.listdir(out_dir) if file.endswith(".pairs.gz")]
+    try:
+        if metacool is not None:
+            matrix, mag_starts = build_matrix_map(metacool, contigs_data, bin_summary, bin_size)
+            network_heatmap(matrix, heatmap_file, mag_starts)
+        elif pairs_files:
+            info_contigs, mag_starts, N = generates_frags_network(contigs_data, bin_summary, bin_size)
+            matrix = build_matrix_network(pairs_files, info_contigs, N, bin_size)
+            network_heatmap(matrix, heatmap_file, mag_starts)
+        else:
+            logger.warning(
+                "No pairs alignment files found in %s, no heatmap will be generated.",
+                out_dir,
+            )
+    except Exception as error:
+        plt.close("all")
+        unexpected = not isinstance(error, MetacoolError)
+        reason = f"{type(error).__name__}: {error}" if unexpected else str(error)
+        logger.warning(f"The heatmap of the clusters is not drawn: {reason}", exc_info=unexpected)
+
+
+def plot_figures(out_dir, contigs_data, bin_summary, threshold, metacool=None):
     """Function to generates all figures.
+
+    The heatmap of the network of the MAGs is drawn from metacool, the
+    .metacool map of the contigs of the run (see build_matrix_map), whatever
+    the run started from; without one, from the pairs files of out_dir
+    (see build_matrix_network), and none without those.
 
     Parameters:
     -----------
@@ -622,6 +808,9 @@ def plot_figures(out_dir, contigs_data, bin_summary, threshold):
         Dictionnary with the informations of the final bins kept by MetaTOR.
     threshold : int
         Minimun size of the bins considered.
+    metacool : str or None
+        Path to the .metacool map of the contigs of the run, or URI of an
+        entry of a .mmetacool collection.
     """
     # Create plot directory
     plot_dir = join(out_dir, "plot")
@@ -641,25 +830,7 @@ def plot_figures(out_dir, contigs_data, bin_summary, threshold):
     if SG_cov:
         outfile_MAGs_SG_cov = join(plot_dir, "MAGs_SG_cov_distribution.png")
 
-    # Look for pairs file in out_dir
-    pairs_files = []
-    list_files = os.listdir(out_dir)
-    for file in list_files:
-        if file.endswith(".pairs.gz"):
-            pairs_files.append(join(out_dir, file))
-
-    # Plot heatmap with a binning of 50kb.
-    if len(pairs_files) > 0:
-        heatmap_file = join(plot_dir, "network_heatmap.png")
-        bin_size = 50000
-        info_contigs, mag_starts, N = generates_frags_network(contigs_data, bin_summary, bin_size)
-        matrix = build_matrix_network(pairs_files, info_contigs, N, bin_size)
-        network_heatmap(matrix, heatmap_file, mag_starts)
-    else:
-        logger.warning(
-            "No pairs alignment files found in %s, no heatmap will be generated.",
-            out_dir,
-        )
+    plot_heatmap(out_dir, plot_dir, contigs_data, bin_summary, metacool=metacool)
 
     # Transform dictionnary to pandas DataFrame.
     bin_summary = pd.DataFrame.from_dict(bin_summary, orient="index")
