@@ -541,7 +541,7 @@ def test_pipeline_metacool_written(stub_pipeline, tmp_path, monkeypatch, run_cli
     # The contig columns of the contig data: its GC_content (Hit is - on
     # every contig), not its ID or Final_bin.
     contigs = metacooler.MetaCooler(str(out / "metator.metacool")).contigs.set_index("name")
-    assert list(contigs.columns) == ["length", "genome_id", "GC_content"]
+    assert [column for column in contigs.columns if not column.startswith("qc_")] == ["length", "genome_id", "GC_content"]
     assert contigs.GC_content.to_dict() == {"c1": 40.5, "c2": 35.0}
 
 
@@ -678,13 +678,11 @@ def test_pipeline_metacool_from_a_map_failure_keeps_it(stub_pipeline, tmp_path, 
 )
 def test_pipeline_metacool_from_a_map_metacooler_failure(error, stub_pipeline, tmp_path, monkeypatch, run_cli):
     """metacooler fails while it writes the map of the bins over the input
-    map (its validation, here): it logs that it left its partial file for
-    inspection, and the run says that the temporary files, this partial
-    file among them, were removed: in its warning for one of the errors
-    that metacooler is expected to raise (a ValueError here), in a warning
-    of its own before it for another (a RuntimeError, whose traceback the
-    warning shows). The input map is left as it was, and no other file is
-    left beside it."""
+    map (its validation, here): it removes its partial file and says so at
+    INFO, and the run warns that the map is not written, with the reason of
+    one of the errors that metacooler is expected to raise (a ValueError
+    here), or the traceback of another (a RuntimeError). The input map is
+    left as it was, and no other file is left beside it."""
     monkeypatch.setattr("metator.metacool.reassign_metacool", mtmc_reassign_metacool)
     _final_tables(monkeypatch, "c1")
     out = tmp_path / "out"
@@ -701,18 +699,16 @@ def test_pipeline_metacool_from_a_map_metacooler_failure(error, stub_pipeline, t
     assert sorted(path.name for path in out.iterdir() if "metacool" in path.name) == ["metator.metacool"]
     (log,) = out.glob("metator_pipeline_*.log")
     logged = log.read_text()
-    (staged,) = re.findall(r"ERROR :: Creation failed\. The partial file was left at (\S+)\.partial for inspection", logged)
+    (staged,) = re.findall(r"INFO :: Creation failed; the partial file (\S+)\.partial was removed and \1 was not written", logged)
     assert Path(staged).parent == out and Path(staged).name.startswith(".metator.metacool.")
-    removed = f"The temporary files of the map, {staged} and metacooler's partial file {staged}.partial, were removed."
+    assert "for inspection" not in logged and "ERROR ::" not in logged
     kept = "It is still the input map of the run. The other outputs of the run are kept."
     if isinstance(error, ValueError):
-        assert f"WARNING :: {metacool} is not written: pixels out of order. {removed} {kept}" in logged
+        assert f"WARNING :: {metacool} is not written: pixels out of order. {kept}\n" in logged
         assert "Traceback" not in logged
     else:
-        assert f"WARNING :: {removed}\n" in logged
-        warning = f"WARNING :: {metacool} is not written: RuntimeError: unexpected failure. {kept}\nTraceback"
-        assert warning in logged
-        assert logged.index(removed) < logged.index(warning)
+        assert f"WARNING :: {metacool} is not written: RuntimeError: unexpected failure. {kept}\nTraceback" in logged
+    assert logged.count("WARNING ::") == 1
 
 
 def test_network_from_a_metacool(monkeypatch, tmp_path, run_cli):

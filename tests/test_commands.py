@@ -179,7 +179,8 @@ def test_pipeline(tmp_path, run_cli):
     # The contig columns but Shotgun_coverage, which is - without a depth
     # file.
     contigs = metacooler.MetaCooler(str(metacool)).contigs
-    assert list(contigs.columns) == ["name", "length", "genome_id", "GC_content", "Hit", "Restriction_site"]
+    assert [column for column in contigs.columns if not column.startswith("qc_")] == [
+        "name", "length", "genome_id", "GC_content", "Hit", "Restriction_site"]  # fmt: skip
 
 
 def test_network_from_a_metacool(tmp_path, run_cli):

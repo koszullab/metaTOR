@@ -221,7 +221,7 @@ def test_network_of_a_filtered_metacool(dataset, how, binsize, tmp_path):
 
 def test_contacts_by_chunk(tmp_path):
     """The contacts do not depend on the number of pixels read at a time
-    (a row at a time with 1: one read per contig)."""
+    (a pixel at a time with 1)."""
     pairs, assembly = TESTS_DATA_PAIRS["alignment"]
     metacool = make_metacool(tmp_path / "map.metacool", pairs, assembly)
     contig_data, _ = mtn.create_contig_data(str(assembly))
@@ -258,15 +258,6 @@ def test_network_by_chunk(self_contacts, tmp_path):
         networks.append((Path(network).read_text(), Path(contigs).read_text()))
     assert networks[0] == networks[1]
     assert len(networks[0][0].splitlines()) > 2 * 9973
-
-
-def test_pixel_row_blocks():
-    # Pixels of the rows: 3, 0, 5, 1, 0.
-    offsets = np.array([0, 3, 3, 8, 9, 9])
-    assert list(mtn.pixel_row_blocks(offsets, 4)) == [(0, 2), (2, 3), (3, 5)]
-    assert list(mtn.pixel_row_blocks(offsets, 100)) == [(0, 5)]
-    assert list(mtn.pixel_row_blocks(offsets, 1)) == [(0, 1), (1, 2), (2, 3), (3, 5)]
-    assert list(mtn.pixel_row_blocks(np.array([0]), 10)) == []
 
 
 def test_network_of_an_mmetacool_entry(tmp_path):

@@ -34,7 +34,6 @@ Core functions to write the file:
 import gzip
 import logging
 import os
-import re
 import tempfile
 from contextlib import contextmanager
 
@@ -393,7 +392,8 @@ def write_metacool(
         KeyError, message kept: for example, a bin summary whose rows and
         header have different numbers of fields, or an outfile in a
         directory that cannot be made). No map is left when the contig
-        columns cannot be stored.
+        columns cannot be stored, and no partial file of metacooler when it
+        cannot write the map.
     """
     pairs_files = [str(pairs_files)] if isinstance(pairs_files, (str, os.PathLike)) else [str(p) for p in pairs_files]
     if threads < 1:
@@ -429,6 +429,9 @@ def write_metacool(
             # No P(s) table next to the file: metaTOR writes the map only.
             ps=False,
             nproc=threads,
+            # On a failure, metacooler removes the partial file it writes
+            # next to the outfile.
+            keep_partial=False,
         )
         try:
             _write_back_columns(outfile, contig_data, contig_columns, header)
@@ -453,9 +456,15 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
     contigs table the columns of the contig data that write_metacool stores
     (see read_contig_data): they replace those that the input map
     carried, metaTOR's own as those of the bins of an earlier run. Its
-    other columns of the contigs table are kept. The QC block is
-    recomputed from the pixels when the input map has one. The assembly
-    name and the history of the commands are those of the input map.
+    other columns of the contigs table are kept. The QC block of the input
+    map, when it has one, is carried over to the bins: metacooler keeps the
+    counts within each contig (measured on the reads, for a map made from
+    pairs files) and counts the contacts between contigs again. A map
+    written by metacooler 0.2.0, with no count per contig, has its block
+    computed again from the pixels (at one bin per contig, every contact
+    within a contig then counts as short-range), which metacooler warns
+    about for a map made from pairs files. The assembly name and the
+    history of the commands are those of the input map.
 
     The map is written to a temporary file next to outfile, then given
     metacooler's full validation, and only then moved to outfile, which it
@@ -500,11 +509,8 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
         not ASCII, a bin name is one that metacooler reads as no bin (NA,
         nan, -1...), the map cannot be read or gives a contig another length
         than the contig data, or metacooler cannot write the map (a
-        ValueError, OSError or KeyError, message kept; when metacooler has
-        left its partial file, which it logs as left for inspection, the
-        message then says that it was removed). An error of another type is
-        raised as it is; when metacooler has left its partial file, a
-        warning logged before it says that the file was removed.
+        ValueError, OSError or KeyError, message kept). An error of another
+        type is raised as it is.
     """
     metacool, outfile = str(metacool), str(outfile)
     if is_entry(metacool) and is_input_map(metacool, outfile):
@@ -573,26 +579,17 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
                     metadata={"metator": {"version": __version__, **(metadata or {})}},
                     # Over the empty temporary file.
                     force=True,
+                    # On a failure, metacooler removes the partial file it
+                    # writes next to the temporary file.
+                    keep_partial=False,
                 )
                 _write_back_columns(staged, contig_data, contig_columns, header)
                 metacooler.validate(staged, full=True)
                 os.replace(staged, outfile)
             logger.info(f"{outfile} is written: the contact map of the bins.")
-        except BaseException as error:
-            # metacooler leaves its own partial file next to the one it
-            # writes, and logs, at ERROR, that it is left there for
-            # inspection: the error then says that it is removed, or, for
-            # an error of another type (raised as it is), a warning.
-            partial = f"{staged}.partial"
-            left = os.path.lexists(partial)
-            for path in [staged, partial]:
-                if os.path.lexists(path):
-                    os.remove(path)
-            if left:
-                removed = f"The temporary files of the map, {staged} and metacooler's partial file {partial}, were removed."
-                if isinstance(error, MetacoolError):
-                    raise MetacoolError(f"{str(error).rstrip('.')}. {removed}") from error.__cause__
-                logger.warning(removed)
+        except BaseException:
+            if os.path.lexists(staged):
+                os.remove(staged)
             raise
 
 
@@ -622,44 +619,21 @@ def _write_back_columns(path, contig_data, contig_columns, header):
     ]
     if not contig_columns and not drop:
         return
-    with _rows_of_other_contigs_ignored(contig_data):
-        metacooler.annotate(
-            path,
-            contigs_table=contig_data if contig_columns else None,
-            contigs_table_format="Name",
-            # Named one by one: the other columns of the table are bins, or
-            # the unnamed pandas index.
-            columns=[f"contigs.{column}" for column in contig_columns] or None,
-            drop=drop or None,
-            # The values of this run, on every contig of the map: a contig
-            # that the contig data lacks has none.
-            replace=True,
-            missing="na",
-            inplace=True,
-        )
-
-
-@contextmanager
-def _rows_of_other_contigs_ignored(contig_data):
-    """Drop the warning of metacooler annotate about the rows of contig_data
-    that name no contig of the map.
-
-    The contig data of a run lists every contig of the assembly, and a map
-    may lack some of them (a map made with a contig filter): annotate would
-    warn about its rows that name them, "Contigs table (contig_data): N of M
-    row(s) match no contig of the map". Its other messages are kept, and
-    annotate reads contig_data itself: they name it, as does the history of
-    the map (metadata["annotate"]).
-    """
-    # The wording of metacooler 0.2.0 (metacooler.io.collect, _resolve_contig_metadata).
-    pattern = re.compile(rf"Contigs table \({re.escape(str(contig_data))}\): \d+ of \d+ row\(s\) match no contig\b")
-
-    def kept(record):
-        return not (record.levelno == logging.WARNING and pattern.match(record.getMessage()))
-
-    mc_logger = logging.getLogger("metacooler")
-    mc_logger.addFilter(kept)
-    try:
-        yield
-    finally:
-        mc_logger.removeFilter(kept)
+    metacooler.annotate(
+        path,
+        contigs_table=contig_data if contig_columns else None,
+        contigs_table_format="Name",
+        # Named one by one: the other columns of the table are bins, or the
+        # unnamed pandas index.
+        columns=[f"contigs.{column}" for column in contig_columns] or None,
+        drop=drop or None,
+        # The values of this run, on every contig of the map: a contig that
+        # the contig data lacks has none.
+        replace=True,
+        missing="na",
+        # The contig data of a run lists every contig of the assembly, and a
+        # map may lack some (a map made with a contig filter): no warning
+        # about the rows that name them.
+        unmatched="ignore",
+        inplace=True,
+    )

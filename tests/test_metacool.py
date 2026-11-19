@@ -64,14 +64,27 @@ def write_contig_data(metagenome, path, final_bin=None):
     return path
 
 
+# The QC counts of each contig, which metacooler (0.3.0) stores with the
+# QC block.
+QC_CONTIG_COLUMNS = ["qc_intra_contig_short", "qc_intra_contig_long"]
+
+
+def without_qc(columns):
+    """The columns of a contigs table but metacooler's QC columns."""
+    return [column for column in columns if not column.startswith("qc_")]
+
+
 def assert_contig_columns(path, contig_data, columns=CONTIG_COLUMNS):
     """The contigs table of the map (cooler's chroms) holds these columns of
     the contig data, with their values and types, and no other: no bin, no
-    pandas index."""
+    pandas index. Besides, metacooler's QC counts of each contig, when the
+    map has a QC block."""
     contigs = metacooler.MetaCooler(str(path)).contigs
-    assert list(contigs.columns) == ["name", "length", "genome_id", *columns]
+    assert without_qc(contigs.columns) == ["name", "length", "genome_id", *columns]
+    has_qc = "qc" in cooler.Cooler(str(path)).info["metadata"]
+    assert [column for column in contigs.columns if column.startswith("qc_")] == (QC_CONTIG_COLUMNS if has_qc else [])
     chroms = cooler.Cooler(str(path)).chroms()[:]
-    assert list(chroms.columns) == ["name", "length", "genome_id", *columns]
+    assert list(chroms.columns) == list(contigs.columns)
     table = pd.read_csv(contig_data, sep="\t", index_col="Name").loc[contigs.name]
     for column in columns:
         assert contigs[column].dtype == table[column].dtype, column
@@ -844,9 +857,9 @@ def final_bins(metagenome):
 def test_map_of_the_bins_from_a_map(metagenome, binning, tmp_path):
     """From a map of the contigs made before any binning (one bin per
     contig, in the order of the assembly): the map that write_metacool
-    writes from the pairs, but for its QC, recomputed from the pixels, and
-    its provenance. The input map is only read, and nothing but the map is
-    left next to it."""
+    writes from the pairs, QC included (metacooler 0.3.0 carries it over to
+    the bins), but for its provenance. The input map is only read, and
+    nothing but the map is left next to it."""
     metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
     before = metacool.read_bytes()
     expected = tmp_path / "pairs.metacool"
@@ -863,13 +876,40 @@ def test_map_of_the_bins_from_a_map(metagenome, binning, tmp_path):
     metadata = clr.info["metadata"]
     assert metadata["metator"] == {"version": __version__, "command": "metator pipeline"}
     assert metacooler.MetaCooler(str(out)).info["ordering"] == "genome-then-length"
-    # The QC of the pixels; the assembly and the history of the input map.
-    assert metadata["qc"]["source"] == "pixels" and metadata["qc"]["n_contacts"] == len(metagenome.pairs)
+    # The QC block and columns that write_metacool measures on the pairs with
+    # the final bins: metacooler carries the intra-contig counts of the input
+    # map over, read positions included, and measures the others again. The
+    # assembly and the history are those of the input map.
+    assert metadata["qc"]["source"] == "pairs" and metadata["qc"]["n_pairs_read"] == len(metagenome.pairs)
+    assert metadata["qc"] == cooler.Cooler(str(expected)).info["metadata"]["qc"]
+    pd.testing.assert_frame_equal(metacooler.MetaCooler(str(out)).genomes, metacooler.MetaCooler(str(expected)).genomes)
     assert [entry["source"] for entry in metadata["reassign"]] == [str(metacool)]
     assert clr.info["genome-assembly"] == cooler.Cooler(str(metacool)).info["genome-assembly"]
     assert sorted(path.name for path in out.parent.iterdir()) == ["bins.metacool"]
     # Read and written as the map of the pairs (not the private temporary file).
     assert out.stat().st_mode == expected.stat().st_mode
+
+
+def test_map_of_the_bins_from_a_map_of_metacooler_0_2_0(metagenome, binning, tmp_path, logged):
+    """From a map written by metacooler 0.2.0, which holds no QC count per
+    contig (here, a map of 0.3.0 without its two columns): metacooler
+    computes the QC block of the bins again from the pixels, and warns that
+    what only the reads gave is lost. The map of the bins is written."""
+    import h5py
+
+    metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
+    with h5py.File(metacool, "r+") as handle:
+        for column in QC_CONTIG_COLUMNS:
+            del handle["contigs"][column]
+    out = tmp_path / "bins.metacool"
+    mtmc.reassign_metacool(str(metacool), str(binning["contig_data"]), str(out), bin_summary=str(binning["bin_summary"]))
+
+    metacooler.validate(str(out), full=True)
+    qc = cooler.Cooler(str(out)).info["metadata"]["qc"]
+    assert qc["source"] == "pixels" and "n_pairs_read" not in qc
+    (warning,) = [message for level, message in logged() if level == "WARNING"]
+    assert warning.startswith("Recomputing the source's QC block from the pixels")
+    assert "intra_contig_long drops to 0" in warning
 
 
 def test_map_of_the_bins_from_a_1kb_map(metagenome, binning, tmp_path):
@@ -939,8 +979,8 @@ def test_map_of_the_bins_from_a_cut_map(binned, metagenome, binning, tmp_path, l
     assert cooler.Cooler(str(out)).info["metadata"]["qc"]["source"] == "pixels"
     warnings = [message for level, message in logged() if level == "WARNING"]
     # The contig data lists contigs that the map lacks: annotate reads it,
-    # its warning about their rows is dropped, and the history of the map
-    # names the contig data.
+    # ignoring their rows without a warning (unmatched="ignore"), and the
+    # history of the map names the contig data.
     assert not [message for message in warnings if "Contigs table" in message]
     assert cooler.Cooler(str(out)).info["metadata"]["annotate"][-1]["contigs_table"] == str(contig_data)
     assert not [path.name for path in tmp_path.iterdir() if path.name.startswith(".")]
@@ -955,8 +995,8 @@ def test_map_of_the_bins_from_a_cut_map(binned, metagenome, binning, tmp_path, l
 
 
 def test_map_of_the_bins_from_a_cut_map_other_warnings(metagenome, binning, tmp_path, logged):
-    """Only the warning of metacooler annotate about the rows of the contig
-    data that name no contig of the map is dropped: another warning about
+    """Only the rows of the contig data that name no contig of the map are
+    ignored without a warning: another warning of metacooler annotate about
     the table, a contig described by two rows here, names the contig data,
     as does the history of the map."""
     truth = metagenome.truth
@@ -979,31 +1019,6 @@ def test_map_of_the_bins_from_a_cut_map_other_warnings(metagenome, binning, tmp_
         f"Contigs table ({contig_data}): 1 contig(s) are described by more than one row; the last row wins: {twice!r}"
     ]
     assert cooler.Cooler(str(out)).info["metadata"]["annotate"][-1]["contigs_table"] == str(contig_data)
-
-
-def test_rows_of_other_contigs_ignored(tmp_path, logged):
-    """The filter drops the warning of metacooler annotate about the rows of
-    the contig data that name no contig of the map, and that one only:
-    neither the same warning about another table, nor another message about
-    the contig data, nor this message at another level. It is removed on
-    exit."""
-    contig_data = str(tmp_path / "contig_data_final.txt")
-    other = str(tmp_path / "other.txt")
-    unmatched = "Contigs table ({}): 3 of 10 row(s) match no contig of the map and are ignored, e.g. 'c1'."
-    mc_logger = logging.getLogger("metacooler")
-    with mtmc._metacooler_logging(), mtmc._rows_of_other_contigs_ignored(contig_data):
-        mc_logger.warning(unmatched.format(contig_data))
-        mc_logger.warning(unmatched.format(other))
-        mc_logger.warning(f"Contigs table ({contig_data}): 1 contig(s) are described by more than one row")
-        mc_logger.error(unmatched.format(contig_data))
-    with mtmc._metacooler_logging():
-        mc_logger.warning(unmatched.format(contig_data))
-    assert logged() == [
-        ("WARNING", unmatched.format(other)),
-        ("WARNING", f"Contigs table ({contig_data}): 1 contig(s) are described by more than one row"),
-        ("ERROR", unmatched.format(contig_data)),
-        ("WARNING", unmatched.format(contig_data)),
-    ]
 
 
 def test_map_of_the_bins_from_an_mmetacool_entry(metagenome, binning, tmp_path):
@@ -1054,10 +1069,9 @@ def test_map_of_no_bin_from_a_map(source, metagenome, binning, tmp_path, logged)
     assert set(assignment(out).values()) == {"__unbinned__"} and len(mc.contigs) == len(metagenome.contigs)
     assert_contig_columns(out, contig_data)
     assert contig_contacts(out) == contig_contacts(metacool)
-    # From a map of no bin either, no contig moves: metacooler 0.2.0 then
-    # warns that only the provenance differs.
-    warnings = [message for level, message in logged() if level == "WARNING"]
-    assert [message for message in warnings if not message.startswith("No contig changes genome")] == []
+    # From a map of no bin either, no contig moves: metacooler says so at
+    # INFO, as it is given a genomes table (the bin names, here none).
+    assert [message for level, message in logged() if level == "WARNING"] == []
 
 
 def test_map_of_the_bins_without_a_bin_summary(metagenome, binning, tmp_path, logged):
@@ -1114,7 +1128,7 @@ def test_map_of_the_bins_replaces_the_columns_of_the_input_map(metagenome, binni
     assert assignment(out) == {name: (bin_name if bin_name != "ND" else "__unbinned__") for name, bin_name in final_bin.items()}
     assert list(genomes_without_qc(out).columns) == ["name", "length", "n_contigs", "n_bins", "Contamination"]
     contigs = metacooler.MetaCooler(str(out)).contigs
-    assert list(contigs.columns) == ["name", "length", "genome_id", "GC_content", "Hit", "taxon", "Restriction_site"]
+    assert without_qc(contigs.columns) == ["name", "length", "genome_id", "GC_content", "Hit", "taxon", "Restriction_site"]
     # Read back from the file, as metacooler does: the float parser of
     # pandas 2 can differ from the in-memory value in the last place.
     measured = pd.read_csv(contig_data, sep="\t", index_col="Name").loc[contigs.name]
@@ -1152,7 +1166,7 @@ def test_map_of_the_bins_drops_the_columns_of_an_earlier_run(metagenome, binning
     metacooler.validate(str(out), full=True)
     assert assignment(out) == final_bins(metagenome)
     contigs = metacooler.MetaCooler(str(out)).contigs
-    assert sorted(contigs.columns) == sorted(["name", "length", "genome_id", *CONTIG_COLUMNS, "taxon"])
+    assert sorted(without_qc(contigs.columns)) == sorted(["name", "length", "genome_id", *CONTIG_COLUMNS, "taxon"])
 
 
 @pytest.mark.parametrize("source", ["unbinned", "binned"])
@@ -1255,9 +1269,9 @@ def test_map_of_the_bins_replaces_the_input_map(how, metagenome, binning, tmp_pa
 
 
 def _fail_in_reassign(uri, table, output, **kwargs):
-    """metacooler.reassign, failing once it has started to write its partial
-    file next to the output."""
-    Path(f"{output}.partial").write_text("partial")
+    """metacooler.reassign, failing as it does when it cannot write: told
+    to remove its partial file (keep_partial=False), it leaves none."""
+    assert kwargs["keep_partial"] is False
     raise OSError("No space left on device")
 
 
@@ -1265,14 +1279,24 @@ def _fail_in_validate(path, full=True):
     raise ValueError("pixels out of order")
 
 
+def removed_partial(messages):
+    """The file that metacooler was writing, from its INFO line: it removed
+    its partial file (keep_partial=False)."""
+    (staged,) = [
+        re.match(r"Creation failed; the partial file (\S+)\.partial was removed and \1 was not written\.$", message)[1]
+        for level, message in messages
+        if level == "INFO" and message.startswith("Creation failed")
+    ]
+    return staged
+
+
 @pytest.mark.parametrize("failure", ["reassign", "validate", "in metacooler"])
 @pytest.mark.parametrize("how", ["path", "link to the outfile"])
 def test_input_map_kept_when_the_map_of_the_bins_fails(how, failure, metagenome, binning, tmp_path, monkeypatch, logged):
     """When the map of the bins cannot be written or does not validate, the
     input map (the outfile) is left byte for byte as it was, and no
-    temporary file stays next to it. When metacooler has left its partial
-    file, which it logs as left for inspection, the error says that it was
-    removed."""
+    temporary file stays next to it: metacooler removes the partial file it
+    was writing, and says so at INFO, not that it is left for inspection."""
     out = tmp_path / "out"
     out.mkdir()
     outfile = unbinned_map(out / "metator.metacool", metagenome, binning["pairs"])
@@ -1292,28 +1316,19 @@ def test_input_map_kept_when_the_map_of_the_bins_fails(how, failure, metagenome,
         # partial file first.
         monkeypatch.setattr("metacooler.io.reassign.validate", _fail_in_validate)
         message = "pixels out of order"
-    expected = message
-    if failure != "validate":
-        # The temporary file, next to the outfile, and the partial file that
-        # metacooler (or the stub) writes next to it.
-        staged = "(" + re.escape(str(out / ".metator.metacool.")) + r"\w+\.tmp)"
-        expected = (
-            rf"{message}\. The temporary files of the map, {staged} and metacooler's partial file \1\.partial, were removed\."
-        )
-    with pytest.raises(mtmc.MetacoolError, match=f"^{expected}$") as raised:
+    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$") as raised:
         mtmc.reassign_metacool(
             str(metacool), str(binning["contig_data"]), str(outfile), bin_summary=str(binning["bin_summary"]), force=True
         )
     assert str(raised.value.__cause__) == message
     assert outfile.read_bytes() == before
     assert sorted(path.name for path in out.iterdir()) == ["metator.metacool"]
+    messages = logged()
+    assert not [message for level, message in messages if level == "ERROR" and "for inspection" in message]
     if failure == "in metacooler":
-        # metacooler has logged that it left the partial file it was writing.
-        staged = re.match(expected, str(raised.value)).group(1)
-        assert (
-            "ERROR",
-            f"Creation failed. The partial file was left at {staged}.partial for inspection; {staged} was not written.",
-        ) in logged()
+        # The temporary file of the map, next to the outfile.
+        staged = removed_partial(messages)
+        assert Path(staged).parent == out and Path(staged).name.startswith(".metator.metacool.")
 
 
 def _fail_unexpectedly(path, full=True):
@@ -1323,9 +1338,9 @@ def _fail_unexpectedly(path, full=True):
 def test_partial_file_removed_on_an_unexpected_error(metagenome, binning, tmp_path, monkeypatch, logged):
     """An error of another type than those metacooler is expected to raise,
     within metacooler reassign once it has started its partial file (in its
-    validation, here), is raised as it is: a warning says that the partial
-    file, which metacooler logs as left for inspection, was removed. The
-    input map (the outfile) is left as it was, and no other file is left."""
+    validation, here), is raised as it is: metacooler removes its partial
+    file, the temporary file of the map is removed, and the input map (the
+    outfile) is left as it was, with no other file next to it."""
     out = tmp_path / "out"
     out.mkdir()
     outfile = unbinned_map(out / "metator.metacool", metagenome, binning["pairs"])
@@ -1338,13 +1353,27 @@ def test_partial_file_removed_on_an_unexpected_error(metagenome, binning, tmp_pa
     assert outfile.read_bytes() == before
     assert sorted(path.name for path in out.iterdir()) == ["metator.metacool"]
     messages = logged()
-    left = [message for level, message in messages if level == "ERROR" and "partial file was left" in message]
-    (staged,) = [
-        re.match(r"Creation failed\. The partial file was left at (\S+)\.partial for inspection", message)[1] for message in left
-    ]
+    staged = removed_partial(messages)
     assert Path(staged).parent == out and Path(staged).name.startswith(".metator.metacool.")
-    removed = f"The temporary files of the map, {staged} and metacooler's partial file {staged}.partial, were removed."
-    assert messages[-1] == ("WARNING", removed)
+    assert [message for level, message in messages if level in ("WARNING", "ERROR")] == []
+
+
+def test_metacool_failure_leaves_no_partial_file(metagenome, binning, tmp_path, monkeypatch, logged):
+    """When metacooler cannot write the map of the pairs (its validation
+    fails, here), write_metacool raises the reason, and leaves neither the
+    map nor metacooler's partial file next to the outfile."""
+    out = tmp_path / "out"
+    out.mkdir()
+    outfile = out / "metator.metacool"
+    monkeypatch.setattr("metacooler.io.create.validate", _fail_in_validate)
+    with pytest.raises(mtmc.MetacoolError, match=r"^pixels out of order$"):
+        mtmc.write_metacool(
+            str(binning["pairs"]), str(binning["contig_data"]), str(outfile), bin_summary=str(binning["bin_summary"])
+        )
+    assert list(out.iterdir()) == []
+    messages = logged()
+    assert removed_partial(messages) == str(outfile)
+    assert not [message for level, message in messages if level == "ERROR"]
 
 
 def test_map_of_the_bins_existing_outfile(metagenome, binning, tmp_path):

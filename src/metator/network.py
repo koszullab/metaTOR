@@ -280,8 +280,8 @@ def read_metacool_contacts(metacool, contig_data, chunksize=METACOOL_CHUNKSIZE):
     """Contacts between the contigs of the assembly, summed from the pixels
     of a .metacool contact map.
 
-    The pixels are read through metacooler, a block of rows of about
-    chunksize pixels at a time, and summed by contig pair: the memory used
+    The pixels are read through metacooler, at most chunksize at a time
+    (MetaCooler.iter_pixels), and summed by contig pair: the memory used
     grows with the number of contig pairs in contact, not with the pixels.
 
     Parameters:
@@ -319,8 +319,8 @@ def read_metacool_contacts(metacool, contig_data, chunksize=METACOOL_CHUNKSIZE):
     """
     with mtmc._metacooler_logging():
         mc = mtmc.open_map(metacool)
-        # The rows are read from their diagonal on: a map that also stores
-        # the lower triangle would count some contacts twice.
+        # Each pixel of the table is read: a map that also stores the lower
+        # triangle would count the contacts between two bins twice.
         storage_mode = mc.info.get("storage-mode", "symmetric-upper")
         if storage_mode != "symmetric-upper":
             raise mtmc.MetacoolError(
@@ -328,30 +328,24 @@ def read_metacool_contacts(metacool, contig_data, chunksize=METACOOL_CHUNKSIZE):
                 "that stores each contact once, in the upper triangle (storage-mode 'symmetric-upper'), as "
                 "metacooler writes them."
             )
-        # Id of the contig of each bin.
+        # Id of each contig of the map, in the order of the map.
         ids = metacool_contig_ids(metacool, mc.contigs, contig_data)
         with mc.open() as group:
-            chrom_offset = group["indexes"]["chrom_offset"][:].astype(np.int64)
-            bin1_offset = group["indexes"]["bin1_offset"][:].astype(np.int64)
             count_dtype = group["pixels"]["count"].dtype
         if not np.issubdtype(count_dtype, np.integer):
             raise mtmc.MetacoolError(
                 f"{metacool} holds contact counts of type {count_dtype}: a network is built from counts of pairs, "
                 "which are integers."
             )
-        bin_ids = np.repeat(ids, np.diff(chrom_offset))
-        n_bins = len(bin_ids)
         size = len(contig_data) + 1
 
         hits = np.zeros(size, dtype=np.int64)
         summed = (np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64))
         pending, n_pending = [], 0
-        # As stored, without balancing: the upper triangle, row by row.
-        pixels = mc.matrix(balance=False, as_pixels=True, join=False)
-        for lo, hi in pixel_row_blocks(bin1_offset, chunksize):
-            chunk = pixels[lo:hi, lo:n_bins]
-            id1 = bin_ids[chunk["bin1_id"].to_numpy()]
-            id2 = bin_ids[chunk["bin2_id"].to_numpy()]
+        # The pixel table as stored, without balancing: the upper triangle.
+        for chunk in mc.iter_pixels(chunksize=chunksize, contig_ids=True):
+            id1 = ids[chunk["contig1_id"].to_numpy()]
+            id2 = ids[chunk["contig2_id"].to_numpy()]
             count = chunk["count"].to_numpy().astype(np.int64)
             # Exact in float64: a chunk sums far fewer than 2**53 contacts.
             hits += np.bincount(id1, count, size).astype(np.int64)
@@ -412,32 +406,6 @@ def metacool_contig_ids(metacool, contigs, contig_data):
             f"read maps to: {mtmc._shown(missing)}."
         )
     return np.array([contig_data[name]["id"] for name in names], dtype=np.int64)
-
-
-def pixel_row_blocks(bin1_offset, chunksize):
-    """Blocks of rows of a contact map holding about chunksize pixels each.
-
-    Parameters:
-    -----------
-    bin1_offset : numpy.ndarray
-        Index of the first pixel of each row of the map, and the number of
-        pixels last (cooler's bin1_offset index).
-    chunksize : int
-        Number of pixels of a block. A row holding more is a block of its
-        own.
-
-    Yields:
-    -------
-    tuple of int:
-        First row of the block and row after its last.
-    """
-    n_bins = len(bin1_offset) - 1
-    lo = 0
-    while lo < n_bins:
-        hi = int(np.searchsorted(bin1_offset, bin1_offset[lo] + chunksize, side="right")) - 1
-        hi = min(max(hi, lo + 1), n_bins)
-        yield lo, hi
-        lo = hi
 
 
 def _sum_by_key(keys, counts):

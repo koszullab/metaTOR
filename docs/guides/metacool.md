@@ -29,7 +29,9 @@ file, and metacooler adds the genomes.
   `Shotgun_coverage` and `Restriction_site` columns of
   `contig_data_final.txt`, except those that are `-` on every contig
   (`Shotgun_coverage` of a run without `--depth`, `Restriction_site` of a run
-  without `--enzyme`). The genome of a contig is its final bin.
+  without `--enzyme`), and the contact statistics that metacooler computes
+  within each contig (`qc_intra_contig_short`, `qc_intra_contig_long`). The
+  genome of a contig is its final bin.
 - **The metadata** hold the version of metaTOR, the command line and its
   parameters, under the `metator` key.
 
@@ -126,9 +128,14 @@ map, with `metacooler reassign`, as a new file:
 - the columns of `bin_summary.txt` and `contig_data_final.txt`, which replace
   those the input map had (the map of an earlier binning, for example);
 - the contact statistics (the `qc` block of the metadata and the `qc_*`
-  columns of the genomes table), computed again from the pixels when the input
-  map has them: at one bin per contig, every contact within a contig counts
-  as short-range, and the numbers of pairs read and left out are not known;
+  columns of the genomes and contigs tables) of the input map, when it has
+  them, carried over to the bins: metacooler keeps the counts within each
+  contig (measured on the reads, for a map made from pairs files) and counts
+  the contacts between contigs again. A map written by metacooler 0.2.0 holds
+  no count per contig: its statistics are computed again from the pixels,
+  which hold no read positions (at one bin per contig, every contact within a
+  contig then counts as short-range, and the numbers of pairs read and left
+  out are lost, which metacooler warns about for a map made from pairs files);
 - the assembly name and the history of the commands of the input map.
 
 The map of the bins may go where the input map is, to bin its contigs again in
