@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
+- A `pipeline` run with several libraries builds the map of each library,
+  the entries `library_0`, `library_1`... of `<prefix>.mmetacool`, and the
+  map of their sum, `<prefix>.metacool`, merged from them with metacooler
+  merge (contacts and contact statistics summed; its counts are stored as
+  64-bit integers, where a map written from all the pairs files at once
+  stores 32-bit ones). It reads `network.txt` and `contig_data_network.txt`
+  from the sum, and the network of each library (`network_N.txt`) and
+  `hit_data_alignment.txt` from its map, instead of parsing the pairs
+  files again: the same files, byte for byte, as from the pairs files. So
+  zstd and LZ4 pairs files work with several libraries too (not with
+  `--scaffold`, which reads the pairs files), and a pair on a contig that
+  the assembly lacks is left out, as metacooler warns, where the run
+  stopped on a `KeyError`. `--no-metacool` removes both files at the end.
+  Python API: `metator.metacool.write_library_maps`, and `libraries` of
+  `metator.network.metacool_to_contacts`.
 - `network` and `pipeline` start from a `.metacool` contact map with
   `--start metacool`, the map given to `-1` (a file, or an entry
   `file.mmetacool::entries/<name>`), at any bin size. The network is that
@@ -40,7 +55,9 @@ All notable changes to this project will be documented in this file.
   `metacooler reassign`, where `write_metacool` read every pairs file
   again: the map is the one it wrote before, and that `metator metacool`
   writes from the pairs, but for its history (the `annotate` and
-  `reassign` keys of its metadata) and, when the final bins leave the
+  `reassign` keys of its metadata), the type of its counts with several
+  libraries (64-bit integers, which `metator metacool` stores as 32-bit
+  ones) and, when the final bins leave the
   contigs in the order of the map of the contigs (for example, no final
   bin, or one bin holding every contig), the place of its `genome_id`
   column, after the `qc_*` columns. Its file is larger, for the same data
@@ -69,9 +86,9 @@ All notable changes to this project will be documented in this file.
   in any case, metaTOR by the first bytes of the file): a zip archive, a
   gzip file whose name ends with neither `.gz` nor `.bgz`, a bzip2 file
   whose name does not end with `.bz2`, a plain file named as one of them,
-  and, with several libraries or `--scaffold`, a zstd or LZ4 file (`.zst`,
-  `.zstd`, `.lz4`), which metaTOR cannot read: they work with one library
-  only, whose network comes from the map. A map that metacooler cannot
+  and, with `--scaffold`, a zstd or LZ4 file (`.zst`, `.zstd`, `.lz4`),
+  which the scaffolding cannot read: without it, they work, as the
+  networks come from the maps. A map that metacooler cannot
   build from the pairs files of a run from pairs stops the run with what
   it needs of them: their header lines at their top only, the same number
   of fields on every row, one file per library given comma-separated
@@ -86,13 +103,10 @@ All notable changes to this project will be documented in this file.
   contigs, as a run from a map does, instead of parsing its pairs files
   again: the same files, byte for byte. It still writes `network_0.txt`,
   the network of its library, as a copy of `network.txt`, the bytes its
-  pairs files give. A run with several libraries still reads its pairs
-  files, for the network of each library (`network_N.txt`) and
-  `hit_data_alignment.txt`, which a map of their sum cannot give, until it
-  can read them from one map per library, in a `.mmetacool` collection.
-  With one library, a pair on a contig that the assembly lacks is left
-  out, as metacooler warns, where the run stopped on a `KeyError` (as it
-  still does with several libraries), and pairs that make no contact stop
+  pairs files give. A run with several libraries reads them from one map
+  per library, in a `.mmetacool` collection (see Added). A pair on a
+  contig that the assembly lacks is left out, as metacooler warns, where
+  the run stopped on a `KeyError`, and pairs that make no contact stop
   the run with an error that says so, where it stopped on a
   `ZeroDivisionError`. Its log names the map ("Information of
   <outdir>/metator.metacool:") instead of the pairs file, with the same
