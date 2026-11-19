@@ -1423,7 +1423,7 @@ def partition_options(iterations, overlap, iterations_help, overlap_help):
             show_default=True,
             metavar="INT",
             panel="Partition",
-            help="Threshold size to keep bins in base pair.",
+            help="Threshold size to keep clusters in base pair.",
         ),
         _option(
             "-C",
@@ -1472,13 +1472,13 @@ def no_clean_up_option(short="-N", help="Do not remove temporary files."):
 
 @click.group("metator", context_settings={"help_option_names": ["-h", "--help"]})
 @click.rich_config(help_config=click.RichHelpConfiguration(text_markup="rich", show_arguments=True, max_width=100))
-@click.command_panel("Binning", commands=["network", "partition", "validation", "pipeline"])
+@click.command_panel("Clustering", commands=["network", "partition", "validation", "pipeline"])
 @click.command_panel("Other commands", commands=["qc", "contactmap", "metacool", "scaffold", "pairs", "mge"])
 @click.version_option(__version__, "-v", "--version", prog_name="metator", message="%(version)s")
 def cli():
     """MetaHiC pipeline for generating and manipulating MAGs.
 
-    The binning runs in three steps, in this order: [cyan]network[/],
+    The clustering runs in three steps, in this order: [cyan]network[/],
     [cyan]partition[/] and [cyan]validation[/]; [cyan]pipeline[/] runs them
     all in one command line.
     """
@@ -1650,7 +1650,7 @@ def network(
     iterations=100,
     overlap=80,
     iterations_help="Number of iterations of Louvain or Leiden.",
-    overlap_help="Hamming distance threshold to use to merge bins (percentage).",
+    overlap_help="Hamming distance threshold to use to merge clusters (percentage).",
 )
 @outdir_option(default="./", help="Path to the directory to write the output.")
 @prefix_option()
@@ -1687,14 +1687,13 @@ def partition(
     """Partition the network using the Louvain or Leiden algorithm.
 
     Partition the network file using iteratively the Louvain or Leiden
-    algorithm. Then looks for 'cores' bins that are constituted by the
-    contigs which are always in the same cluster at each iterations. Then
-    using the Hamming distance from these cores bins, merge the bins with a
-    small Hamming distance (close to 1), bigger than the percentage
+    algorithm. Then looks for 'core' clusters that are constituted by the
+    contigs which are always in the same community at each iterations. Then
+    using the Hamming distance from these core clusters, merge the clusters
+    with a small Hamming distance (close to 1), bigger than the percentage
     (overlapping parameter) given.
 
-    It will also update the file to integrate the bins information of the
-    contigs.
+    It will also update the file to integrate the clusters of the contigs.
 
     Furthermore, both Leiden and Louvain algorithm are available here.
     However, the benchmark made show that here the Louvain algorithm have
@@ -1765,7 +1764,7 @@ def partition(
 # ---------------------------------------------------------------------------
 
 
-@cli.command(short_help="Validate the bins with miComplete and decontaminate them with a recursive partition.")
+@cli.command(short_help="Validate the clusters with miComplete and decontaminate them with a recursive partition.")
 @map_argument(
     help="The .metacool contact map of the contigs of the run (that of network MAP and partition MAP), or an entry "
     "of a .mmetacool collection (file.mmetacool::entries/NAME): it becomes the map of the clusters of the run, as "
@@ -1786,7 +1785,7 @@ def partition(
     required=True,
     metavar="DIR",
     panel="Input",
-    help="Path to the directory containing the input fasta files of the bins to decontaminate.",
+    help="Path to the directory containing the input fasta files of the clusters to decontaminate.",
 )
 @_option(
     "-n",
@@ -1800,7 +1799,7 @@ def partition(
     iterations=10,
     overlap=90,
     iterations_help="Number of recursive iterations of Louvain or Leiden.",
-    overlap_help="Hamming distance threshold to use to merge bins (percentage).",
+    overlap_help="Hamming distance threshold to use to merge clusters (percentage).",
 )
 @outdir_option(default="./", help="Path to the directory to write the output.")
 @prefix_option()
@@ -1836,17 +1835,17 @@ def validation(
     no_clean_up,
     output_map,
 ):
-    """Use miComplete to validate the bins.
+    """Use miComplete to validate the clusters.
 
-    Recursively decontaminate the contaminated bins evaluated by
+    Recursively decontaminate the contaminated clusters evaluated by
     miComplete. The command returns new decontaminated fasta and summary
     files of the decontamination.
 
-    Only bins with a weighted completeness of at least 33% and a
+    Only clusters with a weighted completeness of at least 33% and a
     contamination, (weighted redundancy - 1) / weighted completeness, of at
-    least 5% are subject to the recursive step. Its bins replace the
-    original bin when the most complete of them keeps enough of its
-    completeness; otherwise the original bin is kept.
+    least 5% are subject to the recursive step. Its clusters replace the
+    original cluster when the most complete of them keeps enough of its
+    completeness; otherwise the original cluster is kept.
 
     [cyan]metator validation MAP ...[/] runs on the map of the contigs of a
     run step by step ([cyan]metator network MAP[/], partition MAP,
@@ -1936,7 +1935,7 @@ def validation(
     iterations=100,
     overlap=80,
     iterations_help="Number of iterations of Louvain or Leiden for the partition step.",
-    overlap_help="Hamming distance threshold to use to merge bins for the first step (percentage).",
+    overlap_help="Hamming distance threshold to use to merge clusters for the first step (percentage).",
 )
 @_option(
     "-j",
@@ -1956,7 +1955,7 @@ def validation(
     show_default=True,
     metavar="INT",
     panel="Validation",
-    help="Hamming distance threshold to use to merge bins for the recursive step (percentage).",
+    help="Hamming distance threshold to use to merge clusters for the recursive step (percentage).",
 )
 @_option(
     "-v",
@@ -2323,7 +2322,7 @@ def pipeline(
     required=True,
     metavar="FILE",
     panel="Input",
-    help="Path to the fasta file containing the contigs of interest. Could be the whole or the extracted contigs of one bin. "
+    help="Path to the fasta file containing the contigs of interest. Could be the whole or the extracted contigs of one cluster. "
     "Not read from a map.",
 )
 @_option(
@@ -2485,7 +2484,7 @@ def qc(
 # ---------------------------------------------------------------------------
 
 
-@cli.command(short_help="Generate the HiC contact map of one metaTOR object (contig or bin).")
+@cli.command(short_help="Generate the HiC contact map of one metaTOR object (contig or cluster).")
 @pairsfile_argument(
     help=PAIRS_OR_MAP_HELP.format("from a map, the contact map of the contigs, as metacooler extract writes it (a .cool file).")
 )
@@ -2495,7 +2494,7 @@ def qc(
     required=True,
     metavar="FILE",
     panel="Input",
-    help="Path to the fasta file containing the contigs of interest. Could be the whole or the extracted contigs of one bin.",
+    help="Path to the fasta file containing the contigs of interest. Could be the whole or the extracted contigs of one cluster.",
 )
 @_option(
     "-c",
@@ -2520,8 +2519,8 @@ def qc(
     required=True,
     metavar="STR",
     panel="Input",
-    help="Name of the metator object, or its numerical ID for the core bin and overlapping bin objects. A recursive "
-    "bin is numbered within its overlapping bin: give its name. "
+    help="Name of the metator object, or its numerical ID for the core_bin and overlapping_bin objects. A recursive "
+    "cluster is numbered within its overlapping cluster: give its name. "
     'Example: "NODE_1", "MetaTOR_1_0" or 8.',
 )
 @_option(
@@ -2604,13 +2603,13 @@ def contactmap(
 
     Generates the Hi-C matrix of one MetaTOR object from the pair alignment
     file of metator. MetaTOR object integrated are contigs, and core,
-    overlapping, recursive, final or personalized bins. For the personalized
-    bins you should add a column in the contig_data_final.txt file with a
+    overlapping, recursive, final or personalized clusters. For the
+    personalized clusters you should add a column in the contig_data_final.txt file with a
     header called "Other".
 
     Do not display the matrix, you have to run another pipeline to display it
     such hicstuff view or cooler show depending on the matrix format chosen.
-    It's also possible to try to scaffold the bin using instagraal pipeline
+    It's also possible to try to scaffold the cluster using instagraal pipeline
     using the output.
 
     [cyan]metator contactmap MAP ...[/] reads a .metacool contact map of the
@@ -2692,7 +2691,7 @@ def contactmap(
 # ---------------------------------------------------------------------------
 
 
-@cli.command(short_help="Write the contact map of the contigs, grouped by bin, as a .metacool file.")
+@cli.command(short_help="Write the contact map of the contigs, grouped by cluster, as a .metacool file.")
 @click.argument(
     "pairsfile",
     nargs=-1,
@@ -2707,7 +2706,7 @@ def contactmap(
     required=True,
     metavar="FILE",
     panel="Input",
-    help="Path to the contig_data_final.txt file from MetaTOR output: the contigs, their final bins and what "
+    help="Path to the contig_data_final.txt file from MetaTOR output: the contigs, their final clusters and what "
     "metaTOR measured on them.",
 )
 @_option(
@@ -2732,7 +2731,7 @@ def metacool(pairsfile, contig_data, bin_summary, outfile, assembly_name, thread
 
     A .metacool file is the contact map of metacooler: a cooler whose
     chromosomes are the contigs, one bin per contig, grouped by genome: one
-    genome per final bin of the contig data file, and [cyan]__unbinned__[/]
+    genome per final cluster of the contig data file, and [cyan]__unbinned__[/]
     for the other contigs, with all their contacts. The README says what
     else it holds. The pairs files of several libraries are summed.
 
@@ -2741,10 +2740,10 @@ def metacool(pairsfile, contig_data, bin_summary, outfile, assembly_name, thread
     [cyan]metator network MAP[/], partition, validation), from that map:
     the map that [cyan]pipeline MAP[/] writes at the end of such a run.
 
-    The contig and bin names must be ASCII, and no bin may be named as
-    metacooler marks a contig in no bin (NA, NaN, N/A, N/D, -1 or
+    The contig and cluster names must be ASCII, and no cluster may be named
+    as metacooler marks a contig in no cluster (NA, NaN, N/A, N/D, -1 or
     __unbinned__ in any case, and nd in any case other than ND, which marks
-    a contig in no bin). [cyan]pipeline[/] writes this file at the end of a
+    a contig in no cluster). [cyan]pipeline[/] writes this file at the end of a
     run: from the map of the contigs that it builds from the pairs files,
     or from the map that it starts from.
     """
@@ -2802,9 +2801,9 @@ def _write_metacool_command(pairsfile, contig_data, bin_summary, outfile, assemb
 # ---------------------------------------------------------------------------
 
 
-@cli.command(short_help="Scaffold a metaTOR bin from pairs files.")
+@cli.command(short_help="Scaffold a metaTOR cluster from pairs files.")
 @pairsfile_argument()
-@_option("-b", "--bin-name", required=True, metavar="STR", panel="Input", help="Name of the bin to scaffold.")
+@_option("-b", "--bin-name", required=True, metavar="STR", panel="Input", help="Name of the cluster to scaffold.")
 @_option("-i", "--input-fasta", required=True, metavar="FILE", panel="Input", help="Path to the input fasta.")
 @_option(
     "-T",
@@ -2839,19 +2838,19 @@ def _write_metacool_command(pairsfile, contig_data, bin_summary, outfile, assemb
     "-o",
     "--out-fasta",
     metavar="FILE",
-    help="Path to write the output fasta. Default in the current directory: <bin_name>_scaffolded.fa.",
+    help="Path to write the output fasta. Default in the current directory: <cluster_name>_scaffolded.fa.",
 )
 @_option(
     "-O",
     "--out-frags",
     metavar="FILE",
-    help="Path to write the fragments information. Default in the current directory: <bin_name>_info_frags.txt.",
+    help="Path to write the fragments information. Default in the current directory: <cluster_name>_info_frags.txt.",
 )
 @threads_option(help="Numbers of threads to allocate if pairs need to be sorted.")
 def scaffold(pairsfile, bin_name, input_fasta, threshold, window_size, junctions, out_fasta, out_frags, threads):
-    """Scaffold a bin from metaTOR.
+    """Scaffold a cluster from metaTOR.
 
-    Use the pairs to build a scaffold from the binned contigs. The
+    Use the pairs to build a scaffold from the contigs of the cluster. The
     scaffolding is based on contact between the edges of the contigs. There
     are normalized based on intra contacts of the contigs except for the
     small contigs where a low score is given.
@@ -2920,7 +2919,7 @@ def pairs(pairsfile, force, remove, threads):
 # ---------------------------------------------------------------------------
 
 
-@cli.command(short_help="Bin the MGE contigs in MGE MAGs from the metaHiC pairs.")
+@cli.command(short_help="Cluster the MGE contigs into MGE MAGs from the metaHiC pairs.")
 @pairsfile_argument(
     help="Pairs file(s) of the run: the contacts within each MGE contig are counted from the positions of their reads, "
     "which a .metacool map does not hold (give the map to store the MGE clusters in with --map)."
@@ -2954,10 +2953,10 @@ def pairs(pairsfile, force, remove, threads):
     default=0.8,
     show_default=True,
     metavar="FLOAT",
-    panel="Binning",
-    help="Threshold to use for binning.",
+    panel="Clustering",
+    help="Threshold to use for clustering.",
 )
-@_option("-r", "--random", is_flag=True, panel="Binning", help="If enabled, make a random binning. Refused with --map.")
+@_option("-r", "--random", is_flag=True, panel="Clustering", help="If enabled, make a random clustering. Refused with --map.")
 @outdir_option(help="Path to the output directory where the output will be written. Default: current directory.")
 @force_option("Replace an existing --output-map.")
 @tmpdir_option(help="Path to temporary directory.")
@@ -2981,9 +2980,9 @@ def mge(
     no_clean_up,
     output_map,
 ):
-    """Bin MGE contigs.
+    """Cluster MGE contigs.
 
-    Bin the MGE contigs in MGE MAGs using pairs, host MAG sequence and
+    Cluster the MGE contigs into MGE MAGs using pairs, host MAG sequence and
     information.
 
     Command will return the updated MGE data and the MGE fasta.
@@ -2995,7 +2994,7 @@ def mge(
     .metacool contact map of the run, MAP: as the round mge of its
     clustering rounds (its /clusters group), with their contigs and the
     columns of mges_cluster_summary.tsv, in place of an earlier round mge, after
-    the rounds of the binning run, which are kept. Its genomes and contigs
+    the rounds of the clustering run, which are kept. Its genomes and contigs
     tables, the final clusters, are left as they were. MAP is updated in
     place (or written to --output-map), and locked while the run writes it.
     The contacts of the MGE contigs still come from the pairs files: those
@@ -3017,7 +3016,7 @@ def mge(
         logger.error(reason)
         raise mtmc.MetacoolError(reason)
     if random and map is not None:
-        reason = "--random makes a random binning, to compare the MGE clusters with: it is not stored in a map. Drop --map."
+        reason = "--random makes a random clustering, to compare the MGE clusters with: it is not stored in a map. Drop --map."
         logger.error(reason)
         raise mtmc.MetacoolError(reason)
 

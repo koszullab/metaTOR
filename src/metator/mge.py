@@ -253,7 +253,7 @@ def generate_mges_fasta(fasta: str, mge_bins: dict, out_file: str):
                 _, *lines = io.StringIO(sequences[str(contig_name)].raw, newline=None)
                 out.write(f">MetaTOR_MGE_{bin_id:05d}\n" if i == 0 else "N" * 200)
                 out.writelines(lines)
-    logger.info(f"{nb_bins} bins have been extracted")
+    logger.info(f"{nb_bins} clusters have been extracted")
 
     return mge_bins
 

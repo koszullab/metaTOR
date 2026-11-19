@@ -484,7 +484,7 @@ MGE_MAP_ERRORS = {
     ),
     "--random": (
         ["--map", "{map}", "-r"],
-        "--random makes a random binning, to compare the MGE clusters with: it is not stored in a map. Drop --map.",
+        "--random makes a random clustering, to compare the MGE clusters with: it is not stored in a map. Drop --map.",
     ),
     "a map that is not there": (["--map", "{missing}"], "Cannot read the contact map {missing}: no such file."),
     "a URI of a directory": (

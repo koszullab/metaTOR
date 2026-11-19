@@ -1,6 +1,6 @@
 # Scaffolding and quality
 
-`metator.scaffold` orders and orients the contigs of a bin from the contacts
+`metator.scaffold` orders and orients the contigs of a cluster from the contacts
 at their ends, with the structures of `metator.regions`.
 `metator.quality_check` measures a library on its best MAGs, and
 `metator.figures` draws the plots of a run. See

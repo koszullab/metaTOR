@@ -287,7 +287,7 @@ def test_pipeline_without_bin_above_the_size_threshold(
         run_cli("pipeline", *args)
     assert not calls
     (log,) = out.glob("metator_pipeline_*.log")
-    message = f"{out / 'overlapping_clusters'} holds no bin to validate (no .fa, .fasta or .fna file): partition writes none"
+    message = f"{out / 'overlapping_clusters'} holds no cluster to validate (no .fa, .fasta or .fna file): partition writes none"
     assert f"ERROR :: {message}" in log.read_text()
     metacool = out / "metator.metacool"
     metacooler.validate(str(metacool), full=True)

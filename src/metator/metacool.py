@@ -508,12 +508,12 @@ def non_ascii_names(names):
 
 
 def check_ascii_names(contigs, bins):
-    """Refuse contig or bin names that are not ASCII.
+    """Refuse contig or cluster names that are not ASCII.
 
     cooler reads the contig names (its chromosome names) as ASCII text, so
     metacooler refuses any other name.
     """
-    for kind, names in [("contig", contigs), ("bin", bins)]:
+    for kind, names in [("contig", contigs), ("cluster", bins)]:
         bad = non_ascii_names(names)
         if bad:
             raise MetacoolError(
@@ -532,9 +532,9 @@ def check_bin_names(bins):
     bad = list(dict.fromkeys(name for name in bins if name.strip().lower() in METACOOLER_UNBINNED))
     if bad:
         raise MetacoolError(
-            "A .metacool file cannot have bins named as metacooler marks a contig in no bin (NA, NaN, N/A, N/D, -1 or "
-            "__unbinned__ in any case, and nd in any case other than ND, which marks a contig in no bin): it would put "
-            f"their contigs in __unbinned__. Rename the {len(bad)} bin(s): {_shown(bad)}."
+            "A .metacool file cannot have clusters named as metacooler marks a contig in no cluster (NA, NaN, N/A, N/D, "
+            "-1 or __unbinned__ in any case, and nd in any case other than ND, which marks a contig in no cluster): it "
+            f"would put their contigs in __unbinned__. Rename the {len(bad)} cluster(s): {_shown(bad)}."
         )
 
 
@@ -638,7 +638,7 @@ def write_metacool(
 
     logger.info(
         f"Writing {outfile}: contact map of {len(bins)} contigs, {len(contig_bin)} of them in "
-        f"{len(set(contig_bin.values()))} bins."
+        f"{len(set(contig_bin.values()))} clusters."
     )
     with _metacooler_logging(), _as_metacool_errors():
         if os.path.dirname(outfile):
@@ -759,7 +759,7 @@ def write_contig_map(
 
     import metacooler
 
-    logger.info(f"Writing {outfile}: contact map of {len(names)} contigs, in no bin yet.")
+    logger.info(f"Writing {outfile}: contact map of {len(names)} contigs, in no cluster yet.")
     with _metacooler_logging(), _as_metacool_errors():
         if os.path.dirname(outfile):
             os.makedirs(os.path.dirname(outfile), exist_ok=True)
@@ -790,7 +790,7 @@ def write_contig_map(
             # No map without the columns of its contigs.
             os.remove(outfile)
             raise
-    logger.info(f"{outfile} is written: the contact map of the contigs, in no bin yet.")
+    logger.info(f"{outfile} is written: the contact map of the contigs, in no cluster yet.")
 
 
 def library_entry(collection, i):
@@ -1021,7 +1021,7 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
     metacool, outfile = str(metacool), str(outfile)
     if is_entry(metacool) and is_input_map(metacool, outfile):
         raise MetacoolError(
-            f"{outfile} is the .mmetacool collection of the input map {metacool}: the map of the bins would replace "
+            f"{outfile} is the .mmetacool collection of the input map {metacool}: the map of the clusters would replace "
             "the whole collection. Write it to another file."
         )
     bins, contig_bin, contig_columns, header = _checked_inputs(
@@ -1044,8 +1044,8 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
     absent = [name for name in contig_bin if name not in in_map]
     if absent:
         logger.warning(
-            f"{len(absent)} binned contig(s) of {contig_data} are not in {metacool}, and not in the map of the bins "
-            f"either: {_shown(absent)}."
+            f"{len(absent)} clustered contig(s) of {contig_data} are not in {metacool}, and not in the map of the "
+            f"clusters either: {_shown(absent)}."
         )
     # Every contig of the map, the unbinned ones as ND (no genome for
     # metacooler): never an empty table, which metacooler refuses.
@@ -1213,7 +1213,7 @@ def _write_back_columns(path, contig_data, contig_columns, header):
     pairs. The dropped columns are also those that this run does not
     store: the bins of each step, the contig ids, Size..., which a map made
     with the contig data of an earlier run as its contigs table holds
-    (metacooler create pairs --contigs-format metator), and one of
+    (metacooler create pairs --contigs-format Name,Final_cluster), and one of
     CONTIG_COLUMNS that this run had no values for (Shotgun_coverage
     without a depth file, nor a column of the input map that gives every
     contig its coverage...).

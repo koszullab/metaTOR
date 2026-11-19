@@ -1,8 +1,8 @@
 # Running the pipeline
 
-`metator pipeline` bins the contigs of an assembly from a metaHiC library, in
-one command: it aligns the reads, builds the network of contigs, partitions
-it, and validates the bins. This page lists its inputs, the files it writes,
+`metator pipeline` clusters the contigs of an assembly from a metaHiC library,
+in one command: it aligns the reads, builds the network of contigs, partitions
+it, and validates the clusters. This page lists its inputs, the files it writes,
 and how to run its steps one by one. The [CLI reference](../cli.md#pipeline)
 lists every option, and [Concepts](../concepts.md) explains the steps.
 
@@ -13,11 +13,11 @@ metator pipeline --aligner bwa --enzyme DpnII --depth depth.txt --threads 16 \
 
 ## Before the run: the assembly
 
-metaTOR bins the contigs of an assembly; it does not assemble. Build the
+metaTOR clusters the contigs of an assembly; it does not assemble. Build the
 assembly from a shotgun library of the same sample, with
 [MEGAHIT](https://github.com/voutcn/megahit) or
 [metaSPAdes](https://github.com/ablab/spades) for instance, and drop the
-contigs shorter than 500 bp, which carry too few contacts to bin:
+contigs shorter than 500 bp, which carry too few contacts to cluster:
 
 ```bash
 megahit -1 shotgun_R1.fq.gz -2 shotgun_R2.fq.gz --min-contig-len 500 -o assembly
@@ -53,7 +53,7 @@ The BAM files of `--start bam` must be sorted by read name, both files of a
 library in the same order. A pairs file of `--start pair` has the 7 columns of
 the [pairs format](../formats.md#pairs): read name, then the contig, position
 and strand of each mate. A run from a contact map is described in
-[The contact map of the bins](metacool.md#starting-from-a-contact-map).
+[The contact map of the clusters](metacool.md#starting-from-a-contact-map).
 
 `--assembly` (`-a`) is the assembly, as a FASTA file, or the basename of its
 bowtie2 or bwa index (with bwa, `<basename>.fa` or `<basename>.fasta` must be
@@ -67,24 +67,24 @@ The pipeline writes into `--outdir` (`-o`, the current directory by default):
 
 | File | What it holds |
 |---|---|
-| `final_clusters/` | One FASTA file per final bin |
-| `cluster_summary.txt` | One row per final bin: size, GC content, miComplete's completeness and redundancy, N50, abundance… |
-| `contig_data_final.txt` | One row per contig: its measures, and the core, overlapping, recursive and final bins it belongs to |
-| `binning.txt` | The contigs of the final bins and their bin |
+| `final_clusters/` | One FASTA file per final cluster |
+| `cluster_summary.txt` | One row per final cluster: size, GC content, miComplete's completeness and redundancy, N50, abundance… |
+| `contig_data_final.txt` | One row per contig: its measures, and the core, overlapping, recursive and final clusters it belongs to |
+| `binning.txt` | The contigs of the final clusters and their cluster |
 | `metator.metacool` | The contact map of all the contigs, grouped by cluster (`<prefix>.metacool` with `--prefix`): from reads, alignments or pairs; a run from a map updates that map instead, or writes `--output-map` |
-| `metator.mmetacool` | With several libraries, the contact map of each library, in no bin (`<prefix>.mmetacool` with `--prefix`) |
+| `metator.mmetacool` | With several libraries, the contact map of each library, in no cluster (`<prefix>.mmetacool` with `--prefix`) |
 | `network.txt` | The normalised network of contigs, all libraries summed |
 | `network_<i>.txt` | The network of library `i`, from 0 |
 | `alignment_<i>.bam` | With bwa: the alignments of library `i`, both mates, sorted by read name |
 | `alignment_<i>_for.bam`, `alignment_<i>_rev.bam` | With bowtie2, or in iterative mode: the alignments of each mate |
-| `overlapping_clusters/` | The FASTA files of the overlapping bins, before validation |
-| `recursive_clusters/` | The FASTA files of the recursive bins, in `step_<n>/` for step `n` |
-| `overlapping_micomplete_results.txt` | miComplete's results on the overlapping bins |
-| `recursive_micomplete_step_<n>.txt` | miComplete's results on the recursive bins of step `n` |
+| `overlapping_clusters/` | The FASTA files of the overlapping clusters, before validation |
+| `recursive_clusters/` | The FASTA files of the recursive clusters, in `step_<n>/` for step `n` |
+| `overlapping_micomplete_results.txt` | miComplete's results on the overlapping clusters |
+| `recursive_micomplete_step_<n>.txt` | miComplete's results on the recursive clusters of step `n` |
 | `clusters.txt`, `cluster_members.txt` | Every cluster of every round (overlapping, recursive, final), with its parent and miComplete's columns, and the contigs of each: see [Clustering rounds](metacool.md#clustering-rounds) |
-| `clustering_matrix*.npz` | With `--cluster-matrix`: how often each two contigs were binned together |
-| `scaffolded_clusters/` | With `--scaffold`: the final bins, scaffolded |
-| `plot/` | Plots of the bins' quality, size, GC content and coverage, and the heatmap of the bins' network |
+| `clustering_matrix*.npz` | With `--cluster-matrix`: how often each two contigs were clustered together |
+| `scaffolded_clusters/` | With `--scaffold`: the final clusters, scaffolded |
+| `plot/` | Plots of the clusters' quality, size, GC content and coverage, and the heatmap of the clusters' network |
 | `metator_pipeline_<date>.log` | The log of the run |
 
 The pairs files of each library are written to the temporary directory as
@@ -101,8 +101,8 @@ which a run restarts from (`metator pipeline binning/metator.metacool … -F`,
 `-F` to replace the directories of clusters it began).
 [File formats](../formats.md) describes each table.
 
-A run refuses to overwrite the bins of an earlier one unless given `--force`
-(`-F`).
+A run refuses to overwrite the clusters of an earlier one unless given
+`--force` (`-F`).
 
 ## Choosing the options
 
@@ -110,17 +110,17 @@ A run refuses to overwrite the bins of an earlier one unless given `--force`
 |---|---|---|
 | `--aligner`, `--aligner-mode` | `bowtie2`, `normal` | `--aligner bwa` is recommended; see [Aligning the reads](network.md#aligning-the-reads) |
 | `--enzyme` | none | Give the enzyme of the library: it counts the restriction sites of the contigs, for the `RS` and `theoritical_hit` normalisations and `--aligner-mode cutsite`. From a map, its `Restriction_site` column gives them without it |
-| `--depth` | none | Give it for the `abundance` and `theoritical_hit` normalisations, and the shotgun abundance of the bins. From a map, its `Shotgun_coverage` column gives the coverage without it |
+| `--depth` | none | Give it for the `abundance` and `theoritical_hit` normalisations, and the shotgun abundance of the clusters. From a map, its `Shotgun_coverage` column gives the coverage without it |
 | `--normalization` | `empirical_hit` | See [Normalising the network](network.md#normalising-the-network) |
 | `--iterations`, `--overlap` | 100, 80 | See [Partition](binning.md#partition) |
 | `--rec-iter`, `--rec-overlap` | 10, 90 | See [Validation](binning.md#validation) |
-| `--size` | 500000 | The size, in base pairs, a bin must reach to be kept |
-| `--prefix` | none | Names the bins `<prefix>_metator_…`, the map `<prefix>.metacool` of a run from reads, alignments or pairs and, with several libraries, the maps of the libraries `<prefix>.mmetacool` |
+| `--size` | 500000 | The size, in base pairs, a cluster must reach to be kept |
+| `--prefix` | none | Names the clusters `<prefix>_metator_…`, the map `<prefix>.metacool` of a run from reads, alignments or pairs and, with several libraries, the maps of the libraries `<prefix>.mmetacool` |
 | `--threads` | 1 | Threads for the alignment and the partition |
 | `--tmpdir` | `./tmp` | Where the index, the pairs files (without `--no-clean-up` or `--scaffold`) and the temporary files go; deleted at the end, unless `--no-clean-up` |
 
 The validation is the step that needs the most memory and time: miComplete
-runs prodigal and hmmer on every bin.
+runs prodigal and hmmer on every cluster.
 
 ## Running the steps one by one
 
@@ -137,30 +137,30 @@ metator network -1 R1.fq.gz -2 R2.fq.gz -a assembly.fa -b bwa -e DpnII -d depth.
 metator partition -a assembly.fa -c binning/contig_data_network.txt \
     -n binning/network.txt -t 16 -o binning
 
-# 3. Validate the bins: final_clusters/, cluster_summary.txt, contig_data_final.txt
+# 3. Validate the clusters: final_clusters/, cluster_summary.txt, contig_data_final.txt
 metator validation -a assembly.fa -c binning/contig_data_partition.txt \
     -n binning/network.txt -f binning/overlapping_clusters -t 16 -o binning
 ```
 
-Run step by step, the final bins go to `final_clusters/`, and the intermediate
-tables stay. `metator network` keeps the pairs files; `metator metacool`
-writes the contact map of the bins from them (see
-[The contact map of the bins](metacool.md)). From a contact map of the
+Run step by step, the final clusters go to `final_clusters/`, and the
+intermediate tables stay. `metator network` keeps the pairs files;
+`metator metacool` writes the contact map of the clusters from them (see
+[The contact map of the clusters](metacool.md)). From a contact map of the
 contigs, each step takes the map as its first argument, and the steps write
 the map that `metator pipeline MAP` writes from the same clusters: see
 [Step by step](metacool.md#step-by-step).
 
-To bin without validating, run the first two steps alone: the bins are then
-the overlapping bins of `overlapping_clusters/`, and `contig_data_partition.txt`
-gives the bin of each contig.
+To cluster without validating, run the first two steps alone: the clusters
+are then the overlapping clusters of `overlapping_clusters/`, and
+`contig_data_partition.txt` gives the cluster of each contig.
 
 ## The log
 
 The log starts with the version of metaTOR, the date and the command, then
 the parameters, and records each step: the pairs aligned, the contacts between
-contigs, the core and overlapping bins found, the bins validated, and at the
-end the number of bins in each quality class (see
-[Bin quality](../concepts.md#bin-quality)).
+contigs, the core and overlapping clusters found, the clusters validated, and
+at the end the number of clusters in each quality class (see
+[Cluster quality](../concepts.md#cluster-quality)).
 
 ```console
 INFO :: 61974 contacts in the library.
@@ -169,4 +169,4 @@ INFO :: 3D ratio : 0.46003162616581145
 ```
 
 The **3D ratio** is the share of the contacts that join two different
-contigs: the signal binning uses.
+contigs: the signal that the clustering uses.

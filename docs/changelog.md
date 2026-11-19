@@ -184,7 +184,9 @@ All notable changes to this project will be documented in this file.
   `metator.io.read_contig_data`). `contactmap --object Final_bin` reads
   `Final_cluster`, unless the table has a `Final_bin` column. metacooler's
   `--contigs-format metator` names `Final_bin`: give
-  `--contigs-format Name,Final_cluster` for a table of 2.0.
+  `--contigs-format Name,Final_cluster` for a table of 2.0. The help, the
+  logs, the texts of the plots and the docs call them clusters too, and the
+  help groups the three steps and `pipeline` under Clustering.
 - `pipeline` no longer sorts, compresses and indexes the pairs files of
   a run from reads or alignments, which it removed at its end: the maps
   of the contigs read them once, in any order, and the networks come

@@ -13,11 +13,12 @@ hide:
 <p class="cx-tagline">Metagenome binning from Hi-C contacts.</p>
 
 [metaTOR](https://github.com/koszullab/metator) (Metagenomic Tridimensional
-Organisation-based Reassembly) bins the contigs of a metagenome assembly into
-genomes from the contacts of a metaHiC library. Contigs of one genome touch
-each other far more often than they touch other genomes, and metaTOR finds
-those groups in the contig network, checks each bin with miComplete,
-partitions contaminated bins again, and writes the contact map of the bins.
+Organisation-based Reassembly) clusters the contigs of a metagenome assembly
+into genomes from the contacts of a metaHiC library. Contigs of one genome
+touch each other far more often than they touch other genomes, and metaTOR
+finds those groups in the contig network, checks each cluster with miComplete,
+partitions contaminated clusters again, and writes the contact map of the
+clusters.
 { .cx-lede }
 
 <div class="cx-install" markdown>
@@ -49,8 +50,8 @@ conda install bioconda::metator
 
 <div class="cx-tiles" markdown>
 
-[<span class="cx-glyph">:lucide-rocket:</span> <strong>Quickstart</strong> <span class="cx-tile-text">From reads and an assembly to bins, on the test data.</span>](quickstart.md){ .cx-tile }
-[<span class="cx-glyph">:lucide-lightbulb:</span> <strong>Concepts</strong> <span class="cx-tile-text">The network, core and overlapping bins, validation.</span>](concepts.md){ .cx-tile }
+[<span class="cx-glyph">:lucide-rocket:</span> <strong>Quickstart</strong> <span class="cx-tile-text">From reads and an assembly to clusters, on the test data.</span>](quickstart.md){ .cx-tile }
+[<span class="cx-glyph">:lucide-lightbulb:</span> <strong>Concepts</strong> <span class="cx-tile-text">The network, core and overlapping clusters, validation.</span>](concepts.md){ .cx-tile }
 [<span class="cx-glyph">:lucide-square-terminal:</span> <strong>CLI reference</strong> <span class="cx-tile-text">Every command and option.</span>](cli.md){ .cx-tile }
 [<span class="cx-glyph">:lucide-braces:</span> <strong>Python API</strong> <span class="cx-tile-text">The functions behind the commands.</span>](api/network.md){ .cx-tile }
 

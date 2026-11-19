@@ -1,7 +1,7 @@
 # Using the Python API
 
 Each command of metaTOR runs functions of its library, which can be called
-from Python to run a step, read the outputs, or redo a plot on other bins.
+from Python to run a step, read the outputs, or redo a plot on other clusters.
 This page shows the pieces to put together; the
 [Python API reference](../api/network.md) lists them all.
 
@@ -11,13 +11,13 @@ This page shows the pieces to put together; the
 |---|---|---|
 | `metator.align` | `mta` | Aligning the reads and pairing the mates |
 | `metator.network` | `mtn` | The contig data table, and the network built from the pairs or a contact map |
-| `metator.partition` | `mtp` | Partitioning the network into core and overlapping bins |
-| `metator.validation` | `mtv` | miComplete, and the recursive partition of contaminated bins |
-| `metator.metacool` | `mtmc` | Writing the `.metacool` contact map of the bins |
-| `metator.contact_map` | `mtc` | The contact map of one contig or bin |
-| `metator.scaffold`, `metator.regions` | `mts` | Scaffolding a bin |
+| `metator.partition` | `mtp` | Partitioning the network into core and overlapping clusters |
+| `metator.validation` | `mtv` | miComplete, and the recursive partition of contaminated clusters |
+| `metator.metacool` | `mtmc` | Writing the `.metacool` contact map of the clusters |
+| `metator.contact_map` | `mtc` | The contact map of one contig or cluster |
+| `metator.scaffold`, `metator.regions` | `mts` | Scaffolding a cluster |
 | `metator.quality_check` | `mtq` | The quality of a library |
-| `metator.mge`, `metator.host` | `mtm` | Binning MGE contigs, and finding their hosts |
+| `metator.mge`, `metator.host` | `mtm` | Clustering MGE contigs, and finding their hosts |
 | `metator.figures` | `mtf` | The plots |
 | `metator.io` | `mio` | Reading and writing tables, pairs and FASTA files |
 | `metator.log` | `mtl` | The logger, `metator.log.logger` |
@@ -25,7 +25,7 @@ This page shows the pieces to put together; the
 ## Reading the outputs
 
 `read_bin_summary` and `read_contig_data` read the two main tables as pandas
-data frames, indexed by bin name and by contig name:
+data frames, indexed by cluster name and by contig name:
 
 ```python
 import metator.io as mio
@@ -40,17 +40,17 @@ hq_contigs = contigs[contigs["Final_cluster"].isin(hq.index)]
 
 [File formats](../formats.md) describes their columns.
 
-## The contact map of the bins
+## The contact map of the clusters
 
 The `.metacool` file is read with
 [metacooler](https://github.com/js2264/metacooler), or as any cool file with
-cooler (see [The contact map of the bins](metacool.md)):
+cooler (see [The contact map of the clusters](metacool.md)):
 
 ```python
 import metacooler
 
 mc = metacooler.MetaCooler("binning/metator.metacool")
-mc.genomes  # one row per bin, and __unbinned__, with the columns of cluster_summary.txt
+mc.genomes  # one row per cluster, and __unbinned__, with the columns of cluster_summary.txt
 mc.contigs  # one row per contig
 ```
 
@@ -66,7 +66,7 @@ import metator.io as mio
 from scipy import sparse
 
 matrix = sparse.load_npz("binning/clustering_matrix_partition.npz").tocsr()
-matrix[1, 1196]  # how often contigs 1 and 1196 were binned together, from 0 to 1
+matrix[1, 1196]  # how often contigs 1 and 1196 were clustered together, from 0 to 1
 
 # As a text file: a header line (rows, columns, non-zero values), then row, column, value
 mio.save_sparse_matrix(matrix.tocoo(), "binning/clustering_matrix_partition.tsv")
@@ -115,13 +115,13 @@ clustering_matrix_file, contig_data_file = mtp.partition(
 The commands also check their inputs, write their log file and clean up
 their temporary files, which the functions leave to the caller.
 
-## Checking other bins
+## Checking other clusters
 
 `metator.validation.micomplete_quality` runs miComplete on a directory of
-FASTA files, one per bin, as the validation does, and the functions of
+FASTA files, one per cluster, as the validation does, and the functions of
 `metator.figures` draw the plots of the validation from its results: see
-[Curating MAGs with anvi'o](curation.md#5-the-curated-bins), which checks bins
-curated by hand this way.
+[Curating MAGs with anvi'o](curation.md#5-the-curated-clusters), which checks
+clusters curated by hand this way.
 
 ## Logging
 

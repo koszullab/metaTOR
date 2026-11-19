@@ -151,14 +151,14 @@ def give_results_info(bin_summary):
     total_size = sum(size for _, size in counts.values())
 
     # Return info in the logger:
-    logger.info("{0} bins have been kept after the recursive iterations.".format(total))
-    logger.info("Total size of the extracted bins: {0}".format(total_size))
+    logger.info("{0} clusters have been kept after the recursive iterations.".format(total))
+    logger.info("Total size of the extracted clusters: {0}".format(total_size))
     for quality, label in (
         ("HQ", "HQ MAGs"),
         ("MQ", "MQ MAGs"),
         ("LQ", "LQ MAGs"),
         ("Contaminated", "Contaminated potential MAGs"),
-        ("Other", "Others bins"),
+        ("Other", "Other clusters"),
     ):
         logger.info("{0}: {1}\tTotal Size: {2}".format(label, *counts[quality]))
 
@@ -585,7 +585,7 @@ def recursive_clustering_worker(
     tmpdir_subnetwork = join(tmpdir, "recursive_clusters", bin_id)
     os.makedirs(tmpdir_subnetwork, exist_ok=True)
 
-    logger.info("Bin in progress: {0}".format(bin_id))
+    logger.info("Cluster in progress: {0}".format(bin_id))
     subnetwork_file = join(tmpdir_subnetwork, "subnetwork_" + bin_id + ".txt")
 
     # Extract contigs
@@ -685,8 +685,8 @@ def recursive_decontamination(
     # No bin to validate: miComplete would write no result to read.
     if not any(path.endswith(FASTA_EXTENSIONS) for path in os.listdir(input_fasta_dir)):
         logger.error(
-            f"{input_fasta_dir} holds no bin to validate (no .fa, .fasta or .fna file): partition writes none when "
-            "no bin reaches its minimum size (--size of partition or pipeline)."
+            f"{input_fasta_dir} holds no cluster to validate (no .fa, .fasta or .fna file): partition writes none when "
+            "no cluster reaches its minimum size (--size of partition or pipeline)."
         )
         raise ValueError
 
@@ -832,7 +832,7 @@ def recursive_decontamination(
 
         # Keep overlapping bin information
         else:
-            logger.info(f"No more contaminated bin have been found after {step} steps.")
+            logger.info(f"No more contaminated cluster has been found after {step} steps.")
         # Increase count
         logger.info(f"Recursive step {step} done.")
         step += 1

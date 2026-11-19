@@ -164,7 +164,7 @@ def test_group_help(run_cli):
     output = run_cli("-h").output
     for command in INVENTORY["commands"]:
         assert command in output
-    assert "Binning" in output
+    assert "Clustering" in output
 
 
 def test_version(run_cli):

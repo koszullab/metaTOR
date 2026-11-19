@@ -1,8 +1,8 @@
 # Concepts
 
-This page explains how metaTOR bins contigs, and the words the rest of the
-documentation uses for it: hits, the network, core and overlapping bins,
-validation and recursive bins. For the layout of each file, see
+This page explains how metaTOR clusters contigs, and the words the rest of the
+documentation uses for it: hits, the network, core and overlapping clusters,
+validation and recursive clusters. For the layout of each file, see
 [File formats](formats.md).
 
 ## The signal
@@ -37,11 +37,11 @@ flowchart TD
     map[/"A .metacool contact map · the first argument"/]
     network("Build the network of contigs")
     partition("Partition the network, many times")
-    validation("Validate the bins, partition the contaminated ones again")
-    bins[/"Final bins, bin summary, contact map of the bins"/]
+    validation("Validate the clusters, partition the contaminated ones again")
+    clusters[/"Final clusters, cluster summary, contact map of the clusters"/]
     reads --> align --> bams --> pair --> pairs --> network
     map --> network
-    network --> partition --> validation --> bins
+    network --> partition --> validation --> clusters
 ```
 
 The three steps are also three commands, `metator network`,
@@ -55,8 +55,9 @@ The three steps are also three commands, `metator network`,
 metaTOR first measures every contig of the assembly: its size, its GC
 content, its number of restriction fragments (with `--enzyme`), its shotgun
 coverage (with `--depth`), and its number of **hits**, the ends of the pairs
-that lie on it (a pair within the contig counts twice). These go to the **contig data** table, which every step reads and
-extends with the bins of the contig.
+that lie on it (a pair within the contig counts twice). These go to the
+**contig data** table, which every step reads and extends with the clusters of
+the contig.
 
 ## The network
 
@@ -68,7 +69,7 @@ contig does not attract every other one. The default normalisation,
 mean of their hits. [Aligning reads and building the network](guides/network.md)
 lists the other normalisations.
 
-## Partition: core and overlapping bins
+## Partition: core and overlapping clusters
 
 The network is partitioned into communities, groups of contigs more
 connected with each other than with the rest, with the
@@ -78,35 +79,37 @@ connected with each other than with the rest, with the
 communities. metaTOR runs the algorithm many times (`--iterations`, 100 by
 default) and combines the runs:
 
-- **Core bins** are the contigs that fall in the same community at every
+- **Core clusters** are the contigs that fall in the same community at every
   iteration.
-- **Overlapping bins** merge the core bins that fall together at most
+- **Overlapping clusters** merge the core clusters that fall together at most
   iterations: in at least `--overlap` percent of them (80% by default).
 
-The overlapping bins of at least `--size` base pairs (500 kb by default) are
-written as FASTA files, in `overlapping_clusters/`: they are the bins to validate.
+The overlapping clusters of at least `--size` base pairs (500 kb by default) are
+written as FASTA files, in `overlapping_clusters/`: they are the clusters to
+validate.
 
-## Validation and recursive bins
+## Validation and recursive clusters
 
-Each bin is checked with [miComplete](https://pypi.org/project/micomplete/),
+Each cluster is checked with [miComplete](https://pypi.org/project/micomplete/),
 which counts single-copy marker genes, found by prodigal and hmmer: their
-share gives the **completeness** of the bin, and their copies its
-**redundancy**. A bin with a weighted completeness of at least 33% whose
+share gives the **completeness** of the cluster, and their copies its
+**redundancy**. A cluster with a weighted completeness of at least 33% whose
 contamination, (redundancy − 1) / completeness, reaches 5% is partitioned
 again, on the network of its own contigs, with `--rec-iter` iterations (10)
 and an overlap of `--rec-overlap` percent (90). Its parts, the **recursive
-bins**, replace it when the most complete of them keeps enough of its
-completeness; the step repeats until no bin is replaced, for 9 steps at most.
+clusters**, replace it when the most complete of them keeps enough of its
+completeness; the step repeats until no cluster is replaced, for 9 steps at
+most.
 
-The **final bins** are the bins left: the overlapping bins that were not
-split, and the recursive bins of those that were. A final bin is named after
-both: `metator_00012_00003` is recursive bin 3 of overlapping bin 12, and
-`metator_00001_00000` an overlapping bin that was not split. The contigs in no
-final bin are marked `ND`, not determined.
+The **final clusters** are the clusters left: the overlapping clusters that
+were not split, and the recursive clusters of those that were. A final cluster
+is named after both: `metator_00012_00003` is recursive cluster 3 of
+overlapping cluster 12, and `metator_00001_00000` an overlapping cluster that
+was not split. The contigs in no final cluster are marked `ND`, not determined.
 
-## Bin quality
+## Cluster quality
 
-At the end of the validation, the log counts the final bins in five classes,
+At the end of the validation, the log counts the final clusters in five classes,
 from their weighted completeness and their contamination, the weighted
 redundancy − 1, and the plot `plot/bins_size_distribution.png` shows them:
 
@@ -116,18 +119,18 @@ redundancy − 1, and the plot `plot/bins_size_distribution.png` shows them:
 | MQ (medium-quality) MAGs | ≥ 70% | ≤ 10% |
 | LQ (low-quality) MAGs | ≥ 50% | ≤ 10% |
 | Contaminated potential MAGs | ≥ 50% | > 10% |
-| Others | < 50% | |
+| Other clusters | < 50% | |
 
-The recursive partition measures the contamination of a bin otherwise,
+The recursive partition measures the contamination of a cluster otherwise,
 relative to its completeness: (weighted redundancy − 1) / weighted
 completeness.
 
-## The contact map of the bins
+## The contact map of the clusters
 
 At the end of a run, metaTOR writes the contacts of all the contigs, grouped
-by bin, as a `.metacool` file: the contact map format of
+by cluster, as a `.metacool` file: the contact map format of
 [metacooler](https://github.com/js2264/metacooler), a
 [cooler](https://github.com/open2c/cooler) whose contigs are grouped into
-genomes, one per final bin. A run can also start from such a map, made from
+genomes, one per final cluster. A run can also start from such a map, made from
 the pairs files of [hicstuff](https://koszullab.github.io/hicstuff/), for
-instance. See [The contact map of the bins](guides/metacool.md).
+instance. See [The contact map of the clusters](guides/metacool.md).

@@ -163,8 +163,8 @@ class MetatorObject:
                 self.name = str(name)
             except ValueError as object_no_exist:
                 logger.error(
-                    "With core bin object, the name should be the numeric ID of\
-                     the core bin."
+                    "With the core_bin object, the name should be the numeric ID of\
+                     the core cluster."
                 )
                 raise ValueError from object_no_exist
         elif metator_object == "overlapping_bin":
@@ -174,20 +174,22 @@ class MetatorObject:
             fields = str(name).split("_")
             self.name = fields[-2] if len(fields) >= 3 else fields[-1]
             if not self.name.isdigit():
-                logger.error("Overlapping bin name should be either numerical ID or a name like 'MetaTOR_1' or 'MetaTOR_1_0'.")
+                logger.error(
+                    "Overlapping cluster name should be either numerical ID or a name like 'MetaTOR_1' or 'MetaTOR_1_0'."
+                )
                 raise ValueError
         elif metator_object == "recursive_bin":
             self.object = "Recursive_cluster_ID"
             fields = str(name).split("_")
             if len(fields) < 3 or not (fields[-2].isdigit() and fields[-1].isdigit()):
                 logger.error(
-                    "A recursive bin is numbered within its overlapping bin: give its name, "
-                    "<prefix>_<overlapping bin ID>_<recursive bin ID>, such as 'metator_00012_00003'."
+                    "A recursive cluster is numbered within its overlapping cluster: give its name, "
+                    "<prefix>_<overlapping cluster ID>_<recursive cluster ID>, such as 'metator_00012_00003'."
                 )
                 raise ValueError
             self.overlapping, self.name = fields[-2], fields[-1]
             if int(self.name) <= 0:
-                logger.error("A recursive bin should have an id bigger than 0.")
+                logger.error("A recursive cluster should have an id bigger than 0.")
         elif metator_object == "final_bin":
             self.object = "Final_cluster"
             self.name = name

@@ -1,13 +1,13 @@
 # Checking a library
 
 `metator qc` measures the quality of a metaHiC library on the genomes that
-the binning recovered best. Within the contigs of good MAGs, each pair can be
+the clustering recovered best. Within the contigs of good MAGs, each pair can be
 told apart as a real contact or an artefact of the protocol, and a pair that
 joins two of these MAGs can only be noise.
 
 ## What it measures
 
-1. **The MAGs.** It takes the bins of `cluster_summary.txt` with a weighted
+1. **The MAGs.** It takes the clusters of `cluster_summary.txt` with a weighted
    completeness above 70% and a weighted redundancy under 1.15, and their
    contigs longer than 100 kb.
 2. **The pairs.** It reads, from the pairs files, the pairs between these

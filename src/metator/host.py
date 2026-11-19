@@ -101,7 +101,7 @@ def create_bins(contig_data: pd.DataFrame) -> tuple[dict, dict]:
     contig_data = mio.rename_1x_columns(contig_data)
     mags = {}
     mge_mags = {}
-    logger.info("Instantiating bins (MAGs and MGE-MAGs)...")
+    logger.info("Instantiating clusters (MAGs and MGE-MAGs)...")
 
     for _, row in contig_data.iterrows():
         contig_id, contig_name, bin_name = row["ID"], row["Name"], row["Final_cluster"]
@@ -402,7 +402,7 @@ def classify_mags(mags, bin_summary) -> dict:
             mag.contamination = mag_data["Redundancy"]
             mag.quality = classify_mag(mag)
         else:
-            logger.warning(f"Warning: {mag.name} not found in bin summary.")
+            logger.warning(f"Warning: {mag.name} not found in cluster summary.")
 
     quals = [x.quality for x in mags.values()]
     cnts = Counter(quals)

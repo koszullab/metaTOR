@@ -357,11 +357,11 @@ def figures_bins_size_distribution(bin_summary, total_size, threshold, out_file)
             int(mags_summary.loc[2, "bins"]),
             round(mags_summary.loc[2, "size"] / 1000000, 2),
         ),
-        "Contaminated bins: {0} - {1}Mb".format(
+        "Contaminated clusters: {0} - {1}Mb".format(
             int(mags_summary.loc[3, "bins"]),
             round(mags_summary.loc[3, "size"] / 1000000, 2),
         ),
-        "Others bins: {0} - {1}Mb".format(
+        "Other clusters: {0} - {1}Mb".format(
             int(mags_summary.loc[4, "bins"]),
             round(mags_summary.loc[4, "size"] / 1000000, 2),
         ),
@@ -396,12 +396,12 @@ def figures_bins_size_distribution(bin_summary, total_size, threshold, out_file)
     plt.text(
         -1.5,
         -1.5,
-        "Bins threshold: {0}kb".format(
+        "Clusters threshold: {0}kb".format(
             round(threshold / 1000, 2),
         ),
         fontdict=None,
     )
-    plt.title("Size proportion of bins depending on their quality")
+    plt.title("Size proportion of clusters depending on their quality")
     # Save the file
     plt.savefig(out_file, dpi=200, bbox_inches="tight")
     plt.close()

@@ -286,12 +286,12 @@ def test_missing_input_files(binning, tmp_path):
     assert not out.exists()
 
 
-@pytest.mark.parametrize("kind", ["contig", "bin"])
+@pytest.mark.parametrize("kind", ["contig", "cluster"])
 def test_non_ascii_names_are_refused(metagenome, metagenome_files, kind, tmp_path, monkeypatch):
     """Before the pairs are read."""
     final_bin = _bin_names(metagenome)
     names = list(final_bin)
-    if kind == "bin":
+    if kind == "cluster":
         final_bin[names[0]] = final_bin[names[1]] = "bin_é"
     contig_data = write_contig_data(metagenome, tmp_path / "contig_data_final.txt", final_bin)
     if kind == "contig":
@@ -328,9 +328,9 @@ def test_bin_names_read_as_no_bin_are_refused(metagenome, metagenome_files, tmp_
     monkeypatch.setattr(metacooler, "from_pairs", lambda *args, **kwargs: pytest.fail("pairs read"))
     shown = r"'NA', 'nan', 'N/A', 'nd', 'N/d', \.\.\. \(\+3 more\)"
     message = (
-        "A .metacool file cannot have bins named as metacooler marks a contig in no bin (NA, NaN, N/A, N/D, -1 or "
-        "__unbinned__ in any case, and nd in any case other than ND, which marks a contig in no bin): it would put "
-        "their contigs in __unbinned__. Rename the 8 bin(s): "
+        "A .metacool file cannot have clusters named as metacooler marks a contig in no cluster (NA, NaN, N/A, N/D, "
+        "-1 or __unbinned__ in any case, and nd in any case other than ND, which marks a contig in no cluster): it "
+        "would put their contigs in __unbinned__. Rename the 8 cluster(s): "
     )
     with pytest.raises(mtmc.MetacoolError, match=rf"^{re.escape(message)}{shown}\.$"):
         mtmc.write_metacool(str(metagenome_files["pairs"]), str(contig_data), str(tmp_path / "map.metacool"))
@@ -344,7 +344,7 @@ def test_no_bin_names_are_those_of_metacooler():
     assert set(_UNBINNED_SENTINELS) == mtmc.METACOOLER_UNBINNED
     mtmc.check_bin_names(["metator_00001_00000", "MetaTOR_MGE_00001", "ND_1", "na1"])
     for name in mtmc.METACOOLER_UNBINNED:
-        with pytest.raises(mtmc.MetacoolError, match="Rename the 2 bin"):
+        with pytest.raises(mtmc.MetacoolError, match="Rename the 2 cluster"):
             mtmc.check_bin_names(["metator_00001_00000", name.upper(), f" {name} "])
 
 
@@ -571,7 +571,7 @@ def test_metacooler_messages_go_to_the_log_file(metagenome, binning, tmp_path):
     logged = log.read_text()
     n_binned = sum(len(genome.contigs) for genome in metagenome.genomes)
     n_bins = len(metagenome.genomes)
-    assert f"contact map of {len(metagenome.contigs)} contigs, {n_binned} of them in {n_bins} bins." in logged
+    assert f"contact map of {len(metagenome.contigs)} contigs, {n_binned} of them in {n_bins} clusters." in logged
     assert "INFO :: Created metacool file" in logged
     assert (mc_logger.level, mc_logger.propagate, list(mc_logger.handlers)) == before
 
@@ -725,7 +725,7 @@ def test_metacool_command_without_final_bin(metagenome, binning, tmp_path, run_c
     assert map_pixels(out).to_dict() == expected_pixels(metagenome.pairs, list(mc.contigs.name)).to_dict()
     assert map_pixels(out).sum() == len(metagenome.pairs)
     assert_contig_columns(out, contig_data)
-    assert f"contact map of {len(metagenome.contigs)} contigs, 0 of them in 0 bins." in _logged(tmp_path)
+    assert f"contact map of {len(metagenome.contigs)} contigs, 0 of them in 0 clusters." in _logged(tmp_path)
 
 
 def _logged(directory):
@@ -782,7 +782,7 @@ ERRORS = {
     "missing pairs file": (["missing.pairs"], "Input file(s) not found: missing.pairs."),
     "contig data without Final_cluster": ([], "has no Final_cluster column"),
     "non-ASCII contig names": ([], "A .metacool file needs ASCII contig names"),
-    "bin named NA": ([], "Rename the 1 bin(s): 'NA'."),
+    "bin named NA": ([], "Rename the 1 cluster(s): 'NA'."),
     "Size not a whole number": ([], "must give the length of each contig in bp, as a whole number: "),
 }
 
@@ -1015,11 +1015,12 @@ def test_map_of_the_bins_from_a_cut_map(binned, metagenome, binning, tmp_path, l
     assert not [path.name for path in tmp_path.iterdir() if path.name.startswith(".")]
     lacking = sorted(name for name, bin_name in final_bin.items() if bin_name != "ND" and name not in kept)
     if binned == "map":
-        assert not lacking and not [message for message in warnings if "binned contig(s)" in message]
+        assert not lacking and not [message for message in warnings if "clustered contig(s)" in message]
     else:
         assert lacking
         assert (
-            f"{len(lacking)} binned contig(s) of {contig_data} are not in {metacool}, and not in the map of the bins either: "
+            f"{len(lacking)} clustered contig(s) of {contig_data} are not in {metacool}, and not in the map of the "
+            "clusters either: "
         ) in "\n".join(warnings)
 
 
@@ -1494,10 +1495,10 @@ REASSIGN_ERRORS = {
     "missing entry": "Cannot read the contact map maps.mmetacool::entries/lib2: ",
     "collection as outfile": (
         "maps.mmetacool is the .mmetacool collection of the input map maps.mmetacool::entries/lib1: the map of the "
-        "bins would replace the whole collection. Write it to another file."
+        "clusters would replace the whole collection. Write it to another file."
     ),
     "contig data without Final_cluster": "has no Final_cluster column",
-    "bin named NA": "Rename the 1 bin(s): 'NA'.",
+    "bin named NA": "Rename the 1 cluster(s): 'NA'.",
     "Size not a whole number": "must give the length of each contig in bp, as a whole number: ",
 }
 
