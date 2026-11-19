@@ -23,6 +23,7 @@ from functools import partial
 from os.path import dirname, exists, join
 
 import rich_click as click
+from click.core import ParameterSource
 from scipy.sparse import load_npz, save_npz
 
 import metator.align as mta
@@ -44,7 +45,7 @@ ALIGNERS = ["bowtie2", "bwa"]
 ALIGNER_MODES = ["normal", "iterative", "cutsite"]
 ALGORITHMS = ["louvain", "leiden"]
 NORMALIZATIONS = ["None", "abundance", "length", "RS", "empirical_hit", "theoritical_hit"]
-STARTS = ["fastq", "bam", "pair", "metacool"]
+STARTS = ["fastq", "bam", "pair"]
 MATRIX_FORMATS = ["graal", "bg2", "cool"]
 
 # Panel holding the options common to most commands (output, temporary
@@ -196,44 +197,74 @@ def check_reverse_reads(start, aligner, reverse):
         raise ValueError
 
 
-def check_metacool_start(start, forward, edge, scaffold=False):
-    """A .metacool start: one contact map, without the edge region of the
-    contigs, nor the scaffolding (pipeline), which read the pairs files."""
-    if start != "metacool":
-        return
-    if "," in forward:
+def run_input(input_map, forward, reverse, start):
+    """What a network or pipeline run starts from, as (start, forward): the
+    .metacool map given as the first argument (input_map), as the metacool
+    start with the map for forward, or the reads, alignments or pairs of
+    -1/--forward, as --start says. A run takes one or the other; the
+    command line refuses a first argument that is no map given with
+    -1/--forward, as one argument too many (see Command).
+
+    Refused before any work, the reason logged as an error: no input; a
+    first argument that is not there or is no map (reads given without -1,
+    for example); a map with -1/--forward, -2/--reverse or --start, even at
+    its default; and a map that metacooler cannot open, with its reason (a
+    .mmetacool collection rather than one of its entries, for example), as
+    MetacoolError. A pipeline run checks its input before it replaces the
+    clusters of an earlier run (-F)."""
+    if input_map is None:
+        if not forward:
+            logger.error(
+                "Give the run a .metacool contact map, as the first argument, or its reads, alignments or pairs, "
+                "with -1/--forward (and --start)."
+            )
+            raise ValueError
+        return start, forward
+    # A file whose name holds :: is that file, not the URI of a map inside
+    # one (see metator.metacool.is_map).
+    path = input_map if os.path.isfile(input_map) else mtmc.map_file(input_map)
+    if not os.path.isfile(path):
+        reason = "no such file" if not os.path.exists(path) else f"{path} is not a file"
+        message = f"Cannot read the contact map {input_map}: {reason}."
+        logger.error(message)
+        raise mtmc.MetacoolError(message)
+    if not mtmc.is_map(input_map):
         logger.error(
-            "--start metacool takes one .metacool file (its libraries are already summed), given with "
-            "-1/--forward: got %d files.",
-            len(forward.split(",")),
+            f"{input_map} is not a .metacool contact map: give reads, alignments or pairs with -1/--forward (and --start)."
         )
         raise ValueError
-    if edge > 0:
+    if path == input_map and "::" in input_map:
+        message = (
+            f"Cannot read the contact map {input_map}: metacooler reads a path that holds :: as file::group. "
+            "Rename the map without ::."
+        )
+        logger.error(message)
+        raise mtmc.MetacoolError(message)
+    ctx = click.get_current_context(silent=True)
+    source = ctx.get_parameter_source("start") if ctx is not None else None
+    explicit_start = source not in (None, ParameterSource.DEFAULT)
+    given = [
+        option for option, value in [("-1/--forward", forward), ("-2/--reverse", reverse), ("--start", explicit_start)] if value
+    ]
+    if given:
         logger.error(
-            "--edge %d cannot be applied with --start metacool: a contact map holds the contacts of bins, not the "
-            "positions of the reads. Leave --edge at 0, or start from the pairs files.",
-            edge,
+            f"A run from the contact map {input_map} takes no {' or '.join(given)}: these give the reads, alignments "
+            "or pairs of a run that does not start from a map."
         )
         raise ValueError
-    if scaffold:
-        logger.error("--scaffold reads the pairs files: it cannot run with --start metacool.")
-        raise ValueError
+    try:
+        mtmc.open_map(input_map)
+    except mtmc.MetacoolError as error:
+        logger.error(str(error))
+        raise
+    return "metacool", input_map
 
 
-def check_pipeline_edge(edge):
-    """No edge region in pipeline, whatever the start: --edge is 0, or the
-    run is refused, a negative --edge too (it counted every pair, as 0
-    does). pipeline counts every pair, as its contact map does, which
-    holds the contacts of bins, not the positions of the reads, so that it
-    can read its network from a map. metator network still applies --edge
-    to pairs files."""
-    if edge != 0:
-        logger.error(
-            "--edge %d cannot be applied by pipeline, which counts every pair, as its contact map does: a map holds "
-            "the contacts of bins, not the positions of the reads. Leave --edge at 0, or build the network with "
-            "metator network, then run metator partition and metator validation.",
-            edge,
-        )
+def check_metacool_start(start, scaffold=False):
+    """A run from a map cannot scaffold: the scaffolding reads the pairs
+    files."""
+    if start == "metacool" and scaffold:
+        logger.error("--scaffold reads the pairs files: it cannot run from a contact map.")
         raise ValueError
 
 
@@ -288,15 +319,15 @@ def check_inputs_not_the_map(start, forward, reverse, metacool):
     (-1, -2): none may be its contact map (metacool: the same path, or a
     symbolic link to it or from it), which the run removes before it builds
     the map of its contigs there. And a pairs file may not be a contact
-    map, which --start metacool reads."""
+    map, which a run takes as its first argument."""
     if start == "metacool":
         return
     for path in [path for paths in (forward, reverse) if paths for path in paths.split(",")]:
         if mtmc.is_input_map(path, metacool):
             logger.error(
                 "%s is the contact map of this run (%s), which the run removes before it builds the map of its "
-                "contigs there: start from it with --start metacool, or write the run to another output directory "
-                "or under another --prefix.",
+                "contigs there: give it as the first argument to start from it, or write the run to another output "
+                "directory or under another --prefix.",
                 path,
                 metacool,
             )
@@ -304,7 +335,7 @@ def check_inputs_not_the_map(start, forward, reverse, metacool):
     if start == "pair" and forward:
         for path in forward.split(","):
             if mtmc.is_map(path):
-                logger.error("%s is a contact map, not a pairs file: start from it with --start metacool.", path)
+                logger.error("%s is a contact map, not a pairs file: give it as the first argument to start from it.", path)
                 raise ValueError
 
 
@@ -313,12 +344,12 @@ def contig_network(metacool, contig_data, outdir, tmp_dir, threads, *args, libra
     and self contacts), from the .metacool map metacool (see
     metator.network.metacool_to_contacts), and, from the maps of its
     libraries (libraries), the network of each library (network_{i}.txt)
-    and its hits (hit_data_alignment.txt). The map is the one given to
-    --forward with --start metacool, or the map of its contigs that a
-    pipeline run built from its pairs files (see network_map). A map that
-    cannot give them stops the run, as metaTOR stops on an input it cannot
-    use: the reason is logged as an error, in the log file of the run, and
-    its MetacoolError is raised, as `metator metacool` does."""
+    and its hits (hit_data_alignment.txt). The map is the one a run starts
+    from (its first argument), or the map of its contigs that a pipeline
+    run built from its pairs files (see network_map). A map that cannot
+    give them stops the run, as metaTOR stops on an input it cannot use:
+    the reason is logged as an error, in the log file of the run, and its
+    MetacoolError is raised, as `metator metacool` does."""
     files = ("network.txt", "contig_data_network.txt")
     try:
         return mtn.metacool_to_contacts(metacool, contig_data, outdir, *files, tmp_dir, threads, *args, libraries=libraries)
@@ -329,15 +360,16 @@ def contig_network(metacool, contig_data, outdir, tmp_dir, threads, *args, libra
 
 def network_map(start, forward, alignment_files, metacool):
     """The .metacool map that a pipeline run reads its network from, and the
-    maps of its libraries: the map given to --forward with --start metacool
-    (its libraries summed: none), or metacool, the map of its contigs that a
-    run from reads, alignments or pairs built from its pairs files (see
-    pipeline_contig_map): the network of those pairs, byte for byte, as
-    --edge is 0. With several libraries, the network of each library
-    (network_{i}.txt) and its hits (hit_data_alignment.txt) come from the
-    map of that library, an entry of the collection next to metacool (see
-    library_maps_path); with one, the run writes network_0.txt as a copy of
-    network.txt, whose bytes the pairs path writes there too."""
+    maps of its libraries: the map that the run starts from (its first
+    argument; its libraries summed: none), or metacool, the map of its
+    contigs that a run from reads, alignments or pairs built from its pairs
+    files (see pipeline_contig_map): the network of those pairs, byte for
+    byte, as both count every pair. With several libraries, the network of
+    each library (network_{i}.txt) and its hits (hit_data_alignment.txt)
+    come from the map of that library, an entry of the collection next to
+    metacool (see library_maps_path); with one, the run writes
+    network_0.txt as a copy of network.txt, whose bytes the pairs path
+    writes there too."""
     if start == "metacool":
         return forward, None
     if len(alignment_files) == 1:
@@ -444,8 +476,12 @@ def run_metadata(columns_from_map=()):
     in a .metacool file, and the columns that a run from a map read from it
     (columns_from_map, see metator.network.contig_data_from_map): where the
     restriction sites and the coverage that the map then stores came from,
-    which --enzyme and --depth do not say."""
-    params = click.get_current_context().params
+    which --enzyme and --depth do not say. A run from a map (its first
+    argument, map) took no --start: its start is none, not the default of
+    the option."""
+    params = dict(click.get_current_context().params)
+    if params.get("map") is not None:
+        params["start"] = None
     metadata = {
         "command": shlex.join(["metator", *sys.argv[1:]]),
         "parameters": {name: list(value) if isinstance(value, tuple) else value for name, value in params.items()},
@@ -833,18 +869,81 @@ def assembly_option(help):
     return _option("-a", "--assembly", required=True, metavar="FILE", panel="Input", help=help)
 
 
+class StartChoice(click.Choice):
+    """The values of --start: what -1/--forward holds. A run from a map takes
+    the map as its first argument instead: --start metacool, which named it
+    before metaTOR 2.0, is refused with what replaced it."""
+
+    def convert(self, value, param, ctx):
+        if value == "metacool":
+            command = ctx.info_name if ctx is not None else "pipeline"
+            self.fail(
+                f"--start metacool is gone in metaTOR 2.0: give the map as the first argument, metator {command} "
+                "MAP -a ASSEMBLY ...",
+                param,
+                ctx,
+            )
+        return super().convert(value, param, ctx)
+
+
+# Options of metaTOR 1 that 2.0 removed, by name, with what replaced them: a
+# command line that still gives one is refused with it (see Command).
+REMOVED_OPTIONS = dict.fromkeys(
+    ["-E", "--edge"],
+    "--edge is gone in metaTOR 2.0: the network counts every pair, as its contact map does, which holds no read positions.",
+)
+
+
+class Command(click.RichCommand):
+    """A command that refuses an option that metaTOR 2.0 removed with what
+    replaced it (REMOVED_OPTIONS), rather than as an option it never had.
+    In a command that takes a map as its first argument (network,
+    pipeline), a first argument that is no map, given with -1/--forward,
+    is one argument too many (the reverse reads given without -2, for
+    example): refused as click refused it before the map was an argument.
+    """
+
+    def parse_args(self, ctx, args):
+        try:
+            rest = super().parse_args(ctx, args)
+        except click.NoSuchOption as error:
+            if error.option_name in REMOVED_OPTIONS:
+                raise click.UsageError(REMOVED_OPTIONS[error.option_name], ctx) from error
+            raise
+        extra = ctx.params.get("map")
+        if extra is not None and ctx.params.get("forward") and not mtmc.is_map(extra):
+            raise click.UsageError(f"Got unexpected extra argument ({extra})", ctx)
+        return rest
+
+
+def map_argument():
+    """The .metacool map of the contigs that a network or pipeline run starts
+    from: the first argument, instead of the reads, alignments or pairs of
+    -1/--forward."""
+    return click.argument(
+        # Shown as MAP: the parameter of network and pipeline is named so.
+        "map",
+        required=False,
+        # Shown as FILE; a directory is refused as a usage error. An entry of a
+        # collection (file::group) is no path: run_input checks it.
+        type=click.Path(dir_okay=False),
+        panel="Input",
+        help="A .metacool contact map of the contigs of the assembly, or an entry of a .mmetacool collection "
+        "(file.mmetacool::entries/NAME): the run starts from it, instead of -1/--forward.",
+    )
+
+
 def reads_options():
     """Inputs of the network step: reads, alignments or pairs."""
     return _options(
         _option(
             "-1",
             "--forward",
-            required=True,
             metavar="STR",
             panel="Input",
             help="Fastq file or list of Fastq separated by a comma containing the forward reads to be aligned or their "
-            "corresponding bam or pairs files. With --start metacool, one .metacool contact map (or an entry of a "
-            ".mmetacool collection: file.mmetacool::entries/NAME) of the contigs of the assembly.",
+            "corresponding bam or pairs files (see --start). A run from a map takes the map as its first argument "
+            "instead.",
         ),
         _option(
             "-2",
@@ -853,18 +952,18 @@ def reads_options():
             panel="Input",
             help="Fastq file or list of Fastq separated by a comma containing the reverse reads to be aligned or their "
             "corresponding bam files. Forward and reverse reads need to have the same identifier (read names). Not "
-            "needed from pairs files, a .metacool map, or the bam files of bwa, which hold both mates.",
+            "needed from pairs files, or the bam files of bwa, which hold both mates.",
         ),
         assembly_option(ASSEMBLY_INDEX_HELP),
         _option(
             "-S",
             "--start",
-            type=click.Choice(STARTS),
+            type=StartChoice(STARTS),
             default="fastq",
             show_default=True,
             panel="Input",
-            help="Start stage of the pipeline. [cyan]metacool[/] builds the network from a .metacool contact map "
-            "(see --forward) instead of reads, alignments or pairs.",
+            help="What -1/--forward holds: the reads ([cyan]fastq[/]), their alignments ([cyan]bam[/]) or their "
+            "[cyan]pair[/]s. Not with a map.",
         ),
         _option(
             "-d",
@@ -921,12 +1020,9 @@ def alignment_options():
     )
 
 
-EDGE_HELP = "Distance of the edge region in base pair on the contigs where the mapping reads are not considered as inter contigs."
-
-
-def network_options(normalization_short, edge_help):
+def network_options(normalization_short):
     """Options of the network step; the short alias of --normalization is -n
-    in network, -m in pipeline, and --edge says what each accepts."""
+    in network, -m in pipeline."""
     return _options(
         _option(
             normalization_short,
@@ -942,16 +1038,6 @@ def network_options(normalization_short, edge_help):
             "counts; [cyan]RS[/] and [cyan]theoritical_hit[/] need --enzyme, [cyan]abundance[/] and "
             "[cyan]theoritical_hit[/] need --depth. With --start metacool, the Restriction_site and "
             "Shotgun_coverage columns of the map stand for them (see --enzyme and --depth).",
-        ),
-        _option(
-            "-E",
-            "--edge",
-            type=click.INT,
-            default=0,
-            show_default=True,
-            metavar="INT",
-            panel="Network",
-            help=edge_help,
         ),
     )
 
@@ -1072,10 +1158,13 @@ def cli():
 # ---------------------------------------------------------------------------
 
 
-@cli.command(short_help="Generate the metaHiC contig network from fastq, bam, pairs or .metacool files and normalize it.")
+@cli.command(
+    cls=Command, short_help="Generate the metaHiC contig network from fastq, bam, pairs or a .metacool map and normalize it."
+)
+@map_argument()
 @reads_options()
 @alignment_options()
-@network_options("-n", edge_help=f"{EDGE_HELP} Not available with --start metacool.")
+@network_options("-n")
 @_option(
     "-s",
     "--self-contacts",
@@ -1088,6 +1177,7 @@ def cli():
 @threads_option(help="Number of parallel threads allocated for the alignment.")
 @no_clean_up_option()
 def network(
+    map,  # the argument MAP
     forward,
     reverse,
     assembly,
@@ -1098,7 +1188,6 @@ def network(
     enzyme,
     min_quality,
     normalization,
-    edge,
     self_contacts,
     outdir,
     tmpdir,
@@ -1107,22 +1196,24 @@ def network(
 ):
     """Generate the metaHiC contig network.
 
-    Generates a network file (in edgelist form) from either fastq, bam or
-    pairs files. For both starting inputs, forward and reverse reads or
-    alignments need to be in separated files with the same read names. In
-    the output network, contigs are the network nodes and the edges are the
-    contact counts.
+    [cyan]metator network MAP -a ASSEMBLY[/] builds the network from a
+    .metacool contact map of the contigs, whose libraries are summed (see
+    the README): that of the pairs it was made of.
 
-    If multiple fastq are given, they are aligned separately and the hit
-    file has a number of hits for each sample.
+    [cyan]metator network -1 FORWARD -2 REVERSE -a ASSEMBLY[/] builds it
+    from fastq, bam ([cyan]-S bam[/]) or pairs ([cyan]-S pair[/], -1 only)
+    files. Forward and reverse reads or alignments need to be in separated
+    files with the same read names. If multiple fastq are given, they are
+    aligned separately and the hit file has a number of hits for each
+    sample.
 
-    With [cyan]--start metacool[/], the network is built from a .metacool
-    contact map of the contigs, whose libraries are summed (see the
-    README): that of the pairs it was made of. --edge must then be 0. The
-    Restriction_site and Shotgun_coverage columns of the map, when they
-    give every contig a value, give the restriction sites and the coverage
-    of the contigs that --enzyme and --depth would measure; given, these
-    options replace them.
+    From a map, its Restriction_site and Shotgun_coverage columns, when
+    they give every contig a value, give the restriction sites and the
+    coverage of the contigs that --enzyme and --depth would measure; given,
+    these options replace them.
+
+    In the output network, contigs are the network nodes and the edges are
+    the contact counts: every pair counts, as in a contact map.
 
     Note: the network is in a strict barebone form so that it can be reused
     and imported quickly into other applications etc. Verbose information
@@ -1139,9 +1230,10 @@ def network(
         log_file = log_file_name(outdir, "network")
         generate_log_header(log_file)
 
-        # Check if forward and reverse arguments are given:
+        # The input: a map, or reads, alignments or pairs, with the reverse
+        # reads or alignments that they need.
+        start, forward = run_input(map, forward, reverse, start)
         check_reverse_reads(start, aligner, reverse)
-        check_metacool_start(start, forward, edge)
         aligner_mode = aligner_mode_for(aligner_mode, enzyme)
         check_normalization(normalization, enzyme, depth, forward if start == "metacool" else None)
 
@@ -1184,8 +1276,9 @@ def network(
         if start == "metacool":
             contig_network(forward, contig_data, outdir, tmp_dir, threads, normalization, self_contacts)
         else:
+            # Every pair counts, as in a contact map: --edge is gone.
             mtn.alignment_to_contacts(
-                alignment_files, contig_data, edge, hit_data, outdir, "network.txt", "contig_data_network.txt",
+                alignment_files, contig_data, 0, hit_data, outdir, "network.txt", "contig_data_network.txt",
                 tmp_dir, threads, normalization, self_contacts,
             )  # fmt: skip
 
@@ -1425,14 +1518,11 @@ def validation(
 # ---------------------------------------------------------------------------
 
 
-@cli.command(short_help="Run network, partition and validation (and scaffold the bins) in one command line.")
+@cli.command(cls=Command, short_help="Run network, partition and validation (and scaffold the clusters) in one command line.")
+@map_argument()
 @reads_options()
 @alignment_options()
-@network_options(
-    "-m",
-    edge_help=f"{EDGE_HELP} Only 0 in pipeline, whatever the start: it counts every pair, as its contact map does. "
-    "metator network applies it to pairs files.",
-)
+@network_options("-m")
 @partition_options(
     iterations=100,
     overlap=80,
@@ -1497,6 +1587,7 @@ def validation(
     "--prefix).",
 )
 def pipeline(
+    map,  # the argument MAP
     forward,
     reverse,
     assembly,
@@ -1507,7 +1598,6 @@ def pipeline(
     enzyme,
     min_quality,
     normalization,
-    edge,
     algorithm,
     iterations,
     overlap,
@@ -1529,28 +1619,29 @@ def pipeline(
 ):
     """Launch the full metaTOR pipeline.
 
-    Partition the contigs from the assembly in bins from the metaHiC reads.
+    Cluster the contigs of the assembly from their metaHiC contacts.
 
-    It's possible to start from the fastq, the bam or the pairs files, or
-    from a .metacool contact map of the contigs ([cyan]--start metacool[/],
-    see [cyan]metator network[/]). A validation step decontaminates the bins
-    when it's necessary; it is the critical step for memory usage (~40G).
-    Whatever the start, the network counts every pair, as a contact map
-    does: --edge must be 0 ([cyan]metator network[/] applies it to pairs
-    files).
+    [cyan]metator pipeline MAP -a ASSEMBLY[/] starts from a .metacool contact
+    map of the contigs: the run reads its network from that map, and the
+    restriction sites and the coverage of the contigs from its
+    Restriction_site and Shotgun_coverage columns, unless --enzyme and
+    --depth are given; it updates the map in place with the map of its
+    clusters (or writes --output-map), and cannot scaffold.
 
-    As soon as it has the pairs files, the run builds the contact map of
-    the contigs, in no bin yet, as a .metacool file (see
+    [cyan]metator pipeline -1 FORWARD -2 REVERSE -a ASSEMBLY[/] starts from
+    the fastq, bam ([cyan]-S bam[/]) or pairs ([cyan]-S pair[/], -1 only)
+    files. As soon as it has the pairs files, the run builds the contact map
+    of the contigs, in no cluster yet, as a .metacool file (see
     [cyan]metator metacool[/] and the README): a map that cannot be built
     stops the run. The run reads its network from it; with several
     libraries, the map of each library (<prefix>.mmetacool) gives the
-    network of each. At the end, the map of the bins (the contigs
-    grouped by bin) is written over it or, with --no-metacool, it is
-    removed. A run from a .metacool file reads its network from that map,
-    and the restriction sites and the coverage of the contigs from its
-    Restriction_site and Shotgun_coverage columns, unless --enzyme and
-    --depth are given; it updates that map in place with the map of its
-    clusters (or writes --output-map), and cannot scaffold.
+    network of each. At the end, the map of the clusters (the contigs
+    grouped by cluster) is written over it or, with --no-metacool, it is
+    removed.
+
+    Whatever the input, the network counts every pair, as a contact map
+    does. A validation step decontaminates the clusters when it's
+    necessary; it is the critical step for memory usage (~40G).
     """
     # Private temporary directory inside --tmpdir, and the lock of the map
     # the run writes, held until its end.
@@ -1570,13 +1661,13 @@ def pipeline(
         # Check the arguments, and the assembly below, before replacing the
         # bins of an earlier run (--force): a refused run leaves them as they
         # were.
+        start, forward = run_input(map, forward, reverse, start)
         aligner_mode = aligner_mode_for(aligner_mode, enzyme)
         # The normalization of a run from a map is checked against its map,
-        # once the run is known to have one map (check_metacool_start).
+        # once its path is resolved (run_map_path, below).
         if start != "metacool":
             check_normalization(normalization, enzyme, depth)
-        check_pipeline_edge(edge)
-        check_metacool_start(start, forward, edge, scaffold)
+        check_metacool_start(start, scaffold)
         metacool_file = run_map_path(start, forward, outdir, prefix, output_map, force, no_metacool)
         if start == "metacool":
             check_normalization(normalization, enzyme, depth, forward)
@@ -2075,7 +2166,7 @@ def contactmap(
     nargs=-1,
     required=True,
     help="Pairs file(s) of the run, or one .metacool map of its contigs (or an entry of a .mmetacool collection: "
-    "file.mmetacool::entries/NAME), the map that a run with --start metacool started from.",
+    "file.mmetacool::entries/NAME), the map that a run from a map started from.",
     panel="Input",
 )
 @_option(
@@ -2113,9 +2204,9 @@ def metacool(pairsfile, contig_data, bin_summary, outfile, assembly_name, thread
     else it holds. The pairs files of several libraries are summed.
 
     It is written from the pairs files of the run or, for a run that
-    started from a .metacool map of the contigs ([cyan]--start metacool[/],
-    run step by step: network, partition, validation), from that map: the
-    map that [cyan]pipeline[/] writes at the end of such a run.
+    started from a .metacool map of the contigs (run step by step:
+    [cyan]metator network MAP[/], partition, validation), from that map:
+    the map that [cyan]pipeline MAP[/] writes at the end of such a run.
 
     The contig and bin names must be ASCII, and no bin may be named as
     metacooler marks a contig in no bin (NA, NaN, N/A, N/D, -1 or
@@ -2144,7 +2235,7 @@ def _write_metacool_command(pairsfile, contig_data, bin_summary, outfile, assemb
         maps = [path for path in pairsfile if mtmc.is_map(path)]
         if maps:
             # The map of the bins written from the map of the contigs, as
-            # pipeline --start metacool writes it.
+            # a pipeline run from a map writes it.
             if len(pairsfile) > 1:
                 raise mtmc.MetacoolError(
                     f"metator metacool writes the map from pairs files, or from one .metacool map: got "

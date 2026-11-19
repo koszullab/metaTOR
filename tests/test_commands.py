@@ -73,7 +73,7 @@ def test_network1(aligner, tmp_path, run_cli):
 
 
 def test_network2(tmp_path, run_cli):
-    args = "-1 {BAM_FOR} -2 {BAM_REV} -a {FASTA_INDEX} -d {DEPTH} -E 500 -o {OUT_TEST} -T {TMP} -S bam -N".format(
+    args = "-1 {BAM_FOR} -2 {BAM_REV} -a {FASTA_INDEX} -d {DEPTH} -o {OUT_TEST} -T {TMP} -S bam -N".format(
         TMP=Path(tmp_path, "tmp"),
         OUT_TEST=Path(tmp_path, "out_test"),
         **global_args,
@@ -185,18 +185,18 @@ def test_pipeline(tmp_path, run_cli):
 
 
 def test_network_from_a_metacool(tmp_path, run_cli):
-    """metator network --start metacool, on a map of the pairs of
-    tests_data at 1 kb: the network and contig data of --start pair, without
-    the network per library."""
+    """metator network MAP, on a map of the pairs of tests_data at 1 kb: the
+    network and contig data of --start pair, without the network per
+    library."""
     # metacooler indexes the assembly (.fai): a private copy.
     assembly = shutil.copyfile(global_args["SUBSET_FASTA"], tmp_path / "assembly.fa")
     metacool = tmp_path / "subset.metacool"
     metacooler.from_pairs(str(metacool), pairs=global_args["SUBSET_PAIRS"], fasta=str(assembly), binsize=1000,
                           contig_genome_map=None, contig_ordering="fasta", ps=False)  # fmt: skip
     outputs = {}
-    for start, forward in [("pair", global_args["SUBSET_PAIRS"]), ("metacool", metacool)]:
+    for start, given in [("pair", ["-1", global_args["SUBSET_PAIRS"], "-S", "pair"]), ("metacool", [metacool])]:
         out = tmp_path / start
-        run_cli("network", "-1", forward, "-a", assembly, "-S", start, "-e", "HindIII,DpnII", "-o", out, "-T", tmp_path / "tmp")
+        run_cli("network", *given, "-a", assembly, "-e", "HindIII,DpnII", "-o", out, "-T", tmp_path / "tmp")
         outputs[start] = out
     for name in ["network.txt", "contig_data_network.txt"]:
         assert (outputs["metacool"] / name).read_text() == (outputs["pair"] / name).read_text()
@@ -207,15 +207,15 @@ def test_network_from_a_metacool(tmp_path, run_cli):
 
 
 def test_network_from_the_columns_of_a_metacool(tmp_path, run_cli):
-    """metator network --start metacool from the map of the contigs that a
-    pipeline run builds with a depth file and an enzyme: without --depth
-    and --enzyme, its Restriction_site and Shotgun_coverage columns give the
-    network and the contig data that they give (theoritical_hit needs
-    both), byte for byte."""
+    """metator network MAP, from the map of the contigs that a pipeline run
+    builds with a depth file and an enzyme: without --depth and --enzyme,
+    its Restriction_site and Shotgun_coverage columns give the network and
+    the contig data that they give (theoritical_hit needs both), byte for
+    byte."""
     contig_data, _ = mtn.create_contig_data(global_args["FASTA"], 1, global_args["DEPTH"], "HindIII,DpnII")
     metacool = tmp_path / "contigs.metacool"
     mtmc.write_contig_map([global_args["PAIRS"]], contig_data, str(metacool))
-    common = ["-1", metacool, "-a", global_args["FASTA"], "-S", "metacool", "-n", "theoritical_hit", "-T", tmp_path / "tmp"]
+    common = [metacool, "-a", global_args["FASTA"], "-n", "theoritical_hit", "-T", tmp_path / "tmp"]
     run_cli("network", *common, "-d", global_args["DEPTH"], "-e", "HindIII,DpnII", "-o", tmp_path / "options")
     run_cli("network", *common, "-o", tmp_path / "map")
     for name in ["network.txt", "contig_data_network.txt"]:
@@ -254,7 +254,7 @@ def test_pipeline_network_is_that_of_its_pairs(case, network_from_a_map, tmp_pat
     network_0.txt (the network of its library, a copy of network.txt) and
     contig_data_network.txt, are, byte for byte, those that the pairs path
     (alignment_to_contacts, which metator network runs) writes from that
-    pairs file at --edge 0. The run stops at the partition, after which a
+    pairs file at edge 0. The run stops at the partition, after which a
     run from alignments or reads removes contig_data_network.txt."""
     out = tmp_path / "out"
     fields = {**global_args, "OUT": out}
@@ -388,7 +388,7 @@ def test_metacool_of_other_contigs(command, tmp_path, run_cli):
     out = tmp_path / "out"
     message = f"{metacool} is not a contact map of the contigs of the assembly: "
     with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}") as error:
-        run_cli(command, "-1", metacool, "-a", assembly, "-S", "metacool", "-o", out, "-T", tmp_path / "tmp")
+        run_cli(command, metacool, "-a", assembly, "-o", out, "-T", tmp_path / "tmp")
     (log,) = out.glob(f"metator_{command}_*.log")
     assert f"ERROR :: {error.value}\n" in log.read_text()
     assert not (out / "network.txt").exists()

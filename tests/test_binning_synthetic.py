@@ -265,7 +265,7 @@ def test_pipeline_network_is_that_of_its_pairs(
     """A run from the pairs of one library reads its network from the map
     of its contigs, not from its pairs files: network.txt and
     contig_data_network.txt are, byte for byte, those of its pairs at
-    --edge 0 (metagenome_network, from alignment_to_contacts), the pairs
+    edge 0 (metagenome_network, from alignment_to_contacts), the pairs
     with a read on the last base of a contig included. network_0.txt, the
     network of its library, is still written, with the bytes of the pairs
     path's."""
@@ -419,8 +419,9 @@ def test_pipeline_restarts_from_the_map_of_a_stopped_run(
 ):
     """A run from pairs that stops with an error once it has built the map of
     its contigs (miComplete fails in the validation, here) leaves that map,
-    in no bin. A new run from it (--start metacool, with -F in the same
-    output directory, whose bin directories the stopped run left) gives the
+    in no bin. A new run from it (the map as its first argument, with -F in
+    the same output directory, whose bin directories the stopped run left)
+    gives the
     outputs of a run from the pairs that does not stop, and its map, but
     for the provenance of the map."""
     common = ["-a", str(metagenome_inputs["assembly"]), "-d", str(metagenome_inputs["depth"]), "-e", "DpnII", "-s", "50000",
@@ -443,7 +444,7 @@ def test_pipeline_restarts_from_the_map_of_a_stopped_run(
     assert list(metacooler.MetaCooler(str(metacool)).genomes.name) == ["__unbinned__"]
     monkeypatch.setattr("metator.validation.micomplete_quality", micomplete)
     random.seed(0)
-    run_cli("pipeline", "-1", str(metacool), "-S", "metacool", "-o", str(out), "-F", *common)
+    run_cli("pipeline", str(metacool), "-o", str(out), "-F", *common)
 
     for name in ["network.txt", "contig_data_network.txt", "contig_data_final.txt", "bin_summary.txt", "binning.txt"]:
         assert (out / name).read_text() == (clean / name).read_text(), name
@@ -482,7 +483,7 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, metagenome_inde
     expected = tmp_path / "pair" / "metator.metacool"
     metacool = Path(shutil.copyfile(expected, tmp_path / "input.metacool"))
     random.seed(0)
-    run_cli("pipeline", "-1", str(metacool), "-S", "metacool", "-o", str(tmp_path / "metacool"), *common)
+    run_cli("pipeline", str(metacool), "-o", str(tmp_path / "metacool"), *common)
 
     pair, mcool = tmp_path / "pair", tmp_path / "metacool"
     for name in ["network.txt", "contig_data_network.txt", "contig_data_final.txt", "bin_summary.txt", "binning.txt",
@@ -515,7 +516,8 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, metagenome_inde
     genomes, ref_genomes = metacooler.MetaCooler(str(written)).genomes, metacooler.MetaCooler(str(expected)).genomes
     pd.testing.assert_frame_equal(genomes, ref_genomes)
     metadata = clr.info["metadata"]
-    assert metadata["metator"]["parameters"]["start"] == "metacool"
+    parameters = metadata["metator"]["parameters"]
+    assert parameters["map"] == str(metacool) and parameters["start"] is None and parameters["forward"] is None
     assert metadata["qc"] == ref.info["metadata"]["qc"] and metadata["qc"]["source"] == "pairs"
     # The history of the input map, whose map of the clusters was written
     # over the map of its contigs, then that of this run.
@@ -573,7 +575,7 @@ def test_pipeline_from_the_columns_of_a_metacool(
         # Each run writes its own map (--output-map): a run from a map
         # updates it in place otherwise, and the second would start from
         # the first's.
-        run_cli("pipeline", "-1", str(metacool), "-S", "metacool", "-o", str(tmp_path / name),
+        run_cli("pipeline", str(metacool), "-o", str(tmp_path / name),
                 "--output-map", str(tmp_path / name / "metator.metacool"), *common, *given)  # fmt: skip
 
     by_options, by_map = tmp_path / "options", tmp_path / "map"
@@ -618,7 +620,7 @@ def test_pipeline_from_a_filtered_metacool(metagenome, metagenome_inputs, tmp_pa
     run_cli("pipeline", "-1", str(pairs), "-S", "pair", "-o", str(tmp_path / "pair"), "--no-metacool", *common)
     contacts = cooler.Cooler(str(metacool)).pixels()[:]["count"].sum()
     random.seed(0)
-    run_cli("pipeline", "-1", str(metacool), "-S", "metacool", "-o", str(tmp_path / "metacool"), *common)
+    run_cli("pipeline", str(metacool), "-o", str(tmp_path / "metacool"), *common)
 
     pair, mcool = tmp_path / "pair", tmp_path / "metacool"
     for name in ["contig_data_network.txt", "contig_data_final.txt", "bin_summary.txt", "binning.txt"]:
