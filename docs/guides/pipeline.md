@@ -94,8 +94,8 @@ A run refuses to overwrite the bins of an earlier one unless given `--force`
 | Option | Default | When to change it |
 |---|---|---|
 | `--aligner`, `--aligner-mode` | `bowtie2`, `normal` | `--aligner bwa` is recommended; see [Aligning the reads](network.md#aligning-the-reads) |
-| `--enzyme` | none | Give the enzyme of the library: it counts the restriction sites of the contigs, for the `RS` and `theoritical_hit` normalisations and `--aligner-mode cutsite` |
-| `--depth` | none | Give it for the `abundance` and `theoritical_hit` normalisations, and the shotgun abundance of the bins |
+| `--enzyme` | none | Give the enzyme of the library: it counts the restriction sites of the contigs, for the `RS` and `theoritical_hit` normalisations and `--aligner-mode cutsite`. From a map, its `Restriction_site` column gives them without it |
+| `--depth` | none | Give it for the `abundance` and `theoritical_hit` normalisations, and the shotgun abundance of the bins. From a map, its `Shotgun_coverage` column gives the coverage without it |
 | `--normalization` | `empirical_hit` | See [Normalising the network](network.md#normalising-the-network) |
 | `--iterations`, `--overlap` | 100, 80 | See [Partition](binning.md#partition) |
 | `--rec-iter`, `--rec-overlap` | 10, 90 | See [Validation](binning.md#validation) |

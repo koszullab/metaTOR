@@ -48,8 +48,12 @@ in the **contig data** table (`contig_data_network.txt`): its size, its GC
 content, its **hits** (the ends of the pairs that lie on it, in all libraries:
 a pair within the contig counts twice), its number of restriction sites plus
 one, that is of restriction fragments (with `--enzyme`, `-` otherwise), and its shotgun
-coverage (with `--depth`, `-` otherwise). With several libraries, the hits of
-each contig in each library go to `hit_data_alignment.txt`.
+coverage (with `--depth`, `-` otherwise). From a map, the restriction sites
+and the coverage come from its `Restriction_site` and `Shotgun_coverage`
+columns where the options give none (see
+[Starting from a contact map](metacool.md#starting-from-a-contact-map)). With
+several libraries, the hits of each contig in each library go to
+`hit_data_alignment.txt`.
 
 ## Building the network
 
@@ -81,6 +85,9 @@ contigs by a factor of the two:
 | `abundance` | √(coverage<sub>A</sub> × coverage<sub>B</sub>) | `--depth` |
 | `RS` | 0.01 × √(hits<sub>A</sub>/RS<sub>A</sub> × hits<sub>B</sub>/RS<sub>B</sub>), RS being the restriction fragments (sites + 1) | `--enzyme` |
 | `theoritical_hit` | The geometric mean of the hits expected from coverage, length and restriction sites | `--depth`, `--enzyme` |
+
+From a map, its `Shotgun_coverage` and `Restriction_site` columns stand for
+`--depth` and `--enzyme`.
 
 `empirical_hit` needs no model of the library and works best in our
 benchmarks.

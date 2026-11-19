@@ -67,8 +67,8 @@ with a header. Each step adds its columns to those of the step before:
 | `Size` | network | Its length, in bp |
 | `GC_content` | network | Its GC content, in percent |
 | `Hit` | network | Its hits: the ends of the pairs that lie on it, in all libraries (a pair within the contig counts twice) |
-| `Shotgun_coverage` | network | Its coverage in the depth file, `-` without `--depth` |
-| `Restriction_site` | network | Its number of restriction sites plus one (its restriction fragments), `-` without `--enzyme` |
+| `Shotgun_coverage` | network | Its coverage in the depth file, `-` without `--depth` (from a map, its `Shotgun_coverage` column, when it gives every contig a value) |
+| `Restriction_site` | network | Its number of restriction sites plus one (its restriction fragments), `-` without `--enzyme` (from a map, its `Restriction_site` column, when it gives every contig a value) |
 | `Core_bin_ID`, `Core_bin_contigs`, `Core_bin_size` | partition | Its core bin: the ID, number of contigs and size in bp of the bin |
 | `Overlapping_bin_ID`, `Overlapping_bin_contigs`, `Overlapping_bin_size` | partition | Its overlapping bin, likewise |
 | `Recursive_bin_ID`, `Recursive_bin_contigs`, `Recursive_bin_size` | validation | Its recursive bin, likewise: `00000`, `-`, `-` when its bin was not partitioned again |

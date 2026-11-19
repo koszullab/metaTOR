@@ -529,6 +529,41 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, metagenome_inde
     assert clr.info["metadata"]["qc"] == metadata["qc"]
 
 
+def test_pipeline_from_the_columns_of_a_metacool(
+    metagenome, metagenome_inputs, metagenome_indexed_pairs, tmp_path, monkeypatch, run_cli
+):
+    """From the map that a run from pairs wrote with a depth file and an
+    enzyme, a run without --depth and --enzyme reads the restriction sites
+    and the coverage of the contigs from its Restriction_site and
+    Shotgun_coverage columns (theoritical_hit needs both): the same network,
+    tables and bins as with them, byte for byte, and the map of its bins
+    stores them back."""
+    monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
+    common = ["-a", str(metagenome_inputs["assembly"]), "-m", "theoritical_hit", "-s", "50000", "-i", "10", "-j", "5",
+              "-T", str(tmp_path / "tmp")]  # fmt: skip
+    options = ["-d", str(metagenome_inputs["depth"]), "-e", "DpnII"]
+    random.seed(0)
+    run_cli("pipeline", "-1", str(metagenome_indexed_pairs), "-S", "pair", "-o", str(tmp_path / "pair"), *common, *options)
+    metacool = tmp_path / "pair" / "metator.metacool"
+    columns = metacooler.MetaCooler(str(metacool)).contigs[["name", "Restriction_site", "Shotgun_coverage"]]
+    runs = {"options": options, "map": []}
+    for name, given in runs.items():
+        random.seed(0)
+        run_cli("pipeline", "-1", str(metacool), "-S", "metacool", "-o", str(tmp_path / name), *common, *given)
+
+    by_options, by_map = tmp_path / "options", tmp_path / "map"
+    for name in ["network.txt", "contig_data_network.txt", "contig_data_final.txt", "bin_summary.txt", "binning.txt"]:
+        assert (by_map / name).read_bytes() == (by_options / name).read_bytes(), name
+    assert "SG_abundance" in pd.read_csv(by_map / "bin_summary.txt", sep="\t").columns
+    (log,) = by_map.glob("metator_pipeline_*.log")
+    assert f"INFO :: The shotgun coverage of the contigs: the Shotgun_coverage column of {metacool}." in log.read_text()
+    # Stored back: the map of the bins holds the values that the run read.
+    for written in [by_map / "metator.metacool", by_options / "metator.metacool"]:
+        metacooler.validate(str(written), full=True)
+        stored = metacooler.MetaCooler(str(written)).contigs.set_index("name")
+        pd.testing.assert_frame_equal(stored.loc[columns.name, columns.columns[1:]], columns.set_index("name"))
+
+
 def test_pipeline_from_a_filtered_metacool(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli):
     """From a map that lacks contigs of the assembly (made with a contig
     filter, which leaves out the pairs with a read on the contigs it drops),

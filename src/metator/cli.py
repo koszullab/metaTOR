@@ -129,15 +129,57 @@ def make_output_dir(path, force):
     os.makedirs(path)
 
 
-def check_normalization(normalization, enzyme, depth):
+def check_normalization(normalization, enzyme, depth, metacool=None, read=None):
     """The normalizations that need the restriction sites or the shotgun
-    depth of the contigs."""
-    if normalization in ["RS", "theoritical_hit"] and not enzyme:
-        logger.error('For "RS" and "theoritical_hit" normalization, enzyme is required.')
+    coverage of the contigs: measured on the assembly with --enzyme and
+    --depth or, in a run from a .metacool map (metacool), read from the
+    Restriction_site and Shotgun_coverage columns of its contigs table (see
+    metator.network.contig_data_from_map). Before the run reads the
+    assembly, the map is checked for the column (read None); once it has,
+    read lists the columns that it could read."""
+    needs = [
+        (("RS", "theoritical_hit"), enzyme, "enzyme", "Restriction_site"),
+        (("abundance", "theoritical_hit"), depth, "depth", "Shotgun_coverage"),
+    ]
+    for normalizations, given, option, column in needs:
+        if normalization not in normalizations or given:
+            continue
+        message = f'For "{normalizations[0]}" and "{normalizations[1]}" normalization, {option} is required'
+        if metacool is None:
+            message += "."
+        elif read is None:
+            try:
+                columns = mtn.map_columns(metacool)
+            except mtmc.MetacoolError as error:
+                logger.error(str(error))
+                raise
+            if column in columns:
+                continue
+            what = mtn.MAP_COLUMNS[column][2]
+            message += f", as {metacool} gives no {what} (no {column} column with a valid value)."
+        elif column in read:
+            continue
+        else:
+            what = mtn.MAP_COLUMNS[column][2]
+            message += f", as the {column} column of {metacool} does not give every contig of the assembly its {what}."
+        logger.error(message)
         raise ValueError
-    if normalization in ["abundance", "theoritical_hit"] and not depth:
-        logger.error('For "abundance" and "theoritical_hit" normalization, depth is required.')
-        raise ValueError
+
+
+def contig_data_from_map(metacool, contig_data, normalization, enzyme, depth):
+    """Read the restriction sites and the shotgun coverage of the contigs from
+    the .metacool map that a run starts from, where --enzyme and --depth
+    measure none (see metator.network.contig_data_from_map), then check the
+    normalization against what the run has. A map that cannot be read, or
+    that is not a map of the contigs of the assembly, stops the run, its
+    reason logged. Returns the columns read from the map."""
+    try:
+        read = mtn.contig_data_from_map(metacool, contig_data, enzyme, depth)
+    except mtmc.MetacoolError as error:
+        logger.error(str(error))
+        raise
+    check_normalization(normalization, enzyme, depth, metacool, read)
+    return read
 
 
 def check_reverse_reads(start, aligner, reverse):
@@ -413,14 +455,20 @@ def log_file_name(directory, command):
     return join(directory, f"metator_{command}_{now}.log")
 
 
-def run_metadata():
+def run_metadata(columns_from_map=()):
     """The command line and the parameters of the running command, as stored
-    in a .metacool file."""
+    in a .metacool file, and the columns that a run from a map read from it
+    (columns_from_map, see metator.network.contig_data_from_map): where the
+    restriction sites and the coverage that the map then stores came from,
+    which --enzyme and --depth do not say."""
     params = click.get_current_context().params
-    return {
+    metadata = {
         "command": shlex.join(["metator", *sys.argv[1:]]),
         "parameters": {name: list(value) if isinstance(value, tuple) else value for name, value in params.items()},
     }
+    if columns_from_map:
+        metadata["columns_from_map"] = list(columns_from_map)
+    return metadata
 
 
 def assembly_basename(assembly):
@@ -536,12 +584,13 @@ def pipeline_contig_map(pairs_files, contig_data, outfile, assembly, threads, tm
         raise
 
 
-def pipeline_metacool(metacool, outdir, outfile, contig_map=False):
+def pipeline_metacool(metacool, outdir, outfile, contig_map=False, columns_from_map=()):
     """Write the contact map of the bins of a pipeline run at outfile (see
     metacool_path), from a .metacool map of its contigs and the final
     tables of the run (see metator.metacool.reassign_metacool): the map that
     the run built from its pairs files (contig_map, at outfile), or the
-    input map of a run that started from one.
+    input map of a run that started from one, whose columns it read
+    (columns_from_map: stored in the metadata of the new map).
 
     The map is an extra output, written last: when it cannot be written, a
     warning says why, and the run keeps its other outputs and its exit
@@ -571,7 +620,7 @@ def pipeline_metacool(metacool, outdir, outfile, contig_map=False):
             outfile,
             bin_summary=join(outdir, "bin_summary.txt"),
             force=True,
-            metadata=run_metadata(),
+            metadata=run_metadata(columns_from_map),
         )
     except Exception as error:
         reason, unexpected = _failure(error)
@@ -652,7 +701,8 @@ def reads_options():
             metavar="FILE",
             panel="Input",
             help="The depth.txt file from the shotgun reads used to made the assembly computed by "
-            "[cyan]jgi_summarize_bam_contig_depths[/] from the metabat2 pipeline.",
+            "[cyan]jgi_summarize_bam_contig_depths[/] from the metabat2 pipeline. With --start metacool, the "
+            "Shotgun_coverage column of the map gives the coverage without it, and --depth replaces it.",
         ),
     )
 
@@ -683,7 +733,9 @@ def alignment_options():
             "--enzyme",
             metavar="STR",
             panel="Alignment",
-            help="The list of restriction enzyme used to digest the contigs separated by a comma. Example: HpaII,MluCI.",
+            help="The list of restriction enzyme used to digest the contigs separated by a comma. Example: HpaII,MluCI. "
+            "With --start metacool, the Restriction_site column of the map gives the restriction sites without it, "
+            "and --enzyme replaces it.",
         ),
         _option(
             "-q",
@@ -717,7 +769,8 @@ def network_options(normalization_short, edge_help):
             panel="Network",
             help=f"Normalization of the contact counts, one of {', '.join(NORMALIZATIONS)}. [cyan]None[/] keeps the raw "
             "counts; [cyan]RS[/] and [cyan]theoritical_hit[/] need --enzyme, [cyan]abundance[/] and "
-            "[cyan]theoritical_hit[/] need --depth.",
+            "[cyan]theoritical_hit[/] need --depth. With --start metacool, the Restriction_site and "
+            "Shotgun_coverage columns of the map stand for them (see --enzyme and --depth).",
         ),
         _option(
             "-E",
@@ -894,7 +947,11 @@ def network(
 
     With [cyan]--start metacool[/], the network is built from a .metacool
     contact map of the contigs, whose libraries are summed (see the
-    README): that of the pairs it was made of. --edge must then be 0.
+    README): that of the pairs it was made of. --edge must then be 0. The
+    Restriction_site and Shotgun_coverage columns of the map, when they
+    give every contig a value, give the restriction sites and the coverage
+    of the contigs that --enzyme and --depth would measure; given, these
+    options replace them.
 
     Note: the network is in a strict barebone form so that it can be reused
     and imported quickly into other applications etc. Verbose information
@@ -915,7 +972,7 @@ def network(
         check_reverse_reads(start, aligner, reverse)
         check_metacool_start(start, forward, edge)
         aligner_mode = aligner_mode_for(aligner_mode, enzyme)
-        check_normalization(normalization, enzyme, depth)
+        check_normalization(normalization, enzyme, depth, forward if start == "metacool" else None)
 
         # Check what is the reference. If a fasta is given build the index. If a
         # bowtie2 index is given, retreive the fasta.
@@ -932,6 +989,8 @@ def network(
             # A map has no pairs files: its libraries are summed.
             alignment_files = forward.split(",") if start == "pair" else []
             contig_data, hit_data = mtn.create_contig_data(fasta, len(alignment_files) or 1, depth, enzyme)
+            if start == "metacool":
+                contig_data_from_map(forward, contig_data, normalization, enzyme, depth)
         else:
             # Align pair-end reads with bowtie2
             alignment_files, contig_data, hit_data = mta.get_contact_pairs(
@@ -1309,8 +1368,10 @@ def pipeline(
     network of each. At the end, the map of the bins (the contigs
     grouped by bin) is written over it or, with --no-metacool, it is
     removed. A run from a .metacool file reads its network from that map,
-    writes the map of its bins from it, which it may replace, and cannot
-    scaffold.
+    and the restriction sites and the coverage of the contigs from its
+    Restriction_site and Shotgun_coverage columns, unless --enzyme and
+    --depth are given; it writes the map of its bins from it, which it may
+    replace, and cannot scaffold.
     """
     # Private temporary directory inside --tmpdir.
     with private_tmp_dir(tmpdir, clean_up=not no_clean_up) as tmp_dir:
@@ -1330,9 +1391,14 @@ def pipeline(
         # bins of an earlier run (--force): a refused run leaves them as they
         # were.
         aligner_mode = aligner_mode_for(aligner_mode, enzyme)
-        check_normalization(normalization, enzyme, depth)
+        # The normalization of a run from a map is checked against its map,
+        # once the run is known to have one map (check_metacool_start).
+        if start != "metacool":
+            check_normalization(normalization, enzyme, depth)
         check_pipeline_edge(edge)
         check_metacool_start(start, forward, edge, scaffold)
+        if start == "metacool":
+            check_normalization(normalization, enzyme, depth, forward)
         metacool_file = metacool_path(outdir, prefix)
         check_inputs_not_the_map(start, forward, reverse, metacool_file)
         check_pairs_compression(start, forward, scaffold)
@@ -1371,6 +1437,16 @@ def pipeline(
         # checked first, but for a run from a map: the map of the contigs
         # needs them in ASCII.
         index, fasta = reference_files(assembly, aligner, start, tmp_dir, ascii_names=start != "metacool")
+        # The contig data of a run from pairs or from a map, before the bins
+        # of an earlier run are replaced: a map whose columns cannot give
+        # what the normalization needs is refused once the assembly is read.
+        if start_step > 2:
+            # A map has no pairs files: its libraries are summed.
+            alignment_files = forward.split(",") if start == "pair" else []
+            contig_data, _ = mtn.create_contig_data(fasta, len(alignment_files) or 1, depth, enzyme)
+            columns_from_map = (
+                contig_data_from_map(forward, contig_data, normalization, enzyme, depth) if start == "metacool" else []
+            )
         for path in bin_dirs:
             make_output_dir(path, force)
 
@@ -1393,10 +1469,7 @@ def pipeline(
                 tmp_dir,
                 threads,
             )
-        else:
-            # A map has no pairs files: its libraries are summed.
-            alignment_files = forward.split(",") if start == "pair" else []
-            contig_data, _ = mtn.create_contig_data(fasta, len(alignment_files) or 1, depth, enzyme)
+            columns_from_map = []
         # The contact map of the contigs, built once from the pairs files as
         # soon as the run has them (with several libraries, the map of each
         # library too, and their sum): the map of the clusters is written over
@@ -1492,7 +1565,7 @@ def pipeline(
         # the run built, or from the input map of a run that started from one.
         if start == "metacool":
             if not no_metacool:
-                pipeline_metacool(forward, outdir, metacool_file)
+                pipeline_metacool(forward, outdir, metacool_file, columns_from_map=columns_from_map)
         elif no_metacool:
             logger.info(f"Removing {metacool_file}, the contact map of the contigs (--no-metacool).")
             os.remove(metacool_file)

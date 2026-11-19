@@ -45,6 +45,29 @@ All notable changes to this project will be documented in this file.
   of the pairs files, so that a run step by step (`network -S metacool`,
   `partition`, `validation`) can write the map that `pipeline -S
   metacool` writes.
+- A run from a map (`network` and `pipeline` with `--start metacool`)
+  reads the restriction sites and the shotgun coverage of the contigs from
+  the `Restriction_site` and `Shotgun_coverage` columns of the map, which
+  metaTOR stores in the maps it writes with `--enzyme` and `--depth`: the
+  same network and tables as with these options, without them (a run
+  from such a map wrote `-` in their place, and the map of its bins
+  dropped the columns). The options fill in a column that the map lacks
+  and replace one that it has, with a warning that counts the contigs
+  whose value differs; the map of the bins stores what the run used. A
+  column that does not give every contig of the assembly a value is not
+  read, with a warning that names the contigs it lacks, and a
+  normalization that needs a column that neither the map nor the options
+  give is refused before the run replaces anything. The metadata of the
+  map of the bins that `pipeline` writes says which columns the run read
+  (`columns_from_map`). With pandas 2, a coverage of more than 15
+  significant digits, or of 16 or more digits after the decimal point,
+  can be stored one unit off in its last place, which changes the last
+  digits of the contig data files and of a network normalized by it. A
+  run from pairs reads its contig data before it replaces the bins of an
+  earlier run (`-F`): a depth file of another assembly, which it refuses
+  then, leaves them (they were removed first). Python API:
+  `metator.network.contig_data_from_map`, `map_columns`,
+  `check_map_contigs`.
 
 ### Changed
 - `pipeline` from reads, alignments or pairs reads its pairs files into

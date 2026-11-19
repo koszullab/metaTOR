@@ -152,8 +152,10 @@ def read_contig_data(contig_data):
     list of str
         The columns of CONTIG_COLUMNS that the file has and fills, in that
         order: a column that is ``-`` on every contig is left out, as
-        metaTOR measured nothing there (Shotgun_coverage without a depth
-        file, Restriction_site without an enzyme).
+        metaTOR had nothing there (Shotgun_coverage without a depth file,
+        Restriction_site without an enzyme, nor such a column of the map
+        that a run started from, see
+        metator.network.contig_data_from_map).
     list of str
         All the columns of the file, as pandas names them.
 
@@ -904,8 +906,9 @@ def _write_back_columns(path, contig_data, contig_columns, header):
     store: the bins of each step, the contig ids, Size..., which a map made
     with the contig data of an earlier run as its contigs table holds
     (metacooler create pairs --contigs-format metator), and one of
-    CONTIG_COLUMNS that this run did not measure (Shotgun_coverage without
-    a depth file...).
+    CONTIG_COLUMNS that this run had no values for (Shotgun_coverage
+    without a depth file, nor a column of the input map that gives every
+    contig its coverage...).
     """
     import metacooler
 

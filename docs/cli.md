@@ -45,12 +45,12 @@ metator pipeline [OPTIONS]
 | `-2, --reverse` | none | The R2 reads, or their alignments, in the same order. Not needed from pairs files, a contact map, or the BAM files of bwa, which hold both mates. |
 | `-a, --assembly` | *required* | The assembly: a FASTA file, or the basename of its bowtie2 or bwa index. |
 | `-S, --start` | `fastq` | What `--forward` and `--reverse` are: `fastq`, `bam`, `pair` or `metacool`. |
-| `-d, --depth` | none | The coverage of the contigs, from `jgi_summarize_bam_contig_depths` of MetaBAT2. |
+| `-d, --depth` | none | The coverage of the contigs, from `jgi_summarize_bam_contig_depths` of MetaBAT2. From a map (`-S metacool`), its `Shotgun_coverage` column gives it without `--depth`, which replaces it: see [Starting from a contact map](guides/metacool.md#starting-from-a-contact-map). |
 | `-b, --aligner` | `bowtie2` | `bwa`, the recommended one, or `bowtie2`. |
 | `-B, --aligner-mode` | `normal` | `normal`, `iterative` or `cutsite`. `cutsite` needs `--enzyme`: without it, the reads are aligned iteratively. |
-| `-e, --enzyme` | none | The restriction enzymes of the library. |
+| `-e, --enzyme` | none | The restriction enzymes of the library. From a map (`-S metacool`), its `Restriction_site` column gives the restriction sites without `--enzyme`, which replaces it. |
 | `-q, --min-quality` | `30` | The minimum mapping quality of both mates of a pair. |
-| `-m, --normalization` | `empirical_hit` | `None`, `abundance`, `length`, `RS`, `empirical_hit` or `theoritical_hit`. `RS` and `theoritical_hit` need `--enzyme`; `abundance` and `theoritical_hit` need `--depth`. See [Normalising the network](guides/network.md#normalising-the-network). |
+| `-m, --normalization` | `empirical_hit` | `None`, `abundance`, `length`, `RS`, `empirical_hit` or `theoritical_hit`. `RS` and `theoritical_hit` need `--enzyme`; `abundance` and `theoritical_hit` need `--depth`, or, from a map, the columns that give them. See [Normalising the network](guides/network.md#normalising-the-network). |
 | `-E, --edge` | `0` | Only 0 in `pipeline`, whatever the start: it counts every pair, as its contact map does (`metator network` applies `--edge` to pairs files). |
 | `-A, --algorithm` | `louvain` | The partition algorithm: `louvain` or `leiden`. |
 | `-i, --iterations` | `100` | The iterations of the partition. |
@@ -106,7 +106,7 @@ metator network [OPTIONS]
 | `-d, --depth` | none | As in `pipeline`. |
 | `-b, --aligner` | `bowtie2` | `bwa`, the recommended one, or `bowtie2`. |
 | `-B, --aligner-mode` | `normal` | `normal`, `iterative` or `cutsite`. |
-| `-e, --enzyme` | none | The restriction enzymes of the library. |
+| `-e, --enzyme` | none | The restriction enzymes of the library. From a map (`-S metacool`), its `Restriction_site` column gives the restriction sites without `--enzyme`, which replaces it. |
 | `-q, --min-quality` | `30` | The minimum mapping quality of both mates of a pair. |
 | `-n, --normalization` | `empirical_hit` | As `--normalization` (`-m`) in `pipeline`. |
 | `-E, --edge` | `0` | Leave out the pairs with a mate within this many bp of the end of its contig. Not available with `--start metacool`. |

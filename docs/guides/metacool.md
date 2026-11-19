@@ -55,7 +55,8 @@ file, and metacooler adds the genomes.
   `Shotgun_coverage` and `Restriction_site` columns of
   `contig_data_final.txt`, except those that are `-` on every contig
   (`Shotgun_coverage` of a run without `--depth`, `Restriction_site` of a run
-  without `--enzyme`), and the contact statistics that metacooler computes
+  without `--enzyme`, when the map that a run starts from does not give them
+  either), and the contact statistics that metacooler computes
   within each contig (`qc_intra_contig_short`, `qc_intra_contig_long`). The
   genome of a contig is its final bin.
 - **The metadata** hold the version of metaTOR, the command line and its
@@ -176,13 +177,37 @@ metator pipeline -S metacool -1 sample.metacool -a assembly.fa -d depth.txt -e D
   `contig_data_network.txt` are those of the pairs the map holds, byte for
   byte, at `--edge 0`.
 - **Its contigs must be contigs of the assembly**, with their lengths: the
-  contig IDs, GC contents, coverages and restriction sites still come from the
-  assembly, `--depth` and `--enzyme`. It may lack some of them, as a map made
-  with a contig filter does (`metacooler create pairs --filter 'contigs.length
-  >= 1kb'`, which also leaves out the pairs with a read on the contigs that it
-  drops): those get no contacts and no hits, and the log says how many they
-  are. A map of other contigs or lengths, or that stores both triangles of the
-  matrix, stops the run with an error.
+  contig IDs and GC contents still come from the assembly. It may lack some
+  of them, as a map made with a contig filter does (`metacooler create pairs
+  --filter 'contigs.length >= 1kb'`, which also leaves out the pairs with a
+  read on the contigs that it drops): those get no contacts and no hits, and
+  the log says how many they are. A map of other contigs or lengths, or that
+  stores both triangles of the matrix, stops the run with an error.
+- **Its restriction sites and coverage**: the `Restriction_site` and
+  `Shotgun_coverage` columns of its contigs table, which metaTOR stores in
+  the maps it writes with `--enzyme` and `--depth`, give the restriction
+  sites and the shotgun coverage of the contigs. So a run from such a map
+  needs neither option: it gives the same network and tables, byte for byte
+  (with pandas 2, for coverages of at most 15 significant digits and 15
+  digits after the decimal point, as jgi's depth files have: metacooler can
+  store a longer one one unit off in its last place, which changes the last
+  digits of the contig data files and of a network normalized by it, and
+  has `--depth` warn that it replaces the map's value).
+  - `--enzyme` and `--depth` fill in a column that the map lacks, and replace
+    one that it has, with a warning that counts the contigs whose value
+    differs. The map of the bins stores what the run used, and its metadata
+    that `pipeline` writes which columns it read (`columns_from_map`).
+  - A column is read only if it gives every contig of the assembly a value: a
+    number of restriction sites (plus one) of at least 1, a coverage of at
+    least 0. A contig of no length, which no map holds, gets 1 and 0. A
+    column with no valid value, such as one of `-`, as metaTOR writes what it
+    did not measure, is as no column. One that lacks some contigs is not
+    read, with a warning that names them, and the map of the bins does not
+    carry it.
+  - A normalization that needs a column that neither the map nor the options
+    give (`RS`, `abundance`, `theoritical_hit`) is refused before the run
+    replaces anything: before any work when the map has no such column, once
+    the assembly is read when the column lacks contigs.
 - **Its libraries are already summed**: no `network_<i>.txt` is written.
   `--edge` must be 0, as a map holds no read positions (`pipeline` refuses
   any other value, whatever the start: it counts every pair, as its map does;
