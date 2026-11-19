@@ -26,10 +26,7 @@ end of the run, `pipeline` writes the map of the bins over the map of the
 contigs, from the final tables, with `metacooler reassign`; `--no-metacool`
 removes the maps instead (the `.mmetacool` collection too). The maps of the
 libraries stay maps of the contigs, in no bin, without the columns measured on
-the assembly, which the sum holds. Its file is larger than that of a map
-written from the pairs in one go (by 12 to 32% on our test data), for the same
-data: the columns measured on the assembly, dropped and written again at the
-end, leave free space in it. A `.metacool` file is the contact map format of
+the assembly, which the sum holds. It is written through a fresh file, which holds none of the space that the edits making it leave behind, so a map updated in place does not grow with each run. A `.metacool` file is the contact map format of
 [metacooler](https://github.com/js2264/metacooler): a
 [cooler](https://github.com/open2c/cooler) whose chromosomes are the contigs,
 grouped by genome. `cooler` and the tools built on it read it as any `.cool`
@@ -244,7 +241,14 @@ While a run writes a map, a lock file next to it (`<map>.lock`) holds it: a
 second run that would write the same map stops before any work, naming the run
 that holds it. A lock that a run left behind on the same host when it died is
 removed, with a warning; one from another host is not: remove it once that
-run is over.
+run is over. A run stopped by Ctrl-C or SIGTERM (a job scheduler's time limit,
+or a cancelled job) cleans up after itself. A run killed outright (`kill -9`,
+or a machine that goes down) cleans nothing up: besides its lock, it can leave
+the files of the map it was writing next to the map, which can be deleted:
+`.<map>.<random>.tmp` or `.<map>.<random>.tmp.<random>.fresh`, and those that
+metacooler and cooler write while it is written
+(`.<map>.<random>.tmp.partial`, `.<map>.<random>.tmp.partial.__writing__`,
+`tmp<random>.multi.cool`). The map itself is left as it was.
 
 ## Clustering rounds
 

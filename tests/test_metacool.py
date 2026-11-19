@@ -1956,3 +1956,105 @@ def test_a_map_updated_in_place_keeps_its_mode(metagenome, binning, tmp_path, mo
         str(metacool), str(binning["contig_data"]), str(metacool), bin_summary=str(binning["bin_summary"]), force=True
     )
     assert metacool.stat().st_mode & 0o777 == mode
+
+
+def _walk(path):
+    """Every group, dataset and attribute of an HDF5 file, as stored: the
+    dtype, shape, chunks and filters and the values of each dataset, the
+    order of the members of each group, the dtype and value of each
+    attribute, and the soft links."""
+    import h5py
+
+    found = {}
+
+    def attributes(node):
+        return [(key, node.attrs.get_id(key).dtype.str, repr(node.attrs[key])) for key in node.attrs]
+
+    def visit(group, prefix):
+        found[prefix or "/"] = ("group", list(group.keys()), attributes(group))
+        for key in group:
+            link = group.get(key, getlink=True)
+            name = f"{prefix}/{key}"
+            if isinstance(link, h5py.SoftLink):
+                found[name] = ("soft link", link.path)
+            elif isinstance(group[key], h5py.Group):
+                visit(group[key], name)
+            else:
+                data = group[key]
+                found[name] = (
+                    data.dtype.str,
+                    data.shape,
+                    data.chunks,
+                    data.compression,
+                    data.compression_opts,
+                    data.shuffle,
+                    data[()].tobytes() if data.dtype.kind != "O" else repr(list(data[()])),
+                    attributes(data),
+                )
+
+    with h5py.File(path, "r") as handle:
+        visit(handle, "")
+    return found
+
+
+def test_a_map_is_rewritten_in_a_fresh_file_as_it_is(metagenome, binning, tmp_path):
+    """The fresh copy is the map, object for object (an h5py walk), with the
+    mode of its file, and none of the space that its edits left in it."""
+    metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
+    out = tmp_path / "bins.metacool"
+    mtmc.reassign_metacool(str(metacool), str(binning["contig_data"]), str(out), bin_summary=str(binning["bin_summary"]))
+    edited = tmp_path / "edited.metacool"
+    shutil.copyfile(out, edited)
+    # Edited in place, as metacooler annotate edits the map: a column
+    # rewritten leaves the space of the old one in the file.
+    metacooler.annotate(str(edited), drop=["contigs.GC_content"], inplace=True)
+    edited.chmod(0o640)
+    before, size = _walk(edited), edited.stat().st_size
+
+    mtmc._rewrite_in_a_fresh_file(str(edited))
+
+    assert _walk(edited) == before
+    assert edited.stat().st_size < size and (edited.stat().st_mode & 0o777) == 0o640
+    assert sorted(path.name for path in tmp_path.iterdir() if ".fresh" in path.name) == []
+    metacooler.validate(str(edited), full=True)
+
+
+def test_a_failed_rewrite_leaves_the_map_as_it_was(metagenome, binning, tmp_path, monkeypatch):
+    metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
+    before = metacool.read_bytes()
+
+    def interrupted(*args):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(mtmc.os, "replace", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        mtmc._rewrite_in_a_fresh_file(str(metacool))
+    assert metacool.read_bytes() == before
+    assert [path.name for path in tmp_path.iterdir() if ".fresh" in path.name] == []
+
+
+def test_a_map_updated_again_and_again_does_not_grow(metagenome, binning, tmp_path):
+    """A map updated in place run after run keeps its size, but for the
+    history of the runs that its metadata gains (it grew by what each run's
+    edits replaced)."""
+    metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
+    sizes = []
+    for _ in range(4):
+        mtmc.reassign_metacool(
+            str(metacool), str(binning["contig_data"]), str(metacool), bin_summary=str(binning["bin_summary"]), force=True
+        )
+        sizes.append(metacool.stat().st_size)
+    assert max(sizes) - min(sizes) < 8_000, sizes
+    metacooler.validate(str(metacool), full=True)
+
+
+def test_metator_metacool_writes_its_map_through_a_fresh_file(binning, tmp_path):
+    """The map that write_metacool writes from the pairs holds no space left
+    by the edits that make it: copying it into a fresh file again gains
+    nothing (metacooler annotate left the space of the columns it replaced
+    in it)."""
+    out = tmp_path / "pairs.metacool"
+    mtmc.write_metacool(str(binning["pairs"]), str(binning["contig_data"]), str(out), bin_summary=str(binning["bin_summary"]))
+    size = out.stat().st_size
+    mtmc._rewrite_in_a_fresh_file(str(out))
+    assert out.stat().st_size == size

@@ -97,6 +97,14 @@ All notable changes to this project will be documented in this file.
   Ctrl-C does, so it cleans up after itself. `--output-map` refuses,
   before any work: `--no-metacool`, which writes no map; an entry of a
   collection, a directory, and the collection of an input entry.
+- The map of the clusters of a run, and the map of `metator metacool`, are
+  written through a fresh file: the edits that make it (metacooler's
+  relabelling, `annotate`, the clustering rounds) left the space of what
+  they replaced in it, which HDF5 does not reclaim, so a map updated in
+  place grew with each run (from 129 kB to 272 kB over four updates of the
+  map of the synthetic test data; within 8 kB now, the history of the
+  runs). The map of the contigs that a stopped run leaves is not
+  rewritten.
 - **Breaking:** a map of the clusters that cannot be written stops
   `pipeline` with the reason, logged as an error (it was a warning, and
   the run went on to exit 0). The other outputs of the run are kept, and
@@ -111,9 +119,7 @@ All notable changes to this project will be documented in this file.
   writes from the pairs, but for its history (the `annotate` and
   `reassign` keys of its metadata) and the type of its counts with several
   libraries (64-bit integers, which `metator metacool` stores as 32-bit
-  ones). Its file is larger, for the same data
-  (by 12 to 32% on our test data): the columns measured on the assembly,
-  dropped and written again at the end, leave free space in it.
+  ones).
   `--no-metacool` builds it all the same and removes it at the end. An
   earlier run's map at its path is removed before the build,
   `--no-metacool` or not (it was removed at the end, and left there with

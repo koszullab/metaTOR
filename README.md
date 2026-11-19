@@ -205,9 +205,7 @@ files give, byte for byte. So a pair on a contig that the assembly lacks is left
 (it counts them, with the pairs that have a read past the end of their contig), and the run goes on,
 whatever the number of libraries. At the end of the run, `pipeline` writes the map of the bins over the
 map of the contigs, from the final tables, with `metacooler reassign`; `--no-metacool` removes the maps
-instead (the `.mmetacool` collection too). Its file is larger than that of a map written from the pairs
-in one go (by 12 to 32% on our test data), for the same data: the columns measured on the assembly,
-dropped and written again at the end, leave free space in it. A run that started from a contact map updates that map in place (or writes `--output-map`, see
+instead (the `.mmetacool` collection too). It is written through a fresh file, which holds none of the space that the edits making it leave behind, so a map updated in place does not grow with each run. A run that started from a contact map updates that map in place (or writes `--output-map`, see
 [Starting from a contact map](#starting-from-a-contact-map)). The map also stores the clustering rounds of the run (the
 overlapping, recursive and final clusters, with their contigs), which the run writes as `clusters.txt` and
 `cluster_members.txt` too. `metator metacool` writes the same file from the pairs files,
@@ -375,7 +373,11 @@ link is replaced, not its target (an input map stored elsewhere, for example). A
 `.mmetacool` collection needs `--output-map`, and a FILE that exists is replaced only with `-F`. While
 a run writes a map, `<map>.lock` holds it: a second run that would write the same map stops before any
 work, naming the run that holds it (a lock that a run left behind on the same host when it died is
-removed, with a warning).
+removed, with a warning). A run stopped by Ctrl-C or SIGTERM (a job scheduler's time limit) cleans up after
+itself; one killed outright (`kill -9`) can leave its lock, and the files of the map it was writing
+next to the map, which can be deleted: `.<map>.<random>.tmp` or `.<map>.<random>.tmp.<random>.fresh`,
+and those that metacooler and cooler write while it is written (`.<map>.<random>.tmp.partial`,
+`.<map>.<random>.tmp.partial.__writing__`, `tmp<random>.multi.cool`). The map is left as it was.
 
 #### From hicstuff to metaTOR through metacooler
 

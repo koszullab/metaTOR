@@ -475,6 +475,7 @@ def write_metacool(
         )
         try:
             _write_back_columns(outfile, contig_data, contig_columns, header)
+            _rewrite_in_a_fresh_file(outfile)
         except BaseException:
             # No map without the columns of its contigs.
             os.remove(outfile)
@@ -898,6 +899,7 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
                 )
                 _write_back_columns(staged, contig_data, contig_columns, header)
                 store_rounds(staged, rounds)
+                _rewrite_in_a_fresh_file(staged)
                 metacooler.validate(staged, full=True)
                 # The map keeps the mode of the file it replaces (that of the
                 # target of a symbolic link): a private map stays private.
@@ -909,6 +911,43 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
             if os.path.lexists(staged):
                 os.remove(staged)
             raise
+
+
+def _rewrite_in_a_fresh_file(path):
+    """Copy the map at path into a fresh file, which takes its place.
+
+    metacooler reassign copies a map it relabels as it is, and metacooler
+    annotate and the clustering rounds edit it in place: each leaves the
+    space of what it replaces in the file, which HDF5 does not reclaim. A
+    map updated run after run grew with every run (from 129 kB to 272 kB
+    over four updates of the map of the synthetic test data). Every object
+    is copied as stored, with its dtype, chunks, filters and attributes,
+    the columns of a table in their order, and the soft link /chroms as a
+    link; the file keeps its mode.
+    """
+    import shutil
+
+    import h5py
+
+    directory = os.path.dirname(os.path.abspath(path))
+    handle, fresh = tempfile.mkstemp(prefix=f"{os.path.basename(path)}.", suffix=".fresh", dir=directory)
+    os.close(handle)
+    try:
+        with h5py.File(path, "r") as source, h5py.File(fresh, "w") as target:
+            for key in source:
+                link = source.get(key, getlink=True)
+                if isinstance(link, h5py.SoftLink):
+                    target[key] = h5py.SoftLink(link.path)
+                else:
+                    source.copy(source[key], target, name=key)
+            for key in source.attrs:
+                target.attrs.create(key, source.attrs[key], dtype=source.attrs.get_id(key).dtype)
+        shutil.copymode(path, fresh)
+        os.replace(fresh, path)
+    except BaseException:
+        if os.path.lexists(fresh):
+            os.remove(fresh)
+        raise
 
 
 def _write_back_columns(path, contig_data, contig_columns, header):
