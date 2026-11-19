@@ -128,3 +128,48 @@ def test_the_tables_of_the_rounds_are_in_the_log_file(tmp_path):
                 mtl.logger.removeHandler(handler)
                 handler.close()
     assert "1 clusters in 1 rounds are written to" in log.read_text()
+
+
+def test_the_tables_of_the_rounds_are_those_written(tmp_path):
+    """Rounds.tables, which a partition run from a map stores, are the tables
+    that Rounds.write writes: the same rows and columns, the parents
+    missing for none."""
+    clusters, members = _rounds().tables()
+    _rounds().write(tmp_path)
+    assert clusters.to_csv(sep="\t", index=False, na_rep="NA") == (tmp_path / mtc.CLUSTERS_FILE).read_text()
+    assert members.to_csv(sep="\t", index=False) == (tmp_path / mtc.CLUSTER_MEMBERS_FILE).read_text()
+    assert clusters.parent.isna().sum() == 2
+
+
+def test_the_overlapping_round_of_a_partition(tmp_path):
+    """The round overlapping of a partition, from its contig data: the
+    overlapping clusters that reach --size, named as the FASTA files that
+    partition writes for them (<prefix>_<ID>_00000), in the order of their
+    IDs (as numbers: an ID of six digits is the last), with their contigs in
+    their order; a contig of no cluster ("-", no edge in the network) is in
+    none, and a contig called NA is a contig."""
+    table = tmp_path / "contig_data_partition.txt"
+    table.write_text(
+        "ID\tName\tSize\tOverlapping_bin_ID\tOverlapping_bin_contigs\tOverlapping_bin_size\n"
+        "1\tc1\t600\t100000\t2\t900\n"
+        "2\tNA\t300\t100000\t2\t900\n"
+        "3\tc3\t500\t00002\t1\t500\n"
+        "4\tc4\t499\t00003\t1\t499\n"
+        "5\tc5\t50\t-\t-\t-\n"
+        "6\tc6\t700\t00010\t1\t700\n"
+    )
+    clusters, members = mtc.overlapping_round(table, 500, "sample_metator")
+    names = ["sample_metator_00002_00000", "sample_metator_00010_00000", "sample_metator_100000_00000"]
+    assert list(clusters.name) == names
+    assert list(clusters.columns) == ["round", "name", "parent_round", "parent"]
+    assert set(clusters["round"]) == {mtc.OVERLAPPING} and clusters.parent.isna().all()
+    assert list(zip(members.cluster, members.contig, strict=True)) == [
+        (names[0], "c3"),
+        (names[1], "c6"),
+        (names[2], "c1"),
+        (names[2], "NA"),
+    ]
+    assert set(members["round"]) == {mtc.OVERLAPPING}
+    # No cluster reaches the size: the round has none.
+    clusters, members = mtc.overlapping_round(table, 10_000, "metator")
+    assert clusters.empty and members.empty

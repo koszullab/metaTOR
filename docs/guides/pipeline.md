@@ -136,7 +136,10 @@ metator validation -a assembly.fa -c binning/contig_data_partition.txt \
 Run step by step, the final bins go to `final_bin/`, and the intermediate
 tables stay. `metator network` keeps the pairs files; `metator metacool`
 writes the contact map of the bins from them (see
-[The contact map of the bins](metacool.md)).
+[The contact map of the bins](metacool.md)). From a contact map of the
+contigs, each step takes the map as its first argument, and the steps write
+the map that `metator pipeline MAP` writes from the same clusters: see
+[Step by step](metacool.md#step-by-step).
 
 To bin without validating, run the first two steps alone: the bins are then
 the overlapping bins of `overlapping_bin/`, and `contig_data_partition.txt`

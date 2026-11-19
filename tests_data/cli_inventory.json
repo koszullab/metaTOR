@@ -151,7 +151,13 @@
     ]
    },
    "partition": {
-    "positional": [],
+    "positional": [
+     {
+      "name": "map",
+      "required": false,
+      "repeatable": false
+     }
+    ],
     "options": [
      {
       "short": "-A",
@@ -226,6 +232,14 @@
       "required": false
      },
      {
+      "short": null,
+      "long": "--output-map",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": false
+     },
+     {
       "short": "-O",
       "long": "--overlap",
       "takes_value": true,
@@ -276,7 +290,13 @@
     ]
    },
    "validation": {
-    "positional": [],
+    "positional": [
+     {
+      "name": "map",
+      "required": false,
+      "repeatable": false
+     }
+    ],
     "options": [
      {
       "short": "-A",
@@ -356,6 +376,14 @@
       "takes_value": true,
       "metavar": "DIR",
       "default": "./",
+      "required": false
+     },
+     {
+      "short": null,
+      "long": "--output-map",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
       "required": false
      },
      {

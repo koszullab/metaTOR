@@ -8,6 +8,7 @@ import gzip
 import json
 import os
 import re
+import shlex
 import shutil
 import sys
 import zipfile
@@ -31,10 +32,12 @@ mtmc_reassign_metacool = mtmc.reassign_metacool
 # The docopt command line that rich-click replaced (that of 1.3.10, with the
 # mge options renamed and host removed), as docopt read it: see the commit
 # that added the file. Commands and options added since are added to it:
-# metacool, and the --no-metacool and --output-map options of pipeline. The
-# 2.0 command line changed it on purpose (see docs/migration.md): the map
-# that network and pipeline start from is their first argument (MAP), so
-# their --forward is not required; and their --edge is gone.
+# metacool, the --no-metacool and --output-map options of pipeline, and the
+# --output-map option of partition and validation. The 2.0 command line
+# changed it on purpose (see docs/migration.md): the map that network and
+# pipeline start from is their first argument (MAP), so their --forward is
+# not required, and their --edge is gone; the map that partition and
+# validation update is their first argument too.
 INVENTORY = json.loads((TESTS_DATA / "cli_inventory.json").read_text())["metator"]
 
 # Options whose value is one of a list, wherever they appear. --object takes
@@ -2489,7 +2492,7 @@ def test_an_extra_argument_is_a_usage_error(command, case, stub_pipeline, tmp_pa
     assert not stub_pipeline and not Path("out").exists()
 
 
-@pytest.mark.parametrize("command", ["network", "pipeline"])
+@pytest.mark.parametrize("command", ["network", "pipeline", "partition", "validation"])
 def test_a_directory_is_no_map(command, stub_pipeline, tmp_path, monkeypatch, run_cli):
     """A directory given as the map is a usage error, before the command
     starts (it failed once the run read the map, and pipeline -F had
@@ -2499,7 +2502,7 @@ def test_a_directory_is_no_map(command, stub_pipeline, tmp_path, monkeypatch, ru
     bins = Path("out", "overlapping_bin", "bin.fa")
     bins.parent.mkdir(parents=True)
     bins.write_text(">c1\nACGT\n")
-    force = ["-F"] if command == "pipeline" else []
+    force = [] if command == "network" else ["-F"]
     result = run_cli(command, "maps", "-a", _assembly(tmp_path), "-o", "out", *force, exit_code=2)
     assert "File 'maps' is a directory." in " ".join(result.output.replace("│", " ").split())
     assert not stub_pipeline and bins.exists() and not list(Path("out").glob("*.log"))
@@ -2546,6 +2549,517 @@ def test_edge_is_gone(command, edge, stub_pipeline, tmp_path, run_cli):
     result = run_cli(command, "-1", "a.pairs", "-S", "pair", *edge, "-a", "a.fa", "-o", tmp_path / "out", exit_code=2)
     assert EDGE_GONE in " ".join(result.output.replace("│", " ").split())
     assert not stub_pipeline and not (tmp_path / "out").exists()
+
+
+# partition MAP and validation MAP: the steps run one by one on a map, with
+# the steps replaced by stubs (see tests/test_binning_synthetic.py for the
+# map that they give).
+
+# The directories of clusters of each step, replaced with -F.
+STEP_DIRS = {"partition": ["overlapping_bin"], "validation": ["recursive_bin", "final_bin"]}
+
+
+def _step_run(command, metacool, tmp_path, *options):
+    """The arguments of a partition or validation run on the map metacool
+    (none for None), from tables of the earlier steps that the stub steps
+    do not read, but for the contig data, which the run checks the map
+    against: the contigs c1 and c2 of _contig_map."""
+    contigs = tmp_path / "contig_data.txt"
+    if not contigs.exists():
+        contigs.write_text("ID\tName\tSize\n1\tc1\t100\n2\tc2\t50\n")
+    tables = ["-c", contigs, "-n", "network.txt", *(["-f", "overlapping_bin"] if command == "validation" else [])]
+    out = ["-o", tmp_path / "out", "-T", tmp_path / "tmp"]
+    return [*([] if metacool is None else [metacool]), "-a", _assembly(tmp_path), *tables, *out, *options]
+
+
+def _earlier_run(command, tmp_path):
+    """The directories of clusters that an earlier run of command left in the
+    output directory, each with a FASTA file, which the test checks."""
+    files = [tmp_path / "out" / name / "earlier.fa" for name in STEP_DIRS[command]]
+    for path in files:
+        path.parent.mkdir(parents=True)
+        path.write_text(">c1\nACGT\n")
+    return files
+
+
+def _partition_table(monkeypatch, size=150):
+    """Have the stub partition write the contig data of a partition of the
+    contigs c1 and c2 of _contig_map, as metator.partition writes it: one
+    overlapping cluster of both, of size bp (00001: metator_00001_00000)."""
+    stub = mtcli.mtp.partition
+
+    def partition(*args):
+        result = stub(*args)
+        Path(args[6], "contig_data_partition.txt").write_text(
+            "ID\tName\tSize\tOverlapping_bin_ID\tOverlapping_bin_contigs\tOverlapping_bin_size\n"
+            f"1\tc1\t100\t00001\t2\t{size}\n2\tc2\t50\t00001\t2\t{size}\n"
+        )
+        return result
+
+    monkeypatch.setattr("metator.partition.partition", partition)
+
+
+@pytest.mark.parametrize("command", ["partition", "validation"])
+def test_help_of_a_step_on_a_map(command, run_cli):
+    """The help of partition and validation shows MAP, their optional first
+    argument, and --output-map."""
+    output = " ".join(run_cli(command, "--help").output.split())
+    assert f"Usage: metator {command} [OPTIONS] [MAP]" in output
+    assert f"metator {command} MAP" in output and "--output-map" in output
+
+
+# What partition MAP and validation MAP refuse before any work, with -F (an
+# earlier run's directories of clusters are kept), the reason in the log file
+# of the run: the map that run_input refuses, and what run_map_path refuses.
+STEP_MAP_ERRORS = {
+    "a map that is not there": ("{missing}", [], "Cannot read the contact map {missing}: no such file."),
+    "a URI of a directory": ("{directory}::/", [], "Cannot read the contact map {directory}::/: {directory} is not a file."),
+    "no map": (
+        "{pairs}",
+        [],
+        "{pairs} is not a .metacool contact map: give the map of the contigs of the run as the first argument of "
+        "{command}, or leave it out.",
+    ),
+    "a collection": ("{collection}", [], "Cannot read the contact map {collection}: "),
+    "a map of other contigs": (
+        "{other_map}",
+        [],
+        "{other_map} is not a contact map of the contigs of {contigs}: 1 of its contig(s) are not in it: 'c3'.",
+    ),
+    "a map of other lengths": (
+        "{long_map}",
+        [],
+        "{long_map} is not a contact map of the contigs of {contigs}: 1 contig(s) have another length in it: 'c1' (120 "
+        "bp in the map, 100 bp in {contigs}).",
+    ),
+    "an input as --output-map": (
+        "{map}",
+        ["--output-map", "{contigs}"],
+        "--output-map {contigs} is {contigs}, an input of the run: write the map elsewhere.",
+    ),
+    "a map whose name holds ::": (
+        "{colon_map}",
+        [],
+        "Cannot read the contact map {colon_map}: metacooler reads a path that holds :: as file::group. Rename the map "
+        "without ::.",
+    ),
+    "an entry without --output-map": (
+        "{entry}",
+        [],
+        "{entry} is an entry of a .mmetacool collection, which a run does not update in place: write the map of its "
+        "clusters to another file with --output-map.",
+    ),
+    "--output-map without a map": (
+        None,
+        ["--output-map", "{copy}"],
+        "--output-map writes the map that {command} MAP updates: give the map as the first argument, or drop --output-map.",
+    ),
+    "a directory as --output-map": (
+        "{map}",
+        ["--output-map", "{directory}"],
+        "{directory} is a directory: --output-map takes the path of a .metacool file.",
+    ),
+    "a lock held by another run": (
+        "{map}",
+        [],
+        "{map} is being written by another metaTOR run (pid {pid} on {host}, since 2026-11-18T10:00:00+0000): wait "
+        "for it to end, write this run's map elsewhere with --output-map, or, if no such run is going on, remove "
+        "{map}.lock.",
+    ),
+}
+
+
+@pytest.mark.parametrize("command", ["partition", "validation"])
+@pytest.mark.parametrize("case", list(STEP_MAP_ERRORS))
+def test_step_on_a_map_refused(command, case, stub_pipeline, tmp_path, run_cli):
+    """partition MAP and validation MAP check the map as network MAP and
+    pipeline MAP do, then lock the map that they write, before any work:
+    refused, the reason logged as an error in the log file of the run and
+    raised as a MetacoolError, before the step and before -F replaces the
+    directories of clusters of an earlier run. A lock that a running run
+    holds (here, this process) is left to it. A collection is refused with
+    metacooler's reason, which names its entries."""
+    import socket
+
+    names = {
+        "command": command,
+        "map": _contig_map(tmp_path / "input.metacool"),
+        "missing": tmp_path / "missing.metacool",
+        "directory": tmp_path / "maps",
+        "pairs": _pairs(tmp_path),
+        "collection": _collection(tmp_path / "maps.mmetacool", "lib1"),
+        "copy": tmp_path / "copy.metacool",
+        "pid": os.getpid(),
+        "host": socket.gethostname(),
+        "colon_map": tmp_path / "run::1.metacool",
+        "other_map": _contig_map(tmp_path / "other.metacool", {"c1": 100, "c3": 50}),
+        "long_map": _contig_map(tmp_path / "long.metacool", {"c1": 120, "c2": 50}),
+        "contigs": tmp_path / "contig_data.txt",
+    }
+    names["contigs"].write_text("ID\tName\tSize\n1\tc1\t100\n2\tc2\t50\n")
+    shutil.copyfile(names["map"], names["colon_map"])
+    names["entry"] = f"{names['collection']}::entries/lib1"
+    names["directory"].mkdir()
+    metacool, options, message = STEP_MAP_ERRORS[case]
+    if case == "a lock held by another run":
+        lock = _lock(names["map"], os.getpid())
+    earlier = _earlier_run(command, tmp_path)
+    metacool = None if metacool is None else metacool.format(**names)
+    message = message.format(**names)
+    pattern = f"^{re.escape(message)}" + (".*entries/lib1" if case == "a collection" else "$")
+    with pytest.raises(mtmc.MetacoolError, match=pattern):
+        run_cli(command, *_step_run(command, metacool, tmp_path, *[option.format(**names) for option in options], "-F"))
+    assert not stub_pipeline and all(path.exists() for path in earlier)
+    (log,) = (tmp_path / "out").glob(f"metator_{command}_*.log")
+    assert f"ERROR :: {message}" in log.read_text()
+    if case == "a lock held by another run":
+        assert lock.exists()
+    assert not (tmp_path / "copy.metacool").exists()
+
+
+@pytest.mark.parametrize("command", ["partition", "validation"])
+def test_step_on_a_map_refuses_an_existing_output_map(command, stub_pipeline, tmp_path, run_cli):
+    """--output-map replaces a file only with -F, as in pipeline: refused
+    before any work, the file left as it was."""
+    metacool = _contig_map(tmp_path / "input.metacool")
+    output_map = tmp_path / "copy.metacool"
+    output_map.write_text("an older map")
+    message = f"{output_map} exists: give -F to replace it with the map of this run, or another --output-map."
+    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
+        run_cli(command, *_step_run(command, metacool, tmp_path, "--output-map", output_map))
+    assert not stub_pipeline and output_map.read_text() == "an older map"
+    (log,) = (tmp_path / "out").glob(f"metator_{command}_*.log")
+    assert f"ERROR :: {message}" in log.read_text()
+
+
+@pytest.mark.parametrize("output", ["in place", "--output-map", "-F --output-map"])
+def test_partition_on_a_map_stores_its_overlapping_clusters(output, stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """partition MAP stores the overlapping clusters that reach --size in the
+    clustering rounds of the map, the round overlapping, with their contigs
+    and without the columns of miComplete, in place of the rounds the map
+    held; its genomes are left as they were. In place, the map keeps its
+    mode; with --output-map, the map is left as it was, and the copy is
+    written to the file (an existing one, with -F, is replaced: removed
+    first, as pipeline does). The map is locked while the run writes it."""
+    import metacooler
+    import pandas as pd
+
+    _partition_table(monkeypatch)
+    metacool = _contig_map(tmp_path / "input.metacool")
+    metacooler.write_clusters(
+        str(metacool),
+        ["earlier"],
+        pd.DataFrame({"round": ["earlier"], "name": ["x"]}),
+        pd.DataFrame({"round": ["earlier"], "cluster": ["x"], "contig": ["c2"]}),
+    )
+    metacool.chmod(0o640)
+    before = metacool.read_bytes()
+    output_map = tmp_path / "copy.metacool"
+    options = [] if output == "in place" else ["--output-map", output_map]
+    if output.startswith("-F"):
+        output_map.write_text("an older map")
+        options.append("-F")
+    locks = []
+    write_rounds = mtmc.write_rounds
+
+    def locked(*args, **kwargs):
+        locks.append(sorted(path.name for path in tmp_path.glob("*.lock")))
+        return write_rounds(*args, **kwargs)
+
+    monkeypatch.setattr("metator.metacool.write_rounds", locked)
+    run_cli("partition", *_step_run("partition", metacool, tmp_path, "-s", "100", *options))
+    written = metacool if output == "in place" else output_map
+    assert locks == [[f"{written.name}.lock"]] and not list(tmp_path.glob("*.lock"))
+    metacooler.validate(str(written), full=True)
+    mc = metacooler.MetaCooler(str(written))
+    assert mc.cluster_rounds == [{"name": "overlapping", "tool": "metaTOR", "version": __version__, "step": "partition"}]
+    assert list(mc.clusters.name) == ["metator_00001_00000"] and list(mc.clusters.n_contigs) == [2]
+    # genome, which metacooler computes: no cluster is a genome of the map yet.
+    assert list(mc.clusters.columns) == ["round", "name", "parent_round", "parent", "n_contigs", "length", "genome"]
+    assert mc.clusters.genome.isna().all()
+    assert sorted(mc.cluster_members().contig) == ["c1", "c2"]
+    assert list(mc.genomes.name) == ["__unbinned__"]
+    assert (metacool.read_bytes() == before) == (output != "in place")
+    if output == "in place":
+        assert metacool.stat().st_mode & 0o777 == 0o640
+    assert not [path.name for path in tmp_path.iterdir() if path.name.startswith(".")]
+    (log,) = (tmp_path / "out").glob("metator_partition_*.log")
+    logged = log.read_text()
+    assert f"INFO :: {written} is written: the contact map, with the clustering rounds of the run." in logged
+    assert ("Removing" in logged) == output.startswith("-F")
+    # What replaces the map, in place: not the map of the clusters.
+    replaced = f"INFO :: {metacool} is the input map {metacool}: it is replaced once the map with its overlapping clusters"
+    assert (replaced in logged) == (output == "in place")
+
+
+def test_partition_on_a_map_without_a_cluster_of_its_size(stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """No overlapping cluster reaches --size (the default, 500 kb, here): the
+    map holds the round overlapping, with no cluster, in place of the rounds
+    it held."""
+    import metacooler
+
+    _partition_table(monkeypatch)
+    metacool = _contig_map(tmp_path / "input.metacool")
+    run_cli("partition", *_step_run("partition", metacool, tmp_path))
+    mc = metacooler.MetaCooler(str(metacool))
+    assert [entry["name"] for entry in mc.cluster_rounds] == ["overlapping"]
+    assert mc.clusters.empty and mc.cluster_members().empty
+
+
+def test_partition_on_an_entry_of_a_collection(stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """From an entry of a .mmetacool collection, --output-map is a map of its
+    own, with the overlapping clusters, and the collection is left as it
+    was."""
+    import metacooler
+
+    _partition_table(monkeypatch)
+    collection = _collection(tmp_path / "maps.mmetacool", "lib1", "lib2")
+    before = collection.read_bytes()
+    output_map = tmp_path / "lib1.metacool"
+    run_cli(
+        "partition", *_step_run("partition", f"{collection}::entries/lib1", tmp_path, "-s", "100", "--output-map", output_map)
+    )
+    metacooler.validate(str(output_map), full=True)
+    mc = metacooler.MetaCooler(str(output_map))
+    assert list(mc.clusters.name) == ["metator_00001_00000"] and list(mc.genomes.name) == ["__unbinned__"]
+    assert collection.read_bytes() == before
+
+
+def test_partition_on_a_map_through_a_symbolic_link(stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """The map given through a symbolic link: the link is replaced by the
+    map with the overlapping clusters, and the map it pointed to is left as
+    it was, as pipeline replaces it."""
+    import metacooler
+
+    _partition_table(monkeypatch)
+    target = _contig_map(tmp_path / "target.metacool")
+    before = target.read_bytes()
+    link = tmp_path / "link.metacool"
+    link.symlink_to(target)
+    run_cli("partition", *_step_run("partition", link, tmp_path, "-s", "100"))
+    assert not link.is_symlink() and target.read_bytes() == before
+    assert list(metacooler.MetaCooler(str(link)).clusters.name) == ["metator_00001_00000"]
+
+
+@pytest.mark.parametrize("error", [ValueError("not valid"), KeyboardInterrupt()], ids=["ValueError", "Ctrl-C"])
+def test_partition_on_a_map_that_cannot_be_written(error, stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """A map with the overlapping clusters that cannot be written (here, its
+    validation fails) stops the run with an error that says why and that the
+    map is left as it was, as pipeline says it; Ctrl-C stops it too. The map
+    is left byte for byte, with no file beside it (no staged map, no lock);
+    the other outputs of the run are kept."""
+    _partition_table(monkeypatch)
+    (tmp_path / "maps").mkdir()
+    metacool = _contig_map(tmp_path / "maps" / "input.metacool")
+    before = metacool.read_bytes()
+
+    def validate(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr("metacooler.validate", validate)
+    args = _step_run("partition", metacool, tmp_path, "-s", "100")
+    message = (
+        f"{metacool} is not written: not valid. It is still the input map of the run, as it was. The other outputs of "
+        "the run are kept."
+    )
+    if isinstance(error, ValueError):
+        with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
+            run_cli("partition", *args)
+        (log,) = (tmp_path / "out").glob("metator_partition_*.log")
+        assert f"ERROR :: {message}\n" in log.read_text()
+    else:
+        assert "Aborted" in run_cli("partition", *args, exit_code=1).output
+    assert metacool.read_bytes() == before
+    assert sorted(path.name for path in (tmp_path / "maps").iterdir()) == ["input.metacool"]
+    assert (tmp_path / "out" / "contig_data_partition.txt").exists()
+
+
+@pytest.mark.parametrize("output", ["in place", "--output-map"])
+def test_validation_on_a_map_writes_the_map_of_the_clusters(output, stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """validation MAP writes the map of the clusters as pipeline MAP writes it
+    at its end, from the tables of the run, with its clustering rounds: in
+    place, keeping the mode of the map, or to --output-map, the map left as
+    it was. Its metadata are those of the validation: the map, and no
+    --start, which validation does not have."""
+    import metacooler
+
+    monkeypatch.setattr("metator.metacool.reassign_metacool", mtmc_reassign_metacool)
+    _final_tables(monkeypatch, "c1")
+    _rounds_tables(monkeypatch, ["c1", "c2"])
+    metacool = _contig_map(tmp_path / "input.metacool")
+    metacool.chmod(0o640)
+    before = metacool.read_bytes()
+    output_map = tmp_path / "copy.metacool"
+    options = [] if output == "in place" else ["--output-map", output_map]
+    run_cli("validation", *_step_run("validation", metacool, tmp_path, *options))
+    written = metacool if output == "in place" else output_map
+    metacooler.validate(str(written), full=True)
+    mc = metacooler.MetaCooler(str(written))
+    assert list(mc.genomes.name) == ["__unbinned__", "metator_00001_00000"]
+    assert [entry["name"] for entry in mc.cluster_rounds] == ["overlapping", "final"]
+    metator = mc.metadata["metator"]
+    assert metator["command"].startswith(f"metator validation {metacool} -a")
+    assert metator["parameters"]["map"] == str(metacool) and "start" not in metator["parameters"]
+    assert metator["parameters"]["output_map"] == (None if output == "in place" else str(output_map))
+    assert (metacool.read_bytes() == before) == (output != "in place")
+    # The heatmap of the clusters is drawn from the map, as pipeline MAP
+    # draws it.
+    assert stub_pipeline["heatmap_map"] == str(metacool)
+    if output == "in place":
+        assert metacool.stat().st_mode & 0o777 == 0o640
+    assert not list(tmp_path.glob("*.lock")) and not [path.name for path in tmp_path.iterdir() if path.name.startswith(".")]
+
+
+def test_validation_on_a_map_that_cannot_be_written(stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """A map of the clusters that cannot be written (here, its validation
+    fails) stops validation MAP as it stops pipeline MAP: the map is left
+    as it was."""
+    monkeypatch.setattr("metator.metacool.reassign_metacool", mtmc_reassign_metacool)
+    _final_tables(monkeypatch, "c1")
+    metacool = _contig_map(tmp_path / "input.metacool")
+    before = metacool.read_bytes()
+
+    def validate(*args, **kwargs):
+        raise ValueError("not valid")
+
+    monkeypatch.setattr("metacooler.validate", validate)
+    with pytest.raises(mtmc.MetacoolError, match=r"is not written: .* It is still the input map of the run, as it was\."):
+        run_cli("validation", *_step_run("validation", metacool, tmp_path))
+    assert metacool.read_bytes() == before
+
+
+@pytest.mark.parametrize("command", ["partition", "validation"])
+def test_a_step_on_a_map_runs_under_the_sigterm_handler(command, stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """partition MAP and validation MAP, which write a map, run their step
+    under the SIGTERM handler of a run (see terminated_as_interrupted), so
+    that SIGTERM stops them as Ctrl-C does and they clean up after
+    themselves, their lock and staged map. Without it, SIGTERM killed them
+    and left both. It passes against this commit's first version, which
+    had the handler and no test of it; it fails without the handler."""
+    import signal
+
+    seen = {}
+
+    def step(*args, **kwargs):
+        seen["handler"] = signal.getsignal(signal.SIGTERM)
+        raise RuntimeError("stopped")
+
+    target = {"partition": "metator.partition.partition", "validation": "metator.validation.recursive_decontamination"}
+    monkeypatch.setattr(target[command], step)
+    metacool = _contig_map(tmp_path / "input.metacool")
+    with pytest.raises(RuntimeError, match="stopped"):
+        run_cli(command, *_step_run(command, metacool, tmp_path))
+    assert callable(seen["handler"]) and seen["handler"] not in (signal.SIG_DFL, signal.SIG_IGN)
+    assert signal.getsignal(signal.SIGTERM) is signal.SIG_DFL and not list(tmp_path.glob("*.lock"))
+
+
+@pytest.mark.parametrize("with_map", [False, True], ids=["without a map", "with a map"])
+@pytest.mark.parametrize("command", ["partition", "validation"])
+def test_a_step_refuses_a_bad_prefix_before_replacing_the_clusters(command, with_map, stub_pipeline, tmp_path, run_cli):
+    """An invalid --prefix is refused before -F replaces the directories of
+    clusters of an earlier run, as pipeline refuses it: it emptied them
+    first, then was refused."""
+    earlier = _earlier_run(command, tmp_path)
+    metacool = _contig_map(tmp_path / "input.metacool") if with_map else None
+    with pytest.raises(ValueError, match="Invalid --prefix"):
+        run_cli(command, *_step_run(command, metacool, tmp_path, "-F", "-p", "bad.prefix"))
+    assert all(path.exists() for path in earlier) and not stub_pipeline
+
+
+def test_pipeline_refuses_a_file_of_the_index_as_its_output_map(stub_pipeline, tmp_path, run_cli):
+    """pipeline --output-map that names a file of the index of the assembly,
+    given as its basename (-a), is refused before any work: with -F, the map
+    replaced it at the end of the run."""
+    metacool = _contig_map(tmp_path / "input.metacool")
+    index = tmp_path / "idx.1.bt2"
+    index.write_text("index")
+    message = f"--output-map {index} is {index}, an input of the run: write the map elsewhere."
+    args = [metacool, "-a", tmp_path / "idx", "-o", tmp_path / "out", "-T", tmp_path / "tmp", "--output-map", index, "-F"]
+    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
+        run_cli("pipeline", *args)
+    assert index.read_text() == "index" and not stub_pipeline
+
+
+def test_pipeline_replaces_an_earlier_map_named_after_its_assembly(stub_pipeline, tmp_path, run_cli):
+    """pipeline --output-map -F replaces the map of an earlier run named
+    after the assembly (assembly.fa.metacool, for -a assembly.fa): a map is
+    no file of the index of the assembly, which --output-map must not name.
+    It was refused as one: every file named assembly.fa.<anything> was."""
+    metacool = _contig_map(tmp_path / "input.metacool")
+    output_map = _contig_map(tmp_path / "assembly.fa.metacool")
+    run_cli("pipeline", *_map_run(metacool, tmp_path, "--output-map", output_map, "-F"))
+    assert stub_pipeline["reassign_metacool"][3] == str(output_map)
+
+
+def test_pipeline_refuses_an_input_as_its_output_map(stub_pipeline, tmp_path, run_cli):
+    """pipeline --output-map that names the assembly of the run is refused
+    before any work: with -F, the map of the clusters replaced it at the
+    end of the run."""
+    metacool = _contig_map(tmp_path / "input.metacool")
+    assembly = Path(_assembly(tmp_path))
+    before = assembly.read_bytes()
+    message = f"--output-map {assembly} is {assembly}, an input of the run: write the map elsewhere."
+    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
+        run_cli("pipeline", *_map_run(metacool, tmp_path, "--output-map", assembly, "-F"))
+    assert assembly.read_bytes() == before and not stub_pipeline
+
+
+@pytest.mark.parametrize("command", ["partition", "validation"])
+def test_steps_without_a_map_are_unchanged(command, stub_pipeline, tmp_path, run_cli):
+    """A guard: without MAP, partition and validation run as before MAP was
+    their argument, so this passes against the previous commit too. The
+    step gets the same arguments, the run writes the same files (no map, no
+    lock, no rounds) and the same log file, line for line but for its
+    dates: no line about a map. -F replaces the directories of clusters of
+    an earlier run before the log file starts, as before; without -F, they
+    are refused then, with no log file."""
+    earlier = _earlier_run(command, tmp_path)
+    with pytest.raises(ValueError):
+        run_cli(command, *_step_run(command, None, tmp_path))
+    assert all(path.exists() for path in earlier) and not list((tmp_path / "out").glob("*.log"))
+
+    args = _step_run(command, None, tmp_path, "-F", "-s", "1000", "-p", "sample")
+    run_cli(command, *args)
+    assert not any(path.exists() for path in earlier)
+    step = {"partition": "partition", "validation": "recursive_decontamination"}[command]
+    out, assembly, contigs = str(tmp_path / "out"), str(tmp_path / "assembly.fa"), str(tmp_path / "contig_data.txt")
+    expected = {
+        "partition": (
+            "louvain", assembly, False, contigs, 100, "network.txt", out, f"{out}/overlapping_bin", 0.8, 1.0,
+            1000, 1, "sample_metator",
+        ),
+        "validation": (
+            "louvain", assembly, False, contigs, f"{out}/final_bin", "overlapping_bin", 10, "network.txt", out,
+            0.9, f"{out}/recursive_bin", 1.0, 1000, "tmp_dir", 1, "sample_metator",
+        ),
+    }[command]  # fmt: skip
+    called = list(stub_pipeline[step])
+    if command == "validation":
+        # The private temporary directory of the run, inside --tmpdir.
+        assert Path(called[13]).parent == tmp_path / "tmp"
+        called[13] = "tmp_dir"
+    assert tuple(called) == expected
+    # Without a map, the heatmap of validation is drawn from the pairs files
+    # of its output directory (no map), as before.
+    assert set(stub_pipeline) == ({step, "partition_outdir"} if command == "partition" else {step, "heatmap_map"})
+    assert stub_pipeline.get("heatmap_map") is None
+    files = {"partition": ["contig_data_partition.txt", "overlapping_bin"], "validation": ["final_bin", "recursive_bin"]}
+    (log,) = (tmp_path / "out").glob(f"metator_{command}_*.log")
+    assert sorted(path.name for path in (tmp_path / "out").iterdir()) == sorted([log.name, *files[command]])
+    lines = [re.sub(r"\d{4}-\d\d-\d\d[ ,]\d\d:\d\d:\d\d", "DATE", line) for line in log.read_text().splitlines()]
+    command_line = shlex.join(["metator", command, *(str(arg) for arg in args)])
+    assert lines == [
+        f"## MetaTOR: v{__version__} log file",
+        "## date: DATE",
+        f"## Command used: {command_line}",
+        "",
+        "---",
+        "",
+        "",
+        "---",
+        "## date: DATE",
+    ]
+    assert not Path(f"{assembly}.fxi").exists()
 
 
 # The commands of the tutorial of metaTOR 1.x (4253551,

@@ -112,9 +112,10 @@ that it builds from its pairs files.
   per contig, as in the map of the contigs of a run, the contacts within a
   contig are spread evenly over its windows, where its reads would put
   most of them close to the diagonal.
-- **Without a map** (`metator validation`, run step by step), it is drawn
-  from the `.pairs.gz` files of the output directory, each contact at the
-  positions of its reads, and skipped, with a warning, when there are
+- **Step by step,** `metator validation MAP` draws it from the map, as
+  `pipeline` does. Without a map, `metator validation` draws it from the
+  `.pairs.gz` files of the output directory, each contact at the
+  positions of its reads, and skips it, with a warning, when there are
   none.
 - **The image** is saved at about one pixel per window, from 100 to 2000
   dpi, with lines at least a pixel wide between the clusters. It was
