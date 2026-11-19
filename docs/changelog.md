@@ -17,20 +17,46 @@ All notable changes to this project will be documented in this file.
   `metator.network.metacool_to_contacts`, `read_metacool_contacts`.
 - A `pipeline` run from a map writes the map of its bins from it, with
   `metacooler reassign`: its bins and contacts, grouped by final bin as
-  from pairs, with this run's genome and contig columns, and the contact
-  statistics of the input map, carried over to the bins (a map written
-  by metacooler 0.2.0 has them computed again from the pixels: at one bin
-  per contig, every intra-contig contact then counts as short-range).
-  The output may be the input map, replaced only once the new map is
-  validated. Python API: `metator.metacool.reassign_metacool`. The README
-  shows the route from the pairs of `hicstuff` through `metacooler create
-  pairs`.
+  from pairs, with this run's genome and contig columns (the contig
+  columns last, as from pairs, whatever columns the input map carried),
+  and the contact statistics of the input map, carried over to the bins
+  (a map written by metacooler 0.2.0 has them computed again from the
+  pixels: at one bin per contig, every intra-contig contact then counts
+  as short-range). The output may be the input map, replaced only once
+  the new map is validated. Python API:
+  `metator.metacool.reassign_metacool`. The README shows the route from
+  the pairs of `hicstuff` through `metacooler create pairs`.
 - `metator metacool` writes this map from a `.metacool` map given in place
   of the pairs files, so that a run step by step (`network -S metacool`,
   `partition`, `validation`) can write the map that `pipeline -S
   metacool` writes.
 
 ### Changed
+- `pipeline` from reads, alignments or pairs reads its pairs files into
+  its `.metacool` map once, as soon as it has them: the map of the
+  contigs, every contig in `__unbinned__`, with their contacts, the
+  contact statistics measured on the reads and the contig columns measured
+  on the assembly. At the end, it writes the map of its bins over it with
+  `metacooler reassign`, where `write_metacool` read every pairs file
+  again: the map is the one it wrote before, and that `metator metacool`
+  writes from the pairs, but for its history (the `annotate` and
+  `reassign` keys of its metadata) and, when the final bins leave the
+  contigs in the order of the map of the contigs (for example, no final
+  bin, or one bin holding every contig), the place of its `genome_id`
+  column, after the `qc_*` columns. Its file is larger, for the same data
+  (by 12 to 32% on our test data): the columns measured on the assembly,
+  dropped and written again at the end, leave free space in it.
+  `--no-metacool` builds it all the same and removes it at the end. An
+  earlier run's map at its path is removed before the build,
+  `--no-metacool` or not (it was removed at the end, and left there with
+  `--no-metacool`): an input of the run that is that map, and from pairs a
+  contact map, are refused before any work. A map of the contigs that
+  cannot be built leaves none, with a warning (at INFO with
+  `--no-metacool`), and the run goes on; a map of the bins that cannot be
+  written over it, and a run that stops with an error once it is built,
+  leave the map of the contigs, in no bin, which a new run can start from
+  (`--start metacool`, with `-F` in the same output directory). Python
+  API: `metator.metacool.write_contig_map`.
 - metaTOR requires metacooler 0.3.0. The `.metacool` maps it writes also
   store the contact statistics of each contig (the `qc_intra_contig_short`
   and `qc_intra_contig_long` columns of the contigs table), which

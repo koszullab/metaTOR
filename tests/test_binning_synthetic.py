@@ -13,6 +13,7 @@ import pandas as pd
 import pytest
 from scipy import sparse
 
+import metator.metacool as mtmc
 import metator.network as mtn
 import metator.partition as mtp
 from tests import synthetic
@@ -234,11 +235,12 @@ def test_partition_without_bin_above_the_size_threshold(metagenome_inputs, metag
 
 
 def test_pipeline_without_bin_above_the_size_threshold(
-    metagenome_inputs, metagenome_indexed_pairs, tmp_path, monkeypatch, run_cli
+    metagenome, metagenome_inputs, metagenome_indexed_pairs, tmp_path, monkeypatch, run_cli
 ):
     """No bin of the partition reaches --size: the run stops before
     miComplete (which found no bin, then failed to read its empty results),
-    saying why in its log file."""
+    saying why in its log file. It leaves the map of the contigs that it
+    built from the pairs files, in no bin: every pair a contact."""
     calls = []
     monkeypatch.setattr("metator.validation.micomplete_quality", lambda *args: calls.append(args))
     out = tmp_path / "out"
@@ -250,6 +252,10 @@ def test_pipeline_without_bin_above_the_size_threshold(
     (log,) = out.glob("metator_pipeline_*.log")
     message = f"{out / 'overlapping_bin'} holds no bin to validate (no .fa, .fasta or .fna file): partition writes none"
     assert f"ERROR :: {message}" in log.read_text()
+    metacool = out / "metator.metacool"
+    metacooler.validate(str(metacool), full=True)
+    assert list(metacooler.MetaCooler(str(metacool)).genomes.name) == ["__unbinned__"]
+    assert cooler.Cooler(str(metacool)).pixels()[:]["count"].sum() == len(metagenome.pairs)
 
 
 def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, metagenome_indexed_pairs, tmp_path, monkeypatch, run_cli):
@@ -328,6 +334,117 @@ def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, metagenome
     assert not (out / "contig_data_partition.txt").exists()
 
 
+def test_pipeline_map_is_the_map_of_the_pairs(
+    metagenome, metagenome_inputs, metagenome_indexed_pairs, tmp_path, monkeypatch, run_cli
+):
+    """The map that a run from pairs leaves is the map that metator metacool
+    (write_metacool) writes from its pairs files and final tables: the same
+    bins, contacts, contigs table (column for column), genomes table (the
+    columns of the bin summary and the contact statistics of each bin) and
+    QC block. The run reads its pairs files into a map once, as soon as it
+    has them, and writes the map of its bins over it at the end with
+    metacooler reassign, without reading them again: only the history of
+    the map differs, the annotate and reassign keys of its metadata (and
+    the date of the file)."""
+    monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
+    write_metacool, from_pairs = mtmc.write_metacool, metacooler.from_pairs
+    monkeypatch.setattr("metator.metacool.write_metacool", lambda *args, **kwargs: pytest.fail("pairs read again"))
+    maps = []
+
+    def counted_from_pairs(uri, *args, **kwargs):
+        maps.append(str(uri))
+        return from_pairs(uri, *args, **kwargs)
+
+    monkeypatch.setattr(metacooler, "from_pairs", counted_from_pairs)
+    out = tmp_path / "out"
+    args = ["-1", str(metagenome_indexed_pairs), "-a", str(metagenome_inputs["assembly"]), "-d", str(metagenome_inputs["depth"]),
+            "-S", "pair", "-e", "DpnII", "-s", "50000", "-i", "10", "-j", "5", "-o", str(out), "-T", str(tmp_path / "tmp")]  # fmt: skip
+    random.seed(0)
+    run_cli("pipeline", *args)
+    written = out / "metator.metacool"
+    assert maps == [str(written)]
+    metacooler.validate(str(written), full=True)
+    clr = cooler.Cooler(str(written))
+    expected = tmp_path / "pairs.metacool"
+    write_metacool(
+        [str(metagenome_indexed_pairs)],
+        str(out / "contig_data_final.txt"),
+        str(expected),
+        bin_summary=str(out / "bin_summary.txt"),
+        assembly_name=clr.info["genome-assembly"],
+        metadata={key: value for key, value in clr.info["metadata"]["metator"].items() if key != "version"},
+    )
+
+    ref = cooler.Cooler(str(expected))
+    for table in ["bins", "pixels", "chroms"]:
+        pd.testing.assert_frame_equal(getattr(clr, table)()[:], getattr(ref, table)()[:])
+    genomes = metacooler.MetaCooler(str(written)).genomes
+    pd.testing.assert_frame_equal(genomes, metacooler.MetaCooler(str(expected)).genomes)
+    assert {"Completeness", "qc_inter_genome"} <= set(genomes.columns)
+    info, ref_info = dict(clr.info), dict(ref.info)
+    metadata, ref_metadata = info.pop("metadata"), ref_info.pop("metadata")
+    assert metadata["qc"] == ref_metadata["qc"] and metadata["qc"]["n_pairs_read"] == len(metagenome.pairs)
+    assert {key for key in info.keys() | ref_info.keys() if info.get(key) != ref_info.get(key)} <= {"creation-date"}
+    differ = {key for key in metadata.keys() | ref_metadata.keys() if metadata.get(key) != ref_metadata.get(key)}
+    assert differ == {"annotate", "reassign"}
+    assert [entry["source"] for entry in metadata["reassign"]] == [str(written)]
+    assert len(metadata["annotate"]) == 3 and len(ref_metadata["annotate"]) == 1
+
+
+def test_pipeline_restarts_from_the_map_of_a_stopped_run(
+    metagenome, metagenome_inputs, metagenome_indexed_pairs, tmp_path, monkeypatch, run_cli
+):
+    """A run from pairs that stops with an error once it has built the map of
+    its contigs (miComplete fails in the validation, here) leaves that map,
+    in no bin. A new run from it (--start metacool, with -F in the same
+    output directory, whose bin directories the stopped run left) gives the
+    outputs of a run from the pairs that does not stop, and its map, but
+    for the provenance of the map."""
+    common = ["-a", str(metagenome_inputs["assembly"]), "-d", str(metagenome_inputs["depth"]), "-e", "DpnII", "-s", "50000",
+              "-i", "10", "-j", "5", "-T", str(tmp_path / "tmp")]  # fmt: skip
+    pairs, clean, out = str(metagenome_indexed_pairs), tmp_path / "clean", tmp_path / "out"
+    micomplete = synthetic.fake_micomplete(metagenome)
+    monkeypatch.setattr("metator.validation.micomplete_quality", micomplete)
+    random.seed(0)
+    run_cli("pipeline", "-1", pairs, "-S", "pair", "-o", str(clean), *common)
+
+    def micomplete_fails(*args):
+        raise RuntimeError("miComplete failed")
+
+    monkeypatch.setattr("metator.validation.micomplete_quality", micomplete_fails)
+    random.seed(0)
+    with pytest.raises(RuntimeError, match=r"^miComplete failed$"):
+        run_cli("pipeline", "-1", pairs, "-S", "pair", "-o", str(out), *common)
+    metacool = out / "metator.metacool"
+    metacooler.validate(str(metacool), full=True)
+    assert list(metacooler.MetaCooler(str(metacool)).genomes.name) == ["__unbinned__"]
+    monkeypatch.setattr("metator.validation.micomplete_quality", micomplete)
+    random.seed(0)
+    run_cli("pipeline", "-1", str(metacool), "-S", "metacool", "-o", str(out), "-F", *common)
+
+    for name in ["network.txt", "contig_data_network.txt", "contig_data_final.txt", "bin_summary.txt", "binning.txt"]:
+        assert (out / name).read_text() == (clean / name).read_text(), name
+    final_bins = [{path.name: path.read_bytes() for path in (run / "final_bin_unscaffold").iterdir()} for run in [out, clean]]
+    assert final_bins[0] == final_bins[1] and final_bins[0]
+    # The map of the bins, written over the map that the stopped run left.
+    metacooler.validate(str(metacool), full=True)
+    clr, ref = cooler.Cooler(str(metacool)), cooler.Cooler(str(clean / "metator.metacool"))
+    for table in ["bins", "pixels", "chroms"]:
+        pd.testing.assert_frame_equal(getattr(clr, table)()[:], getattr(ref, table)()[:])
+    pd.testing.assert_frame_equal(
+        metacooler.MetaCooler(str(metacool)).genomes, metacooler.MetaCooler(str(clean / "metator.metacool")).genomes
+    )
+    info, ref_info = dict(clr.info), dict(ref.info)
+    metadata, ref_metadata = info.pop("metadata"), ref_info.pop("metadata")
+    assert metadata["qc"] == ref_metadata["qc"]
+    assert {key for key in info.keys() | ref_info.keys() if info.get(key) != ref_info.get(key)} <= {"creation-date"}
+    # The parameters of the run (its start, its input) and the paths of the
+    # history.
+    differ = {key for key in metadata.keys() | ref_metadata.keys() if metadata.get(key) != ref_metadata.get(key)}
+    assert differ == {"metator", "annotate", "reassign"}
+    assert [entry["source"] for entry in metadata["reassign"]] == [str(metacool)]
+
+
 def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, metagenome_indexed_pairs, tmp_path, monkeypatch, run_cli):
     """From the contact map written by a run from pairs (one bin per contig,
     its contigs grouped by bin), the pipeline makes the same network, byte
@@ -359,11 +476,14 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, metagenome_inde
     clr, ref = cooler.Cooler(str(written)), cooler.Cooler(str(expected))
     for table in ["bins", "pixels"]:
         pd.testing.assert_frame_equal(getattr(clr, table)()[:], getattr(ref, table)()[:])
-    # The contigs table that metacooler reassign rebuilds stores genome_id
-    # after the columns that it carries from the input map.
+    # The contigs table of the input map: metacooler reassign relabels its
+    # contigs in place (the same bins), and writes genome_id again, after the
+    # other columns; metaTOR then stores its own columns last, as in the map
+    # of the pairs.
     chroms, ref_chroms = clr.chroms()[:], ref.chroms()[:]
-    assert [column for column in chroms.columns if not column.startswith("qc_")] == [
-        "name", "length", "GC_content", "Hit", "Shotgun_coverage", "Restriction_site", "genome_id"]  # fmt: skip
+    columns = ["name", "length", "genome_id", "GC_content", "Hit", "Shotgun_coverage", "Restriction_site"]
+    for table in [chroms, ref_chroms]:
+        assert [column for column in table.columns if not column.startswith("qc_")] == columns
     pd.testing.assert_frame_equal(chroms[ref_chroms.columns], ref_chroms)
     # The QC block and columns of the run from pairs, carried over.
     genomes, ref_genomes = metacooler.MetaCooler(str(written)).genomes, metacooler.MetaCooler(str(expected)).genomes
@@ -371,7 +491,9 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, metagenome_inde
     metadata = clr.info["metadata"]
     assert metadata["metator"]["parameters"]["start"] == "metacool"
     assert metadata["qc"] == ref.info["metadata"]["qc"] and metadata["qc"]["source"] == "pairs"
-    assert [entry["source"] for entry in metadata["reassign"]] == [str(metacool)]
+    # The history of the input map, whose map of the bins was written over
+    # the map of its contigs, then that of this run.
+    assert [entry["source"] for entry in metadata["reassign"]] == [str(metacool), str(metacool)]
 
     # The same map, written by metator metacool from the input map and the
     # tables of the run: a run step by step can write it too.

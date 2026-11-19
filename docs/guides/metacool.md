@@ -1,9 +1,18 @@
 # The contact map of the bins
 
-At the end of a run, `metator pipeline` writes the contact map of all the
-contigs, grouped by bin, as `metator.metacool` in the output directory
-(`<prefix>.metacool` with `--prefix`); `--no-metacool` skips it. A
-`.metacool` file is the contact map format of
+`metator pipeline` writes the contact map of all the contigs, grouped by bin,
+as `metator.metacool` in the output directory (`<prefix>.metacool` with
+`--prefix`). It reads the pairs files into the map once, as soon as it has
+them: the map of the contigs, in no bin yet (every contig in `__unbinned__`,
+the longest first), with their contacts, the contact statistics that
+metacooler measures on the reads and what metaTOR measures on the assembly
+(`GC_content`, and `Shotgun_coverage` and `Restriction_site` with `--depth`
+and `--enzyme`). At the end of the run, it writes the map of the bins over
+it, from the final tables, with `metacooler reassign`; `--no-metacool`
+removes it instead. Its file is larger than that of a map written from the
+pairs in one go (by 12 to 32% on our test data), for the same data: the
+columns measured on the assembly, dropped and written again at the end, leave
+free space in it. A `.metacool` file is the contact map format of
 [metacooler](https://github.com/js2264/metacooler): a
 [cooler](https://github.com/open2c/cooler) whose chromosomes are the contigs,
 grouped by genome. `cooler` and the tools built on it read it as any `.cool`
@@ -54,7 +63,11 @@ metacooler dump -t genomes -H binning/metator.metacool
 
 `metator metacool` writes the same file from the pairs files,
 `contig_data_final.txt` and `bin_summary.txt` of a run, for a run made step by
-step, or one that skipped the map:
+step, or one that skipped the map, but for the history that it stores (the
+`annotate` and `reassign` keys of its metadata) and, when the final bins leave
+the contigs in the order of the map of the contigs (for example, no final bin,
+or one bin holding every contig), the place of the `genome_id` column, which
+metacooler then writes after the `qc_*` columns:
 
 ```bash
 metator metacool -c binning/contig_data_final.txt -b binning/bin_summary.txt \
@@ -80,12 +93,27 @@ but those of a hand-edited `contig_data_final.txt` can be. Each row of
 `bin_summary.txt` must have as many fields as its header, as metaTOR writes
 it.
 
-When the map cannot be written (contig names that are not ASCII, or a
-misaligned `bin_summary.txt`), `metator pipeline` logs a warning saying why,
-and keeps its other outputs and its exit status; `metator metacool` logs the
-reason as an error and stops with it. A map that an earlier run left in the
-output directory is removed before the new one is written, as it no longer
-matches the bins: a run whose map cannot be written leaves none.
+When the map cannot be written, `metator pipeline` logs a warning saying why
+(a line at INFO with `--no-metacool`, for a reason that `metator metacool`
+would give) and keeps its other outputs and its exit status; `metator
+metacool` logs the reason as an error and stops with it. `pipeline` removes a
+map that an earlier run left in the output directory before it builds the map
+of the contigs in its place (`--no-metacool` or not), as it no longer matches
+the bins: from then on, the map there is this run's, or there is none. So a
+run from reads, alignments or pairs refuses, before any work, an input that is
+that map (or a symbolic link to it or from it), and, from pairs, a contact
+map: start from a map with `--start metacool`. A map of the contigs that
+cannot be built (for example, from an assembly with contig names that are not
+ASCII) leaves none, and the run goes on without a map. When the map of the
+bins cannot be written over it (for example, from a misaligned
+`bin_summary.txt`), the map of the contigs stays, in no bin. So it does when
+the run stops with an error once it is built (in the partition or the
+validation, for example), `--no-metacool` or not: a new run can start from it,
+without aligning the reads again, with `--start metacool -1
+<outdir>/metator.metacool` (`<outdir>/<prefix>.metacool` with `--prefix`) and
+`-F`, which replaces the bin directories that the stopped run left in the
+output directory. `--edge` then stays at 0 and `--scaffold` is not available
+(see [Starting from a contact map](#starting-from-a-contact-map)).
 
 ## Starting from a contact map
 
@@ -125,8 +153,9 @@ map, with `metacooler reassign`, as a new file:
 - the bins and contacts of the input map, at its bin size; one genome per
   final bin and `__unbinned__` for the other contigs, grouped genome by genome,
   the longest first, as in the map of a run from pairs;
-- the columns of `bin_summary.txt` and `contig_data_final.txt`, which replace
-  those the input map had (the map of an earlier binning, for example);
+- the columns of `bin_summary.txt` and `contig_data_final.txt`, last, as in
+  the map of a run from pairs: they replace those the input map had (the map
+  of an earlier binning, for example);
 - the contact statistics (the `qc` block of the metadata and the `qc_*`
   columns of the genomes and contigs tables) of the input map, when it has
   them, carried over to the bins: metacooler keeps the counts within each

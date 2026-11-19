@@ -175,6 +175,31 @@ def check_metacool_start(start, forward, edge, scaffold=False):
         raise ValueError
 
 
+def check_inputs_not_the_map(start, forward, reverse, metacool):
+    """The files given to a pipeline run from reads, alignments or pairs
+    (-1, -2): none may be its contact map (metacool: the same path, or a
+    symbolic link to it or from it), which the run removes before it builds
+    the map of its contigs there. And a pairs file may not be a contact
+    map, which --start metacool reads."""
+    if start == "metacool":
+        return
+    for path in [path for paths in (forward, reverse) if paths for path in paths.split(",")]:
+        if mtmc.is_input_map(path, metacool):
+            logger.error(
+                "%s is the contact map of this run (%s), which the run removes before it builds the map of its "
+                "contigs there: start from it with --start metacool, or write the run to another output directory "
+                "or under another --prefix.",
+                path,
+                metacool,
+            )
+            raise ValueError
+    if start == "pair" and forward:
+        for path in forward.split(","):
+            if mtmc.is_map(path):
+                logger.error("%s is a contact map, not a pairs file: start from it with --start metacool.", path)
+                raise ValueError
+
+
 def contig_network(start, forward, alignment_files, contig_data, hit_data, edge, outdir, tmp_dir, threads, *args):
     """network.txt and contig_data_network.txt of a run (args: normalization
     and self contacts): from its pairs files, or, with --start metacool,
@@ -262,51 +287,105 @@ def assembly_basename(assembly):
     return re.sub(r"(\.(fa|fas|fasta|fna))?(\.gz)?$", "", os.path.basename(os.path.normpath(assembly)))
 
 
-def pipeline_metacool(pairs_files, outdir, prefix, assembly, threads, metacool=None):
-    """Write the contact map of a pipeline run: <outdir>/<prefix>.metacool,
-    or <outdir>/metator.metacool without --prefix.
+def metacool_path(outdir, prefix):
+    """The contact map of a pipeline run: <outdir>/<prefix>.metacool, or
+    <outdir>/metator.metacool without --prefix."""
+    return join(outdir, f"{prefix or 'metator'}.metacool")
 
-    From the pairs files of the run or, for a run that started from a
-    .metacool map (metacool), from that map: its bins and contacts, grouped
-    by final bin (see metator.metacool.reassign_metacool).
+
+def _map_not_written(outfile, error, consequence, asked=True):
+    """Log that the map at outfile is not written, saying why, then what
+    follows: a warning, or a line at INFO for a map that was not asked for
+    (asked: --no-metacool not given). A MetacoolError says why; another
+    error is unexpected: it is a warning all the same, with its type and
+    traceback."""
+    unexpected = not isinstance(error, mtmc.MetacoolError)
+    reason = f"{type(error).__name__}: {error}" if unexpected else str(error)
+    log = logger.warning if asked or unexpected else logger.info
+    log(f"{outfile} is not written: {reason.rstrip('.')}. {consequence}", exc_info=unexpected)
+
+
+def pipeline_contig_map(pairs_files, contig_data, outfile, assembly, threads, tmp_dir, no_metacool=False):
+    """Build the contact map of the contigs of a pipeline run from its pairs
+    files, as soon as it has them, at outfile (see metacool_path): every
+    contig in no bin yet (see metator.metacool.write_contig_map). At the end
+    of the run, pipeline_metacool writes the map of the bins over it or,
+    with --no-metacool, the run removes it. Returns whether it is built.
+
+    A map of the same name left by an earlier run is removed first: this
+    run replaces the tables it was made from, so it must not stay behind,
+    passing for this run's, when this one cannot be built. The map is an
+    extra output: when it cannot be built, a warning says why (a line at
+    INFO with --no-metacool, unless the error is unexpected), nothing is
+    left at outfile, and the run goes on without it (no map of the bins is
+    written at its end). Once built, it stays at outfile, in no bin, until
+    the map of the bins replaces it: when that map cannot be written, and
+    when the run stops with an error before its end (--no-metacool or not).
+    A symbolic link at outfile is removed, not its target. The inputs of the
+    run are not at outfile: check_inputs_not_the_map refuses them first.
+    """
+    try:
+        if os.path.lexists(outfile):
+            logger.info(f"Removing {outfile}, the contact map of an earlier run.")
+            os.remove(outfile)
+        mtmc.write_contig_map(
+            pairs_files,
+            contig_data,
+            outfile,
+            assembly_name=assembly_basename(assembly),
+            threads=threads,
+            force=True,
+            metadata=run_metadata(),
+            tmp_dir=tmp_dir,
+        )
+    except Exception as error:
+        if no_metacool:
+            _map_not_written(outfile, error, "The run goes on without it.", asked=False)
+        else:
+            _map_not_written(outfile, error, "The run goes on without it, and writes no map of the bins.")
+        return False
+    return True
+
+
+def pipeline_metacool(metacool, outdir, outfile, contig_map=False):
+    """Write the contact map of the bins of a pipeline run at outfile (see
+    metacool_path), from a .metacool map of its contigs and the final
+    tables of the run (see metator.metacool.reassign_metacool): the map that
+    the run built from its pairs files (contig_map, at outfile), or the
+    input map of a run that started from one.
 
     The map is an extra output, written last: when it cannot be written, a
     warning says why, and the run keeps its other outputs and its exit
-    status. A map of the same name left by an earlier run is removed first:
+    status. outfile is only replaced once the new map has been written and
+    validated: the map of the contigs that the run built stays there, in no
+    bin, when the map of the bins cannot be written, and so does an input
+    map at outfile (the same path, or a symbolic link to it or from it).
+    Another map of the same name, left by an earlier run, is removed first:
     this run has replaced the tables it was made from, so it must not stay
-    behind, passing for this run's, when the new map cannot be written. An
-    outfile that is the input map of the run (the same path, or a symbolic
-    link to it or from it) is not: it is only replaced once the new map has
-    been written and validated, and stays as it was when it cannot be. A
+    behind, passing for this run's, when the new map cannot be written. A
     symbolic link at the outfile is replaced, not its target.
     """
-    outfile = join(outdir, f"{prefix or 'metator'}.metacool")
     # What the warning adds when the new map is not written.
     kept = ""
     try:
-        if metacool and mtmc.is_input_map(metacool, outfile):
-            kept = " It is still the input map of the run."
+        if contig_map:
+            kept = "It is still the contact map of the contigs of the run, in no bin. "
+        elif mtmc.is_input_map(metacool, outfile):
+            kept = "It is still the input map of the run. "
             logger.info(f"{outfile} is the input map {metacool}: it is replaced once the map of the bins is validated.")
         elif os.path.lexists(outfile):
             logger.info(f"Removing {outfile}, the contact map of an earlier run.")
             os.remove(outfile)
-        contig_data = join(outdir, "contig_data_final.txt")
-        shared = {"bin_summary": join(outdir, "bin_summary.txt"), "force": True, "metadata": run_metadata()}
-        if metacool:
-            mtmc.reassign_metacool(metacool, contig_data, outfile, **shared)
-        else:
-            mtmc.write_metacool(
-                pairs_files, contig_data, outfile, assembly_name=assembly_basename(assembly), threads=threads, **shared
-            )
-    except Exception as error:
-        # A MetacoolError says why; another error is unexpected: its type
-        # and traceback go to the log too.
-        unexpected = not isinstance(error, mtmc.MetacoolError)
-        reason = f"{type(error).__name__}: {error}" if unexpected else str(error)
-        logger.warning(
-            f"{outfile} is not written: {reason.rstrip('.')}.{kept} The other outputs of the run are kept.",
-            exc_info=unexpected,
+        mtmc.reassign_metacool(
+            metacool,
+            join(outdir, "contig_data_final.txt"),
+            outfile,
+            bin_summary=join(outdir, "bin_summary.txt"),
+            force=True,
+            metadata=run_metadata(),
         )
+    except Exception as error:
+        _map_not_written(outfile, error, f"{kept}The other outputs of the run are kept.")
 
 
 # ---------------------------------------------------------------------------
@@ -976,8 +1055,9 @@ def validation(
 @_option(
     "--no-metacool",
     is_flag=True,
-    help="Do not write the contact map of the contigs, grouped by bin, as <prefix>.metacool (metator.metacool "
-    "without --prefix) at the end.",
+    help="Do not keep the contact map of the contigs, grouped by bin, as <prefix>.metacool (metator.metacool "
+    "without --prefix): a run from reads, alignments or pairs still builds the map of its contigs from the pairs "
+    "files, and removes it at the end.",
 )
 def pipeline(
     forward,
@@ -1018,11 +1098,13 @@ def pipeline(
     see [cyan]metator network[/]). A validation step decontaminates the bins
     when it's necessary; it is the critical step for memory usage (~40G).
 
-    At the end, the contact map of the contigs, grouped by bin, is written
-    as a .metacool file (see [cyan]metator metacool[/] and the README),
-    unless --no-metacool is given: from the pairs files, or from the input
-    map of a run that starts from a .metacool file, which it may replace. A
-    run from a .metacool file cannot scaffold.
+    As soon as it has the pairs files, the run builds the contact map of
+    the contigs, in no bin yet, as a .metacool file (see
+    [cyan]metator metacool[/] and the README). At the end, the map of the
+    bins (the contigs grouped by bin) is written over it or, with
+    --no-metacool, it is removed. A run from a .metacool file writes the
+    map of its bins from that map, which it may replace, and cannot
+    scaffold.
     """
     # Private temporary directory inside --tmpdir.
     with private_tmp_dir(tmpdir, clean_up=not no_clean_up) as tmp_dir:
@@ -1044,6 +1126,8 @@ def pipeline(
         aligner_mode = aligner_mode_for(aligner_mode, enzyme)
         check_normalization(normalization, enzyme, depth)
         check_metacool_start(start, forward, edge, scaffold)
+        metacool_file = metacool_path(outdir, prefix)
+        check_inputs_not_the_map(start, forward, reverse, metacool_file)
         check_reverse_reads(start, aligner, reverse)
         bins_prefix = bin_prefix(prefix)
 
@@ -1102,6 +1186,12 @@ def pipeline(
             # A map has no pairs files: its libraries are summed.
             alignment_files = forward.split(",") if start == "pair" else []
             contig_data, hit_data = mtn.create_contig_data(fasta, len(alignment_files) or 1, depth, enzyme)
+        # The contact map of the contigs, built once from the pairs files as
+        # soon as the run has them: the map of the bins is written over it at
+        # the end. A run from a map writes the map of its bins from that map.
+        contig_map = start != "metacool" and pipeline_contig_map(
+            alignment_files, contig_data, metacool_file, assembly, threads, tmp_dir, no_metacool
+        )
         # Build the network
         network_file, contigs_data_file = contig_network(
             start, forward, alignment_files, contig_data, hit_data, edge, outdir, tmp_dir, threads, normalization, False
@@ -1176,12 +1266,16 @@ def pipeline(
         # Delete pyfastx index:
         mio.remove_pyfastx_index(fasta)
 
-        # Write the contact map last, while the pairs files are still there:
-        # from the input map for a run that started from one.
-        if not no_metacool:
-            pipeline_metacool(
-                alignment_files, outdir, prefix, assembly, threads, metacool=forward if start == "metacool" else None
-            )
+        # The map of the bins, written last: over the map of the contigs that
+        # the run built, or from the input map of a run that started from one.
+        if no_metacool:
+            if contig_map:
+                logger.info(f"Removing {metacool_file}, the contact map of the contigs (--no-metacool).")
+                os.remove(metacool_file)
+        elif contig_map:
+            pipeline_metacool(metacool_file, outdir, metacool_file, contig_map=True)
+        elif start == "metacool":
+            pipeline_metacool(forward, outdir, metacool_file)
 
     # Delete the pairs files made from the reads or the alignments, and
     # their pypairix index.
@@ -1544,7 +1638,8 @@ def metacool(pairsfile, contig_data, bin_summary, outfile, assembly_name, thread
     metacooler marks a contig in no bin (NA, NaN, N/A, N/D, -1 or
     __unbinned__ in any case, and nd in any case other than ND, which marks
     a contig in no bin). [cyan]pipeline[/] writes this file at the end of a
-    run.
+    run: from the map of the contigs that it builds from the pairs files,
+    or from the map that it starts from.
     """
     # Generate log
     log_file = log_file_name("", "metacool")
