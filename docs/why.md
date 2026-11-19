@@ -48,7 +48,7 @@ metator pipeline --aligner bwa --enzyme DpnII --depth depth.txt --threads 16 \
     --forward R1.fq.gz --reverse R2.fq.gz --assembly assembly.fa --outdir binning
 
 # The bins, their completeness and contamination
-head binning/bin_summary.txt
+head binning/cluster_summary.txt
 
 # The contact map of the bins, with metacooler
 metacooler dump -t genomes -H binning/metator.metacool

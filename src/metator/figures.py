@@ -98,7 +98,7 @@ def heatmap_windows(bins, contigs_data, bin_summary, bin_size):
         The bins of the map, in its order: chrom (the contig name), start
         and end.
     contigs_data : pandas.DataFrame
-        Table with all the data from the contigs: Name, Size and Final_bin
+        Table with all the data from the contigs: Name, Size and Final_cluster
         (ND for a contig in no MAG).
     bin_summary : dict
         The MAGs, in their order, by name, with their Length.
@@ -121,11 +121,11 @@ def heatmap_windows(bins, contigs_data, bin_summary, bin_size):
     mag_starts = np.cumsum(spans) - spans
     first_window = dict(zip(bin_summary, mag_starts.tolist(), strict=True))
     # Where each contig of a MAG starts in the MAG laid end to end.
-    final = contigs_data[contigs_data["Final_bin"] != "ND"]
+    final = contigs_data[contigs_data["Final_cluster"] != "ND"]
     sizes = final["Size"].astype(np.int64)
-    offsets = sizes.groupby(final["Final_bin"].to_numpy()).cumsum() - sizes
+    offsets = sizes.groupby(final["Final_cluster"].to_numpy()).cumsum() - sizes
     placed = pd.DataFrame(
-        {"offset": offsets.to_numpy(), "window": final["Final_bin"].map(first_window).to_numpy()},
+        {"offset": offsets.to_numpy(), "window": final["Final_cluster"].map(first_window).to_numpy()},
         index=final["Name"].astype(str).to_numpy(),
     )
     on_contig = placed.reindex(bins["chrom"].astype(str).to_numpy())
@@ -532,7 +532,7 @@ def _quality_boxplots(contigs_data, column, ylabel, out_file, log_scale=False):
     Parameters:
     -----------
     contigs_data : pandas.DataFrame
-        Table of the binned contigs, with the columns Final_bin,
+        Table of the binned contigs, with the columns Final_cluster,
         MAG_quality, size_weight and the plotted column.
     column : str
         Column of the value to plot.
@@ -545,7 +545,7 @@ def _quality_boxplots(contigs_data, column, ylabel, out_file, log_scale=False):
     """
     data = reindex_df(contigs_data, "size_weight")
     data = data[data["MAG_quality"].isin(MAG_QUALITY_COLOURS)]
-    bins = data.groupby("Final_bin", sort=False)
+    bins = data.groupby("Final_cluster", sort=False)
     values = [group[column].dropna().to_numpy(dtype=float) for _, group in bins]
     values = [box[np.isfinite(box)] for box in values]
     colours = [MAG_QUALITY_COLOURS[group["MAG_quality"].iloc[0]] for _, group in bins]
@@ -688,9 +688,9 @@ def generates_frags_network(contig_data, bin_summary, bin_size):
     info_contigs = dict()
     for i in contig_data.index:
         # Only add the contig if it's in a final bin.
-        if contig_data.loc[i, "Final_bin"] != "ND":
+        if contig_data.loc[i, "Final_cluster"] != "ND":
             # Call bin name dict to have the status of start frag id and rest.
-            bin_name = contig_data.loc[i, "Final_bin"]
+            bin_name = contig_data.loc[i, "Final_cluster"]
             size = contig_data.loc[i, "Size"]
             info_contigs[contig_data.loc[i, "Name"]] = {
                 "start": bin_summary[bin_name]["current"],
@@ -844,12 +844,12 @@ def plot_figures(out_dir, contigs_data, bin_summary, threshold, metacool=None):
     bin_summary = figures_bins_size_distribution(bin_summary, total_size, threshold, outfile_bins_size_distribution)
 
     # Remove unbinned contigs.
-    contigs_data = contigs_data[contigs_data["Final_bin"] != "ND"]
+    contigs_data = contigs_data[contigs_data["Final_cluster"] != "ND"]
     # Create a column of size divided by the minimum size of the contigs.
     min_size = min(contigs_data["Size"])
     contigs_data["size_weight"] = (contigs_data["Size"] / min_size).apply(int)
     # Merge the bin_summary and the contigs data file.
-    contigs_data = pd.merge(contigs_data, bin_summary, left_on="Final_bin", right_on="Bin")
+    contigs_data = pd.merge(contigs_data, bin_summary, left_on="Final_cluster", right_on="Bin")
 
     # Plots the distribution of GC and coverage inside the bins.
     figures_mags_GC_boxplots(contigs_data, outfile_MAGs_GC)

@@ -67,8 +67,8 @@ The pipeline writes into `--outdir` (`-o`, the current directory by default):
 
 | File | What it holds |
 |---|---|
-| `final_bin_unscaffold/` | One FASTA file per final bin |
-| `bin_summary.txt` | One row per final bin: size, GC content, miComplete's completeness and redundancy, N50, abundance… |
+| `final_clusters/` | One FASTA file per final bin |
+| `cluster_summary.txt` | One row per final bin: size, GC content, miComplete's completeness and redundancy, N50, abundance… |
 | `contig_data_final.txt` | One row per contig: its measures, and the core, overlapping, recursive and final bins it belongs to |
 | `binning.txt` | The contigs of the final bins and their bin |
 | `metator.metacool` | The contact map of all the contigs, grouped by cluster (`<prefix>.metacool` with `--prefix`): from reads, alignments or pairs; a run from a map updates that map instead, or writes `--output-map` |
@@ -77,13 +77,13 @@ The pipeline writes into `--outdir` (`-o`, the current directory by default):
 | `network_<i>.txt` | The network of library `i`, from 0 |
 | `alignment_<i>.bam` | With bwa: the alignments of library `i`, both mates, sorted by read name |
 | `alignment_<i>_for.bam`, `alignment_<i>_rev.bam` | With bowtie2, or in iterative mode: the alignments of each mate |
-| `overlapping_bin/` | The FASTA files of the overlapping bins, before validation |
-| `recursive_bin/` | The FASTA files of the recursive bins, in `step_<n>/` for step `n` |
+| `overlapping_clusters/` | The FASTA files of the overlapping bins, before validation |
+| `recursive_clusters/` | The FASTA files of the recursive bins, in `step_<n>/` for step `n` |
 | `overlapping_micomplete_results.txt` | miComplete's results on the overlapping bins |
 | `recursive_micomplete_step_<n>.txt` | miComplete's results on the recursive bins of step `n` |
 | `clusters.txt`, `cluster_members.txt` | Every cluster of every round (overlapping, recursive, final), with its parent and miComplete's columns, and the contigs of each: see [Clustering rounds](metacool.md#clustering-rounds) |
 | `clustering_matrix*.npz` | With `--cluster-matrix`: how often each two contigs were binned together |
-| `scaffold_bin/` | With `--scaffold`: the final bins, scaffolded |
+| `scaffolded_clusters/` | With `--scaffold`: the final bins, scaffolded |
 | `plot/` | Plots of the bins' quality, size, GC content and coverage, and the heatmap of the bins' network |
 | `metator_pipeline_<date>.log` | The log of the run |
 
@@ -133,16 +133,16 @@ aligning the reads again:
 metator network -1 R1.fq.gz -2 R2.fq.gz -a assembly.fa -b bwa -e DpnII -d depth.txt \
     -t 16 -o binning
 
-# 2. Partition it: overlapping_bin/, contig_data_partition.txt
+# 2. Partition it: overlapping_clusters/, contig_data_partition.txt
 metator partition -a assembly.fa -c binning/contig_data_network.txt \
     -n binning/network.txt -t 16 -o binning
 
-# 3. Validate the bins: final_bin/, bin_summary.txt, contig_data_final.txt
+# 3. Validate the bins: final_clusters/, cluster_summary.txt, contig_data_final.txt
 metator validation -a assembly.fa -c binning/contig_data_partition.txt \
-    -n binning/network.txt -f binning/overlapping_bin -t 16 -o binning
+    -n binning/network.txt -f binning/overlapping_clusters -t 16 -o binning
 ```
 
-Run step by step, the final bins go to `final_bin/`, and the intermediate
+Run step by step, the final bins go to `final_clusters/`, and the intermediate
 tables stay. `metator network` keeps the pairs files; `metator metacool`
 writes the contact map of the bins from them (see
 [The contact map of the bins](metacool.md)). From a contact map of the
@@ -151,7 +151,7 @@ the map that `metator pipeline MAP` writes from the same clusters: see
 [Step by step](metacool.md#step-by-step).
 
 To bin without validating, run the first two steps alone: the bins are then
-the overlapping bins of `overlapping_bin/`, and `contig_data_partition.txt`
+the overlapping bins of `overlapping_clusters/`, and `contig_data_partition.txt`
 gives the bin of each contig.
 
 ## The log

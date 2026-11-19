@@ -17,10 +17,10 @@ CONTIG_DATA = "tests_data/contig_data_final.txt"
 @pytest.mark.parametrize(
     "metator_object, name, column",
     [
-        ("core_bin", "1", "Core_bin_ID"),
-        ("core_bin", 1, "Core_bin_ID"),
-        ("overlapping_bin", "1", "Overlapping_bin_ID"),
-        ("overlapping_bin", "metator_00001_00000", "Overlapping_bin_ID"),
+        ("core_bin", "1", "Core_cluster_ID"),
+        ("core_bin", 1, "Core_cluster_ID"),
+        ("overlapping_bin", "1", "Overlapping_cluster_ID"),
+        ("overlapping_bin", "metator_00001_00000", "Overlapping_cluster_ID"),
     ],
 )
 def test_bin_ids_match_zero_padded_ids(metator_object, name, column):
@@ -50,14 +50,14 @@ def test_contactmap_default_outdir(tmp_path, monkeypatch, run_cli):
     "metator_object, name, column, expected",
     [
         ("contig", "NODE_1", "Name", "NODE_1"),
-        ("core_bin", 3, "Core_bin_ID", "3"),
-        ("overlapping_bin", "MetaTOR_7_0", "Overlapping_bin_ID", "7"),
-        ("overlapping_bin", "MetaTOR_7", "Overlapping_bin_ID", "7"),
-        ("overlapping_bin", "sample_metator_00007_00002", "Overlapping_bin_ID", "00007"),
-        ("recursive_bin", "MetaTOR_7_2", "Recursive_bin_ID", "2"),
-        ("recursive_bin", "sample_metator_00007_00002", "Recursive_bin_ID", "00002"),
-        ("recursive_bin", "MetaTOR_7_0", "Recursive_bin_ID", "0"),  # logged as an error
-        ("final_bin", "MetaTOR_7_2", "Final_bin", "MetaTOR_7_2"),
+        ("core_bin", 3, "Core_cluster_ID", "3"),
+        ("overlapping_bin", "MetaTOR_7_0", "Overlapping_cluster_ID", "7"),
+        ("overlapping_bin", "MetaTOR_7", "Overlapping_cluster_ID", "7"),
+        ("overlapping_bin", "sample_metator_00007_00002", "Overlapping_cluster_ID", "00007"),
+        ("recursive_bin", "MetaTOR_7_2", "Recursive_cluster_ID", "2"),
+        ("recursive_bin", "sample_metator_00007_00002", "Recursive_cluster_ID", "00002"),
+        ("recursive_bin", "MetaTOR_7_0", "Recursive_cluster_ID", "0"),  # logged as an error
+        ("final_bin", "MetaTOR_7_2", "Final_cluster", "MetaTOR_7_2"),
         ("Other", "12", "Other", 12),
         ("Other", "group_a", "Other", "group_a"),
     ],
@@ -95,8 +95,8 @@ def test_recursive_bin_within_its_overlapping_bin(tmp_path):
             "ID": [1, 2, 3, 4],
             "Name": ["c1", "c2", "c3", "c4"],
             "Size": [10, 20, 30, 40],
-            "Overlapping_bin_ID": ["00001", "00001", "00002", "00002"],
-            "Recursive_bin_ID": ["00001", "00002", "00001", "00001"],
+            "Overlapping_cluster_ID": ["00001", "00001", "00002", "00002"],
+            "Recursive_cluster_ID": ["00001", "00002", "00001", "00001"],
         }
     ).to_csv(table, sep="\t", index=False)
     obj = mtcm.MetatorObject("recursive_bin", "my_sample_metator_00002_00001", "unused.fa", str(table), [], min_size=0)
@@ -105,6 +105,64 @@ def test_recursive_bin_within_its_overlapping_bin(tmp_path):
     obj = mtcm.MetatorObject("overlapping_bin", "my_sample_metator_00001_00000", "unused.fa", str(table), [], min_size=0)
     obj.set_contigs()
     assert obj.contigs == ["c1", "c2"]
+
+
+@pytest.mark.parametrize(
+    "metator_object, name",
+    [
+        ("core_bin", "2"),
+        ("overlapping_bin", "metator_00005_00000"),
+        ("recursive_bin", "metator_00005_00002"),
+        ("final_bin", "metator_00002_00000"),
+        # A column given as the object: its name of 1.x, or of 2.0.
+        ("Final_bin", "metator_00002_00000"),
+        ("Final_cluster", "metator_00002_00000"),
+    ],
+)
+def test_metator_objects_of_a_contig_data_of_1x(metator_object, name, tmp_path):
+    """An object selects the same contigs in the contig data of metaTOR 1.x,
+    its columns named after bins, as in the same table of 2.0; the 1.x name
+    of a column, given as the object, is read as its 2.0 name."""
+    old = synthetic.as_1x(CONTIG_DATA, tmp_path / "contig_data_final.txt")
+    selected = []
+    for table in (CONTIG_DATA, old):
+        obj = mtcm.MetatorObject(metator_object, name, "unused.fa", table, [], min_size=0)
+        obj.set_contigs()
+        selected.append(obj.contigs)
+    assert selected[0] == selected[1] and selected[0]
+
+
+def test_metator_object_of_a_column_of_both_names(tmp_path):
+    """A table that has a column of the 1.x name, Final_bin, and one of the
+    2.0 name, Final_cluster (a table merged by hand): --object Final_bin
+    reads Final_bin, as rename_1x_columns keeps it, and Final_cluster its
+    own column. The same for a column of IDs, compared as numbers whichever
+    its name: Core_bin_ID 2 is 00002."""
+    table = tmp_path / "contig_data_final.txt"
+    pd.DataFrame(
+        {
+            "ID": [1, 2, 3],
+            "Name": ["c1", "c2", "c3"],
+            "Size": [10, 20, 30],
+            # "-": a contig in no cluster, as in a real table, which keeps the
+            # IDs as text ("00002").
+            "Core_bin_ID": ["00002", "-", "00002"],
+            "Core_cluster_ID": ["00001", "-", "00002"],
+            "Final_bin": ["old", "new", "old"],
+            "Final_cluster": ["new", "new", "old"],
+        }
+    ).to_csv(table, sep="\t", index=False)
+    selected = {}
+    for column, name in [("Final_bin", "old"), ("Final_cluster", "old"), ("Core_bin_ID", "2"), ("Core_cluster_ID", "2")]:
+        obj = mtcm.MetatorObject(column, name, "unused.fa", str(table), [], min_size=0)
+        obj.set_contigs()
+        selected[column] = obj.contigs
+    assert selected == {
+        "Final_bin": ["c1", "c3"],
+        "Final_cluster": ["c3"],
+        "Core_bin_ID": ["c1", "c3"],
+        "Core_cluster_ID": ["c3"],
+    }
 
 
 def test_metator_object_unknown_column():
@@ -121,7 +179,7 @@ def final_contig_data(metagenome, metagenome_network, tmp_path):
     """contig_data_final.txt with the true genomes as final bins."""
     data = pd.read_csv(metagenome_network["contig_data"], sep="\t")
     bins = {g.name: f"metator_{k:05d}_00000" for k, g in enumerate(metagenome.genomes, start=1)}
-    data["Final_bin"] = data.Name.map(metagenome.truth.Host).map(bins)
+    data["Final_cluster"] = data.Name.map(metagenome.truth.Host).map(bins)
     path = tmp_path / "contig_data_final.txt"
     data.to_csv(path, sep="\t", index=False)
     return path, bins

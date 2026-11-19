@@ -46,6 +46,7 @@ error, before any work unless said otherwise:
 | A `--depth` file that lacks a contig of the assembly, or gives one another length | The file is read by contig name. 1.x read it line by line, in the order of the assembly, and gave the contigs of a file in another order the values of others. |
 | An assembly whose FASTA file starts with blank or `#` lines, with Biopython 1.87 or later | Biopython refuses it: start the file with its first `>` header line. |
 | From pairs: an empty pairs file, or a zip archive | The run builds its contact map from the pairs files, with metacooler, which reads them plain or compressed with gzip, bzip2, zstd or LZ4, whatever their name. |
+| In the output directory of a run of 1.x, without `-F`: its outputs named after bins. `partition` refuses `overlapping_bin/`; `validation` refuses `recursive_bin/`, `final_bin/`, `final_bin_unscaffold/` and `bin_summary.txt`; `pipeline` refuses all of these and, with `--scaffold`, `scaffold_bin/` | The run would leave them next to its own outputs, which are named otherwise. `-F` removes them. |
 | From pairs: a pairs file whose rows have different numbers of fields | The run stops with metacooler's reason, before its network. |
 
 ## What a run writes
@@ -57,6 +58,14 @@ error, before any work unless said otherwise:
 | | `clusters.txt` and `cluster_members.txt`: the clusters of every clustering round, and their contigs, also stored in the `/clusters` group of the map. |
 | | `mge --map`: the round `mge` of the clustering rounds of the map, its MGE clusters, after those of the run. |
 | `pipeline` from reads or alignments: `alignment_<i>_sorted.pairs.gz` and its index, sorted in the output directory, removed at the end of the run (kept with `-N`) | Written to the temporary directory of the run as they are made, `alignment_<i>.pairs`, and removed once the network is built; sorted, indexed and kept in the output directory with `-N` only (`--scaffold` sorts them too, and removes them at the end). Without `-N` or `--scaffold`, a run that stops before its network is built leaves them in its temporary directory; one that stops later (in the partition or the validation) leaves none, where 1.x left them, sorted, in the output directory: restart it from the contact map of its contigs, which it leaves (`metator pipeline <outdir>/metator.metacool … -F`). |
+| `bin_summary.txt` | `cluster_summary.txt`. `qc -O` still finds the `bin_summary.txt` of a 1.x run. |
+| `overlapping_bin/` | `overlapping_clusters/`: a script that gives it to `validation -f` names the new directory. |
+| `recursive_bin/` | `recursive_clusters/` |
+| `final_bin/` (`validation`), `final_bin_unscaffold/` (`pipeline`) | `final_clusters/` |
+| `scaffold_bin/` (`pipeline --scaffold`) | `scaffolded_clusters/` |
+| `mges_bin_summary.tsv` (`mge`) | `mges_cluster_summary.tsv` |
+| `<tmp>/recursive_clustering/recursive_bins/`, in the temporary directory (`validation`, `pipeline`; kept with `-N`) | `<tmp>/recursive_clustering/recursive_clusters/` |
+| The columns of the contig data tables `Core_bin_ID`, `Core_bin_contigs`, `Core_bin_size`, `Overlapping_bin_ID`, `Overlapping_bin_contigs`, `Overlapping_bin_size`, `Recursive_bin_ID`, `Recursive_bin_contigs`, `Recursive_bin_size` and `Final_bin` | `Core_cluster_ID`, `Core_cluster_contigs`, `Core_cluster_size`, `Overlapping_cluster_ID`, `Overlapping_cluster_contigs`, `Overlapping_cluster_size`, `Recursive_cluster_ID`, `Recursive_cluster_contigs`, `Recursive_cluster_size` and `Final_cluster`. Every command still reads the tables of 1.x, their columns under the new names. The Python functions that take a table of contig data (`metator.figures.plot_figures`, `metator.validation.correct_final_bin`...) need the new names: read a table of 1.x with `metator.io.read_contig_data`, or give it to `metator.io.rename_1x_columns`. metacooler's `--contigs-format metator` names `Final_bin`: give `--contigs-format Name,Final_cluster` for a table of 2.0. |
 | 1.4.0: a map of the clusters that could not be written, a warning, and exit status 0 | The run stops with the reason, logged as an error. Its other outputs are kept, and so is the map it would have replaced. |
 
 ## What a run counts

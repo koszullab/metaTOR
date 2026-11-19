@@ -90,27 +90,33 @@ class MetatorObject:
         pandas.core.frame.DataFrame
             Table with informations from metator binning for each contigs.
         """
-        contigs_data = pd.read_csv(self.contigs_data, sep="\t")
-        return contigs_data
+        return mio.rename_1x_columns(pd.read_csv(self.contigs_data, sep="\t"))
 
     def set_contigs(self):
         """Method to extract the list of contigs of the class from the contig
         data file and their size.
         """
         contigs_data = self.get_contigs_data()
+        # A column named as metaTOR 1.x names it (Final_bin) is read under its
+        # 2.0 name (see metator.io.rename_1x_columns), unless the table also
+        # has a column of that name.
+        if self.object not in contigs_data.columns:
+            self.object = mio.CONTIG_DATA_1X_COLUMNS.get(self.object, self.object)
         try:
             contigs_data[self.object]
         except KeyError:
             logger.error("The object that you gave is not in the table.")
             raise ValueError from None
         column = contigs_data[self.object]
-        if self.object in ("Core_bin_ID", "Overlapping_bin_ID", "Recursive_bin_ID"):
+        ids = ("Core_cluster_ID", "Overlapping_cluster_ID", "Recursive_cluster_ID")
+        # Their 1.x names too, in a table that has both (merged by hand).
+        if self.object in ids or mio.CONTIG_DATA_1X_COLUMNS.get(self.object) in ids:
             # Bin ids are written zero-padded ("00008") and read back as strings
             # or integers depending on the column: compare them as numbers.
             selected = pd.to_numeric(column, errors="coerce") == int(self.name)
             # Recursive bins are numbered within their overlapping bin.
             if self.overlapping is not None:
-                overlapping = pd.to_numeric(contigs_data["Overlapping_bin_ID"], errors="coerce")
+                overlapping = pd.to_numeric(contigs_data["Overlapping_cluster_ID"], errors="coerce")
                 selected &= overlapping == int(self.overlapping)
         else:
             selected = column.astype(str) == str(self.name)
@@ -151,7 +157,7 @@ class MetatorObject:
             self.object = "Name"
             self.name = name
         elif metator_object == "core_bin":
-            self.object = "Core_bin_ID"
+            self.object = "Core_cluster_ID"
             try:
                 int(name)
                 self.name = str(name)
@@ -162,7 +168,7 @@ class MetatorObject:
                 )
                 raise ValueError from object_no_exist
         elif metator_object == "overlapping_bin":
-            self.object = "Overlapping_bin_ID"
+            self.object = "Overlapping_cluster_ID"
             # A numeric ID, or a name: <prefix>_<ID> or
             # <prefix>_<ID>_<recursive bin ID>, whose prefix may hold "_".
             fields = str(name).split("_")
@@ -171,7 +177,7 @@ class MetatorObject:
                 logger.error("Overlapping bin name should be either numerical ID or a name like 'MetaTOR_1' or 'MetaTOR_1_0'.")
                 raise ValueError
         elif metator_object == "recursive_bin":
-            self.object = "Recursive_bin_ID"
+            self.object = "Recursive_cluster_ID"
             fields = str(name).split("_")
             if len(fields) < 3 or not (fields[-2].isdigit() and fields[-1].isdigit()):
                 logger.error(
@@ -183,9 +189,10 @@ class MetatorObject:
             if int(self.name) <= 0:
                 logger.error("A recursive bin should have an id bigger than 0.")
         elif metator_object == "final_bin":
-            self.object = "Final_bin"
+            self.object = "Final_cluster"
             self.name = name
         else:
+            # A column of the contig data (see set_contigs for its name of 1.x).
             self.object = str(metator_object)
             try:
                 self.name = int(name)

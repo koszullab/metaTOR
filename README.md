@@ -136,11 +136,11 @@ The output files will be in the ouput directory given as parmater or in working 
 | clustering_matrix_validation.txt |Matrix of clustering from the recursive iterations|||X||
 | clustering_matrix.txt |Matrix of clustering from the partition and recursive iterations||||X|
 | contig_data_final.txt |Information on contigs after whole pipeline|||X|X|
-| **bin_summary.txt** |**Information on the final bins**|||**X**|**X**|
+| **cluster_summary.txt** |**Information on the final bins**|||**X**|**X**|
 | binning.txt |File with contigs names and their final clustering|||X|X|
-| overlapping_bin |Directory with the fasta of the partition bins||X|X|X|
-| recursive_bin |Directory with the fasta of the recursive bins|||X|X|
-| **final_bin** |**Directory with the fasta of the final bins**|||**X**|**X**|
+| overlapping_clusters |Directory with the fasta of the partition bins||X|X|X|
+| recursive_clusters |Directory with the fasta of the recursive bins|||X|X|
+| **final_clusters** |**Directory with the fasta of the final bins**|||**X**|**X**|
 | metator.metacool |Contact map of the contigs, grouped by bin (`<prefix>.metacool` with `--prefix`); a run from a map updates that map instead (see [Starting from a contact map](#starting-from-a-contact-map))||||X|
 | metator.mmetacool |With several libraries, the contact map of each library (`<prefix>.mmetacool` with `--prefix`)||||X|
 
@@ -155,7 +155,7 @@ This is a tsv file of the network with edgelist form: Id of the first contig, id
 
 **Contig data files**
 These are the files with all the informations from the contigs:
-|ID|Name|Size|GC_content|Hit|Shotgun_coverage|Restriction_site|Core_bin_ID|Core_bin_contigs|Core_bin_size|Overlapping_bin_ID|Overlapping_bin_contigs|Overlapping_bin_size|Recursive_bin_ID|Recursive_bin_contigs|Recursive_bin_size|Final_bin|
+|ID|Name|Size|GC_content|Hit|Shotgun_coverage|Restriction_site|Core_cluster_ID|Core_cluster_contigs|Core_cluster_size|Overlapping_cluster_ID|Overlapping_cluster_contigs|Overlapping_cluster_size|Recursive_cluster_ID|Recursive_cluster_contigs|Recursive_cluster_size|Final_cluster|
 |:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
 |1|NODE_1|642311|38.6876450815882|3837|41.1565|2006|1|65|2175226|1|396|6322353|1|52|2158803|MetaTOR_1_1|
 |2|NODE_2|576356|30.235826468363303|1724|24.509|1256|2|40|1735419|2|401|735419|0|-|-|MetaTOR_2_0|
@@ -213,12 +213,12 @@ instead (the `.mmetacool` collection too). It is written through a fresh file, w
 [Starting from a contact map](#starting-from-a-contact-map)). The map also stores the clustering rounds of the run (the
 overlapping, recursive and final clusters, with their contigs), which the run writes as `clusters.txt` and
 `cluster_members.txt` too. `metator metacool` writes the same file from the pairs files,
-`contig_data_final.txt` and `bin_summary.txt` of a run, but for the clustering rounds, which it does not store, the history that it stores (the
+`contig_data_final.txt` and `cluster_summary.txt` of a run, but for the clustering rounds, which it does not store, the history that it stores (the
 `annotate` and `reassign` keys of its metadata) and the type of its counts with several libraries (64-bit
 integers, which `metator metacool` stores as 32-bit ones):
 
 ```sh
-metator metacool -c contig_data_final.txt -b bin_summary.txt -o sample.metacool alignment_0_sorted.pairs.gz alignment_1_sorted.pairs.gz
+metator metacool -c contig_data_final.txt -b cluster_summary.txt -o sample.metacool alignment_0_sorted.pairs.gz alignment_1_sorted.pairs.gz
 ```
 
 or, for a run that started from a contact map, from that map, as `metator pipeline MAP` and `metator
@@ -227,7 +227,7 @@ for the clustering rounds: for a run whose `partition` and `validation` were not
 example (the map keeps its assembly name, so `--assembly-name` is refused):
 
 ```sh
-metator metacool -c contig_data_final.txt -b bin_summary.txt -o binning.metacool sample.metacool
+metator metacool -c contig_data_final.txt -b cluster_summary.txt -o binning.metacool sample.metacool
 ```
 
 A `.metacool` file is the contact map format of [metacooler](https://github.com/js2264/metacooler): a
@@ -241,9 +241,9 @@ and the tools built on it read it as any `.cool` file, and `metacooler` adds the
   two contigs (an intra-contig contact when both ends are on the same contig). These are the raw
   contacts of the pairs files, without the filters and the normalization of the network, and those of
   several libraries are summed;
-* the genomes table holds the columns of `bin_summary.txt` (completeness, redundancy, Hi-C and
+* the genomes table holds the columns of `cluster_summary.txt` (completeness, redundancy, Hi-C and
   shotgun abundances...), next to the length, contig and bin counts of each genome and the contact
-  statistics that metacooler computes while reading the pairs. Each row of `bin_summary.txt` must
+  statistics that metacooler computes while reading the pairs. Each row of `cluster_summary.txt` must
   have as many fields as its header, as metaTOR writes it: metacooler refuses a table whose values it
   cannot match with their columns;
 * the contigs table (the chromosomes table of `cooler`) holds what metaTOR measured on each contig:
@@ -262,7 +262,7 @@ import metacooler
 
 clr = cooler.Cooler("metator.metacool")
 mc = metacooler.MetaCooler("metator.metacool")
-mc.genomes  # one row per bin, with the columns of bin_summary.txt
+mc.genomes  # one row per bin, with the columns of cluster_summary.txt
 mc.contigs  # one row per contig, with its GC content and Hi-C hits (see above)
 ```
 
@@ -280,7 +280,7 @@ that map (or a symbolic link to it or from it), and, from pairs, a contact map: 
 giving it as the first argument. A map of the contigs that cannot be built (for example, from pairs files that
 metacooler cannot read, see below) stops the run before its network, `--no-metacool` or not, whatever the
 number of libraries: the reason is logged as an error, in the log file of the run, and no map is left.
-When the map of the bins cannot be written over it (for example, from a misaligned `bin_summary.txt`),
+When the map of the bins cannot be written over it (for example, from a misaligned `cluster_summary.txt`),
 the map of the contigs stays, in no bin. So it does when the run stops with an error once it is built
 (in the partition or the validation, for example), `--no-metacool` or not: a new run can start from it,
 without aligning the reads again, with `metator pipeline <outdir>/metator.metacool`
@@ -352,7 +352,7 @@ as it was):
 * the bins and contacts of the input map, at its bin size; one genome per final bin, `__unbinned__`
   for the other contigs; the contigs grouped genome by genome, the longest first, whatever the order
   of the input map, as in the map of a run from pairs;
-* the genomes table holds the columns of `bin_summary.txt`, and the contigs table the columns of
+* the genomes table holds the columns of `cluster_summary.txt`, and the contigs table the columns of
   `contig_data_final.txt` described above, last, as in the map of a run from pairs: they replace those
   that the input map had (the map of an earlier binning, for example). With no final bin, the genome
   columns of the input map are dropped;
@@ -395,14 +395,14 @@ the earlier run wrote them, until `validation MAP` writes the new ones:
 ```sh
 # 1. The network: network.txt and contig_data_network.txt. The map is only read.
 metator network sample.metacool -a assembly.fa -d depth.txt -e DpnII -o binning
-# 2. The partition: overlapping_bin/ and contig_data_partition.txt. The map stores the overlapping clusters.
+# 2. The partition: overlapping_clusters/ and contig_data_partition.txt. The map stores the overlapping clusters.
 metator partition sample.metacool -a assembly.fa -c binning/contig_data_network.txt -n binning/network.txt -o binning
 # 3. The validation: the final clusters. The map becomes the map of the clusters.
 metator validation sample.metacool -a assembly.fa -c binning/contig_data_partition.txt -n binning/network.txt \
-    -f binning/overlapping_bin -o binning
+    -f binning/overlapping_clusters -o binning
 ```
 
-`partition MAP` stores its overlapping clusters that reach `--size`, those of `overlapping_bin/`, with
+`partition MAP` stores its overlapping clusters that reach `--size`, those of `overlapping_clusters/`, with
 their contigs, as the round `overlapping` of the clustering rounds of the map, in place of the rounds
 that it held (without the columns of miComplete, which the validation runs), and leaves the genomes
 and contigs tables of the map as they were. `validation MAP` writes the map of the clusters, as
@@ -432,7 +432,7 @@ fragments from the pairs files. Their options that need the read positions are r
 `--enzyme` is not used. `mge` reads the pairs files, as it counts the contacts within each MGE contig
 between reads more than 1 kb apart, which a map does not tell, but `metator mge ... --map MAP` stores its
 MGE clusters in the map: as the round `mge` of its clustering rounds, with the columns of
-`mges_bin_summary.tsv` and the contigs of each cluster, after the rounds of the binning run, which are
+`mges_cluster_summary.tsv` and the contigs of each cluster, after the rounds of the binning run, which are
 kept, and in place of the round `mge` of an earlier run; a run that replaces the clusters of the map drops
 it, with a warning. The genomes and contigs tables of the map, the final MAGs, are left as they were. The
 map is written as `partition MAP` writes it (in place, or to `--output-map FILE`), and refused as it
@@ -485,7 +485,7 @@ of its clustering rounds (see [qc, contactmap and mge on a contact map](#qc-cont
 **mges_binned.fa**
 fasta file of the mge obtained after the binning step.
 
-**mges_bin_summary.tsv**
+**mges_cluster_summary.tsv**
 
 This is the summary of the data of the final mge bins build with the specific command mge.
 

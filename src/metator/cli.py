@@ -133,6 +133,46 @@ def make_output_dir(path, force):
     os.makedirs(path)
 
 
+#: The outputs of the clusters of a run that metaTOR 1.x named after bins,
+#: with their names since 2.0. A run that replaces the clusters of an
+#: earlier one refuses those it would write, under the names of 1.x too,
+#: and removes them with --force: no output of the earlier run is left next
+#: to its own.
+OUTPUTS_OF_1X = {
+    "overlapping_bin": "overlapping_clusters",
+    "recursive_bin": "recursive_clusters",
+    "final_bin": "final_clusters",
+    "final_bin_unscaffold": "final_clusters",
+    "scaffold_bin": "scaffolded_clusters",
+    "bin_summary.txt": "cluster_summary.txt",
+}
+
+
+def remove_output_of_1x(path, force, remove=True):
+    """Refuse an output of an earlier run named as metaTOR 1.x names it (a
+    directory or a file of OUTPUTS_OF_1X), unless --force removes it, and
+    then remove it, unless remove is False (a check that comes before the
+    run removes anything)."""
+    if not os.path.lexists(path):
+        return
+    name = os.path.basename(path)
+    if not force:
+        logger.error(
+            "%s already existed: an output of an earlier run, named as metaTOR 1.x names it (%s now). Remove it or "
+            "use -F argument to remove it.",
+            path,
+            OUTPUTS_OF_1X[name],
+        )
+        raise ValueError
+    if not remove:
+        return
+    if os.path.isdir(path) and not os.path.islink(path):
+        shutil.rmtree(path)
+    else:
+        os.remove(path)
+    logger.info("Removed %s, an output of an earlier run named as metaTOR 1.x names it (%s now).", path, OUTPUTS_OF_1X[name])
+
+
 def check_normalization(normalization, enzyme, depth, metacool=None, read=None):
     """The normalizations that need the restriction sites or the shotgun
     coverage of the contigs: measured on the assembly with --enzyme and
@@ -405,7 +445,35 @@ def refuse_options_of_pairs(command, input_map, given, why):
         raise mtmc.MetacoolError(reason)
 
 
-def start_step(command, outdir, cluster_dirs, input_map, output_map, force, held, prefix=None, contigs=None, inputs=()):
+def _is_in(path, directory):
+    """Whether path is directory, or a path inside it."""
+    return path == directory or path.startswith(directory.rstrip(os.sep) + os.sep)
+
+
+def refuse_an_input_in_the_outputs(path, outputs, force, option):
+    """Refuse an input (validation -f) that is, or is in, an output that the
+    run removes with --force (see start_step and remove_output_of_1x): the
+    run would remove it before reading it. Without --force, those outputs
+    are refused anyway. Through a symbolic link, the link is removed, not
+    its target."""
+    if not force:
+        return
+    for output in outputs:
+        if not os.path.lexists(output):
+            continue
+        inside = _is_in(os.path.abspath(path), os.path.abspath(output))
+        if not os.path.islink(output):
+            inside = inside or _is_in(os.path.realpath(path), os.path.realpath(output))
+        if inside:
+            logger.error(
+                "%s, given as %s, is in %s, which -F removes: write the run to another directory (-o).", path, option, output
+            )
+            raise ValueError
+
+
+def start_step(
+    command, outdir, cluster_dirs, input_map, output_map, force, held, prefix=None, contigs=None, inputs=(), outputs_of_1x=()
+):
     """Start a partition or validation run (command) in outdir: its log file,
     the map that it writes (see step_map) and its directories of clusters
     (cluster_dirs, see make_output_dir), refused without force when an
@@ -416,21 +484,29 @@ def start_step(command, outdir, cluster_dirs, input_map, output_map, force, held
     inputs, the other input files, which output_map must not be (see
     step_map). A run without one replaces them first, then starts its log
     file, as before a run took a map. Either checks the prefix of the
-    clusters (--prefix, see bin_prefix) before it replaces them. Returns
-    the log file, the map to write (None without one) and the prefix."""
+    clusters (--prefix, see bin_prefix) before it replaces them. The
+    outputs of the earlier run named as metaTOR 1.x names them
+    (outputs_of_1x, see remove_output_of_1x) are refused, or removed, with
+    its directories. Returns the log file, the map to write (None without
+    one) and the prefix."""
     with_a_map = input_map is not None or output_map is not None
+
+    def replace_outputs():
+        for path in outputs_of_1x:
+            remove_output_of_1x(path, force)
+        for path in cluster_dirs:
+            make_output_dir(path, force)
+
     if not with_a_map:
         # The prefix of the clusters first: a refused run keeps them.
         bins_prefix = bin_prefix(prefix)
-        for path in cluster_dirs:
-            make_output_dir(path, force)
+        replace_outputs()
     log_file = log_file_name(outdir, command)
     generate_log_header(log_file)
     metacool_file = step_map(command, input_map, output_map, force, held, contigs, inputs)
     if with_a_map:
         bins_prefix = bin_prefix(prefix)
-        for path in cluster_dirs:
-            make_output_dir(path, force)
+        replace_outputs()
     return log_file, metacool_file, bins_prefix
 
 
@@ -1020,7 +1096,7 @@ def pipeline_metacool(metacool, outdir, outfile, contig_map=False, columns_from_
             metacool,
             join(outdir, "contig_data_final.txt"),
             outfile,
-            bin_summary=join(outdir, "bin_summary.txt"),
+            bin_summary=join(outdir, "cluster_summary.txt"),
             force=True,
             metadata=run_metadata(columns_from_map),
             rounds=mtcl.read_rounds(outdir),
@@ -1579,8 +1655,8 @@ def network(
 @outdir_option(default="./", help="Path to the directory to write the output.")
 @prefix_option()
 @force_option(
-    "Replace the directory of overlapping clusters of an earlier run in the output directory (overlapping_bin), and an "
-    "existing --output-map."
+    "Replace the directory of overlapping clusters of an earlier run in the output directory (overlapping_clusters), "
+    "and an existing --output-map. Removes that of a run of metaTOR 1.x (overlapping_bin)."
 )
 @tmpdir_option()
 @threads_option(help="Number of parallel threads allocated for the partition.")
@@ -1639,12 +1715,22 @@ def partition(
         # Defined the output directory.
         outdir = outdir or "."
         os.makedirs(outdir, exist_ok=True)
-        fasta_dir = join(outdir, "overlapping_bin")
+        fasta_dir = join(outdir, "overlapping_clusters")
 
         # Enable file logging, the map of a run from a map checked and
         # locked, and the directory of the clusters made (see start_step).
         log_file, metacool_file, bins_prefix = start_step(
-            "partition", outdir, [fasta_dir], map, output_map, force, held, prefix, contigs, [assembly, network]
+            "partition",
+            outdir,
+            [fasta_dir],
+            map,
+            output_map,
+            force,
+            held,
+            prefix,
+            contigs,
+            [assembly, network],
+            [join(outdir, "overlapping_bin")],
         )
 
         # Partition the network
@@ -1720,7 +1806,8 @@ def partition(
 @prefix_option()
 @force_option(
     "Replace the directories of recursive and final clusters of an earlier run in the output directory "
-    "(recursive_bin, final_bin), and an existing --output-map."
+    "(recursive_clusters, final_clusters), and an existing --output-map. Removes those of a run of metaTOR 1.x "
+    "(recursive_bin, final_bin, final_bin_unscaffold, bin_summary.txt)."
 )
 @tmpdir_option()
 @threads_option(help="Number of parallel threads allocated for the partition.")
@@ -1778,8 +1865,14 @@ def validation(
         # Defined the output directory and output file names.
         outdir = outdir or "."
         os.makedirs(outdir, exist_ok=True)
-        recursive_fasta_dir = join(outdir, "recursive_bin")
-        final_fasta_dir = join(outdir, "final_bin")
+        recursive_fasta_dir = join(outdir, "recursive_clusters")
+        final_fasta_dir = join(outdir, "final_clusters")
+        # The final clusters of 1.x: final_bin of validation, and
+        # final_bin_unscaffold of pipeline, both final_clusters now.
+        outputs_of_1x = [join(outdir, name) for name in ["recursive_bin", "final_bin", "final_bin_unscaffold", "bin_summary.txt"]]
+        # The clusters to validate in a directory that -F removes: refused
+        # before anything is removed.
+        refuse_an_input_in_the_outputs(fasta, [recursive_fasta_dir, final_fasta_dir, *outputs_of_1x], force, "-f")
 
         # Enable file logging, the map of a run from a map checked and
         # locked, and the directories of the clusters made (see start_step).
@@ -1794,6 +1887,7 @@ def validation(
             prefix,
             contigs,
             [assembly, network],
+            outputs_of_1x,
         )
 
         mtv.recursive_decontamination(
@@ -1882,7 +1976,11 @@ def validation(
 )
 @outdir_option(help="The output directory to write the bam files the network and contig data into. Default: current directory.")
 @prefix_option()
-@force_option("Replace the directories of clusters of an earlier run in the output directory, and an existing --output-map.")
+@force_option(
+    "Replace the directories of clusters of an earlier run in the output directory, and an existing --output-map. "
+    "Removes those of a run of metaTOR 1.x (overlapping_bin, recursive_bin, final_bin, final_bin_unscaffold, "
+    "bin_summary.txt, and scaffold_bin with --scaffold)."
+)
 @tmpdir_option(
     help="Temporary directory, where the pairs files made from reads or alignments go, unsorted, but with -N or --scaffold."
 )
@@ -2019,13 +2117,22 @@ def pipeline(
         # The bins of an earlier run: refused now without --force, before
         # the index of the assembly is built, and replaced only once the
         # assembly is checked.
-        overlapping_fasta_dir = join(outdir, "overlapping_bin")
-        recursive_fasta_dir = join(outdir, "recursive_bin")
-        final_fasta_dir = join(outdir, "final_bin_unscaffold")
-        scaffold_fasta_dir = join(outdir, "scaffold_bin")
+        overlapping_fasta_dir = join(outdir, "overlapping_clusters")
+        recursive_fasta_dir = join(outdir, "recursive_clusters")
+        final_fasta_dir = join(outdir, "final_clusters")
+        scaffold_fasta_dir = join(outdir, "scaffolded_clusters")
         bin_dirs = [overlapping_fasta_dir, recursive_fasta_dir, final_fasta_dir] + ([scaffold_fasta_dir] if scaffold else [])
+        # Those of a run of metaTOR 1.x, or one made before 2.0, named as 1.x
+        # names them: refused too, and removed with --force.
+        outputs_of_1x = [
+            join(outdir, name)
+            for name in ["overlapping_bin", "recursive_bin", "final_bin", "final_bin_unscaffold", "bin_summary.txt"]
+            + (["scaffold_bin"] if scaffold else [])
+        ]
         for path in bin_dirs:
             refuse_output_dir(path, force)
+        for path in outputs_of_1x:
+            remove_output_of_1x(path, force, remove=False)
 
         # Check what is the reference. If a fasta is given build the index. If a
         # bowtie2 index is given, retreive the fasta. Its contig names are
@@ -2042,6 +2149,8 @@ def pipeline(
             columns_from_map = (
                 contig_data_from_map(forward, contig_data, normalization, enzyme, depth) if start == "metacool" else []
             )
+        for path in outputs_of_1x:
+            remove_output_of_1x(path, force)
         for path in bin_dirs:
             make_output_dir(path, force)
 
@@ -2155,7 +2264,7 @@ def pipeline(
 
         # Launch the scaffold
         if scaffold:
-            bin_summary = mio.read_bin_summary(join(outdir, "bin_summary.txt"))
+            bin_summary = mio.read_bin_summary(join(outdir, "cluster_summary.txt"))
             task = partial(
                 mts.parallel_scaffold,
                 final_fasta_dir=final_fasta_dir,
@@ -2231,14 +2340,15 @@ def pipeline(
     "--metator-dir",
     metavar="DIR",
     panel="Input",
-    help="Output directory from metator pipeline. If set, contigs data and bin summary will be found automatically.",
+    help="Output directory from metator pipeline. If set, contigs data and cluster summary will be found automatically "
+    "(cluster_summary.txt, or the bin_summary.txt of metaTOR 1.x).",
 )
 @_option(
     "-b",
     "--bin-summary",
     metavar="FILE",
     panel="Input",
-    help="Path to the bin_summary.txt file from MetaTOR output.",
+    help="Path to the cluster_summary.txt file from MetaTOR output (bin_summary.txt in metaTOR 1.x).",
 )
 @_option(
     "-c",
@@ -2321,12 +2431,20 @@ def qc(
         if bin_summary:
             bin_summary_file = bin_summary
         else:
-            bin_summary_file = join(metator_dir, "bin_summary.txt")
-            if not exists(bin_summary_file):
+            # cluster_summary.txt, or the bin_summary.txt of a run of 1.x
+            bin_summary_file = next(
+                (
+                    join(metator_dir, name)
+                    for name in ("cluster_summary.txt", "bin_summary.txt")
+                    if exists(join(metator_dir, name))
+                ),
+                None,
+            )
+            if bin_summary_file is None:
                 logger.error(
-                    "Please give a bin summary file, or the ouput directory of metator or launch this command from the output directory of metator."
+                    "Please give a cluster summary file, or the ouput directory of metator or launch this command from the output directory of metator."
                 )
-                logger.error("You can also check that a bin_summary.txt is present in metator output directory")
+                logger.error("You can also check that a cluster_summary.txt is present in metator output directory")
                 raise FileNotFoundError
         if contig_data:
             contig_data_file = contig_data
@@ -2415,7 +2533,9 @@ def qc(
     metavar="STR",
     panel="Input",
     help='Type of metator object used to build a contact map. Either "contig", "core_bin", "overlapping_bin", '
-    '"recursive_bin", "final_bin" or the name of another column of the contig data file, such as "Other".',
+    '"recursive_bin", "final_bin" or the name of another column of the contig data file, such as "Other". The name '
+    'that metaTOR 1.x gave a column, such as "Final_bin", reads its 2.0 column, "Final_cluster", unless the file has '
+    "a column of that name.",
 )
 @_option(
     "-m",
@@ -2595,7 +2715,8 @@ def contactmap(
     "--bin-summary",
     metavar="FILE",
     panel="Input",
-    help="Path to the bin_summary.txt file from MetaTOR output: its columns are added to the genomes table.",
+    help="Path to the cluster_summary.txt file from MetaTOR output (bin_summary.txt in metaTOR 1.x): its columns are "
+    "added to the genomes table.",
 )
 @_option("-o", "--outfile", required=True, metavar="FILE", help="Path to the .metacool file to write.")
 @_option(
@@ -2873,7 +2994,7 @@ def mge(
     [cyan]metator mge ... --map MAP[/] also stores the MGE clusters in the
     .metacool contact map of the run, MAP: as the round mge of its
     clustering rounds (its /clusters group), with their contigs and the
-    columns of mges_bin_summary.tsv, in place of an earlier round mge, after
+    columns of mges_cluster_summary.tsv, in place of an earlier round mge, after
     the rounds of the binning run, which are kept. Its genomes and contigs
     tables, the final clusters, are left as they were. MAP is updated in
     place (or written to --output-map), and locked while the run writes it.
@@ -2939,7 +3060,7 @@ def mge(
 
         # The MGE clusters, stored in the map.
         if metacool_file is not None:
-            mge_metacool(map, metacool_file, join(outdir, "mges_bin_summary.tsv"))
+            mge_metacool(map, metacool_file, join(outdir, "mges_cluster_summary.tsv"))
 
     if not no_clean_up:
         # Delete pyfastx index:

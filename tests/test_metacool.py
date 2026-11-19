@@ -25,6 +25,7 @@ import metator.log as mtl
 import metator.metacool as mtmc
 import metator.network as mtn
 from metator.version import __version__
+from tests import synthetic
 from tests.hdf5 import walk
 
 TESTS_DATA = Path(__file__).resolve().parents[1] / "tests_data"
@@ -45,7 +46,7 @@ CONTIG_COLUMNS = ["GC_content", "Hit", "Shotgun_coverage"]
 
 def write_contig_data(metagenome, path, final_bin=None):
     """A contig_data_final.txt file, laid out as metaTOR writes it (an
-    unnamed index first, Final_bin last), of a run with a depth file and no
+    unnamed index first, Final_cluster last), of a run with a depth file and no
     enzyme: Restriction_site is - on every contig."""
     final_bin = final_bin or _bin_names(metagenome)
     truth = metagenome.truth
@@ -58,9 +59,9 @@ def write_contig_data(metagenome, path, final_bin=None):
             "Hit": range(10, len(truth) + 10),
             "Shotgun_coverage": (truth.Abundance * 3.5).to_numpy(),
             "Restriction_site": "-",
-            "Overlapping_bin_ID": "00001",
-            "Recursive_bin_contigs": "-",
-            "Final_bin": truth.Name.map(final_bin).to_numpy(),
+            "Overlapping_cluster_ID": "00001",
+            "Recursive_cluster_contigs": "-",
+            "Final_cluster": truth.Name.map(final_bin).to_numpy(),
         }
     )
     table.to_csv(path, sep="\t", index=True)
@@ -96,7 +97,7 @@ def assert_contig_columns(path, contig_data, columns=CONTIG_COLUMNS):
 
 
 def write_bin_summary(metagenome, path):
-    """A bin_summary.txt file, written as validation writes it."""
+    """A cluster_summary.txt file, written as validation writes it."""
     final_bin = _bin_names(metagenome)
     summary = {}
     for i, genome in enumerate(metagenome.genomes):
@@ -129,7 +130,7 @@ def binning(metagenome, metagenome_files, tmp_path):
     return {
         "pairs": metagenome_files["pairs"],
         "contig_data": write_contig_data(metagenome, tmp_path / "contig_data_final.txt"),
-        "bin_summary": write_bin_summary(metagenome, tmp_path / "bin_summary.txt"),
+        "bin_summary": write_bin_summary(metagenome, tmp_path / "cluster_summary.txt"),
     }
 
 
@@ -214,7 +215,7 @@ def test_metacool_of_a_binning(metagenome, binning, tmp_path):
 
 
 def test_unbinned_contigs_keep_their_contacts(metagenome, metagenome_files, tmp_path):
-    """Contigs with Final_bin ND, - or empty are in __unbinned__, with all
+    """Contigs with Final_cluster ND, - or empty are in __unbinned__, with all
     their contacts; a map without bin summary or assembly name."""
     final_bin = _bin_names(metagenome)
     names = [contig.name for contig in metagenome.contigs]
@@ -359,7 +360,7 @@ def test_contig_columns_the_table_has(metagenome, binning, tmp_path):
     assert_contig_columns(out, some, ["Hit"])
 
     none = tmp_path / "no_columns.txt"
-    table[["Name", "Size", "Final_bin"]].to_csv(none, sep="\t")
+    table[["Name", "Size", "Final_cluster"]].to_csv(none, sep="\t")
     out = tmp_path / "none.metacool"
     mtmc.write_metacool(str(binning["pairs"]), str(none), str(out))
     metacooler.validate(str(out), full=True)
@@ -421,7 +422,7 @@ def test_read_contig_data(tmp_path):
     and all its columns; not the bins, nor the other columns."""
     table = tmp_path / "contig_data_final.txt"
     table.write_text(
-        "\tID\tName\tSize\tGC_content\tShotgun_coverage\tRestriction_site\tHit\tFinal_bin\n"
+        "\tID\tName\tSize\tGC_content\tShotgun_coverage\tRestriction_site\tHit\tFinal_cluster\n"
         "0\t1\t01\t100\t40.5\t-\t-\t3\tb1\n"
         "1\t2\tc2\t200\t41.5\t-\t12\t4\tND\n"
         "2\t3\tc3\t300\t41.5\t-\t12\t4\t-\n"
@@ -432,10 +433,10 @@ def test_read_contig_data(tmp_path):
     assert final_bin == {"01": "b1"}
     assert columns == ["GC_content", "Hit", "Restriction_site"]
     assert header == ["Unnamed: 0", "ID", "Name", "Size", "GC_content", "Shotgun_coverage", "Restriction_site", "Hit",
-                      "Final_bin"]  # fmt: skip
-    table.write_text("Name\tSize\tShotgun_coverage\tFinal_bin\nc1\t100\t - \tb1\n")
+                      "Final_cluster"]  # fmt: skip
+    table.write_text("Name\tSize\tShotgun_coverage\tFinal_cluster\nc1\t100\t - \tb1\n")
     assert mtmc.read_contig_data(str(table))[2] == []
-    table.write_text("Name\tSize\tFinal_bin\nc1\t100\tb1\n")
+    table.write_text("Name\tSize\tFinal_cluster\nc1\t100\tb1\n")
     assert mtmc.read_contig_data(str(table))[2] == []
 
 
@@ -444,18 +445,18 @@ def test_read_contig_data(tmp_path):
     [
         (b"", "No columns to parse from file."),
         (
-            b"Name\tSize\tFinal_bin\nc1\t100\tb1\nc2\t200\tb1\tb2\n",
+            b"Name\tSize\tFinal_cluster\nc1\t100\tb1\nc2\t200\tb1\tb2\n",
             ": 1 row(s) do not have the 3 tab-separated fields of the header: line 3 (4).",
         ),
         (
-            b"Name\tSize\tFinal_bin\n0\tc1\t100\tb1\n1\tc2\t200\tND\n",
+            b"Name\tSize\tFinal_cluster\n0\tc1\t100\tb1\n1\tc2\t200\tND\n",
             ": 2 row(s) do not have the 3 tab-separated fields of the header: line 2 (4), line 3 (4).",
         ),
         (
-            b"\nName\tSize\tFinal_bin\n\nc1\t100\tb1\n  \nc2\t200\n\t\t\t\n",
+            b"\nName\tSize\tFinal_cluster\n\nc1\t100\tb1\n  \nc2\t200\n\t\t\t\n",
             ": 2 row(s) do not have the 3 tab-separated fields of the header: line 6 (2), line 7 (4).",
         ),
-        (b"Name\tSize\tFinal_bin\nc\xe91\t100\tb1\n", "'utf-8' codec can't decode byte 0xe9"),
+        (b"Name\tSize\tFinal_cluster\nc\xe91\t100\tb1\n", "'utf-8' codec can't decode byte 0xe9"),
     ],
     ids=["empty", "row of more fields", "rows of more fields from the first", "rows of other fields", "not UTF-8"],
 )
@@ -477,12 +478,12 @@ def test_read_contig_data_of_a_gzipped_file(tmp_path):
     checked, as pandas reads it."""
     table = tmp_path / "contig_data_final.txt.gz"
     with gzip.open(table, "wt") as handle:
-        handle.write("Name\tSize\tFinal_bin\nc1\t100\tb1\nc2\t200\tND\n")
+        handle.write("Name\tSize\tFinal_cluster\nc1\t100\tb1\nc2\t200\tND\n")
     bins, final_bin, *_ = mtmc.read_contig_data(str(table))
     assert bins.to_dict("list") == {"chrom": ["c1", "c2"], "start": [0, 0], "end": [100, 200]}
     assert final_bin == {"c1": "b1"}
     with gzip.open(table, "wt") as handle:
-        handle.write("Name\tSize\tFinal_bin\nc1\t100\tb1\tb2\n")
+        handle.write("Name\tSize\tFinal_cluster\nc1\t100\tb1\tb2\n")
     message = r"1 row\(s\) do not have the 3 tab-separated fields of the header: line 2 \(4\)\.$"
     with pytest.raises(mtmc.MetacoolError, match=message):
         mtmc.read_contig_data(str(table))
@@ -493,7 +494,7 @@ def test_read_contig_data_compressed_otherwise(suffix, tmp_path):
     """A contig data file that pandas reads compressed otherwise than with
     gzip as .gz is refused: metacooler, which reads it again to store the
     contig columns, cannot (the map failed there, once written)."""
-    content = "Name\tSize\tFinal_bin\nc1\t100\tb1\n"
+    content = "Name\tSize\tFinal_cluster\nc1\t100\tb1\n"
     table = tmp_path / f"contig_data_final.txt{suffix}"
     source = tmp_path / "contig_data_final.txt"
     source.write_text(content)
@@ -510,7 +511,7 @@ def test_read_contig_data_compressed_otherwise(suffix, tmp_path):
     assert pd.read_csv(table, sep="\t", dtype=str).to_dict("list") == {
         "Name": ["c1"],
         "Size": ["100"],
-        "Final_bin": ["b1"],
+        "Final_cluster": ["b1"],
     }
     message = (
         f"{table} is compressed in a way that metacooler, which reads it again to store the contig columns, cannot "
@@ -525,10 +526,10 @@ def test_read_contig_data_header_with_a_trailing_tab(tmp_path):
     leave it out, as pandas and metacooler read them. A row with more fields
     than the header is still refused."""
     table = tmp_path / "contig_data_final.txt"
-    table.write_text("Name\tSize\tFinal_bin\t\nc1\t100\tb1\nc2\t200\tND\t\n")
+    table.write_text("Name\tSize\tFinal_cluster\t\nc1\t100\tb1\nc2\t200\tND\t\n")
     bins, final_bin, *_ = mtmc.read_contig_data(str(table))
     assert list(bins.chrom) == ["c1", "c2"] and final_bin == {"c1": "b1"}
-    table.write_text("Name\tSize\tFinal_bin\t\nc1\t100\tb1\t\tx\n")
+    table.write_text("Name\tSize\tFinal_cluster\t\nc1\t100\tb1\t\tx\n")
     message = r"1 row\(s\) do not have the 3 to 4 tab-separated fields of the header: line 2 \(5\)\.$"
     with pytest.raises(mtmc.MetacoolError, match=message):
         mtmc.read_contig_data(str(table))
@@ -537,7 +538,7 @@ def test_read_contig_data_header_with_a_trailing_tab(tmp_path):
 @pytest.mark.parametrize("size", ["1x00", "", "100.0"])
 def test_read_contig_data_size_not_a_whole_number(size, tmp_path):
     table = tmp_path / "contig_data_final.txt"
-    table.write_text(f"Name\tSize\tFinal_bin\nc1\t100\tb1\nc2\t{size}\tND\n")
+    table.write_text(f"Name\tSize\tFinal_cluster\nc1\t100\tb1\nc2\t{size}\tND\n")
     message = f"The Size column of {table} must give the length of each contig in bp, as a whole number: "
     with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}.*'{re.escape(size)}'\\.$") as error:
         mtmc.read_contig_data(str(table))
@@ -711,7 +712,7 @@ def test_metacool_command_without_final_bin(metagenome, binning, tmp_path, run_c
     with all their contacts. The bin summary has no row and adds no
     column."""
     contig_data = write_contig_data(metagenome, tmp_path / "no_bin.txt", dict.fromkeys(_bin_names(metagenome), "ND"))
-    summary = tmp_path / "no_bin_summary.txt"
+    summary = tmp_path / "no_cluster_summary.txt"
     summary.write_text(Path(binning["bin_summary"]).read_text().splitlines(keepends=True)[0])
     run_cli("metacool", "-c", contig_data, "-b", summary, "-o", "map.metacool", binning["pairs"])
 
@@ -746,11 +747,11 @@ def test_metacool_command_existing_outfile(binning, tmp_path, run_cli):
 
 def test_metacool_command_misaligned_bin_summary(binning, tmp_path, run_cli):
     """A bin summary whose header has more fields than its rows, as
-    tests_data/outdir/bin_summary.txt (18 and 15): metacooler cannot tell
+    tests_data/outdir/cluster_summary.txt (18 and 15): metacooler cannot tell
     which column each value belongs to. Its reason is logged, then raised
     as a MetacoolError, and no map is left."""
-    summary = TESTS_DATA / "outdir" / "bin_summary.txt"
-    with pytest.raises(mtmc.MetacoolError, match=r"^Genomes table is misaligned: .*bin_summary\.txt\n") as error:
+    summary = TESTS_DATA / "outdir" / "cluster_summary.txt"
+    with pytest.raises(mtmc.MetacoolError, match=r"^Genomes table is misaligned: .*cluster_summary\.txt\n") as error:
         run_cli("metacool", "-c", binning["contig_data"], "-b", summary, "-o", "map.metacool", binning["pairs"])
     assert "header names 18 column(s), but no data row has more than 15" in str(error.value)
     assert isinstance(error.value.__cause__, ValueError)
@@ -779,7 +780,7 @@ def test_metacooler_errors_are_metacool_errors(error, binning, tmp_path, monkeyp
 
 ERRORS = {
     "missing pairs file": (["missing.pairs"], "Input file(s) not found: missing.pairs."),
-    "contig data without Final_bin": ([], "has no Final_bin column"),
+    "contig data without Final_cluster": ([], "has no Final_cluster column"),
     "non-ASCII contig names": ([], "A .metacool file needs ASCII contig names"),
     "bin named NA": ([], "Rename the 1 bin(s): 'NA'."),
     "Size not a whole number": ([], "must give the length of each contig in bp, as a whole number: "),
@@ -793,7 +794,7 @@ def test_metacool_command_errors(case, metagenome, metagenome_network, binning, 
     MetacoolError stops the command."""
     pairs, message = ERRORS[case]
     contig_data = binning["contig_data"]
-    if case == "contig data without Final_bin":
+    if case == "contig data without Final_cluster":
         contig_data = metagenome_network["contig_data"]
     elif case == "non-ASCII contig names":
         name = metagenome.contigs[0].name
@@ -1206,29 +1207,37 @@ def test_map_of_the_bins_from_the_map_of_an_earlier_run(earlier_bins, metagenome
     assert clr.info["metadata"]["qc"] == ref.info["metadata"]["qc"]
 
 
-def test_map_of_the_bins_drops_the_columns_of_an_earlier_run(metagenome, binning, tmp_path):
+@pytest.mark.parametrize("earlier, run", [("2.0", "2.0"), ("1.x", "1.x"), ("1.x", "2.0")])
+def test_map_of_the_bins_drops_the_columns_of_an_earlier_run(earlier, run, metagenome, binning, tmp_path):
     """From a map made with the contig data of an earlier run as its
-    contigs table (metacooler create pairs --contigs-format metator, which
-    stores all its columns): the bins and contig ids of that run, and its
-    other columns, are not carried into the map of the bins; only this
-    run's contig columns, and a column that metaTOR does not write."""
-    table = pd.read_csv(binning["contig_data"], sep="\t", index_col=0)
-    earlier = tmp_path / "earlier.metacool"
+    contigs table (metacooler create pairs --contigs-format Name,Final_cluster,
+    which stores all its columns): the bins and contig ids of that run, and
+    its other columns, are not carried into the map of the bins; only this
+    run's contig columns, and a column that metaTOR does not write. The same
+    from the contig data of a run of metaTOR 1.x, its bin columns named
+    after bins (Final_bin, Overlapping_bin_ID...), and with the contig data
+    of this run of 1.x or of 2.0: the bin columns of 1.x that the map
+    carried were kept with the 1.x table read under the names of 2.0."""
+    tables = {"2.0": str(binning["contig_data"])}
+    tables["1.x"] = synthetic.as_1x(tables["2.0"], tmp_path / "contig_data_1x.txt")
+    final, bins = {"2.0": ("Final_cluster", "cluster"), "1.x": ("Final_bin", "bin")}[earlier]
+    table = pd.read_csv(tables[earlier], sep="\t", index_col=0)
+    earlier_map = tmp_path / "earlier.metacool"
     metacooler.from_pairs(
-        str(earlier),
+        str(earlier_map),
         bins=pd.DataFrame({"chrom": table.Name, "start": 0, "end": table.Size}),
         pairs=str(binning["pairs"]),
-        contig_genome_map=str(binning["contig_data"]),
-        contig_table_format="metator",
+        contig_genome_map=tables[earlier],
+        contig_table_format=f"Name,{final}",
         ps=False,
     )
     taxa = tmp_path / "taxa.tsv"
     taxa.write_text("Name\ttaxon\n" + "".join(f"{name}\tt_{i % 3}\n" for i, name in enumerate(table.Name)))
-    metacooler.annotate(str(earlier), contigs_table=str(taxa), contigs_table_format="Name", inplace=True)
-    stale = {"Unnamed: 0", "ID", "Size", "Restriction_site", "Overlapping_bin_ID", "Recursive_bin_contigs"}
-    assert stale <= set(metacooler.MetaCooler(str(earlier)).contigs.columns)
+    metacooler.annotate(str(earlier_map), contigs_table=str(taxa), contigs_table_format="Name", inplace=True)
+    stale = {"Unnamed: 0", "ID", "Size", "Restriction_site", f"Overlapping_{bins}_ID", f"Recursive_{bins}_contigs"}
+    assert stale <= set(metacooler.MetaCooler(str(earlier_map)).contigs.columns)
     out = tmp_path / "bins.metacool"
-    mtmc.reassign_metacool(str(earlier), str(binning["contig_data"]), str(out), bin_summary=str(binning["bin_summary"]))
+    mtmc.reassign_metacool(str(earlier_map), tables[run], str(out), bin_summary=str(binning["bin_summary"]))
 
     metacooler.validate(str(out), full=True)
     assert assignment(out) == final_bins(metagenome)
@@ -1246,7 +1255,7 @@ def test_map_of_the_bins_from_a_contig_data_without_columns(source, metagenome, 
     else:
         metacool = mtmc_map(binning, tmp_path)
     contig_data = tmp_path / "no_columns.txt"
-    pd.read_csv(binning["contig_data"], sep="\t", index_col=0)[["Name", "Size", "Final_bin"]].to_csv(contig_data, sep="\t")
+    pd.read_csv(binning["contig_data"], sep="\t", index_col=0)[["Name", "Size", "Final_cluster"]].to_csv(contig_data, sep="\t")
     out = tmp_path / "bins.metacool"
     mtmc.reassign_metacool(str(metacool), str(contig_data), str(out), bin_summary=str(binning["bin_summary"]))
 
@@ -1487,7 +1496,7 @@ REASSIGN_ERRORS = {
         "maps.mmetacool is the .mmetacool collection of the input map maps.mmetacool::entries/lib1: the map of the "
         "bins would replace the whole collection. Write it to another file."
     ),
-    "contig data without Final_bin": "has no Final_bin column",
+    "contig data without Final_cluster": "has no Final_cluster column",
     "bin named NA": "Rename the 1 bin(s): 'NA'.",
     "Size not a whole number": "must give the length of each contig in bp, as a whole number: ",
 }
@@ -1509,7 +1518,7 @@ def test_map_of_the_bins_refused(case, metagenome, metagenome_network, binning, 
         uri = "maps.mmetacool::entries/lib2"
     elif case == "collection as outfile":
         uri, outfile = "maps.mmetacool::entries/lib1", "maps.mmetacool"
-    elif case == "contig data without Final_bin":
+    elif case == "contig data without Final_cluster":
         contig_data = metagenome_network["contig_data"]
     elif case == "bin named NA":
         contig_data = write_contig_data(
@@ -1592,7 +1601,7 @@ def test_map_of_the_contigs(measured, metagenome, metagenome_inputs, tmp_path):
 
 def final_contig_data(contig_data, pairs, final_bin, path):
     """The contig_data_final.txt file of a run with this contig data, laid
-    out as validation writes it (an unnamed index first, Final_bin last):
+    out as validation writes it (an unnamed index first, Final_cluster last):
     its columns as write_contig_data writes them, the hits of each contig
     counted on the pairs, as the network step counts them."""
     hits = pd.concat([pairs.chr1, pairs.chr2]).value_counts()
@@ -1600,7 +1609,7 @@ def final_contig_data(contig_data, pairs, final_bin, path):
         data["hit"] = int(hits.get(name, 0))
     mtn.write_contig_data(contig_data, str(path))
     table = pd.read_csv(path, sep="\t", dtype=str, keep_default_na=False)
-    table["Final_bin"] = table.Name.map(final_bin)
+    table["Final_cluster"] = table.Name.map(final_bin)
     table.to_csv(path, sep="\t", index=True)
     return path
 
@@ -1633,7 +1642,7 @@ def test_map_of_the_bins_from_the_map_of_the_contigs(final, metagenome, metageno
         order = metacooler.MetaCooler(str(outfile)).contigs.name
         final_bin = {name: f"metator_0000{1 + (i >= 20)}_00000" for i, name in enumerate(order)}
     contig_data_file = final_contig_data(contig_data, metagenome.pairs, final_bin, out / "contig_data_final.txt")
-    tables = {"bin_summary": str(write_bin_summary(metagenome, out / "bin_summary.txt")), **run}
+    tables = {"bin_summary": str(write_bin_summary(metagenome, out / "cluster_summary.txt")), **run}
     mtmc.reassign_metacool(str(outfile), str(contig_data_file), str(outfile), force=True, **tables)
     expected = tmp_path / "pairs.metacool"
     mtmc.write_metacool(pairs, str(contig_data_file), str(expected), assembly_name="synthetic", **tables)
@@ -1664,7 +1673,7 @@ def test_map_of_the_bins_from_the_map_of_the_contigs(final, metagenome, metageno
         ([], ["contigs.GC_content", "contigs.Shotgun_coverage", "contigs.Restriction_site"]),
         ([f"contigs.{column}" for column in columns], []),
     ]
-    assert sorted(path.name for path in out.iterdir()) == ["bin_summary.txt", "contig_data_final.txt", "metator.metacool"]
+    assert sorted(path.name for path in out.iterdir()) == ["cluster_summary.txt", "contig_data_final.txt", "metator.metacool"]
 
 
 def test_map_of_the_contigs_of_an_assembly_with_an_empty_contig(metagenome, metagenome_inputs, tmp_path, logged):

@@ -122,24 +122,24 @@ def large_contigs(tmp_path_factory):
     truth = community.truth
     bins = {"big_1": "metator_00001_00000", "big_2": "metator_00002_00000"}
     contig_data = pd.DataFrame(
-        {"ID": range(1, len(truth) + 1), "Name": truth.Name, "Size": truth.Length, "Final_bin": truth.Genome.map(bins)}
+        {"ID": range(1, len(truth) + 1), "Name": truth.Name, "Size": truth.Length, "Final_cluster": truth.Genome.map(bins)}
     )
     contig_data.to_csv(directory / "contig_data_final.txt", sep="\t", index=False)
     summary = pd.DataFrame(
         {"Weighted completeness": [0.95, 0.92, 0.5], "Weighted redundancy": [1.01, 1.05, 1.0]},
         index=[*bins.values(), "metator_00003_00000"],
     )
-    summary.to_csv(directory / "bin_summary.txt", sep="\t")
+    summary.to_csv(directory / "cluster_summary.txt", sep="\t")
     return community, files, pairs, directory
 
 
 def test_extract_hq_contigs(large_contigs):
     directory = large_contigs[3]
     contigs_data = mio.read_contig_data(str(directory / "contig_data_final.txt"))
-    summary = mio.read_bin_summary(str(directory / "bin_summary.txt"))
+    summary = mio.read_bin_summary(str(directory / "cluster_summary.txt"))
     hq_contigs, n_mags = mtq.extract_hq_contigs(summary, contigs_data)
     assert n_mags == 2
-    assert hq_contigs == dict(zip(contigs_data.Name, contigs_data.Final_bin, strict=True))
+    assert hq_contigs == dict(zip(contigs_data.Name, contigs_data.Final_cluster, strict=True))
     # A contaminated MAG is not high quality.
     summary.loc["metator_00002_00000", "Weighted redundancy"] = 1.3
     hq_contigs, n_mags = mtq.extract_hq_contigs(summary, contigs_data)
@@ -154,7 +154,7 @@ def test_hic_quality_counts(large_contigs, tmp_path):
     names = list(contigs_data.Name)
     n_pairs = mtq.extract_pairs([str(pairs)], str(tmp_path / "hq.pairs"), names, contigs_data)
     assert n_pairs == len(community.pairs)
-    contigs = dict(zip(names, contigs_data.Final_bin, strict=True))
+    contigs = dict(zip(names, contigs_data.Final_cluster, strict=True))
     counts = mtq.hic_quality(
         contigs,
         2,
@@ -196,7 +196,7 @@ def test_hic_quality_without_pairs(large_contigs, tmp_path, caplog):
     contigs_data = mio.read_contig_data(str(directory / "contig_data_final.txt"))
     names = list(contigs_data.Name)
     assert mtq.extract_pairs([], str(tmp_path / "hq.pairs"), names, contigs_data) == 0
-    contigs = dict(zip(names, contigs_data.Final_bin, strict=True))
+    contigs = dict(zip(names, contigs_data.Final_cluster, strict=True))
     camembert = tmp_path / "camembert.pdf"
     with caplog.at_level("INFO", logger="metator"):
         counts = mtq.hic_quality(
@@ -222,15 +222,15 @@ def test_quality_check_without_pairs_says_why(case, message, large_contigs, tmp_
     found." whatever the reason."""
     _, files, _, directory = large_contigs
     contig_data = pd.read_csv(directory / "contig_data_final.txt", sep="\t")
-    summary = pd.read_csv(directory / "bin_summary.txt", sep="\t", index_col=0)
+    summary = pd.read_csv(directory / "cluster_summary.txt", sep="\t", index_col=0)
     if case == "no MAG":
         summary["Weighted completeness"] = 0.4
     if case == "no large contig":
         contig_data["Size"] = 50_000
     contig_data.to_csv(tmp_path / "contig_data.txt", sep="\t", index=False)
-    summary.to_csv(tmp_path / "bin_summary.txt", sep="\t")
+    summary.to_csv(tmp_path / "cluster_summary.txt", sep="\t")
     with caplog.at_level("INFO", logger="metator_logger"):
-        mtq.quality_check(str(tmp_path / "contig_data.txt"), str(tmp_path / "bin_summary.txt"), str(files["assembly"]),
+        mtq.quality_check(str(tmp_path / "contig_data.txt"), str(tmp_path / "cluster_summary.txt"), str(files["assembly"]),
                           [], str(tmp_path), str(tmp_path), "sample", False, ["DpnII"], None)  # fmt: skip
     assert "0 pairs have been extracted." in caplog.text
     assert message in caplog.text
@@ -251,10 +251,10 @@ def test_qc_command(large_contigs, tmp_path, run_cli):
 def test_qc_command_without_hq_mags(large_contigs, tmp_path, run_cli):
     """Explicit tables; no high-quality MAG, so nothing is plotted."""
     _, files, pairs, directory = large_contigs
-    summary = mio.read_bin_summary(str(directory / "bin_summary.txt"))
+    summary = mio.read_bin_summary(str(directory / "cluster_summary.txt"))
     summary["Weighted completeness"] = 0.4
-    summary.to_csv(tmp_path / "bin_summary.txt", sep="\t")
-    args = ["-a", str(files["assembly"]), "-e", "DpnII", "-b", str(tmp_path / "bin_summary.txt"),
+    summary.to_csv(tmp_path / "cluster_summary.txt", sep="\t")
+    args = ["-a", str(files["assembly"]), "-e", "DpnII", "-b", str(tmp_path / "cluster_summary.txt"),
             "-c", str(directory / "contig_data_final.txt"), "-t", "3,3", "-T", str(tmp_path / "tmp"), "-n",
             str(pairs)]  # fmt: skip
     run_cli("qc", *args)
@@ -262,12 +262,38 @@ def test_qc_command_without_hq_mags(large_contigs, tmp_path, run_cli):
     assert (tmp_path / "tmp").exists()  # --no-clean-up
 
 
-@pytest.mark.parametrize("missing", ["bin_summary.txt", "contig_data_final.txt"])
+@pytest.mark.parametrize("run", ["1.x", "both summaries"])
+def test_qc_command_in_the_directory_of_a_run_of_1x(run, large_contigs, tmp_path, run_cli, logged):
+    """-O finds the bin_summary.txt of a run of metaTOR 1.x, and its contig
+    data, its columns named after bins, is read under their names of 2.0:
+    qc measures what it measures in the directory of the same run of 2.0.
+    The cluster_summary.txt of a directory that has both is read."""
+    _, files, pairs, directory = large_contigs
+    metator_dir = tmp_path / "metator"
+    metator_dir.mkdir()
+    if run == "1.x":
+        shutil.copyfile(directory / "cluster_summary.txt", metator_dir / "bin_summary.txt")
+        synthetic.as_1x(directory / "contig_data_final.txt", metator_dir / "contig_data_final.txt")
+    else:
+        shutil.copyfile(directory / "cluster_summary.txt", metator_dir / "cluster_summary.txt")
+        (metator_dir / "bin_summary.txt").write_text("not a summary\n")
+        shutil.copyfile(directory / "contig_data_final.txt", metator_dir / "contig_data_final.txt")
+    measured = []
+    for path in (directory, metator_dir):
+        start = len(logged())
+        args = ["-a", files["assembly"], "-e", "DpnII", "-O", path, "-o", tmp_path / path.name, "-T", tmp_path / "tmp", pairs]
+        run_cli("qc", *map(str, args))
+        measured.append([message for _, message in logged()[start:] if re.match(r"(Number|Contacts|Noise|\d+ pairs)", message)])
+    assert measured[0] == measured[1]
+    assert any(message.startswith("Noise contact ratio") for message in measured[0])
+
+
+@pytest.mark.parametrize("missing", ["cluster_summary.txt", "contig_data_final.txt"])
 def test_qc_command_missing_tables(large_contigs, tmp_path, missing, run_cli):
     _, files, pairs, directory = large_contigs
     metator_dir = tmp_path / "metator"
     metator_dir.mkdir()
-    for name in {"bin_summary.txt", "contig_data_final.txt"} - {missing}:
+    for name in {"cluster_summary.txt", "contig_data_final.txt"} - {missing}:
         shutil.copyfile(directory / name, metator_dir / name)
     args = ["-a", str(files["assembly"]), "-e", "DpnII", "-O", str(metator_dir), "-T", str(tmp_path / "tmp"), str(pairs)]
     with pytest.raises(FileNotFoundError):
@@ -359,7 +385,7 @@ def test_noise_from_a_map_is_that_of_its_pairs(large_contigs, large_contigs_map,
     indexed, metacool = large_contigs_map
     contigs_data = mio.read_contig_data(str(directory / "contig_data_final.txt"))
     names = list(contigs_data.Name)
-    contigs = dict(zip(names, contigs_data.Final_bin, strict=True))
+    contigs = dict(zip(names, contigs_data.Final_cluster, strict=True))
     n_pairs = mtq.extract_pairs([str(indexed)], str(tmp_path / "hq.pairs"), names, contigs_data)
     events = mtq.hic_quality(contigs, 2, str(tmp_path / "hq.pairs"), str(tmp_path / "hq_idx.pairs"), str(files["assembly"]),
                              ["DpnII"], threshold=["3", "3"])  # fmt: skip
@@ -518,7 +544,7 @@ def test_quality_check_from_a_map_without_pairs_says_why(case, message, large_co
 
     _, files, _, directory = large_contigs
     contig_data = pd.read_csv(directory / "contig_data_final.txt", sep="\t")
-    summary = pd.read_csv(directory / "bin_summary.txt", sep="\t", index_col=0)
+    summary = pd.read_csv(directory / "cluster_summary.txt", sep="\t", index_col=0)
     contigs = list(contig_data.Name) if case != "no pair" else ["x1", "x2"]
     pairs = tmp_path / "other.pairs"
     pairs.write_text(f"## pairs format v1.0\nr1\t{contigs[0]}\t10\t{contigs[1]}\t20\t+\t-\n")
@@ -530,8 +556,8 @@ def test_quality_check_from_a_map_without_pairs_says_why(case, message, large_co
     if case == "no large contig":
         contig_data["Size"] = 50_000
     contig_data.to_csv(tmp_path / "contig_data.txt", sep="\t", index=False)
-    summary.to_csv(tmp_path / "bin_summary.txt", sep="\t")
-    mtq.quality_check(str(tmp_path / "contig_data.txt"), str(tmp_path / "bin_summary.txt"), str(files["assembly"]), [],
+    summary.to_csv(tmp_path / "cluster_summary.txt", sep="\t")
+    mtq.quality_check(str(tmp_path / "contig_data.txt"), str(tmp_path / "cluster_summary.txt"), str(files["assembly"]), [],
                       str(tmp_path), str(tmp_path), "sample", False, ["DpnII"], None, metacool=str(metacool))  # fmt: skip
     found = logged()
     assert ("INFO", f"0 pairs have been extracted from {metacool}.") in found and ("INFO", message) in found
@@ -579,14 +605,14 @@ def mixed_contigs(tmp_path_factory):
             "ID": range(1, len(truth) + 1),
             "Name": truth.Name,
             "Size": truth.Length,
-            "Final_bin": truth.Genome.map(bins).fillna("ND"),
+            "Final_cluster": truth.Genome.map(bins).fillna("ND"),
         }
     )
     contig_data.to_csv(directory / "contig_data_final.txt", sep="\t", index=False)
     summary = pd.DataFrame(
         {"Weighted completeness": [0.95, 0.92, 0.5], "Weighted redundancy": [1.01, 1.05, 1.0]}, index=list(bins.values())
     )
-    summary.to_csv(directory / "bin_summary.txt", sep="\t")
+    summary.to_csv(directory / "cluster_summary.txt", sep="\t")
     metacool = directory / "map.metacool"
     map_bins = pd.DataFrame({"chrom": truth.Name, "start": 0, "end": truth.Length})
     metacooler.from_pairs(str(metacool), pairs=str(files["pairs"]), bins=map_bins, contig_genome_map=None, ps=False)

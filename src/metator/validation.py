@@ -55,7 +55,7 @@ FASTA_EXTENSIONS = (".fa", ".fasta", ".fna")
 def correct_final_bin(contigs_data, final_fasta_dir, bin_summary):
     """Function to set the final bin of each contig from the fasta files of
     the final bins: the contigs of <final_fasta_dir>/<bin>.fa get the bin as
-    Final_bin.
+    Final_cluster.
 
     Parameters:
     -----------
@@ -76,7 +76,7 @@ def correct_final_bin(contigs_data, final_fasta_dir, bin_summary):
         fasta_file = join(final_fasta_dir, f"{bin_name}.fa")
         # Read without an index, which would be left next to the bin.
         for name, _ in pyfastx.Fasta(fasta_file, build_index=False):
-            contigs_data.loc[name, "Final_bin"] = bin_name
+            contigs_data.loc[name, "Final_cluster"] = bin_name
     contigs_data = contigs_data.reset_index(drop=True)
     return contigs_data
 
@@ -101,7 +101,7 @@ def get_bin_coverage(bin_summary, contigs_data):
     total_hic_hit = 0
     total_sg_hit = 0
     for i in contigs_data.index:
-        bin_name = contigs_data.loc[i, "Final_bin"]
+        bin_name = contigs_data.loc[i, "Final_cluster"]
         if contigs_data.loc[contigs_data.index[0], "Shotgun_coverage"] != "-":
             total_sg_hit += contigs_data.loc[i, "Size"] * contigs_data.loc[i, "Shotgun_coverage"]
         total_hic_hit += contigs_data.loc[i, "Hit"]
@@ -513,7 +513,9 @@ def bin_contig_ids(bin_id, contigs_data):
     """
     over_bin_id = str(bin_id.split("_")[-2])
     rec_bin_id = str(bin_id.split("_")[-1])
-    mask = (contigs_data["Overlapping_bin_ID"] == over_bin_id) & (contigs_data["Recursive_bin_ID"].apply(str) == rec_bin_id)
+    mask = (contigs_data["Overlapping_cluster_ID"] == over_bin_id) & (
+        contigs_data["Recursive_cluster_ID"].apply(str) == rec_bin_id
+    )
     return list(contigs_data.loc[mask, "ID"])
 
 
@@ -580,7 +582,7 @@ def recursive_clustering_worker(
         Path to the contigs data file from metator partition.
     """
     # Create temporary folders.
-    tmpdir_subnetwork = join(tmpdir, "recursive_bins", bin_id)
+    tmpdir_subnetwork = join(tmpdir, "recursive_clusters", bin_id)
     os.makedirs(tmpdir_subnetwork, exist_ok=True)
 
     logger.info("Bin in progress: {0}".format(bin_id))
@@ -715,20 +717,23 @@ def recursive_decontamination(
     )
 
     # Load contigs data:
-    contigs_data = pd.read_csv(
-        contig_data_file,
-        sep="\t",
-        header=0,
-        converters={"Overlapping_bin_ID": str},
+    contigs_data = mio.rename_1x_columns(
+        pd.read_csv(
+            contig_data_file,
+            sep="\t",
+            header=0,
+            # As written, of metaTOR 2.0 or 1.x: "00008", not 8.
+            converters={"Overlapping_cluster_ID": str, "Overlapping_bin_ID": str},
+        )
     )
     contigs_data["index"] = contigs_data["ID"] - 1
     contigs_data = contigs_data.set_index("index")
 
     # Add new coulumns for recursive information.
-    contigs_data["Recursive_bin_ID"] = f"{0:05d}"
-    contigs_data["Recursive_bin_contigs"] = pd.Series("-", index=contigs_data.index, dtype=object)
-    contigs_data["Recursive_bin_size"] = pd.Series("-", index=contigs_data.index, dtype=object)
-    contigs_data["Final_bin"] = "ND"
+    contigs_data["Recursive_cluster_ID"] = f"{0:05d}"
+    contigs_data["Recursive_cluster_contigs"] = pd.Series("-", index=contigs_data.index, dtype=object)
+    contigs_data["Recursive_cluster_size"] = pd.Series("-", index=contigs_data.index, dtype=object)
+    contigs_data["Final_cluster"] = "ND"
 
     # Load miComplete result:
     bin_summary = mio.micomplete_results_to_dict(overlapping_micomplete_file)
@@ -875,7 +880,7 @@ def recursive_decontamination(
     # The final clusters, each the cluster of the same name of the round it
     # comes from, with the columns of the bin summary (but its parent, which
     # the round says).
-    final_contigs = contigs_data.groupby("Final_bin")["Name"]
+    final_contigs = contigs_data.groupby("Final_cluster")["Name"]
     for bin_name, info in bin_summary.items():
         rounds.add(
             mtc.FINAL,
@@ -887,7 +892,7 @@ def recursive_decontamination(
     rounds.write(outdir)
 
     # Save bin information in final file
-    bin_summary_file = join(outdir, "bin_summary.txt")
+    bin_summary_file = join(outdir, "cluster_summary.txt")
     mio.write_bin_summary(bin_summary, bin_summary_file)
 
     # Write the new file
@@ -956,11 +961,11 @@ def update_contigs_data_recursive(
     fasta = None
 
     # Extract last recursive ID.
-    over_id = contigs_data.loc[recursive_bins[1][0] - 1, "Overlapping_bin_ID"]
+    over_id = contigs_data.loc[recursive_bins[1][0] - 1, "Overlapping_cluster_ID"]
     max_rec_id = max(
         map(
             int,
-            contigs_data[contigs_data.Overlapping_bin_ID == over_id]["Recursive_bin_ID"],
+            contigs_data[contigs_data.Overlapping_cluster_ID == over_id]["Recursive_cluster_ID"],
         )
     )
 
@@ -976,12 +981,12 @@ def update_contigs_data_recursive(
             contamination = True
             rec_final_id = max_rec_id + rec_id
             # Write the new information
-            contigs_data.loc[recursive_bin, "Recursive_bin_ID"] = f"{rec_final_id:05d}"
-            contigs_data.loc[recursive_bin, "Recursive_bin_contigs"] = recursive_bin_contigs_number
-            contigs_data.loc[recursive_bin, "Recursive_bin_size"] = recursive_bin_length
+            contigs_data.loc[recursive_bin, "Recursive_cluster_ID"] = f"{rec_final_id:05d}"
+            contigs_data.loc[recursive_bin, "Recursive_cluster_contigs"] = recursive_bin_contigs_number
+            contigs_data.loc[recursive_bin, "Recursive_cluster_size"] = recursive_bin_length
 
             # Defined name of the recursive bin
-            oc_id = int(contigs_data.loc[recursive_bin[0], "Overlapping_bin_ID"])
+            oc_id = int(contigs_data.loc[recursive_bin[0], "Overlapping_cluster_ID"])
             output_file = join(outdir, f"{prefix}_{oc_id:05d}_{rec_final_id:05d}.fa")
 
             # Update bin_summary:
@@ -1005,7 +1010,7 @@ def write_bins_contigs(bin_summary, contigs_data, outfile):
     """Function to write a table with the contigs of the final bins and their
     bin, without header: the binning that anvio imports.
 
-    The bin of each contig is the Final_bin column of the contigs data, which
+    The bin of each contig is the Final_cluster column of the contigs data, which
     correct_final_bin sets from the fasta files of the final bins. Deriving it
     from the IDs of the overlapping and recursive bins of the contigs left out
     the contigs of a bin that was partitioned again but kept whole.
@@ -1024,6 +1029,6 @@ def write_bins_contigs(bin_summary, contigs_data, outfile):
     pandas.core.frame.DataFrame
         Dataframe with the contigs informations, as given.
     """
-    binned = contigs_data[contigs_data["Final_bin"].isin(list(bin_summary))]
-    binned[["Name", "Final_bin"]].to_csv(outfile, sep="\t", header=False, index=False)
+    binned = contigs_data[contigs_data["Final_cluster"].isin(list(bin_summary))]
+    binned[["Name", "Final_cluster"]].to_csv(outfile, sep="\t", header=False, index=False)
     return contigs_data

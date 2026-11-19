@@ -72,13 +72,13 @@ with a header. Each step adds its columns to those of the step before:
 | `Hit` | network | Its hits: the ends of the pairs that lie on it, in all libraries (a pair within the contig counts twice) |
 | `Shotgun_coverage` | network | Its coverage in the depth file, `-` without `--depth` (from a map, its `Shotgun_coverage` column, when it gives every contig a value) |
 | `Restriction_site` | network | Its number of restriction sites plus one (its restriction fragments), `-` without `--enzyme` (from a map, its `Restriction_site` column, when it gives every contig a value) |
-| `Core_bin_ID`, `Core_bin_contigs`, `Core_bin_size` | partition | Its core bin: the ID, number of contigs and size in bp of the bin |
-| `Overlapping_bin_ID`, `Overlapping_bin_contigs`, `Overlapping_bin_size` | partition | Its overlapping bin, likewise |
-| `Recursive_bin_ID`, `Recursive_bin_contigs`, `Recursive_bin_size` | validation | Its recursive bin, likewise: `00000`, `-`, `-` when its bin was not partitioned again |
-| `Final_bin` | validation | Its final bin, or `ND` (not determined) |
+| `Core_cluster_ID`, `Core_cluster_contigs`, `Core_cluster_size` | partition | Its core bin: the ID, number of contigs and size in bp of the bin |
+| `Overlapping_cluster_ID`, `Overlapping_cluster_contigs`, `Overlapping_cluster_size` | partition | Its overlapping bin, likewise |
+| `Recursive_cluster_ID`, `Recursive_cluster_contigs`, `Recursive_cluster_size` | validation | Its recursive bin, likewise: `00000`, `-`, `-` when its bin was not partitioned again |
+| `Final_cluster` | validation | Its final bin, or `ND` (not determined) |
 
 ```text
-	ID	Name	Size	GC_content	Hit	Shotgun_coverage	Restriction_site	Core_bin_ID	Core_bin_contigs	Core_bin_size	Overlapping_bin_ID	Overlapping_bin_contigs	Overlapping_bin_size	Recursive_bin_ID	Recursive_bin_contigs	Recursive_bin_size	Final_bin
+	ID	Name	Size	GC_content	Hit	Shotgun_coverage	Restriction_site	Core_cluster_ID	Core_cluster_contigs	Core_cluster_size	Overlapping_cluster_ID	Overlapping_cluster_contigs	Overlapping_cluster_size	Recursive_cluster_ID	Recursive_cluster_contigs	Recursive_cluster_size	Final_cluster
 0	1	NODE_522	22786	62.0775915035548	1683	4.76595	162	00001	2	23301	00001	15	49021	00000	-	-	metator_00001_00000
 1	2	NODE_1404	15015	64.2823842823842	952	4.00585	118	00002	1	15015	00002	5	19711	00000	-	-	ND
 ```
@@ -110,7 +110,7 @@ alone.
 
 ### Bin summary
 
-`bin_summary.txt` holds one row per final bin, named in its first column. Its
+`cluster_summary.txt` holds one row per final bin, named in its first column. Its
 first columns are those of miComplete:
 
 | Column | What it holds |
@@ -193,11 +193,11 @@ stored. See
 
 ### FASTA files of the bins
 
-`overlapping_bin/`, `recursive_bin/step_<n>/` (the recursive bins of step
-`n`) and `final_bin/` (`final_bin_unscaffold/` in `pipeline`) hold one FASTA
-file per bin, `<bin>.fa`, with the records of its contigs as they are in the
-assembly. The final bins also hold the pyfastx
-index of each, `<bin>.fa.fxi`, which the validation leaves there.
+`overlapping_clusters/`, `recursive_clusters/step_<n>/` (the recursive bins of
+step `n`) and `final_clusters/` hold one FASTA file per bin, `<bin>.fa`, with
+the records of its contigs as they are in the assembly. The final bins also
+hold the pyfastx index of each, `<bin>.fa.fxi`, which the validation leaves
+there.
 
 ## The contact map of the bins
 
@@ -227,7 +227,7 @@ NODE_202465	0	894	1
 
 ## MGE bin summary
 
-`mges_bin_summary.tsv` holds one row per MGE bin, with a header:
+`mges_cluster_summary.tsv` holds one row per MGE bin, with a header:
 
 | Column | What it holds |
 |---|---|

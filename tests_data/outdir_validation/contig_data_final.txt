@@ -1,4 +1,4 @@
-ID	Name	Size	GC_content	Hit	Shotgun_coverage	Restriction_site	Core_bin_ID	Core_bin_contigs	Core_bin_size	Overlapping_bin_ID	Overlapping_bin_contigs	Overlapping_bin_size	Recursive_bin_ID	Recursive_bin_contigs	Recursive_bin_size	Final_bin
+ID	Name	Size	GC_content	Hit	Shotgun_coverage	Restriction_site	Core_cluster_ID	Core_cluster_contigs	Core_cluster_size	Overlapping_cluster_ID	Overlapping_cluster_contigs	Overlapping_cluster_size	Recursive_cluster_ID	Recursive_cluster_contigs	Recursive_cluster_size	Final_cluster
 456	NODE_909_length_6447	6447	31.301380487048238	58	-	-	00001	225	1886607	00001	216	1876669	0	-	-	MetaTOR_00001_00000
 716	NODE_1490_length_1262	1262	61.965134706814574	191	-	-	00002	327	4890422	00002	192	4636634	1	174	2638002	MetaTOR_00002_00000
 901	NODE_1851_length_39046	39046	59.66040055319368	4719	-	-	00002	327	4890422	00002	192	4636634	1	174	2638002	MetaTOR_00002_00000

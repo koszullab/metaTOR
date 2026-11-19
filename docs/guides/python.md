@@ -30,12 +30,12 @@ data frames, indexed by bin name and by contig name:
 ```python
 import metator.io as mio
 
-summary = mio.read_bin_summary("binning/bin_summary.txt")
+summary = mio.read_bin_summary("binning/cluster_summary.txt")
 contigs = mio.read_contig_data("binning/contig_data_final.txt")
 
 # The high-quality MAGs, and their contigs.
 hq = summary[(summary["Weighted completeness"] >= 0.9) & (summary["Weighted redundancy"] <= 1.05)]
-hq_contigs = contigs[contigs["Final_bin"].isin(hq.index)]
+hq_contigs = contigs[contigs["Final_cluster"].isin(hq.index)]
 ```
 
 [File formats](../formats.md) describes their columns.
@@ -50,7 +50,7 @@ cooler (see [The contact map of the bins](metacool.md)):
 import metacooler
 
 mc = metacooler.MetaCooler("binning/metator.metacool")
-mc.genomes  # one row per bin, and __unbinned__, with the columns of bin_summary.txt
+mc.genomes  # one row per bin, and __unbinned__, with the columns of cluster_summary.txt
 mc.contigs  # one row per contig
 ```
 
@@ -82,7 +82,7 @@ import os
 
 import metator.partition as mtp
 
-os.makedirs("binning/overlapping_bin", exist_ok=True)
+os.makedirs("binning/overlapping_clusters", exist_ok=True)
 clustering_matrix_file, contig_data_file = mtp.partition(
     algorithm="louvain",
     assembly="assembly.fa",
@@ -91,7 +91,7 @@ clustering_matrix_file, contig_data_file = mtp.partition(
     iterations=100,
     network_file="binning/network.txt",
     outdir="binning",
-    fasta_dir="binning/overlapping_bin",
+    fasta_dir="binning/overlapping_clusters",
     overlapping_parameter=0.8,  # --overlap 80
     resolution_parameter=1.0,
     size=500000,

@@ -13,12 +13,12 @@ import metator.host as mth
 
 @pytest.fixture
 def binned(metagenome, metagenome_network):
-    """Contig data with the true bins as Final_bin, the network as a table,
+    """Contig data with the true bins as Final_cluster, the network as a table,
     and the bin names of the genomes and MGEs."""
     data = pd.read_csv(metagenome_network["contig_data"], sep="\t")
     mags = {g.name: f"metator_{k:05d}_00000" for k, g in enumerate(metagenome.genomes, start=1)}
     mges = {m.name: f"MetaTOR_MGE_{k:05d}" for k, m in enumerate(metagenome.mges, start=1)}
-    data["Final_bin"] = data.Name.map(metagenome.truth.Genome).map({**mags, **mges})
+    data["Final_cluster"] = data.Name.map(metagenome.truth.Genome).map({**mags, **mges})
     network = pd.read_csv(metagenome_network["network"], sep="\t", names=["contig1", "contig2", "signal"])
     return data, network, mags, mges
 
@@ -30,7 +30,7 @@ def _bin_summary(mag_names, completeness, redundancy):
 def test_create_bins(metagenome, binned):
     data, _, mags, mges = binned
     unbinned = data.index[data.Name.map(metagenome.truth.Kind) == "genome"][0]
-    data.loc[unbinned, "Final_bin"] = "ND"  # unbinned contigs are ignored
+    data.loc[unbinned, "Final_cluster"] = "ND"  # unbinned contigs are ignored
     mag_bins, mge_bins = mth.create_bins(data)
     assert set(mag_bins) == set(mags.values())
     assert set(mge_bins) == set(mges.values())
@@ -328,3 +328,14 @@ def test_annotate_hosts(metagenome, binned, tmp_path):
     assert qualities == dict(zip(mags.values(), ["Complete", "Contaminated", "MQ", "LQ", "PQ"], strict=True))
     for name in ["background_noise.png", "mge_mag_histogram.png", "mge_mag_interactions.txt"]:
         assert (tmp_path / name).stat().st_size > 0
+
+
+def test_create_bins_of_1x(binned):
+    """The contig data of metaTOR 1.x, its final clusters in Final_bin, gives
+    the MAGs and MGE-MAGs of the same table of 2.0."""
+    data, *_ = binned
+    expected = mth.create_bins(data)
+    got = mth.create_bins(data.rename(columns={"Final_cluster": "Final_bin"}))
+    for found, bins in zip(got, expected, strict=True):
+        assert {name: bin.contigs for name, bin in found.items()} == {name: bin.contigs for name, bin in bins.items()}
+    assert expected[0] and expected[1]

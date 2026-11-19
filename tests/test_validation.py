@@ -10,7 +10,7 @@ import os
 import shutil
 
 threads = 8
-fasta_dir = "tests_data/outdir_validation/overlapping_bin"
+fasta_dir = "tests_data/outdir_validation/overlapping_clusters"
 arch_output = "tests_data/outdir_validation/tmp_micomplete/arch131.tsv"
 bact_output = "tests_data/outdir_validation/tmp_micomplete/bact105.tsv"
 assembly = "tests_data/outdir_validation/assembly_val.fa"
@@ -21,13 +21,13 @@ contigs_data = pd.read_csv(
     "tests_data/outdir_validation/contig_data_final.txt",
     sep="\t",
     header=0,
-    converters={"Overlapping_bin_ID": str},
+    converters={"Overlapping_cluster_ID": str},
 )
 contigs_data["index"] = contigs_data["ID"] - 1
 contigs_data = contigs_data.set_index("index")
-contigs_data["Recursive_bin_ID"] = f"{0:05d}"
-contigs_data["Recursive_bin_contigs"] = pd.Series("-", index=contigs_data.index, dtype=object)
-contigs_data["Recursive_bin_size"] = pd.Series("-", index=contigs_data.index, dtype=object)
+contigs_data["Recursive_cluster_ID"] = f"{0:05d}"
+contigs_data["Recursive_cluster_contigs"] = pd.Series("-", index=contigs_data.index, dtype=object)
+contigs_data["Recursive_cluster_size"] = pd.Series("-", index=contigs_data.index, dtype=object)
 network = pd.read_csv(
     "tests_data/outdir_validation/network.txt",
     sep="\t",
@@ -138,10 +138,10 @@ def test_recursive_clustering_worker_subnetwork(tmp_path):
         tmp_path / "network.txt", sep="\t", header=None, names=["contig1", "contig2", "weight"], dtype={"weight": str}
     )
     data = pd.DataFrame(
-        {"ID": [1, 2, 3, 5, 8, 9], "Overlapping_bin_ID": ["00001"] * 4 + ["00002"] * 2, "Recursive_bin_ID": "00000"}
+        {"ID": [1, 2, 3, 5, 8, 9], "Overlapping_cluster_ID": ["00001"] * 4 + ["00002"] * 2, "Recursive_cluster_ID": "00000"}
     )
     partition = mtv.recursive_clustering_worker("bin_00001_00000", str(tmp_path), network, "louvain", 2, 1.0, data)
-    subnetwork = tmp_path / "recursive_bins" / "bin_00001_00000" / "subnetwork_bin_00001_00000.txt"
+    subnetwork = tmp_path / "recursive_clusters" / "bin_00001_00000" / "subnetwork_bin_00001_00000.txt"
     assert subnetwork.read_text().splitlines() == [rows[0], rows[1], rows[3], rows[4], rows[6]]
     assert sorted(partition) == [1, 2, 3, 5]
 
@@ -166,40 +166,40 @@ def test_update_contigs_data_recursive(tmp_path, monkeypatch):
         "MetaTOR",
     )
     assert contamination
-    assert len(np.unique(contig_data.Recursive_bin_ID)) > 1
+    assert len(np.unique(contig_data.Recursive_cluster_ID)) > 1
     assert sorted(os.listdir(out)) == ["MetaTOR_00002_00001.fa", "MetaTOR_00002_00002.fa"]
     assert all(path.read_text().startswith(">") for path in out.iterdir())
 
 
 def test_write_bins_contigs(tmp_path):
     """binning.txt holds the contigs of the final bins, with the bin that
-    Final_bin gives them, in the order of the contigs data."""
+    Final_cluster gives them, in the order of the contigs data."""
     binning_file = tmp_path / "binning.txt"
     data = contigs_data.copy()
-    data.loc[data.index[0], "Final_bin"] = "ND"
+    data.loc[data.index[0], "Final_cluster"] = "ND"
     # The contigs of a bin partitioned again but kept whole keep the ID of
     # their recursive bin: they were left out of binning.txt.
-    kept_whole = data.index[data.Final_bin == "MetaTOR_00002_00000"][:5]
-    data.loc[kept_whole, "Recursive_bin_ID"] = "00003"
+    kept_whole = data.index[data.Final_cluster == "MetaTOR_00002_00000"][:5]
+    data.loc[kept_whole, "Recursive_cluster_ID"] = "00003"
     returned = mtv.write_bins_contigs(bin_summary, data, str(binning_file))
     assert returned is data
     binning = pd.read_csv(binning_file, sep="\t", header=None, names=["Name", "Bin"])
-    expected = data[data.Final_bin != "ND"]
-    assert list(binning.Name) == list(expected.Name) and list(binning.Bin) == list(expected.Final_bin)
+    expected = data[data.Final_cluster != "ND"]
+    assert list(binning.Name) == list(expected.Name) and list(binning.Bin) == list(expected.Final_cluster)
     assert set(data.loc[kept_whole, "Name"]) <= set(binning.Name)
 
 
 def test_correct_final_bin(tmp_path):
     """The final bin of each contig is read in the fasta files of the bins,
     without leaving the index of pyfastx next to them."""
-    final_dir = tmp_path / "final_bin"
+    final_dir = tmp_path / "final_clusters"
     final_dir.mkdir()
     (final_dir / "B_00001_00000.fa").write_text(">c1 description\nACGT\n>c3\nGG\n")
     (final_dir / "B_00002_00001.fa").write_text(">c2\nTT\n")
-    data = pd.DataFrame({"Name": ["c1", "c2", "c3", "c4"], "Final_bin": "ND"})
+    data = pd.DataFrame({"Name": ["c1", "c2", "c3", "c4"], "Final_cluster": "ND"})
     summary = {"B_00001_00000": {}, "B_00002_00001": {}}
     corrected = mtv.correct_final_bin(data, str(final_dir), summary)
-    assert list(corrected.Final_bin) == ["B_00001_00000", "B_00002_00001", "B_00001_00000", "ND"]
+    assert list(corrected.Final_cluster) == ["B_00001_00000", "B_00002_00001", "B_00001_00000", "ND"]
     assert sorted(path.name for path in final_dir.iterdir()) == ["B_00001_00000.fa", "B_00002_00001.fa"]
 
 
@@ -247,7 +247,7 @@ def test_replace_clustering_values():
 def test_bin_abundances_are_percentages():
     contigs = pd.DataFrame(
         {
-            "Final_bin": ["A", "A", "B"],
+            "Final_cluster": ["A", "A", "B"],
             "Size": [100, 200, 300],
             "Shotgun_coverage": [1.0, 1.0, 2.0],
             "Hit": [10, 20, 30],

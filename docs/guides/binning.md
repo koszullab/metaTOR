@@ -26,7 +26,7 @@ metator partition -a assembly.fa -c binning/contig_data_network.txt \
 | `--prefix` (`-p`) | none | Names the bins `<prefix>_metator_…` |
 
 `partition` writes the overlapping bins of at least `--size` base pairs to
-`overlapping_bin/`, one FASTA file each, and the contig data table with the
+`overlapping_clusters/`, one FASTA file each, and the contig data table with the
 core and overlapping bin of each contig to `contig_data_partition.txt`. When
 no bin reaches `--size`, there is nothing to validate: the pipeline stops
 there with an error.
@@ -35,7 +35,7 @@ there with an error.
 
 ```bash
 metator validation -a assembly.fa -c binning/contig_data_partition.txt \
-    -n binning/network.txt -f binning/overlapping_bin -t 16 -o binning
+    -n binning/network.txt -f binning/overlapping_clusters -t 16 -o binning
 ```
 
 Validation runs [miComplete](https://pypi.org/project/micomplete/) on every
@@ -69,9 +69,9 @@ of the final bins (`ND`).
 
 | File | What it holds |
 |---|---|
-| `final_bin/` (`final_bin_unscaffold/` in `pipeline`) | One FASTA file per final bin |
-| `recursive_bin/` | One FASTA file per recursive bin, in `step_<n>/` for step `n` |
-| `bin_summary.txt` | One row per final bin, with miComplete's measures and the bin's abundance |
+| `final_clusters/` | One FASTA file per final bin |
+| `recursive_clusters/` | One FASTA file per recursive bin, in `step_<n>/` for step `n` |
+| `cluster_summary.txt` | One row per final bin, with miComplete's measures and the bin's abundance |
 | `contig_data_final.txt` | The contig data table, with the recursive and final bin of each contig |
 | `binning.txt` | The contigs of the final bins and their bin, without header |
 | `overlapping_micomplete_results.txt` | miComplete's results on the overlapping bins |
@@ -80,7 +80,7 @@ of the final bins (`ND`).
 
 A final bin is named after its overlapping bin and its recursive bin:
 `metator_00012_00003` is recursive bin 3 of overlapping bin 12, and
-`metator_00001_00000` an overlapping bin kept whole. `bin_summary.txt` and
+`metator_00001_00000` an overlapping bin kept whole. `cluster_summary.txt` and
 `contig_data_final.txt` are described in [File formats](../formats.md).
 
 ### Plots
@@ -99,7 +99,7 @@ A final bin is named after its overlapping bin and its recursive bin:
 
 The heatmap shows the contacts within each final cluster (on the diagonal)
 and between them, at 50 kb resolution, the clusters in the order of
-`bin_summary.txt`: a good clustering has a bright diagonal of blocks on a
+`cluster_summary.txt`: a good clustering has a bright diagonal of blocks on a
 dark background. `pipeline` draws it from the contact map of the run, whatever
 it started from: the map that it starts from, or the map of the contigs
 that it builds from its pairs files.

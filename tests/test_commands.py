@@ -37,7 +37,7 @@ global_args = {
     "NETWORK": "tests_data/network.txt",
     "CONTIGS": "tests_data/contig_data_network.txt",
     "CONTIGS_PARTITION": "tests_data/contig_data_partition.txt",
-    "OVERLAPPING_BINS": "tests_data/overlapping_bin/",
+    "OVERLAPPING_BINS": "tests_data/overlapping_clusters/",
     "SUBSET_FASTA": "tests_data/subset.assembly.fa",
     "SUBSET_PAIRS": "tests_data/subset.pairs.gz",
     "SUBSET_MGES": "tests_data/subset.mges.txt",
@@ -152,7 +152,7 @@ def test_network_partition_validation(tmp_dir, run_cli):
     run_cli("partition", *args.split(" "))
 
     args = (
-        "-a {SUBSET_FASTA} -c {OUT_TEST}/contig_data_partition.txt -f {OUT_TEST}/overlapping_bin/ -i 5 -n {OUT_TEST}/network.txt -o {OUT_TEST} -t 8 -T {TMP} -F --no-clean-up"
+        "-a {SUBSET_FASTA} -c {OUT_TEST}/contig_data_partition.txt -f {OUT_TEST}/overlapping_clusters/ -i 5 -n {OUT_TEST}/network.txt -o {OUT_TEST} -t 8 -T {TMP} -F --no-clean-up"
     ).format(
         TMP=tmp,
         OUT_TEST=out,
@@ -177,7 +177,9 @@ def test_pipeline(tmp_path, run_cli):
     metacool = Path(tmp_path, "out_test", "metator.metacool")
     metacooler.validate(str(metacool))
     genomes = metacooler.MetaCooler(str(metacool)).genomes
-    assert set(genomes.name) - {"__unbinned__"} == set(mio.read_bin_summary(Path(tmp_path, "out_test", "bin_summary.txt")).index)
+    assert set(genomes.name) - {"__unbinned__"} == set(
+        mio.read_bin_summary(Path(tmp_path, "out_test", "cluster_summary.txt")).index
+    )
     # The contig columns but Shotgun_coverage, which is - without a depth
     # file.
     contigs = metacooler.MetaCooler(str(metacool)).contigs
@@ -610,30 +612,73 @@ def test_pipeline_bad_choices(case, tmp_path, run_cli):
     assert not (tmp_path / "out").exists()
 
 
-@pytest.mark.parametrize("existing", ["overlapping_bin", "recursive_bin", "final_bin_unscaffold", "scaffold_bin"])
-def test_pipeline_refuses_existing_outputs(existing, tmp_path, run_cli):
+@pytest.mark.parametrize("existing", ["overlapping_clusters", "recursive_clusters", "final_clusters", "scaffolded_clusters"])
+def test_pipeline_refuses_existing_outputs(existing, tmp_path, run_cli, logged):
+    """A directory of clusters of an earlier run is refused without -F,
+    named in the log."""
     (tmp_path / "out" / existing).mkdir(parents=True)
     args = ["-a", global_args["FASTA"], "-1", "x.pairs", "-S", "pair", "--scaffold", "-o", str(tmp_path / "out"),
             "-T", str(tmp_path / "tmp")]  # fmt: skip
     with pytest.raises(ValueError):
         run_cli("pipeline", *args)
+    message = f"{tmp_path / 'out' / existing} already existed. Remove directory or use -F argument to overwrite it."
+    assert ("ERROR", message) in logged()
+
+
+@pytest.mark.parametrize(
+    "existing, now",
+    [
+        ("overlapping_bin", "overlapping_clusters"),
+        ("recursive_bin", "recursive_clusters"),
+        ("final_bin", "final_clusters"),
+        ("final_bin_unscaffold", "final_clusters"),
+        ("scaffold_bin", "scaffolded_clusters"),
+        ("bin_summary.txt", "cluster_summary.txt"),
+    ],
+)
+def test_pipeline_refuses_the_outputs_of_1x(existing, now, tmp_path, run_cli, logged):
+    """An output of an earlier run that metaTOR 1.x named after bins is
+    refused without -F, as those of 2.0 are: the run would leave it next to
+    its own."""
+    path = tmp_path / "out" / existing
+    if existing.endswith(".txt"):
+        path.parent.mkdir(parents=True)
+        path.write_text("earlier\n")
+    else:
+        path.mkdir(parents=True)
+    args = ["-a", global_args["FASTA"], "-1", "x.pairs", "-S", "pair", "--scaffold", "-o", str(tmp_path / "out"),
+            "-T", str(tmp_path / "tmp")]  # fmt: skip
+    with pytest.raises(ValueError):
+        run_cli("pipeline", *args)
+    message = (
+        f"{path} already existed: an output of an earlier run, named as metaTOR 1.x names it ({now} now). Remove it "
+        "or use -F argument to remove it."
+    )
+    assert ("ERROR", message) in logged() and path.exists()
 
 
 def test_pipeline_force_replaces_outputs(tmp_path, run_cli):
     """With --force the output directories are emptied once the arguments
     and the assembly are checked, then the run goes on (here up to the map
     of the contigs, which the missing pairs file stops)."""
-    for existing in ["overlapping_bin", "recursive_bin", "final_bin_unscaffold", "scaffold_bin"]:
+    for existing in ["overlapping_clusters", "recursive_clusters", "final_clusters", "scaffolded_clusters"]:
         (tmp_path / "out" / existing).mkdir(parents=True)
         (tmp_path / "out" / existing / "stale.fa").write_text(">old\nA\n")
+    # Those of a run of metaTOR 1.x, named after bins, are removed.
+    outputs_of_1x = ["overlapping_bin", "recursive_bin", "final_bin", "final_bin_unscaffold", "scaffold_bin"]
+    for existing in outputs_of_1x:
+        (tmp_path / "out" / existing).mkdir(parents=True)
+        (tmp_path / "out" / existing / "stale.fa").write_text(">old\nA\n")
+    (tmp_path / "out" / "bin_summary.txt").write_text("earlier\n")
     args = ["-a", global_args["FASTA"], "-1", str(tmp_path / "missing.pairs"), "-S", "pair", "--scaffold", "-F",
             "-o", str(tmp_path / "out"), "-T", str(tmp_path / "tmp")]  # fmt: skip
     with pytest.raises(mtmc.MetacoolError, match=rf"^Input file\(s\) not found: {re.escape(str(tmp_path / 'missing.pairs'))}\.$"):
         run_cli("pipeline", *args)
     assert not list((tmp_path / "out").glob("*/stale.fa"))
+    assert not [name for name in [*outputs_of_1x, "bin_summary.txt"] if (tmp_path / "out" / name).exists()]
 
 
-@pytest.mark.parametrize("existing", ["recursive_bin", "final_bin"])
+@pytest.mark.parametrize("existing", ["recursive_clusters", "final_clusters"])
 def test_validation_refuses_existing_outputs(existing, tmp_path, run_cli):
     (tmp_path / "out" / existing).mkdir(parents=True)
     args = ("-a {SUBSET_FASTA} -c {CONTIGS_PARTITION} -f {OVERLAPPING_BINS} -n {NETWORK} -o {OUT} -T {TMP}").format(
@@ -644,9 +689,9 @@ def test_validation_refuses_existing_outputs(existing, tmp_path, run_cli):
 
 
 def test_partition_existing_outputs(metagenome_inputs, metagenome_network, tmp_path, run_cli):
-    """An existing overlapping_bin is refused, or replaced with --force; the
+    """An existing overlapping_clusters is refused, or replaced with --force; the
     --prefix names the bins."""
-    fasta_dir = tmp_path / "out" / "overlapping_bin"
+    fasta_dir = tmp_path / "out" / "overlapping_clusters"
     fasta_dir.mkdir(parents=True)
     (fasta_dir / "stale.fa").write_text(">old\nA\n")
     args = ["-a", str(metagenome_inputs["assembly"]), "-c", str(metagenome_network["contig_data"]),

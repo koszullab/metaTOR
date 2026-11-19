@@ -296,7 +296,7 @@ def mge_binning(
     """
 
     # Create output files.
-    mge_data_file = join(out_dir, "mges_bin_summary.tsv")
+    mge_data_file = join(out_dir, "mges_cluster_summary.tsv")
     fasta_mges_bins = join(out_dir, "mges_binned.fa")
 
     # Import contigs data from `metator partition/validation`.

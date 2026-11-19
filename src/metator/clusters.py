@@ -32,6 +32,7 @@ from os.path import exists, join
 
 import pandas as pd
 
+import metator.io as mio
 from metator.log import logger
 
 
@@ -44,7 +45,7 @@ OVERLAPPING = "overlapping"
 FINAL = "final"
 MGE = "mge"
 
-#: The columns of the summary of metator mge (mges_bin_summary.tsv) that the
+#: The columns of the summary of metator mge (mges_cluster_summary.tsv) that the
 #: round mge does not store as columns of its own: the name of each MGE
 #: cluster, and what metacooler computes from its contigs (their total length
 #: and their number) or stores as its members.
@@ -200,7 +201,7 @@ def overlapping_round(contig_data_file, size, prefix):
     ----------
     contig_data_file : str
         Path to the contig data of the partition: its ``Name``,
-        ``Overlapping_bin_ID`` and ``Overlapping_bin_size`` columns are read.
+        ``Overlapping_cluster_ID`` and ``Overlapping_cluster_size`` columns are read.
     size : int
         The size in bp that an overlapping cluster reaches to be kept
         (``--size``).
@@ -214,12 +215,12 @@ def overlapping_round(contig_data_file, size, prefix):
         The clusters and their contigs (see :meth:`Rounds.tables`).
     """
     # Names as written: a contig called NA, None or nan is a contig.
-    table = pd.read_csv(contig_data_file, sep="\t", dtype=str, keep_default_na=False)
+    table = mio.rename_1x_columns(pd.read_csv(contig_data_file, sep="\t", dtype=str, keep_default_na=False))
     # A contig with no edge in the network is in no overlapping cluster.
-    clustered = table[table["Overlapping_bin_ID"] != "-"]
-    kept = clustered[clustered["Overlapping_bin_size"].astype("int64") >= size]
+    clustered = table[table["Overlapping_cluster_ID"] != "-"]
+    kept = clustered[clustered["Overlapping_cluster_size"].astype("int64") >= size]
     rounds = Rounds()
-    for cluster_id, contigs in sorted(kept.groupby("Overlapping_bin_ID")["Name"], key=lambda group: int(group[0])):
+    for cluster_id, contigs in sorted(kept.groupby("Overlapping_cluster_ID")["Name"], key=lambda group: int(group[0])):
         rounds.add(OVERLAPPING, f"{prefix}_{cluster_id}_{0:05d}", contigs)
     rounds.close_round(OVERLAPPING)
     return rounds.tables()
@@ -227,7 +228,7 @@ def overlapping_round(contig_data_file, size, prefix):
 
 def mge_round(summary_file):
     """The round ``mge``: the MGE clusters of a run of ``metator mge``, from
-    the summary that it wrote (``mges_bin_summary.tsv``), in its order: each
+    the summary that it wrote (``mges_cluster_summary.tsv``), in its order: each
     named as its record (``MetaTOR_MGE_<ID>``), with its contigs (the
     ``Contigs`` column) and no parent. Its other columns are those of the
     summary, as written (GC, Hit, BinningScore, MetagenomicBin,
@@ -239,7 +240,7 @@ def mge_round(summary_file):
     Parameters
     ----------
     summary_file : str
-        Path to ``mges_bin_summary.tsv``.
+        Path to ``mges_cluster_summary.tsv``.
 
     Returns
     -------

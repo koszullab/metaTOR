@@ -76,24 +76,24 @@ not always the same.
 ```console
 $ ls binning
 alignment_0.bam
-bin_summary.txt
 binning.txt
+cluster_summary.txt
 contig_data_final.txt
-final_bin_unscaffold
+final_clusters
 metator.metacool
 metator_pipeline_20261118125820.log
 network.txt
 network_0.txt
-overlapping_bin
+overlapping_clusters
 overlapping_micomplete_results.txt
 plot
-recursive_bin
+recursive_clusters
 ```
 
 | File | What it holds |
 |---|---|
-| `final_bin_unscaffold/` | One FASTA file per final bin: the result |
-| `bin_summary.txt` | One row per final bin: size, GC content, completeness, redundancy, N50, Hi-C abundance… |
+| `final_clusters/` | One FASTA file per final bin: the result |
+| `cluster_summary.txt` | One row per final bin: size, GC content, completeness, redundancy, N50, Hi-C abundance… |
 | `contig_data_final.txt` | One row per contig: its size, GC content, hits, and the bins it went through |
 | `binning.txt` | The contigs of the final bins and their bin, as anvi'o imports a binning |
 | `metator.metacool` | The contact map of all the contigs, grouped by bin |
@@ -107,7 +107,7 @@ recursive_bin
 ## Step 3: read the bin summary
 
 ```console
-$ cut -f 1-6,9,10 binning/bin_summary.txt | head -4
+$ cut -f 1-6,9,10 binning/cluster_summary.txt | head -4
 	Length	GC-content	Present Markers	Completeness	Redundancy	Contigs	N50
 metator_00001_00000	49021.00	62.03	1.00	0.01	1.00	15.00	9019.00
 metator_00007_00000	24565.00	62.08	1.00	0.01	1.00	12.00	1777.00
@@ -132,7 +132,7 @@ metacooler info binning/metator.metacool
 metacooler dump -t genomes -H binning/metator.metacool
 ```
 
-The genomes table holds the columns of `bin_summary.txt`, and the contigs
+The genomes table holds the columns of `cluster_summary.txt`, and the contigs
 that are in no bin are in the `__unbinned__` genome.
 [The contact map of the bins](guides/metacool.md) explains the file.
 
@@ -142,11 +142,11 @@ that are in no bin are in the `__unbinned__` genome.
 import metacooler
 import metator.io as mio
 
-bins = mio.read_bin_summary("binning/bin_summary.txt")   # pandas.DataFrame
+bins = mio.read_bin_summary("binning/cluster_summary.txt")   # pandas.DataFrame
 contigs = mio.read_contig_data("binning/contig_data_final.txt")
 
 mc = metacooler.MetaCooler("binning/metator.metacool")
-mc.genomes   # one row per bin, and __unbinned__, with the columns of bin_summary.txt
+mc.genomes   # one row per bin, and __unbinned__, with the columns of cluster_summary.txt
 mc.contigs   # one row per contig: GC content, hits, coverage, restriction sites
 ```
 

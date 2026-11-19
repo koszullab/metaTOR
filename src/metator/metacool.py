@@ -8,8 +8,8 @@ chromosomes are the contigs, grouped by genome. It stays readable by
 ``cooler.Cooler``, and ``metacooler.MetaCooler`` adds the genome layer.
 
 metaTOR writes one bin per contig, and one genome per final bin: the
-``Final_bin`` of the contig data file. The unbinned contigs, whose
-``Final_bin`` is ``ND``, are kept with all their contacts, in metacooler's
+``Final_cluster`` of the contig data file. The unbinned contigs, whose
+``Final_cluster`` is ``ND``, are kept with all their contacts, in metacooler's
 ``__unbinned__`` genome: a run with no final bin gives a map whose contigs
 are all there. The columns of the bin summary (completeness,
 contamination, abundances...) are stored in the genomes table, and what
@@ -55,10 +55,11 @@ from pathlib import Path
 
 import pandas as pd
 
+import metator.io as mio
 from metator.log import logger
 from metator.version import __version__
 
-# Final_bin of a contig that is in no final bin: "ND" as written by metaTOR,
+# Final_cluster of a contig that is in no final bin: "ND" as written by metaTOR,
 # "-" or empty when a table was edited by hand.
 UNBINNED = {"ND", "-", ""}
 
@@ -70,7 +71,7 @@ UNBINNED = {"ND", "-", ""}
 METACOOLER_UNBINNED = frozenset({"__unbinned__", "na", "nan", "n/a", "nd", "n/d", "-1", ""})
 
 # The columns of contig_data_final.txt stored in the contigs table: what
-# metaTOR measured on each contig. Never a bin column (Final_bin, the bin IDs
+# metaTOR measured on each contig. Never a bin column (Final_cluster, the bin IDs
 # of the steps): the genome of a contig is its genome_id, and metacooler
 # reassign carries the contigs columns into the map of another binning, where
 # a bin column would be stale.
@@ -147,7 +148,7 @@ def read_contig_data(contig_data):
     ----------
     contig_data : str
         Path to the contig_data_final.txt file of a validation or pipeline
-        run: its Name, Size and Final_bin columns are read, and those of
+        run: its Name, Size and Final_cluster columns are read, and those of
         CONTIG_COLUMNS that it has.
 
     Returns
@@ -157,7 +158,7 @@ def read_contig_data(contig_data):
         end.
     dict
         Final bin of each binned contig, by contig name. The unbinned
-        contigs (Final_bin ND, - or empty) are left out.
+        contigs (Final_cluster ND, - or empty) are left out.
     list of str
         The columns of CONTIG_COLUMNS that the file has and fills, in that
         order: a column that is ``-`` on every contig is left out, as
@@ -179,7 +180,7 @@ def read_contig_data(contig_data):
         than the header: the surplus leading fields of the first rows as
         their index, every value then under the name of the column to its
         left, or the fields a row lacks as empty, its contig then in no
-        bin), or it has no Name, Size or Final_bin column, or a Size that is
+        bin), or it has no Name, Size or Final_cluster column, or a Size that is
         not a whole number.
     """
     name = str(contig_data)
@@ -190,10 +191,10 @@ def read_contig_data(contig_data):
         )
     try:
         _check_field_counts(contig_data)
-        table = pd.read_csv(contig_data, sep="\t", dtype=str, keep_default_na=False)
+        table = mio.rename_1x_columns(pd.read_csv(contig_data, sep="\t", dtype=str, keep_default_na=False))
     except (ValueError, OSError) as error:
         raise MetacoolError(f"{contig_data} cannot be read as a table: {str(error).strip().rstrip('.')}.") from error
-    missing = [column for column in ["Name", "Size", "Final_bin"] if column not in table.columns]
+    missing = [column for column in ["Name", "Size", "Final_cluster"] if column not in table.columns]
     if missing:
         raise MetacoolError(
             f"{contig_data} has no {' or '.join(missing)} column: give the contig_data_final.txt file of a "
@@ -206,7 +207,7 @@ def read_contig_data(contig_data):
             f"The Size column of {contig_data} must give the length of each contig in bp, as a whole number: {error}."
         ) from error
     bins = pd.DataFrame({"chrom": table["Name"], "start": 0, "end": sizes})
-    final_bin = table["Final_bin"].str.strip()
+    final_bin = table["Final_cluster"].str.strip()
     binned = ~final_bin.isin(UNBINNED)
     measured = [column for column in CONTIG_COLUMNS if column in table and not table[column].str.strip().eq("-").all()]
     return bins, dict(zip(table["Name"][binned], final_bin[binned], strict=True)), measured, list(table.columns)
@@ -590,14 +591,14 @@ def write_metacool(
         are left out, with a warning.
     contig_data : str
         Path to the contig_data_final.txt file: the contigs (Name, Size)
-        and their final bins (Final_bin). Its GC_content, Hit,
+        and their final bins (Final_cluster). Its GC_content, Hit,
         Shotgun_coverage and Restriction_site columns (CONTIG_COLUMNS) are
         stored in the contigs table, those it has and fills (see
         read_contig_data).
     outfile : str
         Path to the .metacool file to write.
     bin_summary : str, optional
-        Path to the bin_summary.txt file: its columns are added to the
+        Path to the cluster_summary.txt file: its columns are added to the
         genomes table, one row per bin, named by its first column. Each row
         must have as many fields as the header. Not read when no contig is
         in a final bin: the map has no genome but ``__unbinned__``.
@@ -616,7 +617,7 @@ def write_metacool(
     MetacoolError
         If threads is below 1, the outfile exists (without force), an input
         file is missing, the contig data cannot be read as a table or has
-        no Name, Size or Final_bin column or a Size that is not a whole
+        no Name, Size or Final_cluster column or a Size that is not a whole
         number, a contig or bin name is not ASCII, a bin name is one that
         metacooler reads as no bin (NA, nan, -1...), or metacooler cannot
         write the map or store the contig columns (a ValueError, OSError or
@@ -651,7 +652,7 @@ def write_metacool(
             # not an empty table, which metacooler 0.2.0 refuses.
             contig_genome_map={name: contig_bin.get(name, "ND") for name in bins["chrom"]},
             assembly_name=assembly_name,
-            # The bin names are the first column of bin_summary.txt, unnamed.
+            # The cluster names are the first column of cluster_summary.txt, unnamed.
             # No final bin, no bin summary row: its columns would only be
             # empty columns of __unbinned__.
             genomes_table=bin_summary if bin_summary and contig_bin else None,
@@ -982,12 +983,12 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
         .mmetacool collection: ``file.mmetacool::entries/<name>``.
     contig_data : str
         Path to the contig_data_final.txt file: the final bin of the
-        contigs (Name, Final_bin), their size (Size, which must be their
+        contigs (Name, Final_cluster), their size (Size, which must be their
         length in the map), and what metaTOR measured on them.
     outfile : str
         Path to the .metacool file to write.
     bin_summary : str, optional
-        Path to the bin_summary.txt file: its columns are added to the
+        Path to the cluster_summary.txt file: its columns are added to the
         genomes table, one row per bin, named by its first column. It is not
         read when no contig of the map is in a final bin (the map then has
         no genome but ``__unbinned__``). Without it, the genomes table has
@@ -1009,7 +1010,7 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
     MetacoolError
         If the outfile exists (without force) or is the .mmetacool
         collection of the input map, an input file is missing, the contig
-        data cannot be read as a table or has no Name, Size or Final_bin
+        data cannot be read as a table or has no Name, Size or Final_cluster
         column or a Size that is not a whole number, a contig or bin name is
         not ASCII, a bin name is one that metacooler reads as no bin (NA,
         nan, -1...), the map cannot be read or gives a contig another length
@@ -1075,7 +1076,7 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
                 # the order of the input map: the pixels are remapped.
                 layout="genome-then-length",
                 # The bin names are the first column of the table,
-                # unnamed in bin_summary.txt. It replaces the columns of
+                # unnamed in cluster_summary.txt. It replaces the columns of
                 # the genomes table that the input map carried.
                 genomes_table=genomes_table,
                 genomes_table_format="1",
@@ -1221,8 +1222,11 @@ def _write_back_columns(path, contig_data, contig_columns, header):
 
     stored = metacooler.MetaCooler(path)
     # The columns of a contig data file but Name (the contigs' own name
-    # column) and those of the map that metacooler derives.
-    of_metator = (set(header) | set(CONTIG_COLUMNS)) - {"Name"}
+    # column) and those of the map that metacooler derives, its bin columns
+    # under their names of metaTOR 1.x too, which a map made with the
+    # contig data of a 1.x run carries (see metator.io.rename_1x_columns).
+    of_1x = {old for old, new in mio.CONTIG_DATA_1X_COLUMNS.items() if new in header}
+    of_metator = (set(header) | of_1x | set(CONTIG_COLUMNS)) - {"Name"}
     carried = [f"contigs.{column}" for column in stored.contigs.columns if column in of_metator - {"name", "length", "genome_id"}]
     if carried:
         metacooler.annotate(path, drop=carried, inplace=True)

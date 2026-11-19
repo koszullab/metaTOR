@@ -84,7 +84,7 @@ default) and combines the runs:
   iterations: in at least `--overlap` percent of them (80% by default).
 
 The overlapping bins of at least `--size` base pairs (500 kb by default) are
-written as FASTA files, in `overlapping_bin/`: they are the bins to validate.
+written as FASTA files, in `overlapping_clusters/`: they are the bins to validate.
 
 ## Validation and recursive bins
 

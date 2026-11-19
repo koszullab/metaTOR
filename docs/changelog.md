@@ -139,7 +139,7 @@ All notable changes to this project will be documented in this file.
   `metator.metacool.contig_contacts`, `held_contigs`, `extract_contigs`.
 - `mge --map MAP` stores the MGE clusters of the run in the contact map
   of the run, as the round `mge` of its clustering rounds: one cluster
-  per row of `mges_bin_summary.tsv`, with its contigs and its columns
+  per row of `mges_cluster_summary.tsv`, with its contigs and its columns
   (its length and number of contigs computed by metacooler), and the
   version, command line and parameters of the run, after the rounds of
   the binning run, which are kept, in place of the round `mge` of an
@@ -161,6 +161,30 @@ All notable changes to this project will be documented in this file.
   `metator.metacool.write_round`, `metator.clusters.mge_round`.
 
 ### Changed
+- metaTOR calls its groups of contigs clusters, as its contact map does: the
+  bins are those of the map. The outputs of a run are renamed:
+  `bin_summary.txt` is `cluster_summary.txt`; `overlapping_bin/` and
+  `recursive_bin/` are `overlapping_clusters/` and `recursive_clusters/`;
+  `final_bin/` (`validation`) and `final_bin_unscaffold/` (`pipeline`) are
+  `final_clusters/`; `scaffold_bin/` is `scaffolded_clusters/`;
+  `mges_bin_summary.tsv` (`mge`) is `mges_cluster_summary.tsv`. In the
+  contig data tables, `Core_bin_ID`, `Core_bin_contigs` and `Core_bin_size`,
+  and the columns of the overlapping and recursive bins, are
+  `Core_cluster_ID`, `Core_cluster_contigs`, `Core_cluster_size` and so on,
+  and `Final_bin` is `Final_cluster`. Every command still reads the contig
+  data tables of metaTOR 1.x, their columns under the new names
+  (`metator.io.rename_1x_columns`), and `qc -O` finds the `bin_summary.txt`
+  of a 1.x run. `binning.txt`, which anvi'o imports, and the names of the
+  clusters are kept. A script that gives the overlapping clusters of
+  `partition` to `validation -f` names `overlapping_clusters/` now: see
+  [Migrating to metaTOR 2.0](migration.md). A run in the output directory of
+  a run of 1.x refuses its outputs named after bins without `-F`, as those
+  of 2.0, and removes them with it. The Python functions that take a table
+  of contig data need the 2.0 names (read a table of 1.x with
+  `metator.io.read_contig_data`). `contactmap --object Final_bin` reads
+  `Final_cluster`, unless the table has a `Final_bin` column. metacooler's
+  `--contigs-format metator` names `Final_bin`: give
+  `--contigs-format Name,Final_cluster` for a table of 2.0.
 - `pipeline` no longer sorts, compresses and indexes the pairs files of
   a run from reads or alignments, which it removed at its end: the maps
   of the contigs read them once, in any order, and the networks come
@@ -346,6 +370,9 @@ All notable changes to this project will be documented in this file.
   curated bins with miComplete, through the Python API, instead.
 
 ### Fixed
+- `validation -F` refuses clusters to validate (`--fasta`) in a directory
+  that `-F` removes (`final_clusters/`, or a directory of 1.x such as
+  `final_bin/`), before it removes anything. It removed them, then failed.
 - `network` and `pipeline --start bam --aligner bwa` no longer fail without
   `--reverse` (`AttributeError: 'NoneType' object has no attribute
   'split'`): a BAM file of bwa holds both mates. A `pipeline` run given
@@ -361,7 +388,7 @@ All notable changes to this project will be documented in this file.
 - `binning.txt` holds every contig of the final bins, as
   `contig_data_final.txt` does: the contigs of a bin partitioned again but
   kept whole, which had gone to a recursive part, were left out. Python
-  API: `metator.validation.write_bins_contigs` writes the `Final_bin` of the
+  API: `metator.validation.write_bins_contigs` writes the `Final_cluster` of the
   contigs, and no longer takes `prefix`.
 - The log of the validation counts the bins in the quality classes of
   `plot/bins_size_distribution.png` (`metator.figures.bin_quality`, the
@@ -372,7 +399,7 @@ All notable changes to this project will be documented in this file.
 - `metator validation --help` and the docstrings of `metator.validation`
   give the rule of the recursive partition: a weighted completeness of 33%,
   not 50%, and the completeness its parts must keep.
-- The `recursive` column of `bin_summary.txt` says whether the bin comes
+- The `recursive` column of `cluster_summary.txt` says whether the bin comes
   from the recursive partition: every bin read `True` when no bin was
   partitioned again, and a bin made at an earlier recursive step `False`.
 - The validation, and `pipeline --scaffold`, leave no pyfastx index
@@ -415,7 +442,7 @@ All notable changes to this project will be documented in this file.
   read once the map was written.
 - `pipeline` checks its arguments and its assembly before replacing the
   bins of an earlier run with `--force`: a refused run no longer empties
-  `overlapping_bin/`, `recursive_bin/` and `final_bin_unscaffold/` first.
+  `overlapping_clusters/`, `recursive_clusters/` and `final_clusters/` first.
 - The fasta files of the bins (`partition`, `validation`, `pipeline`), of
   the MGE bins (`mge`) and of `contactmap` are written with pyfastx's
   Python API (`metator.io.write_contigs`), byte for byte as before. The

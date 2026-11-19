@@ -419,6 +419,48 @@ def test_sort_pairs(tmp_path, monkeypatch, version, parallel):
     assert f"--temporary-directory={tmp_path}" in sort_cmd
 
 
+def test_rename_1x_columns(logged):
+    """The columns of the contig data that metaTOR 1.x named after bins get
+    their 2.0 names. A table of 2.0 is returned as it is, and a column of a
+    2.0 name wins over the 1.x column of the same meaning, which is left as
+    it is."""
+    old = [
+        "Core_bin_ID", "Core_bin_contigs", "Core_bin_size", "Overlapping_bin_ID", "Overlapping_bin_contigs",
+        "Overlapping_bin_size", "Recursive_bin_ID", "Recursive_bin_contigs", "Recursive_bin_size", "Final_bin",
+    ]  # fmt: skip
+    new = [
+        "Core_cluster_ID", "Core_cluster_contigs", "Core_cluster_size", "Overlapping_cluster_ID",
+        "Overlapping_cluster_contigs", "Overlapping_cluster_size", "Recursive_cluster_ID", "Recursive_cluster_contigs",
+        "Recursive_cluster_size", "Final_cluster",
+    ]  # fmt: skip
+    table = pd.DataFrame([range(len(old) + 1)], columns=["Name", *old])
+    renamed = mio.rename_1x_columns(table)
+    assert list(renamed.columns) == ["Name", *new]
+    assert renamed.to_numpy().tolist() == table.to_numpy().tolist()
+    assert mio.rename_1x_columns(renamed) is renamed
+    both = pd.DataFrame({"Final_bin": ["a"], "Final_cluster": ["b"]})
+    assert mio.rename_1x_columns(both) is both
+    message = f"Contig data of metaTOR 1.x: its columns {', '.join(old)} are read as {', '.join(new)}."
+    assert logged() == [("INFO", message)]
+
+
+@pytest.mark.parametrize("name", ["contig_data_partition.txt", "contig_data_final.txt"])
+def test_contig_data_of_1x(name, tmp_path):
+    """A contig data file of metaTOR 1.x reads as the same file of 2.0, in
+    read_contig_data (qc) and import_contig_data_mges (mge)."""
+    table = f"tests_data/{name}"
+    old = synthetic.as_1x(table, tmp_path / name)
+    pd.testing.assert_frame_equal(mio.read_contig_data(old), mio.read_contig_data(table))
+    binning, mges = {"Contig_0": "metator_00009_00000"}, ["Contig_57977"]
+    for got, expected in zip(
+        mio.import_contig_data_mges(old, binning, mges), mio.import_contig_data_mges(table, binning, mges), strict=True
+    ):
+        if isinstance(expected, pd.DataFrame):
+            pd.testing.assert_frame_equal(got, expected)
+        else:
+            assert got == expected
+
+
 def test_import_mges_tables(tmp_path):
     (tmp_path / "binning.txt").write_text("c1_split_00001\tbin_1\nc2\tbin_2\n")
     (tmp_path / "mges.txt").write_text("c2 phage\nc3\n")
@@ -431,7 +473,7 @@ def test_import_mges_tables(tmp_path):
     assert mges == ["c2", "c3"]
     data, mges_ids = mio.import_contig_data_mges(str(tmp_path / "contigs.txt"), binning, mges)
     assert mges_ids == [1, 2]
-    assert list(data.Final_bin) == ["bin_1", "bin_2", "ND"]
+    assert list(data.Final_cluster) == ["bin_1", "bin_2", "ND"]
     assert list(data.Binned) == [True, True, False]
     assert list(data.MGE) == [False, True, True]
 
@@ -445,8 +487,8 @@ def test_bin_summary_round_trip(tmp_path, shotgun):
     if shotgun:
         for i, values in enumerate(summary.values()):
             values["SG_abundance"] = 10.0 / (i + 1)
-    mio.write_bin_summary(summary, str(tmp_path / "bin_summary.txt"))
-    table = mio.read_bin_summary(str(tmp_path / "bin_summary.txt"))
+    mio.write_bin_summary(summary, str(tmp_path / "cluster_summary.txt"))
+    table = mio.read_bin_summary(str(tmp_path / "cluster_summary.txt"))
     assert list(table.index) == ["bin_1", "bin_2"]
     assert table.loc["bin_1", "Weighted completeness"] == 0.91
     assert table.loc["bin_1", "HiC_abundance"] == 1.2346

@@ -43,7 +43,7 @@ file, and metacooler adds the genomes.
   ends are on the same contig). These are the raw contacts of the pairs
   files, without the filters and the normalisation of the network, and those
   of several libraries are summed.
-- **The genomes table** holds the columns of `bin_summary.txt` (completeness,
+- **The genomes table** holds the columns of `cluster_summary.txt` (completeness,
   redundancy, Hi-C and shotgun abundances…), next to the length, contig and bin
   counts of each genome and the contact statistics that metacooler computes
   while reading the pairs.
@@ -65,7 +65,7 @@ import metacooler
 
 clr = cooler.Cooler("binning/metator.metacool")
 mc = metacooler.MetaCooler("binning/metator.metacool")
-mc.genomes  # one row per bin, and __unbinned__, with the columns of bin_summary.txt
+mc.genomes  # one row per bin, and __unbinned__, with the columns of cluster_summary.txt
 mc.contigs  # one row per contig, with its GC content and Hi-C hits
 ```
 
@@ -77,7 +77,7 @@ metacooler dump -t genomes -H binning/metator.metacool
 ## `metator metacool`
 
 `metator metacool` writes the same file from the pairs files,
-`contig_data_final.txt` and `bin_summary.txt` of a run, for a run made step by
+`contig_data_final.txt` and `cluster_summary.txt` of a run, for a run made step by
 step, or one that skipped the map, but for the clustering rounds, which it does
 not store, the history that it stores (the
 `annotate` and `reassign` keys of its metadata) and the type of its counts with
@@ -85,7 +85,7 @@ several libraries (64-bit integers, which `metator metacool` stores as 32-bit
 ones):
 
 ```bash
-metator metacool -c binning/contig_data_final.txt -b binning/bin_summary.txt \
+metator metacool -c binning/contig_data_final.txt -b binning/cluster_summary.txt \
     -o sample.metacool binning/alignment_0_sorted.pairs.gz binning/alignment_1_sorted.pairs.gz
 ```
 
@@ -96,7 +96,7 @@ as `metator pipeline MAP` and `metator validation MAP` do (see
 keeps its assembly name, so `--assembly-name` is refused:
 
 ```bash
-metator metacool -c contig_data_final.txt -b bin_summary.txt -o binning.metacool sample.metacool
+metator metacool -c contig_data_final.txt -b cluster_summary.txt -o binning.metacool sample.metacool
 ```
 
 ## Names and failures
@@ -106,7 +106,7 @@ No bin may be named as metacooler marks a contig in no bin: `NA`, `NaN`,
 `N/A`, `N/D`, `-1` or `__unbinned__` in any case, and `nd` in any case other
 than `ND`, which marks a contig in no bin. metaTOR's own bin names never are,
 but those of a hand-edited `contig_data_final.txt` can be. Each row of
-`bin_summary.txt` must have as many fields as its header, as metaTOR writes
+`cluster_summary.txt` must have as many fields as its header, as metaTOR writes
 it.
 
 When the map of the clusters cannot be written, `metator pipeline` and
@@ -122,7 +122,7 @@ cannot be built (for example, from pairs files that metacooler cannot read,
 see below) stops the run before its network, `--no-metacool` or not, whatever
 the number of libraries: the reason is logged as an error, in the log file of
 the run, and no map is left. When the map of the bins cannot be written over
-it (for example, from a misaligned `bin_summary.txt`), the map of the contigs
+it (for example, from a misaligned `cluster_summary.txt`), the map of the contigs
 stays, in no bin. So it does when the run stops with an error once it is
 built (in the partition or the validation, for example), `--no-metacool` or
 not: a new run can start from it, without aligning the reads again, with
@@ -218,7 +218,7 @@ to FILE instead):
 - the bins and contacts of the input map, at its bin size; one genome per
   final bin and `__unbinned__` for the other contigs, grouped genome by genome,
   the longest first, as in the map of a run from pairs;
-- the columns of `bin_summary.txt` and `contig_data_final.txt`, last, as in
+- the columns of `cluster_summary.txt` and `contig_data_final.txt`, last, as in
   the map of a run from pairs: they replace those the input map had (the map
   of an earlier binning, for example);
 - the contact statistics (the `qc` block of the metadata and the `qc_*`
@@ -272,19 +272,19 @@ ones:
 # 1. The network: network.txt and contig_data_network.txt. The map is only read.
 metator network sample.metacool -a assembly.fa -d depth.txt -e DpnII -o binning
 
-# 2. The partition: overlapping_bin/ and contig_data_partition.txt. The map
+# 2. The partition: overlapping_clusters/ and contig_data_partition.txt. The map
 #    stores the overlapping clusters.
 metator partition sample.metacool -a assembly.fa -c binning/contig_data_network.txt \
     -n binning/network.txt -o binning
 
 # 3. The validation: the final clusters. The map becomes the map of the clusters.
 metator validation sample.metacool -a assembly.fa -c binning/contig_data_partition.txt \
-    -n binning/network.txt -f binning/overlapping_bin -o binning
+    -n binning/network.txt -f binning/overlapping_clusters -o binning
 ```
 
 - `network MAP` reads the map, and leaves it as it was.
 - `partition MAP` stores its overlapping clusters that reach `--size`, those
-  of `overlapping_bin/`, with their contigs, as the round `overlapping` of the
+  of `overlapping_clusters/`, with their contigs, as the round `overlapping` of the
   clustering rounds of the map (see [Clustering rounds](#clustering-rounds)),
   in place of the rounds that it held, without the columns of miComplete,
   which the validation runs. The genomes and contigs tables of the map are

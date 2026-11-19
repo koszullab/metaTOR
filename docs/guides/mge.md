@@ -52,7 +52,7 @@ metator mge -a assembly.fa -c binning/contig_data_final.txt -b binning/binning.t
 | File | What it holds |
 |---|---|
 | `mges_binned.fa` | One record per MGE bin, `MetaTOR_MGE_00001` and on: its contigs, joined by 200 `N` |
-| `mges_bin_summary.tsv` | One row per MGE bin: its length, GC content, hits, binning score and contigs (see [File formats](../formats.md#mge-bin-summary)) |
+| `mges_cluster_summary.tsv` | One row per MGE bin: its length, GC content, hits, binning score and contigs (see [File formats](../formats.md#mge-bin-summary)) |
 | `metator_mge_<date>.log` | The log of the run, in the current directory |
 
 The binning score of an MGE bin is the lowest score at which its contigs were
@@ -74,7 +74,7 @@ metator mge -a assembly.fa -c binning/contig_data_final.txt -b binning/binning.t
 They become the round `mge` of the clustering rounds of the map (see
 [Clustering rounds](metacool.md#clustering-rounds)), after the rounds of the
 binning run (`overlapping`, `recursive_<k>`, `final`), which are kept: their
-clusters, contigs and values. Each row of `mges_bin_summary.tsv` is a
+clusters, contigs and values. Each row of `mges_cluster_summary.tsv` is a
 cluster, named as its record (`MetaTOR_MGE_00001`), with its contigs and the
 columns of the summary: its length and number of contigs, which metacooler
 computes from its contigs, and the GC content, hits, binning score and host

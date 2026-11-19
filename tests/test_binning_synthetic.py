@@ -85,7 +85,7 @@ def test_contig_data_matches_the_truth(metagenome, metagenome_network):
 @pytest.mark.parametrize("algorithm", ["louvain", "leiden"])
 def test_partition_recovers_the_genomes(metagenome, metagenome_inputs, metagenome_network, tmp_path, algorithm):
     random.seed(0)  # igraph draws from Python's random module.
-    fasta_dir = tmp_path / "overlapping_bin"
+    fasta_dir = tmp_path / "overlapping_clusters"
     fasta_dir.mkdir()
     # A private copy of the assembly: pyfastx indexes it (.fxi) in place.
     _, contig_data_file = mtp.partition(
@@ -104,7 +104,7 @@ def test_partition_recovers_the_genomes(metagenome, metagenome_inputs, metagenom
         "metator",
     )
     table = pd.read_csv(contig_data_file, sep="\t")
-    truth, found = _genome_labels(table, metagenome, "Overlapping_bin_ID")
+    truth, found = _genome_labels(table, metagenome, "Overlapping_cluster_ID")
     assert synthetic.adjusted_rand(truth, found) >= 0.9
     # One fasta per genome, each holding one genome.
     bins = sorted(fasta_dir.glob("*.fa"))
@@ -130,12 +130,12 @@ def _partition_with_merged_bin(metagenome, contig_data_file, out_dir, merged):
     sizes = data.groupby(ids)["Size"].transform("sum")
     counts = data.groupby(ids)["Size"].transform("size")
     for level in ["Core", "Overlapping"]:
-        data[f"{level}_bin_ID"] = [f"{i:05d}" for i in ids]
-        data[f"{level}_bin_contigs"] = counts
-        data[f"{level}_bin_size"] = sizes
+        data[f"{level}_cluster_ID"] = [f"{i:05d}" for i in ids]
+        data[f"{level}_cluster_contigs"] = counts
+        data[f"{level}_cluster_size"] = sizes
     partition_file = out_dir / "contig_data_partition.txt"
     data.to_csv(partition_file, sep="\t", index=False)
-    fasta_dir = out_dir / "overlapping_bin"
+    fasta_dir = out_dir / "overlapping_clusters"
     fasta_dir.mkdir()
     for i in sorted(set(ids)):
         metagenome.write_fasta(fasta_dir / f"metator_{i:05d}_00000.fa", list(data.Name[ids == i]))
@@ -153,7 +153,7 @@ def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenom
     )
     out = tmp_path / "out"
     # Outputs of an earlier run, replaced thanks to --force.
-    for stale in ["recursive_bin", "final_bin"]:
+    for stale in ["recursive_clusters", "final_clusters"]:
         (out / stale).mkdir(parents=True)
         (out / stale / "metator_00009_00000.fa").write_text(">old\nACGT\n")
     args = [
@@ -170,29 +170,29 @@ def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenom
         "-C",
     ]  # fmt: skip
     run_cli("validation", *args)
-    assert not (out / "recursive_bin" / "metator_00009_00000.fa").exists()
+    assert not (out / "recursive_clusters" / "metator_00009_00000.fa").exists()
 
     # miComplete ran on the partition bins, then on the bins of the first
     # recursive step only: the split bins are clean.
-    assert [Path(c[0]).name for c in calls] == ["overlapping_bin", "step_1"]
+    assert [Path(c[0]).name for c in calls] == ["overlapping_clusters", "step_1"]
     final = pd.read_csv(out / "contig_data_final.txt", sep="\t")
-    truth, found = _genome_labels(final, metagenome, "Final_bin")
+    truth, found = _genome_labels(final, metagenome, "Final_cluster")
     assert "ND" not in found
     assert synthetic.adjusted_rand(truth, found) >= 0.9
     assert synthetic.purity(truth, found) >= 0.9
-    summary = pd.read_csv(out / "bin_summary.txt", sep="\t", index_col=0)
+    summary = pd.read_csv(out / "cluster_summary.txt", sep="\t", index_col=0)
     assert len(summary) == len(metagenome.genomes)
     assert "metator_00001_00000" not in summary.index
     assert summary["Weighted redundancy"].max() == 1.0
     # Hi-C abundances are proportional to the hits of the bins.
-    hits = final.groupby("Final_bin").Hit.sum()[summary.index]
+    hits = final.groupby("Final_cluster").Hit.sum()[summary.index]
     hic = summary.HiC_abundance.astype(float)
     assert (hic / hic.sum()).to_numpy() == pytest.approx((hits / hits.sum()).to_numpy(), rel=1e-3)
     # The final fasta files are the final bins, and nothing else.
-    assert sorted(p.name for p in (out / "final_bin").iterdir()) == sorted(f"{name}.fa" for name in summary.index)
+    assert sorted(p.name for p in (out / "final_clusters").iterdir()) == sorted(f"{name}.fa" for name in summary.index)
     binning = pd.read_csv(out / "binning.txt", sep="\t", header=None, names=["Name", "Bin"])
     assert set(binning.Bin) == set(summary.index)
-    assert sorted(binning.Name) == sorted(final.Name[final.Final_bin != "ND"])
+    assert sorted(binning.Name) == sorted(final.Name[final.Final_cluster != "ND"])
     assert (out / "plot" / "bins_distribution.png").stat().st_size > 0
     # The bins of the split are recursive bins, of step 1; the others are not.
     assert list(summary.recursive) == list(summary.step > 0)
@@ -202,9 +202,42 @@ def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenom
     # It was 2 columns wide, and validation failed with --cluster-matrix.
     matrix = sparse.load_npz(out / "clustering_matrix_recursive.npz").tocoo()
     assert matrix.shape == (len(final) + 1, len(final) + 1)
-    split = set(final.ID[final.Overlapping_bin_ID == 1])
+    split = set(final.ID[final.Overlapping_cluster_ID == 1])
     assert matrix.nnz > 0 and set(matrix.row) | set(matrix.col) <= split
     assert 0 < matrix.data.min() and matrix.data.max() <= 1
+
+
+def test_validation_of_a_partition_of_1x(metagenome, metagenome_inputs, metagenome_network, tmp_path, monkeypatch, run_cli):
+    """validation reads the contig data of a partition of metaTOR 1.x, its
+    columns named after bins (Overlapping_bin_ID...): it writes what it
+    writes from the same table of 2.0, byte for byte."""
+    monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
+    partition_file, fasta_dir = _partition_with_merged_bin(
+        metagenome, metagenome_network["contig_data"], tmp_path, merged=("genome_1", "genome_2")
+    )
+    tables = {"2.0": str(partition_file), "1.x": synthetic.as_1x(partition_file, tmp_path / "contig_data_partition_1x.txt")}
+    written = {}
+    for version, table in tables.items():
+        random.seed(0)
+        fasta = shutil.copytree(fasta_dir, tmp_path / f"overlapping_{version}")
+        out = tmp_path / f"out_{version}"
+        args = [
+            "-a", str(metagenome_inputs["assembly"]),
+            "-c", table,
+            "-f", str(fasta),
+            "-n", str(metagenome_network["network"]),
+            "-o", str(out),
+            "-T", str(tmp_path / "tmp"),
+            "-s", "50000",
+            "-i", "10",
+            "-t", "1",
+        ]  # fmt: skip
+        run_cli("validation", *args)
+        names = ["contig_data_final.txt", "cluster_summary.txt", "binning.txt", "clusters.txt", "cluster_members.txt"]
+        written[version] = {name: (out / name).read_bytes() for name in names}
+        written[version] |= {f"final_clusters/{p.name}": p.read_bytes() for p in (out / "final_clusters").glob("*.fa")}
+    assert written["1.x"] == written["2.0"]
+    assert b"Final_cluster" in written["2.0"]["contig_data_final.txt"].split(b"\n")[0]
 
 
 def test_validation_without_contaminated_bin(metagenome, metagenome_inputs, metagenome_network, tmp_path, monkeypatch, run_cli):
@@ -221,7 +254,7 @@ def test_validation_without_contaminated_bin(metagenome, metagenome_inputs, meta
         "-s", "50000",
     ]  # fmt: skip
     run_cli("validation", *args)
-    assert len(pd.read_csv(out / "bin_summary.txt", sep="\t", index_col=0)) == len(metagenome.genomes)
+    assert len(pd.read_csv(out / "cluster_summary.txt", sep="\t", index_col=0)) == len(metagenome.genomes)
 
 
 def test_partition_without_bin_above_the_size_threshold(metagenome_inputs, metagenome_network, tmp_path, run_cli):
@@ -235,7 +268,7 @@ def test_partition_without_bin_above_the_size_threshold(metagenome_inputs, metag
         "-s", "10000000",
     ]  # fmt: skip
     run_cli("partition", *args)
-    assert list((tmp_path / "out" / "overlapping_bin").iterdir()) == []
+    assert list((tmp_path / "out" / "overlapping_clusters").iterdir()) == []
 
 
 def test_pipeline_without_bin_above_the_size_threshold(
@@ -254,7 +287,7 @@ def test_pipeline_without_bin_above_the_size_threshold(
         run_cli("pipeline", *args)
     assert not calls
     (log,) = out.glob("metator_pipeline_*.log")
-    message = f"{out / 'overlapping_bin'} holds no bin to validate (no .fa, .fasta or .fna file): partition writes none"
+    message = f"{out / 'overlapping_clusters'} holds no bin to validate (no .fa, .fasta or .fna file): partition writes none"
     assert f"ERROR :: {message}" in log.read_text()
     metacool = out / "metator.metacool"
     metacooler.validate(str(metacool), full=True)
@@ -310,24 +343,24 @@ def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, metagenome
     run_cli("pipeline", *args)
 
     final = pd.read_csv(out / "contig_data_final.txt", sep="\t")
-    truth, found = _genome_labels(final, metagenome, "Final_bin")
+    truth, found = _genome_labels(final, metagenome, "Final_cluster")
     assert "ND" not in found
     assert synthetic.adjusted_rand(truth, found) >= 0.9
-    summary = pd.read_csv(out / "bin_summary.txt", sep="\t", index_col=0)
+    summary = pd.read_csv(out / "cluster_summary.txt", sep="\t", index_col=0)
     assert len(summary) == len(metagenome.genomes)
     # MGE contigs are binned with their host.
-    host_bin = final.set_index("Name").Final_bin
+    host_bin = final.set_index("Name").Final_cluster
     for mge in metagenome.mges:
         host_contigs = [c.name for c in metagenome.molecule(mge.host).contigs]
         assert {host_bin[c.name] for c in mge.contigs} <= set(host_bin[host_contigs])
     # The shotgun abundance of a bin is its share of the sequenced bases.
     truth = metagenome.truth
-    bases = (truth.Length * truth.Abundance).groupby(final.set_index("Name").Final_bin).sum()
+    bases = (truth.Length * truth.Abundance).groupby(final.set_index("Name").Final_cluster).sum()
     expected = 100 * bases / (truth.Length * truth.Abundance).sum()
     assert summary.SG_abundance.astype(float).to_numpy() == pytest.approx(expected[summary.index].to_numpy(), rel=0.1)
     # Outputs of the optional steps.
     assert (out / "clustering_matrix.npz").stat().st_size > 0
-    scaffolds = sorted(p.name for p in (out / "scaffold_bin").glob("*_scaffolded.fa"))
+    scaffolds = sorted(p.name for p in (out / "scaffolded_clusters").glob("*_scaffolded.fa"))
     assert scaffolds == sorted(f"{name}_scaffolded.fa" for name in summary.index)
     # The worker processes that scaffold the bins write to the log file too,
     # whether they are forked or not (forkserver, Linux's default from Python
@@ -396,7 +429,7 @@ def test_pipeline_map_is_the_map_of_the_pairs(
         [str(metagenome_indexed_pairs)],
         str(out / "contig_data_final.txt"),
         str(expected),
-        bin_summary=str(out / "bin_summary.txt"),
+        bin_summary=str(out / "cluster_summary.txt"),
         assembly_name=clr.info["genome-assembly"],
         metadata={key: value for key, value in clr.info["metadata"]["metator"].items() if key != "version"},
     )
@@ -449,9 +482,9 @@ def test_pipeline_restarts_from_the_map_of_a_stopped_run(
     random.seed(0)
     run_cli("pipeline", str(metacool), "-o", str(out), "-F", *common)
 
-    for name in ["network.txt", "contig_data_network.txt", "contig_data_final.txt", "bin_summary.txt", "binning.txt"]:
+    for name in ["network.txt", "contig_data_network.txt", "contig_data_final.txt", "cluster_summary.txt", "binning.txt"]:
         assert (out / name).read_text() == (clean / name).read_text(), name
-    final_bins = [{path.name: path.read_bytes() for path in (run / "final_bin_unscaffold").iterdir()} for run in [out, clean]]
+    final_bins = [{path.name: path.read_bytes() for path in (run / "final_clusters").iterdir()} for run in [out, clean]]
     assert final_bins[0] == final_bins[1] and final_bins[0]
     # The map of the bins, written over the map that the stopped run left.
     metacooler.validate(str(metacool), full=True)
@@ -489,14 +522,14 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, metagenome_inde
     run_cli("pipeline", str(metacool), "-o", str(tmp_path / "metacool"), *common)
 
     pair, mcool = tmp_path / "pair", tmp_path / "metacool"
-    for name in ["network.txt", "contig_data_network.txt", "contig_data_final.txt", "bin_summary.txt", "binning.txt",
+    for name in ["network.txt", "contig_data_network.txt", "contig_data_final.txt", "cluster_summary.txt", "binning.txt",
                  "clusters.txt", "cluster_members.txt"]:  # fmt: skip
         assert (mcool / name).read_text() == (pair / name).read_text(), name
-    assert sorted(p.name for p in (mcool / "final_bin_unscaffold").iterdir()) == sorted(
-        p.name for p in (pair / "final_bin_unscaffold").iterdir()
+    assert sorted(p.name for p in (mcool / "final_clusters").iterdir()) == sorted(
+        p.name for p in (pair / "final_clusters").iterdir()
     )
     final = pd.read_csv(mcool / "contig_data_final.txt", sep="\t")
-    truth, found = _genome_labels(final, metagenome, "Final_bin")
+    truth, found = _genome_labels(final, metagenome, "Final_cluster")
     assert synthetic.adjusted_rand(truth, found) >= 0.9
     # The heatmap of the clusters, drawn from the map of the run, from pairs
     # or from a map (a run from a map drew none): the same map, the same
@@ -541,7 +574,7 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, metagenome_inde
     pd.testing.assert_frame_equal(mc.clusters, ref_mc.clusters)
     pd.testing.assert_frame_equal(_members(mc), _members(ref_mc))
     overlapping = mc.clusters[mc.clusters["round"] == "overlapping"]
-    assert set(overlapping.name) == {path.stem for path in (mcool / "overlapping_bin").glob("*.fa")}
+    assert set(overlapping.name) == {path.stem for path in (mcool / "overlapping_clusters").glob("*.fa")}
     genome_of = dict(zip(mc.contigs.name, mc.contigs.genome_id.map(mc.genomes.name), strict=True))
     final_members = mc.cluster_members("final")
     assert set(final_members.cluster) == set(mc.genomes.name) - {"__unbinned__"}
@@ -551,7 +584,7 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, metagenome_inde
     # of the run: a run step by step can write it too (but for the rounds,
     # which metator metacool does not store).
     command = tmp_path / "command.metacool"
-    run_cli("metacool", "-c", mcool / "contig_data_final.txt", "-b", mcool / "bin_summary.txt", "-o", command, expected)
+    run_cli("metacool", "-c", mcool / "contig_data_final.txt", "-b", mcool / "cluster_summary.txt", "-o", command, expected)
     metacooler.validate(str(command), full=True)
     clr = cooler.Cooler(str(command))
     for table in ["bins", "pixels", "chroms"]:
@@ -587,9 +620,9 @@ def test_pipeline_from_the_columns_of_a_metacool(
                 "--output-map", str(tmp_path / name / "metator.metacool"), *common, *given)  # fmt: skip
 
     by_options, by_map = tmp_path / "options", tmp_path / "map"
-    for name in ["network.txt", "contig_data_network.txt", "contig_data_final.txt", "bin_summary.txt", "binning.txt"]:
+    for name in ["network.txt", "contig_data_network.txt", "contig_data_final.txt", "cluster_summary.txt", "binning.txt"]:
         assert (by_map / name).read_bytes() == (by_options / name).read_bytes(), name
-    assert "SG_abundance" in pd.read_csv(by_map / "bin_summary.txt", sep="\t").columns
+    assert "SG_abundance" in pd.read_csv(by_map / "cluster_summary.txt", sep="\t").columns
     (log,) = by_map.glob("metator_pipeline_*.log")
     assert f"INFO :: The shotgun coverage of the contigs: the Shotgun_coverage column of {metacool}." in log.read_text()
     # Stored back: the map of the bins holds the values that the run read.
@@ -631,16 +664,16 @@ def test_pipeline_from_a_filtered_metacool(metagenome, metagenome_inputs, tmp_pa
     run_cli("pipeline", str(metacool), "-o", str(tmp_path / "metacool"), *common)
 
     pair, mcool = tmp_path / "pair", tmp_path / "metacool"
-    for name in ["contig_data_network.txt", "contig_data_final.txt", "bin_summary.txt", "binning.txt"]:
+    for name in ["contig_data_network.txt", "contig_data_final.txt", "cluster_summary.txt", "binning.txt"]:
         assert (mcool / name).read_text() == (pair / name).read_text(), name
-    assert sorted(p.name for p in (mcool / "final_bin_unscaffold").iterdir()) == sorted(
-        p.name for p in (pair / "final_bin_unscaffold").iterdir()
+    assert sorted(p.name for p in (mcool / "final_clusters").iterdir()) == sorted(
+        p.name for p in (pair / "final_clusters").iterdir()
     )
     final = pd.read_csv(mcool / "contig_data_final.txt", sep="\t")
     lacking = ~final.Name.isin(kept)
     assert 0 < lacking.sum() < len(final)
-    assert (final.Hit[lacking] == 0).all() and (final.Final_bin[lacking] == "ND").all()
-    assert len(pd.read_csv(mcool / "bin_summary.txt", sep="\t")) > 0
+    assert (final.Hit[lacking] == 0).all() and (final.Final_cluster[lacking] == "ND").all()
+    assert len(pd.read_csv(mcool / "cluster_summary.txt", sep="\t")) > 0
     (log,) = mcool.glob("metator_pipeline_*.log")
     assert f"INFO :: {lacking.sum()} contig(s) of the assembly are not in {metacool}: they get no contacts" in log.read_text()
     # The map, updated in place: its contigs, at 1 kb, in their clusters.
@@ -649,7 +682,7 @@ def test_pipeline_from_a_filtered_metacool(metagenome, metagenome_inputs, tmp_pa
     _read_by_cooler_and_metacooler(written)
     mc = metacooler.MetaCooler(str(written))
     assert mc.binsize == 1000 and set(mc.contigs.name) == kept
-    final_bin = final.set_index("Name").Final_bin.replace("ND", "__unbinned__")
+    final_bin = final.set_index("Name").Final_cluster.replace("ND", "__unbinned__")
     assert (
         dict(zip(mc.contigs.name, mc.contigs.genome_id.map(mc.genomes.name), strict=True))
         == final_bin[~lacking.to_numpy()].to_dict()
@@ -712,7 +745,7 @@ def _first_cluster_contaminated(metagenome):
 
     def micomplete_quality(fasta_dir, outfile, threads):
         synthetic.write_micomplete_summary(fasta_dir, outfile, metagenome)
-        if Path(fasta_dir).name == "overlapping_bin":
+        if Path(fasta_dir).name == "overlapping_clusters":
             # Three comment lines, the header, then a row per cluster.
             lines = [line.split("\t") for line in Path(outfile).read_text().splitlines()]
             lines[4][lines[3].index("Weighted redundancy")] = "1.5"
@@ -742,7 +775,7 @@ def test_steps_on_a_map_give_the_map_of_pipeline(metagenome, metagenome_inputs, 
 
     Each step leaves a valid map: network MAP reads it only; partition MAP
     stores the overlapping clusters of the partition, those that reach
-    --size (one per FASTA file of overlapping_bin), in its clustering rounds
+    --size (one per FASTA file of overlapping_clusters), in its clustering rounds
     (the round overlapping, without miComplete's columns, which the
     validation adds), and changes nothing else; validation MAP writes the
     map of the clusters, as pipeline MAP does at its end."""
@@ -769,7 +802,7 @@ def test_steps_on_a_map_give_the_map_of_pipeline(metagenome, metagenome_inputs, 
     metacooler.validate(str(metacool), full=True)
     mc = metacooler.MetaCooler(str(metacool))
     assert mc.cluster_rounds == [{"name": "overlapping", "tool": "metaTOR", "version": __version__, "step": "partition"}]
-    fasta_files = sorted((runs["steps"] / "out" / "overlapping_bin").glob("*.fa"))
+    fasta_files = sorted((runs["steps"] / "out" / "overlapping_clusters").glob("*.fa"))
     assert list(mc.clusters.name) == [path.stem for path in fasta_files] and fasta_files
     # genome, which metacooler computes: no cluster is a genome of the map yet.
     assert list(mc.clusters.columns) == ["round", "name", "parent_round", "parent", "n_contigs", "length", "genome"]
@@ -784,10 +817,10 @@ def test_steps_on_a_map_give_the_map_of_pipeline(metagenome, metagenome_inputs, 
     assert (kind, [name for name in stored if name != "clusters"], attributes) == before.pop("/")
     assert {name: value for name, value in after.items() if not name.startswith("/clusters")} == before
     run_cli("validation", "input.metacool", *common, "-c", "out/contig_data_partition.txt", "-n", "out/network.txt",
-            "-f", "out/overlapping_bin", "-i", "5")  # fmt: skip
+            "-f", "out/overlapping_clusters", "-i", "5")  # fmt: skip
 
     pipeline, steps = runs["pipeline"] / "out", runs["steps"] / "out"
-    for name in ["bin_summary.txt", "contig_data_final.txt", "binning.txt", "clusters.txt", "cluster_members.txt",
+    for name in ["cluster_summary.txt", "contig_data_final.txt", "binning.txt", "clusters.txt", "cluster_members.txt",
                  "plot/network_heatmap.png"]:  # fmt: skip
         assert (steps / name).read_bytes() == (pipeline / name).read_bytes(), name
     written = {name: directory / "input.metacool" for name, directory in runs.items()}

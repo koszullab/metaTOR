@@ -123,7 +123,7 @@ order:
 `metator scaffold` orders and orients the contigs of a bin into scaffolds:
 
 ```bash
-metator scaffold -b metator_00007_00000 -i binning/final_bin_unscaffold/metator_00007_00000.fa \
+metator scaffold -b metator_00007_00000 -i binning/final_clusters/metator_00007_00000.fa \
     binning/alignment_0_sorted.pairs.gz
 ```
 
@@ -151,7 +151,7 @@ NODE_442506	0	669	1
 
 The length of a scaffold is that of its contigs, without the junctions.
 `metator pipeline --scaffold` scaffolds every final bin this way, into
-`scaffold_bin/`, with the junctions of its `--junctions` (`-J`).
+`scaffolded_clusters/`, with the junctions of its `--junctions` (`-J`).
 
 ## Scaffolding with instaGRAAL
 

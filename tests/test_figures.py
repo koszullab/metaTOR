@@ -34,7 +34,7 @@ def binned_output(tmp_path):
             "GC_content": [40.0, 42.0, 55.0, 56.0],
             "Hit": [500, 400, 300, 200],
             "Shotgun_coverage": [10.0, 12.0, 30.0, 28.0],
-            "Final_bin": ["MetaTOR_00001_00000"] * 2 + ["MetaTOR_00002_00000"] * 2,
+            "Final_cluster": ["MetaTOR_00001_00000"] * 2 + ["MetaTOR_00002_00000"] * 2,
         }
     )
     bin_summary = {
@@ -114,7 +114,7 @@ def _binning(metagenome, qualities, with_depth=True):
             "GC_content": truth.GC,
             "Hit": (truth.Length * truth.Abundance / 100).astype(int),
             "Shotgun_coverage": 10 * truth.Abundance if with_depth else "-",
-            "Final_bin": truth.Genome.map(bins).fillna("ND"),
+            "Final_cluster": truth.Genome.map(bins).fillna("ND"),
         }
     ).reset_index(drop=True)
     bin_summary = {}
@@ -191,12 +191,12 @@ def test_quality_boxplots(metagenome, tmp_path, saved_figures, qualities):
     quality of the bin, and a legend of every quality class."""
     contigs_data, bin_summary = _binning(metagenome, qualities)
     mtf.plot_figures(str(tmp_path), contigs_data.copy(), bin_summary, 50_000)
-    binned = contigs_data[contigs_data.Final_bin != "ND"].copy()
+    binned = contigs_data[contigs_data.Final_cluster != "ND"].copy()
     binned["HiC_cov"] = 100 * binned.Hit / binned.Size
     weights = (binned.Size / binned.Size.min()).astype(int)
     quality = dict(zip(bin_summary, qualities, strict=True))
     for name, (column, ylabel, scale) in BOXPLOTS.items():
-        values = binned[column].repeat(weights).groupby(binned.Final_bin.repeat(weights))
+        values = binned[column].repeat(weights).groupby(binned.Final_cluster.repeat(weights))
         # Bins by decreasing value: the GC content of the bin, or the
         # highest coverage of its contigs.
         if column == "GC_content":
@@ -222,7 +222,7 @@ def test_quality_boxplots_skip_unknown_classes_and_missing_values(tmp_path, save
     infinite values (seaborn treated both as missing)."""
     data = pd.DataFrame(
         {
-            "Final_bin": ["b1", "b1", "b1", "b1", "b2", "b3", "b3"],
+            "Final_cluster": ["b1", "b1", "b1", "b1", "b2", "b3", "b3"],
             "MAG_quality": ["MQ", "MQ", "MQ", "MQ", "ND", "LQ", "LQ"],
             "size_weight": [1, 2, 1, 1, 1, 1, 1],
             "value": [1.0, 3.0, np.nan, np.inf, 5.0, 7.0, -np.inf],
@@ -248,7 +248,7 @@ def test_frags_network_and_heatmap(metagenome, tmp_path):
     are skipped."""
     contigs_data, bin_summary = _binning(metagenome, list(QUALITIES))
     info_contigs, mag_starts, n_bins = mtf.generates_frags_network(contigs_data, bin_summary, 20_000)
-    binned = contigs_data[contigs_data.Final_bin != "ND"]
+    binned = contigs_data[contigs_data.Final_cluster != "ND"]
     assert set(info_contigs) == set(binned.Name)
     assert len(mag_starts) == len(bin_summary)
     assert n_bins == sum(g.length // 20_000 + 1 for g in metagenome.genomes)
@@ -280,7 +280,9 @@ def test_heatmap_windows():
     """The windows of build_matrix_network, MAG after MAG, the contigs of
     each end to end: each bin of a map covers its windows by share; a contig
     in no MAG covers none."""
-    contigs_data = pd.DataFrame({"Name": ["a", "b", "c", "d"], "Size": [30, 25, 10, 40], "Final_bin": ["m1", "m1", "ND", "m2"]})
+    contigs_data = pd.DataFrame(
+        {"Name": ["a", "b", "c", "d"], "Size": [30, 25, 10, 40], "Final_cluster": ["m1", "m1", "ND", "m2"]}
+    )
     bin_summary = {"m1": {"Length": 55}, "m2": {"Length": 40}}
     bins = pd.DataFrame({"chrom": ["a", "b", "c", "d", "d"], "start": [0, 0, 0, 0, 25], "end": [30, 25, 10, 25, 40]})
     windows, starts, size = mtf.heatmap_windows(bins, contigs_data, bin_summary, 20)
@@ -367,7 +369,7 @@ def test_the_contacts_within_a_bin_are_spread_over_its_windows(tmp_path):
     metacool = tmp_path / "c1.metacool"
     bins = pd.DataFrame({"chrom": ["c1"], "start": [0], "end": [300]})
     metacooler.from_pairs(str(metacool), pairs=str(pairs), bins=bins, contig_genome_map=None, ps=False)
-    contigs_data = pd.DataFrame({"Name": ["c1"], "Size": [300], "Final_bin": ["m1"]})
+    contigs_data = pd.DataFrame({"Name": ["c1"], "Size": [300], "Final_cluster": ["m1"]})
     matrix, starts = mtf.build_matrix_map(str(metacool), contigs_data, {"m1": {"Length": 300}}, 100)
     # c1 covers windows 0 to 2 of the 4 of m1: its contacts within itself
     # fill them, but for the diagonal.
@@ -378,7 +380,7 @@ def test_the_contacts_within_a_bin_are_spread_over_its_windows(tmp_path):
 def test_heatmap_windows_without_a_mag():
     """No MAG gives no window: heatmap_windows failed on an empty bin
     summary (zip() argument 2 is longer than argument 1)."""
-    contigs_data = pd.DataFrame({"Name": ["a"], "Size": [30], "Final_bin": ["ND"]})
+    contigs_data = pd.DataFrame({"Name": ["a"], "Size": [30], "Final_cluster": ["ND"]})
     bins = pd.DataFrame({"chrom": ["a"], "start": [0], "end": [30]})
     windows, starts, size = mtf.heatmap_windows(bins, contigs_data, {}, 20)
     assert (starts, size, windows.shape) == ([], 0, (1, 0))

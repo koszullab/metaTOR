@@ -21,6 +21,7 @@ This mdoule contains all core I/O functions:
     - read_contig_data
     - read_fasta_names
     - remove_pyfastx_index
+    - rename_1x_columns
     - retrieve_fasta
     - sort_and_index_pairs
     - sort_pairs
@@ -346,9 +347,9 @@ def import_contig_data_mges(contig_data_file, binning_result, mges_list):
     list
         List of the mge contigs ID.
     """
-    contig_data = pd.read_csv(contig_data_file, sep="\t")
+    contig_data = rename_1x_columns(pd.read_csv(contig_data_file, sep="\t"))
     contig_data["Binned"] = False
-    contig_data["Final_bin"] = "ND"
+    contig_data["Final_cluster"] = "ND"
     contig_data["MGE"] = False
     mges_list_id = []
     for i in contig_data.index:
@@ -356,7 +357,7 @@ def import_contig_data_mges(contig_data_file, binning_result, mges_list):
             contig_data.loc[i, "MGE"] = True
             mges_list_id.append(contig_data.index[i])
         try:
-            contig_data.loc[i, "Final_bin"] = binning_result[contig_data.loc[i, "Name"]]
+            contig_data.loc[i, "Final_cluster"] = binning_result[contig_data.loc[i, "Name"]]
             contig_data.loc[i, "Binned"] = True
         except KeyError:
             continue
@@ -465,7 +466,8 @@ def read_compressed(filename):
 
 
 def read_contig_data(contig_data_file):
-    """Read bin summary file from metator pipeline.
+    """Read a contig data file from metator pipeline, of metaTOR 1.x too
+    (see rename_1x_columns).
 
     Parameters
     ----------
@@ -477,9 +479,57 @@ def read_contig_data(contig_data_file):
     pandas.DataFrame
         Table from contig data with contig name as index.
     """
-    data = pd.read_csv(contig_data_file, sep="\t")
+    data = rename_1x_columns(pd.read_csv(contig_data_file, sep="\t"))
     data = data.set_index("Name", drop=False)
     return data
+
+
+#: The columns of the contig data files that metaTOR 1.x named after bins,
+#: with their names since metaTOR 2.0, which calls its groups of contigs
+#: clusters.
+CONTIG_DATA_1X_COLUMNS = {
+    "Core_bin_ID": "Core_cluster_ID",
+    "Core_bin_contigs": "Core_cluster_contigs",
+    "Core_bin_size": "Core_cluster_size",
+    "Overlapping_bin_ID": "Overlapping_cluster_ID",
+    "Overlapping_bin_contigs": "Overlapping_cluster_contigs",
+    "Overlapping_bin_size": "Overlapping_cluster_size",
+    "Recursive_bin_ID": "Recursive_cluster_ID",
+    "Recursive_bin_contigs": "Recursive_cluster_contigs",
+    "Recursive_bin_size": "Recursive_cluster_size",
+    "Final_bin": "Final_cluster",
+}
+
+
+def rename_1x_columns(contig_data):
+    """The table of contig data contig_data, its columns named after bins by
+    metaTOR 1.x renamed as metaTOR 2.0 names them (CONTIG_DATA_1X_COLUMNS),
+    so that every command reads the contig data files of a 1.x run as those
+    of a 2.0 run. A column already named as in 2.0 is kept, and the 1.x
+    column of the same meaning then left as it is.
+
+    Parameters
+    ----------
+    contig_data : pandas.DataFrame
+        Table of contig data, as read from a contig data file.
+
+    Returns
+    -------
+    pandas.DataFrame
+        The table, its 1.x columns renamed, or the table itself if it has
+        none.
+    """
+    renamed = {
+        old: new for old, new in CONTIG_DATA_1X_COLUMNS.items() if old in contig_data.columns and new not in contig_data.columns
+    }
+    if not renamed:
+        return contig_data
+    logger.info(
+        "Contig data of metaTOR 1.x: its columns %s are read as %s.",
+        ", ".join(renamed),
+        ", ".join(renamed.values()),
+    )
+    return contig_data.rename(columns=renamed)
 
 
 def read_fasta_names(fasta):
