@@ -4,6 +4,7 @@
 
 from pathlib import Path
 import gzip
+import metator.align as mta
 import metator.cli as mtc
 import metator.io as mio
 import metator.metacool as mtmc
@@ -236,32 +237,51 @@ PIPELINE_RUNS = {
     "subset pairs": (["-1", "{SUBSET_PAIRS}", "-a", "{SUBSET_FASTA}", "-S", "pair"], "{SUBSET_PAIRS}"),
     "bam": (
         ["-1", "{BAM_FOR}", "-2", "{BAM_REV}", "-a", "{FASTA}", "-d", "{DEPTH}", "-S", "bam"],
-        "{OUT}/alignment_0_sorted.pairs.gz",
+        "{KEPT}/alignment_0.pairs",
     ),
     "fastq": (
         ["-1", "{FASTQ_FOR}", "-2", "{FASTQ_REV}", "-a", "{FASTA}", "-d", "{DEPTH}", "-S", "fastq", "-t", "4"],
-        "{OUT}/alignment_0_sorted.pairs.gz",
+        "{KEPT}/alignment_0.pairs",
     ),
 }
 
 
 @pytest.mark.parametrize("case", list(PIPELINE_RUNS))
-def test_pipeline_network_is_that_of_its_pairs(case, network_from_a_map, tmp_path, run_cli):
+def test_pipeline_network_is_that_of_its_pairs(case, network_from_a_map, tmp_path, monkeypatch, run_cli):
     """A run with one library reads its network from the map of its
     contigs, which it built from its pairs file: a pairs file of tests_data
     (alignment.pairs holds reads at position 0), or the one it made of
-    alignments (bam) or reads (fastq). Its network files, network.txt,
-    network_0.txt (the network of its library, a copy of network.txt) and
-    contig_data_network.txt, are, byte for byte, those that the pairs path
-    (alignment_to_contacts, which metator network runs) writes from that
-    pairs file at edge 0. The run stops at the partition, after which a
-    run from alignments or reads removes contig_data_network.txt."""
-    out = tmp_path / "out"
-    fields = {**global_args, "OUT": out}
+    alignments (bam) or reads (fastq), unsorted, in its temporary directory,
+    which it removes once its network is built (a copy is kept here). Its
+    network files, network.txt, network_0.txt (the network of its library,
+    a copy of network.txt) and contig_data_network.txt, are, byte for
+    byte, those that the pairs path (alignment_to_contacts, which metator
+    network runs) writes from that pairs file at edge 0. The run stops at
+    the partition, after which a run from alignments or reads removes
+    contig_data_network.txt."""
+    out, kept = tmp_path / "out", tmp_path / "kept"
+    kept.mkdir()
+    get_contact_pairs = mta.get_contact_pairs
+
+    made = []
+
+    def keeping_the_pairs(*args, **kwargs):
+        pairs_files, *tables = get_contact_pairs(*args, **kwargs)
+        for path in pairs_files:
+            shutil.copyfile(path, kept / os.path.basename(path))
+        made.extend(pairs_files)
+        return (pairs_files, *tables)
+
+    monkeypatch.setattr("metator.align.get_contact_pairs", keeping_the_pairs)
+    fields = {**global_args, "OUT": out, "KEPT": kept}
     args, pairs = [arg.format(**fields) for arg in PIPELINE_RUNS[case][0]], PIPELINE_RUNS[case][1].format(**fields)
     with pytest.raises(RuntimeError, match=r"^network built$"):
         run_cli("pipeline", *args, "-e", "HindIII,DpnII", "-o", out, "-T", tmp_path / "tmp")
     assert network_from_a_map == [str(out / "metator.metacool")]
+    # The pairs files that the run made, gone from its temporary directory
+    # at the partition, and none in its output directory.
+    assert not [path for path in made if os.path.exists(path)] and not list(out.glob("alignment_*.pairs*"))
+    assert len(made) == (1 if case in ("bam", "fastq") else 0)
 
     # The network of the same pairs file, from the pairs.
     depth = args[args.index("-d") + 1] if "-d" in args else None

@@ -87,10 +87,19 @@ The pipeline writes into `--outdir` (`-o`, the current directory by default):
 | `plot/` | Plots of the bins' quality, size, GC content and coverage, and the heatmap of the bins' network |
 | `metator_pipeline_<date>.log` | The log of the run |
 
-The pairs files of each library, `alignment_<i>_sorted.pairs.gz` and their
-index, are deleted at the end of the run, after the contact map is written:
-keep them with `--no-clean-up` (`-N`), for `metator contactmap`, `qc`,
-`scaffold` or `mge` later. [File formats](../formats.md) describes each table.
+The pairs files of each library are written to the temporary directory as
+they are made, read once for the contact map of the contigs and the
+network, then removed. With `--no-clean-up` (`-N`), the run sorts,
+compresses and indexes them in the output directory instead,
+`alignment_<i>_sorted.pairs.gz` and their index, and keeps them, for
+`metator mge` or `scaffold` later, or `contactmap` and `qc` from the pairs
+files; `--scaffold`, which reads them so, has them sorted too, and removes
+them at the end of the run. Without `-N` or `--scaffold`, a run that stops
+before its network is built leaves them in its temporary directory; one
+that stops later leaves none, but leaves the contact map of its contigs,
+which a run restarts from (`metator pipeline binning/metator.metacool … -F`,
+`-F` to replace the directories of clusters it began).
+[File formats](../formats.md) describes each table.
 
 A run refuses to overwrite the bins of an earlier one unless given `--force`
 (`-F`).
@@ -108,7 +117,7 @@ A run refuses to overwrite the bins of an earlier one unless given `--force`
 | `--size` | 500000 | The size, in base pairs, a bin must reach to be kept |
 | `--prefix` | none | Names the bins `<prefix>_metator_…`, the map `<prefix>.metacool` of a run from reads, alignments or pairs and, with several libraries, the maps of the libraries `<prefix>.mmetacool` |
 | `--threads` | 1 | Threads for the alignment and the partition |
-| `--tmpdir` | `./tmp` | Where the index and the temporary files go; deleted at the end, unless `--no-clean-up` |
+| `--tmpdir` | `./tmp` | Where the index, the pairs files (without `--no-clean-up` or `--scaffold`) and the temporary files go; deleted at the end, unless `--no-clean-up` |
 
 The validation is the step that needs the most memory and time: miComplete
 runs prodigal and hmmer on every bin.

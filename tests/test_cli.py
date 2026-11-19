@@ -298,15 +298,23 @@ def stub_pipeline(monkeypatch, tmp_path):
     and record their arguments."""
     calls = {}
 
-    def get_contact_pairs(*args):
+    def get_contact_pairs(*args, sort_pairs=True, keep_temp=False):
         calls["get_contact_pairs"] = args
-        out_dir = args[10]
-        # Sorted, compressed and indexed by pypairix, as the alignment step
-        # leaves them.
-        pairs = [os.path.join(out_dir, f"alignment_{i}_sorted.pairs.gz") for i in range(len(args[0].split(",")))]
+        calls["sort_pairs"] = sort_pairs
+        calls["keep_temp"] = keep_temp
+        libraries = range(len(args[0].split(",")))
+        if sort_pairs:
+            # Sorted, compressed and indexed by pypairix, in the output
+            # directory, as the alignment step leaves them.
+            pairs = [os.path.join(args[10], f"alignment_{i}_sorted.pairs.gz") for i in libraries]
+        else:
+            # As they are made, in the temporary directory.
+            pairs = [os.path.join(args[11], f"alignment_{i}.pairs") for i in libraries]
         for path in pairs:
             Path(path).write_text("## pairs format v1.0\n")
-            Path(f"{path}.px2").write_text("x")
+            if sort_pairs:
+                Path(f"{path}.px2").write_text("x")
+        calls["pairs"] = pairs
         return pairs, {}, {}
 
     def create_contig_data(*args):
@@ -337,8 +345,11 @@ def stub_pipeline(monkeypatch, tmp_path):
     def partition(*args):
         calls["partition"] = args
         out_dir = args[6]
-        # What the network step left in the output directory.
+        # What the network step left in the output directory, and of the
+        # pairs files that the run made.
         calls["partition_outdir"] = sorted(os.listdir(out_dir))
+        if "pairs" in calls:
+            calls["pairs_at_partition"] = [os.path.exists(path) for path in calls["pairs"]]
         Path(out_dir, "contig_data_partition.txt").write_text("x")
         return os.path.join(out_dir, "clustering_matrix_partition"), os.path.join(out_dir, "contig_data_partition.txt")
 
@@ -395,10 +406,15 @@ def stub_pipeline(monkeypatch, tmp_path):
 @pytest.mark.parametrize("libraries", [1, 2])
 def test_pipeline_from_reads(start, clean_up, libraries, stub_pipeline, tmp_path, run_cli):
     """From reads or alignments: the pairs files and the contig data of the
-    network step are intermediate files. The network is read from the map
-    of the contigs. One library: copied to network_0.txt, the network of
-    that library. Two: their sum, with a map of each library in
-    metator.mmetacool, from which the network of each is read."""
+    network step are intermediate files. The pairs files are written to the
+    temporary directory as they are made, unsorted, and removed once the
+    network is built, before the partition; with -N, they are sorted,
+    compressed, indexed and kept in the output directory, as before (where
+    the run sorted them always, then removed them at its end). The network
+    is read from the map of the contigs. One library: copied to
+    network_0.txt, the network of that library. Two: their sum, with a map
+    of each library in metator.mmetacool, from which the network of each
+    is read."""
     if start == "fastq":
         # A fasta: its index is built.
         assembly = tmp_path / "assembly.fa"
@@ -435,10 +451,18 @@ def test_pipeline_from_reads(start, clean_up, libraries, stub_pipeline, tmp_path
     assert not (out / "contig_data_partition.txt").exists()
     assert (out / "network.txt").exists()
     # The pairs files and their pypairix index go together.
-    pairs = [out / f"alignment_{i}_sorted.pairs.gz" for i in range(libraries)]
+    pairs = [Path(path) for path in calls["pairs"]]
+    assert calls["sort_pairs"] == (not clean_up) and calls["keep_temp"] == (not clean_up)
+    if clean_up:
+        assert [path.name for path in pairs] == [f"alignment_{i}.pairs" for i in range(libraries)]
+        assert {path.parent.parent for path in pairs} == {tmp_path / "tmp"}
+    else:
+        assert pairs == [out / f"alignment_{i}_sorted.pairs.gz" for i in range(libraries)]
+    assert calls["pairs_at_partition"] == [not clean_up] * libraries
     assert [path.exists() for path in pairs] == [not clean_up] * libraries
     assert [Path(f"{path}.px2").exists() for path in pairs] == [not clean_up] * libraries
     assert (tmp_path / "tmp").exists() == (not clean_up)
+    assert bool(list(out.glob("alignment_*"))) == (not clean_up)
     (log,) = out.glob("metator_pipeline_*.log")
     assert f"## Command used: metator pipeline -1 {forward} -2 {reverse} -a {assembly}" in log.read_text()
 
@@ -637,6 +661,46 @@ def test_pipeline_non_ascii_contigs_stop_the_run(no_metacool, stub_pipeline, tmp
     assert "Traceback" not in logged and "WARNING" not in logged
 
 
+@pytest.mark.parametrize("no_clean_up", [False, True])
+def test_pipeline_scaffolds_from_sorted_pairs(no_clean_up, stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """--scaffold reads the pairs files of the run, through their pypairix
+    index: from reads or alignments, they are sorted, compressed and indexed
+    in the output directory, kept until the scaffolding, then removed at
+    the end of the run (kept with -N), as before. A guard: the run sorted
+    them always."""
+    _final_tables(monkeypatch, "c1")
+    scaffolded = []
+
+    def parallel_scaffold(bin_name, final_fasta_dir, alignment_files, scaffold_fasta_dir, junctions):
+        scaffolded.append((bin_name, [(path, os.path.exists(path), os.path.exists(f"{path}.px2")) for path in alignment_files]))
+
+    class Pool:
+        """A pool of workers that runs its tasks in this process."""
+
+        def __init__(self, processes, initializer, initargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def map(self, task, items):
+            return [task(item) for item in items]
+
+    monkeypatch.setattr("metator.scaffold.parallel_scaffold", parallel_scaffold)
+    monkeypatch.setattr("metator.cli.mp.Pool", Pool)
+    out = tmp_path / "out"
+    args = ["-1", "a1.bam", "-2", "a2.bam", "-a", TESTS_DATA / "assembly", "-S", "bam", "--scaffold", "-o", out,
+            "-T", tmp_path / "tmp"]  # fmt: skip
+    run_cli("pipeline", *args, *(["-N"] if no_clean_up else []))
+    pairs = out / "alignment_0_sorted.pairs.gz"
+    assert stub_pipeline["sort_pairs"] and stub_pipeline["pairs_at_partition"] == [True]
+    assert scaffolded == [("metator_00001_00000", [(str(pairs), True, True)])]
+    assert pairs.exists() == no_clean_up and Path(f"{pairs}.px2").exists() == no_clean_up
+
+
 @pytest.mark.parametrize("no_metacool", [False, True])
 @pytest.mark.parametrize("libraries", [1, 2])
 def test_pipeline_map_failure_stops_the_run(libraries, no_metacool, stub_pipeline, tmp_path, monkeypatch, run_cli):
@@ -645,7 +709,8 @@ def test_pipeline_map_failure_stops_the_run(libraries, no_metacool, stub_pipelin
     two, the maps of each library and their sum): an unexpected error (not
     a MetacoolError) is logged as an error, with its type and traceback,
     then raised as it is. The pairs files made from the alignments are
-    left, as a run that stops leaves its files."""
+    left in the temporary directory of the run, as a run that stops leaves
+    its files."""
 
     def write_contig_map(*args, **kwargs):
         raise RuntimeError("disk full")
@@ -664,8 +729,9 @@ def test_pipeline_map_failure_stops_the_run(libraries, no_metacool, stub_pipelin
     assert logged.count("ERROR ::") == 1 and "WARNING" not in logged
     assert not {"alignment_to_contacts", "metacool_to_contacts", "partition"} & set(stub_pipeline)
     assert not (out / "metator.metacool").exists() and not (out / "network.txt").exists()
-    pairs = [out / f"alignment_{i}_sorted.pairs.gz" for i in range(libraries)]
-    assert all(path.exists() and Path(f"{path}.px2").exists() for path in pairs)
+    pairs = [Path(path) for path in stub_pipeline["pairs"]]
+    assert [path.name for path in pairs] == [f"alignment_{i}.pairs" for i in range(libraries)]
+    assert all(path.exists() and path.parent.parent == tmp_path / "tmp" for path in pairs)
 
 
 PAIRS_TEXT = "## pairs format v1.0\nr1\tc1\t10\tc2\t20\t+\t-\n"
@@ -3094,6 +3160,21 @@ def test_an_unknown_option_is_still_unknown(run_cli):
     before."""
     result = run_cli("pipeline", "-1", "a.pairs", "-S", "pair", "--bogus", "-a", "a.fa", exit_code=2)
     assert "No such option" in result.output and "--bogus" in result.output and "gone in metaTOR 2.0" not in result.output
+
+
+@pytest.mark.parametrize("no_clean_up", [False, True])
+def test_network_from_alignments_sorts_its_pairs(no_clean_up, stub_pipeline, tmp_path, run_cli):
+    """metator network from alignments writes the pairs files sorted and
+    indexed in its output directory, for the steps that follow it, as
+    before; the tables of the alignments of the mates are kept with -N
+    only, as every temporary file. Without -N, a guard: the stub reads the
+    call of the previous version, which passed no keep_temp, as False."""
+    out = tmp_path / "out"
+    args = ["-1", "a1.bam", "-2", "a2.bam", "-a", TESTS_DATA / "assembly", "-S", "bam", "-o", out, "-T", tmp_path / "tmp"]
+    run_cli("network", *args, *(["-N"] if no_clean_up else []))
+    assert stub_pipeline["sort_pairs"] and stub_pipeline["keep_temp"] == no_clean_up
+    assert stub_pipeline["pairs"] == [str(out / "alignment_0_sorted.pairs.gz")]
+    assert (out / "alignment_0_sorted.pairs.gz").exists() and (out / "alignment_0_sorted.pairs.gz.px2").exists()
 
 
 def test_network_from_pairs_counts_every_pair(stub_pipeline, tmp_path, run_cli):
