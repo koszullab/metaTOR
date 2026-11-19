@@ -102,6 +102,32 @@ def test_read_compressed(tmp_path):
             assert handle.read() == text
 
 
+def test_file_compression(tmp_path):
+    """The compression of a file from its first bytes, whatever its name, as
+    read_compressed finds it."""
+    text = b"line 1\n"
+    (tmp_path / "plain.gz").write_bytes(text)
+    (tmp_path / "gzip.txt").write_bytes(gzip.compress(text))
+    (tmp_path / "bzip2.gz").write_bytes(bz2.compress(text))
+    with zipfile.ZipFile(tmp_path / "archive.txt", "w") as archive:
+        archive.writestr("file.txt", text)
+    found = {name: mio.file_compression(str(tmp_path / name)) for name in ["plain.gz", "gzip.txt", "bzip2.gz", "archive.txt"]}
+    assert found == {"plain.gz": "uncompressed", "gzip.txt": "gz", "bzip2.gz": "bz2", "archive.txt": "zip"}
+
+
+def test_read_fasta_names(tmp_path):
+    """The names of the sequences of a fasta file, as Biopython names its
+    records, which create_contig_data reads: the first word of each header
+    line, a header without one included."""
+    from Bio import SeqIO
+
+    fasta = tmp_path / "contigs.fa"
+    fasta.write_bytes(">c1 a description\nACGT\nACGT\n>  c2\tx\r\nAC\r\n>\nAC\n>NODE_522_é\nAC\n".encode())
+    for path in [fasta, "tests_data/assembly.fa", "tests_data/subset.assembly.fa"]:
+        assert list(mio.read_fasta_names(str(path))) == [record.id for record in SeqIO.parse(str(path), "fasta")]
+    assert list(mio.read_fasta_names(str(fasta))) == ["c1", "c2", "", "NODE_522_é"]
+
+
 def _pairs_key(row):
     """The order of pairtools sort, and of hicstuff: contig names byte by byte
     (NODE_10 before NODE_2), then positions as numbers."""

@@ -133,6 +133,30 @@ def run_cli(monkeypatch):
     return run
 
 
+@pytest.fixture
+def network_from_a_map(monkeypatch):
+    """Have a pipeline run stop once its network is built, which must be
+    read from a .metacool map: the partition raises RuntimeError("network
+    built"), and the network of pairs files (alignment_to_contacts) fails
+    the test. Returns the maps that metacool_to_contacts read, in order."""
+    import metator.network as mtn
+
+    read = []
+    metacool_to_contacts = mtn.metacool_to_contacts
+
+    def from_the_map(metacool, *args):
+        read.append(metacool)
+        return metacool_to_contacts(metacool, *args)
+
+    def partition(*args):
+        raise RuntimeError("network built")
+
+    monkeypatch.setattr("metator.network.alignment_to_contacts", lambda *args: pytest.fail("network read from the pairs"))
+    monkeypatch.setattr("metator.network.metacool_to_contacts", from_the_map)
+    monkeypatch.setattr("metator.partition.partition", partition)
+    return read
+
+
 @pytest.fixture(scope="session")
 def metagenome():
     """The mock community (see tests/synthetic.py) and its ground truth."""
