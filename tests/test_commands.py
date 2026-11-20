@@ -256,6 +256,79 @@ def test_pipeline_network_is_that_of_its_pairs(case, network_from_a_map, tmp_pat
         assert (out / name).read_bytes() == (expected / name).read_bytes(), name
 
 
+@pytest.mark.parametrize("libraries", [2, 3])
+def test_pipeline_networks_of_several_libraries(libraries, network_from_a_map, tmp_path, run_cli):
+    """A run with several libraries builds the map of each (the entries of
+    metator.mmetacool) and the map of their sum (metator.metacool), and
+    reads its networks from them: network.txt and contig_data_network.txt
+    from the sum, the network of each library (network_{i}.txt) and their
+    hits (hit_data_alignment.txt) from the map of each. They are, byte for
+    byte, those that the pairs path (alignment_to_contacts) writes from the
+    same pairs files at --edge 0. The last library is compressed with zstd,
+    which metacooler reads, but not the pairs path, given its plain copy."""
+    import pyarrow as pa
+    from metacooler.schema import list_metacoolers
+
+    lines = Path(global_args["PAIRS"]).read_text().splitlines(keepends=True)
+    header = [line for line in lines if line.startswith("#")]
+    body = [line for line in lines if not line.startswith("#")]
+    plain = []
+    for i in range(libraries):
+        path = tmp_path / f"lib{i}.pairs"
+        path.write_text("".join(header + body[i::libraries]))
+        plain.append(path)
+    zstd = tmp_path / f"lib{libraries - 1}.pairs.zst"
+    with pa.output_stream(str(zstd), compression="zstd") as out:
+        out.write(plain[-1].read_bytes())
+    run = tmp_path / "out"
+    with pytest.raises(RuntimeError, match=r"^network built$"):
+        run_cli("pipeline", "-1", ",".join(map(str, [*plain[:-1], zstd])), "-a", global_args["FASTA"],
+                "-d", global_args["DEPTH"], "-S", "pair", "-e", "HindIII,DpnII", "-o", run, "-T", tmp_path / "tmp")  # fmt: skip
+    assert network_from_a_map == [str(run / "metator.metacool")]
+    assert sorted(list_metacoolers(str(run / "metator.mmetacool"))) == [f"/entries/library_{i}" for i in range(libraries)]
+
+    # The networks of the same pairs files, from the pairs.
+    contig_data, hit_data = mtn.create_contig_data(global_args["FASTA"], libraries, global_args["DEPTH"], "HindIII,DpnII")
+    expected = tmp_path / "expected"
+    (expected / "tmp").mkdir(parents=True)
+    PAIRS_NETWORK([str(path) for path in plain], contig_data, 0, hit_data, str(expected), "network.txt",
+                  "contig_data_network.txt", str(expected / "tmp"), 1, "empirical_hit", False)  # fmt: skip
+    names = ["network.txt", *[f"network_{i}.txt" for i in range(libraries)], "hit_data_alignment.txt"]
+    for directory in [run, expected]:
+        assert sorted(path.name for path in directory.glob("network*.txt")) == sorted(names[:-1])
+    for name in [*names, "contig_data_network.txt"]:
+        assert (run / name).read_bytes() == (expected / name).read_bytes(), name
+
+
+def test_pipeline_libraries_with_a_contig_of_another_assembly(network_from_a_map, tmp_path, run_cli, caplog):
+    """A pair on a contig that the assembly lacks, in one of two libraries,
+    is left out of the maps, with metacooler's counted warning, as with one
+    library: the network is that of the other pairs (it stopped the run,
+    with a KeyError, as metaTOR read the network of several libraries from
+    their pairs files)."""
+    lines = Path(global_args["PAIRS"]).read_text().splitlines(keepends=True)
+    header = [line for line in lines if line.startswith("#")]
+    body = [line for line in lines if not line.startswith("#")]
+    first, second = tmp_path / "lib0.pairs", tmp_path / "lib1.pairs"
+    first.write_text("".join(header + body[0::2]))
+    second.write_text("".join(header + body[1::2] + ["stray\tcontig_of_another_assembly\t10\tNODE_1\t20\t+\t-\n"]))
+    clean = tmp_path / "lib1_clean.pairs"
+    clean.write_text("".join(header + body[1::2]))
+    run = tmp_path / "out"
+    with pytest.raises(RuntimeError, match=r"^network built$"):
+        run_cli("pipeline", "-1", f"{first},{second}", "-a", global_args["FASTA"], "-d", global_args["DEPTH"],
+                "-S", "pair", "-e", "HindIII,DpnII", "-o", run, "-T", tmp_path / "tmp")  # fmt: skip
+    (log,) = run.glob("metator_pipeline_*.log")
+    assert "unrecognised contigs" in log.read_text()
+    contig_data, hit_data = mtn.create_contig_data(global_args["FASTA"], 2, global_args["DEPTH"], "HindIII,DpnII")
+    expected = tmp_path / "expected"
+    (expected / "tmp").mkdir(parents=True)
+    PAIRS_NETWORK([str(first), str(clean)], contig_data, 0, hit_data, str(expected), "network.txt",
+                  "contig_data_network.txt", str(expected / "tmp"), 1, "empirical_hit", False)  # fmt: skip
+    for name in ["network.txt", "network_0.txt", "network_1.txt", "hit_data_alignment.txt", "contig_data_network.txt"]:
+        assert (run / name).read_bytes() == (expected / name).read_bytes(), name
+
+
 def test_pipeline_network_of_zstd_pairs(network_from_a_map, tmp_path, run_cli):
     """A run from a zstd pairs file of one library, which metacooler reads
     (metaTOR does not): its network, read from its map, is that of the same

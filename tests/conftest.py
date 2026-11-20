@@ -144,9 +144,9 @@ def network_from_a_map(monkeypatch):
     read = []
     metacool_to_contacts = mtn.metacool_to_contacts
 
-    def from_the_map(metacool, *args):
+    def from_the_map(metacool, *args, **kwargs):
         read.append(metacool)
-        return metacool_to_contacts(metacool, *args)
+        return metacool_to_contacts(metacool, *args, **kwargs)
 
     def partition(*args):
         raise RuntimeError("network built")

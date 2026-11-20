@@ -160,6 +160,7 @@ def metacool_to_contacts(
     normalization,
     self_contacts=False,
     chunksize=METACOOL_CHUNKSIZE,
+    libraries=None,
 ):
     """Generates the network file (in edgelist form) from a .metacool contact
     map instead of pairs files: the network that alignment_to_contacts makes
@@ -184,9 +185,10 @@ def metacool_to_contacts(
     read on the first or the last base of a contig counts in both (and at
     position 0, which a 1-based pairs file should not hold but some do,
     where metacooler puts the read on the first base), a pair with a read
-    past the end of its contig in neither. But the map holds the contacts
-    of all its libraries, summed: there is no network_{i}.txt per library
-    and no hit_data_alignment.txt. Nor does it hold the positions of the
+    past the end of its contig in neither. The map holds the contacts of
+    all its libraries, summed: the network of each library and its hits
+    come from a map of that library (libraries), as alignment_to_contacts
+    writes them for several pairs files. The map holds no positions of the
     reads: the edge region of the pairs path (edge > 0) cannot be applied.
 
     Parameters:
@@ -219,6 +221,12 @@ def metacool_to_contacts(
         False.
     chunksize : int
         Number of pixels read at a time.
+    libraries : list of str, optional
+        The maps of the libraries whose contacts metacool sums, in order
+        (``file.mmetacool::entries/<name>``): each gives its network,
+        network_{i}.txt in out_dir, normalized with the hits of all the
+        libraries as the network of the pairs files of library i is, and
+        its hits, the columns of hit_data_alignment.txt.
 
     Returns:
     --------
@@ -230,7 +238,7 @@ def metacool_to_contacts(
     Raises:
     -------
     metator.metacool.MetacoolError
-        If the map cannot be read, stores both triangles of the matrix, holds
+        If a map cannot be read, stores both triangles of the matrix, holds
         contigs that are not in the assembly or that have another length in
         it, holds no contact, or holds counts that are not integers (see
         read_metacool_contacts).
@@ -245,20 +253,88 @@ def metacool_to_contacts(
     for name, data in contig_data.items():
         data["hit"] = int(hits[data["id"]])
         names[data["id"]] = name
+    # Each library first, as precompute_network reads its pairs files, then
+    # the sum, as it reports their sum.
+    libraries = list(libraries or [])
+    library_hits = []
+    for i, library in enumerate(libraries):
+        own_hits, own_contacts = read_metacool_contacts(library, contig_data, chunksize)
+        _log_contacts(library, own_contacts, allow_empty=True)
+        # Normalized with the hits of all the libraries, as the network of
+        # the pairs files of library i is (compute_network).
+        _write_map_network(
+            own_contacts,
+            names,
+            contig_data,
+            join(out_dir, f"network_{i}.txt"),
+            join(tmp_dir, f"precompute_network_file_{i}.txt"),
+            join(tmp_dir, f"tmp_network_sorted_{i}.txt"),
+            tmp_dir,
+            n_cpus,
+            normalization,
+            self_contacts,
+            chunksize,
+        )
+        library_hits.append(own_hits)
+    if libraries:
+        logger.info("General information:")
+    _log_contacts(metacool, contacts)
+    _write_map_network(
+        contacts,
+        names,
+        contig_data,
+        network_file,
+        pre_network_file,
+        pre_network_sorted_file,
+        tmp_dir,
+        n_cpus,
+        normalization,
+        self_contacts,
+        chunksize,
+    )
+    write_contig_data(contig_data, contig_data_file)
+    if libraries:
+        # One column of hits per library, the contigs in the order of the
+        # assembly, as alignment_to_contacts writes them.
+        hit_data = {
+            name: {"id": data["id"], "hit": [int(own[data["id"]]) for own in library_hits]} for name, data in contig_data.items()
+        }
+        write_hit_data(hit_data, join(out_dir, "hit_data_alignment.txt"))
+    return network_file, contig_data_file
 
-    # Count the contacts, as precompute_network does for a library.
+
+def _log_contacts(source, contacts, allow_empty=False):
+    """Count the contacts of a map, as precompute_network counts those of a
+    library: a map without any is refused (a library may hold none of a
+    run's sum)."""
     all_contacts = int(contacts["count"].sum())
     inter_contacts = int(contacts["count"][contacts["id1"] != contacts["id2"]].sum())
-    if not all_contacts:
-        raise mtmc.MetacoolError(f"{metacool} holds no contact: there is no network to build.")
-    logger.info(f"Information of {metacool}:")
+    if not all_contacts and not allow_empty:
+        raise mtmc.MetacoolError(f"{source} holds no contact: there is no network to build.")
+    logger.info(f"Information of {source}:")
     logger.info(f"{all_contacts} contacts in the library.")
     logger.info(f"{inter_contacts} contacts inter-contigs in the library.")
-    logger.info(f"3D ratio : {inter_contacts / all_contacts}\n")
+    if all_contacts:
+        logger.info(f"3D ratio : {inter_contacts / all_contacts}\n")
 
-    # Write the edges by contig names, a block at a time, and sort them as
-    # compute_network sorts the pairs: the network lists its edges in the
-    # same order.
+
+def _write_map_network(
+    contacts,
+    names,
+    contig_data,
+    network_file,
+    pre_network_file,
+    pre_network_sorted_file,
+    tmp_dir,
+    n_cpus,
+    normalization,
+    self_contacts,
+    chunksize,
+):
+    """Write the network of the contacts of a map: the edges by contig names,
+    a block at a time, sorted as compute_network sorts the pairs (the
+    network lists its edges in the same order), normalized with the hits of
+    contig_data."""
     with open(pre_network_file, "w") as pre_network:
         for start in range(0, len(contacts), chunksize):
             edges = contacts.iloc[start : start + chunksize]
@@ -271,9 +347,6 @@ def metacool_to_contacts(
     with open(pre_network_sorted_file, "r") as sorted_edges, open(network_file, "w") as net:
         for contig1, contig2, count in csv.reader(sorted_edges, delimiter="\t"):
             write_edge(net, contig_data, (contig1, contig2), int(count), normalization)
-
-    write_contig_data(contig_data, contig_data_file)
-    return network_file, contig_data_file
 
 
 def read_metacool_contacts(metacool, contig_data, chunksize=METACOOL_CHUNKSIZE):
