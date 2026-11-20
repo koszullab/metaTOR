@@ -22,6 +22,7 @@ import pytest
 import metator.io as mio
 import metator.log as mtl
 import metator.metacool as mtmc
+import metator.network as mtn
 from metator.version import __version__
 
 TESTS_DATA = Path(__file__).resolve().parents[1] / "tests_data"
@@ -583,6 +584,31 @@ def test_one_pairs_file_as_a_path(binning, tmp_path):
 # The metacool command.
 
 
+def test_is_map(binning, tmp_path):
+    """A map is an HDF5 file, or the URI of a map inside one (file::group),
+    whatever the name: a pairs file may have :: in its name, and a URI is
+    no map when its file is no HDF5 file (or no file)."""
+    metacool = tmp_path / "map.metacool"
+    mtmc.write_metacool(str(binning["pairs"]), str(binning["contig_data"]), str(metacool))
+    colons = shutil.copyfile(binning["pairs"], tmp_path / "lib::L1.pairs")
+    named = shutil.copyfile(metacool, tmp_path / "lib::L1.metacool")
+    assert [mtmc.is_map(path) for path in [metacool, named, f"{metacool}::/", f"{metacool}::entries/a"]] == [True] * 4
+    pairs = binning["pairs"]
+    others = [pairs, colons, f"{pairs}::/", tmp_path / "missing.metacool", f"{tmp_path}/missing::x", tmp_path]
+    assert [mtmc.is_map(path) for path in others] == [False] * 6
+
+
+def test_metacool_command_from_a_pairs_file_named_with_colons(metagenome, binning, tmp_path, run_cli):
+    """A pairs file whose name holds :: is a pairs file, not the URI of a
+    map inside a file: the map is written from its pairs."""
+    pairs = shutil.copyfile(binning["pairs"], tmp_path / "lib::L1.pairs")
+    out = tmp_path / "out.metacool"
+    run_cli("metacool", "-c", binning["contig_data"], "-b", binning["bin_summary"], "-o", out, pairs)
+    metacooler.validate(str(out), full=True)
+    assert map_pixels(out).sum() == len(metagenome.pairs)
+    assert "reassign" not in cooler.Cooler(str(out)).info["metadata"]
+
+
 def test_metacool_command(metagenome, binning, tmp_path, run_cli):
     pairs = metagenome.pairs
     half = len(pairs) // 2
@@ -1127,8 +1153,10 @@ def test_map_of_the_bins_replaces_the_columns_of_the_input_map(metagenome, binni
     metacooler.validate(str(out), full=True)
     assert assignment(out) == {name: (bin_name if bin_name != "ND" else "__unbinned__") for name, bin_name in final_bin.items()}
     assert list(genomes_without_qc(out).columns) == ["name", "length", "n_contigs", "n_bins", "Contamination"]
+    # metaTOR's columns last, in their order, after the column it does not
+    # write.
     contigs = metacooler.MetaCooler(str(out)).contigs
-    assert without_qc(contigs.columns) == ["name", "length", "genome_id", "GC_content", "Hit", "taxon", "Restriction_site"]
+    assert without_qc(contigs.columns) == ["name", "length", "genome_id", "taxon", "GC_content", "Hit", "Restriction_site"]
     # Read back from the file, as metacooler does: the float parser of
     # pandas 2 can differ from the in-memory value in the last place.
     measured = pd.read_csv(contig_data, sep="\t", index_col="Name").loc[contigs.name]
@@ -1137,6 +1165,47 @@ def test_map_of_the_bins_replaces_the_columns_of_the_input_map(metagenome, binni
     assert contigs.set_index("name").taxon.to_dict() == {
         name: f"t_{i % 3}" for i, name in enumerate(metagenome.truth.Name)
     }  # fmt: skip
+
+
+@pytest.mark.parametrize("earlier_bins", ["same", "other"])
+def test_map_of_the_bins_from_the_map_of_an_earlier_run(earlier_bins, metagenome, binning, tmp_path):
+    """From the map of an earlier run, which carries metaTOR's contig
+    columns: the map that write_metacool writes from the pairs, contigs table
+    included, metaTOR's columns last, as there. metacooler reassign stores
+    the columns that it carries before the QC columns when it groups the
+    contigs again (other bins): the contigs table is then that of the map
+    of the pairs, column for column. When it relabels them in place (the
+    same bins), it writes genome_id again, after the other columns, and the
+    QC columns stay where they were: the contigs table is that of the map
+    of the pairs but for the place of genome_id."""
+    earlier = tmp_path / "earlier.metacool"
+    if earlier_bins == "same":
+        shutil.copyfile(mtmc_map(binning, tmp_path), earlier)
+    else:
+        # The first two genomes in one bin.
+        final_bin = _bin_names(metagenome)
+        merged = {final_bin[genome.contigs[0].name] for genome in metagenome.genomes[:2]}
+        final_bin = {name: ("metator_00099_00000" if bin_name in merged else bin_name) for name, bin_name in final_bin.items()}
+        contig_data = write_contig_data(metagenome, tmp_path / "earlier.txt", final_bin)
+        mtmc.write_metacool(str(binning["pairs"]), str(contig_data), str(earlier))
+    out = tmp_path / "bins.metacool"
+    mtmc.reassign_metacool(str(earlier), str(binning["contig_data"]), str(out), bin_summary=str(binning["bin_summary"]))
+
+    metacooler.validate(str(out), full=True)
+    expected = mtmc_map(binning, tmp_path)
+    clr, ref = cooler.Cooler(str(out)), cooler.Cooler(str(expected))
+    for table in ["bins", "pixels"]:
+        pd.testing.assert_frame_equal(getattr(clr, table)()[:], getattr(ref, table)()[:])
+    chroms, ref_chroms = clr.chroms()[:], ref.chroms()[:]
+    assert list(ref_chroms.columns) == ["name", "length", "genome_id", *QC_CONTIG_COLUMNS, *CONTIG_COLUMNS]
+    if earlier_bins == "same":
+        assert list(chroms.columns) == ["name", "length", *QC_CONTIG_COLUMNS, "genome_id", *CONTIG_COLUMNS]
+        chroms = chroms[ref_chroms.columns]
+    pd.testing.assert_frame_equal(chroms, ref_chroms)
+    assert_contig_columns(out, binning["contig_data"])
+    # The genomes, QC block and columns included, carried over to the bins.
+    pd.testing.assert_frame_equal(metacooler.MetaCooler(str(out)).genomes, metacooler.MetaCooler(str(expected)).genomes)
+    assert clr.info["metadata"]["qc"] == ref.info["metadata"]["qc"]
 
 
 def test_map_of_the_bins_drops_the_columns_of_an_earlier_run(metagenome, binning, tmp_path):
@@ -1455,3 +1524,231 @@ def test_map_of_the_bins_refused(case, metagenome, metagenome_network, binning, 
     with pytest.raises(mtmc.MetacoolError, match=re.escape(REASSIGN_ERRORS[case])):
         mtmc.reassign_metacool(uri, str(contig_data), outfile, force=True)
     assert {path.name: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()} == before
+
+
+# The map of the contigs, in no bin yet, that a pipeline run builds from its
+# pairs files (write_contig_map), and the map of its bins written from it.
+
+
+def assembly_contig_data(inputs, measured=True):
+    """The contig data of the assembly of the mock community, as the
+    pipeline makes it: with its depth file and an enzyme (the shotgun
+    coverages and restriction sites measured), or neither."""
+    depth, enzyme = (str(inputs["depth"]), "DpnII") if measured else (None, None)
+    contig_data, _ = mtn.create_contig_data(str(inputs["assembly"]), 1, depth, enzyme)
+    return contig_data
+
+
+@pytest.mark.parametrize("measured", [True, False], ids=["depth and enzyme", "neither"])
+def test_map_of_the_contigs(measured, metagenome, metagenome_inputs, tmp_path):
+    """The map that a pipeline run builds from its pairs files: one bin per
+    contig, every contig in __unbinned__, the longest first, every pair a
+    contact, the QC block measured on the reads, and the contig columns
+    measured on the assembly as the contig data files of the run hold them
+    (Shotgun_coverage with a depth file, Restriction_site with an enzyme),
+    but Hit, which the network counts. Only the map is written: no P(s)
+    table next to it, no index next to the assembly, no table left in the
+    temporary directory."""
+    contig_data = assembly_contig_data(metagenome_inputs, measured)
+    inputs = sorted(metagenome_inputs["assembly"].parent.iterdir())
+    tmp_dir = tmp_path / "tmp"
+    tmp_dir.mkdir()
+    out = tmp_path / "out" / "metator.metacool"
+    mtmc.write_contig_map(
+        str(metagenome_inputs["pairs"]),
+        contig_data,
+        str(out),
+        assembly_name="synthetic",
+        metadata={"command": "metator pipeline"},
+        tmp_dir=str(tmp_dir),
+    )
+
+    metacooler.validate(str(out), full=True)
+    mc, clr = metacooler.MetaCooler(str(out)), cooler.Cooler(str(out))
+    assert list(mc.genomes.name) == ["__unbinned__"]
+    contigs = mc.contigs
+    truth = metagenome.truth
+    assert sorted(contigs.name) == sorted(truth.Name)
+    assert list(contigs.length) == sorted(contigs.length, reverse=True)
+    bins = clr.bins()[:]
+    assert list(bins.chrom.astype(str)) == list(contigs.name) and (bins.start == 0).all()
+    assert (bins.end.to_numpy() == truth.Length[contigs.name].to_numpy()).all()
+    assert map_pixels(out).to_dict() == expected_pixels(metagenome.pairs, list(contigs.name)).to_dict()
+    metadata = clr.info["metadata"]
+    assert metadata["qc"]["source"] == "pairs" and metadata["qc"]["n_pairs_read"] == len(metagenome.pairs)
+    assert metadata["metator"] == {"version": __version__, "command": "metator pipeline"}
+    assert clr.info["genome-assembly"] == "synthetic"
+    assert mc.info["ordering"] == "genome-then-length"
+    contig_data_file = tmp_path / "contig_data_network.txt"
+    mtn.write_contig_data(contig_data, str(contig_data_file))
+    columns = ["GC_content", "Shotgun_coverage", "Restriction_site"] if measured else ["GC_content"]
+    assert_contig_columns(out, contig_data_file, columns)
+    assert sorted(path.name for path in out.parent.iterdir()) == ["metator.metacool"]
+    assert sorted(metagenome_inputs["assembly"].parent.iterdir()) == inputs
+    # The table of the columns was written in tmp_dir, as the history of the
+    # map records it, and removed.
+    (annotated,) = metadata["annotate"]
+    assert Path(annotated["contigs_table"]).parent.parent == tmp_dir
+    assert list(tmp_dir.iterdir()) == []
+
+
+def final_contig_data(contig_data, pairs, final_bin, path):
+    """The contig_data_final.txt file of a run with this contig data, laid
+    out as validation writes it (an unnamed index first, Final_bin last):
+    its columns as write_contig_data writes them, the hits of each contig
+    counted on the pairs, as the network step counts them."""
+    hits = pd.concat([pairs.chr1, pairs.chr2]).value_counts()
+    for name, data in contig_data.items():
+        data["hit"] = int(hits.get(name, 0))
+    mtn.write_contig_data(contig_data, str(path))
+    table = pd.read_csv(path, sep="\t", dtype=str, keep_default_na=False)
+    table["Final_bin"] = table.Name.map(final_bin)
+    table.to_csv(path, sep="\t", index=True)
+    return path
+
+
+@pytest.mark.parametrize("final", ["bins", "no bin", "one bin", "longest first"])
+def test_map_of_the_bins_from_the_map_of_the_contigs(final, metagenome, metagenome_inputs, tmp_path):
+    """The map of the bins that reassign_metacool writes over the map of the
+    contigs, as a pipeline run does at its end, is the map that
+    write_metacool writes from the same pairs files and final tables: the
+    same bins, contacts, contigs table (metaTOR's columns last, as there),
+    genomes table (QC columns included) and QC block, but for its history
+    (the annotate and reassign keys of its metadata) and its date. When the
+    final bins leave the contigs in the order of the map of the contigs (for
+    example, no final bin, one bin holding every contig, or the longest
+    contigs in the first bin and the others in the second), metacooler
+    relabels them where they are, and writes genome_id again, after the QC
+    columns of the contigs."""
+    pairs = str(metagenome_inputs["pairs"])
+    contig_data = assembly_contig_data(metagenome_inputs)
+    out = tmp_path / "out"
+    outfile = out / "metator.metacool"
+    run = {"metadata": {"command": "metator pipeline"}}
+    mtmc.write_contig_map(pairs, contig_data, str(outfile), assembly_name="synthetic", **run)
+    final_bin = _bin_names(metagenome)
+    if final in ["no bin", "one bin"]:
+        final_bin = dict.fromkeys(final_bin, "ND" if final == "no bin" else "metator_00001_00000")
+    elif final == "longest first":
+        # The 20 first contigs of the map of the contigs, the longest, in
+        # the first bin, and the others in the second.
+        order = metacooler.MetaCooler(str(outfile)).contigs.name
+        final_bin = {name: f"metator_0000{1 + (i >= 20)}_00000" for i, name in enumerate(order)}
+    contig_data_file = final_contig_data(contig_data, metagenome.pairs, final_bin, out / "contig_data_final.txt")
+    tables = {"bin_summary": str(write_bin_summary(metagenome, out / "bin_summary.txt")), **run}
+    mtmc.reassign_metacool(str(outfile), str(contig_data_file), str(outfile), force=True, **tables)
+    expected = tmp_path / "pairs.metacool"
+    mtmc.write_metacool(pairs, str(contig_data_file), str(expected), assembly_name="synthetic", **tables)
+
+    metacooler.validate(str(outfile), full=True)
+    clr, ref = cooler.Cooler(str(outfile)), cooler.Cooler(str(expected))
+    for table in ["bins", "pixels"]:
+        pd.testing.assert_frame_equal(getattr(clr, table)()[:], getattr(ref, table)()[:])
+    chroms, ref_chroms = clr.chroms()[:], ref.chroms()[:]
+    columns = ["GC_content", "Hit", "Shotgun_coverage", "Restriction_site"]
+    assert list(ref_chroms.columns) == ["name", "length", "genome_id", *QC_CONTIG_COLUMNS, *columns]
+    if final != "bins":
+        assert list(chroms.columns) == ["name", "length", *QC_CONTIG_COLUMNS, "genome_id", *columns]
+        chroms = chroms[ref_chroms.columns]
+    pd.testing.assert_frame_equal(chroms, ref_chroms)
+    pd.testing.assert_frame_equal(metacooler.MetaCooler(str(outfile)).genomes, metacooler.MetaCooler(str(expected)).genomes)
+    info, ref_info = dict(clr.info), dict(ref.info)
+    metadata, ref_metadata = info.pop("metadata"), ref_info.pop("metadata")
+    assert metadata["qc"] == ref_metadata["qc"] and metadata["qc"]["source"] == "pairs"
+    assert {key for key in info.keys() | ref_info.keys() if info.get(key) != ref_info.get(key)} <= {"creation-date"}
+    assert {key for key in metadata.keys() | ref_metadata.keys() if metadata.get(key) != ref_metadata.get(key)} == {
+        "annotate",
+        "reassign",
+    }
+    # The history: the columns measured on the assembly, added to the map of
+    # the contigs, dropped from the map of the bins, then those of the
+    # contig data added again, last.
+    assert [entry["source"] for entry in metadata["reassign"]] == [str(outfile)]
+    assert [(entry["added"], entry["dropped"]) for entry in metadata["annotate"]] == [
+        (["contigs.GC_content", "contigs.Shotgun_coverage", "contigs.Restriction_site"], []),
+        ([], ["contigs.GC_content", "contigs.Shotgun_coverage", "contigs.Restriction_site"]),
+        ([f"contigs.{column}" for column in columns], []),
+    ]
+    assert sorted(path.name for path in out.iterdir()) == ["bin_summary.txt", "contig_data_final.txt", "metator.metacool"]
+
+
+def test_map_of_the_contigs_of_an_assembly_with_an_empty_contig(metagenome, metagenome_inputs, tmp_path, logged):
+    """An assembly that holds a contig of no length (an empty fasta record):
+    metacooler leaves it out of the map, and says so; the columns of the
+    other contigs are stored, without a warning about the row of the table
+    that names it."""
+    contig_data = assembly_contig_data(metagenome_inputs)
+    contig_data["empty"] = {"id": len(contig_data) + 1, "length": 0, "GC": 0.0, "hit": 0, "coverage": 0.0, "RS": 1}
+    out = tmp_path / "map.metacool"
+    mtmc.write_contig_map(str(metagenome_inputs["pairs"]), contig_data, str(out))
+
+    metacooler.validate(str(out), full=True)
+    contigs = metacooler.MetaCooler(str(out)).contigs
+    assert sorted(contigs.name) == sorted(metagenome.truth.Name)
+    assert contigs.GC_content.notna().all()
+    warnings = [message for level, message in logged() if level == "WARNING"]
+    assert warnings == ["Dropping 1 contig(s) with non-positive length: ['empty']"]
+
+
+CONTIG_MAP_ERRORS = {
+    "threads below 1": "The number of threads must be at least 1, got 0.",
+    "existing outfile": "map.metacool already exists. Use --force to overwrite it.",
+    "missing pairs file": "Input file(s) not found: missing.pairs.",
+    "contig name not ASCII": "A .metacool file needs ASCII contig names (cooler reads them as ASCII text), and 1 "
+    "contig name(s) are not: 'contig_é'.",
+}
+
+
+@pytest.mark.parametrize("case", list(CONTIG_MAP_ERRORS))
+def test_map_of_the_contigs_refused(case, metagenome_files, tmp_path, monkeypatch):
+    """Inputs that cannot give the map of the contigs: a MetacoolError,
+    before the pairs are read, and nothing written."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(metacooler, "from_pairs", lambda *args, **kwargs: pytest.fail("pairs read"))
+    contig_data = {"c1": {"length": 100, "GC": 40.5, "coverage": "-", "RS": "-"}}
+    pairs, kwargs = [str(metagenome_files["pairs"])], {}
+    if case == "threads below 1":
+        kwargs["threads"] = 0
+    elif case == "existing outfile":
+        Path("map.metacool").write_text("earlier")
+    elif case == "missing pairs file":
+        pairs.append("missing.pairs")
+    else:
+        contig_data["contig_é"] = contig_data["c1"]
+    before = {path.name: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()}
+    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(CONTIG_MAP_ERRORS[case])}$"):
+        mtmc.write_contig_map(pairs, contig_data, "map.metacool", **kwargs)
+    assert {path.name: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()} == before
+
+
+@pytest.mark.parametrize(
+    "failure, error",
+    [
+        ("map", ValueError("pixels out of order")),
+        ("columns", ValueError("bad table")),
+        ("columns", RuntimeError("unexpected")),
+        ("columns", KeyboardInterrupt()),
+    ],
+    ids=["map", "columns", "columns, unexpected", "columns, interrupted"],
+)
+def test_map_of_the_contigs_failure_leaves_nothing(failure, error, metagenome_inputs, tmp_path, monkeypatch, logged):
+    """When metacooler cannot write the map (its validation fails, here) or
+    store its contig columns, write_contig_map raises the reason (a
+    MetacoolError, or an error of another type as it is, an interruption
+    (Ctrl-C) included), and leaves neither the map nor metacooler's partial
+    file next to the outfile."""
+
+    def fail(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr("metacooler.io.create.validate" if failure == "map" else "metacooler.annotate", fail)
+    out = tmp_path / "out"
+    out.mkdir()
+    outfile = out / "metator.metacool"
+    raised = mtmc.MetacoolError if isinstance(error, ValueError) else type(error)
+    with pytest.raises(raised, match=f"^{re.escape(str(error))}$"):
+        mtmc.write_contig_map(str(metagenome_inputs["pairs"]), assembly_contig_data(metagenome_inputs), str(outfile))
+    assert list(out.iterdir()) == []
+    if failure == "map":
+        assert removed_partial(logged()) == str(outfile)
+    assert not [message for level, message in logged() if level == "ERROR"]
