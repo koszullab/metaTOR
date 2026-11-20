@@ -393,7 +393,7 @@ def read_metacool_contacts(metacool, contig_data, chunksize=METACOOL_CHUNKSIZE):
         not in the assembly or that have another length in it, or holds
         counts that are not integers.
     """
-    with mtmc._metacooler_logging():
+    with mtmc._metacooler_logging(), mtmc.unchanged_while_read(metacool):
         mc = mtmc.open_map(metacool)
         # Each pixel of the table is read: a map that also stores the lower
         # triangle would count the contacts between two bins twice.

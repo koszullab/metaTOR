@@ -16,7 +16,7 @@ metator --version
 | Several libraries | Comma-separated lists, in the same order in `--forward` and `--reverse`: `-1 L1_R1.fq.gz,L2_R1.fq.gz -2 L1_R2.fq.gz,L2_R2.fq.gz`. |
 | Several enzymes | Separated by commas: `DpnII,HinfI`. |
 | Pairs files | `qc`, `contactmap`, `metacool`, `scaffold` and `mge` take the pairs files of a run as arguments: `alignment_<i>_sorted.pairs.gz`, which `metator network` writes and `metator pipeline` keeps with `--no-clean-up`. `qc`, `contactmap` and `metacool` take one `.metacool` contact map in their place, for what a map gives; `mge` stores its MGE clusters in the map given with `--map`. |
-| `-F, --force` | Replace the outputs of an earlier run. Without it, a command refuses to overwrite them. |
+| `-F, --force` | Replace the outputs of an earlier run, in the output directory and at `--output-map`. Without it, a command refuses to overwrite them. A run from a map updates that map in place without it, and warns, before any work, of the clusters and clustering rounds that it replaces there: `--output-map` writes the map of the run to another file instead, and leaves the map as it was. |
 | `-T, --tmpdir` | Each run works in a directory of its own inside it, removed at the end, unless `--no-clean-up` or the run fails. In `scaffold`, `-T` is `--threshold`. |
 | `-N, --no-clean-up` | Keep the temporary files. In `qc`, it is `-n`. |
 | Log files | Each command writes its log, `metator_<command>_<date>.log`, into its output directory; `metacool`, `scaffold`, `pairs` and `mge`, into the current directory. |
@@ -72,7 +72,7 @@ the reads, alignments or pairs of `-1` (and `-2`, `--start`): one or the other.
 | `-t, --threads` | `1` | Threads for the alignment, the partition and miComplete. |
 | `-N, --no-clean-up` | off | Keep the temporary files, and the pairs files of the run, sorted, compressed and indexed in the output directory (`alignment_<i>_sorted.pairs.gz`). Without `-N`, nor `--scaffold`, which reads them so, the run writes them to its temporary directory as they are made, and removes them once its network is built. |
 | `--no-metacool` | off | Do not keep the contact map of the contigs, grouped by cluster: a run from reads, alignments or pairs still builds the map of its contigs from the pairs files (a map that cannot be built stops the run), reads its networks from it, and removes it at the end, with the maps of its libraries (`<prefix>.mmetacool`) when it has several; a run from a map leaves that map as it was. |
-| `--output-map` | none | Write the contact map of the clusters to this file (replaced only with `-F`). By default, a run from a `.metacool` map updates that map in place, and any other run writes `<outdir>/<prefix>.metacool` (`metator.metacool` without `--prefix`). |
+| `--output-map` | none | Write the contact map of the clusters to this file (replaced only with `-F`), a `.metacool` file, not a `.mmetacool` collection. A run from reads, alignments or pairs writes the maps of its libraries next to it, `<name>.mmetacool`, with several, and removes an earlier run's there with one: replaced only with `-F` too. By default, a run from a `.metacool` map updates that map in place, and any other run writes `<outdir>/<prefix>.metacool` (`metator.metacool` without `--prefix`). |
 
 The validation is the step that needs the most memory: miComplete runs
 prodigal and hmmer on every cluster.
@@ -243,7 +243,7 @@ a run that started from a contact map, that `.metacool` map.
 |---|---|---|
 | `-c, --contig-data` | *required* | `contig_data_final.txt`: the contigs, their final clusters, and what metaTOR measured on them. |
 | `-b, --bin-summary` | none | `cluster_summary.txt`, whose columns are added to the genomes table. |
-| `-o, --outfile` | *required* | The `.metacool` file to write. |
+| `-o, --outfile` | *required* | The `.metacool` file to write: a file, not a group inside one (a path that holds `::`, which metacooler reads as `file::group`, is refused). |
 | `-n, --assembly-name` | none | The name of the assembly, stored in the file. Refused for a map written from a map, which keeps its own. |
 | `-t, --threads` | `1` | Threads binning the pairs. |
 | `-F, --force` | off | Replace the output file. |

@@ -27,9 +27,16 @@ All notable changes to this project will be documented in this file.
   stores both in its `/clusters` group (metacooler 0.4.0), so that the
   intermediate clusters are kept without being written into its genomes
   and contigs tables, which hold the final ones. `metator metacool` stores
-  none. Python API: `metator.clusters`.
+  none. Python API: `metator.clusters`, and `rounds` of
+  `metator.metacool.reassign_metacool`, which stores them (without them,
+  the map keeps none).
 - `pipeline --output-map FILE` writes the map of the clusters to FILE
-  (replaced only with `-F`).
+  (replaced only with `-F`). A run from reads, alignments or pairs writes
+  the maps of its libraries next to FILE, `<name>.mmetacool`, with several
+  (and removes an earlier run's there, with one): one that is there is
+  refused without `-F` too, before any work. A FILE named `.mmetacool`,
+  where the maps of the libraries would be written over the map, is
+  refused.
 - `network` and `pipeline` start from a `.metacool` contact map, their
   first argument (`metator pipeline MAP -a ASSEMBLY`: a file, or an entry
   `file.mmetacool::entries/<name>`), at any bin size, in place of `-1`,
@@ -161,8 +168,8 @@ All notable changes to this project will be documented in this file.
   `metator.metacool.write_round`, `metator.clusters.mge_round`.
 
 ### Changed
-- metaTOR calls its groups of contigs clusters, as its contact map does: the
-  bins are those of the map. The outputs of a run are renamed:
+- **Breaking:** metaTOR calls its groups of contigs clusters, as its contact
+  map does: the bins are those of the map. The outputs of a run are renamed:
   `bin_summary.txt` is `cluster_summary.txt`; `overlapping_bin/` and
   `recursive_bin/` are `overlapping_clusters/` and `recursive_clusters/`;
   `final_bin/` (`validation`) and `final_bin_unscaffold/` (`pipeline`) are
@@ -199,7 +206,8 @@ All notable changes to this project will be documented in this file.
   large as its pairs, are removed once its pairs are written, where they
   stayed in the temporary directory until the end of the run (`-N` keeps
   them, in `pipeline` and `network`). The map and the network are those
-  of the sorted pairs.
+  of the sorted pairs. Python API: `metator.align.get_contact_pairs` takes
+  `sort_pairs` and `keep_temp` (by default, it removes those tables).
 - `qc` logs the pairs within contigs, within MAGs and between MAGs that
   its noise contact ratio and noise score are computed from, from the
   pairs files as from a map.
@@ -223,7 +231,7 @@ All notable changes to this project will be documented in this file.
   `normalize_scn`, `plot_heatmap`; `plot_figures` and
   `metator.validation.recursive_decontamination` take the map
   (`metacool`).
-- **Breaking:** a `pipeline` run from a `.metacool` map updates that map
+- A `pipeline` run from a `.metacool` map updates that map
   in place, where it wrote a new map at `<outdir>/<prefix>.metacool`: the
   map of the clusters is written next to it, validated in full, then
   renamed over it (a symbolic link is replaced, not its target), so a run
@@ -236,10 +244,26 @@ All notable changes to this project will be documented in this file.
   locks the map it writes too. So the directory of the map must be
   writable, and a map whose directory is not is refused before any work:
   write it elsewhere with `--output-map`. A map updated in place keeps its
-  mode. SIGTERM (a job scheduler's time limit) stops a run as
-  Ctrl-C does, so it cleans up after itself. `--output-map` refuses,
-  before any work: `--no-metacool`, which writes no map; an entry of a
-  collection, a directory, and the collection of an input entry.
+  mode. A run that updates a map in place (`pipeline MAP`, `partition
+  MAP`, `validation MAP`, `mge --map`) warns, before any work, of the
+  clusters and the clustering rounds of an earlier run (or of another
+  binner) that it replaces there, of which the map keeps no record.
+  SIGTERM (a job scheduler's time limit) stops a run as Ctrl-C does: it
+  removes its lock and the files of the map it was writing next to the
+  map, and ends miComplete, which runs in a process group of its own,
+  with the processes it started; its temporary directory stays, as after
+  any failure. A SIGTERM or a Ctrl-C that Python would drop, as a pool of
+  processes starts or ends, kills the run at once, which leaves the map
+  as it was. `--output-map` refuses, before any work: `--no-metacool`,
+  which writes no map; an entry of a collection, a `.mmetacool` file, a
+  directory, and the collection of an input entry. Only the runs that
+  write a map take its lock: a read of a map (`network MAP`, `qc MAP`,
+  `contactmap MAP`, the heatmap, the input map of a run with
+  `--output-map`) stops with an error when another run replaces it, or
+  writes it, as it reads it: metacooler reads a map one chunk of pixels at
+  a time, and such a read mixed the bins of one map with the pixels of
+  the other, which gave wrong contacts. Python API:
+  `metator.metacool.unchanged_while_read`.
 - The map of the clusters of a run, and the map of `metator metacool`, are
   written through a fresh file: the edits that make it (metacooler's
   relabelling, `annotate`, the clustering rounds) left the space of what
@@ -372,6 +396,16 @@ All notable changes to this project will be documented in this file.
   curated bins with miComplete, through the Python API, instead.
 
 ### Fixed
+- The commands that write a map refuse an output path that holds `::`,
+  which metacooler reads as `file::group`: `metator metacool -o
+  'X.metacool::sub'`, without `-F`, wrote the map into a group of
+  `X.metacool`, failed, and destroyed the map that `X.metacool` held (a
+  partial group was all that was left of it), as `-o 'X.metacool::/' -F`
+  did. A map given as
+  `file::/`, the root of the file, is the file itself, and a map whose
+  file name holds `::` is refused, as metacooler would read a group of
+  it; so is a `::` in the `-o` or `--prefix` of a `pipeline` run, which
+  names its map.
 - `validation -F` refuses clusters to validate (`--fasta`) in a directory
   that `-F` removes (`final_clusters/`, or a directory of 1.x such as
   `final_bin/`), before it removes anything. It removed them, then failed.

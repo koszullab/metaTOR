@@ -134,7 +134,7 @@ The output files will be in the ouput directory given as parmater or in working 
 | - | :-: | :-: | :-: | :-: | :-: |
 | alignment_N_for.bam |Bam file of the forward alignment |X|||X|
 | alignment_N_rev.bam |Bam file of the reverse alignment|X|||X|
-| alignment_N.pairs.pgz |Pairs of the merge alignment|X|||X|
+| alignment_N_sorted.pairs.gz |Pairs of the merged alignment, sorted and indexed (`pipeline`: with `-N` only)|X|||X|
 | network.txt |Normalized network of the metaHiC library|X|||X|
 | contig_data_network.txt |Information on contigs after network step|X||||
 | clustering_matrix_partition.txt |Matrix of clustering from the partition iterations||X|||
@@ -145,6 +145,8 @@ The output files will be in the ouput directory given as parmater or in working 
 | clustering_matrix.txt |Matrix of clustering from the partition and recursive iterations||||X|
 | contig_data_final.txt |Information on contigs after whole pipeline|||X|X|
 | **cluster_summary.txt** |**Information on the final clusters**|||**X**|**X**|
+| clusters.txt |Every cluster of every round (overlapping, recursive, final), with its parent and miComplete's columns|||X|X|
+| cluster_members.txt |The contigs of each cluster of `clusters.txt`|||X|X|
 | binning.txt |File with contigs names and their final clustering|||X|X|
 | overlapping_clusters |Directory with the fasta of the partition clusters||X|X|X|
 | recursive_clusters |Directory with the fasta of the recursive clusters|||X|X|
@@ -400,16 +402,28 @@ with the reason, and the map is left as it was, as it is when the run stops for
 any other reason (Ctrl-C included). A symbolic link is replaced, not its target
 (an input map stored elsewhere, for example). A run from an entry of a
 `.mmetacool` collection needs `--output-map`, and a FILE that exists is
-replaced only with `-F`. While a run writes a map, `<map>.lock` holds it: a
+replaced only with `-F`. A run that updates a map in place warns, before any
+work, of the clusters and the clustering rounds of an earlier run (or of
+another binner) that it replaces there: `--output-map` keeps them, as it
+leaves the map as it was. While a run writes a map, `<map>.lock` holds it: a
 second run that would write the same map stops before any work, naming the run
 that holds it (a lock that a run left behind on the same host when it died is
-removed, with a warning). A run stopped by Ctrl-C or SIGTERM (a job scheduler's
-time limit) cleans up after itself; one killed outright (`kill -9`) can leave
-its lock, and the files of the map it was writing next to the map, which can be
-deleted: `.<map>.<random>.tmp` or `.<map>.<random>.tmp.<random>.fresh`, and
-those that metacooler and cooler write while it is written
-(`.<map>.<random>.tmp.partial`, `.<map>.<random>.tmp.partial.__writing__`,
-`tmp<random>.multi.cool`). The map is left as it was.
+removed, with a warning). Only the runs that write a map take its lock: a
+command that reads a map (`network MAP`, `qc MAP`, `contactmap MAP`, the input
+map of a run with `--output-map`) stops with an error when another run
+replaces it as it reads it, rather than mix the two maps; run it again once
+that run has ended. A run stopped by Ctrl-C or SIGTERM (a job scheduler's time
+limit) removes its lock and the files of the map it was writing next to the
+map, and ends miComplete if it runs; its temporary directory, and the working
+directory of miComplete in the output directory, stay, as after any failure.
+One killed outright (`kill -9`), or stopped where Python cannot stop it
+cleanly (as a pool of processes starts or ends: it then dies of the signal at
+once), can leave its lock, and the files of the map it was writing next to the
+map, which can be deleted: `.<map>.<random>.tmp` or
+`.<map>.<random>.tmp.<random>.fresh`, and those that metacooler and cooler
+write while it is written (`.<map>.<random>.tmp.partial`,
+`.<map>.<random>.tmp.partial.__writing__`, `tmp<random>.multi.cool`). The map
+is left as it was.
 
 #### Step by step on a contact map
 

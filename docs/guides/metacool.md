@@ -240,16 +240,35 @@ the input map is left as it was, as it is when the run stops for any other
 reason (Ctrl-C included). A symbolic link is replaced, not its target.
 `--output-map FILE` leaves the input map as it was: a run from an entry of a
 `.mmetacool` collection needs it, as a run does not update a collection in
-place, and a FILE that exists is replaced only with `-F`.
+place, and a FILE that exists is replaced only with `-F`. A run that updates a
+map in place warns, before any work, of what it replaces there that an earlier
+run left (or another binner): the clusters of the map (`pipeline MAP`,
+`validation MAP`) and its clustering rounds (the rounds of the binning for
+`pipeline MAP` and `partition MAP`, those of the validation for `validation
+MAP`, the round `mge` for `mge --map`). The map keeps no record of them:
+`--output-map` writes the map of the run to another file instead.
 
 While a run writes a map, a lock file next to it (`<map>.lock`) holds it: a
 second run that would write the same map stops before any work, naming the run
 that holds it. A lock that a run left behind on the same host when it died is
 removed, with a warning; one from another host is not: remove it once that
-run is over. A run stopped by Ctrl-C or SIGTERM (a job scheduler's time limit,
-or a cancelled job) cleans up after itself. A run killed outright (`kill -9`,
-or a machine that goes down) cleans nothing up: besides its lock, it can leave
-the files of the map it was writing next to the map, which can be deleted:
+run is over. Only the runs that write a map take its lock: a command that reads
+a map (`network MAP`, `qc MAP`, `contactmap MAP`, the heatmap, the input map
+of a run with `--output-map`) stops with an error when another run replaces it,
+or writes it, as it reads it. metacooler opens the map for each chunk of
+pixels that it reads, and a map updated in place has its bins in another
+order: such a read mixed the two maps, and gave wrong contacts. Run it again
+once the other run has ended.
+
+A run stopped by Ctrl-C or SIGTERM (a job scheduler's time limit, or a
+cancelled job) removes its lock and the files of the map it was writing next
+to the map, and ends miComplete, with the processes that it started, if it
+runs; its temporary directory, and the working directory of miComplete in the
+output directory, stay, as after any failure. A run killed outright (`kill
+-9`, or a machine that goes down) cleans nothing up, nor does one stopped
+where Python cannot stop it cleanly (as a pool of processes starts or ends: it
+then dies of the signal at once): besides its lock, it can leave the files of
+the map it was writing next to the map, which can be deleted:
 `.<map>.<random>.tmp` or `.<map>.<random>.tmp.<random>.fresh`, and those that
 metacooler and cooler write while it is written
 (`.<map>.<random>.tmp.partial`, `.<map>.<random>.tmp.partial.__writing__`,

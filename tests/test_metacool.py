@@ -3,6 +3,7 @@
 # binned by genome and its MGE contigs left unbinned.
 
 import bz2
+import contextlib
 import gzip
 import logging
 import lzma
@@ -1406,6 +1407,167 @@ def test_input_map_kept_when_the_map_of_the_bins_fails(how, failure, metagenome,
         # The temporary file of the map, next to the outfile.
         staged = removed_partial(messages)
         assert Path(staged).parent == out and Path(staged).name.startswith(".metator.metacool.")
+
+
+def _replaced_while_read(monkeypatch, path, by):
+    """Have the map at path replaced by the map by, as a run that updates a
+    map in place replaces it (os.replace): once the first chunk of its
+    pixels is read (MetaCooler.iter_pixels), or once metacooler extract or
+    reassign has read it."""
+
+    def replace():
+        copy = f"{path}.copy"
+        shutil.copyfile(by, copy)
+        os.replace(copy, path)
+
+    iter_pixels = metacooler.MetaCooler.iter_pixels
+
+    def read_then_replace(self, *args, **kwargs):
+        chunks = iter_pixels(self, *args, **kwargs)
+        yield next(chunks)
+        replace()
+        yield from chunks
+
+    def then_replace(read):
+        def replaced(*args, **kwargs):
+            written = read(*args, **kwargs)
+            replace()
+            return written
+
+        return replaced
+
+    monkeypatch.setattr(metacooler.MetaCooler, "iter_pixels", read_then_replace)
+    for name in ["extract", "reassign"]:
+        monkeypatch.setattr(metacooler, name, then_replace(getattr(metacooler, name)))
+
+
+def _map_and_its_clusters(metagenome, binning, tmp_path):
+    """A map of the contigs, in the order of the assembly, and the map of
+    its clusters, whose bins are grouped by cluster: another order."""
+    unbinned = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
+    clusters = tmp_path / "clusters.metacool"
+    mtmc.reassign_metacool(str(unbinned), str(binning["contig_data"]), str(clusters), bin_summary=str(binning["bin_summary"]))
+    return unbinned, clusters
+
+
+@pytest.mark.parametrize(
+    "reader", ["contig_contacts", "read_metacool_contacts", "build_matrix_map", "extract_contigs", "reassign_metacool"]
+)
+def test_a_map_replaced_while_read_is_refused(reader, metagenome, metagenome_files, binning, tmp_path, monkeypatch):
+    """A map replaced while it is read, as a run that updates it in place
+    replaces it (here by the map of its clusters), is refused, and what was
+    written from the read removed: the contact map of metator contactmap;
+    the map that a run writes to --output-map is not written, the file
+    there left as it was. metacooler opens the file of a map for each chunk
+    of pixels that it reads: these reads (qc MAP, network MAP, the heatmap,
+    contactmap MAP, a run from a map that writes --output-map) mixed the
+    bins of one map with the pixels of the other, silently (see
+    test_a_read_that_spans_a_replacement_mixes_two_maps)."""
+    import metator.figures as mtf
+
+    unbinned, clusters = _map_and_its_clusters(metagenome, binning, tmp_path)
+    truth = metagenome.truth
+    lengths = dict(zip(truth.Name, truth.Length.astype(int), strict=True))
+    output = tmp_path / "output"
+    output.write_text("an earlier output")
+    if reader == "read_metacool_contacts":
+        # pyfastx indexes the assembly: a private copy.
+        assembly = shutil.copyfile(metagenome_files["assembly"], tmp_path / "assembly.fa")
+        contig_data, _ = mtn.create_contig_data(str(assembly))
+    contigs_data = pd.read_csv(binning["contig_data"], sep="\t", index_col=0)
+    clustered = contigs_data[contigs_data.Final_cluster != "ND"]
+    bin_summary = {name: {"Length": int(size)} for name, size in clustered.groupby("Final_cluster").Size.sum().items()}
+    reads = {
+        "contig_contacts": lambda: mtmc.contig_contacts(str(unbinned), lengths, "the contig data", "contigs", chunksize=100),
+        "read_metacool_contacts": lambda: mtn.read_metacool_contacts(str(unbinned), contig_data, chunksize=100),
+        "build_matrix_map": lambda: mtf.build_matrix_map(str(unbinned), contigs_data, bin_summary, 20_000, chunksize=100),
+        "extract_contigs": lambda: mtmc.extract_contigs(str(unbinned), list(lengths)[:10], str(output)),
+        "reassign_metacool": lambda: mtmc.reassign_metacool(
+            str(unbinned), str(binning["contig_data"]), str(output), bin_summary=str(binning["bin_summary"]), force=True
+        ),
+    }
+    _replaced_while_read(monkeypatch, unbinned, clusters)
+    message = (
+        f"{unbinned} was replaced or written while it was read, by a run that updated it: what was read of it would "
+        "mix two maps. Read it again once that run has ended."
+    )
+    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
+        reads[reader]()
+    assert unbinned.read_bytes() == clusters.read_bytes()
+    if reader == "extract_contigs":
+        assert not output.exists()
+    else:
+        assert output.read_text() == "an earlier output"
+    assert sorted(path.name for path in tmp_path.iterdir() if path.name.startswith(".")) == []
+
+
+def test_a_read_that_fails_on_a_replaced_map_says_why(metagenome, binning, tmp_path, monkeypatch):
+    """A read that fails because the map was replaced meanwhile (here by a
+    file that is no map, which cannot be read on) says that the map was
+    replaced, from the error of the read, which alone named no cause."""
+    unbinned = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
+    not_a_map = tmp_path / "not_a_map.txt"
+    not_a_map.write_text("no map")
+    truth = metagenome.truth
+    lengths = dict(zip(truth.Name, truth.Length.astype(int), strict=True))
+    _replaced_while_read(monkeypatch, unbinned, not_a_map)
+    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(str(unbinned))} was replaced or written") as raised:
+        mtmc.contig_contacts(str(unbinned), lengths, "the contig data", "contigs", chunksize=100)
+    assert isinstance(raised.value.__cause__, OSError)
+
+
+def test_a_read_that_spans_a_replacement_mixes_two_maps(metagenome, binning, tmp_path, monkeypatch):
+    """A guard of the premise of test_a_map_replaced_while_read_is_refused
+    (it passes without the change): without the check, the contacts read
+    from a map replaced by the map of its clusters as it is read are those
+    of neither map."""
+    unbinned, clusters = _map_and_its_clusters(metagenome, binning, tmp_path)
+    truth = metagenome.truth
+    lengths = dict(zip(truth.Name, truth.Length.astype(int), strict=True))
+
+    def read(path):
+        """The contacts of the map at path, by pair of contigs, whatever
+        their order in the map."""
+        contacts = mtmc.contig_contacts(str(path), lengths, "the contig data", "contigs", chunksize=100)
+        pairs = zip(contacts.contig1, contacts.contig2, contacts["count"], strict=True)
+        return {tuple(sorted((first, second))): int(count) for first, second, count in pairs}
+
+    expected = read(unbinned)
+    assert read(clusters) == expected
+    monkeypatch.setattr(mtmc, "unchanged_while_read", lambda metacool, outputs=(): contextlib.nullcontext(), raising=False)
+    _replaced_while_read(monkeypatch, unbinned, clusters)
+    assert read(unbinned) != expected
+
+
+def _stopped_as_cooler_writes(uri, table, output, **kwargs):
+    """metacooler.reassign stopped by a Ctrl-C (or the SIGTERM of a run) as
+    cooler writes the map: cooler builds its writer out of the with that
+    would remove its file on a failure, and metacooler leaves its partial
+    file too."""
+    Path(f"{output}.partial").write_text("metacooler's partial file")
+    Path(f"{output}.partial.__writing__").write_text("cooler's file")
+    raise KeyboardInterrupt
+
+
+def test_a_stop_as_cooler_writes_leaves_no_file(metagenome, binning, tmp_path, monkeypatch):
+    """A Ctrl-C or a SIGTERM that stops cooler as it writes the map of the
+    clusters leaves the input map (the outfile) as it was, and no file of
+    the run next to it: cooler's (<staged>.partial.__writing__) stayed
+    there. The files of another run (another temporary file) are left."""
+    out = tmp_path / "out"
+    out.mkdir()
+    outfile = unbinned_map(out / "metator.metacool", metagenome, binning["pairs"])
+    before = outfile.read_bytes()
+    others = [out / ".metator.metacool.another.tmp", out / ".metator.metacool.another.tmp.partial.__writing__"]
+    for path in others:
+        path.write_text("another run's")
+    monkeypatch.setattr(metacooler, "reassign", _stopped_as_cooler_writes)
+    with pytest.raises(KeyboardInterrupt):
+        mtmc.reassign_metacool(
+            str(outfile), str(binning["contig_data"]), str(outfile), bin_summary=str(binning["bin_summary"]), force=True
+        )
+    assert outfile.read_bytes() == before
+    assert sorted(path.name for path in out.iterdir()) == sorted(["metator.metacool", *(path.name for path in others)])
 
 
 def _fail_unexpectedly(path, full=True):

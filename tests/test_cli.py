@@ -866,7 +866,8 @@ def test_pipeline_pairs_files_metacooler_reads(name, codec, stub_pipeline, tmp_p
     first bytes, as metaTOR does (a gzip file without .gz, a plain file
     named .gz were refused, as metacooler went by the name). zstd and lz4,
     which metacooler reads but not metaTOR, go on too without --scaffold.
-    A missing file is left to the map, which stops on it."""
+    A missing file is left to the map, which stops on it. zstd without .zst
+    is a guard: it went on before too."""
     pairs = _write_pairs(tmp_path / name, codec) if codec else tmp_path / name
     run_cli("pipeline", "-1", pairs, "-a", _assembly(tmp_path), "-S", "pair", "-o", tmp_path / "out", "-T", tmp_path / "tmp")
     assert stub_pipeline["write_contig_map"][0] == [str(pairs)]
@@ -926,13 +927,25 @@ def test_pipeline_reads_pairs_files_concatenated(stub_pipeline, tmp_path, monkey
     assert cooler.Cooler(str(out / "metator.metacool")).pixels()[:]["count"].sum() == 4
 
 
+# What the run says that metacooler needs of the pairs files given to it
+# (metator.cli.PAIRS_FILES_NEEDS), as it says it.
+NEEDS_OF_PAIRS_FILES = (
+    "metacooler, which builds it, needs the same number of fields on every row of each pairs file given to -1 (its "
+    "header lines, which start with #, may come anywhere, as in pairs files of one assembly concatenated into one "
+    "library), plain or compressed with gzip, bzip2 or, without --scaffold, zstd or lz4. Give the pairs files of "
+    "several libraries comma-separated, one file per library."
+)
+
+
 @pytest.mark.parametrize("libraries", [1, 2])
 def test_pipeline_says_what_metacooler_needs_of_pairs_files(libraries, stub_pipeline, tmp_path, monkeypatch, run_cli):
     """From pairs, pairs files that metacooler cannot read stop the run on
     the map of the contigs, with the reason that metacooler gives (its CSV
     reader, pyarrow, stops on a row with one more field) and what it needs
     of them, in the log file of the run: with several libraries too, whose
-    error also names the library."""
+    error also names the library. What it needs is written out here
+    (NEEDS_OF_PAIRS_FILES): compared with the constant of metaTOR that says
+    it, the log pinned no wording."""
     monkeypatch.setattr("metator.metacool.write_contig_map", mtmc_write_contig_map)
     monkeypatch.setattr("metator.metacool.write_library_maps", mtmc_write_library_maps)
     _contig_data(monkeypatch, {"c1": (100, 40.5), "c2": (50, 35.0)})
@@ -953,7 +966,7 @@ def test_pipeline_says_what_metacooler_needs_of_pairs_files(libraries, stub_pipe
     (log,) = out.glob("metator_pipeline_*.log")
     reason = str(raised.value).rstrip(".")
     built = f"ERROR :: The contact map of the contigs cannot be built at {out / 'metator.metacool'}"
-    assert f"{built}: {reason}. {mtcli.PAIRS_FILES_NEEDS}\n" in log.read_text()
+    assert f"{built}: {reason}. {NEEDS_OF_PAIRS_FILES}\n" in log.read_text()
     assert not list(out.glob("*.metacool*"))
 
 
@@ -978,7 +991,7 @@ def test_pipeline_says_what_metacooler_needs_only_of_given_pairs(start, cause, s
         run_cli("pipeline", *inputs, "-a", _assembly(tmp_path), "-S", start, "-o", out, "-T", tmp_path / "tmp")
     (log,) = out.glob("metator_pipeline_*.log")
     (error,) = [line.split("ERROR :: ", 1)[1] for line in log.read_text().splitlines() if "ERROR :: " in line]
-    assert error.endswith(mtcli.PAIRS_FILES_NEEDS) == (start == "pair" and cause == "pyarrow")
+    assert error.endswith(NEEDS_OF_PAIRS_FILES) == (start == "pair" and cause == "pyarrow")
     assert error.startswith(f"The contact map of the contigs cannot be built at {out / 'metator.metacool'}: ")
 
 
@@ -1839,6 +1852,99 @@ def test_pipeline_from_a_map_without_rounds_drops_those_it_held(stub_pipeline, t
     assert metacooler.MetaCooler(str(metacool)).cluster_rounds == []
 
 
+def _map_of_an_earlier_run(path):
+    """A map of the contigs c1 and c2 of _contig_map as an earlier run left
+    it: c1 in the cluster earlier_00001, c2 in __unbinned__, and the
+    clustering rounds overlapping (made by partition), final (by
+    validation) and mge (by mge)."""
+    import metacooler
+    import pandas as pd
+
+    pairs = path.with_suffix(".pairs")
+    pairs.write_text("## pairs format v1.0\nr1\tc1\t10\tc2\t20\t+\t-\nr2\tc1\t10\tc1\t90\t+\t-\n")
+    bins = pd.DataFrame({"chrom": ["c1", "c2"], "start": 0, "end": [100, 50]})
+    assignment = {"c1": "earlier_00001", "c2": "ND"}
+    metacooler.from_pairs(str(path), pairs=str(pairs), bins=bins, contig_genome_map=assignment, ps=False)
+    pairs.unlink()
+    rounds = [("overlapping", "partition", "c1"), ("final", "validation", "c1"), ("mge", "mge", "c2")]
+    metacooler.write_clusters(
+        str(path),
+        [{"name": name, "tool": "metaTOR", "step": step} for name, step, _ in rounds],
+        pd.DataFrame({"round": [name for name, _, _ in rounds], "name": ["o1", "earlier_00001", "m1"]}),
+        pd.DataFrame(
+            {
+                "round": [name for name, _, _ in rounds],
+                "cluster": ["o1", "earlier_00001", "m1"],
+                "contig": [c for *_, c in rounds],
+            }
+        ),
+    )
+    return path
+
+
+@pytest.mark.parametrize(
+    "command, replaced",
+    [
+        ("pipeline", "1 cluster(s) and the clustering round(s) overlapping, final"),
+        ("partition", "the clustering round(s) overlapping, final"),
+        ("validation", "1 cluster(s) and the clustering round(s) final"),
+        ("mge", "the clustering round(s) mge"),
+    ],
+)
+def test_warn_of_what_a_run_replaces_in_a_map(command, replaced, tmp_path, logged):
+    """What a run that updates a map in place replaces there, of an earlier
+    run (or another binner): pipeline MAP its clusters and its rounds of
+    the binning; partition MAP its rounds of the binning; validation MAP its
+    clusters and its rounds of validation, as partition MAP, step by step,
+    stores the round overlapping just before; mge --map its round mge. A map
+    of no earlier run gives no warning."""
+    metacool = _map_of_an_earlier_run(tmp_path / "input.metacool")
+    mtcli.warn_of_what_is_replaced(command, str(metacool))
+    mtcli.warn_of_what_is_replaced(command, str(_contig_map(tmp_path / "fresh.metacool")))
+    message = (
+        f"{metacool} holds {replaced}, which this run replaces, in place: give --output-map to write the map of this "
+        f"run to another file, and leave {metacool} as it is."
+    )
+    assert [record for record in logged() if record[0] == "WARNING"] == [("WARNING", message)]
+
+
+@pytest.mark.parametrize("output", ["in place", "--output-map"])
+def test_pipeline_from_a_map_warns_of_what_it_replaces(output, stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """pipeline MAP, in place, warns before any work that it replaces the
+    clusters and the rounds that an earlier run left in the map: it
+    replaced them without a word, and without -F (the map keeps no trace of
+    them). With --output-map, which leaves the map as it was, it does not:
+    a guard, as it gave no warning before either."""
+    monkeypatch.setattr("metator.metacool.reassign_metacool", mtmc_reassign_metacool)
+    _final_tables(monkeypatch, "c1")
+    metacool = _map_of_an_earlier_run(tmp_path / "input.metacool")
+    options = ["--output-map", tmp_path / "copy.metacool"] if output == "--output-map" else []
+    run_cli("pipeline", *_map_run(metacool, tmp_path, *options))
+    (log,) = (tmp_path / "out").glob("metator_pipeline_*.log")
+    replaced = (
+        f"WARNING :: {metacool} holds 1 cluster(s) and the clustering round(s) overlapping, final, which this run "
+        f"replaces, in place: give --output-map to write the map of this run to another file, and leave {metacool} "
+        "as it is."
+    )
+    assert (replaced in log.read_text()) == (output == "in place")
+
+
+@pytest.mark.parametrize("command", ["partition", "validation", "mge"])
+def test_a_step_warns_of_what_it_replaces_in_place(command, tmp_path, logged):
+    """partition MAP, validation MAP and mge --map MAP warn, as they take the
+    lock of the map, of what they replace in it in place (see
+    warn_of_what_is_replaced); with --output-map, they do not."""
+    from contextlib import ExitStack
+
+    metacool = _map_of_an_earlier_run(tmp_path / "input.metacool")
+    option = "--map" if command == "mge" else None
+    for output_map in [str(tmp_path / "copy.metacool"), None]:
+        with ExitStack() as held:
+            mtcli.step_map(command, str(metacool), output_map, False, held, option=option)
+        warned = [message for level, message in logged() if level == "WARNING"]
+        assert len(warned) == (output_map is None) and all(message.startswith(f"{metacool} holds ") for message in warned)
+
+
 def test_pipeline_from_a_map_to_an_existing_output_map(stub_pipeline, tmp_path, monkeypatch, run_cli):
     """--output-map replaces a file only with -F: refused before any work,
     else the map of the clusters replaces it, the input map left as it was."""
@@ -2061,12 +2167,15 @@ def test_a_stale_lock_taken_by_a_third_run(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize(
     "case",
-    ["missing map", "no map written", "an entry", "a directory", "the collection of the input"],
+    ["missing map", "no map written", "an entry", "a collection", "a directory", "the collection of the input"],
 )
 def test_pipeline_output_map_refusals(case, stub_pipeline, tmp_path, run_cli):
     """What --output-map cannot be, and an input map that is not there, are
     refused before any work (they failed at the end of the run, or on a
-    bare error while locking)."""
+    bare error while locking). A map named as a .mmetacool collection is
+    refused too: with several libraries, the collection of their maps
+    would be the map itself (see
+    test_pipeline_output_map_and_the_maps_of_its_libraries)."""
     metacool = _contig_map(tmp_path / "input.metacool")
     options, given = [], metacool
     if case == "missing map":
@@ -2080,6 +2189,10 @@ def test_pipeline_output_map_refusals(case, stub_pipeline, tmp_path, run_cli):
         output = f"{tmp_path / 'maps.mmetacool'}::entries/rep2"
         options = ["--output-map", output]
         message = f"--output-map takes the path of a .metacool file, not an entry of a collection: {output}."
+    elif case == "a collection":
+        output = tmp_path / "copy.mmetacool"
+        options = ["--output-map", output]
+        message = f"--output-map takes the path of a .metacool file, not of a .mmetacool collection: {output}."
     elif case == "a directory":
         output = tmp_path / "maps"
         output.mkdir()
@@ -2096,6 +2209,55 @@ def test_pipeline_output_map_refusals(case, stub_pipeline, tmp_path, run_cli):
     with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
         run_cli("pipeline", *_map_run(given, tmp_path, *options))
     assert not stub_pipeline
+
+
+@pytest.mark.parametrize("case", ["one library", "two libraries", "named as a collection"])
+def test_pipeline_output_map_and_the_maps_of_its_libraries(case, stub_pipeline, tmp_path, run_cli):
+    """A run from reads, alignments or pairs writes the maps of its
+    libraries next to --output-map, <name>.mmetacool, with several (it
+    removes them with one, as an earlier run's). One there already is
+    refused before any work, without -F: the run removed it, with one
+    library as with several, and the user's own collection with it. With
+    -F, it is replaced, or removed. An --output-map named as a collection,
+    where the maps of the libraries would be the map itself, is refused
+    before any work too: the run failed once it had aligned its reads, as
+    the collection was written over the map ("No such file")."""
+    results = tmp_path / "results"
+    results.mkdir()
+    pairs = [tmp_path / "a.pairs", tmp_path / "b.pairs"][: 1 if case == "one library" else 2]
+    for path in pairs:
+        path.write_text("## pairs format v1.0\n")
+    output_map, collection = results / "sample.metacool", results / "sample.mmetacool"
+    if case == "named as a collection":
+        output_map = collection
+        message = f"--output-map takes the path of a .metacool file, not of a .mmetacool collection: {collection}."
+    elif case == "one library":
+        message = (
+            f"{collection} exists next to --output-map {output_map}, where a run with several libraries writes the "
+            "maps of its libraries: this run removes it, as an earlier run's. Give -F to remove it, or another "
+            "--output-map."
+        )
+    else:
+        message = (
+            f"{collection} exists, where this run writes the maps of its libraries, next to --output-map {output_map}: "
+            "give -F to replace it, or another --output-map."
+        )
+    if case != "named as a collection":
+        collection.write_text("the user's collection")
+    args = ["-1", ",".join(map(str, pairs)), "-a", _assembly(tmp_path), "-S", "pair", "-o", tmp_path / "out",
+            "-T", tmp_path / "tmp", "--output-map", output_map]  # fmt: skip
+    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
+        run_cli("pipeline", *args)
+    assert not stub_pipeline
+    if case == "named as a collection":
+        return
+    assert collection.read_text() == "the user's collection"
+    run_cli("pipeline", *args, "-F")
+    assert stub_pipeline["reassign_metacool"][3] == str(output_map)
+    if case == "one library":
+        assert not collection.exists()
+    else:
+        assert collection.read_text() == "maps of the libraries"
 
 
 def test_pipeline_output_map_in_a_new_directory(stub_pipeline, tmp_path, monkeypatch, run_cli):
@@ -2294,53 +2456,63 @@ def test_a_sigterm_sent_as_a_process_is_forked_kills_it(thread):
     assert [status for status in statuses if not (os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGTERM)] == []
 
 
-def _run_with_sigterm_handled_in(where):
+def _run_with_a_stop_handled_in(where, signame):
     """The exit status and outputs of a Python process that runs under the
-    SIGTERM handler of a run (terminated_as_interrupted) and gets a SIGTERM
-    that the handler handles where CPython ignores what it raises: in a fork
-    hook, or in a finalizer. It prints "the run went on" if it does."""
+    SIGTERM handler of a run (terminated_as_interrupted) and gets a SIGTERM,
+    or a Ctrl-C (SIGINT, with Python's own handler, which raises
+    KeyboardInterrupt), that is handled where CPython ignores what it
+    raises: in a fork hook, or in a finalizer. It prints "the run went on"
+    if it does."""
     import subprocess
     import sys
 
-    sigterm = {
-        # A fork hook that runs before metaTOR's sends it to the main thread,
-        # where it is blocked until metaTOR's unblocks it, in its fork hook.
+    stop = {
+        # A fork hook that runs before metaTOR's sends it to the main thread.
+        # SIGTERM is blocked there until metaTOR's unblocks it, in its fork
+        # hook; SIGINT is not: it is handled at once, in this hook, as a
+        # Ctrl-C is in that of logging when it comes as a pool forks.
         "a fork hook": (
-            "os.register_at_fork(after_in_parent=lambda: signal.pthread_kill(threading.get_ident(), signal.SIGTERM))",
+            f"os.register_at_fork(after_in_parent=lambda: signal.pthread_kill(threading.get_ident(), signal.{signame}))",
             "    pid = os.fork()\n    if pid == 0:\n        os._exit(0)\n    os.waitpid(pid, 0)",
         ),
         # The finalizer of a dropped object, as a multiprocessing pool ends
         # its workers in its finalizer.
         "a finalizer": (
             "class Dropped:\n    pass",
-            "    dropped = Dropped()\n    weakref.finalize(dropped, signal.raise_signal, signal.SIGTERM)\n    del dropped",
+            f"    dropped = Dropped()\n    weakref.finalize(dropped, signal.raise_signal, signal.{signame})\n    del dropped",
         ),
     }[where]
     script = (
         "import os, signal, threading, time, weakref\n"
-        f"{sigterm[0]}\n"
+        # Python's handler of Ctrl-C, even when the tests run with SIGINT
+        # ignored (Python then leaves it ignored).
+        "signal.signal(signal.SIGINT, signal.default_int_handler)\n"
+        f"{stop[0]}\n"
         "from metator.cli import terminated_as_interrupted\n"
         "with terminated_as_interrupted():\n"
-        f"{sigterm[1]}\n"
+        f"{stop[1]}\n"
         "    time.sleep(2)\n"
         "print('the run went on')\n"
     )
     return subprocess.run([sys.executable, "-W", "ignore", "-c", script], capture_output=True, text=True, timeout=120)
 
 
+@pytest.mark.parametrize("signame", ["SIGTERM", "SIGINT"])
 @pytest.mark.parametrize("where", ["a fork hook", "a finalizer"])
-def test_a_sigterm_handled_where_python_ignores_its_stop_kills_the_run(where):
+def test_a_stop_handled_where_python_ignores_it_kills_the_run(where, signame):
     """A SIGTERM that the handler of the run handles in code whose exceptions
     CPython ignores kills the run at once, as without the handler: the run
     went on, its SIGTERM lost. That is a SIGTERM that comes as the run forks
     from its main thread, where SIGTERM is blocked across the fork and handled
     in metaTOR's fork hook once unblocked; or one that comes in a finalizer,
     as in that of a multiprocessing pool dropped at once, which ends its
-    workers there (metator.partition.get_hamming_distance)."""
+    workers there (metator.partition.get_hamming_distance). A Ctrl-C raised
+    there kills the run with SIGINT so: the run went on, and replaced the
+    map that it was stopped from writing, with exit status 0."""
     import signal
 
-    result = _run_with_sigterm_handled_in(where)
-    assert result.returncode == -signal.SIGTERM, result.stdout + result.stderr
+    result = _run_with_a_stop_handled_in(where, signame)
+    assert result.returncode == -getattr(signal, signame), result.stdout + result.stderr
     assert "the run went on" not in result.stdout
 
 
@@ -2602,6 +2774,19 @@ def test_start_metacool_is_gone(command, start, stub_pipeline, tmp_path, run_cli
     )
     assert message in output
     assert not stub_pipeline and not (tmp_path / "out").exists()
+
+
+@pytest.mark.parametrize("command", ["network", "pipeline"])
+def test_help_says_from_a_map_not_start_metacool(command):
+    """The help of the options that the columns of a map stand in for
+    (--depth, --enzyme, the normalization) says what they do from a map
+    (MAP): it still described --start metacool, a usage error since 2.0."""
+    from metator.cli import cli
+
+    helps = {param.name: param.help for param in cli.commands[command].params if getattr(param, "help", None)}
+    assert [name for name, text in helps.items() if "--start metacool" in text] == []
+    for name in ["depth", "enzyme", "normalization"]:
+        assert "From a map (MAP), its " in helps[name], name
 
 
 EDGE_GONE = (

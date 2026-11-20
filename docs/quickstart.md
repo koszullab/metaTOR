@@ -77,7 +77,9 @@ not always the same.
 $ ls binning
 alignment_0.bam
 binning.txt
+cluster_members.txt
 cluster_summary.txt
+clusters.txt
 contig_data_final.txt
 final_clusters
 metator.metacool
@@ -94,6 +96,7 @@ recursive_clusters
 |---|---|
 | `final_clusters/` | One FASTA file per final cluster: the result |
 | `cluster_summary.txt` | One row per final cluster: size, GC content, completeness, redundancy, N50, Hi-C abundance… |
+| `clusters.txt`, `cluster_members.txt` | Every cluster of every round (overlapping, recursive, final), with its parent and miComplete's columns, and the contigs of each |
 | `contig_data_final.txt` | One row per contig: its size, GC content, hits, and the clusters it went through |
 | `binning.txt` | The contigs of the final clusters and their cluster, as anvi'o imports a binning |
 | `metator.metacool` | The contact map of all the contigs, grouped by cluster |

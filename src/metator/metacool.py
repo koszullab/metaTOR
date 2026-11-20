@@ -50,7 +50,7 @@ import sys
 import tempfile
 import time
 import uuid
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 
 import pandas as pd
@@ -254,6 +254,52 @@ def open_map(metacool):
         raise MetacoolError(f"Cannot read the contact map {metacool}: {reason}") from error
 
 
+def _file_state(path):
+    """What changes when the file at path is replaced (by another file,
+    another inode) or written (its size, its time of modification): None
+    when there is no file there."""
+    try:
+        stat = os.stat(path)
+    except FileNotFoundError:
+        return None
+    return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns
+
+
+@contextmanager
+def unchanged_while_read(metacool, outputs=()):
+    """Refuse what the with block reads of the map metacool when its file is
+    replaced or written meanwhile. A run that updates a map in place
+    (pipeline MAP, partition MAP, validation MAP, mge --map) replaces it at
+    its end, with the map of its clusters, whose bins are in another order,
+    and so are the bin ids of its pixels; the lock of the map keeps out the
+    other writers only. metacooler reads a map one chunk of pixels at a
+    time, opening its file for each: a read that spans the replacement
+    mixed the bins of one map with the pixels of the other, and gave wrong
+    contacts, silently. Raises a MetacoolError, from the error of the read
+    when it failed on the change, and removes outputs, the files written
+    from what was read."""
+    path = map_file(metacool)
+    before = _file_state(path)
+
+    def refuse(error=None):
+        for output in outputs:
+            if os.path.lexists(output):
+                os.remove(output)
+        raise MetacoolError(
+            f"{metacool} was replaced or written while it was read, by a run that updated it: what was read of it "
+            "would mix two maps. Read it again once that run has ended."
+        ) from error
+
+    try:
+        yield
+    except Exception as error:
+        if _file_state(path) != before:
+            refuse(error)
+        raise
+    if _file_state(path) != before:
+        refuse()
+
+
 def check_map_lengths(metacool, contigs, lengths, of, where):
     """Refuse a map that gives contigs another length than lengths (by
     contig name; the contigs it lacks are not checked): it is not a map of
@@ -342,7 +388,7 @@ def contig_contacts(metacool, contigs, of, what, chunksize=1_000_000):
     """
     import numpy as np
 
-    with _metacooler_logging():
+    with _metacooler_logging(), unchanged_while_read(metacool):
         mc = open_map(metacool)
         held = _contigs_in_map(mc, metacool, contigs, of, what)
         names = mc.contigs["name"].astype(str).to_numpy()
@@ -425,7 +471,7 @@ def extract_contigs(metacool, contigs, outfile):
     """
     import metacooler
 
-    with _metacooler_logging(), _as_metacool_errors():
+    with _metacooler_logging(), _as_metacool_errors(), unchanged_while_read(metacool, outputs=[outfile]):
         metacooler.extract(metacool, contigs=list(contigs), output=outfile)
 
 
@@ -1068,25 +1114,28 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
                 genomes_table = os.path.join(scratch, "bins.txt")
                 with open(genomes_table, "w") as handle:
                     handle.write("".join(f"{name}\n" for name in ["bin", *sorted(final_bins)]))
-            metacooler.reassign(
-                metacool,
-                assignment,
-                staged,
-                # Grouped as write_metacool groups the contigs, whatever
-                # the order of the input map: the pixels are remapped.
-                layout="genome-then-length",
-                # The bin names are the first column of the table,
-                # unnamed in cluster_summary.txt. It replaces the columns of
-                # the genomes table that the input map carried.
-                genomes_table=genomes_table,
-                genomes_table_format="1",
-                metadata={"metator": {"version": __version__, **(metadata or {})}},
-                # Over the empty temporary file.
-                force=True,
-                # On a failure, metacooler removes the partial file it
-                # writes next to the temporary file.
-                keep_partial=False,
-            )
+            # The input map, read as it is copied, when another run may
+            # update it: the run writes another file (--output-map).
+            with unchanged_while_read(metacool):
+                metacooler.reassign(
+                    metacool,
+                    assignment,
+                    staged,
+                    # Grouped as write_metacool groups the contigs, whatever
+                    # the order of the input map: the pixels are remapped.
+                    layout="genome-then-length",
+                    # The bin names are the first column of the table,
+                    # unnamed in cluster_summary.txt. It replaces the columns
+                    # of the genomes table that the input map carried.
+                    genomes_table=genomes_table,
+                    genomes_table_format="1",
+                    metadata={"metator": {"version": __version__, **(metadata or {})}},
+                    # Over the empty temporary file.
+                    force=True,
+                    # On a failure, metacooler removes the partial file it
+                    # writes next to the temporary file.
+                    keep_partial=False,
+                )
             _write_back_columns(staged, contig_data, contig_columns, header)
             store_rounds(staged, rounds, name=metacool)
             _rewrite_in_a_fresh_file(staged)
@@ -1107,10 +1156,12 @@ def _staged_map(outfile):
     replaces (that of the target of a symbolic link): a private map stays
     private. A new map gets the mode of any new file, from the umask, not
     the private mode of the temporary file (mkstemp's 0600). On any
-    failure, Ctrl-C included, outfile is left as it was,
-    and the temporary file is removed. A ValueError, OSError or KeyError
-    (metacooler's above all) is raised as a MetacoolError, its message
-    kept.
+    failure, Ctrl-C included, outfile is left as it was, and the temporary
+    file is removed, with those named after it: the partial files of
+    metacooler and cooler (<staged>.partial, <staged>.partial.__writing__),
+    which a Ctrl-C or a SIGTERM that stops cooler as it writes left next to
+    outfile. A ValueError, OSError or KeyError (metacooler's above all) is
+    raised as a MetacoolError, its message kept.
     """
     import metacooler
 
@@ -1131,6 +1182,14 @@ def _staged_map(outfile):
     except BaseException:
         if os.path.lexists(staged):
             os.remove(staged)
+        # cooler builds its writer out of the with that removes its file on
+        # a failure: stopped there, it leaves it. What cannot be removed is
+        # left: the error of the run is the one to raise.
+        named_after = f"{os.path.basename(staged)}."
+        for name in os.listdir(directory):
+            if name.startswith(named_after):
+                with suppress(OSError):
+                    os.remove(os.path.join(directory, name))
         raise
 
 

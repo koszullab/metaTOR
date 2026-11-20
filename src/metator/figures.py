@@ -180,7 +180,7 @@ def build_matrix_map(metacool, contigs_data, bin_summary, bin_size, chunksize=10
     """
     import metator.metacool as mtmc
 
-    with mtmc._metacooler_logging():
+    with mtmc._metacooler_logging(), mtmc.unchanged_while_read(metacool):
         mc = mtmc.open_map(metacool)
         windows, mag_starts, size = heatmap_windows(mc.bins()[:], contigs_data, bin_summary, bin_size)
         matrix = np.zeros((size, size))

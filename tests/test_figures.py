@@ -322,7 +322,13 @@ def _pairs_matrix(pairs_file, bins, windows):
 @pytest.mark.parametrize("binsize", [None, 1000], ids=["one bin per contig", "1 kb bins"])
 def test_heatmap_of_a_map_is_that_of_its_pairs(metagenome, metagenome_files, binsize, tmp_path):
     """The matrix that build_matrix_map builds from the pixels of a map is
-    the matrix that a helper builds from the pairs the map holds."""
+    the matrix that a helper builds from the pairs the map holds, each pair
+    counted between the bins of its two reads. The helper spreads the bins
+    over the windows with heatmap_windows, and normalizes the matrix with
+    normalize_scn, as build_matrix_map does: this test checks how the
+    pixels are read and summed, not those two, which test_heatmap_windows
+    and test_normalize_scn_is_that_of_hicstuff check (and
+    test_heatmap_of_a_map_is_that_of_the_network, without them)."""
     contigs_data, bin_summary = _binning(metagenome, list(QUALITIES))
     # metacooler indexes the assembly (.fai): a private copy.
     assembly = shutil.copyfile(metagenome_files["assembly"], tmp_path / "assembly.fa")
@@ -340,6 +346,39 @@ def test_heatmap_of_a_map_is_that_of_its_pairs(metagenome, metagenome_files, bin
     assert size == sum(genome.length // 20_000 + 1 for genome in metagenome.genomes)
     np.testing.assert_allclose(matrix, _pairs_matrix(metagenome_files["pairs"], bins, windows), rtol=1e-9, atol=1e-15)
     assert np.allclose(matrix, matrix.T) and matrix.max() > 0
+
+
+def test_heatmap_of_a_map_is_that_of_the_network(tmp_path):
+    """A guard, independent of heatmap_windows and normalize_scn, which
+    test_heatmap_of_a_map_is_that_of_its_pairs shares with the code: where
+    no contig spans two windows, the heatmap drawn from a map of one bin per
+    contig is the heatmap drawn from its pairs by build_matrix_network,
+    which a validation without a map draws (a contig in no MAG, d, in
+    neither). The reads lie within their window: a read at the last base of
+    a contig (position 100, 1-based, of a contig of 100 bp) falls in the
+    next window for build_matrix_network."""
+    pairs = tmp_path / "pairs.pairs"
+    rows = [("a", 10, "b", 20), ("a", 90, "b", 50), ("a", 50, "c", 50), ("b", 10, "c", 90), ("b", 50, "c", 10),
+            ("b", 90, "c", 40), ("a", 10, "a", 90), ("c", 20, "d", 30), ("d", 10, "d", 70)]  # fmt: skip
+    pairs.write_text(
+        "## pairs format v1.0\n" + "".join(f"r{i}\t{c1}\t{p1}\t{c2}\t{p2}\t+\t-\n" for i, (c1, p1, c2, p2) in enumerate(rows))
+    )
+    lengths = {"a": 100, "b": 100, "c": 100, "d": 80}
+    metacool = tmp_path / "map.metacool"
+    bins = pd.DataFrame({"chrom": list(lengths), "start": 0, "end": list(lengths.values())})
+    metacooler.from_pairs(str(metacool), pairs=str(pairs), bins=bins, contig_genome_map=None, ps=False)
+    contigs_data = pd.DataFrame(
+        {"Name": list(lengths), "Size": list(lengths.values()), "Final_cluster": ["m1", "m1", "m2", "ND"]}
+    )
+    bin_summary = {"m1": {"Length": 200}, "m2": {"Length": 100}}
+    matrix, starts = mtf.build_matrix_map(
+        str(metacool), contigs_data, {name: dict(mag) for name, mag in bin_summary.items()}, 100
+    )
+    info_contigs, mag_starts, size = mtf.generates_frags_network(contigs_data, bin_summary, 100)
+    network = mtf.build_matrix_network([str(pairs)], info_contigs, size, 100)
+    assert starts == mag_starts == [0, 3] and matrix.shape == network.shape == (5, 5)
+    np.testing.assert_allclose(matrix, network, rtol=1e-12, atol=1e-15)
+    assert (matrix > 0).sum() == 6
 
 
 @pytest.mark.parametrize("windows", [40, 3000])

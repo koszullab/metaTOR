@@ -350,6 +350,43 @@ def assembly_files(assembly):
     return [assembly, *(path for path in named if not mtmc.is_map(path))]
 
 
+# What a run that updates its map in place replaces of what the map holds
+# already (see warn_of_what_is_replaced): its clusters (whether it does), and
+# its clustering rounds made by these steps.
+REPLACED_IN_PLACE = {
+    "pipeline": (True, ("partition", "validation")),
+    "partition": (False, ("partition", "validation")),
+    "validation": (True, ("validation",)),
+    "mge": (False, ("mge",)),
+}
+
+
+def warn_of_what_is_replaced(command, metacool):
+    """Warn, before any work, that a run (command) that updates the map
+    metacool in place replaces what the map holds already: its clusters (the
+    genomes other than __unbinned__, of an earlier run, or of another
+    binner), and its clustering rounds made by an earlier run (see
+    REPLACED_IN_PLACE). Neither can be found again in the updated map, whose
+    history says only that its contigs were reassigned. A run from a map
+    replaced them without -F, and without a warning. --output-map writes
+    the map of the run to another file instead, which leaves metacool as it
+    is."""
+    clusters, steps = REPLACED_IN_PLACE[command]
+    mc = mtmc.open_map(metacool)
+    held = []
+    n_clusters = int((mc.genomes["name"].astype(str) != "__unbinned__").sum()) if clusters else 0
+    if n_clusters:
+        held.append(f"{n_clusters} cluster(s)")
+    rounds = [str(entry["name"]) for entry in mc.cluster_rounds if entry.get("step") in steps]
+    if rounds:
+        held.append(f"the clustering round(s) {', '.join(rounds)}")
+    if held:
+        logger.warning(
+            f"{metacool} holds {' and '.join(held)}, which this run replaces, in place: give --output-map to write the "
+            f"map of this run to another file, and leave {metacool} as it is."
+        )
+
+
 def step_map(command, input_map, output_map, force, held, contigs=None, inputs=(), option=None):
     """The map that a partition, validation or mge run (command) writes, or
     None for a run without one. A run step by step from a map (network MAP,
@@ -372,7 +409,9 @@ def step_map(command, input_map, output_map, force, held, contigs=None, inputs=(
     run_map_path refuses (an entry of a collection without output_map, an
     output_map that is an entry, a directory, the collection of the input
     entry, or that exists and is not the input map, without force); and a
-    map that another run holds."""
+    map that another run holds. A run that updates the map in place warns
+    of the clusters and the rounds that it replaces there (see
+    warn_of_what_is_replaced)."""
     if option is None:
         updates, given, map_of = (
             f"{command} MAP",
@@ -404,6 +443,8 @@ def step_map(command, input_map, output_map, force, held, contigs=None, inputs=(
     outfile = run_map_path("metacool", input_map, None, None, output_map, force)
     held.enter_context(terminated_as_interrupted())
     held.enter_context(mtmc.map_lock(outfile))
+    if mtmc.is_input_map(input_map, outfile):
+        warn_of_what_is_replaced(command, input_map)
     return outfile
 
 
@@ -751,8 +792,9 @@ def assembly_basename(assembly):
 @contextmanager
 def terminated_as_interrupted():
     """Stop a run on SIGTERM as on Ctrl-C, so that it cleans up after itself:
-    the lock of its map, the map it was writing next to it, its temporary
-    files. A job scheduler sends SIGTERM at its time limit, or when a job is
+    the lock of its map, the map it was writing next to it, miComplete if it
+    runs (its temporary directory stays, as after any failure). A job
+    scheduler sends SIGTERM at its time limit, or when a job is
     cancelled; by default, Python dies on it without a word, as on SIGKILL.
     The exit status is that of a process killed by SIGTERM, 143. Only the
     main thread can set a signal handler: elsewhere, the run is as it is.
@@ -760,7 +802,8 @@ def terminated_as_interrupted():
     handler: a multiprocessing pool ends its workers so. Its SIGTERM is set
     back to the default before it runs any Python (_block_sigterm_to_fork).
     Where the handler runs in code whose exceptions CPython ignores, the run
-    dies of SIGTERM at once, as without the handler (_die_of_an_ignored_stop).
+    dies of SIGTERM at once, as without the handler (_die_of_an_ignored_stop);
+    where a Ctrl-C is raised there, the run dies of SIGINT.
     """
     if threading.current_thread() is not threading.main_thread() or signal.getsignal(signal.SIGTERM) is None:
         # Off the main thread, or under a handler that a host embedding
@@ -794,11 +837,20 @@ def _die_of_an_ignored_stop(previous_hook, unraisable):
     multiprocessing pool that is dropped ends its workers in its finalizer
     (metator.partition.get_hamming_distance), and a SIGTERM that comes as the
     run forks is handled in a fork hook (_unblock_sigterm_in_parent). The
-    other exceptions go to the previous hook."""
+    KeyboardInterrupt of a Ctrl-C raised there kills the run with SIGINT
+    so, as an uncaught KeyboardInterrupt ends Python: the run went on, its
+    Ctrl-C lost, and replaced the map it was stopped from writing (a Ctrl-C
+    that comes as a pool forks its workers is raised in the fork hook of
+    logging, for example). The other exceptions go to the previous hook."""
+    signum = None
     if isinstance(unraisable.exc_value, _Terminated):
+        signum = signal.SIGTERM
+    elif isinstance(unraisable.exc_value, KeyboardInterrupt):
+        signum = signal.SIGINT
+    if signum is not None:
         if threading.current_thread() is threading.main_thread():
-            signal.signal(signal.SIGTERM, signal.SIG_DFL)
-        os.kill(os.getpid(), signal.SIGTERM)
+            signal.signal(signum, signal.SIG_DFL)
+        os.kill(os.getpid(), signum)
     previous_hook(unraisable)
 
 
@@ -857,14 +909,17 @@ def run_map_path(start, forward, outdir, prefix, output_map=None, force=False, n
     ------
     MetacoolError
         If output_map is given with no_metacool (no map is written), names
-        an entry of a collection or a directory, is the collection of the
-        input map (an entry), or exists and is not the input map, without
-        force; if the input map is not there; or if the input map is an
-        entry of a .mmetacool collection, without output_map: updating it in
-        place would rewrite the whole collection; if the directory of
-        output_map cannot be made; or if the map of a run from reads,
-        alignments or pairs would be a URI (:: in its output directory or
-        prefix).
+        an entry of a collection, a .mmetacool collection or a directory,
+        is the collection of the input map (an entry), or exists and is not
+        the input map, without force; if, in a run from reads, alignments
+        or pairs, the collection of the maps of the libraries next to
+        output_map exists, without force (see library_maps_path: the run
+        replaces it, or removes it with one library); if the input map is
+        not there; or if the input map is an entry of a .mmetacool
+        collection, without output_map: updating it in place would rewrite
+        the whole collection; if the directory of output_map cannot be
+        made; or if the map of a run from reads, alignments or pairs would
+        be a URI (:: in its output directory or prefix).
     """
     reason = None
     if start == "metacool" and not os.path.exists(mtmc.map_file(forward)):
@@ -880,10 +935,30 @@ def run_map_path(start, forward, outdir, prefix, output_map=None, force=False, n
             f"{output_map} is the collection of the input map {forward}: a run does not replace a collection with "
             "the map of its clusters; give --output-map another file."
         )
+    elif output_map and os.path.splitext(str(output_map))[1].lower() == ".mmetacool":
+        # With several libraries, the collection of their maps would be the
+        # map itself (see library_maps_path): the run failed once it had
+        # aligned its reads.
+        reason = f"--output-map takes the path of a .metacool file, not of a .mmetacool collection: {output_map}."
     elif output_map:
         in_place = start == "metacool" and mtmc.is_input_map(forward, output_map)
+        collection = library_maps_path(output_map)
         if os.path.lexists(output_map) and not force and not in_place:
             reason = f"{output_map} exists: give -F to replace it with the map of this run, or another --output-map."
+        elif start != "metacool" and os.path.lexists(collection) and not force:
+            # The run removes it as it builds the map of its contigs (see
+            # pipeline_contig_map): an earlier run's, or the user's own.
+            if len(forward.split(",")) > 1:
+                reason = (
+                    f"{collection} exists, where this run writes the maps of its libraries, next to --output-map "
+                    f"{output_map}: give -F to replace it, or another --output-map."
+                )
+            else:
+                reason = (
+                    f"{collection} exists next to --output-map {output_map}, where a run with several libraries "
+                    "writes the maps of its libraries: this run removes it, as an earlier run's. Give -F to remove "
+                    "it, or another --output-map."
+                )
     if reason:
         logger.error(reason)
         raise mtmc.MetacoolError(reason)
@@ -983,9 +1058,12 @@ def pipeline_contig_map(pairs_files, contig_data, outfile, assembly, threads, tm
     run made from reads or alignments; when metacooler cannot read them,
     the error also says what it needs of them (PAIRS_FILES_NEEDS).
 
-    A map of the same name left by an earlier run is removed first: this
-    run replaces the tables it was made from, so it must not stay behind,
-    passing for this run's, when this one cannot be built. A map that
+    A map of the same name left by an earlier run is removed first, with
+    the collection of the maps of its libraries (see library_maps_path):
+    this run replaces the tables they were made from, so they must not stay
+    behind, passing for this run's, when this one cannot be built. At
+    --output-map, both are the user's files: run_map_path refuses them
+    without -F, before any work. A map that
     cannot be built stops the run, --no-metacool or not, whatever the number
     of libraries: the reason is logged as an error, in the log file of the
     run (with the type and the traceback of an unexpected error, which is
@@ -1302,8 +1380,8 @@ def reads_options():
             metavar="FILE",
             panel="Input",
             help="The depth.txt file from the shotgun reads used to made the assembly computed by "
-            "[cyan]jgi_summarize_bam_contig_depths[/] from the metabat2 pipeline. With --start metacool, the "
-            "Shotgun_coverage column of the map gives the coverage without it, and --depth replaces it.",
+            "[cyan]jgi_summarize_bam_contig_depths[/] from the metabat2 pipeline. From a map (MAP), its "
+            "Shotgun_coverage column gives the coverage without it, and --depth replaces it.",
         ),
     )
 
@@ -1335,8 +1413,8 @@ def alignment_options():
             metavar="STR",
             panel="Alignment",
             help="The list of restriction enzyme used to digest the contigs separated by a comma. Example: HpaII,MluCI. "
-            "With --start metacool, the Restriction_site column of the map gives the restriction sites without it, "
-            "and --enzyme replaces it.",
+            "From a map (MAP), its Restriction_site column gives the restriction sites without it, and --enzyme "
+            "replaces it.",
         ),
         _option(
             "-q",
@@ -1367,8 +1445,8 @@ def network_options(normalization_short):
             panel="Network",
             help=f"Normalization of the contact counts, one of {', '.join(NORMALIZATIONS)}. [cyan]None[/] keeps the raw "
             "counts; [cyan]RS[/] and [cyan]theoritical_hit[/] need --enzyme, [cyan]abundance[/] and "
-            "[cyan]theoritical_hit[/] need --depth. With --start metacool, the Restriction_site and "
-            "Shotgun_coverage columns of the map stand for them (see --enzyme and --depth).",
+            "[cyan]theoritical_hit[/] need --depth. From a map (MAP), its Restriction_site and Shotgun_coverage "
+            "columns stand for them (see --enzyme and --depth).",
         ),
     )
 
@@ -2092,6 +2170,8 @@ def pipeline(
         # run on the same map is refused before any work.
         if not (start == "metacool" and no_metacool):
             held.enter_context(mtmc.map_lock(metacool_file))
+            if start == "metacool" and mtmc.is_input_map(forward, metacool_file):
+                warn_of_what_is_replaced("pipeline", forward)
 
         # Manage start point.
         start_step = {"fastq": 1, "bam": 2, "pair": 3, "metacool": 3}[start]
