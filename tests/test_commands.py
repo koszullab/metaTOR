@@ -206,6 +206,26 @@ def test_network_from_a_metacool(tmp_path, run_cli):
     assert f"INFO :: Information of {metacool}:" in log.read_text()
 
 
+def test_network_from_the_columns_of_a_metacool(tmp_path, run_cli):
+    """metator network --start metacool from the map of the contigs that a
+    pipeline run builds with a depth file and an enzyme: without --depth
+    and --enzyme, its Restriction_site and Shotgun_coverage columns give the
+    network and the contig data that they give (theoritical_hit needs
+    both), byte for byte."""
+    contig_data, _ = mtn.create_contig_data(global_args["FASTA"], 1, global_args["DEPTH"], "HindIII,DpnII")
+    metacool = tmp_path / "contigs.metacool"
+    mtmc.write_contig_map([global_args["PAIRS"]], contig_data, str(metacool))
+    common = ["-1", metacool, "-a", global_args["FASTA"], "-S", "metacool", "-n", "theoritical_hit", "-T", tmp_path / "tmp"]
+    run_cli("network", *common, "-d", global_args["DEPTH"], "-e", "HindIII,DpnII", "-o", tmp_path / "options")
+    run_cli("network", *common, "-o", tmp_path / "map")
+    for name in ["network.txt", "contig_data_network.txt"]:
+        assert (tmp_path / "map" / name).read_bytes() == (tmp_path / "options" / name).read_bytes(), name
+    (log,) = (tmp_path / "map").glob("metator_network_*.log")
+    logged = log.read_text()
+    for what, column in [("restriction sites", "Restriction_site"), ("shotgun coverage", "Shotgun_coverage")]:
+        assert f"INFO :: The {what} of the contigs: the {column} column of {metacool}." in logged
+
+
 # The network of pairs files, which network_from_a_map forbids in a run.
 PAIRS_NETWORK = mtn.alignment_to_contacts
 

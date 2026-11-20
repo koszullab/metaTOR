@@ -300,6 +300,12 @@ def stub_pipeline(monkeypatch, tmp_path):
         calls["create_contig_data"] = args
         return {}, {}
 
+    def contig_data_from_map(*args):
+        # A run from a map reads no column of it (see
+        # test_pipeline_reads_the_columns_of_its_map).
+        calls["contig_data_from_map"] = args
+        return []
+
     def alignment_to_contacts(alignment_files, contig_data, edge, hit_data, out_dir, network, contig_data_file, *args):
         calls["alignment_to_contacts"] = (alignment_files, edge, out_dir, *args)
         for name in [network, contig_data_file]:
@@ -356,6 +362,7 @@ def stub_pipeline(monkeypatch, tmp_path):
 
     monkeypatch.setattr("metator.align.get_contact_pairs", get_contact_pairs)
     monkeypatch.setattr("metator.network.create_contig_data", create_contig_data)
+    monkeypatch.setattr("metator.network.contig_data_from_map", contig_data_from_map)
     monkeypatch.setattr("metator.network.alignment_to_contacts", alignment_to_contacts)
     monkeypatch.setattr("metator.network.metacool_to_contacts", metacool_to_contacts)
     monkeypatch.setattr("metator.partition.partition", partition)
@@ -1316,6 +1323,8 @@ def test_pipeline_from_a_metacool(no_metacool, stub_pipeline, tmp_path, run_cli)
     assert (kwargs["bin_summary"], kwargs["force"]) == (str(out / "bin_summary.txt"), True)
     assert kwargs["metadata"]["parameters"]["start"] == "metacool"
     assert kwargs["metadata"]["command"].startswith(f"metator pipeline -1 {metacool} -a")
+    # No column was read from the map (the stub reads none).
+    assert "columns_from_map" not in kwargs["metadata"]
     assert f"INFO :: {metacool} is the input map {metacool}: it is replaced once the map of the bins is validated." in logged
 
 
@@ -1333,6 +1342,221 @@ def _contig_map(path, lengths=None):
     metacooler.from_pairs(str(path), pairs=str(pairs), bins=bins, contig_genome_map=None, ps=False)
     pairs.unlink()
     return path
+
+
+# The restriction sites and the coverage of the contigs, read from the
+# Restriction_site and Shotgun_coverage columns of the map that a run starts
+# from, where --enzyme and --depth measure none.
+
+mtn_contig_data_from_map = __import__("metator.network", fromlist=["contig_data_from_map"]).contig_data_from_map
+
+
+def _map_with_columns(tmp_path, columns):
+    """_contig_map, with columns (by column, the value of c1 and c2) in its
+    contigs table."""
+    import metacooler
+
+    metacool = _contig_map(tmp_path / "map.metacool")
+    if not columns:
+        return metacool
+    table = tmp_path / "columns.txt"
+    rows = [f"{name}\t" + "\t".join(str(values[i]) for values in columns.values()) for i, name in enumerate(["c1", "c2"])]
+    table.write_text("\t".join(["Name", *columns]) + "\n" + "".join(f"{row}\n" for row in rows))
+    metacooler.annotate(str(metacool), contigs_table=str(table), contigs_table_format="Name", inplace=True)
+    return metacool
+
+
+SITES_AND_COVERAGE = {"Restriction_site": [3, 2], "Shotgun_coverage": [1.5, 0.5]}
+RS_ERROR = 'For "RS" and "theoritical_hit" normalization, enzyme is required'
+DEPTH_ERROR = 'For "abundance" and "theoritical_hit" normalization, depth is required'
+
+
+@pytest.mark.parametrize(
+    "normalization, options, columns, message",
+    [
+        ("RS", {}, {}, f"{RS_ERROR}, as {{map}} gives no restriction sites (no Restriction_site column with a valid value)."),
+        ("abundance", {}, {"Restriction_site": [3, 2]},
+         f"{DEPTH_ERROR}, as {{map}} gives no shotgun coverage (no Shotgun_coverage column with a valid value)."),
+        ("RS", {}, {"Restriction_site": ["-", "-"]},
+         f"{RS_ERROR}, as {{map}} gives no restriction sites (no Restriction_site column with a valid value)."),
+        ("theoritical_hit", {}, SITES_AND_COVERAGE, None),
+        ("RS", {}, {"Restriction_site": [3, 2]}, None),
+        ("abundance", {}, {"Shotgun_coverage": [0, 2]}, None),
+        ("theoritical_hit", {"depth": "depth.txt"}, {"Restriction_site": [3, 2]}, None),
+        ("empirical_hit", {}, {}, None),
+    ],
+    ids=["map without columns", "map without coverage", "column of -", "map columns",
+         "map sites", "map coverage", "map sites and depth", "no need"],
+)  # fmt: skip
+def test_check_normalization(normalization, options, columns, message, tmp_path, logged):
+    """Before any work, from a map: --enzyme and --depth, or the columns of
+    the map that give values."""
+    metacool = _map_with_columns(tmp_path, columns)
+    args = (normalization, options.get("enzyme"), options.get("depth"), str(metacool))
+    if message is None:
+        mtcli.check_normalization(*args)
+        assert logged() == []
+        return
+    with pytest.raises(ValueError):
+        mtcli.check_normalization(*args)
+    assert logged() == [("ERROR", message.format(map=metacool))]
+
+
+@pytest.mark.parametrize(
+    "normalization, options, message",
+    [("RS", [], f"{RS_ERROR}."), ("theoritical_hit", ["-e", "DpnII"], f"{DEPTH_ERROR}.")],
+    ids=["RS", "depth"],
+)
+def test_normalization_refused_from_pairs(normalization, options, message, stub_pipeline, tmp_path, run_cli):
+    """A guard: a run that does not start from a map is refused before any
+    work, with the messages of before, which name the options only."""
+    out = tmp_path / "out"
+    with pytest.raises(ValueError):
+        run_cli("pipeline", "-1", "a.pairs", "-a", _assembly(tmp_path), "-S", "pair", "-m", normalization, *options,
+                "-o", out, "-T", tmp_path / "tmp")  # fmt: skip
+    assert "create_contig_data" not in stub_pipeline
+    (log,) = out.glob("metator_pipeline_*.log")
+    assert f"ERROR :: {message}\n" in log.read_text()
+
+
+def test_check_normalization_once_the_map_is_read(tmp_path, logged):
+    """Once the run has read the columns of its map (read): those that it
+    could read, or a refusal for a column that lacks contigs."""
+    metacool = str(tmp_path / "map.metacool")
+    mtcli.check_normalization("theoritical_hit", None, None, metacool, ["Restriction_site", "Shotgun_coverage"])
+    mtcli.check_normalization("RS", None, "depth.txt", metacool, ["Restriction_site"])
+    with pytest.raises(ValueError):
+        mtcli.check_normalization("theoritical_hit", None, None, metacool, ["Restriction_site"])
+    assert logged() == [
+        (
+            "ERROR",
+            f"{DEPTH_ERROR}, as the Shotgun_coverage column of {metacool} does not give every contig of the assembly its "
+            "shotgun coverage.",
+        )
+    ]
+
+
+@pytest.mark.parametrize("normalization", ["RS", "empirical_hit"])
+def test_check_normalization_of_an_unreadable_map(normalization, tmp_path, logged):
+    """A map that cannot be read is refused before any work when a
+    normalization needs its columns, its reason logged; otherwise the run
+    finds it at its network, as before."""
+    metacool = str(tmp_path / "missing.metacool")
+    if normalization == "empirical_hit":
+        mtcli.check_normalization(normalization, None, None, metacool)
+        assert logged() == []
+        return
+    with pytest.raises(mtmc.MetacoolError):
+        mtcli.check_normalization(normalization, None, None, metacool)
+    ((level, message),) = logged()
+    assert level == "ERROR" and message.startswith(f"Cannot read the contact map {metacool}")
+
+
+@pytest.mark.parametrize("command", ["network", "pipeline"])
+def test_normalization_refused_before_any_work_from_a_map(command, stub_pipeline, tmp_path, run_cli):
+    """A run from a map whose columns cannot give what its normalization
+    needs is refused before the assembly is read."""
+    metacool = _contig_map(tmp_path / "map.metacool")
+    out = tmp_path / "out"
+    with pytest.raises(ValueError):
+        run_cli(command, "-1", metacool, "-a", _assembly(tmp_path), "-S", "metacool", "-n" if command == "network" else "-m",
+                "abundance", "-o", out, "-T", tmp_path / "tmp")  # fmt: skip
+    assert "create_contig_data" not in stub_pipeline
+    (log,) = out.glob(f"metator_{command}_*.log")
+    message = f"{DEPTH_ERROR}, as {metacool} gives no shotgun coverage (no Shotgun_coverage column with a valid value)."
+    assert f"ERROR :: {message}\n" in log.read_text()
+
+
+@pytest.mark.parametrize("command", ["network", "pipeline"])
+def test_run_reads_the_columns_of_its_map(command, stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """A run from a map reads its columns once it has the contigs of the
+    assembly (theoritical_hit needs both), and normalizes with them."""
+    monkeypatch.setattr("metator.network.contig_data_from_map", mtn_contig_data_from_map)
+    contig_data = {name: {"id": i, "length": length, "GC": 50.0, "hit": 0, "coverage": "-", "RS": "-"}
+                   for i, (name, length) in enumerate([("c1", 100), ("c2", 50)], start=1)}  # fmt: skip
+    monkeypatch.setattr("metator.network.create_contig_data", lambda *args: (contig_data, None))
+    metacool = _map_with_columns(tmp_path, SITES_AND_COVERAGE)
+    out = tmp_path / "out"
+    run_cli(command, "-1", metacool, "-a", _assembly(tmp_path), "-S", "metacool", "-n" if command == "network" else "-m",
+            "theoritical_hit", "-o", out, "-T", tmp_path / "tmp")  # fmt: skip
+    assert {name: (data["RS"], data["coverage"]) for name, data in contig_data.items()} == {"c1": (3, 1.5), "c2": (2, 0.5)}
+    assert stub_pipeline["metacool_to_contacts"][-2:] == ("theoritical_hit", False)
+    if command == "pipeline":
+        # Where the values that the map of the bins stores came from.
+        metadata = stub_pipeline["reassign_metacool"][4]["metadata"]
+        assert metadata["columns_from_map"] == ["Restriction_site", "Shotgun_coverage"]
+
+
+@pytest.mark.parametrize("command", ["network", "pipeline"])
+def test_run_refused_for_a_column_that_lacks_contigs(command, stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """A column of the map that lacks a contig of the assembly cannot give
+    the normalization what it needs: refused, with the warning that names
+    the contig, before the network."""
+    monkeypatch.setattr("metator.network.contig_data_from_map", mtn_contig_data_from_map)
+    contig_data = {name: {"id": i, "length": length, "GC": 50.0, "hit": 0, "coverage": "-", "RS": "-"}
+                   for i, (name, length) in enumerate([("c1", 100), ("c2", 50), ("c3", 30)], start=1)}  # fmt: skip
+    monkeypatch.setattr("metator.network.create_contig_data", lambda *args: (contig_data, None))
+    metacool = _map_with_columns(tmp_path, {"Restriction_site": [3, 2]})
+    out = tmp_path / "out"
+    with pytest.raises(ValueError):
+        run_cli(command, "-1", metacool, "-a", _assembly(tmp_path), "-S", "metacool", "-n" if command == "network" else "-m",
+                "RS", "-o", out, "-T", tmp_path / "tmp")  # fmt: skip
+    assert "metacool_to_contacts" not in stub_pipeline
+    (log,) = out.glob(f"metator_{command}_*.log")
+    logged = log.read_text()
+    assert "WARNING :: The Restriction_site column of" in logged and "contig(s) of the assembly" in logged
+    message = f"{RS_ERROR}, as the Restriction_site column of {metacool} does not give every contig of the assembly its "
+    assert f"ERROR :: {message}restriction sites.\n" in logged
+
+
+def test_pipeline_refused_for_a_column_that_lacks_contigs_keeps_the_bins(stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """A run from a map with -F (a rebinning in the output directory of an
+    earlier run) that its columns refuse once the assembly is read leaves
+    the bins of the earlier run: the contig data is read before they are
+    replaced (they were removed, then the run refused)."""
+    monkeypatch.setattr("metator.network.contig_data_from_map", mtn_contig_data_from_map)
+    contig_data = {name: {"id": i, "length": length, "GC": 50.0, "hit": 0, "coverage": "-", "RS": "-"}
+                   for i, (name, length) in enumerate([("c1", 100), ("c2", 50), ("c3", 30)], start=1)}  # fmt: skip
+    monkeypatch.setattr("metator.network.create_contig_data", lambda *args: (contig_data, None))
+    metacool = _map_with_columns(tmp_path, {"Restriction_site": [3, 2]})
+    out = tmp_path / "out"
+    bins = [out / name / "bin.fa" for name in ["overlapping_bin", "recursive_bin", "final_bin_unscaffold"]]
+    for path in bins:
+        path.parent.mkdir(parents=True)
+        path.write_text(">c1\nACGT\n")
+    with pytest.raises(ValueError):
+        run_cli("pipeline", "-1", metacool, "-a", _assembly(tmp_path), "-S", "metacool", "-m", "RS", "-o", out, "-F",
+                "-T", tmp_path / "tmp")  # fmt: skip
+    assert all(path.exists() for path in bins)
+
+
+def test_normalization_refused_from_pairs_before_the_edge(stub_pipeline, tmp_path, run_cli):
+    """A guard: from pairs, the normalization is checked first, as before
+    the map could give its columns (then --edge)."""
+    out = tmp_path / "out"
+    with pytest.raises(ValueError):
+        run_cli("pipeline", "-1", "a.pairs", "-a", _assembly(tmp_path), "-S", "pair", "-m", "RS", "-E", "5", "-o", out,
+                "-T", tmp_path / "tmp")  # fmt: skip
+    (log,) = out.glob("metator_pipeline_*.log")
+    errors = [line for line in log.read_text().splitlines() if "ERROR ::" in line]
+    assert errors == [f"ERROR :: {RS_ERROR}."] or errors[0].endswith(f"ERROR :: {RS_ERROR}.")
+
+
+@pytest.mark.parametrize("command", ["network", "pipeline"])
+def test_run_from_a_map_unreadable_for_its_columns(command, stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """A map that cannot be read when the run reads its columns stops it,
+    the reason logged."""
+
+    def unreadable(metacool, *args):
+        raise mtmc.MetacoolError(f"Cannot read the contact map {metacool}: gone.")
+
+    monkeypatch.setattr("metator.network.contig_data_from_map", unreadable)
+    metacool = _contig_map(tmp_path / "map.metacool")
+    out = tmp_path / "out"
+    with pytest.raises(mtmc.MetacoolError):
+        run_cli(command, "-1", metacool, "-a", _assembly(tmp_path), "-S", "metacool", "-o", out, "-T", tmp_path / "tmp")
+    (log,) = out.glob(f"metator_{command}_*.log")
+    assert f"ERROR :: Cannot read the contact map {metacool}: gone.\n" in log.read_text()
 
 
 @pytest.mark.parametrize("where", ["elsewhere", "outfile"])
@@ -1435,6 +1659,10 @@ def test_network_from_a_metacool(monkeypatch, tmp_path, run_cli):
         calls["create_contig_data"] = args
         return {"c1": {}}, None
 
+    def contig_data_from_map(*args):
+        calls["contig_data_from_map"] = args
+        return []
+
     def metacool_to_contacts(*args, **kwargs):
         calls["metacool_to_contacts"] = args
 
@@ -1442,6 +1670,7 @@ def test_network_from_a_metacool(monkeypatch, tmp_path, run_cli):
         raise AssertionError("no alignment nor pairs from a metacool")
 
     monkeypatch.setattr("metator.network.create_contig_data", create_contig_data)
+    monkeypatch.setattr("metator.network.contig_data_from_map", contig_data_from_map)
     monkeypatch.setattr("metator.network.metacool_to_contacts", metacool_to_contacts)
     monkeypatch.setattr("metator.network.alignment_to_contacts", not_called)
     monkeypatch.setattr("metator.align.get_contact_pairs", not_called)
@@ -1449,6 +1678,9 @@ def test_network_from_a_metacool(monkeypatch, tmp_path, run_cli):
     run_cli("network", "-1", "maps.mmetacool::entries/lib1", "-a", _assembly(tmp_path), "-S", "metacool", "-e", "DpnII",
             "-s", "-t", "2", "-n", "RS", "-o", out, "-T", tmp_path / "tmp")  # fmt: skip
     assert calls["create_contig_data"] == (str(tmp_path / "assembly.fa"), 1, None, "DpnII")
+    # The restriction sites and the coverage that the map gives where the
+    # options give none.
+    assert calls["contig_data_from_map"] == ("maps.mmetacool::entries/lib1", {"c1": {}}, "DpnII", None)
     uri, contig_data, *args = calls["metacool_to_contacts"]
     assert uri == "maps.mmetacool::entries/lib1" and contig_data == {"c1": {}}
     out_dir, network, contigs, tmp_dir, threads, normalization, self_contacts = args

@@ -11,8 +11,11 @@ metacool_to_contacts), instead of the pairs files.
 
 Core function to build the network are:
     - alignment_to_contacts
+    - check_map_contigs
     - compute_network
+    - contig_data_from_map
     - create_contig_data
+    - map_columns
     - metacool_to_contacts
     - normalize_pair
     - precompute_network
@@ -462,6 +465,29 @@ def metacool_contig_ids(metacool, contigs, contig_data):
         If the map holds contigs that are not in the assembly (with their
         names), or contigs that have another length in it.
     """
+    names = check_map_contigs(metacool, contigs, contig_data)
+    in_map = set(names)
+    missing = [name for name in contig_data if name not in in_map]
+    if missing:
+        logger.info(
+            f"{len(missing)} contig(s) of the assembly are not in {metacool}: they get no contacts, as contigs that no "
+            f"read maps to: {mtmc._shown(missing)}."
+        )
+    return np.array([contig_data[name]["id"] for name in names], dtype=np.int64)
+
+
+def check_map_contigs(metacool, contigs, contig_data):
+    """Refuse a .metacool map that is not a map of the contigs of the
+    assembly: one that holds contigs that the assembly lacks, or that gives
+    them other lengths. It may lack contigs of the assembly. Returns the
+    names of its contigs, in its order.
+
+    Raises:
+    -------
+    metator.metacool.MetacoolError
+        With the contigs that are not in the assembly, or that have another
+        length in it.
+    """
     names = [str(name) for name in contigs["name"]]
     extra = [name for name in names if name not in contig_data]
     if extra:
@@ -471,14 +497,7 @@ def metacool_contig_ids(metacool, contigs, contig_data):
         )
     lengths = {name: data["length"] for name, data in contig_data.items()}
     mtmc.check_map_lengths(metacool, contigs, lengths, "the assembly", "the assembly")
-    in_map = set(names)
-    missing = [name for name in contig_data if name not in in_map]
-    if missing:
-        logger.info(
-            f"{len(missing)} contig(s) of the assembly are not in {metacool}: they get no contacts, as contigs that no "
-            f"read maps to: {mtmc._shown(missing)}."
-        )
-    return np.array([contig_data[name]["id"] for name in names], dtype=np.int64)
+    return names
 
 
 def _sum_by_key(keys, counts):
@@ -682,6 +701,144 @@ def create_contig_data(assembly, nb_alignment=1, depth_file=None, enzyme=None):
             raise ValueError(f"The depth file {depth_file} is not that of the assembly {assembly}.")
 
     return contig_data, hit_data
+
+
+# The columns of the contigs table of a .metacool map that a run from the map
+# reads where it measures nothing: the restriction sites and the shotgun
+# coverage of each contig, which metaTOR stores in the maps it writes (see
+# metator.metacool.ASSEMBLY_COLUMNS). By column: its key in the contig data
+# (see create_contig_data), the option that measures it on the assembly
+# instead, and what it holds.
+MAP_COLUMNS = {
+    "Restriction_site": ("RS", "--enzyme", "restriction sites"),
+    "Shotgun_coverage": ("coverage", "--depth", "shotgun coverage"),
+}
+
+
+def map_columns(metacool):
+    """The columns of MAP_COLUMNS that the contigs table of a .metacool map
+    gives values in, in that order (see _map_values: a column of ``-``, as
+    metaTOR writes what it did not measure, gives none).
+
+    Parameters:
+    -----------
+    metacool : str
+        Path to the .metacool file, or URI of an entry of a .mmetacool
+        collection: ``file.mmetacool::entries/<name>``.
+
+    Returns:
+    --------
+    list of str:
+        The columns of MAP_COLUMNS that give values in the contigs table of
+        the map.
+
+    Raises:
+    -------
+    metator.metacool.MetacoolError
+        If the map cannot be read.
+    """
+    contigs = mtmc.open_map(metacool).contigs
+    return [column for column in MAP_COLUMNS if column in contigs.columns and _map_values(contigs, column)]
+
+
+def _map_values(contigs, column):
+    """The values of a column of MAP_COLUMNS in the contigs table of a map, by
+    contig name, as create_contig_data measures them: an int of at least 1
+    for the restriction sites (the sites of a contig plus one), a float of
+    at least 0 for the coverage. A missing value, or one that is not such a
+    number, is left out."""
+    values = pd.to_numeric(contigs[column], errors="coerce").to_numpy(dtype=float)
+    names = contigs["name"].astype(str).to_numpy()
+    if column == "Restriction_site":
+        valid = np.isfinite(values) & (values >= 1) & (values == np.floor(values))
+        return {name: int(value) for name, value in zip(names[valid], values[valid], strict=True)}
+    valid = np.isfinite(values) & (values >= 0)
+    return {name: float(value) for name, value in zip(names[valid], values[valid], strict=True)}
+
+
+def contig_data_from_map(metacool, contig_data, enzyme=None, depth=None):
+    """Read the restriction sites and the shotgun coverage of the contigs from
+    a .metacool map that a run starts from, where it measures none: the
+    Restriction_site and Shotgun_coverage columns of its contigs table
+    (MAP_COLUMNS), which metaTOR stores in the maps it writes. --enzyme and
+    --depth measure them on the assembly instead (create_contig_data): they
+    fill in a column that the map lacks, and replace one that it has, with
+    a warning that counts the contigs whose value is not the map's.
+
+    A map of other contigs than those of the assembly is refused first,
+    for what it is (see check_map_contigs). A column is read only if it
+    gives every contig of the assembly a value: an integer of at least 1
+    for the restriction sites (metaTOR counts the sites of a contig plus
+    one), a number of at least 0 for the coverage; but a contig of no
+    length, which no map holds (metacooler leaves it out), gets the value
+    that the option would give it (no site, so a Restriction_site of 1,
+    and a coverage of 0). A column that
+    gives no valid value (``-``, as metaTOR writes what it did not
+    measure) is as no column. One that gives some but not all is not read
+    either, and a warning says which contigs it lacks. The run then does
+    without it, as without the option: a normalization that needs it is
+    refused (see metator.cli.check_normalization), and the map of the bins
+    carries the column no more.
+
+    Parameters:
+    -----------
+    metacool : str
+        Path to the .metacool file, or URI of an entry of a .mmetacool
+        collection: ``file.mmetacool::entries/<name>``.
+    contig_data : dict
+        Dictionary of the all the contigs from the assembly (see
+        create_contig_data): the "RS" and "coverage" of each contig are set
+        from the columns of the map that are read.
+    enzyme : str or None
+        The enzymes given to --enzyme, if any.
+    depth : str or None
+        The depth file given to --depth, if any.
+
+    Returns:
+    --------
+    list of str:
+        The columns of MAP_COLUMNS read from the map, in that order.
+
+    Raises:
+    -------
+    metator.metacool.MetacoolError
+        If the map cannot be read, or is not a map of the contigs of the
+        assembly.
+    """
+    contigs = mtmc.open_map(metacool).contigs
+    check_map_contigs(metacool, contigs, contig_data)
+    given = {"Restriction_site": enzyme, "Shotgun_coverage": depth}
+    read = []
+    for column, (key, option, what) in MAP_COLUMNS.items():
+        if column not in contigs.columns:
+            continue
+        values = _map_values(contigs, column)
+        if not values:
+            continue
+        if given[column]:
+            other = [name for name, value in values.items() if name in contig_data and contig_data[name][key] != value]
+            if other:
+                logger.warning(
+                    f"{option} replaces the {column} column of {metacool}: {len(other)} contig(s) have other {what} "
+                    f"in it: {mtmc._shown(other)}."
+                )
+            continue
+        lacking = [name for name, data in contig_data.items() if name not in values and data["length"] > 0]
+        if lacking:
+            valid = "an integer of at least 1" if key == "RS" else "a number of at least 0"
+            logger.warning(
+                f"The {column} column of {metacool} gives no {what} to {len(lacking)} contig(s) of the assembly "
+                f"(not in the map, or a value that is missing or not {valid}): {mtmc._shown(lacking)}. The run does "
+                f"not read it, as without {option}."
+            )
+            continue
+        # A contig of no length: no site (plus one), no coverage.
+        empty = 1 if key == "RS" else 0.0
+        for name, data in contig_data.items():
+            data[key] = values.get(name, empty)
+        logger.info(f"The {what} of the contigs: the {column} column of {metacool}.")
+        read.append(column)
+    return read
 
 
 def normalize_pair(contig_data, pair, n_occ, normalization):

@@ -457,3 +457,234 @@ def test_map_of_float_counts(tmp_path):
         group["pixels"].create_dataset("count", data=counts.astype(float))
     with pytest.raises(mtmc.MetacoolError, match="holds contact counts of type float64: a network is built from counts"):
         mtn.read_metacool_contacts(str(metacool), _contig_data(tmp_path, {"a": 100, "b": 200, "c": 300}))
+
+
+# The restriction sites and the coverage of the contigs, read from the
+# Restriction_site and Shotgun_coverage columns of a map where --enzyme and
+# --depth measure none (metator.network.contig_data_from_map).
+
+NORMALIZATIONS = ["None", "abundance", "length", "RS", "empirical_hit", "theoritical_hit"]
+
+
+def _synthetic(metagenome_files):
+    return {
+        "pairs": metagenome_files["pairs"],
+        "assembly": metagenome_files["assembly"],
+        "depth": str(metagenome_files["depth"]),
+        "enzyme": "DpnII",
+    }
+
+
+def _map_with_columns(path, data):
+    """The map of the pairs of a data set, with the Restriction_site and
+    Shotgun_coverage columns that metaTOR stores in the maps it writes
+    (metator.metacool._store_assembly_columns): measured on the assembly
+    with the enzyme and the depth file of the data set."""
+    metacool = make_metacool(path, data["pairs"], data["assembly"])
+    contig_data, _ = mtn.create_contig_data(str(data["assembly"]), 1, data["depth"], data["enzyme"])
+    mtmc._store_assembly_columns(str(metacool), contig_data)
+    return metacool
+
+
+def _annotated(metacool, tmp_path, columns):
+    """The map, with columns (by column, the values of each contig by name;
+    a contig left out has none) in its contigs table, as metacooler
+    annotate adds them from a table."""
+    names = list(dict.fromkeys(name for values in columns.values() for name in values))
+    table = tmp_path / "columns.txt"
+    with open(table, "w") as handle:
+        handle.write("\t".join(["Name", *columns]) + "\n")
+        for name in names:
+            handle.write("\t".join([name, *(str(values.get(name, "")) for values in columns.values())]) + "\n")
+    metacooler.annotate(str(metacool), contigs_table=str(table), contigs_table_format="Name", unmatched="ignore",
+                        inplace=True)  # fmt: skip
+    return metacool
+
+
+def _sites_and_coverage(contig_data):
+    return {name: (data["RS"], data["coverage"]) for name, data in contig_data.items()}
+
+
+@pytest.mark.parametrize("normalization", NORMALIZATIONS)
+def test_network_from_the_columns_of_a_map(metagenome_files, normalization, tmp_path):
+    """A map that holds the restriction sites and the coverage of its
+    contigs gives, without --enzyme and --depth, the network that they
+    give, byte for byte, and the same contig data."""
+    data = _synthetic(metagenome_files)
+    metacool = _map_with_columns(tmp_path / "columns.metacool", data)
+    outputs = {}
+    for how in ["options", "map"]:
+        directory = tmp_path / how
+        directory.mkdir()
+        if how == "options":
+            contig_data, _ = mtn.create_contig_data(str(data["assembly"]), 1, data["depth"], data["enzyme"])
+        else:
+            contig_data, _ = mtn.create_contig_data(str(data["assembly"]))
+            assert mtn.contig_data_from_map(str(metacool), contig_data) == ["Restriction_site", "Shotgun_coverage"]
+        outputs[how] = mtn.metacool_to_contacts(str(metacool), contig_data, str(directory), "network.txt",
+                                                "contig_data_network.txt", str(directory), 1, normalization)  # fmt: skip
+    for by_options, by_map in zip(outputs["options"], outputs["map"], strict=True):
+        assert Path(by_map).read_bytes() == Path(by_options).read_bytes()
+    table = pd.read_csv(outputs["map"][1], sep="\t")
+    assert (table.Restriction_site >= 1).all() and (table.Shotgun_coverage > 0).all()
+
+
+def test_columns_of_a_map_read(tmp_path, logged):
+    """The values of the map, as create_contig_data measures them: an int
+    of restriction sites, a float of coverage (from a column of integers
+    too), whatever the order of the contigs in the map."""
+    metacool = _small_map(tmp_path, {"a": 100, "b": 200, "c": 300}, PAIRS)
+    _annotated(metacool, tmp_path, {"Restriction_site": {"c": 7, "a": 1, "b": 3},
+                                    "Shotgun_coverage": {"b": 2, "c": 0, "a": 12}})  # fmt: skip
+    contig_data = _contig_data(tmp_path, {"c": 300, "a": 100, "b": 200})
+    assert mtn.map_columns(str(metacool)) == ["Restriction_site", "Shotgun_coverage"]
+    assert mtn.contig_data_from_map(str(metacool), contig_data) == ["Restriction_site", "Shotgun_coverage"]
+    assert _sites_and_coverage(contig_data) == {"c": (7, 0.0), "a": (1, 12.0), "b": (3, 2.0)}
+    assert [(type(data["RS"]), type(data["coverage"])) for data in contig_data.values()] == [(int, float)] * 3
+    assert logged() == [
+        ("INFO", f"The restriction sites of the contigs: the Restriction_site column of {metacool}."),
+        ("INFO", f"The shotgun coverage of the contigs: the Shotgun_coverage column of {metacool}."),
+    ]
+
+
+def test_options_replace_the_columns_of_a_map(tmp_path, logged):
+    """--enzyme and --depth replace the columns of the map: the contigs keep
+    what they measure on the assembly, and a warning counts the contigs
+    whose value in the map is another. None when they agree."""
+    metacool = _small_map(tmp_path, {"a": 100, "b": 200, "c": 300}, PAIRS)
+    _annotated(metacool, tmp_path, {"Restriction_site": {"a": 1, "b": 3, "c": 7},
+                                    "Shotgun_coverage": {"a": 12.5, "b": 2.0, "c": 0.0}})  # fmt: skip
+    contig_data = _contig_data(tmp_path, {"a": 100, "b": 200, "c": 300})
+    measured = {"a": (1, 12.5), "b": (2, 2.0), "c": (5, 0.0)}
+    for name, (sites, coverage) in measured.items():
+        contig_data[name].update(RS=sites, coverage=coverage)
+    assert mtn.contig_data_from_map(str(metacool), contig_data, "DpnII", "depth.txt") == []
+    assert _sites_and_coverage(contig_data) == measured
+    assert logged() == [
+        (
+            "WARNING",
+            f"--enzyme replaces the Restriction_site column of {metacool}: 2 contig(s) have other restriction sites "
+            "in it: 'b', 'c'.",
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    "column, values, lacking",
+    [
+        ("Restriction_site", {"a": 1, "b": 3}, "'c'"),
+        ("Restriction_site", {"a": 1, "b": 0, "c": 7}, "'b'"),
+        ("Restriction_site", {"a": 1, "b": 2.5, "c": -1}, "'b', 'c'"),
+        ("Restriction_site", {"a": "many", "b": 2, "c": 7}, "'a'"),
+        ("Shotgun_coverage", {"a": 1.5, "b": -0.5, "c": 7}, "'b'"),
+        ("Shotgun_coverage", {"a": 1.5, "b": "nan", "c": "inf"}, "'b', 'c'"),
+        ("Shotgun_coverage", {"a": 1.5, "c": 2}, "'b'"),
+    ],
+    ids=["missing", "zero sites", "not an integer", "text", "negative", "not finite", "missing coverage"],
+)
+def test_columns_of_a_map_that_lack_contigs(column, values, lacking, tmp_path, logged):
+    """A column that does not give every contig of the assembly a value (as
+    create_contig_data measures them) is not read, as without the option,
+    and a warning says which contigs it lacks."""
+    metacool = _small_map(tmp_path, {"a": 100, "b": 200, "c": 300}, PAIRS)
+    _annotated(metacool, tmp_path, {column: values})
+    contig_data = _contig_data(tmp_path, {"a": 100, "b": 200, "c": 300})
+    assert mtn.contig_data_from_map(str(metacool), contig_data) == []
+    assert set(_sites_and_coverage(contig_data).values()) == {("-", "-")}
+    what, option, valid = {
+        "Restriction_site": ("restriction sites", "--enzyme", "an integer of at least 1"),
+        "Shotgun_coverage": ("shotgun coverage", "--depth", "a number of at least 0"),
+    }[column]
+    count = lacking.count("'") // 2
+    assert logged() == [
+        (
+            "WARNING",
+            f"The {column} column of {metacool} gives no {what} to {count} contig(s) of the assembly (not in the map, "
+            f"or a value that is missing or not {valid}): {lacking}. The run does not read it, as without {option}.",
+        )
+    ]
+
+
+def test_columns_of_a_map_lacking_contigs_of_the_assembly(tmp_path, logged):
+    """A map that lacks contigs of the assembly (a map made with a contig
+    filter) cannot give them a value: its columns are not read."""
+    metacool = _small_map(tmp_path, {"a": 100, "b": 200, "c": 300}, PAIRS)
+    _annotated(metacool, tmp_path, {"Restriction_site": {"a": 1, "b": 3, "c": 7}})
+    contig_data = _contig_data(tmp_path, {"z": 8, "a": 100, "b": 200, "c": 300})
+    assert mtn.contig_data_from_map(str(metacool), contig_data) == []
+    assert contig_data["a"]["RS"] == "-"
+    assert [level for level, message in logged()] == ["WARNING"]
+    assert "gives no restriction sites to 1 contig(s) of the assembly" in logged()[0][1]
+
+
+def test_columns_of_a_map_without_values(tmp_path, logged):
+    """A column of ``-``, as metaTOR writes what it did not measure (a map
+    made from contig_data_final.txt, metacooler create pairs
+    --contigs-format metator), is as no column: no warning. A guard against
+    reading too much: a version that reads nothing passes it."""
+    metacool = _small_map(tmp_path, {"a": 100, "b": 200, "c": 300}, PAIRS)
+    _annotated(metacool, tmp_path, {"Restriction_site": dict.fromkeys("abc", "-"),
+                                    "Shotgun_coverage": dict.fromkeys("abc", "-")})  # fmt: skip
+    assert "Restriction_site" in metacooler.MetaCooler(str(metacool)).contigs.columns
+    contig_data = _contig_data(tmp_path, {"a": 100, "b": 200, "c": 300})
+    assert mtn.map_columns(str(metacool)) == []
+    assert mtn.contig_data_from_map(str(metacool), contig_data, "DpnII") == []
+    assert logged() == []
+
+
+def test_columns_of_a_map_without_them(tmp_path, logged):
+    """A guard against reading too much: a version that reads nothing
+    passes it."""
+    metacool = _small_map(tmp_path, {"a": 100, "b": 200, "c": 300}, PAIRS)
+    contig_data = _contig_data(tmp_path, {"a": 100, "b": 200, "c": 300})
+    assert mtn.map_columns(str(metacool)) == []
+    assert mtn.contig_data_from_map(str(metacool), contig_data) == []
+    assert set(_sites_and_coverage(contig_data).values()) == {("-", "-")} and logged() == []
+
+
+def test_columns_of_an_mmetacool_entry(tmp_path):
+    metacool = _small_map(tmp_path, {"a": 100, "b": 200, "c": 300}, PAIRS)
+    _annotated(metacool, tmp_path, {"Restriction_site": {"a": 1, "b": 3, "c": 7}})
+    collection = tmp_path / "maps.mmetacool"
+    metacooler.create_mmetacool(collection, {"lib1": metacool})
+    contig_data = _contig_data(tmp_path, {"a": 100, "b": 200, "c": 300})
+    uri = f"{collection}::entries/lib1"
+    assert mtn.map_columns(uri) == ["Restriction_site"]
+    assert mtn.contig_data_from_map(uri, contig_data) == ["Restriction_site"]
+    assert [data["RS"] for data in contig_data.values()] == [1, 3, 7]
+
+
+def test_columns_of_a_map_with_a_contig_of_no_length(tmp_path, logged):
+    """A contig of no length, which no map holds (metacooler leaves it out),
+    does not keep the columns of the map from being read: it gets what the
+    options would give it: no site, so a Restriction_site of 1, and a
+    coverage of 0."""
+    metacool = _small_map(tmp_path, {"a": 100, "b": 200, "c": 300}, PAIRS)
+    _annotated(metacool, tmp_path, {"Restriction_site": {"a": 1, "b": 3, "c": 7},
+                                    "Shotgun_coverage": {"a": 1.5, "b": 2.0, "c": 0.5}})  # fmt: skip
+    contig_data = _contig_data(tmp_path, {"a": 100, "e": 0, "b": 200, "c": 300})
+    assert contig_data["e"]["length"] == 0
+    assert mtn.contig_data_from_map(str(metacool), contig_data) == ["Restriction_site", "Shotgun_coverage"]
+    assert _sites_and_coverage(contig_data) == {"a": (1, 1.5), "e": (1, 0.0), "b": (3, 2.0), "c": (7, 0.5)}
+    assert [level for level, message in logged()] == ["INFO", "INFO"]
+
+
+def test_columns_of_a_map_of_other_contigs(tmp_path, logged):
+    """A map that holds contigs that the assembly lacks is refused for what
+    it is, before its columns are read: no warning about them (it named
+    the contigs that its columns lacked, and only the network step said
+    why)."""
+    metacool = _small_map(tmp_path, {"a": 100, "b": 200, "c": 300}, PAIRS)
+    _annotated(metacool, tmp_path, {"Restriction_site": {"a": 1, "b": 3, "c": 7}})
+    contig_data = _contig_data(tmp_path, {"a": 100, "b": 200, "x": 300})
+    with pytest.raises(mtmc.MetacoolError, match="is not a contact map of the contigs of the assembly: 1 of its contig"):
+        mtn.contig_data_from_map(str(metacool), contig_data)
+    assert logged() == []
+
+
+@pytest.mark.parametrize(
+    "read", [mtn.map_columns, lambda map: mtn.contig_data_from_map(map, {})], ids=["map_columns", "contig_data_from_map"]
+)
+def test_columns_of_an_unreadable_map(read, tmp_path):
+    with pytest.raises(mtmc.MetacoolError, match="Cannot read the contact map"):
+        read(str(tmp_path / "missing.metacool"))
