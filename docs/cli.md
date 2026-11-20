@@ -41,7 +41,7 @@ metator pipeline [OPTIONS]
 
 | Option | Default | Description |
 |---|---|---|
-| `-1, --forward` | *required* | The R1 reads (FASTQ), or their alignments (BAM), or the pairs files, of each library, separated by commas. Pairs files may be plain or compressed with gzip, bzip2, zstd or LZ4, named by their compression (`.gz`, `.bz2`, `.zst`, `.lz4`); zstd and LZ4 not with `--scaffold`. With `--start metacool`, one `.metacool` contact map, or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`). |
+| `-1, --forward` | *required* | The R1 reads (FASTQ), or their alignments (BAM), or the pairs files, of each library, separated by commas. Pairs files may be plain or compressed with gzip, bzip2, zstd or LZ4, whatever their name; zstd and LZ4 not with `--scaffold`. With `--start metacool`, one `.metacool` contact map, or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`). |
 | `-2, --reverse` | none | The R2 reads, or their alignments, in the same order. Not needed from pairs files, a contact map, or the BAM files of bwa, which hold both mates. |
 | `-a, --assembly` | *required* | The assembly: a FASTA file, or the basename of its bowtie2 or bwa index. |
 | `-S, --start` | `fastq` | What `--forward` and `--reverse` are: `fastq`, `bam`, `pair` or `metacool`. |
@@ -64,11 +64,12 @@ metator pipeline [OPTIONS]
 | `-J, --junctions` | `NNNNN` | The sequence between two contigs of a scaffold. |
 | `-o, --outdir` | the current directory | The output directory. |
 | `-p, --prefix` | none | Name the bins `<prefix>_metator_…`, the map `<prefix>.metacool` and, with several libraries, the maps of the libraries `<prefix>.mmetacool`. Letters, digits, `_` and `-` only. |
-| `-F, --force` | off | Replace the directories of bins of an earlier run. |
+| `-F, --force` | off | Replace the directories of clusters of an earlier run, and an existing `--output-map` file. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory, where the index of the assembly is built. |
 | `-t, --threads` | `1` | Threads for the alignment, the partition and miComplete. |
 | `-N, --no-clean-up` | off | Keep the temporary files, and the pairs files of the run. |
-| `--no-metacool` | off | Do not keep the contact map of the contigs, grouped by bin, `metator.metacool` (`<prefix>.metacool` with `--prefix`): a run from reads, alignments or pairs still builds the map of its contigs from the pairs files (a map that cannot be built stops the run), reads its networks from it, and removes it at the end, with the maps of its libraries (`<prefix>.mmetacool`) when it has several. |
+| `--no-metacool` | off | Do not keep the contact map of the contigs, grouped by cluster: a run from reads, alignments or pairs still builds the map of its contigs from the pairs files (a map that cannot be built stops the run), reads its networks from it, and removes it at the end, with the maps of its libraries (`<prefix>.mmetacool`) when it has several; a run from a map leaves that map as it was. |
+| `--output-map` | none | Write the contact map of the clusters to this file (replaced only with `-F`). By default, a run from a `.metacool` map updates that map in place, and any other run writes `<outdir>/<prefix>.metacool` (`metator.metacool` without `--prefix`). |
 
 The validation is the step that needs the most memory: miComplete runs
 prodigal and hmmer on every bin.

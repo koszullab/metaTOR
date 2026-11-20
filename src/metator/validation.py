@@ -30,6 +30,7 @@ Functions in this module:
 """
 
 import logging
+import metator.clusters as mtc
 import metator.io as mio
 import metator.figures as mtf
 import metator.partition as mtp
@@ -488,6 +489,11 @@ def recursive_clustering(
     return contamination, contigs_data, clustering_matrix, parent_dict
 
 
+def _bin_contigs(bin_id, contigs_data):
+    """The names of the contigs of a bin (see bin_contig_ids)."""
+    return list(contigs_data.loc[[contig_id - 1 for contig_id in bin_contig_ids(bin_id, contigs_data)], "Name"])
+
+
 def bin_contig_ids(bin_id, contigs_data):
     """Function to list the IDs of the contigs of a bin from the contigs data:
     those of its overlapping bin and recursive bin, given by its name
@@ -722,6 +728,13 @@ def recursive_decontamination(
     # Load miComplete result:
     bin_summary = mio.micomplete_results_to_dict(overlapping_micomplete_file)
 
+    # The clustering rounds of the run, for its map (see metator.clusters):
+    # first the overlapping clusters that miComplete checked.
+    rounds = mtc.Rounds()
+    for bin_id, info in bin_summary.items():
+        rounds.add(mtc.OVERLAPPING, bin_id, _bin_contigs(bin_id, contigs_data), columns=info)
+    rounds.close_round(mtc.OVERLAPPING)
+
     # Add columns about recursive step.
     for bin_id in bin_summary:
         bin_summary[bin_id]["recursive"] = True
@@ -785,6 +798,20 @@ def recursive_decontamination(
                 threads,
             )
 
+            # The clusters of this step, with their contigs now: a later step
+            # gives the contigs of a cluster it splits other IDs.
+            step_round = mtc.recursive_round(step)
+            step_quality = mio.micomplete_results_to_dict(recursive_micomplete_file)
+            for bin_id, parent in parent_dict.items():
+                rounds.add(
+                    step_round,
+                    bin_id,
+                    _bin_contigs(bin_id, contigs_data),
+                    parent=parent,
+                    columns=step_quality.get(bin_id),
+                )
+            rounds.close_round(step_round)
+
             # Compare
             bin_summary, contamination = micomplete_compare_bins(
                 recursive_micomplete_file,
@@ -839,6 +866,20 @@ def recursive_decontamination(
 
     # Compute the abundance of the mags.
     bin_summary = get_bin_coverage(bin_summary, contigs_data)
+
+    # The final clusters, each the cluster of the same name of the round it
+    # comes from, with the columns of the bin summary (but its parent, which
+    # the round says).
+    final_contigs = contigs_data.groupby("Final_bin")["Name"]
+    for bin_name, info in bin_summary.items():
+        rounds.add(
+            mtc.FINAL,
+            bin_name,
+            final_contigs.get_group(bin_name) if bin_name in final_contigs.groups else [],
+            parent=bin_name,
+            columns={key: value for key, value in info.items() if key not in ("parent", "recursive")},
+        )
+    rounds.write(outdir)
 
     # Save bin information in final file
     bin_summary_file = join(outdir, "bin_summary.txt")

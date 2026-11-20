@@ -1861,7 +1861,7 @@ wheels = [
 [[package]]
 name = "metacooler"
 version = "0.3.0"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/js2264/metacooler?rev=d7f4ce6162594d7b4c4d4d724ccdde2b9624d157#d7f4ce6162594d7b4c4d4d724ccdde2b9624d157" }
 dependencies = [
     { name = "click" },
     { name = "cooler" },
@@ -1883,16 +1883,13 @@ dependencies = [
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
     { name = "scipy", version = "1.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/74/16/3d892a40354d65a8f18e13f7c0302314e70e8bda2b62d5cb728b532dbd3b/metacooler-0.3.0.tar.gz", hash = "sha256:9bfe1fc530083ac40ec22524551ac478a61c538e26de72d757a2aacf187fe3cd", size = 2398470, upload-time = "2026-11-18T19:10:13.01Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/64/96/d565fd864f3e4ba52fad16ee58d341290f1eec846eac341e0065f095d573/metacooler-0.3.0-py3-none-any.whl", hash = "sha256:2fccd4798fe5841f0f9e0af99ed6a53bbceea8ebccbfb2182dbe4cbe92cdc8e4", size = 300448, upload-time = "2026-11-18T19:10:10.571Z" },
-]
 
 [[package]]
 name = "metator"
 source = { editable = "." }
 dependencies = [
     { name = "biopython" },
+    { name = "h5py" },
     { name = "hicstuff" },
     { name = "igraph" },
     { name = "matplotlib", version = "3.10.9", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -1935,10 +1932,11 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "biopython", specifier = ">=1.80" },
+    { name = "h5py", specifier = ">=3.8" },
     { name = "hicstuff", specifier = ">=3.3.0" },
     { name = "igraph", specifier = ">=0.10.3" },
     { name = "matplotlib", specifier = ">=3.9" },
-    { name = "metacooler", specifier = ">=0.3.0" },
+    { name = "metacooler", git = "https://github.com/js2264/metacooler?rev=d7f4ce6162594d7b4c4d4d724ccdde2b9624d157" },
     { name = "micomplete" },
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'", specifier = ">=0.25" },
     { name = "numpy" },
