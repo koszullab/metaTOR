@@ -2118,19 +2118,22 @@ def test_map_directory_that_cannot_be_made(command, stub_pipeline, tmp_path, run
 
 def test_sigterm_stops_a_run_as_ctrl_c_does(monkeypatch):
     """A job scheduler's SIGTERM stops the run with SystemExit(143), so that
-    it cleans up after itself; the handler is put back after it. Under a
-    handler that a host set from C, nothing is changed."""
+    it cleans up after itself; the handler, and sys.unraisablehook, are put
+    back after it. Under a handler that a host set from C, nothing is
+    changed."""
     import signal
+    import sys
 
+    hook = sys.unraisablehook
     with pytest.raises(SystemExit) as stopped:
         with mtcli.terminated_as_interrupted():
             signal.raise_signal(signal.SIGTERM)
     assert stopped.value.code == 143
-    assert signal.getsignal(signal.SIGTERM) is signal.SIG_DFL
+    assert signal.getsignal(signal.SIGTERM) is signal.SIG_DFL and sys.unraisablehook is hook
     monkeypatch.setattr(signal, "getsignal", lambda signum: None)
     monkeypatch.setattr(signal, "signal", lambda *args: pytest.fail("the handler must be left alone"))
     with mtcli.terminated_as_interrupted():
-        pass
+        assert sys.unraisablehook is hook
 
 
 def test_a_process_forked_by_a_run_dies_of_sigterm():
@@ -2160,6 +2163,99 @@ def test_a_process_forked_by_a_run_dies_of_sigterm():
         os.kill(pid, signal.SIGTERM)
         _, status = os.waitpid(pid, 0)
     assert os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGTERM
+
+
+@pytest.mark.parametrize("thread", ["main thread", "another thread"])
+def test_a_sigterm_sent_as_a_process_is_forked_kills_it(thread):
+    """A process that a run forks dies of a SIGTERM sent the instant it is
+    forked, before it runs its after-fork code, from the main thread or
+    another (the thread of a multiprocessing pool that replaces a worker).
+    The handler of the run caught such a SIGTERM, then CPython dropped it:
+    about one child in four lived on. A pool closed and dropped at once
+    (metator.partition.get_hamming_distance) ends its workers so, and waited
+    forever for the one that missed it. The handler and the signal mask of
+    the run are left as they were."""
+    import signal
+    import threading
+    import time
+    import warnings
+
+    statuses = []
+
+    def fork_and_kill():
+        for _ in range(100):
+            pid = os.fork()
+            if pid == 0:
+                time.sleep(0.05)
+                os._exit(0)
+            os.kill(pid, signal.SIGTERM)
+            statuses.append(os.waitpid(pid, 0)[1])
+
+    with mtcli.terminated_as_interrupted():
+        handler = signal.getsignal(signal.SIGTERM)
+        with warnings.catch_warnings():
+            # The test process may run threads: the children only sleep.
+            warnings.simplefilter("ignore", DeprecationWarning)
+            if thread == "main thread":
+                fork_and_kill()
+            else:
+                forking = threading.Thread(target=fork_and_kill)
+                forking.start()
+                forking.join()
+        assert signal.getsignal(signal.SIGTERM) is handler
+        assert signal.SIGTERM not in signal.pthread_sigmask(signal.SIG_BLOCK, set())
+    assert len(statuses) == 100
+    assert [status for status in statuses if not (os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGTERM)] == []
+
+
+def _run_with_sigterm_handled_in(where):
+    """The exit status and outputs of a Python process that runs under the
+    SIGTERM handler of a run (terminated_as_interrupted) and gets a SIGTERM
+    that the handler handles where CPython ignores what it raises: in a fork
+    hook, or in a finalizer. It prints "the run went on" if it does."""
+    import subprocess
+    import sys
+
+    sigterm = {
+        # A fork hook that runs before metaTOR's sends it to the main thread,
+        # where it is blocked until metaTOR's unblocks it, in its fork hook.
+        "a fork hook": (
+            "os.register_at_fork(after_in_parent=lambda: signal.pthread_kill(threading.get_ident(), signal.SIGTERM))",
+            "    pid = os.fork()\n    if pid == 0:\n        os._exit(0)\n    os.waitpid(pid, 0)",
+        ),
+        # The finalizer of a dropped object, as a multiprocessing pool ends
+        # its workers in its finalizer.
+        "a finalizer": (
+            "class Dropped:\n    pass",
+            "    dropped = Dropped()\n    weakref.finalize(dropped, signal.raise_signal, signal.SIGTERM)\n    del dropped",
+        ),
+    }[where]
+    script = (
+        "import os, signal, threading, time, weakref\n"
+        f"{sigterm[0]}\n"
+        "from metator.cli import terminated_as_interrupted\n"
+        "with terminated_as_interrupted():\n"
+        f"{sigterm[1]}\n"
+        "    time.sleep(2)\n"
+        "print('the run went on')\n"
+    )
+    return subprocess.run([sys.executable, "-W", "ignore", "-c", script], capture_output=True, text=True, timeout=120)
+
+
+@pytest.mark.parametrize("where", ["a fork hook", "a finalizer"])
+def test_a_sigterm_handled_where_python_ignores_its_stop_kills_the_run(where):
+    """A SIGTERM that the handler of the run handles in code whose exceptions
+    CPython ignores kills the run at once, as without the handler: the run
+    went on, its SIGTERM lost. That is a SIGTERM that comes as the run forks
+    from its main thread, where SIGTERM is blocked across the fork and handled
+    in metaTOR's fork hook once unblocked; or one that comes in a finalizer,
+    as in that of a multiprocessing pool dropped at once, which ends its
+    workers there (metator.partition.get_hamming_distance)."""
+    import signal
+
+    result = _run_with_sigterm_handled_in(where)
+    assert result.returncode == -signal.SIGTERM, result.stdout + result.stderr
+    assert "the run went on" not in result.stdout
 
 
 def test_metator_metacool_refused_while_a_run_holds_its_map(tmp_path, run_cli):

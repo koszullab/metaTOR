@@ -469,29 +469,94 @@ def terminated_as_interrupted():
     cancelled; by default, Python dies on it without a word, as on SIGKILL.
     The exit status is that of a process killed by SIGTERM, 143. Only the
     main thread can set a signal handler: elsewhere, the run is as it is.
-    A process that the run forks inherits the handler: it dies of SIGTERM,
-    as it would without it (a multiprocessing pool ends its workers so, and
-    a worker that raised SystemExit in its exit handlers printed a
-    traceback)."""
+    A process that the run forks dies of SIGTERM, as it would without the
+    handler: a multiprocessing pool ends its workers so. Its SIGTERM is set
+    back to the default before it runs any Python (_block_sigterm_to_fork).
+    Where the handler runs in code whose exceptions CPython ignores, the run
+    dies of SIGTERM at once, as without the handler (_die_of_an_ignored_stop).
+    """
     if threading.current_thread() is not threading.main_thread() or signal.getsignal(signal.SIGTERM) is None:
         # Off the main thread, or under a handler that a host embedding
         # Python set from C, which could not be restored.
         yield
         return
-    run = os.getpid()
-
-    def stop(signum, frame):
-        if os.getpid() != run:
-            signal.signal(signal.SIGTERM, signal.SIG_DFL)
-            os.kill(os.getpid(), signal.SIGTERM)
-            return
-        raise SystemExit(128 + signal.SIGTERM)
-
-    previous = signal.signal(signal.SIGTERM, stop)
+    previous_hook = sys.unraisablehook
+    sys.unraisablehook = partial(_die_of_an_ignored_stop, previous_hook)
+    previous = signal.signal(signal.SIGTERM, _stop_run)
     try:
         yield
     finally:
         signal.signal(signal.SIGTERM, previous)
+        sys.unraisablehook = previous_hook
+
+
+class _Terminated(SystemExit):
+    """The SystemExit that the SIGTERM handler of a run raises (_stop_run)."""
+
+
+def _stop_run(signum, frame):
+    """The SIGTERM handler of a run (terminated_as_interrupted)."""
+    raise _Terminated(128 + signal.SIGTERM)
+
+
+def _die_of_an_ignored_stop(previous_hook, unraisable):
+    """sys.unraisablehook under the SIGTERM handler of a run: the SystemExit of
+    the handler, raised where CPython ignores what is raised, kills the run
+    with SIGTERM at once, as without the handler; it let the run go on. That
+    is the handler run in a finalizer, a weakref callback or a fork hook: a
+    multiprocessing pool that is dropped ends its workers in its finalizer
+    (metator.partition.get_hamming_distance), and a SIGTERM that comes as the
+    run forks is handled in a fork hook (_unblock_sigterm_in_parent). The
+    other exceptions go to the previous hook."""
+    if isinstance(unraisable.exc_value, _Terminated):
+        if threading.current_thread() is threading.main_thread():
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        os.kill(os.getpid(), signal.SIGTERM)
+    previous_hook(unraisable)
+
+
+_forking = threading.local()
+
+
+def _block_sigterm_to_fork():
+    """Before a fork, under the SIGTERM handler of a run
+    (terminated_as_interrupted): block SIGTERM in the thread that forks, so
+    that the child is born with it blocked, and unblocks it only once it is
+    set back to its default (_default_sigterm_in_child). A SIGTERM that
+    reached the child before its after-fork code ran was lost otherwise:
+    the handler of the run caught it, then CPython dropped it. A
+    multiprocessing pool that is closed and dropped at once
+    (metator.partition.get_hamming_distance) ends its workers with SIGTERM
+    as soon as they are forked: it then waited forever for the worker that
+    missed it, and the run with it."""
+    _forking.ours = signal.getsignal(signal.SIGTERM) is _stop_run
+    _forking.unblock = _forking.ours and signal.SIGTERM not in signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
+
+
+def _unblock_sigterm_in_parent():
+    """After a fork, in the parent: SIGTERM is unblocked, if it was not
+    blocked before the fork. One that the run received meanwhile is handled
+    then, in this hook, whose exceptions CPython ignores: it kills the run at
+    once (_die_of_an_ignored_stop)."""
+    if _forking.unblock:
+        signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGTERM})
+
+
+def _default_sigterm_in_child():
+    """After a fork, in the child of a run: SIGTERM is set back to its
+    default, then unblocked if it was not blocked before the fork; a SIGTERM
+    that the child received meanwhile kills it then."""
+    if _forking.ours:
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        if _forking.unblock:
+            signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGTERM})
+
+
+os.register_at_fork(
+    before=_block_sigterm_to_fork,
+    after_in_parent=_unblock_sigterm_in_parent,
+    after_in_child=_default_sigterm_in_child,
+)
 
 
 def run_map_path(start, forward, outdir, prefix, output_map=None, force=False, no_metacool=False):
