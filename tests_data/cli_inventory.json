@@ -20,7 +20,13 @@
   ],
   "commands": {
    "network": {
-    "positional": [],
+    "positional": [
+     {
+      "name": "map",
+      "required": false,
+      "repeatable": false
+     }
+    ],
     "options": [
      {
       "short": "-b",
@@ -55,14 +61,6 @@
       "required": false
      },
      {
-      "short": "-E",
-      "long": "--edge",
-      "takes_value": true,
-      "metavar": "INT",
-      "default": "0",
-      "required": false
-     },
-     {
       "short": "-e",
       "long": "--enzyme",
       "takes_value": true,
@@ -76,7 +74,7 @@
       "takes_value": true,
       "metavar": "STR",
       "default": null,
-      "required": true
+      "required": false
      },
      {
       "short": "-q",
@@ -411,7 +409,13 @@
     ]
    },
    "pipeline": {
-    "positional": [],
+    "positional": [
+     {
+      "name": "map",
+      "required": false,
+      "repeatable": false
+     }
+    ],
     "options": [
      {
       "short": "-A",
@@ -462,14 +466,6 @@
       "required": false
      },
      {
-      "short": "-E",
-      "long": "--edge",
-      "takes_value": true,
-      "metavar": "INT",
-      "default": "0",
-      "required": false
-     },
-     {
       "short": "-e",
       "long": "--enzyme",
       "takes_value": true,
@@ -491,7 +487,7 @@
       "takes_value": true,
       "metavar": "STR",
       "default": null,
-      "required": true
+      "required": false
      },
      {
       "short": "-i",

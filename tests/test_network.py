@@ -293,9 +293,10 @@ def test_edge_region(edge, tmp_path):
 
 @pytest.mark.parametrize("edge", [0, 10])
 def test_edge_region_with_self_contacts(edge, tmp_path):
-    """With self contacts, the pairs within a contig are kept, and --edge
+    """With self contacts, the pairs within a contig are kept, and the edge
+    of alignment_to_contacts (no longer an option of the command line)
     leaves out the contacts between contigs near a contig end, as without:
-    it was ignored with --self-contacts."""
+    it was ignored with self contacts."""
     assembly_file = tmp_path / "assembly.fa"
     assembly_file.write_text(">c1\n" + "A" * 100 + "\n>c2\n" + "C" * 200 + "\n")
     pairs = tmp_path / "test.pairs"

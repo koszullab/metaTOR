@@ -31,19 +31,22 @@ mtmc_reassign_metacool = mtmc.reassign_metacool
 # The docopt command line that rich-click replaced (that of 1.3.10, with the
 # mge options renamed and host removed), as docopt read it: see the commit
 # that added the file. Commands and options added since are added to it:
-# metacool, and the --no-metacool option of pipeline; and the --forward of
-# pipeline is required, as every start needs it.
+# metacool, and the --no-metacool and --output-map options of pipeline. The
+# 2.0 command line changed it on purpose (see docs/migration.md): the map
+# that network and pipeline start from is their first argument (MAP), so
+# their --forward is not required; and their --edge is gone.
 INVENTORY = json.loads((TESTS_DATA / "cli_inventory.json").read_text())["metator"]
 
 # Options whose value is one of a list, wherever they appear. --object takes
-# any column name of the contig data file. Values added since docopt:
-# metacool (--start of network and pipeline).
+# any column name of the contig data file. The --start of network and
+# pipeline took metacool before 2.0, which the map, their first argument,
+# replaced.
 CHOICES = {
     "--aligner": ["bowtie2", "bwa"],
     "--aligner-mode": ["normal", "iterative", "cutsite"],
     "--algorithm": ["louvain", "leiden"],
     "--normalization": ["None", "abundance", "length", "RS", "empirical_hit", "theoritical_hit"],
-    "--start": ["fastq", "bam", "pair", "metacool"],
+    "--start": ["fastq", "bam", "pair"],
     "--mat-fmt": ["graal", "bg2", "cool"],
 }
 
@@ -144,11 +147,14 @@ def test_command_help(command, help_option, run_cli):
         assert option["long"] in output
 
 
-def test_network_help_of_a_metacool_start(run_cli):
-    """--edge must be 0 with --start metacool, as a map holds no read
-    positions: the help says so right after what a map gives."""
-    output = " ".join(run_cli("network", "--help").output.split())
-    assert "that of the pairs it was made of. --edge must then be 0." in output
+@pytest.mark.parametrize("command", ["network", "pipeline"])
+def test_help_of_a_run_from_a_map(command, run_cli):
+    """The help shows both inputs: the map, the first argument, and the
+    reads, alignments or pairs of -1; and that every pair counts."""
+    output = " ".join(run_cli(command, "--help").output.split())
+    assert f"Usage: metator {command} [OPTIONS] [MAP]" in output
+    assert f"metator {command} MAP -a ASSEMBLY" in output and f"metator {command} -1 FORWARD -2 REVERSE" in output
+    assert "every pair" in output
 
 
 def test_group_help(run_cli):
@@ -180,7 +186,10 @@ def test_missing_required_option(command, missing, run_cli):
     assert f"Missing option '{short}' / '{missing}'" in result.output
 
 
-@pytest.mark.parametrize("command", [command for command, frozen in INVENTORY["commands"].items() if frozen["positional"]])
+@pytest.mark.parametrize(
+    "command",
+    [command for command, frozen in INVENTORY["commands"].items() if any(arg["required"] for arg in frozen["positional"])],
+)
 def test_missing_pairs_files(command, run_cli):
     args = _required_args(command)[:-1]
     result = run_cli(command, *args, exit_code=2)
@@ -954,9 +963,8 @@ def test_pipeline_from_a_map_keeps_the_contig_names(stub_pipeline, tmp_path, run
     assembly, as it builds no map of the contigs."""
     fasta = tmp_path / "assembly.fa"
     fasta.write_text(NON_ASCII_ASSEMBLY)
-    metacool = tmp_path / "map.metacool"
-    metacool.write_text("map")
-    run_cli("pipeline", "-1", metacool, "-a", fasta, "-S", "metacool", "-o", tmp_path / "out", "-T", tmp_path / "tmp")
+    metacool = _contig_map(tmp_path / "map.metacool")
+    run_cli("pipeline", metacool, "-a", fasta, "-o", tmp_path / "out", "-T", tmp_path / "tmp")
     assert stub_pipeline["metacool_to_contacts"][0] == str(metacool)
 
 
@@ -980,7 +988,8 @@ def test_pipeline_refuses_its_map_as_an_input(case, stub_pipeline, tmp_path, run
     that is its own contact map (the same path, or a symbolic link to it or
     from it), which it would remove before it builds the map of its contigs
     there, --no-metacool or not; and, from pairs, a contact map given as a
-    pairs file, which --start metacool reads. The map is left as it was."""
+    pairs file, which a run takes as its first argument. The map is left as
+    it was."""
     out = tmp_path / "out"
     out.mkdir()
     outfile = out / "metator.metacool"
@@ -1021,12 +1030,12 @@ def test_pipeline_refuses_its_map_as_an_input(case, stub_pipeline, tmp_path, run
     assert not stub_pipeline and not (out / "overlapping_bin").exists()
     (log,) = out.glob("metator_pipeline_*.log")
     if case in ["map elsewhere", "entry of a collection"]:
-        message = f"{forward} is a contact map, not a pairs file: start from it with --start metacool."
+        message = f"{forward} is a contact map, not a pairs file: give it as the first argument to start from it."
     else:
         message = (
             f"{refused} is the contact map of this run ({outfile}), which the run removes before it builds the map of "
-            "its contigs there: start from it with --start metacool, or write the run to another output directory or "
-            "under another --prefix."
+            "its contigs there: give it as the first argument to start from it, or write the run to another output "
+            "directory or under another --prefix."
         )
     assert f"ERROR :: {message}" in log.read_text()
 
@@ -1118,15 +1127,14 @@ def test_pipeline_from_a_map_leaves_another_map_of_its_output_directory(stub_pip
     out.mkdir()
     earlier = out / "metator.metacool"
     earlier.write_text("earlier run")
-    metacool = tmp_path / "input.metacool"
-    metacool.write_text("input map")
+    metacool = _contig_map(tmp_path / "input.metacool")
     seen = []
 
     def reassign_metacool(metacool, contig_data, outfile, **kwargs):
         seen.append(outfile)
 
     monkeypatch.setattr("metator.metacool.reassign_metacool", reassign_metacool)
-    run_cli("pipeline", "-1", metacool, "-a", _assembly(tmp_path), "-S", "metacool", "-o", out, "-T", tmp_path / "tmp")
+    run_cli("pipeline", metacool, "-a", _assembly(tmp_path), "-o", out, "-T", tmp_path / "tmp")
     assert seen == [str(metacool)] and earlier.read_text() == "earlier run"
     assert "write_contig_map" not in stub_pipeline
     (log,) = out.glob("metator_pipeline_*.log")
@@ -1213,7 +1221,7 @@ def test_pipeline_failure_leaves_the_map_of_the_contigs(no_metacool, stub_pipeli
     """A run that stops with an error after it built the map of the contigs
     (in the validation, here) leaves it at the outfile, in no bin,
     --no-metacool or not, as it leaves its other files: a new run can start
-    from it (--start metacool)."""
+    from it (the map as its first argument)."""
     monkeypatch.setattr("metator.metacool.write_contig_map", mtmc_write_contig_map)
     _contig_data(monkeypatch, CONTIGS)
 
@@ -1298,10 +1306,10 @@ def test_pipeline_from_a_metacool(no_metacool, stub_pipeline, tmp_path, run_cli)
     first: it is replaced once the new map is validated."""
     out = tmp_path / "out"
     out.mkdir()
-    metacool = out / "metator.metacool"
-    metacool.write_text("input map")
+    metacool = _contig_map(out / "metator.metacool")
+    before = metacool.read_bytes()
     options = ["--no-metacool"] if no_metacool else []
-    run_cli("pipeline", "-1", metacool, "-a", _assembly(tmp_path), "-S", "metacool", "-t", "3", "-m", "abundance",
+    run_cli("pipeline", metacool, "-a", _assembly(tmp_path), "-t", "3", "-m", "abundance",
             "-d", TESTS_DATA / "depth.txt", "-o", out, "-T", tmp_path / "tmp", *options)  # fmt: skip
 
     calls = stub_pipeline
@@ -1314,7 +1322,7 @@ def test_pipeline_from_a_metacool(no_metacool, stub_pipeline, tmp_path, run_cli)
     assert Path(tmp_dir).parent == tmp_path / "tmp"
     assert (threads, normalization, self_contacts) == (3, "abundance", False)
     assert calls["partition"][5] == str(out / "network.txt")
-    assert metacool.read_text() == "input map"
+    assert metacool.read_bytes() == before
     # The contig data of the network step is kept, as from pairs files. A
     # map sums its libraries: no network_0.txt, even when the input map is
     # at the path of the run's own map.
@@ -1328,8 +1336,9 @@ def test_pipeline_from_a_metacool(no_metacool, stub_pipeline, tmp_path, run_cli)
     source, existed, contig_data, outfile, kwargs = calls["reassign_metacool"]
     assert (source, existed, contig_data, outfile) == (str(metacool), True, str(out / "contig_data_final.txt"), str(metacool))
     assert (kwargs["bin_summary"], kwargs["force"]) == (str(out / "bin_summary.txt"), True)
-    assert kwargs["metadata"]["parameters"]["start"] == "metacool"
-    assert kwargs["metadata"]["command"].startswith(f"metator pipeline -1 {metacool} -a")
+    parameters = kwargs["metadata"]["parameters"]
+    assert parameters["map"] == str(metacool) and parameters["start"] is None
+    assert kwargs["metadata"]["command"].startswith(f"metator pipeline {metacool} -a")
     # No column was read from the map (the stub reads none).
     assert "columns_from_map" not in kwargs["metadata"]
     assert f"INFO :: {metacool} is the input map {metacool}: it is replaced once the map of the clusters is validated." in logged
@@ -1466,7 +1475,7 @@ def test_normalization_refused_before_any_work_from_a_map(command, stub_pipeline
     metacool = _contig_map(tmp_path / "map.metacool")
     out = tmp_path / "out"
     with pytest.raises(ValueError):
-        run_cli(command, "-1", metacool, "-a", _assembly(tmp_path), "-S", "metacool", "-n" if command == "network" else "-m",
+        run_cli(command, metacool, "-a", _assembly(tmp_path), "-n" if command == "network" else "-m",
                 "abundance", "-o", out, "-T", tmp_path / "tmp")  # fmt: skip
     assert "create_contig_data" not in stub_pipeline
     (log,) = out.glob(f"metator_{command}_*.log")
@@ -1484,7 +1493,7 @@ def test_run_reads_the_columns_of_its_map(command, stub_pipeline, tmp_path, monk
     monkeypatch.setattr("metator.network.create_contig_data", lambda *args: (contig_data, None))
     metacool = _map_with_columns(tmp_path, SITES_AND_COVERAGE)
     out = tmp_path / "out"
-    run_cli(command, "-1", metacool, "-a", _assembly(tmp_path), "-S", "metacool", "-n" if command == "network" else "-m",
+    run_cli(command, metacool, "-a", _assembly(tmp_path), "-n" if command == "network" else "-m",
             "theoritical_hit", "-o", out, "-T", tmp_path / "tmp")  # fmt: skip
     assert {name: (data["RS"], data["coverage"]) for name, data in contig_data.items()} == {"c1": (3, 1.5), "c2": (2, 0.5)}
     assert stub_pipeline["metacool_to_contacts"][-2:] == ("theoritical_hit", False)
@@ -1506,7 +1515,7 @@ def test_run_refused_for_a_column_that_lacks_contigs(command, stub_pipeline, tmp
     metacool = _map_with_columns(tmp_path, {"Restriction_site": [3, 2]})
     out = tmp_path / "out"
     with pytest.raises(ValueError):
-        run_cli(command, "-1", metacool, "-a", _assembly(tmp_path), "-S", "metacool", "-n" if command == "network" else "-m",
+        run_cli(command, metacool, "-a", _assembly(tmp_path), "-n" if command == "network" else "-m",
                 "RS", "-o", out, "-T", tmp_path / "tmp")  # fmt: skip
     assert "metacool_to_contacts" not in stub_pipeline
     (log,) = out.glob(f"metator_{command}_*.log")
@@ -1532,21 +1541,9 @@ def test_pipeline_refused_for_a_column_that_lacks_contigs_keeps_the_bins(stub_pi
         path.parent.mkdir(parents=True)
         path.write_text(">c1\nACGT\n")
     with pytest.raises(ValueError):
-        run_cli("pipeline", "-1", metacool, "-a", _assembly(tmp_path), "-S", "metacool", "-m", "RS", "-o", out, "-F",
+        run_cli("pipeline", metacool, "-a", _assembly(tmp_path), "-m", "RS", "-o", out, "-F",
                 "-T", tmp_path / "tmp")  # fmt: skip
     assert all(path.exists() for path in bins)
-
-
-def test_normalization_refused_from_pairs_before_the_edge(stub_pipeline, tmp_path, run_cli):
-    """A guard: from pairs, the normalization is checked first, as before
-    the map could give its columns (then --edge)."""
-    out = tmp_path / "out"
-    with pytest.raises(ValueError):
-        run_cli("pipeline", "-1", "a.pairs", "-a", _assembly(tmp_path), "-S", "pair", "-m", "RS", "-E", "5", "-o", out,
-                "-T", tmp_path / "tmp")  # fmt: skip
-    (log,) = out.glob("metator_pipeline_*.log")
-    errors = [line for line in log.read_text().splitlines() if "ERROR ::" in line]
-    assert errors == [f"ERROR :: {RS_ERROR}."] or errors[0].endswith(f"ERROR :: {RS_ERROR}.")
 
 
 @pytest.mark.parametrize("command", ["network", "pipeline"])
@@ -1561,9 +1558,19 @@ def test_run_from_a_map_unreadable_for_its_columns(command, stub_pipeline, tmp_p
     metacool = _contig_map(tmp_path / "map.metacool")
     out = tmp_path / "out"
     with pytest.raises(mtmc.MetacoolError):
-        run_cli(command, "-1", metacool, "-a", _assembly(tmp_path), "-S", "metacool", "-o", out, "-T", tmp_path / "tmp")
+        run_cli(command, metacool, "-a", _assembly(tmp_path), "-o", out, "-T", tmp_path / "tmp")
     (log,) = out.glob(f"metator_{command}_*.log")
     assert f"ERROR :: Cannot read the contact map {metacool}: gone.\n" in log.read_text()
+
+
+def _collection(path, *entries):
+    """A .mmetacool collection at path, with a map of the contigs
+    (_contig_map) as each entry of entries."""
+    import metacooler
+
+    maps = {name: _contig_map(path.with_name(f"{path.stem}_{name}.metacool")) for name in entries}
+    metacooler.create_mmetacool(path, maps)
+    return path
 
 
 @pytest.mark.parametrize("where", ["elsewhere", "outdir", "output-map"])
@@ -1580,7 +1587,7 @@ def test_pipeline_metacool_written_from_a_map(where, stub_pipeline, tmp_path, mo
     before = metacool.read_bytes()
     output_map = tmp_path / "copy.metacool"
     options = ["--output-map", output_map] if where == "output-map" else []
-    run_cli("pipeline", "-1", metacool, "-a", _assembly(tmp_path), "-S", "metacool", "-o", out, "-T", tmp_path / "tmp",
+    run_cli("pipeline", metacool, "-a", _assembly(tmp_path), "-o", out, "-T", tmp_path / "tmp",
             *options)  # fmt: skip
     import cooler
     import metacooler
@@ -1617,7 +1624,7 @@ def test_pipeline_metacool_from_a_map_failure_keeps_it(stub_pipeline, tmp_path, 
         "contig data). It is still the input map of the run, as it was. The other outputs of the run are kept."
     )
     with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
-        run_cli("pipeline", "-1", metacool, "-a", _assembly(tmp_path), "-S", "metacool", "-o", out, "-T", tmp_path / "tmp")
+        run_cli("pipeline", metacool, "-a", _assembly(tmp_path), "-o", out, "-T", tmp_path / "tmp")
     assert metacool.read_bytes() == before
     assert sorted(path.name for path in out.iterdir() if "metacool" in path.name) == ["metator.metacool"]
     assert (out / "network.txt").exists() and (out / "bin_summary.txt").exists()
@@ -1649,7 +1656,7 @@ def test_pipeline_metacool_from_a_map_metacooler_failure(error, stub_pipeline, t
 
     monkeypatch.setattr("metacooler.io.reassign.validate", validate)
     with pytest.raises(mtmc.MetacoolError, match=r" is not written: "):
-        run_cli("pipeline", "-1", metacool, "-a", _assembly(tmp_path), "-S", "metacool", "-o", out, "-T", tmp_path / "tmp")
+        run_cli("pipeline", metacool, "-a", _assembly(tmp_path), "-o", out, "-T", tmp_path / "tmp")
     assert metacool.read_bytes() == before
     assert sorted(path.name for path in out.iterdir() if "metacool" in path.name) == ["metator.metacool"]
     (log,) = out.glob("metator_pipeline_*.log")
@@ -1669,7 +1676,7 @@ def test_pipeline_metacool_from_a_map_metacooler_failure(error, stub_pipeline, t
 def _map_run(metacool, tmp_path, *options):
     """The arguments of a pipeline run from the map metacool."""
     out = tmp_path / "out"
-    return ["-1", metacool, "-a", _assembly(tmp_path), "-S", "metacool", "-o", out, "-T", tmp_path / "tmp", *options]
+    return [metacool, "-a", _assembly(tmp_path), "-o", out, "-T", tmp_path / "tmp", *options]
 
 
 def _lock(metacool, pid, host=None, started="2026-11-18T10:00:00+0000"):
@@ -1784,8 +1791,7 @@ def test_pipeline_from_a_map_to_itself_as_output_map(stub_pipeline, tmp_path, mo
 def test_pipeline_from_an_entry_needs_an_output_map(stub_pipeline, tmp_path, run_cli):
     """An entry of a .mmetacool collection is not updated in place: that
     would rewrite the collection. Refused before any work."""
-    (tmp_path / "maps.mmetacool").write_text("collection")
-    entry = f"{tmp_path / 'maps.mmetacool'}::entries/rep1"
+    entry = f"{_collection(tmp_path / 'maps.mmetacool', 'rep1')}::entries/rep1"
     message = (
         f"{entry} is an entry of a .mmetacool collection, which a run does not update in place: write the map of its "
         "clusters to another file with --output-map."
@@ -1999,8 +2005,7 @@ def test_pipeline_output_map_refusals(case, stub_pipeline, tmp_path, run_cli):
         options = ["--output-map", output, "-F"]
         message = f"{output} is a directory: --output-map takes the path of a .metacool file."
     else:
-        collection = tmp_path / "maps.mmetacool"
-        collection.write_text("collection")
+        collection = _collection(tmp_path / "maps.mmetacool", "rep1")
         given = f"{collection}::entries/rep1"
         options = ["--output-map", collection, "-F"]
         message = (
@@ -2317,8 +2322,8 @@ def test_pid_is_running_when_it_cannot_be_signalled(monkeypatch):
 
 
 def test_network_from_a_metacool(monkeypatch, tmp_path, run_cli):
-    """metator network --start metacool reads the network from the map, with
-    the contig data of the assembly."""
+    """metator network MAP reads the network from the map, with the contig
+    data of the assembly."""
     calls = {}
 
     def create_contig_data(*args):
@@ -2341,7 +2346,10 @@ def test_network_from_a_metacool(monkeypatch, tmp_path, run_cli):
     monkeypatch.setattr("metator.network.alignment_to_contacts", not_called)
     monkeypatch.setattr("metator.align.get_contact_pairs", not_called)
     out = tmp_path / "out"
-    run_cli("network", "-1", "maps.mmetacool::entries/lib1", "-a", _assembly(tmp_path), "-S", "metacool", "-e", "DpnII",
+    # The URI as typed, relative to the working directory.
+    _collection(tmp_path / "maps.mmetacool", "lib1")
+    monkeypatch.chdir(tmp_path)
+    run_cli("network", "maps.mmetacool::entries/lib1", "-a", _assembly(tmp_path), "-e", "DpnII",
             "-s", "-t", "2", "-n", "RS", "-o", out, "-T", tmp_path / "tmp")  # fmt: skip
     assert calls["create_contig_data"] == (str(tmp_path / "assembly.fa"), 1, None, "DpnII")
     # The restriction sites and the coverage that the map gives where the
@@ -2355,112 +2363,242 @@ def test_network_from_a_metacool(monkeypatch, tmp_path, run_cli):
     assert Path(tmp_dir).parent == tmp_path / "tmp"
 
 
-METACOOL_START_ERRORS = {
-    "several maps": (
-        ["-1", "a.metacool,b.metacool,c.metacool"],
-        "--start metacool takes one .metacool file (its libraries are already summed), given with -1/--forward: got 3 files.",
+# What a network or pipeline run cannot take, refused before any work, the
+# reason in its log file: a map with the options of a run from reads,
+# alignments or pairs, a first argument that is no map, and no input.
+RUN_FROM_A_MAP = "A run from the contact map {map} takes no {options}: these give the reads, alignments or pairs of a run that does not start from a map."
+RUN_INPUT_ERRORS = {
+    "map and -1": (["{map}", "-1", "a.pairs"], RUN_FROM_A_MAP.replace("{options}", "-1/--forward")),
+    "map and -2": (["{map}", "-2", "b.fq"], RUN_FROM_A_MAP.replace("{options}", "-2/--reverse")),
+    "map and --start": (["{map}", "-S", "pair"], RUN_FROM_A_MAP.replace("{options}", "--start")),
+    "map and --start fastq": (["{map}", "--start=fastq"], RUN_FROM_A_MAP.replace("{options}", "--start")),
+    "map, -1 and --start": (
+        ["{map}", "-1", "a.pairs", "-S", "pair"],
+        RUN_FROM_A_MAP.replace("{options}", "-1/--forward or --start"),
+    ),
+    "reads as the first argument": (
+        ["{reads}"],
+        "{reads} is not a .metacool contact map: give reads, alignments or pairs with -1/--forward (and --start).",
+    ),
+    "reads as the first argument, with -2": (
+        ["{reads}", "-2", "b.fq"],
+        "{reads} is not a .metacool contact map: give reads, alignments or pairs with -1/--forward (and --start).",
+    ),
+    "a map that is not there": (["{missing}"], "Cannot read the contact map {missing}: no such file."),
+    "a URI of a directory": (["{directory}::/"], "Cannot read the contact map {directory}::/: {directory} is not a file."),
+    "a pairs file named as a URI": (
+        ["{reads}::/"],
+        "{reads}::/ is not a .metacool contact map: give reads, alignments or pairs with -1/--forward (and --start).",
+    ),
+    "a pairs file whose name holds ::": (
+        ["{colons}"],
+        "{colons} is not a .metacool contact map: give reads, alignments or pairs with -1/--forward (and --start).",
+    ),
+    "a map whose name holds ::": (
+        ["{colon_map}"],
+        "Cannot read the contact map {colon_map}: metacooler reads a path that holds :: as file::group. Rename the map "
+        "without ::.",
+    ),
+    "no input": (
+        [],
+        "Give the run a .metacool contact map, as the first argument, or its reads, alignments or pairs, with "
+        "-1/--forward (and --start).",
     ),
 }
-# pipeline refuses an edge region whatever the start: see
-# test_pipeline_refuses_an_edge_region.
-NETWORK_METACOOL_START_ERRORS = {
-    "edge region": (
-        ["-1", "map.metacool", "-E", "100"],
-        "--edge 100 cannot be applied with --start metacool: a contact map holds the contacts of bins, not the "
-        "positions of the reads. Leave --edge at 0, or start from the pairs files.",
-    ),
-}
-# A run without a map is refused by click: --forward is required.
-PIPELINE_METACOOL_START_ERRORS = {
-    "scaffold": (["-1", "map.metacool", "--scaffold"], "--scaffold reads the pairs files: it cannot run with --start metacool."),
-}
 
 
-@pytest.mark.parametrize(
-    "command, case",
-    [(command, case) for command in ["network", "pipeline"] for case in METACOOL_START_ERRORS]
-    + [("network", case) for case in NETWORK_METACOOL_START_ERRORS]
-    + [("pipeline", case) for case in PIPELINE_METACOOL_START_ERRORS],
-)
-def test_metacool_start_refused(command, case, monkeypatch, tmp_path, run_cli):
-    """Options a contact map cannot serve are refused before any work, with
-    a message in the log file."""
-
-    def not_called(*args):
-        raise AssertionError("refused before any work")
-
-    monkeypatch.setattr("metator.network.create_contig_data", not_called)
-    args, message = {**METACOOL_START_ERRORS, **NETWORK_METACOOL_START_ERRORS, **PIPELINE_METACOOL_START_ERRORS}[case]
+@pytest.mark.parametrize("command", ["network", "pipeline"])
+@pytest.mark.parametrize("case", list(RUN_INPUT_ERRORS))
+def test_run_input_refused(command, case, stub_pipeline, tmp_path, run_cli):
+    """A run takes a .metacool map, as its first argument, or the reads,
+    alignments or pairs of -1/--forward (and --start), not both nor neither:
+    refused before any work, the reason in the log file. --start given with
+    a map is refused even at its default value, fastq. A first argument
+    that is no map, not there, or a URI whose file is no map nor a file, is
+    refused too (it failed once the run read the map). A file whose name
+    holds :: is that file: a pairs file is no map (it was refused as
+    missing), and a map is refused with the reason, as metacooler cannot
+    read it."""
+    names = {
+        "map": _contig_map(tmp_path / "input.metacool"),
+        "reads": tmp_path / "R1.fq",
+        "missing": tmp_path / "missing.metacool",
+        "directory": tmp_path / "maps",
+        "colons": tmp_path / "lib::1.pairs",
+        "colon_map": tmp_path / "run::1.metacool",
+    }
+    names["reads"].write_text("@r1\nACGT\n+\nIIII\n")
+    names["directory"].mkdir()
+    names["colons"].write_text("## pairs format v1.0\n")
+    shutil.copyfile(names["map"], names["colon_map"])
+    args, message = RUN_INPUT_ERRORS[case]
+    args = [arg.format(**names) for arg in args]
     out = tmp_path / "out"
     with pytest.raises(ValueError):
-        run_cli(command, *args, "-a", TESTS_DATA / "assembly.fa", "-S", "metacool", "-o", out, "-T", tmp_path / "tmp")
+        run_cli(command, *args, "-a", _assembly(tmp_path), "-o", out, "-T", tmp_path / "tmp")
+    assert not stub_pipeline
     (log,) = out.glob(f"metator_{command}_*.log")
-    assert f"ERROR :: {message}" in log.read_text()
+    assert f"ERROR :: {message.format(**names)}\n" in log.read_text()
 
 
-PIPELINE_EDGE_ERROR = (
-    "--edge {} cannot be applied by pipeline, which counts every pair, as its contact map does: a map holds the "
-    "contacts of bins, not the positions of the reads. Leave --edge at 0, or build the network with metator network, "
-    "then run metator partition and metator validation."
-)
+@pytest.mark.parametrize("command", ["network", "pipeline"])
+def test_a_collection_is_no_map(command, stub_pipeline, tmp_path, run_cli):
+    """A .mmetacool collection given as the map, rather than one of its
+    entries, is refused before any work, with metacooler's reason, which
+    names its entries (it failed once the run read the map)."""
+    collection = _collection(tmp_path / "maps.mmetacool", "lib1")
+    out = tmp_path / "out"
+    with pytest.raises(mtmc.MetacoolError, match=f"^Cannot read the contact map {re.escape(str(collection))}: .*entries/lib1"):
+        run_cli(command, collection, "-a", _assembly(tmp_path), "-o", out, "-T", tmp_path / "tmp")
+    assert not stub_pipeline
+    (log,) = out.glob(f"metator_{command}_*.log")
+    assert f"ERROR :: Cannot read the contact map {collection}: " in log.read_text()
 
 
-@pytest.mark.parametrize(
-    "start, inputs",
-    [
-        ("fastq", ["-1", "a.fq", "-2", "b.fq"]),
-        ("bam", ["-1", "a.bam", "-2", "b.bam"]),
-        ("pair", ["-1", "a.pairs"]),
-        ("pair", ["-1", "a.pairs,b.pairs"]),
-        ("metacool", ["-1", "map.metacool"]),
-    ],
-    ids=["fastq", "bam", "pair", "pairs of two libraries", "metacool"],
-)
-@pytest.mark.parametrize("edge", ["100", "-5"], ids=["above 0", "negative"])
-def test_pipeline_refuses_an_edge_region(start, inputs, edge, stub_pipeline, tmp_path, run_cli):
-    """pipeline refuses an --edge other than 0 before any work, whatever
-    the start and the number of libraries: it counts every pair, as its
-    contact map does. A negative --edge, which counted every pair as 0
-    does, is refused too, as the help says "Only 0". --start metacool gets
-    this message too, not the one of metator network, which would send it
-    to the pairs files."""
+# A first argument that is no map, given with -1/--forward: one argument too
+# many, as click refused it before the map was an argument.
+EXTRA_ARGUMENTS = {
+    "the reverse reads without -2": (["-1", "R1.fq", "R2.fq"], "R2.fq"),
+    "a value split by a missing space": (["-1", "a.pairs", "-S", "pair", "pairs"], "pairs"),
+    "a map that is not there": (["-1", "a.pairs", "-S", "pair", "missing.metacool"], "missing.metacool"),
+}
+
+
+@pytest.mark.parametrize("command", ["network", "pipeline"])
+@pytest.mark.parametrize("case", list(EXTRA_ARGUMENTS))
+def test_an_extra_argument_is_a_usage_error(command, case, stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """A first argument that is no map, given with -1/--forward, is one
+    argument too many: a usage error, as click said before the map was an
+    argument, so this passes against the previous commit too. Without
+    Command's check, run_input refused it as a map. The command does not
+    start."""
+    monkeypatch.chdir(tmp_path)
+    Path("R2.fq").write_text("@r1\nACGT\n+\nIIII\n")
+    args, extra = EXTRA_ARGUMENTS[case]
+    result = run_cli(command, *args, "-a", "a.fa", "-o", "out", exit_code=2)
+    assert f"Got unexpected extra argument ({extra})" in result.output
+    assert not stub_pipeline and not Path("out").exists()
+
+
+@pytest.mark.parametrize("command", ["network", "pipeline"])
+def test_a_directory_is_no_map(command, stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """A directory given as the map is a usage error, before the command
+    starts (it failed once the run read the map, and pipeline -F had
+    removed the clusters of the earlier run)."""
+    monkeypatch.chdir(tmp_path)
+    Path("maps").mkdir()
+    bins = Path("out", "overlapping_bin", "bin.fa")
+    bins.parent.mkdir(parents=True)
+    bins.write_text(">c1\nACGT\n")
+    force = ["-F"] if command == "pipeline" else []
+    result = run_cli(command, "maps", "-a", _assembly(tmp_path), "-o", "out", *force, exit_code=2)
+    assert "File 'maps' is a directory." in " ".join(result.output.replace("│", " ").split())
+    assert not stub_pipeline and bins.exists() and not list(Path("out").glob("*.log"))
+
+
+def test_pipeline_from_a_map_cannot_scaffold(stub_pipeline, tmp_path, run_cli):
+    """--scaffold reads the pairs files, which a run from a map has not:
+    refused before any work."""
+    metacool = _contig_map(tmp_path / "input.metacool")
     out = tmp_path / "out"
     with pytest.raises(ValueError):
-        run_cli("pipeline", *inputs, "-a", _assembly(tmp_path), "-S", start, f"--edge={edge}", "-o", out, "-T", tmp_path / "tmp")
-    assert not stub_pipeline and not (out / "overlapping_bin").exists()
+        run_cli("pipeline", metacool, "--scaffold", "-a", _assembly(tmp_path), "-o", out, "-T", tmp_path / "tmp")
+    assert not stub_pipeline
     (log,) = out.glob("metator_pipeline_*.log")
-    logged = log.read_text()
-    assert f"ERROR :: {PIPELINE_EDGE_ERROR.format(edge)}\n" in logged
-    assert logged.count("ERROR ::") == 1
+    assert "ERROR :: --scaffold reads the pairs files: it cannot run from a contact map.\n" in log.read_text()
 
 
-@pytest.mark.parametrize("edge", [100, -5], ids=["above 0", "negative"])
-def test_network_keeps_the_edge_region(edge, stub_pipeline, tmp_path, run_cli):
-    """A guard: metator network still applies --edge to the pairs files
-    (alignment_to_contacts), a negative one included."""
-    run_cli("network", "-1", "a.pairs", "-a", _assembly(tmp_path), "-S", "pair", f"--edge={edge}", "-o", tmp_path / "out",
-            "-T", tmp_path / "tmp")  # fmt: skip
+@pytest.mark.parametrize("command", ["network", "pipeline"])
+@pytest.mark.parametrize("start", [["-S", "metacool"], ["--start=metacool"]], ids=["-S", "--start="])
+def test_start_metacool_is_gone(command, start, stub_pipeline, tmp_path, run_cli):
+    """--start metacool, how a run started from a map before metaTOR 2.0, is
+    a usage error that says what replaced it: the map as the first argument.
+    The command does not start: no log file."""
+    result = run_cli(command, *start, "-1", "map.metacool", "-a", "a.fa", "-o", tmp_path / "out", exit_code=2)
+    output = " ".join(result.output.replace("│", " ").split())
+    message = (
+        f"--start metacool is gone in metaTOR 2.0: give the map as the first argument, metator {command} MAP -a ASSEMBLY ..."
+    )
+    assert message in output
+    assert not stub_pipeline and not (tmp_path / "out").exists()
+
+
+EDGE_GONE = (
+    "--edge is gone in metaTOR 2.0: the network counts every pair, as its contact map does, which holds no read positions."
+)
+
+
+@pytest.mark.parametrize("command", ["network", "pipeline"])
+@pytest.mark.parametrize("edge", [["-E", "100"], ["--edge", "0"], ["--edge=-5"]], ids=["-E", "--edge 0", "--edge="])
+def test_edge_is_gone(command, edge, stub_pipeline, tmp_path, run_cli):
+    """--edge, which metaTOR 2.0 removed (the network counts every pair, as
+    its map does), is a usage error that says so, at any value: not an
+    unknown option. The command does not start."""
+    result = run_cli(command, "-1", "a.pairs", "-S", "pair", *edge, "-a", "a.fa", "-o", tmp_path / "out", exit_code=2)
+    assert EDGE_GONE in " ".join(result.output.replace("│", " ").split())
+    assert not stub_pipeline and not (tmp_path / "out").exists()
+
+
+# The commands of the tutorial of metaTOR 1.x (4253551,
+# docs/example/metator_tutorial.md) that its command line accepted: its -S
+# pairs and -S network were no values of --start.
+COMMANDS_OF_4253551 = [
+    "pipeline -1 hic_reads_for.fastq.gz -2 hic_reads_rev.fastq.gz -a assembly.fa -o metator_folder --threads 16",
+    "pipeline -1 hic_reads_for.fastq.gz -2 hic_reads_rev.fastq.gz -a assembly_bowtie2_index -S fastq",
+    "pipeline -1 for.bam -2 rev.bam -a assembly.fa -S bam",
+    "pipeline -1 hic_reads_for.fastq.gz -2 hic_reads_rev.fastq.gz -a assembly_bowtie2_index -v",
+    "network -1 for.bam -2 rev.bam -a assembly.fa",
+    "partition -c contig_data_network.txt -n network.txt -a assembly.fa",
+    "validation -c contig_data_partition.txt -n network.txt -a assembly.fa -f overlapping_bin",
+    "network -1 for.bam -2 rev.bam -a assembly.fa -n None",
+]
+
+
+@pytest.mark.parametrize("command", COMMANDS_OF_4253551)
+def test_the_commands_of_metator_1_are_unchanged(command):
+    """A guard: the command lines of metaTOR 1.x that its tutorial gives are
+    those of 2.0, read as they were (parsed here, not run): the input of a
+    run from reads, alignments or pairs is -1 (-2, --start), as before."""
+    name, *args = command.split()
+    ctx = click.Context(mtcli.cli, info_name="metator")
+    params = mtcli.cli.get_command(ctx, name).make_context(name, list(args), parent=ctx).params
+    if name in ["network", "pipeline"]:
+        assert params.get("map") is None and params["forward"] == args[args.index("-1") + 1]
+
+
+def test_an_unknown_option_is_still_unknown(run_cli):
+    """A guard: an option that metaTOR never had is refused as unknown, as
+    before."""
+    result = run_cli("pipeline", "-1", "a.pairs", "-S", "pair", "--bogus", "-a", "a.fa", exit_code=2)
+    assert "No such option" in result.output and "--bogus" in result.output and "gone in metaTOR 2.0" not in result.output
+
+
+def test_network_from_pairs_counts_every_pair(stub_pipeline, tmp_path, run_cli):
+    """A guard: metator network gives the pairs network no edge region,
+    every pair counts (alignment_to_contacts at edge 0), as in the map. So
+    did its default, --edge 0, before --edge was removed."""
+    run_cli("network", "-1", "a.pairs", "-a", _assembly(tmp_path), "-S", "pair", "-o", tmp_path / "out", "-T", tmp_path / "tmp")
     alignment_files, edge_arg, *_ = stub_pipeline["alignment_to_contacts"]
-    assert (alignment_files, edge_arg) == (["a.pairs"], edge)
+    assert (alignment_files, edge_arg) == (["a.pairs"], 0)
 
 
 @pytest.mark.parametrize(
     "args",
     [
-        ["-S", "metacool", "-1", "map.metacool", "-E", "100"],
-        ["-S", "pair", "-1", "a.pairs", "-E", "100"],
-        ["-S", "pair", "-1", "a.pairs", "--edge=-5"],
-        ["-S", "metacool", "-1", "map.metacool", "--scaffold"],
+        ["{map}", "--scaffold"],
+        ["{map}", "-1", "a.pairs"],
+        ["{missing}"],
+        ["{collection}"],
         ["-S", "pair", "-1", "a.pairs", "-m", "abundance"],
         ["-S", "fastq", "-1", "a.fq"],
         ["-S", "pair", "-1", "a.pairs", "-p", "bad.prefix"],
         ["-S", "pair", "-1", "a.pairs", "-a", "missing.fa"],
     ],
     ids=[
-        "edge region",
-        "edge region from pairs",
-        "negative edge region",
         "scaffold",
+        "map and -1",
+        "map not there",
+        "collection",
         "normalization without depth",
         "no reverse reads",
         "prefix",
@@ -2470,6 +2608,12 @@ def test_network_keeps_the_edge_region(edge, stub_pipeline, tmp_path, run_cli):
 def test_pipeline_refused_keeps_the_bins_of_an_earlier_run(args, tmp_path, run_cli):
     """A refused run with --force (a rebinning into the same directory)
     stops before replacing the bins of the earlier run."""
+    names = {
+        "map": _contig_map(tmp_path / "input.metacool"),
+        "missing": tmp_path / "missing.metacool",
+        "collection": _collection(tmp_path / "maps.mmetacool", "lib1"),
+    }
+    args = [arg.format(**names) for arg in args]
     out = tmp_path / "out"
     bins = [out / name / "bin.fa" for name in ["overlapping_bin", "recursive_bin", "final_bin_unscaffold"]]
     for path in bins:

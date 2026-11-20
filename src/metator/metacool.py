@@ -496,7 +496,7 @@ def write_contig_map(
     file: the map that a pipeline run builds from its pairs files as soon as
     it has them. A run with one library reads its network from it
     (metator.network.metacool_to_contacts: the network of its pairs files,
-    byte for byte, at --edge 0). At the end of the run, reassign_metacool
+    byte for byte). At the end of the run, reassign_metacool
     writes the map of its bins from it, which is the map that
     write_metacool writes from the same pairs files and the final tables,
     but for its history (and, when the final bins leave the contigs in the
