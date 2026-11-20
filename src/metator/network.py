@@ -17,6 +17,7 @@ Core function to build the network are:
     - create_contig_data
     - map_columns
     - metacool_to_contacts
+    - normalization_weights
     - normalize_pair
     - precompute_network
     - read_metacool_contacts
@@ -902,6 +903,73 @@ def normalize_pair(contig_data, pair, n_occ, normalization):
         return 0
 
     return n_occ / factor
+
+
+def normalization_weights(lengths, hits, coverage, sites, normalization):
+    """One weight per contig whose products give the normalization of the
+    network: the factorised form of normalize_pair.
+
+    Each normalization divides the contacts of two contigs by the geometric
+    mean of one value per contig (times 0.01 for RS), so the normalized
+    contact of two contigs is their contact count times one weight per
+    contig: ``n_occ * w[i] * w[j] == normalize_pair(contig_data, (i, j),
+    n_occ, normalization)``. That is how a .metacool map stores a
+    normalization, the way cooler stores its balancing weights (see
+    metator.metacool.store_normalization). A contig whose value gives
+    normalize_pair a factor of 0, where it returns 0, has no weight (NaN):
+    a contig with no hit, or no shotgun coverage.
+
+    Parameters:
+    -----------
+    lengths : numpy.ndarray
+        Length of each contig.
+    hits : numpy.ndarray or None
+        Hi-C hits of each contig (contig data "hit"), for length, RS and
+        empirical_hit.
+    coverage : numpy.ndarray or None
+        Shotgun coverage of each contig (contig data "coverage"), for
+        abundance and theoritical_hit.
+    sites : numpy.ndarray or None
+        Restriction sites of each contig, plus one, as create_contig_data
+        counts them (contig data "RS"), for RS and theoritical_hit.
+    normalization : str
+        Mode of normalization (see normalize_pair).
+
+    Returns:
+    --------
+    numpy.ndarray:
+        One weight per contig, NaN for a contig that has none.
+
+    Raises:
+    -------
+    ValueError
+        If the normalization is unknown ("None" among them: it has no
+        weight), or a value it uses is not given.
+    """
+
+    def need(values, what):
+        if values is None:
+            raise ValueError(f'The "{normalization}" normalization uses the {what} of the contigs.')
+        return np.asarray(values, dtype=float)
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        if normalization == "abundance":
+            weights = 1 / np.sqrt(need(coverage, "shotgun coverage"))
+        elif normalization == "length":
+            weights = np.sqrt(need(lengths, "lengths") / need(hits, "Hi-C hits"))
+        elif normalization == "RS":
+            weights = 10 * np.sqrt(need(sites, "restriction sites") / need(hits, "Hi-C hits"))
+        elif normalization == "empirical_hit":
+            weights = 1 / np.sqrt(need(hits, "Hi-C hits"))
+        elif normalization == "theoritical_hit":
+            weights = 1 / np.sqrt(
+                10 * need(coverage, "shotgun coverage") * np.sqrt(need(lengths, "lengths") * need(sites, "restriction sites"))
+            )
+        else:
+            raise ValueError(f"No weights for the normalization {normalization!r}.")
+    weights = np.array(weights, dtype=float)
+    weights[~np.isfinite(weights)] = np.nan
+    return weights
 
 
 def precompute_network(

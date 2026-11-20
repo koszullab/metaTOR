@@ -30,11 +30,18 @@ as it has them, reads its network from it (with several libraries, from one
 map per library and the map of their sum, see write_library_maps), and
 writes the map of its bins from it at the end.
 
+The map of the bins of a pipeline run also stores the normalization of
+its network, as a weight column of its bins table (see
+store_normalization): the raw contacts stay as they are, and the
+normalized contact of two bins is their count times both weights, the
+way cooler stores its balancing weights.
+
 Core functions to write the file:
     - write_metacool, from the pairs files
     - write_contig_map, the map of the contigs in no bin yet, from the pairs
       files
     - reassign_metacool, from a .metacool map
+    - store_normalization, the normalization of the network in a map
 """
 
 import gzip
@@ -44,6 +51,7 @@ import tempfile
 from pathlib import Path
 from contextlib import contextmanager
 
+import numpy as np
 import pandas as pd
 
 from metator.log import logger
@@ -71,6 +79,19 @@ CONTIG_COLUMNS = ["GC_content", "Hit", "Shotgun_coverage", "Restriction_site"]
 # of metator.network.create_contig_data: all but Hit, which the network step
 # counts on the pairs.
 ASSEMBLY_COLUMNS = {"GC_content": "GC", "Shotgun_coverage": "coverage", "Restriction_site": "RS"}
+
+# The columns of the contigs table of a map that each normalization of the
+# network reads (see metator.network.normalize_pair), besides the length of
+# the contigs: the Hi-C hits that the network step counts on the contacts,
+# and the shotgun coverage and restriction sites that it measures on the
+# assembly (CONTIG_COLUMNS).
+NORMALIZATION_COLUMNS = {
+    "abundance": ("Shotgun_coverage",),
+    "length": ("Hit",),
+    "RS": ("Hit", "Restriction_site"),
+    "empirical_hit": ("Hit",),
+    "theoritical_hit": ("Shotgun_coverage", "Restriction_site"),
+}
 
 # The compressions that pandas infers from the end of a file name, in any
 # case. Of these, metacooler reads only gzip, from a name that ends in .gz.
@@ -736,7 +757,7 @@ def _named_library(i, pairs_file):
         raise MetacoolError(f"Library {i}, {pairs_file}: {reason}") from error
 
 
-def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=False, metadata=None):
+def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=False, metadata=None, normalization=None):
     """Write the contact map of the final bins from a .metacool map of the
     contigs, without pairs files.
 
@@ -794,6 +815,11 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
     metadata : dict, optional
         Parameters of the run, stored with the version of metaTOR under the
         "metator" key of the file metadata.
+    normalization : str, optional
+        The normalization of the network of the run (see
+        metator.network.normalize_pair), stored in the map as a weight
+        column of its bins (see store_normalization). None or "None":
+        none is stored.
 
     Raises
     ------
@@ -879,7 +905,26 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
                     # writes next to the temporary file.
                     keep_partial=False,
                 )
+                # The normalization of an earlier run, which metacooler
+                # reassign carries over: it was computed from the columns
+                # that _write_back_columns replaces.
+                _drop_earlier_normalizations(staged)
                 _write_back_columns(staged, contig_data, contig_columns, header)
+                if normalization in (None, "None"):
+                    pass
+                elif not stores_weights():
+                    logger.info(
+                        f"{outfile} stores no {normalization} normalization of the network: metacooler "
+                        f"{metacooler.__version__} cannot store weights (metacooler.store_weights comes with its next "
+                        "release)."
+                    )
+                else:
+                    try:
+                        store_normalization(staged, normalization)
+                    except MetacoolError as error:
+                        # The map is written without it: an extra output
+                        # of the run, as the map itself.
+                        logger.warning(f"{outfile} stores no {normalization} normalization of the network. {error}")
                 metacooler.validate(staged, full=True)
                 os.replace(staged, outfile)
             logger.info(f"{outfile} is written: the contact map of the bins.")
@@ -887,6 +932,127 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
             if os.path.lexists(staged):
                 os.remove(staged)
             raise
+
+
+def stores_weights():
+    """Whether metacooler can store a normalization in a map:
+    metacooler.store_weights, which its next release brings (metacooler
+    0.3.0 has none)."""
+    import metacooler
+
+    return hasattr(metacooler, "store_weights")
+
+
+def normalization_weight_name(normalization):
+    """The weight column of the bins table of a map that stores a
+    normalization of the network (see store_normalization)."""
+    return f"metator_{normalization}"
+
+
+def store_normalization(metacool, normalization):
+    """Store a normalization of the network in a .metacool map, as a weight
+    column of its bins table: metator_<normalization>.
+
+    The weights are those of metator.network.normalization_weights, computed
+    from the columns of the contigs table of the map that metaTOR stores
+    (NORMALIZATION_COLUMNS: Hit, Shotgun_coverage, Restriction_site) and
+    the length of the contigs, every bin of a contig taking the weight of
+    its contig: the normalized contact of two bins is their count times
+    both weights, and the contacts of two contigs normalized and summed are
+    the edge of the network between them. metacooler show, dump and network
+    --balance metator_<normalization> read them, as cooler, cooltools and
+    HiGlass read balancing weights. The column records the normalization and
+    the version of metaTOR, and what its weights depend on (the contacts,
+    for a normalization by the hits, and the columns it reads): metacooler
+    drops it when an edit changes one of them, as annotate does. A column of
+    that name is replaced.
+
+    Parameters
+    ----------
+    metacool : str
+        Path to the .metacool file, or URI of an entry of a .mmetacool
+        collection: ``file.mmetacool::entries/<name>``. It is written in
+        place.
+    normalization : str
+        Mode of normalization (see metator.network.normalize_pair), but
+        "None".
+
+    Raises
+    ------
+    MetacoolError
+        If the normalization is unknown, the contigs table of the map lacks
+        a column it reads, metacooler cannot store weights (metacooler
+        0.3.0), or it cannot store the column (a ValueError, OSError or
+        KeyError, message kept).
+    """
+    import metacooler
+
+    import metator.network as mtn
+
+    if not stores_weights():
+        raise MetacoolError(
+            f"metacooler {metacooler.__version__} cannot store weights: metacooler.store_weights comes with its next release."
+        )
+    if normalization not in NORMALIZATION_COLUMNS:
+        raise MetacoolError(
+            f"No weights for the normalization {normalization!r}: it is none of {_shown(list(NORMALIZATION_COLUMNS))}."
+        )
+    columns = NORMALIZATION_COLUMNS[normalization]
+    with _metacooler_logging():
+        mc = open_map(metacool)
+        contigs = mc.contigs
+    missing = [column for column in columns if column not in contigs.columns]
+    if missing:
+        raise MetacoolError(
+            f"The {normalization} normalization of the network reads the {' and '.join(missing)} column(s) of the "
+            "contigs table, which the map lacks."
+        )
+    values = {column: pd.to_numeric(contigs[column], errors="coerce").to_numpy(dtype=float) for column in columns}
+    weights = mtn.normalization_weights(
+        contigs["length"].to_numpy(dtype=float),
+        values.get("Hit"),
+        values.get("Shotgun_coverage"),
+        values.get("Restriction_site"),
+        normalization,
+    )
+    with _metacooler_logging(), _as_metacool_errors():
+        with mc.open() as group:
+            offsets = group["indexes/chrom_offset"][()]
+        metacooler.store_weights(
+            metacool,
+            normalization_weight_name(normalization),
+            np.repeat(weights, np.diff(offsets)),
+            method="metator",
+            # The hits are counted on the contacts that the pixels hold.
+            depends_on=(["pixels"] if "Hit" in columns else []) + [f"contigs/{column}" for column in columns],
+            parameters={"mode": normalization, "metator_version": __version__},
+            force=True,
+        )
+    masked = int(np.count_nonzero(np.isnan(weights)))
+    logger.info(
+        f"Stored the {normalization} normalization of the network in {metacool}, as the weights "
+        f"{normalization_weight_name(normalization)} of its bins" + (f" ({masked} contig(s) without one)." if masked else ".")
+    )
+
+
+def _drop_earlier_normalizations(path):
+    """Remove from a map the normalizations that an earlier run of metaTOR
+    stored in it (see store_normalization): they describe the network of
+    that run, from the columns that this run replaces. Left in the map,
+    metacooler annotate would drop them all the same, with a warning to
+    compute them again, which this run then does."""
+    try:
+        from metacooler.io.weights import describe_weights
+    except ImportError:
+        # metacooler 0.3.0, which stores no weights.
+        return
+    names = [str(row["name"]) for row in describe_weights(path) if row["method"] == "metator"]
+    if not names:
+        return
+    with open_map(path).open("r+") as group:
+        for name in names:
+            del group["bins"][name]
+    logger.info(f"Removed the normalization(s) of the network of an earlier run from the map: {_shown(names)}.")
 
 
 def _write_back_columns(path, contig_data, contig_columns, header):

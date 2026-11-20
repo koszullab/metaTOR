@@ -584,13 +584,16 @@ def pipeline_contig_map(pairs_files, contig_data, outfile, assembly, threads, tm
         raise
 
 
-def pipeline_metacool(metacool, outdir, outfile, contig_map=False, columns_from_map=()):
+def pipeline_metacool(metacool, outdir, outfile, contig_map=False, columns_from_map=(), normalization=None):
     """Write the contact map of the bins of a pipeline run at outfile (see
     metacool_path), from a .metacool map of its contigs and the final
     tables of the run (see metator.metacool.reassign_metacool): the map that
     the run built from its pairs files (contig_map, at outfile), or the
     input map of a run that started from one, whose columns it read
-    (columns_from_map: stored in the metadata of the new map).
+    (columns_from_map: stored in the metadata of the new map). The
+    normalization of the network of the run is stored in the map, as the
+    weights metator_<normalization> of its bins (see
+    metator.metacool.store_normalization).
 
     The map is an extra output, written last: when it cannot be written, a
     warning says why, and the run keeps its other outputs and its exit
@@ -621,6 +624,7 @@ def pipeline_metacool(metacool, outdir, outfile, contig_map=False, columns_from_
             bin_summary=join(outdir, "bin_summary.txt"),
             force=True,
             metadata=run_metadata(columns_from_map),
+            normalization=normalization,
         )
     except Exception as error:
         reason, unexpected = _failure(error)
@@ -1565,7 +1569,7 @@ def pipeline(
         # the run built, or from the input map of a run that started from one.
         if start == "metacool":
             if not no_metacool:
-                pipeline_metacool(forward, outdir, metacool_file, columns_from_map=columns_from_map)
+                pipeline_metacool(forward, outdir, metacool_file, columns_from_map=columns_from_map, normalization=normalization)
         elif no_metacool:
             logger.info(f"Removing {metacool_file}, the contact map of the contigs (--no-metacool).")
             os.remove(metacool_file)
@@ -1574,7 +1578,7 @@ def pipeline(
                 logger.info(f"Removing {collection}, the contact maps of the libraries (--no-metacool).")
                 os.remove(collection)
         else:
-            pipeline_metacool(metacool_file, outdir, metacool_file, contig_map=True)
+            pipeline_metacool(metacool_file, outdir, metacool_file, contig_map=True, normalization=normalization)
 
     # Delete the pairs files made from the reads or the alignments, and
     # their pypairix index.
