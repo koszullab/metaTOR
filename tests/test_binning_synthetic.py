@@ -495,6 +495,11 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, metagenome_inde
     final = pd.read_csv(mcool / "contig_data_final.txt", sep="\t")
     truth, found = _genome_labels(final, metagenome, "Final_bin")
     assert synthetic.adjusted_rand(truth, found) >= 0.9
+    # The heatmap of the clusters, drawn from the map of the run, from pairs
+    # or from a map (a run from a map drew none): the same map, the same
+    # image.
+    heatmaps = [run / "plot" / "network_heatmap.png" for run in [pair, mcool]]
+    assert heatmaps[0].read_bytes() == heatmaps[1].read_bytes()
     # The input map, updated in place: no map goes to the output directory.
     assert not list(mcool.glob("*.metacool*")) and not list(tmp_path.glob("*.lock"))
     written = metacool

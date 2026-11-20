@@ -91,19 +91,42 @@ A final bin is named after its overlapping bin and its recursive bin:
 | `bins_size_distribution.png` | The share of the assembly in each quality class, and unbinned |
 | `MAGs_GC_distribution.png`, `MAGs_HiC_cov_distribution.png` | The GC content and Hi-C coverage of the contigs of each MAG |
 | `MAGs_SG_cov_distribution.png` | The shotgun coverage of the contigs of each MAG, with `--depth` |
-| `network_heatmap.png` | The contacts between the bins, from the pairs files of the output directory |
+| `network_heatmap.png` | The contacts between the final clusters, from the contact map of the run |
 
 |Completeness and contamination|Quality classes|
 |:-:|:-:|
 |![bins_distribution](../images/bins_distribution.png)|![bins_size_distribution](../images/bins_size_distribution.png)|
 
-The heatmap shows the contacts within each final bin (on the diagonal) and
-between them, at 50 kb resolution, the bins in the order of
-`bin_summary.txt`: a good binning has a bright diagonal of blocks on a dark
-background. It is drawn from the `.pairs.gz` files of the output directory,
-and skipped, with a warning, when there are none.
+The heatmap shows the contacts within each final cluster (on the diagonal)
+and between them, at 50 kb resolution, the clusters in the order of
+`bin_summary.txt`: a good clustering has a bright diagonal of blocks on a
+dark background. `pipeline` draws it from the contact map of the run, whatever
+it started from: the map that it starts from, or the map of the contigs
+that it builds from its pairs files.
+
+- **From the map:** the final clusters are laid end to end and cut into
+  windows of 50 kb. The contacts of a bin of the map, with another bin or
+  within itself, are spread over the windows that it covers, in proportion
+  to its length in each, as a map holds no read positions. Only the
+  contacts within a window are left out, as from the pairs. With one bin
+  per contig, as in the map of the contigs of a run, the contacts within a
+  contig are spread evenly over its windows, where its reads would put
+  most of them close to the diagonal.
+- **Without a map** (`metator validation`, run step by step), it is drawn
+  from the `.pairs.gz` files of the output directory, each contact at the
+  positions of its reads, and skipped, with a warning, when there are
+  none.
+- **The image** is saved at about one pixel per window, from 100 to 2000
+  dpi, with lines at least a pixel wide between the clusters. It was
+  saved at 2000 dpi whatever its size: 5.8 GB of memory to draw the 3,263
+  windows of a real metagenome, where it now takes 1.8 GB.
+- **A heatmap that cannot be drawn** is a warning: the run goes on.
 
 ![network_heatmap](../images/network_heatmap.png)
+
+The heatmap of a run on a real metagenome (MK01: 117,461 contigs, two
+libraries), drawn from its map, shown here at 1,200 pixels wide: the run
+writes it at about one pixel per window, 4,072 pixels wide.
 
 ## What comes next
 
