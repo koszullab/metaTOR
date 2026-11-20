@@ -26,7 +26,8 @@ A run that started from a .metacool map of the contigs (made before any
 binning) has no pairs files: its map is written from that map instead, with
 its bins and contacts, grouped by final bin in the same way. A pipeline run
 from reads or pairs builds such a map itself, from its pairs files, as soon
-as it has them, and writes the map of its bins from it at the end.
+as it has them, reads its network from it (with one library), and writes the
+map of its bins from it at the end.
 
 Core functions to write the file:
     - write_metacool, from the pairs files
@@ -476,13 +477,16 @@ def write_contig_map(
 ):
     """Write the contact map of the contigs, in no bin yet, as a .metacool
     file: the map that a pipeline run builds from its pairs files as soon as
-    it has them. At the end of the run, reassign_metacool writes the map of
-    its bins from it, which is the map that write_metacool writes from the
-    same pairs files and the final tables, but for its history (and, when
-    the final bins leave the contigs in the order of this map, for example
-    with no final bin or one bin holding every contig, the place of the
-    genome_id column: metacooler then relabels the contigs where they are,
-    and writes genome_id again, after the QC columns).
+    it has them. A run with one library reads its network from it
+    (metator.network.metacool_to_contacts: the network of its pairs files,
+    byte for byte, at --edge 0). At the end of the run, reassign_metacool
+    writes the map of its bins from it, which is the map that
+    write_metacool writes from the same pairs files and the final tables,
+    but for its history (and, when the final bins leave the contigs in the
+    order of this map, for example with no final bin or one bin holding
+    every contig, the place of the genome_id column: metacooler then
+    relabels the contigs where they are, and writes genome_id again, after
+    the QC columns).
 
     One bin per contig, every contig in metacooler's ``__unbinned__``
     genome, from the longest (metacooler's genome-then-length ordering,

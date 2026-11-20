@@ -47,7 +47,7 @@ The run logs each step (excerpt):
 ```console
 INFO :: Alignment of for_paired.fq.gz and rev_paired.fq.gz:
 INFO :: 61974 pairs aligned.
-INFO :: Information of alignment_0_sorted.pairs.gz:
+INFO :: Information of binning/metator.metacool:
 INFO :: 61974 contacts in the library.
 INFO :: 28510 contacts inter-contigs in the library.
 INFO :: 3D ratio : 0.46003162616581145

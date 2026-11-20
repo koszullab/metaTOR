@@ -258,6 +258,28 @@ def test_pipeline_without_bin_above_the_size_threshold(
     assert cooler.Cooler(str(metacool)).pixels()[:]["count"].sum() == len(metagenome.pairs)
 
 
+def test_pipeline_network_is_that_of_its_pairs(
+    metagenome_inputs, metagenome_indexed_pairs, metagenome_network, network_from_a_map, tmp_path, run_cli
+):
+    """A run from the pairs of one library reads its network from the map
+    of its contigs, not from its pairs files: network.txt and
+    contig_data_network.txt are, byte for byte, those of its pairs at
+    --edge 0 (metagenome_network, from alignment_to_contacts), the pairs
+    with a read on the last base of a contig included. network_0.txt, the
+    network of its library, is still written, with the bytes of the pairs
+    path's."""
+    out = tmp_path / "out"
+    args = ["-1", str(metagenome_indexed_pairs), "-a", str(metagenome_inputs["assembly"]), "-d", str(metagenome_inputs["depth"]),
+            "-S", "pair", "-e", "DpnII", "-o", str(out), "-T", str(tmp_path / "tmp")]  # fmt: skip
+    with pytest.raises(RuntimeError, match=r"^network built$"):
+        run_cli("pipeline", *args)
+    assert network_from_a_map == [str(out / "metator.metacool")]
+    assert (out / "network.txt").read_bytes() == metagenome_network["network"].read_bytes()
+    assert (out / "contig_data_network.txt").read_bytes() == metagenome_network["contig_data"].read_bytes()
+    assert sorted(path.name for path in out.glob("network*.txt")) == ["network.txt", "network_0.txt"]
+    assert (out / "network_0.txt").read_bytes() == (metagenome_network["network"].parent / "network_0.txt").read_bytes()
+
+
 def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, metagenome_indexed_pairs, tmp_path, monkeypatch, run_cli):
     """The whole pipeline from pairs, with stub miComplete and scaffolding."""
     random.seed(0)

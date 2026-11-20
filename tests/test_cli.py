@@ -3,11 +3,14 @@
 # bookkeeping of the commands (log files, temporary directories, default
 # outputs), with the heavy steps replaced by stubs.
 
+import bz2
+import gzip
 import json
 import os
 import re
 import shutil
 import sys
+import zipfile
 from pathlib import Path
 
 import click
@@ -355,9 +358,13 @@ def stub_pipeline(monkeypatch, tmp_path):
 
 @pytest.mark.parametrize("start", ["fastq", "bam"])
 @pytest.mark.parametrize("clean_up", [True, False])
-def test_pipeline_from_reads(start, clean_up, stub_pipeline, tmp_path, run_cli):
+@pytest.mark.parametrize("libraries", [1, 2])
+def test_pipeline_from_reads(start, clean_up, libraries, stub_pipeline, tmp_path, run_cli):
     """From reads or alignments: the pairs files and the contig data of the
-    network step are intermediate files."""
+    network step are intermediate files. The network of one library is read
+    from the map of the contigs, and copied to network_0.txt, the network
+    of that library; that of two libraries from their pairs files, with the
+    network of each (which the stub of the pairs path does not write)."""
     if start == "fastq":
         # A fasta: its index is built.
         assembly = tmp_path / "assembly.fa"
@@ -366,15 +373,16 @@ def test_pipeline_from_reads(start, clean_up, stub_pipeline, tmp_path, run_cli):
         # A bowtie2 index: its fasta is retrieved.
         assembly = TESTS_DATA / "assembly"
     out = tmp_path / "out"
-    args = ["-1", "a1.fq,b1.fq", "-2", "a2.fq,b2.fq", "-a", assembly, "-S", start, "-B", "cutsite", "-q", "20",
-            "-t", "2", "-o", out, "-T", tmp_path / "tmp"]  # fmt: skip
+    forward, reverse = ",".join(["a1.fq", "b1.fq"][:libraries]), ",".join(["a2.fq", "b2.fq"][:libraries])
+    args = ["-1", forward, "-2", reverse, "-a", assembly, "-S", start, "-B", "cutsite", "-q", "20", "-t", "2", "-o", out,
+            "-T", tmp_path / "tmp"]  # fmt: skip
     if not clean_up:
         args.append("-N")
     run_cli("pipeline", *args)
 
     calls = stub_pipeline
-    forward, reverse, index, fasta, aligner, mode, min_quality, start_arg, *_, threads = calls["get_contact_pairs"]
-    assert (forward, reverse, aligner, start_arg) == ("a1.fq,b1.fq", "a2.fq,b2.fq", "bowtie2", start)
+    forward_arg, reverse_arg, index, fasta, aligner, mode, min_quality, start_arg, *_, threads = calls["get_contact_pairs"]
+    assert (forward_arg, reverse_arg, aligner, start_arg) == (forward, reverse, "bowtie2", start)
     # cutsite needs an enzyme.
     assert mode == "iterative"
     assert min_quality == 20 and threads == 2
@@ -391,24 +399,36 @@ def test_pipeline_from_reads(start, clean_up, stub_pipeline, tmp_path, run_cli):
     assert not (out / "contig_data_partition.txt").exists()
     assert (out / "network.txt").exists()
     # The pairs files and their pypairix index go together.
-    pairs = [out / "alignment_0_sorted.pairs.gz", out / "alignment_1_sorted.pairs.gz"]
-    assert [path.exists() for path in pairs] == [not clean_up] * 2
-    assert [Path(f"{path}.px2").exists() for path in pairs] == [not clean_up] * 2
+    pairs = [out / f"alignment_{i}_sorted.pairs.gz" for i in range(libraries)]
+    assert [path.exists() for path in pairs] == [not clean_up] * libraries
+    assert [Path(f"{path}.px2").exists() for path in pairs] == [not clean_up] * libraries
     assert (tmp_path / "tmp").exists() == (not clean_up)
     (log,) = out.glob("metator_pipeline_*.log")
-    assert f"## Command used: metator pipeline -1 a1.fq,b1.fq -2 a2.fq,b2.fq -a {assembly}" in log.read_text()
+    assert f"## Command used: metator pipeline -1 {forward} -2 {reverse} -a {assembly}" in log.read_text()
 
     # The contact map of the contigs, built from the pairs files of the run
-    # as soon as they are there, before the network.
+    # as soon as they are there, before the network: read from it for one
+    # library, from the pairs files for two.
     order = list(calls)
-    assert order.index("get_contact_pairs") < order.index("write_contig_map") < order.index("alignment_to_contacts")
+    network = "metacool_to_contacts" if libraries == 1 else "alignment_to_contacts"
+    assert order.index("get_contact_pairs") < order.index("write_contig_map") < order.index(network)
+    assert {"metacool_to_contacts", "alignment_to_contacts"} & set(calls) == {network}
+    if libraries == 1:
+        source, out_dir, *files, tmp_dir, threads, normalization, self_contacts = calls["metacool_to_contacts"]
+        assert (source, out_dir, files) == (str(out / "metator.metacool"), str(out), ["network.txt", "contig_data_network.txt"])
+        assert (Path(tmp_dir).parent, threads, normalization, self_contacts) == (tmp_path / "tmp", 2, "empirical_hit", False)
+    else:
+        assert calls["alignment_to_contacts"][:3] == ([str(path) for path in pairs], 0, str(out))
+    assert (out / "network_0.txt").exists() == (libraries == 1)
+    if libraries == 1:
+        assert (out / "network_0.txt").read_text() == (out / "network.txt").read_text()
     pairs_files, existed, contig_data, outfile, kwargs = calls["write_contig_map"]
-    assert pairs_files == [str(path) for path in pairs] and existed == [True, True]
+    assert pairs_files == [str(path) for path in pairs] and existed == [True] * libraries
     assert (contig_data, outfile) == ({}, str(out / "metator.metacool"))
     assert (kwargs["assembly_name"], kwargs["threads"], kwargs["force"]) == ("assembly", 2, True)
     assert Path(kwargs["tmp_dir"]).parent == tmp_path / "tmp"
     metadata = kwargs["metadata"]
-    assert metadata["command"].startswith("metator pipeline -1 a1.fq,b1.fq -2 a2.fq,b2.fq -a")
+    assert metadata["command"].startswith(f"metator pipeline -1 {forward} -2 {reverse} -a")
     assert metadata["parameters"]["start"] == start and metadata["parameters"]["no_metacool"] is False
     assert "metator.metacool" in calls["partition_outdir"]
     # The map of the bins, written last over it, from the final tables: the
@@ -428,14 +448,15 @@ def test_pipeline_from_reads(start, clean_up, stub_pipeline, tmp_path, run_cli):
 )
 def test_pipeline_metacool_name(options, written, stub_pipeline, tmp_path, run_cli):
     """<prefix>.metacool, metator.metacool without --prefix: the map of the
-    contigs is built there, and the map of the bins written over it at the
-    end. With --no-metacool, the map of the contigs is built all the same,
-    and removed at the end."""
+    contigs is built there, the network read from it, and the map of the
+    bins written over it at the end. With --no-metacool, the map of the
+    contigs is built and read all the same, and removed at the end."""
     out = tmp_path / "out"
     run_cli("pipeline", "-1", "a.pairs", "-a", _assembly(tmp_path), "-S", "pair", "-o", out, "-T", tmp_path / "tmp", *options)
     outfile = str(out / written)
     pairs_files, _, _, built, _ = stub_pipeline["write_contig_map"]
     assert pairs_files == ["a.pairs"] and built == outfile
+    assert stub_pipeline["metacool_to_contacts"][0] == outfile and "alignment_to_contacts" not in stub_pipeline
     assert written in stub_pipeline["partition_outdir"]
     (log,) = out.glob("metator_pipeline_*.log")
     logged = log.read_text()
@@ -521,57 +542,364 @@ def _map_at_partition(monkeypatch, outfile):
 
 
 @pytest.mark.parametrize("no_metacool", [False, True])
-def test_pipeline_non_ascii_contigs_skip_the_metacool(no_metacool, stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """Contig names that are not ASCII: the map of the contigs cannot be
-    built. A warning, or, with --no-metacool, which asks for no map, a line
-    at INFO; no .metacool, no map of the bins at the end, and the run
-    succeeds with its other outputs."""
+def test_pipeline_non_ascii_contigs_stop_the_run(no_metacool, stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """Contig names that are not ASCII in the contig data (those of the
+    assembly are refused before any alignment: see
+    test_pipeline_refuses_non_ascii_contigs_before_any_alignment): the map
+    of the contigs cannot be built, which stops the run before its network,
+    --no-metacool or not, with the MetacoolError of write_contig_map, its
+    reason logged as an error in the log file of the run (without a
+    traceback: the error is expected, nor what metacooler needs of pairs
+    files: they are not at fault). No .metacool is left."""
     monkeypatch.setattr("metator.metacool.write_contig_map", mtmc_write_contig_map)
     _contig_data(monkeypatch, {"contig_é": (100, 40.5), "c2": (50, 35.0)})
-    _final_tables(monkeypatch, "contig_é")
     out = tmp_path / "out"
     args = ["-1", _pairs(tmp_path, "contig_é"), "-a", _assembly(tmp_path), "-S", "pair", "-o", out, "-T", tmp_path / "tmp"]
-    run_cli("pipeline", *args, *(["--no-metacool"] if no_metacool else []))
+    reason = (
+        "A .metacool file needs ASCII contig names (cooler reads them as ASCII text), and 1 contig name(s) are not: 'contig_é'."
+    )
+    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(reason)}$"):
+        run_cli("pipeline", *args, *(["--no-metacool"] if no_metacool else []))
     assert not list(out.glob("*.metacool*"))
-    assert "reassign_metacool" not in stub_pipeline
-    assert (out / "network.txt").exists() and (out / "contig_data_final.txt").exists()
+    assert not {"alignment_to_contacts", "metacool_to_contacts", "partition"} & set(stub_pipeline)
     (log,) = out.glob("metator_pipeline_*.log")
     logged = log.read_text()
-    reason = (
-        f"{out / 'metator.metacool'} is not written: A .metacool file needs ASCII contig names (cooler reads them as "
-        "ASCII text), and 1 contig name(s) are not: 'contig_é'. The run goes on without it"
-    )
-    if no_metacool:
-        assert f"INFO :: {reason}.\n" in logged and "WARNING" not in logged
-    else:
-        assert f"WARNING :: {reason}, and writes no map of the bins.\n" in logged
-    assert "Traceback" not in logged
+    assert f"ERROR :: The contact map of the contigs cannot be built at {out / 'metator.metacool'}: {reason}\n" in logged
+    assert "Traceback" not in logged and "WARNING" not in logged
 
 
 @pytest.mark.parametrize("no_metacool", [False, True])
-def test_pipeline_metacool_failure_is_a_warning(no_metacool, stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """A map of the contigs that fails to build costs a warning, with the
-    traceback in the log, --no-metacool or not when the error is
-    unexpected, not the run: the network is built, no map of the bins is
-    written, the exit status is 0 and the pairs files go as usual."""
+@pytest.mark.parametrize("libraries", [1, 2])
+def test_pipeline_map_failure_stops_the_run(libraries, no_metacool, stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """A map of the contigs that fails to build stops the run before its
+    network, --no-metacool or not, whatever the number of libraries (with
+    two, the network still comes from the pairs files): an unexpected error
+    (not a MetacoolError) is logged as an error, with its type and
+    traceback, then raised as it is. The pairs files made from the
+    alignments are left, as a run that stops leaves its files."""
 
     def write_contig_map(*args, **kwargs):
         raise RuntimeError("disk full")
 
     monkeypatch.setattr("metator.metacool.write_contig_map", write_contig_map)
     out = tmp_path / "out"
-    args = ["-1", "a.fq", "-2", "b.fq", "-a", TESTS_DATA / "assembly", "-S", "bam", "-o", out, "-T", tmp_path / "tmp"]
-    run_cli("pipeline", *args, *(["--no-metacool"] if no_metacool else []))
+    forward, reverse = ",".join(["a1.bam", "b1.bam"][:libraries]), ",".join(["a2.bam", "b2.bam"][:libraries])
+    args = ["-1", forward, "-2", reverse, "-a", TESTS_DATA / "assembly", "-S", "bam", "-o", out, "-T", tmp_path / "tmp"]
+    with pytest.raises(RuntimeError, match=r"^disk full$"):
+        run_cli("pipeline", *args, *(["--no-metacool"] if no_metacool else []))
     (log,) = out.glob("metator_pipeline_*.log")
     logged = log.read_text()
-    consequence = "The run goes on without it." if no_metacool else "The run goes on without it, and writes no map of the bins."
-    warning = f"WARNING :: {out / 'metator.metacool'} is not written: RuntimeError: disk full. {consequence}"
-    assert f"{warning}\nTraceback" in logged
-    assert logged.count("WARNING ::") == 1
-    assert "reassign_metacool" not in stub_pipeline
-    assert (out / "network.txt").exists() and not (out / "metator.metacool").exists()
-    assert not (out / "alignment_0_sorted.pairs.gz").exists()
-    assert not (out / "alignment_0_sorted.pairs.gz.px2").exists()
+    error = f"ERROR :: The contact map of the contigs cannot be built at {out / 'metator.metacool'}: RuntimeError: disk full."
+    assert f"{error}\nTraceback" in logged
+    assert logged.count("ERROR ::") == 1 and "WARNING" not in logged
+    assert not {"alignment_to_contacts", "metacool_to_contacts", "partition"} & set(stub_pipeline)
+    assert not (out / "metator.metacool").exists() and not (out / "network.txt").exists()
+    pairs = [out / f"alignment_{i}_sorted.pairs.gz" for i in range(libraries)]
+    assert all(path.exists() and Path(f"{path}.px2").exists() for path in pairs)
+
+
+PAIRS_TEXT = "## pairs format v1.0\nr1\tc1\t10\tc2\t20\t+\t-\n"
+
+
+def _write_pairs(path, codec):
+    """A small pairs file at path: plain, compressed with gzip or bzip2, a
+    zip archive holding it, empty, or the bytes given."""
+    if codec == "plain":
+        path.write_text(PAIRS_TEXT)
+    elif codec == "empty":
+        path.write_bytes(b"")
+    elif codec == "gzip":
+        path.write_bytes(gzip.compress(PAIRS_TEXT.encode()))
+    elif codec == "bzip2":
+        path.write_bytes(bz2.compress(PAIRS_TEXT.encode()))
+    elif codec == "zip":
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("a.pairs", PAIRS_TEXT)
+    else:
+        path.write_bytes(codec)
+    return path
+
+
+# The first bytes of a zstd and an lz4 file, which metaTOR does not know.
+ZSTD_START, LZ4_START = b"\x28\xb5\x2f\xfd", b"\x04\x22\x4d\x18"
+
+# Pairs files that metacooler, which goes by their name, or metaTOR, which
+# finds their compression from their first bytes and reads no zstd or lz4,
+# cannot read, given as the second library: their name, what they hold, and
+# what the refusal says, after their path.
+MISNAMED_PAIRS = {
+    "empty, named .gz": ("a.pairs.gz", "empty", "is empty: give the pairs file of its library, or leave it out of -1."),
+    "empty": ("a.pairs", "empty", "is empty: give the pairs file of its library, or leave it out of -1."),
+    "zip archive": (
+        "a.pairs.zip",
+        "zip",
+        "is a zip archive, which metacooler, which builds the contact map of the contigs, cannot read: decompress "
+        "it, and give the pairs file itself, plain or compressed with gzip and named .gz.",
+    ),
+    "gzip without .gz": (
+        "a.pairs",
+        "gzip",
+        "is compressed with gzip, but metacooler, which builds the contact map of the contigs, finds the compression "
+        "of a pairs file from its name only: rename it so that its name ends with .gz, or decompress it.",
+    ),
+    "bzip2 without .bz2": (
+        "a.pairs",
+        "bzip2",
+        "is compressed with bzip2, but metacooler, which builds the contact map of the contigs, finds the "
+        "compression of a pairs file from its name only: rename it so that its name ends with .bz2, or decompress it.",
+    ),
+    "gzip named .zst": (
+        "a.pairs.zst",
+        "gzip",
+        "is compressed with gzip, but metacooler, which builds the contact map of the contigs, finds the compression "
+        "of a pairs file from its name only: rename it so that its name ends with .gz, or decompress it.",
+    ),
+    "plain named .gz": (
+        "a.pairs.gz",
+        "plain",
+        "is not compressed, but metacooler, which builds the contact map of the contigs, would decompress it with "
+        "gzip, from its .gz extension: rename it without .gz, or compress it with gzip.",
+    ),
+    "plain named .bz2": (
+        "a.pairs.bz2",
+        "plain",
+        "is not compressed, but metacooler, which builds the contact map of the contigs, would decompress it with "
+        "bzip2, from its .bz2 extension: rename it without .bz2, or compress it with bzip2.",
+    ),
+    # metacooler goes by the suffix in any case.
+    "plain named .GZ": (
+        "a.pairs.GZ",
+        "plain",
+        "is not compressed, but metacooler, which builds the contact map of the contigs, would decompress it with "
+        "gzip, from its .GZ extension: rename it without .GZ, or compress it with gzip.",
+    ),
+    "zstd": (
+        "a.pairs.zst",
+        ZSTD_START,
+        "is named as a zstd file, which metacooler, which builds the contact map of the contigs, reads, but not "
+        "metaTOR, which reads the network of several libraries from their pairs files: decompress it, or compress it "
+        "with gzip and name it .gz (zstd and lz4 work with one library only, without --scaffold).",
+    ),
+    "zstd named .zstd": (
+        "a.pairs.zstd",
+        ZSTD_START,
+        "is named as a zstd file, which metacooler, which builds the contact map of the contigs, reads, but not "
+        "metaTOR, which reads the network of several libraries from their pairs files: decompress it, or compress it "
+        "with gzip and name it .gz (zstd and lz4 work with one library only, without --scaffold).",
+    ),
+    "lz4": (
+        "a.pairs.lz4",
+        LZ4_START,
+        "is named as an lz4 file, which metacooler, which builds the contact map of the contigs, reads, but not "
+        "metaTOR, which reads the network of several libraries from their pairs files: decompress it, or compress it "
+        "with gzip and name it .gz (zstd and lz4 work with one library only, without --scaffold).",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(MISNAMED_PAIRS))
+def test_pipeline_refuses_pairs_files_metacooler_cannot_read(case, stub_pipeline, tmp_path, run_cli):
+    """From pairs, a pairs file whose compression metacooler, which builds
+    the map of the contigs, would not find from its name is refused before
+    any work, with what to do, in the log file of the run: the bins of an
+    earlier run stay, even with -F. Each file is checked: the faulty one is
+    the second library here."""
+    name, codec, message = MISNAMED_PAIRS[case]
+    good = _write_pairs(tmp_path / "good.pairs.gz", "gzip")
+    bad = _write_pairs(tmp_path / name, codec)
+    out = tmp_path / "out"
+    earlier = out / "overlapping_bin" / "bin.fa"
+    earlier.parent.mkdir(parents=True)
+    earlier.write_text(">c1\nACGT\n")
+    with pytest.raises(ValueError):
+        run_cli("pipeline", "-1", f"{good},{bad}", "-a", _assembly(tmp_path), "-S", "pair", "-o", out, "-F",
+                "-T", tmp_path / "tmp")  # fmt: skip
+    assert not stub_pipeline and earlier.exists()
+    (log,) = out.glob("metator_pipeline_*.log")
+    logged = log.read_text()
+    assert f"ERROR :: {bad} {message}\n" in logged
+    assert logged.count("ERROR ::") == 1
+
+
+@pytest.mark.parametrize(
+    "name, codec",
+    [
+        ("a.pairs", "plain"),
+        ("a.txt", "plain"),
+        ("a.pairs.gz", "gzip"),
+        ("a.pairs.bgz", "gzip"),
+        ("a.pairs.bz2", "bzip2"),
+        ("a.pairs.GZ", "gzip"),
+        ("a.pairs.Bz2", "bzip2"),
+        ("a.pairs.zst", ZSTD_START),
+        ("a.pairs.zstd", ZSTD_START),
+        ("a.pairs.LZ4", LZ4_START),
+        ("missing.pairs", None),
+    ],
+    ids=[
+        "plain",
+        "plain named .txt",
+        "gzip",
+        "bgzip named .bgz",
+        "bzip2",
+        "gzip named .GZ",
+        "bzip2 named .Bz2",
+        "zstd",
+        "zstd named .zstd",
+        "lz4 named .LZ4",
+        "missing",
+    ],
+)
+def test_pipeline_pairs_files_metacooler_reads(name, codec, stub_pipeline, tmp_path, run_cli):
+    """A guard: a pairs file that metacooler and metaTOR both read goes on
+    to the map of the contigs: plain under any other name, gzip named .gz or
+    .bgz, bzip2 named .bz2, the suffix in any case, as metacooler matches
+    it; and, from one library, whose network comes from the map, zstd and
+    lz4, which metacooler reads (metaTOR, which does not, does not know
+    their first bytes). A missing file is left to the map, which stops on
+    it."""
+    pairs = _write_pairs(tmp_path / name, codec) if codec else tmp_path / name
+    run_cli("pipeline", "-1", pairs, "-a", _assembly(tmp_path), "-S", "pair", "-o", tmp_path / "out", "-T", tmp_path / "tmp")
+    assert stub_pipeline["write_contig_map"][0] == [str(pairs)]
+
+
+@pytest.mark.parametrize("libraries", [1, 2])
+def test_pipeline_refuses_zstd_and_lz4_pairs_with_scaffold(libraries, stub_pipeline, tmp_path, run_cli):
+    """With --scaffold, which reads the pairs files, zstd and lz4 pairs
+    files are refused before any work, from one library too (that of
+    several libraries is said first)."""
+    pairs = [_write_pairs(tmp_path / f"lib{i}.pairs.lz4", LZ4_START) for i in range(libraries)]
+    out = tmp_path / "out"
+    with pytest.raises(ValueError):
+        run_cli("pipeline", "-1", ",".join(map(str, pairs)), "-a", _assembly(tmp_path), "-S", "pair", "--scaffold",
+                "-o", out, "-T", tmp_path / "tmp")  # fmt: skip
+    assert not stub_pipeline
+    reader = "the network of several libraries from their pairs files" if libraries > 1 else "the pairs files for --scaffold"
+    message = (
+        f"{pairs[0]} is named as an lz4 file, which metacooler, which builds the contact map of the contigs, reads, "
+        f"but not metaTOR, which reads {reader}: decompress it, or compress it with gzip and name it .gz (zstd and "
+        "lz4 work with one library only, without --scaffold)."
+    )
+    (log,) = out.glob("metator_pipeline_*.log")
+    assert f"ERROR :: {message}\n" in log.read_text()
+
+
+def test_metacooler_pairs_codecs():
+    """The compressions that check_pairs_compression gives a pairs file
+    from its name are those of metacooler, which builds the map from it."""
+    from metacooler.io.create import _PAIRS_CODECS
+
+    assert mtcli.METACOOLER_PAIRS_CODECS == {
+        suffix: {"bz2": "bzip2"}.get(codec, codec) for suffix, codec in _PAIRS_CODECS.items()
+    }
+
+
+@pytest.mark.parametrize("case", ["libraries concatenated", "a row with one more field"])
+def test_pipeline_says_what_metacooler_needs_of_pairs_files(case, stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """From pairs, pairs files that metacooler cannot read stop the run on
+    the map of the contigs, with the reason that metacooler gives (its CSV
+    reader, pyarrow, stops on a header line amid the pairs of two files
+    concatenated, or on a row with one more field) and what it needs of
+    them, in the log file of the run."""
+    monkeypatch.setattr("metator.metacool.write_contig_map", mtmc_write_contig_map)
+    _contig_data(monkeypatch, {"c1": (100, 40.5), "c2": (50, 35.0)})
+    pairs = _pairs(tmp_path)
+    text = pairs.read_text()
+    if case == "libraries concatenated":
+        pairs.write_text(text + text)
+    else:
+        pairs.write_text(text.rstrip("\n") + "\tx\n")
+    out = tmp_path / "out"
+    with pytest.raises(mtmc.MetacoolError) as raised:
+        run_cli("pipeline", "-1", pairs, "-a", _assembly(tmp_path), "-S", "pair", "-o", out, "-T", tmp_path / "tmp")
+    (log,) = out.glob("metator_pipeline_*.log")
+    reason = str(raised.value).rstrip(".")
+    built = f"ERROR :: The contact map of the contigs cannot be built at {out / 'metator.metacool'}"
+    assert f"{built}: {reason}. {mtcli.PAIRS_FILES_NEEDS}\n" in log.read_text()
+    assert not list(out.glob("*.metacool*"))
+
+
+@pytest.mark.parametrize("start", ["pair", "bam"])
+@pytest.mark.parametrize("cause", ["pyarrow", "metaTOR"])
+def test_pipeline_says_what_metacooler_needs_only_of_given_pairs(start, cause, stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """What metacooler needs of pairs files is said when it cannot read
+    those given to a run from pairs: on an error of pyarrow, which it reads
+    them with. Not on another error (a guard: a missing pairs file here),
+    nor from alignments, whose pairs files the run made itself (a guard)."""
+    import pyarrow as pa
+
+    def write_contig_map(*args, **kwargs):
+        if cause == "pyarrow":
+            raise mtmc.MetacoolError("CSV parse error: Expected 7 columns, got 1") from pa.ArrowInvalid("CSV parse error")
+        raise mtmc.MetacoolError("Input file(s) not found: a.pairs.")
+
+    monkeypatch.setattr("metator.metacool.write_contig_map", write_contig_map)
+    inputs = ["-1", "a.pairs"] if start == "pair" else ["-1", "a.bam", "-2", "b.bam"]
+    out = tmp_path / "out"
+    with pytest.raises(mtmc.MetacoolError):
+        run_cli("pipeline", *inputs, "-a", _assembly(tmp_path), "-S", start, "-o", out, "-T", tmp_path / "tmp")
+    (log,) = out.glob("metator_pipeline_*.log")
+    (error,) = [line.split("ERROR :: ", 1)[1] for line in log.read_text().splitlines() if "ERROR :: " in line]
+    assert error.endswith(mtcli.PAIRS_FILES_NEEDS) == (start == "pair" and cause == "pyarrow")
+    assert error.startswith(f"The contact map of the contigs cannot be built at {out / 'metator.metacool'}: ")
+
+
+NON_ASCII_ASSEMBLY = ">NODE_1 a contig\n" + "ACGT" * 30 + "\n>NODE_522_é\n" + "ACGT" * 30 + "\n"
+
+
+@pytest.mark.parametrize(
+    "start, inputs",
+    [
+        ("fastq", ["-1", "a.fq", "-2", "b.fq"]),
+        ("fastq", ["-1", "a.fq", "-2", "b.fq"]),
+        ("bam", ["-1", "a.bam", "-2", "b.bam"]),
+        ("pair", ["-1", "a.pairs"]),
+    ],
+    ids=["fastq", "fastq, with a bowtie2 index", "bam", "pair"],
+)
+def test_pipeline_refuses_non_ascii_contigs_before_any_alignment(
+    start, inputs, request, stub_pipeline, tmp_path, monkeypatch, run_cli
+):
+    """An assembly with a contig name that is not ASCII is refused as soon
+    as its fasta is known, before its index is built or a read aligned,
+    whatever the start but a map: the contact map of the contigs needs
+    ASCII names, and could only be built once the reads are aligned. The
+    message, in the log file of the run, says to rename them. The bins of
+    an earlier run stay, even with -F."""
+    fasta = tmp_path / "assembly.fa"
+    fasta.write_text(NON_ASCII_ASSEMBLY)
+    assembly, named, rebuild = fasta, fasta, ""
+    if "index" in request.node.callspec.id:
+        # A bowtie2 index, whose fasta is retrieved (by bowtie2-inspect): the
+        # message names the index, as given.
+        assembly = tmp_path / "index"
+        named, rebuild = f"the bowtie2 index {assembly}", ", build the index again"
+        monkeypatch.setattr("metator.io.check_fasta_index", lambda ref, mode: str(ref))
+        monkeypatch.setattr("metator.io.retrieve_fasta", lambda index, aligner, tmpdir: str(fasta))
+    out = tmp_path / "out"
+    earlier = out / "overlapping_bin" / "bin.fa"
+    earlier.parent.mkdir(parents=True)
+    earlier.write_text(">c1\nACGT\n")
+    with pytest.raises(ValueError):
+        run_cli("pipeline", *inputs, "-a", assembly, "-S", start, "-o", out, "-F", "-T", tmp_path / "tmp")
+    # No index built, no read aligned, no contig data, no map.
+    assert not stub_pipeline and earlier.exists()
+    (log,) = out.glob("metator_pipeline_*.log")
+    message = (
+        f"The contig names of {named} cannot be used: A .metacool file needs ASCII contig names (cooler reads them "
+        "as ASCII text), and 1 contig name(s) are not: 'NODE_522_é'. Rename these contigs to ASCII names, in the "
+        f"assembly and in the alignments or pairs files made from it{rebuild}, then run pipeline again."
+    )
+    assert f"ERROR :: {message}\n" in log.read_text()
+
+
+def test_pipeline_from_a_map_keeps_the_contig_names(stub_pipeline, tmp_path, run_cli):
+    """A guard: a run from a map does not check the contig names of the
+    assembly, as it builds no map of the contigs."""
+    fasta = tmp_path / "assembly.fa"
+    fasta.write_text(NON_ASCII_ASSEMBLY)
+    run_cli("pipeline", "-1", "map.metacool", "-a", fasta, "-S", "metacool", "-o", tmp_path / "out", "-T", tmp_path / "tmp")
+    assert stub_pipeline["metacool_to_contacts"][0] == "map.metacool"
 
 
 @pytest.mark.parametrize(
@@ -647,20 +975,21 @@ def test_pipeline_refuses_its_map_as_an_input(case, stub_pipeline, tmp_path, run
 
 def test_pipeline_from_a_pairs_file_named_with_colons(stub_pipeline, tmp_path, run_cli):
     """A pairs file whose name holds :: is a pairs file, not the URI of a
-    map inside a file: the run reads it, and builds its map from it."""
+    map inside a file: the run reads it, builds its map from it, and reads
+    its network from that map."""
     pairs = tmp_path / "lib::L1.pairs"
     pairs.write_text("## pairs format v1.0\n")
     out = tmp_path / "out"
     run_cli("pipeline", "-1", pairs, "-a", _assembly(tmp_path), "-S", "pair", "-o", out, "-T", tmp_path / "tmp")
     assert stub_pipeline["write_contig_map"][0] == [str(pairs)]
-    assert stub_pipeline["alignment_to_contacts"][0] == [str(pairs)]
+    assert stub_pipeline["metacool_to_contacts"][0] == str(out / "metator.metacool")
     assert "reassign_metacool" in stub_pipeline
 
 
 def test_pipeline_interrupted_while_building_the_map(stub_pipeline, tmp_path, monkeypatch, run_cli):
     """An interruption (Ctrl-C) while the map of the contigs is built stops
-    the run: it is not one of the failures of the map that the run goes on
-    without."""
+    the run, without a word about the map: it is not one of the failures of
+    the map, whose reason the run logs as an error."""
 
     def write_contig_map(*args, **kwargs):
         raise KeyboardInterrupt
@@ -672,16 +1001,16 @@ def test_pipeline_interrupted_while_building_the_map(stub_pipeline, tmp_path, mo
     assert "Aborted" in result.output
     assert "alignment_to_contacts" not in stub_pipeline and "partition" not in stub_pipeline
     (log,) = out.glob("metator_pipeline_*.log")
-    assert "not written" not in log.read_text()
+    assert "cannot be built" not in log.read_text() and "ERROR ::" not in log.read_text()
 
 
 @pytest.mark.parametrize("case", ["written", "failed", "no metacool", "link"])
 def test_pipeline_earlier_metacool(case, stub_pipeline, tmp_path, monkeypatch, run_cli):
     """A map left by an earlier run in the output directory is removed
     before the map of the contigs is built in its place, --no-metacool or
-    not: it would pass for this run's map when the new one cannot be built.
-    From then on, the map there is this run's, or there is none. A symbolic
-    link there is removed, not its target."""
+    not: it would pass for this run's map when the new one cannot be built
+    (which stops the run). From then on, the map there is this run's, or
+    there is none. A symbolic link there is removed, not its target."""
     out = tmp_path / "out"
     out.mkdir()
     earlier = out / "metator.metacool"
@@ -701,14 +1030,19 @@ def test_pipeline_earlier_metacool(case, stub_pipeline, tmp_path, monkeypatch, r
 
     monkeypatch.setattr("metator.metacool.write_contig_map", write_contig_map)
     options = ["--no-metacool"] if case == "no metacool" else []
-    run_cli("pipeline", "-1", "a.pairs", "-a", _assembly(tmp_path), "-S", "pair", "-o", out, "-T", tmp_path / "tmp", *options)
+    args = ["-1", "a.pairs", "-a", _assembly(tmp_path), "-S", "pair", "-o", out, "-T", tmp_path / "tmp", *options]
+    if case == "failed":
+        with pytest.raises(RuntimeError, match=r"^disk full$"):
+            run_cli("pipeline", *args)
+    else:
+        run_cli("pipeline", *args)
     (log,) = out.glob("metator_pipeline_*.log")
     logged = log.read_text()
     assert seen == [False]
     assert f"INFO :: Removing {earlier}, the contact map of an earlier run." in logged
     if case == "failed":
         assert not os.path.lexists(earlier) and "reassign_metacool" not in stub_pipeline
-        assert f"WARNING :: {earlier} is not written: RuntimeError: disk full." in logged
+        assert f"ERROR :: The contact map of the contigs cannot be built at {earlier}: RuntimeError: disk full." in logged
     elif case == "no metacool":
         assert not os.path.lexists(earlier) and "reassign_metacool" not in stub_pipeline
     else:
@@ -838,19 +1172,55 @@ def test_pipeline_failure_leaves_the_map_of_the_contigs(no_metacool, stub_pipeli
     assert "reassign_metacool" not in stub_pipeline
 
 
+@pytest.mark.parametrize("case", ["a contig of another assembly", "no contact"])
+def test_pipeline_network_of_the_pairs_of_its_map(case, network_from_a_map, tmp_path, run_cli):
+    """The network of a run with one library is that of the pairs that its
+    map holds. A pair on a contig that the assembly lacks is left out, as
+    metacooler warns (the pairs path stopped on it with a KeyError); a map
+    that holds no contact (no pair within the contigs) stops the run with
+    the MetacoolError of the network, its reason logged as an error (the
+    pairs path divided by zero)."""
+    assembly = tmp_path / "assembly.fa"
+    assembly.write_text(">c1\n" + "ACGT" * 250 + "\n>c2\n" + "GGCC" * 100 + "\n")
+    pairs = tmp_path / "a.pairs"
+    rows = ["r1\tc1\t10\tc2\t20", "r2\tc1\t10\tzz\t90", "r3\tc1\t30\tc1\t500"]
+    if case == "no contact":
+        # A read past the end of c2.
+        rows = ["r1\tc1\t10\tc2\t900"]
+    pairs.write_text("## pairs format v1.0\n" + "".join(f"{row}\t+\t-\n" for row in rows))
+    out = tmp_path / "out"
+    args = ["-1", pairs, "-a", assembly, "-S", "pair", "-o", out, "-T", tmp_path / "tmp"]
+    if case == "no contact":
+        message = f"{out / 'metator.metacool'} holds no contact: there is no network to build."
+        with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
+            run_cli("pipeline", *args)
+        (log,) = out.glob("metator_pipeline_*.log")
+        assert f"ERROR :: {message}\n" in log.read_text()
+        return
+    with pytest.raises(RuntimeError, match=r"^network built$"):
+        run_cli("pipeline", *args)
+    assert network_from_a_map == [str(out / "metator.metacool")]
+    # c1 and c2 (ids 1 and 2), one contact, normalized by their hits (3, 1).
+    assert (out / "network.txt").read_text() == f"1\t2\t{1 / 3**0.5}\n"
+    (log,) = out.glob("metator_pipeline_*.log")
+    assert "WARNING :: Discarded 1 of 3 pair(s) (33.33%): 1 on unrecognised contigs (e.g. ['zz'])" in log.read_text()
+
+
 def test_pipeline_from_pairs_keeps_them(stub_pipeline, tmp_path, run_cli):
-    """From pairs files: they are inputs, kept with their pypairix index."""
+    """From pairs files: they are inputs, kept with their pypairix index.
+    Those of two libraries give the network, with that of each library."""
     assembly = tmp_path / "assembly.fa"
     shutil.copyfile(TESTS_DATA / "subset.assembly.fa", assembly)
     pairs = [tmp_path / "a_sorted.pairs.gz", tmp_path / "b_sorted.pairs.gz"]
     for path in pairs:
-        path.write_text("## pairs format v1.0\n")
+        # gzip, as their name says (see check_pairs_compression).
+        path.write_bytes(gzip.compress(b"## pairs format v1.0\n"))
         Path(f"{path}.px2").write_text("x")
     out = tmp_path / "out"
     run_cli("pipeline", "-1", ",".join(map(str, pairs)), "-a", assembly, "-S", "pair", "-o", out, "-T", tmp_path / "tmp")
 
     calls = stub_pipeline
-    assert "get_contact_pairs" not in calls
+    assert "get_contact_pairs" not in calls and "metacool_to_contacts" not in calls
     assert calls["alignment_to_contacts"][0] == [str(path) for path in pairs]
     assert all(path.exists() and Path(f"{path}.px2").exists() for path in pairs)
     assert not (tmp_path / "tmp").exists()
@@ -881,8 +1251,10 @@ def test_pipeline_from_a_metacool(no_metacool, stub_pipeline, tmp_path, run_cli)
     assert (threads, normalization, self_contacts) == (3, "abundance", False)
     assert calls["partition"][5] == str(out / "network.txt")
     assert metacool.read_text() == "input map"
-    # The contig data of the network step is kept, as from pairs files.
-    assert (out / "contig_data_network.txt").exists()
+    # The contig data of the network step is kept, as from pairs files. A
+    # map sums its libraries: no network_0.txt, even when the input map is
+    # at the path of the run's own map.
+    assert (out / "contig_data_network.txt").exists() and not (out / "network_0.txt").exists()
     (log,) = out.glob("metator_pipeline_*.log")
     logged = log.read_text()
     assert "Removing" not in logged
@@ -1036,14 +1408,18 @@ def test_network_from_a_metacool(monkeypatch, tmp_path, run_cli):
 
 
 METACOOL_START_ERRORS = {
+    "several maps": (
+        ["-1", "a.metacool,b.metacool,c.metacool"],
+        "--start metacool takes one .metacool file (its libraries are already summed), given with -1/--forward: got 3 files.",
+    ),
+}
+# pipeline refuses an edge region whatever the start: see
+# test_pipeline_refuses_an_edge_region.
+NETWORK_METACOOL_START_ERRORS = {
     "edge region": (
         ["-1", "map.metacool", "-E", "100"],
         "--edge 100 cannot be applied with --start metacool: a contact map holds the contacts of bins, not the "
         "positions of the reads. Leave --edge at 0, or start from the pairs files.",
-    ),
-    "several maps": (
-        ["-1", "a.metacool,b.metacool,c.metacool"],
-        "--start metacool takes one .metacool file (its libraries are already summed), given with -1/--forward: got 3 files.",
     ),
 }
 # A run without a map is refused by click: --forward is required.
@@ -1055,6 +1431,7 @@ PIPELINE_METACOOL_START_ERRORS = {
 @pytest.mark.parametrize(
     "command, case",
     [(command, case) for command in ["network", "pipeline"] for case in METACOOL_START_ERRORS]
+    + [("network", case) for case in NETWORK_METACOOL_START_ERRORS]
     + [("pipeline", case) for case in PIPELINE_METACOOL_START_ERRORS],
 )
 def test_metacool_start_refused(command, case, monkeypatch, tmp_path, run_cli):
@@ -1065,7 +1442,7 @@ def test_metacool_start_refused(command, case, monkeypatch, tmp_path, run_cli):
         raise AssertionError("refused before any work")
 
     monkeypatch.setattr("metator.network.create_contig_data", not_called)
-    args, message = {**METACOOL_START_ERRORS, **PIPELINE_METACOOL_START_ERRORS}[case]
+    args, message = {**METACOOL_START_ERRORS, **NETWORK_METACOOL_START_ERRORS, **PIPELINE_METACOOL_START_ERRORS}[case]
     out = tmp_path / "out"
     with pytest.raises(ValueError):
         run_cli(command, *args, "-a", TESTS_DATA / "assembly.fa", "-S", "metacool", "-o", out, "-T", tmp_path / "tmp")
@@ -1073,17 +1450,74 @@ def test_metacool_start_refused(command, case, monkeypatch, tmp_path, run_cli):
     assert f"ERROR :: {message}" in log.read_text()
 
 
+PIPELINE_EDGE_ERROR = (
+    "--edge {} cannot be applied by pipeline, which counts every pair, as its contact map does: a map holds the "
+    "contacts of bins, not the positions of the reads. Leave --edge at 0, or build the network with metator network, "
+    "then run metator partition and metator validation."
+)
+
+
+@pytest.mark.parametrize(
+    "start, inputs",
+    [
+        ("fastq", ["-1", "a.fq", "-2", "b.fq"]),
+        ("bam", ["-1", "a.bam", "-2", "b.bam"]),
+        ("pair", ["-1", "a.pairs"]),
+        ("pair", ["-1", "a.pairs,b.pairs"]),
+        ("metacool", ["-1", "map.metacool"]),
+    ],
+    ids=["fastq", "bam", "pair", "pairs of two libraries", "metacool"],
+)
+@pytest.mark.parametrize("edge", ["100", "-5"], ids=["above 0", "negative"])
+def test_pipeline_refuses_an_edge_region(start, inputs, edge, stub_pipeline, tmp_path, run_cli):
+    """pipeline refuses an --edge other than 0 before any work, whatever
+    the start and the number of libraries: it counts every pair, as its
+    contact map does. A negative --edge, which counted every pair as 0
+    does, is refused too, as the help says "Only 0". --start metacool gets
+    this message too, not the one of metator network, which would send it
+    to the pairs files."""
+    out = tmp_path / "out"
+    with pytest.raises(ValueError):
+        run_cli("pipeline", *inputs, "-a", _assembly(tmp_path), "-S", start, f"--edge={edge}", "-o", out, "-T", tmp_path / "tmp")
+    assert not stub_pipeline and not (out / "overlapping_bin").exists()
+    (log,) = out.glob("metator_pipeline_*.log")
+    logged = log.read_text()
+    assert f"ERROR :: {PIPELINE_EDGE_ERROR.format(edge)}\n" in logged
+    assert logged.count("ERROR ::") == 1
+
+
+@pytest.mark.parametrize("edge", [100, -5], ids=["above 0", "negative"])
+def test_network_keeps_the_edge_region(edge, stub_pipeline, tmp_path, run_cli):
+    """A guard: metator network still applies --edge to the pairs files
+    (alignment_to_contacts), a negative one included."""
+    run_cli("network", "-1", "a.pairs", "-a", _assembly(tmp_path), "-S", "pair", f"--edge={edge}", "-o", tmp_path / "out",
+            "-T", tmp_path / "tmp")  # fmt: skip
+    alignment_files, edge_arg, *_ = stub_pipeline["alignment_to_contacts"]
+    assert (alignment_files, edge_arg) == (["a.pairs"], edge)
+
+
 @pytest.mark.parametrize(
     "args",
     [
         ["-S", "metacool", "-1", "map.metacool", "-E", "100"],
+        ["-S", "pair", "-1", "a.pairs", "-E", "100"],
+        ["-S", "pair", "-1", "a.pairs", "--edge=-5"],
         ["-S", "metacool", "-1", "map.metacool", "--scaffold"],
         ["-S", "pair", "-1", "a.pairs", "-m", "abundance"],
         ["-S", "fastq", "-1", "a.fq"],
         ["-S", "pair", "-1", "a.pairs", "-p", "bad.prefix"],
         ["-S", "pair", "-1", "a.pairs", "-a", "missing.fa"],
     ],
-    ids=["edge region", "scaffold", "normalization without depth", "no reverse reads", "prefix", "no assembly"],
+    ids=[
+        "edge region",
+        "edge region from pairs",
+        "negative edge region",
+        "scaffold",
+        "normalization without depth",
+        "no reverse reads",
+        "prefix",
+        "no assembly",
+    ],
 )
 def test_pipeline_refused_keeps_the_bins_of_an_earlier_run(args, tmp_path, run_cli):
     """A refused run with --force (a rebinning into the same directory)
@@ -1124,7 +1558,7 @@ def test_pipeline_without_pyfastx_index(stub_pipeline, tmp_path, monkeypatch, ru
     assembly = tmp_path / "assembly.fa"
     shutil.copyfile(TESTS_DATA / "subset.assembly.fa", assembly)
     pairs = tmp_path / "a_sorted.pairs.gz"
-    pairs.write_text("## pairs format v1.0\n")
+    pairs.write_bytes(gzip.compress(b"## pairs format v1.0\n"))
     out = tmp_path / "out"
     run_cli("pipeline", "-1", pairs, "-a", assembly, "-S", "pair", "-o", out, "-T", tmp_path / "tmp")
     assert (out / "network.txt").exists() and not Path(f"{assembly}.fxi").exists()
