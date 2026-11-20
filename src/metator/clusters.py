@@ -21,6 +21,10 @@ clusters stores both (:func:`metator.metacool.reassign_metacool`). A
 partition run from a map stores its own round, ``overlapping``, in the map
 (:func:`overlapping_round`, :func:`metator.metacool.write_rounds`), until
 the validation stores every round.
+
+``metator mge`` makes one more round after them, ``mge``: its MGE clusters,
+which it stores in the map next to those of the run (:func:`mge_round`,
+:func:`metator.metacool.write_round`).
 """
 
 import csv
@@ -38,6 +42,13 @@ CLUSTER_MEMBERS_FILE = "cluster_members.txt"
 #: The names of the rounds.
 OVERLAPPING = "overlapping"
 FINAL = "final"
+MGE = "mge"
+
+#: The columns of the summary of metator mge (mges_bin_summary.tsv) that the
+#: round mge does not store as columns of its own: the name of each MGE
+#: cluster, and what metacooler computes from its contigs (their total length
+#: and their number) or stores as its members.
+MGE_SUMMARY_KEYS = {"BinName": "name", "BinLength": "length", "ContigsNumber": "n_contigs", "Contigs": "members"}
 
 
 def recursive_round(step):
@@ -212,3 +223,51 @@ def overlapping_round(contig_data_file, size, prefix):
         rounds.add(OVERLAPPING, f"{prefix}_{cluster_id}_{0:05d}", contigs)
     rounds.close_round(OVERLAPPING)
     return rounds.tables()
+
+
+def mge_round(summary_file):
+    """The round ``mge``: the MGE clusters of a run of ``metator mge``, from
+    the summary that it wrote (``mges_bin_summary.tsv``), in its order: each
+    named as its record (``MetaTOR_MGE_<ID>``), with its contigs (the
+    ``Contigs`` column) and no parent. Its other columns are those of the
+    summary, as written (GC, Hit, BinningScore, MetagenomicBin,
+    AssociationScore, AssociatedBins), but those that the map computes from
+    the contigs (see :data:`MGE_SUMMARY_KEYS`): ``BinLength`` is the length
+    of the cluster, and ``ContigsNumber`` its number of contigs. ``NA`` is a
+    missing value: no number, or an empty text in the map.
+
+    Parameters
+    ----------
+    summary_file : str
+        Path to ``mges_bin_summary.tsv``.
+
+    Returns
+    -------
+    tuple of pandas.DataFrame
+        The clusters and their contigs (see :meth:`Rounds.tables`).
+    """
+    # Names as written: a contig called NA, None or nan is one. None, which
+    # mge writes for a host it does not know, is a text; NA, in the other
+    # columns, a missing value.
+    text = ["BinName", "Contigs", "MetagenomicBin", "AssociatedBins"]
+    missing = ["BinLength", "GC", "Hit", "BinningScore", "ContigsNumber", "MetagenomicBin", "AssociationScore", "AssociatedBins"]
+    summary = pd.read_csv(
+        summary_file,
+        sep="\t",
+        dtype=dict.fromkeys(text, str),
+        keep_default_na=False,
+        na_values={column: ["NA"] for column in missing},
+    )
+    clusters = pd.DataFrame({"round": MGE, "name": summary["BinName"], "parent_round": None, "parent": None})
+    for column in summary.columns:
+        if column not in MGE_SUMMARY_KEYS:
+            clusters[column] = summary[column].astype(object) if column in text else summary[column]
+    members = pd.DataFrame(
+        [
+            (MGE, name, contig)
+            for name, contigs in zip(summary["BinName"], summary["Contigs"], strict=True)
+            for contig in contigs.split(",")
+        ],
+        columns=["round", "cluster", "contig"],
+    )
+    return clusters, members

@@ -4,7 +4,10 @@
 """Generates a HiC contact map of a MetaTOR object.
 
 General utility functions and class for handling one MetaTOR object and for
-generating its HiC contact map using hicstuff pipeline.
+generating its HiC contact map using hicstuff pipeline, from the pairs files,
+at the resolution of the restriction fragments, or from a .metacool contact
+map, at that of its bins (one per contig in a map of metaTOR), as metacooler
+extract writes it.
 
 Core class to handle bin object easily:
     - MetatorObject
@@ -12,10 +15,13 @@ Core class to handle bin object easily:
 Core function to build the network are:
     - extract_pairs
     - generate_contact_map
+    - extract_contact_map
 """
 
+import os
 import hicstuff.pipeline as hcp
 import metator.io as mio
+import metator.metacool as mtmc
 from metator.log import logger
 from os.path import join
 import pandas as pd
@@ -351,3 +357,93 @@ def generate_contact_map(
             tmp_dir=tmp_dir,
         )
     return n_pairs
+
+
+def extract_contact_map(
+    assembly,
+    contig_data_file,
+    name,
+    metacool,
+    out_dir,
+    force=False,
+    metator_object="final_bin",
+    min_size=5000,
+):
+    """Generate the contact map of a MetaTOR object from a .metacool contact
+    map instead of the pairs files: the map of its contigs, as metacooler
+    extract writes it, at the bins of the map (one per contig in a map of
+    metaTOR), where generate_contact_map builds the map of their restriction
+    fragments with hicstuff. Its contigs are those that generate_contact_map
+    takes, and their contacts those of the pairs that it extracts from the
+    pairs files that the map was made of: each pair whose two reads lie on
+    the contigs, within their length.
+
+    It writes <name>.fa, the contigs of the object, as generate_contact_map
+    does, and <name>.cool, its contact map: a cooler of its contigs, in the
+    order of the map, with their contacts. A contig that the map lacks is
+    left out, with a warning; with none of the contigs, no map is written,
+    and an earlier <name>.cool is removed (force).
+
+    Parameters:
+    -----------
+    assembly : str
+        Path to the fasta file containing the contigs of interest. Could be the
+        whole or the extracted contigs of one bin.
+    contig_data_file : str
+        Path to the contig_data_final.txt file form MetaTOR output: the
+        lengths of the contigs (Size) must be theirs in the map.
+    name : str
+        Name of the object. Could be the name of a contig, an id of a bin or the
+        name of the bin. Example: "NODE_1" or "MetaTOR_1_0".
+    metacool : str
+        Path to the .metacool file, or URI of an entry of a .mmetacool
+        collection: ``file.mmetacool::entries/<name>``.
+    out_dir : str
+        Path where output files should be written.
+    force : bool
+        If True, overwrite an existing <name>.cool. Default: False.
+    metator_object : str
+        Object to extract contigs to build the matrix. Either "contig",
+        "core_bin", "overlapping_bin", "recursive_bin", "final_bin" or "other".
+    min_size : int
+        Minimum contig size required to keep it.
+
+    Returns:
+    --------
+    list of str:
+        The contigs of the map written, in its order.
+
+    Raises:
+    -------
+    FileExistsError
+        If <name>.cool exists, without force: refused before any work, the
+        reason logged as an error.
+    metator.metacool.MetacoolError
+        If the map cannot be read, stores both triangles of the matrix, or
+        gives a contig of the object another length than the contig data:
+        refused before <name>.fa is written and <name>.cool replaced. Or if
+        metacooler cannot write <name>.cool.
+    """
+    logger.info("Generate HiC contact map for %s from %s", name, metacool)
+    cool = join(out_dir, f"{name}.cool")
+    if os.path.lexists(cool) and not force:
+        reason = f"{cool} exists: give -F to replace it with the contact map of {name}."
+        logger.error(reason)
+        raise FileExistsError(reason)
+    metator_data = MetatorObject(metator_object, name, assembly, contig_data_file, [], min_size)
+    metator_data.set_contigs()
+    if min_size > 0:
+        metator_data.set_large_contigs()
+    names, sizes = metator_data.contigs or [], metator_data.contigs_size or []
+    contigs = {str(contig): int(size) for contig, size in zip(names, sizes, strict=True)}
+    # The map is checked before any output is written or replaced: a
+    # refused run leaves those of an earlier run as they were.
+    written = mtmc.held_contigs(metacool, contigs, contig_data_file, f"the contigs of {name}")
+    metator_data.write_fasta(out_dir)
+    if os.path.lexists(cool):
+        os.remove(cool)
+    if written:
+        mtmc.extract_contigs(metacool, written, cool)
+    else:
+        logger.info("%s holds no contig of %s of at least %d bp: no contact map is written.", metacool, name, min_size)
+    return written

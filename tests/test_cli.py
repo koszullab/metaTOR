@@ -3208,7 +3208,7 @@ def test_qc_default_outdir(tmp_path, monkeypatch, run_cli):
         "./metator_qc_sample",
     )
     assert args[6:] == ("sample", False)
-    assert kwargs == {"enzyme": ["DpnII", "HinfI"], "threshold": ["3", "4"]}
+    assert kwargs == {"enzyme": ["DpnII", "HinfI"], "threshold": ["3", "4"], "metacool": None}
     assert len(list((tmp_path / "metator_qc_sample").glob("metator_qc_*.log"))) == 1
 
 

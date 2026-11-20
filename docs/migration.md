@@ -22,6 +22,8 @@ Louvain and Leiden run through igraph).
 | | `pipeline --output-map FILE` | New: writes the map of the clusters of the run to FILE, and leaves the input map of a run from a map as it was. |
 | | `metator partition MAP`, `metator validation MAP` | New: the steps run one by one on a `.metacool` map, their first argument, which they update as `pipeline MAP` does: `partition MAP` stores its overlapping clusters in the clustering rounds of the map, and `validation MAP` writes the map of the clusters. Without `MAP`, they run as before. |
 | | `partition --output-map FILE`, `validation --output-map FILE` | New, with `MAP`: write the map to FILE, and leave `MAP` as it was. |
+| | `metator qc MAP`, `metator contactmap MAP` | New: the `.metacool` contact map of the run in place of the pairs files, for what a map gives: the noise of the library (`qc`, without the events of the pairs, which need their reads), and the contact map of the contigs of a cluster, as `metacooler extract` writes it (`contactmap`, a `.cool` file). Their options that need the read positions are refused then. |
+| | `mge --map MAP`, `mge --output-map FILE`, `mge -F` | New: `mge` also stores its MGE clusters in the map of the run, as the round `mge` of its clustering rounds, in place or in FILE (replaced only with `-F`). It still reads the pairs files, and refuses a map in their place. |
 | | `pipeline --no-metacool` | New: keeps no contact map (a run from reads still builds the map of its contigs, and removes it at the end). |
 | | `metator metacool` | New command: writes the contact map of a run, from its pairs files or from the map it started from, and its final tables. |
 | `metator host` | Removed: an unknown command | It always failed since 1.3.10: it called a function that the rewrite of the `host` module removed. |
@@ -53,6 +55,7 @@ error, before any work unless said otherwise:
 | | `<outdir>/metator.metacool` (`<prefix>.metacool`): the contact map of the contigs, grouped by cluster, written by every `pipeline` run from reads, alignments or pairs. |
 | | A run from a map updates that map in place (staged, validated, then renamed over it), and locks it while it runs (`<map>.lock`): `pipeline MAP`, and the steps `partition MAP` and `validation MAP`. |
 | | `clusters.txt` and `cluster_members.txt`: the clusters of every clustering round, and their contigs, also stored in the `/clusters` group of the map. |
+| | `mge --map`: the round `mge` of the clustering rounds of the map, its MGE clusters, after those of the run. |
 | 1.4.0: a map of the clusters that could not be written, a warning, and exit status 0 | The run stops with the reason, logged as an error. Its other outputs are kept, and so is the map it would have replaced. |
 
 ## What a run counts

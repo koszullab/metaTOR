@@ -319,6 +319,9 @@ A run reaches its final clusters in rounds:
 - `final`: the final clusters, each the cluster of the same name of the round
   it comes from.
 
+`metator mge --map` adds one more after them, `mge`: the MGE clusters (see
+[qc, contactmap and mge on the map](#qc-contactmap-and-mge-on-the-map)).
+
 The validation writes them all next to its other tables, in the output
 directory: `clusters.txt`, one row per cluster of every round (its round and
 name, the round and name of its parent, `NA` for none, and the columns of
@@ -333,6 +336,43 @@ holds the rounds of the run that wrote it, and those only: `metator
 metacool`, which writes a map from the tables of a run, stores none, and
 `metator partition MAP` stores the round `overlapping` alone, until
 `metator validation MAP` stores every round (see [Step by step](#step-by-step)).
+`metator mge --map` then adds the round `mge`, or replaces the one of an
+earlier `mge` run, and keeps the others.
+
+## qc, contactmap and mge on the map
+
+Three commands of a finished run read individual reads in their pairs files.
+From the map of the run, given in place of the pairs files, `qc` and
+`contactmap` give what a map gives, the contacts between contigs, which are
+those of the pairs it was made of; `mge` still reads the pairs files, and
+stores its results in the map:
+
+- `metator qc MAP` measures the noise of the library: the contacts within
+  contigs, within MAGs and between MAGs of the high-quality MAGs, the noise
+  contact ratio and the noise score, which are those that `qc` measures from
+  the pairs files that metaTOR's alignment writes. The events of the pairs
+  within a contig need the positions and strands of their reads: they are
+  not measured (see [Checking a library](qc.md#from-a-contact-map)).
+- `metator contactmap MAP` writes the contact map of a cluster as
+  `metacooler extract` writes it, `<name>.cool`, at the bins of the map (one
+  per contig in a map of metaTOR): the map of the restriction fragments that
+  hicstuff builds from the pairs files, summed by pair of contigs. The
+  filters of hicstuff need the read positions (see
+  [Viewing and scaffolding MAGs](visualisation.md#from-a-contact-map)).
+- `metator mge --map MAP` counts the contacts within each MGE contig between
+  reads more than 1 kb apart, which a map does not tell: it reads the pairs
+  files, and refuses a map in their place. It stores its MGE clusters in the
+  map, as the round `mge` of its clustering rounds, after those of the run;
+  the genomes and contigs tables, the final clusters, are left as they were.
+  A run that replaces the clusters of the map drops the round `mge`, with a
+  warning.
+  The map is written as `partition MAP` writes it: in place, or to
+  `--output-map FILE` (see
+  [Binning mobile genetic elements](mge.md#in-the-contact-map-of-the-run)).
+
+`qc` and `contactmap` refuse a map with pairs files or another map, a map
+that gives a contig another length than the contig data table, and a map
+that stores both triangles of its matrix, with the reason in the log.
 
 ## From hicstuff to metaTOR through metacooler
 

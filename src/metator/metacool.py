@@ -270,6 +270,164 @@ def check_map_lengths(metacool, contigs, lengths, of, where):
         )
 
 
+def _contigs_in_map(mc, metacool, contigs, of, what):
+    """The contigs of contigs (their lengths, by name, as the contig data
+    file of gives them) that the map mc (that of metacool, a
+    metacooler.MetaCooler) holds, in the order of the map, once the map is
+    checked for reading their contacts.
+
+    Refused: a map that stores both triangles of the matrix (storage-mode
+    square), where each contact between two bins would be read twice, and
+    a map that gives one of the contigs another length (see
+    check_map_lengths), which is no map of them. The contigs that the map
+    lacks (a map made with a contig filter, for example) are left out, with
+    a warning (what: what the contigs are, for it): they have no contacts
+    there, as contigs that no read maps to."""
+    storage_mode = mc.info.get("storage-mode", "symmetric-upper")
+    if storage_mode != "symmetric-upper":
+        raise MetacoolError(
+            f"{metacool} stores its contacts with storage-mode {storage_mode!r}: the contacts of contigs are read "
+            "from a map that stores each contact once, in the upper triangle (storage-mode 'symmetric-upper'), as "
+            "metacooler writes them."
+        )
+    check_map_lengths(metacool, mc.contigs, contigs, of, of)
+    names = [str(name) for name in mc.contigs["name"]]
+    in_map = set(names)
+    absent = [name for name in contigs if name not in in_map]
+    if absent:
+        logger.warning(
+            f"{len(absent)} of {what} are not in {metacool}: they have no contacts there, as contigs that no read maps "
+            f"to: {_shown(absent)}."
+        )
+    return [name for name in names if name in contigs]
+
+
+def contig_contacts(metacool, contigs, of, what, chunksize=1_000_000):
+    """The contacts between contigs in a .metacool contact map, summed by
+    pair of contigs: those between their bins, whatever the bin size of the
+    map. The pixels are read at most chunksize at a time, and only those of
+    the contigs are kept: the memory used grows with the number of their
+    pairs in contact. metator qc reads the contacts of the large contigs of
+    its high-quality MAGs so.
+
+    Parameters
+    ----------
+    metacool : str
+        Path to the .metacool file, or URI of an entry of a .mmetacool
+        collection: ``file.mmetacool::entries/<name>``.
+    contigs : dict
+        The lengths of the contigs, by name, as the contig data file of
+        gives them.
+    of : str
+        The contig data file, for the messages.
+    what : str
+        What the contigs are, for the warning about those that the map
+        lacks (see _contigs_in_map), which have no contacts.
+    chunksize : int
+        Number of pixels read at a time.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per pair of contigs in contact: contig1 and contig2 (their
+        names, the first one first in the map, the same one for the contacts
+        within a contig) and count, their contacts.
+
+    Raises
+    ------
+    MetacoolError
+        If the map cannot be read, stores both triangles of the matrix, or
+        gives a contig another length than contigs.
+    """
+    import numpy as np
+
+    with _metacooler_logging():
+        mc = open_map(metacool)
+        held = _contigs_in_map(mc, metacool, contigs, of, what)
+        names = mc.contigs["name"].astype(str).to_numpy()
+        selected = np.isin(names, held)
+        sums = [pd.DataFrame({"id1": [], "id2": [], "count": []}, dtype="int64")]
+        # No pixel to read when the map holds none of the contigs.
+        if held:
+            for chunk in mc.iter_pixels(chunksize=chunksize, contig_ids=True):
+                pixels = pd.DataFrame({"id1": chunk["contig1_id"], "id2": chunk["contig2_id"], "count": chunk["count"]})
+                pixels = pixels[selected[pixels["id1"].to_numpy()] & selected[pixels["id2"].to_numpy()]]
+                sums.append(pixels.groupby(["id1", "id2"], as_index=False)["count"].sum())
+    summed = pd.concat(sums).groupby(["id1", "id2"], as_index=False)["count"].sum()
+    return pd.DataFrame(
+        {
+            "contig1": names[summed["id1"].to_numpy()],
+            "contig2": names[summed["id2"].to_numpy()],
+            "count": summed["count"].to_numpy(),
+        }
+    )
+
+
+def held_contigs(metacool, contigs, of, what):
+    """The contigs of contigs that the .metacool contact map metacool holds,
+    in the order of the map, once the map is checked for reading their
+    contacts (see _contigs_in_map): those that extract_contigs writes the
+    contact map of. metator contactmap checks the map so before it writes
+    any output.
+
+    Parameters
+    ----------
+    metacool : str
+        Path to the .metacool file, or URI of an entry of a .mmetacool
+        collection: ``file.mmetacool::entries/<name>``.
+    contigs : dict
+        The lengths of the contigs, by name, as the contig data file of
+        gives them.
+    of : str
+        The contig data file, for the messages.
+    what : str
+        What the contigs are, for the warning about those that the map
+        lacks, which are left out.
+
+    Returns
+    -------
+    list of str
+        The contigs of contigs that the map holds, in its order.
+
+    Raises
+    ------
+    MetacoolError
+        If the map cannot be read, stores both triangles of the matrix, or
+        gives a contig another length than contigs.
+    """
+    with _metacooler_logging():
+        return _contigs_in_map(open_map(metacool), metacool, contigs, of, what)
+
+
+def extract_contigs(metacool, contigs, outfile):
+    """Write the contact map of contigs, from the .metacool contact map
+    metacool, as metacooler extract writes it: a .cool file at outfile (a
+    cooler, not a .metacool map) of their bins in the map, one per contig
+    in a map of metaTOR, in the order of the map, with their contacts.
+    metator contactmap writes the contact map of a bin so, from a map.
+
+    Parameters
+    ----------
+    metacool : str
+        Path to the .metacool file, or URI of an entry of a .mmetacool
+        collection: ``file.mmetacool::entries/<name>``.
+    contigs : list of str
+        The contigs, which the map holds (see held_contigs).
+    outfile : str
+        Path to the .cool file to write, replaced if it exists.
+
+    Raises
+    ------
+    MetacoolError
+        If metacooler cannot write the file (a ValueError, OSError or
+        KeyError, message kept).
+    """
+    import metacooler
+
+    with _metacooler_logging(), _as_metacool_errors():
+        metacooler.extract(metacool, contigs=list(contigs), output=outfile)
+
+
 def check_map_of_contigs(metacool, contig_data):
     """Refuse a map that is not a map of the contigs of a run: contigs that
     contig_data, a contig data file of the run (its Name and Size columns),
@@ -872,7 +1030,11 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
     import metacooler
 
     with _metacooler_logging():
-        contigs = open_map(metacool).contigs
+        mc = open_map(metacool)
+        contigs = mc.contigs
+        # Said once the map is written: a refused run drops nothing.
+        later = _later_rounds(mc)
+    in_place = is_input_map(metacool, outfile)
     names = [str(name) for name in contigs["name"]]
     # The binning of another version of the assembly (other contigs under
     # the same names) is no binning of this map.
@@ -928,6 +1090,7 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
             store_rounds(staged, rounds, name=metacool)
             _rewrite_in_a_fresh_file(staged)
         logger.info(f"{outfile} is written: the contact map of the clusters.")
+    _warn_dropped_rounds(later, metacool, outfile, in_place)
 
 
 @contextmanager
@@ -1083,6 +1246,41 @@ def _write_back_columns(path, contig_data, contig_columns, header):
     )
 
 
+# The steps of the binning, which make the clustering rounds that a run
+# replaces (see store_rounds): a round that another step made (that of
+# metator mge --map), or another tool, is dropped with them.
+BINNING_STEPS = ("partition", "validation")
+
+
+def _later_rounds(mc):
+    """The entries of the clustering rounds of the map mc that the binning
+    did not make: that of metator mge --map, or of another tool. A run that
+    replaces the clusters of the map stores its own rounds only, so its map
+    does not keep them (see _warn_dropped_rounds)."""
+    return [entry for entry in mc.cluster_rounds if entry.get("step") not in BINNING_STEPS]
+
+
+def _made_by(entry):
+    """What made a clustering round, from its entry: its tool and step
+    (metaTOR mge)."""
+    return " ".join(str(entry[key]) for key in ("tool", "step") if entry.get(key)) or "a tool it does not name"
+
+
+def _warn_dropped_rounds(entries, metacool, outfile, in_place):
+    """Warn, once outfile is written from the map metacool (in place, or to
+    another file), that it does not keep the clustering rounds entries of
+    the map, which the run did not make (see _later_rounds): each named
+    with what made it, to be run again on the new clusters."""
+    if not entries:
+        return
+    rounds = ", ".join(f"{entry['name']} (by {_made_by(entry)})" for entry in entries)
+    where = f"{metacool} no longer holds" if in_place else f"{outfile} does not keep, of {metacool},"
+    logger.warning(
+        f"{where} the clustering round(s) {rounds}, which this run does not make: a run that replaces the clusters of "
+        "a map stores its own rounds only. Run what made them again, on the new clusters, to store them."
+    )
+
+
 def store_rounds(path, rounds, names=None, name=None):
     """Store the clustering rounds of a run in the /clusters group of a map,
     in place of those it held: the overlapping, recursive and final clusters
@@ -1118,6 +1316,27 @@ def store_rounds(path, rounds, names=None, name=None):
         metacooler.drop_clusters(path)
         return
     clusters, members = rounds
+    order = list(dict.fromkeys(clusters["round"])) if names is None else list(names)
+    steps = {name: "partition" if name == "overlapping" else "validation" for name in order}
+    _store_clusters(
+        path,
+        [{"name": name, "tool": "metaTOR", "version": __version__, "step": steps[name]} for name in order],
+        clusters,
+        members,
+        name=name,
+    )
+
+
+def _store_clusters(path, entries, clusters, members, name=None):
+    """Write the /clusters group of the map at path, in place of the one it
+    held: the rounds entries (each a dict with its name and what is stored
+    with it), and their clusters and members (see store_rounds). A text
+    column holds an empty text where a round has no value, and the contigs
+    of a cluster that the map lacks are left out, with a warning, which
+    names the map (name: the map that path is staged for; path by
+    default)."""
+    import metacooler
+
     contigs = set(metacooler.MetaCooler(path).contigs["name"].astype(str))
     absent = members["contig"].astype(str).map(lambda name: name not in contigs)
     if absent.any():
@@ -1126,18 +1345,11 @@ def store_rounds(path, rounds, names=None, name=None):
             f"either: {_shown(sorted(set(members.loc[absent, 'contig'])))}."
         )
         members = members[~absent]
-    order = list(dict.fromkeys(clusters["round"])) if names is None else list(names)
-    steps = {name: "partition" if name == "overlapping" else "validation" for name in order}
     stored = clusters.copy()
     for column in stored.columns:
         if column not in ("parent_round", "parent") and not pd.api.types.is_numeric_dtype(stored[column]):
             stored[column] = stored[column].astype(object).where(stored[column].notna(), "").astype(str)
-    metacooler.write_clusters(
-        path,
-        [{"name": name, "tool": "metaTOR", "version": __version__, "step": steps[name]} for name in order],
-        stored,
-        members,
-    )
+    metacooler.write_clusters(path, entries, stored, members)
 
 
 def write_rounds(metacool, outfile, rounds, names=None, force=False):
@@ -1181,6 +1393,113 @@ def write_rounds(metacool, outfile, rounds, names=None, force=False):
         missing or cannot be read, or the rounds cannot be stored (a
         ValueError, OSError or KeyError of metacooler, message kept).
     """
+    # The rounds of the map that the run does not make: said once the map
+    # is written.
+    later = []
+    in_place = is_input_map(metacool, outfile)
+
+    def store(staged, mc):
+        later.extend(_later_rounds(mc))
+        store_rounds(staged, rounds, names, name=metacool)
+
+    _write_with_rounds(
+        metacool,
+        outfile,
+        force,
+        store,
+        f"with the {len(rounds[0])} clusters of the run",
+        "with the clustering rounds of the run",
+    )
+    _warn_dropped_rounds(later, metacool, outfile, in_place)
+
+
+def write_round(metacool, outfile, rounds, entry, force=False):
+    """Write the map metacool at outfile with one clustering round of its
+    /clusters group replaced, and everything else as it was: the other
+    rounds, its bins, contacts, genomes and contigs tables, QC block and
+    metadata. metator mge stores its MGE clusters so, as the round mge,
+    next to the rounds of the binning run, whose final clusters the genomes
+    and contigs tables keep.
+
+    The round replaces the round of its name that the map held, if any, and
+    comes after the others, as the last made. The other rounds are kept as
+    the map held them (see metacooler's MetaCooler.clusters): the entry of
+    each, its clusters, their parents, contigs and the values of their
+    columns, but for those that metacooler computes (n_contigs, length and
+    genome), which it computes again. In the one table of the clusters of every round, a column that
+    only one of them has is missing in the other: an empty text, or no
+    number. So a column of whole numbers, or of booleans, that the round
+    lacks is stored as decimals, or as text (True, False), as any column
+    with a missing value is. The map is
+    written as write_rounds writes it: copied as stored next to outfile,
+    but for its rounds, which are then stored there, validated in full,
+    then moved over outfile (see _staged_map), which may be the input map
+    itself.
+
+    Parameters
+    ----------
+    metacool : str
+        Path to the input .metacool file, or URI of an entry of a
+        .mmetacool collection: ``file.mmetacool::entries/<name>``.
+    outfile : str
+        Path to the .metacool file to write.
+    rounds : tuple of pandas.DataFrame
+        The clusters and the contigs of the round, as
+        metator.clusters.Rounds.tables gives them: every cluster of the
+        round named by entry.
+    entry : dict
+        The round as metacooler stores it: its name, and what is stored with
+        it (tool, version, step, parameters...).
+    force : bool
+        Whether to replace an existing outfile: the input map itself, which
+        a run updates in place, or another file.
+
+    Raises
+    ------
+    MetacoolError
+        If the outfile is no file's path (a URI), exists (without force),
+        or is the .mmetacool collection of the input map, the input map is
+        missing or cannot be read, or the rounds cannot be stored (a
+        ValueError, OSError or KeyError of metacooler, message kept).
+    """
+    from metacooler.schema import CLUSTER_GENOME_COLUMN
+
+    clusters, members = rounds
+    name = entry["name"]
+
+    def store(staged, mc):
+        held = mc.clusters
+        # The columns that metacooler computes, which it refuses as given.
+        computed = ["n_contigs", "length", CLUSTER_GENOME_COLUMN]
+        other = held[(held["round"] != name).to_numpy()].drop(columns=computed)
+        held_members = mc.cluster_members()
+        other_members = held_members[(held_members["round"] != name).to_numpy()]
+        entries = [stored for stored in mc.cluster_rounds if stored["name"] != name]
+        _store_clusters(staged, [*entries, entry], _stacked(other, clusters), _stacked(other_members, members), name=metacool)
+
+    _write_with_rounds(
+        metacool,
+        outfile,
+        force,
+        store,
+        f"with the {len(clusters)} clusters of the round {name} of its clustering rounds",
+        f"with the round {name} of its clustering rounds",
+    )
+
+
+def _stacked(first, second):
+    """The rows of two tables, one after the other, with the columns of
+    both: those of first, then the others of second."""
+    return second.reset_index(drop=True) if first.empty else pd.concat([first, second], ignore_index=True)
+
+
+def _write_with_rounds(metacool, outfile, force, store, writing, written):
+    """What write_rounds and write_round share: the checks of outfile, then
+    the copy of the map metacool, as stored but for its /clusters group,
+    staged next to outfile, where store(staged, mc) stores the rounds (mc:
+    the input map, a metacooler.MetaCooler), validated and moved over
+    outfile (see _staged_map). writing and written say what the map holds,
+    in the messages of its writing."""
     from metacooler.schema import CLUSTERS_GROUP
 
     metacool, outfile = str(metacool), str(outfile)
@@ -1191,14 +1510,14 @@ def write_rounds(metacool, outfile, rounds, names=None, force=False):
         )
     _check_paths(outfile, force, [map_file(metacool)])
     with _metacooler_logging():
-        open_map(metacool)
-        logger.info(f"Writing {outfile} from the contact map {metacool}, with the {len(rounds[0])} clusters of the run.")
+        mc = open_map(metacool)
+        logger.info(f"Writing {outfile} from the contact map {metacool}, {writing}.")
         with _staged_map(outfile) as staged:
             # The rounds that the map held are not copied: the new ones
             # replace them.
             _copy_map(metacool, staged, skip={CLUSTERS_GROUP})
-            store_rounds(staged, rounds, names, name=metacool)
-        logger.info(f"{outfile} is written: the contact map, with the clustering rounds of the run.")
+            store(staged, mc)
+        logger.info(f"{outfile} is written: the contact map, {written}.")
 
 
 def lock_path(path):
