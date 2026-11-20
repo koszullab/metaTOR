@@ -6,6 +6,7 @@ import bz2
 import gzip
 import logging
 import lzma
+import os
 import re
 import shlex
 import shutil
@@ -24,6 +25,7 @@ import metator.log as mtl
 import metator.metacool as mtmc
 import metator.network as mtn
 from metator.version import __version__
+from tests.hdf5 import walk
 
 TESTS_DATA = Path(__file__).resolve().parents[1] / "tests_data"
 
@@ -1958,45 +1960,6 @@ def test_a_map_updated_in_place_keeps_its_mode(metagenome, binning, tmp_path, mo
     assert metacool.stat().st_mode & 0o777 == mode
 
 
-def _walk(path):
-    """Every group, dataset and attribute of an HDF5 file, as stored: the
-    dtype, shape, chunks and filters and the values of each dataset, the
-    order of the members of each group, the dtype and value of each
-    attribute, and the soft links."""
-    import h5py
-
-    found = {}
-
-    def attributes(node):
-        return [(key, node.attrs.get_id(key).dtype.str, repr(node.attrs[key])) for key in node.attrs]
-
-    def visit(group, prefix):
-        found[prefix or "/"] = ("group", list(group.keys()), attributes(group))
-        for key in group:
-            link = group.get(key, getlink=True)
-            name = f"{prefix}/{key}"
-            if isinstance(link, h5py.SoftLink):
-                found[name] = ("soft link", link.path)
-            elif isinstance(group[key], h5py.Group):
-                visit(group[key], name)
-            else:
-                data = group[key]
-                found[name] = (
-                    data.dtype.str,
-                    data.shape,
-                    data.chunks,
-                    data.compression,
-                    data.compression_opts,
-                    data.shuffle,
-                    data[()].tobytes() if data.dtype.kind != "O" else repr(list(data[()])),
-                    attributes(data),
-                )
-
-    with h5py.File(path, "r") as handle:
-        visit(handle, "")
-    return found
-
-
 def test_a_map_is_rewritten_in_a_fresh_file_as_it_is(metagenome, binning, tmp_path):
     """The fresh copy is the map, object for object (an h5py walk), with the
     mode of its file, and none of the space that its edits left in it."""
@@ -2009,11 +1972,11 @@ def test_a_map_is_rewritten_in_a_fresh_file_as_it_is(metagenome, binning, tmp_pa
     # rewritten leaves the space of the old one in the file.
     metacooler.annotate(str(edited), drop=["contigs.GC_content"], inplace=True)
     edited.chmod(0o640)
-    before, size = _walk(edited), edited.stat().st_size
+    before, size = walk(edited), edited.stat().st_size
 
     mtmc._rewrite_in_a_fresh_file(str(edited))
 
-    assert _walk(edited) == before
+    assert walk(edited) == before
     assert edited.stat().st_size < size and (edited.stat().st_mode & 0o777) == 0o640
     assert sorted(path.name for path in tmp_path.iterdir() if ".fresh" in path.name) == []
     metacooler.validate(str(edited), full=True)
@@ -2058,3 +2021,135 @@ def test_metator_metacool_writes_its_map_through_a_fresh_file(binning, tmp_path)
     size = out.stat().st_size
     mtmc._rewrite_in_a_fresh_file(str(out))
     assert out.stat().st_size == size
+
+
+def _one_round(metacool):
+    """The tables of one clustering round, overlapping: one cluster of the
+    first two contigs of the map."""
+    contigs = list(metacooler.MetaCooler(str(metacool)).contigs.name[:2])
+    clusters = pd.DataFrame({"round": ["overlapping"], "name": ["metator_00001_00000"], "parent_round": [None], "parent": [None]})
+    members = pd.DataFrame({"round": "overlapping", "cluster": "metator_00001_00000", "contig": contigs})
+    return clusters, members
+
+
+@pytest.mark.parametrize("umask", [0o022, 0o077])
+@pytest.mark.parametrize("writer", ["reassign_metacool", "write_rounds"])
+def test_a_new_map_has_the_mode_of_a_new_file(metagenome, binning, tmp_path, writer, umask):
+    """A map written to a new file (--output-map, or metator metacool -o
+    from a map) gets the mode of any new file, from the umask, not the
+    private mode of the file staged for it (mkstemp's 0600): write_rounds,
+    which copies the map into that file, wrote it private. reassign_metacool
+    is a guard: metacooler writes its map next to the staged file and
+    renames it over it, a new file; so is umask 077, under which both
+    agree."""
+    metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
+    outfile = tmp_path / "clusters.metacool"
+    previous = os.umask(umask)
+    try:
+        if writer == "reassign_metacool":
+            mtmc.reassign_metacool(
+                str(metacool), str(binning["contig_data"]), str(outfile), bin_summary=str(binning["bin_summary"]), force=True
+            )
+        else:
+            mtmc.write_rounds(str(metacool), str(outfile), _one_round(metacool))
+    finally:
+        os.umask(previous)
+    assert outfile.stat().st_mode & 0o777 == 0o666 & ~umask
+
+
+@pytest.mark.parametrize("table", ["no Size column", "no file"])
+def test_the_contigs_of_a_map_against_a_table_that_cannot_be_read(metagenome, binning, tmp_path, table):
+    """A contig data file without a Name or a Size column, or that is not
+    there, is refused by name: the map cannot be checked against it."""
+    metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
+    contig_data = tmp_path / "contig_data.txt"
+    if table == "no Size column":
+        contig_data.write_text("ID\tName\n1\tc1\n")
+    with pytest.raises(mtmc.MetacoolError, match=f"^Cannot read the contigs of {re.escape(str(contig_data))}: "):
+        mtmc.check_map_of_contigs(str(metacool), str(contig_data))
+
+
+def test_rounds_name_the_map_that_lacks_their_contigs(metagenome, binning, tmp_path, caplog):
+    """The contigs of the rounds that the map lacks are left out, with a
+    warning that names the map, not the file staged for it."""
+    metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
+    clusters, members = _one_round(metacool)
+    members = pd.concat([members, pd.DataFrame({"round": ["overlapping"], "cluster": ["metator_00001_00000"],
+                                                "contig": ["not_a_contig"]})])  # fmt: skip
+    with caplog.at_level("WARNING"):
+        mtmc.write_rounds(str(metacool), str(metacool), (clusters, members), force=True)
+    assert f"1 contig(s) of the clusters of the run are not in {metacool}, and not in its clusters either" in caplog.text
+    assert ".tmp" not in caplog.text
+
+
+def test_rounds_written_in_place_keep_the_size_of_the_map(metagenome, binning, tmp_path):
+    """Rounds written in place, run after run, keep the size of the map:
+    write_rounds copies the map without the rounds it held, then stores the
+    new ones. Copied with them, then replaced, they left their space in the
+    file, which HDF5 does not reclaim: the map grew with each run. It passes
+    against this commit's first version, which left the rounds out and had
+    no test of it; it fails when they are copied."""
+    metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
+    sizes = []
+    for _ in range(4):
+        mtmc.write_rounds(str(metacool), str(metacool), _one_round(metacool), force=True)
+        sizes.append(metacool.stat().st_size)
+    assert max(sizes) - min(sizes) < 1024, sizes
+
+
+def test_rounds_written_to_a_copy_of_a_map(metagenome, binning, tmp_path):
+    """write_rounds writes the map with the rounds of a run, and the rest of
+    the map as stored (an h5py walk), in place of the rounds that it held;
+    from an entry of a collection, the map of its own that the map of the
+    entry gives. The map it was written from is left as it was."""
+    metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
+    metacooler.write_clusters(
+        str(metacool),
+        ["earlier"],
+        pd.DataFrame({"round": ["earlier"], "name": ["x"]}),
+        pd.DataFrame({"round": ["earlier"], "cluster": ["x"], "contig": [metacooler.MetaCooler(str(metacool)).contigs.name[0]]}),
+    )
+    collection = tmp_path / "maps.mmetacool"
+    metacooler.create_mmetacool(collection, {"lib1": metacool})
+    before = metacool.read_bytes()
+    from_map, from_entry = tmp_path / "from_map.metacool", tmp_path / "from_entry.metacool"
+    mtmc.write_rounds(str(metacool), str(from_map), _one_round(metacool), names=["overlapping"])
+    mtmc.write_rounds(f"{collection}::entries/lib1", str(from_entry), _one_round(metacool))
+    assert metacool.read_bytes() == before
+    for path in [from_map, from_entry]:
+        metacooler.validate(str(path), full=True)
+        mc = metacooler.MetaCooler(str(path))
+        assert [entry["name"] for entry in mc.cluster_rounds] == ["overlapping"]
+        assert list(mc.clusters.name) == ["metator_00001_00000"]
+    found, source = walk(from_map), walk(metacool)
+    assert {name: value for name, value in found.items() if not name.startswith("/clusters")} == {
+        name: value for name, value in source.items() if not name.startswith("/clusters")
+    }
+    assert walk(from_entry) == found
+
+
+@pytest.mark.parametrize("case", ["the collection of its entry", "an existing file", "a group"])
+def test_rounds_written_to_a_map_refused(case, metagenome, binning, tmp_path):
+    """write_rounds refuses, before any work, to write over the collection of
+    an entry (the whole collection would be replaced), over an existing
+    file without force (the map itself among them), and to a group of a
+    file (file::group, a URI)."""
+    metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
+    collection = tmp_path / "maps.mmetacool"
+    metacooler.create_mmetacool(collection, {"lib1": metacool})
+    entry = f"{collection}::entries/lib1"
+    source, outfile, message = {
+        "the collection of its entry": (
+            entry,
+            collection,
+            f"{collection} is the .mmetacool collection of the input map {entry}: the map would replace the whole "
+            "collection. Write it to another file.",
+        ),
+        "an existing file": (metacool, metacool, f"{metacool} already exists. Use --force to overwrite it."),
+        "a group": (metacool, f"{metacool}::/", f"{metacool}::/ is not the path of a file"),
+    }[case]
+    before = {path: path.read_bytes() for path in [metacool, collection]}
+    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}"):
+        mtmc.write_rounds(str(source), str(outfile), _one_round(metacool))
+    assert {path: path.read_bytes() for path in before} == before
+    assert sorted(path.name for path in tmp_path.iterdir() if path.name.startswith(".")) == []

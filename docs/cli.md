@@ -131,11 +131,20 @@ step. Writes `overlapping_bin/` and `contig_data_partition.txt`. **Guide:**
 [Partition and validation](guides/binning.md).
 
 ```console
-metator partition [OPTIONS]
+metator partition [OPTIONS] [MAP]
 ```
+
+With `MAP`, the map of the contigs of a run step by step (that of
+`metator network MAP`), the run also stores its overlapping clusters that
+reach `--size`, those of `overlapping_bin/`, with their contigs, in the
+clustering rounds of the map, in place of those it held: the map is updated
+in place, or written to `--output-map`. Its genomes and contigs tables are
+left as they were. See
+[Step by step](guides/metacool.md#step-by-step).
 
 | Option | Default | Description |
 |---|---|---|
+| `MAP` | none | A `.metacool` contact map of the contigs of the run, which the run stores its overlapping clusters in; or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`), with `--output-map`, the map it writes them to. |
 | `-a, --assembly` | *required* | The assembly, as a FASTA file. |
 | `-c, --contigs` | *required* | The contig data table of the network step, `contig_data_network.txt`. |
 | `-n, --network` | *required* | The network, `network.txt`. |
@@ -147,14 +156,19 @@ metator partition [OPTIONS]
 | `-C, --cluster-matrix` | off | Write `clustering_matrix_partition.npz`. |
 | `-o, --outdir` | `./` | The output directory. |
 | `-p, --prefix` | none | Name the bins `<prefix>_metator_…`. |
-| `-F, --force` | off | Replace `overlapping_bin/`. |
+| `-F, --force` | off | Replace `overlapping_bin/`, and an existing `--output-map` file. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory. |
 | `-t, --threads` | `1` | Threads for the partition. |
 | `-N, --no-clean-up` | off | Keep the temporary files. |
+| `--output-map` | none | With `MAP`: write the map with the overlapping clusters to this file (replaced only with `-F`), and leave `MAP` as it was. |
 
 ```bash
 metator partition -a assembly.fa -c binning/contig_data_network.txt -n binning/network.txt \
     -t 16 -o binning
+
+# On the map of a run step by step
+metator partition sample.metacool -a assembly.fa -c binning/contig_data_network.txt \
+    -n binning/network.txt -t 16 -o binning
 ```
 
 ### `validation` { #validation }
@@ -165,7 +179,7 @@ the third step. Writes `final_bin/`, `recursive_bin/`, `bin_summary.txt`,
 [Partition and validation](guides/binning.md#validation).
 
 ```console
-metator validation [OPTIONS]
+metator validation [OPTIONS] [MAP]
 ```
 
 A bin is partitioned again when its weighted completeness reaches 33% and its
@@ -173,8 +187,15 @@ contamination, (weighted redundancy − 1) / weighted completeness, reaches 5%.
 Its parts replace it when the most complete of them keeps enough of its
 completeness.
 
+With `MAP`, the map of the contigs of a run step by step (that of
+`metator network MAP` and `metator partition MAP`), the run then writes the
+map of its clusters, with all its clustering rounds, as `metator pipeline MAP`
+does at its end: in place, or to `--output-map`. See
+[Step by step](guides/metacool.md#step-by-step).
+
 | Option | Default | Description |
 |---|---|---|
+| `MAP` | none | A `.metacool` contact map of the contigs of the run, which becomes the map of its clusters; or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`), with `--output-map`, the map it writes them to. |
 | `-a, --assembly` | *required* | The assembly, as a FASTA file. |
 | `-c, --contigs` | *required* | The contig data table of the partition, `contig_data_partition.txt`. |
 | `-f, --fasta` | *required* | The directory of the bins to check, `overlapping_bin/`. |
@@ -187,14 +208,19 @@ completeness.
 | `-C, --cluster-matrix` | off | Write `clustering_matrix_recursive.npz`. |
 | `-o, --outdir` | `./` | The output directory. |
 | `-p, --prefix` | none | Name the bins `<prefix>_metator_…`. |
-| `-F, --force` | off | Replace `recursive_bin/` and `final_bin/`. |
+| `-F, --force` | off | Replace `recursive_bin/` and `final_bin/`, and an existing `--output-map` file. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory. |
 | `-t, --threads` | `1` | Threads for the partition and miComplete. |
 | `-N, --no-clean-up` | off | Keep the temporary files. |
+| `--output-map` | none | With `MAP`: write the map of the clusters to this file (replaced only with `-F`), and leave `MAP` as it was. |
 
 ```bash
 metator validation -a assembly.fa -c binning/contig_data_partition.txt -n binning/network.txt \
     -f binning/overlapping_bin -t 16 -o binning
+
+# On the map of a run step by step: it becomes the map of the clusters
+metator validation sample.metacool -a assembly.fa -c binning/contig_data_partition.txt \
+    -n binning/network.txt -f binning/overlapping_bin -t 16 -o binning
 ```
 
 ## After the binning
