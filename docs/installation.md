@@ -2,7 +2,7 @@
 
 metaTOR needs Python 3.10 to 3.14, and four programs that are not on PyPI:
 an aligner (bwa, recommended, or bowtie2), samtools, and the prodigal and
-hmmer that miComplete runs to validate the bins.
+hmmer that miComplete runs to validate the clusters.
 
 ## With conda (recommended)
 
@@ -35,7 +35,7 @@ pip install metator
 | `bwa` | Aligning the reads with `--aligner bwa`, the recommended aligner |
 | `bowtie2` | Aligning the reads with `--aligner bowtie2`, the default |
 | `samtools` | Handling the alignments |
-| `prodigal`, `hmmer` | Finding the marker genes of the bins, with miComplete |
+| `prodigal`, `hmmer` | Finding the marker genes of the clusters, with miComplete |
 
 Only the aligner a run uses is needed: `--aligner bwa` needs bwa, not
 bowtie2. A run that starts from BAM files, a pairs file or a contact map, with

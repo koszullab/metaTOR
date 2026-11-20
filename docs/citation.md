@@ -49,7 +49,7 @@ The meta3C method, and studies of microbial communities made with it:
 A run also relies on the tools it runs, which deserve a citation too:
 
 - [miComplete](https://pypi.org/project/micomplete/) (Hugoson, Lam and Guy,
-  *Bioinformatics* 2020), with prodigal and hmmer, which validates the bins;
+  *Bioinformatics* 2020), with prodigal and hmmer, which validates the clusters;
 - the [Louvain](https://doi.org/10.1088/1742-5468/2008/10/P10008) (Blondel
   et al., 2008) or [Leiden](https://doi.org/10.1038/s41598-019-41695-z)
   (Traag, Waltman and van Eck, 2019) algorithm, which partitions the
@@ -58,7 +58,7 @@ A run also relies on the tools it runs, which deserve a citation too:
   [bowtie2](https://github.com/BenLangmead/bowtie2), and
   [hicstuff](https://koszullab.github.io/hicstuff/citation/), whose functions
   align the reads in the iterative and cutsite modes, and build the contact
-  map of a bin;
+  map of a cluster;
 - [metacooler](https://github.com/js2264/metacooler) and
   [cooler](https://github.com/open2c/cooler) (Abdennur and Mirny,
-  *Bioinformatics* 2020), for the contact map of the bins.
+  *Bioinformatics* 2020), for the contact map of the clusters.

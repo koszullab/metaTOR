@@ -68,8 +68,8 @@ def extract_hq_contigs(bin_summary, contigs_data):
     large_contigs = contigs_data.index[contigs_data["Size"] > 100_000]
     # Build dictionnary of large contigs in HQ MAgs.
     for contig in large_contigs:
-        if contigs_data.loc[contig, "Final_bin"] in hq_mags:
-            hq_contigs[contig] = contigs_data.loc[contig, "Final_bin"]
+        if contigs_data.loc[contig, "Final_cluster"] in hq_mags:
+            hq_contigs[contig] = contigs_data.loc[contig, "Final_cluster"]
     return hq_contigs, n_mags
 
 

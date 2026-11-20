@@ -7,8 +7,9 @@ The files metaTOR reads and writes. Every table is tab-separated.
 ### Assembly
 
 A FASTA file of the contigs, compressed with gzip or not, or the basename of
-its bowtie2 or bwa index (`--assembly`). Contig names must be ASCII for the contact map
-of the bins (see [Names and failures](guides/metacool.md#names-and-failures)).
+its bowtie2 or bwa index (`--assembly`). Contig names must be ASCII for the
+contact map of the clusters (see
+[Names and failures](guides/metacool.md#names-and-failures)).
 
 ### Depth
 
@@ -54,8 +55,8 @@ of the reads of the alignments, not by position, in its temporary directory.
 
 The MGE contigs of `metator mge --mges`: one contig name per line.
 
-The bins of `metator mge --binning`: a contig and its bin per line, without
-header, as `binning.txt` or the collection exported by anvi'o.
+The clusters of `metator mge --binning`: a contig and its cluster per line,
+without header, as `binning.txt` or the collection exported by anvi'o.
 
 ## The contig data tables
 
@@ -72,20 +73,20 @@ with a header. Each step adds its columns to those of the step before:
 | `Hit` | network | Its hits: the ends of the pairs that lie on it, in all libraries (a pair within the contig counts twice) |
 | `Shotgun_coverage` | network | Its coverage in the depth file, `-` without `--depth` (from a map, its `Shotgun_coverage` column, when it gives every contig a value) |
 | `Restriction_site` | network | Its number of restriction sites plus one (its restriction fragments), `-` without `--enzyme` (from a map, its `Restriction_site` column, when it gives every contig a value) |
-| `Core_bin_ID`, `Core_bin_contigs`, `Core_bin_size` | partition | Its core bin: the ID, number of contigs and size in bp of the bin |
-| `Overlapping_bin_ID`, `Overlapping_bin_contigs`, `Overlapping_bin_size` | partition | Its overlapping bin, likewise |
-| `Recursive_bin_ID`, `Recursive_bin_contigs`, `Recursive_bin_size` | validation | Its recursive bin, likewise: `00000`, `-`, `-` when its bin was not partitioned again |
-| `Final_bin` | validation | Its final bin, or `ND` (not determined) |
+| `Core_cluster_ID`, `Core_cluster_contigs`, `Core_cluster_size` | partition | Its core cluster: the ID, number of contigs and size in bp of the cluster |
+| `Overlapping_cluster_ID`, `Overlapping_cluster_contigs`, `Overlapping_cluster_size` | partition | Its overlapping cluster, likewise |
+| `Recursive_cluster_ID`, `Recursive_cluster_contigs`, `Recursive_cluster_size` | validation | Its recursive cluster, likewise: `00000`, `-`, `-` when its cluster was not partitioned again |
+| `Final_cluster` | validation | Its final cluster, or `ND` (not determined) |
 
 ```text
-	ID	Name	Size	GC_content	Hit	Shotgun_coverage	Restriction_site	Core_bin_ID	Core_bin_contigs	Core_bin_size	Overlapping_bin_ID	Overlapping_bin_contigs	Overlapping_bin_size	Recursive_bin_ID	Recursive_bin_contigs	Recursive_bin_size	Final_bin
+	ID	Name	Size	GC_content	Hit	Shotgun_coverage	Restriction_site	Core_cluster_ID	Core_cluster_contigs	Core_cluster_size	Overlapping_cluster_ID	Overlapping_cluster_contigs	Overlapping_cluster_size	Recursive_cluster_ID	Recursive_cluster_contigs	Recursive_cluster_size	Final_cluster
 0	1	NODE_522	22786	62.0775915035548	1683	4.76595	162	00001	2	23301	00001	15	49021	00000	-	-	metator_00001_00000
 1	2	NODE_1404	15015	64.2823842823842	952	4.00585	118	00002	1	15015	00002	5	19711	00000	-	-	ND
 ```
 
 `contig_data_final.txt` starts with a column without header, the row number
 from 0. A contig with no edge in the network (no hits, or no contact with
-another contig) has `-` in the columns of its core and overlapping bins. As
+another contig) has `-` in the columns of its core and overlapping clusters. As
 inputs, the tables are read by the headers of their columns: other columns
 may be added, in any order, such as the bins of another binning for
 `metator contactmap --object`.
@@ -106,27 +107,27 @@ alone.
 1	3	0.008170769116255661
 ```
 
-## The bins
+## The clusters
 
-### Bin summary
+### Cluster summary
 
-`bin_summary.txt` holds one row per final bin, named in its first column. Its
-first columns are those of miComplete:
+`cluster_summary.txt` holds one row per final cluster, named in its first
+column. Its first columns are those of miComplete:
 
 | Column | What it holds |
 |---|---|
-| `Length` | The size of the bin, in bp |
+| `Length` | The size of the cluster, in bp |
 | `GC-content` | Its GC content, in percent |
 | `Present Markers` | The single-copy marker genes found in it |
 | `Completeness`, `Redundancy` | The share of the markers found, and their mean number of copies (1 for no duplicate) |
 | `Weighted completeness`, `Weighted redundancy` | The same, with miComplete's weights of the markers of the set |
 | `Contigs`, `N50`, `L50`, `N90`, `L90` | Its number of contigs, and the N50, L50, N90 and L90 of their sizes |
 | `CDs` | Its number of coding sequences, found by prodigal |
-| `recursive` | Whether the bin comes from the recursive partition |
-| `step` | The recursive step that made the bin, 0 for an overlapping bin |
-| `parent` | The bin it was split from (an overlapping bin at step 1, a recursive bin after), empty otherwise |
-| `HiC_abundance` | The share of the hits of all the contigs that are on the bin, in percent |
-| `SG_abundance` | The share of the shotgun reads (size × coverage) of all the contigs that are on the bin, in percent; with `--depth` only |
+| `recursive` | Whether the cluster comes from the recursive partition |
+| `step` | The recursive step that made the cluster, 0 for an overlapping cluster |
+| `parent` | The cluster it was split from (an overlapping cluster at step 1, a recursive cluster after), empty otherwise |
+| `HiC_abundance` | The share of the hits of all the contigs that are on the cluster, in percent |
+| `SG_abundance` | The share of the shotgun reads (size × coverage) of all the contigs that are on the cluster, in percent; with `--depth` only |
 
 ```text
 	Length	GC-content	Present Markers	Completeness	Redundancy	Weighted completeness	Weighted redundancy	Contigs	N50	L50	N90	L90	CDs	recursive	step	parent	HiC_abundance	SG_abundance
@@ -134,16 +135,16 @@ metator_00001_00000	49021.00	62.03	1.00	0.01	1.00	0.02	1.00	15.00	9019.00	2.00	1
 ```
 
 Each marker set, bacterial (105 markers) and archaeal (131), is tried on
-every bin, which keeps the one that gives it the higher weighted
+every cluster, which keeps the one that gives it the higher weighted
 completeness. The quality classes of the log and of the plots take the
-weighted redundancy minus one as the contamination of a bin; the recursive
+weighted redundancy minus one as the contamination of a cluster; the recursive
 partition divides it by the weighted completeness (see
-[Bin quality](concepts.md#bin-quality)).
+[Cluster quality](concepts.md#cluster-quality)).
 
 ### binning.txt
 
-Each contig of a final bin and its bin, without header: the collection that
-anvi'o imports (see [Curating MAGs with anvi'o](guides/curation.md)).
+Each contig of a final cluster and its cluster, without header: the collection
+that anvi'o imports (see [Curating MAGs with anvi'o](guides/curation.md)).
 
 ```text
 NODE_522	metator_00001_00000
@@ -153,9 +154,9 @@ NODE_2487	metator_00007_00000
 ### miComplete results
 
 `overlapping_micomplete_results.txt` and `recursive_micomplete_step_<n>.txt`
-hold miComplete's results on the overlapping bins and on the recursive bins
-of each step: three comment lines (`##`), then the columns of the bin summary
-up to `CDs`, and the marker set kept, `Bacteria` or `Archaea`.
+hold miComplete's results on the overlapping clusters and on the recursive
+clusters of each step: three comment lines (`##`), then the columns of the
+cluster summary up to `CDs`, and the marker set kept, `Bacteria` or `Archaea`.
 
 ### Clustering rounds
 
@@ -183,39 +184,39 @@ clusters stores both (see
 
 With `--cluster-matrix`, `clustering_matrix_partition.npz`,
 `clustering_matrix_recursive.npz` and, in `pipeline`, `clustering_matrix.npz`
-(the mean of both) hold how often each two contigs were binned together, from
-0 to 1, as a sparse matrix of scipy (`scipy.sparse.load_npz`). The recursive
-matrix holds the pairs of contigs of the bins partitioned again, each with the
-values of the latest partition of its bin. Row and column *i* are the contig
-of ID *i* (row and column 0 are empty), and only the upper triangle is
-stored. See
+(the mean of both) hold how often each two contigs were clustered together,
+from 0 to 1, as a sparse matrix of scipy (`scipy.sparse.load_npz`). The
+recursive matrix holds the pairs of contigs of the clusters partitioned again,
+each with the values of the latest partition of its cluster. Row and column
+*i* are the contig of ID *i* (row and column 0 are empty), and only the upper
+triangle is stored. See
 [The clustering matrices](guides/python.md#the-clustering-matrices).
 
-### FASTA files of the bins
+### FASTA files of the clusters
 
-`overlapping_bin/`, `recursive_bin/step_<n>/` (the recursive bins of step
-`n`) and `final_bin/` (`final_bin_unscaffold/` in `pipeline`) hold one FASTA
-file per bin, `<bin>.fa`, with the records of its contigs as they are in the
-assembly. The final bins also hold the pyfastx
-index of each, `<bin>.fa.fxi`, which the validation leaves there.
+`overlapping_clusters/`, `recursive_clusters/step_<n>/` (the recursive
+clusters of step `n`) and `final_clusters/` hold one FASTA file per cluster,
+`<cluster>.fa`, with the records of its contigs as they are in the assembly.
+The final clusters also hold the pyfastx index of each, `<cluster>.fa.fxi`,
+which the validation leaves there.
 
-## The contact map of the bins
+## The contact map of the clusters
 
 `metator.metacool` is a `.metacool` file of
 [metacooler](https://github.com/js2264/metacooler): a cooler, one bin per
-contig, whose contigs are grouped into one genome per final bin. See
-[The contact map of the bins](guides/metacool.md).
+contig, whose contigs are grouped into one genome per final cluster. See
+[The contact map of the clusters](guides/metacool.md).
 
 ## Scaffolds
 
-`<bin>_scaffolded.fa` holds one record per scaffold, named
+`<cluster>_scaffolded.fa` holds one record per scaffold, named
 `metator_scaffold_0001` and on, with its shape and the length of its contigs:
 
 ```text
 >metator_scaffold_0001 linear length: 12167
 ```
 
-`<bin>_info_frags.txt` lists the contigs of each scaffold, in order, after
+`<cluster>_info_frags.txt` lists the contigs of each scaffold, in order, after
 the same header line: the name, start (0), end and orientation (`1`, or `-1`
 for a reversed contig) of each.
 
@@ -225,14 +226,14 @@ NODE_2487	0	11273	1
 NODE_202465	0	894	1
 ```
 
-## MGE bin summary
+## MGE cluster summary
 
-`mges_bin_summary.tsv` holds one row per MGE bin, with a header:
+`mges_cluster_summary.tsv` holds one row per MGE cluster, with a header:
 
 | Column | What it holds |
 |---|---|
 | `BinName` | `MetaTOR_MGE_00001` and on |
-| `BinLength`, `GC`, `Hit` | The size, GC content and hits of the bin |
+| `BinLength`, `GC`, `Hit` | The size, GC content and hits of the cluster |
 | `BinningScore` | The lowest score at which its contigs were merged, `NA` for a single contig |
 | `ContigsNumber`, `Contigs` | Its number of contigs, and their names, separated by commas |
 | `MetagenomicBin`, `AssociationScore`, `AssociatedBins` | For its host MAGs: `None`, `NA` and `NA`, as `metator mge` does not look for them |
@@ -245,7 +246,7 @@ MetaTOR_MGE_00105	23587.00	37.36	2662.00	NA	1.00	NODE_10949_len_23587	None	NA	NA
 
 With `--map`, the map of the run stores these rows as the round `mge` of its
 clustering rounds (see
-[Binning mobile genetic elements](guides/mge.md#in-the-contact-map-of-the-run)):
+[Clustering mobile genetic elements](guides/mge.md#in-the-contact-map-of-the-run)):
 one cluster per row, named `BinName`, with the contigs of `Contigs` and the
 other columns as written, but `BinLength` and `ContigsNumber`, which are the
 `length` and `n_contigs` that metacooler computes from the contigs.

@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 
 import metator.clusters as mtc
+from tests import synthetic
 
 
 def _rounds():
@@ -150,7 +151,7 @@ def test_the_overlapping_round_of_a_partition(tmp_path):
     none, and a contig called NA is a contig."""
     table = tmp_path / "contig_data_partition.txt"
     table.write_text(
-        "ID\tName\tSize\tOverlapping_bin_ID\tOverlapping_bin_contigs\tOverlapping_bin_size\n"
+        "ID\tName\tSize\tOverlapping_cluster_ID\tOverlapping_cluster_contigs\tOverlapping_cluster_size\n"
         "1\tc1\t600\t100000\t2\t900\n"
         "2\tNA\t300\t100000\t2\t900\n"
         "3\tc3\t500\t00002\t1\t500\n"
@@ -175,6 +176,17 @@ def test_the_overlapping_round_of_a_partition(tmp_path):
     assert clusters.empty and members.empty
 
 
+def test_the_overlapping_round_of_a_partition_of_1x(tmp_path):
+    """The contig data of a partition of metaTOR 1.x, its columns named
+    after bins, gives the round of the same table of 2.0."""
+    table = "tests_data/contig_data_partition.txt"
+    old = synthetic.as_1x(table, tmp_path / "contig_data_partition.txt")
+    expected = mtc.overlapping_round(table, 50_000, "metator")
+    assert len(expected[0]) > 0
+    for got, frame in zip(mtc.overlapping_round(old, 50_000, "metator"), expected, strict=True):
+        pd.testing.assert_frame_equal(got, frame)
+
+
 def test_the_mge_round_of_a_summary(tmp_path):
     """The round mge is the summary of metator mge, as written, in its
     order: one cluster per row, named BinName, without a parent, with the
@@ -182,7 +194,7 @@ def test_the_mge_round_of_a_summary(tmp_path):
     which the map computes from the contigs. NA is a missing value, None a
     text (the host that mge leaves unknown); a contig called NA or nan is
     a contig."""
-    summary = tmp_path / "mges_bin_summary.tsv"
+    summary = tmp_path / "mges_cluster_summary.tsv"
     summary.write_text(
         "BinName\tBinLength\tGC\tHit\tBinningScore\tContigsNumber\tContigs\tMetagenomicBin\tAssociationScore\tAssociatedBins\n"
         "MetaTOR_MGE_00001\t12000.00\t45.12\t100.00\t0.91\t2.00\tnan,c7\tNone\tNA\tNA\n"
@@ -203,7 +215,7 @@ def test_the_mge_round_of_a_summary(tmp_path):
 
 def test_the_mge_round_of_an_empty_summary(tmp_path):
     """No MGE cluster: a round with none."""
-    summary = tmp_path / "mges_bin_summary.tsv"
+    summary = tmp_path / "mges_cluster_summary.tsv"
     summary.write_text(
         "BinName\tBinLength\tGC\tHit\tBinningScore\tContigsNumber\tContigs\tMetagenomicBin\tAssociationScore\tAssociatedBins\n"
     )
