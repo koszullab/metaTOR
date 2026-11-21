@@ -351,30 +351,6 @@ def step_map(command, input_map, output_map, force, held, contigs=None, inputs=(
     return outfile, hold_map(held, command, input_map, outfile, in_place)
 
 
-def _is_in(path, directory):
-    """Whether path is directory, or a path inside it."""
-    return path == directory or path.startswith(directory.rstrip(os.sep) + os.sep)
-
-
-def refuse_an_input_in_the_outputs(path, outputs, force, option):
-    """Refuse an input (validation -f) that is, or is in, an output that the
-    run replaces with --force (see start_step): the run would remove it
-    before reading it, or replace the output it is in, through a symbolic
-    link too. Without --force, those outputs are refused anyway."""
-    if not force:
-        return
-    for output in outputs:
-        if not os.path.lexists(output):
-            continue
-        inside = _is_in(os.path.abspath(path), os.path.abspath(output))
-        inside = inside or _is_in(os.path.realpath(path), os.path.realpath(output))
-        if inside:
-            logger.error(
-                "%s, given as %s, is in %s, which -F removes: write the run to another directory (-o).", path, option, output
-            )
-            raise ValueError
-
-
 def start_step(
     command,
     outdir,
@@ -384,63 +360,52 @@ def start_step(
     force,
     held,
     prefix=None,
-    contigs=None,
     inputs=(),
     assembly=None,
+    partition=False,
 ):
     """Start a partition or validation run (command) in outdir: its log file,
     the map that it writes (see step_map) and its directories of clusters
     (cluster_dirs, see make_output_dir), refused without force when an
     earlier run left them. The run checks its map, in its log file, before
-    it replaces the directories of an earlier run (-F): against contigs,
-    the contig data file of the run, whose contigs it must be a map of, and
-    against inputs, the other input files, which output_map must not be (see
-    step_map); then it reads the network of its contigs, which metator
-    network stored in it, and refuses one that it cannot read (see
-    stored_network). It checks the prefix of the clusters (--prefix, see
-    bin_prefix) before it replaces them. Returns the log file, the map to
-    write, the prefix, the input map as the run read it at its start (see
-    step_map), and the stored network (see stored_network)."""
+    it replaces the directories of an earlier run (-F): against inputs, the
+    other input files, which output_map must not be (see step_map); then it
+    reads the network of its contigs, which metator network stored in it,
+    and refuses one that it cannot read (see stored_network), and, with
+    partition (a validation run), the partition of that network, which
+    metator partition stored in it (see map_partition). It checks the
+    assembly (see check_assembly) and the prefix of the clusters (--prefix,
+    see bin_prefix) before it replaces them. Returns the log file, the map
+    to write, the prefix, the input map as the run read it at its start (see
+    step_map), the stored network (see stored_network), and, with
+    partition, the partition of the map (None without)."""
     log_file = log_file_name(outdir, command)
     generate_log_header(log_file)
-    metacool_file, planned = step_map(command, input_map, output_map, force, held, contigs, inputs, assembly=assembly)
-    stored = stored_network(input_map, contigs)
+    metacool_file, planned = step_map(command, input_map, output_map, force, held, inputs=inputs, assembly=assembly)
+    stored = stored_network(input_map)
+    clusters = map_partition(input_map, planned) if partition else None
+    if assembly is not None:
+        check_assembly(assembly)
     bins_prefix = bin_prefix(prefix)
     for path in cluster_dirs:
         make_output_dir(path, force)
-    return log_file, metacool_file, bins_prefix, planned, stored
+    return log_file, metacool_file, bins_prefix, planned, stored, clusters
 
 
-def stored_network(metacool, contig_data_file=None):
+def stored_network(metacool):
     """The network that metator network stored in the map of a partition or
     validation run, metacool, read in full before the run replaces anything
     (see metator.network.stored_network): the contig data of its contigs,
-    the network and its normalization. A map that cannot give them stops
-    the run: the reason, which names the step to run again, is logged as an
-    error, then its MetacoolError is raised.
-
-    With contig_data_file, the contig data of the partition of a validation
-    run (contig_data_partition.txt), the network takes the IDs of its
-    contigs, by contig name (see metator.network.relabel_network): the IDs
-    of the network are the positions of the contigs in the map, those of
-    the table the positions they had when partition wrote it, which differ
-    once a validation or pipeline run has written the map of its clusters,
-    grouped by cluster. A validation run again from the same partition reads
-    the same network. A table without the columns of a partition is refused
-    (see metator.validation.check_partition_table)."""
-    import pandas as pd
-
+    the network and its normalization, by the positions of the contigs in
+    the map, which the partition that a validation run reads from the map
+    numbers them by too (see metator.metacool.read_partition). A map that
+    cannot give them stops the run: the reason, which names the step to run
+    again, is logged as an error, then its MetacoolError is raised."""
     try:
-        stored = mtn.stored_network(metacool)
+        return mtn.stored_network(metacool)
     except mtmc.MetacoolError as error:
         logger.error(str(error))
         raise
-    if contig_data_file is None:
-        return stored
-    mtv.check_partition_table(contig_data_file)
-    table = pd.read_csv(contig_data_file, sep="\t", usecols=["ID", "Name"], dtype={"Name": str}, keep_default_na=False)
-    ids = dict(zip(table["Name"], table["ID"], strict=True))
-    return stored._replace(network=mtn.relabel_network(stored.network, stored.table["Name"], ids))
 
 
 def map_contacts(metacool):
@@ -457,6 +422,39 @@ def map_contacts(metacool):
         logger.error(str(error))
         raise
     return contacts
+
+
+def map_partition(metacool, planned):
+    """The partition that metator partition stored in the map of a validation
+    run, metacool, opened as planned (see
+    metator.metacool.read_partition): its core and overlapping clusters. A
+    map without it is refused before any work: the reason, which names the
+    step to run, is logged as an error, then its MetacoolError is raised."""
+    try:
+        return mtmc.read_partition(metacool, planned)
+    except mtmc.MetacoolError as error:
+        logger.error(str(error))
+        raise
+
+
+def partition_entry(normalization):
+    """What a map records of the partition of its network, under the
+    partition key of its metator metadata (see
+    metator.metacool.write_rounds): the version of metaTOR, the command line
+    and the parameters of the run, and the normalization of the network that
+    it partitioned."""
+    return {"version": __version__, **run_metadata(), "normalization": normalization}
+
+
+def write_partition_table(contig_data, clusters, directory):
+    """Write the contig data table of a partition (see
+    metator.partition.partition_table) in directory, the temporary directory
+    of a validation or pipeline run, as contig_data_partition.txt, which
+    the validation reads (see metator.validation.recursive_decontamination).
+    Returns its path."""
+    path = join(directory, "contig_data_partition.txt")
+    mtp.partition_table(contig_data, clusters).to_csv(path, sep="\t", header=True, index=False)
+    return path
 
 
 def network_entry(columns_from_map=()):
@@ -713,7 +711,7 @@ def writing_map(metacool, outfile, what="the map of the clusters"):
         raise mtmc.MetacoolError(message) from error
 
 
-def pipeline_metacool(metacool, outdir, outfile, normalization=None, planned=None, network=None):
+def pipeline_metacool(metacool, outdir, outfile, normalization=None, planned=None, network=None, partition=None):
     """Write the contact map of the clusters of a pipeline or validation run
     at outfile (see writing_map), from the .metacool map of its contigs, its
     input map, which outfile is by default, and the final tables of the run
@@ -723,9 +721,10 @@ def pipeline_metacool(metacool, outdir, outfile, normalization=None, planned=Non
     (see metator.metacool.store_normalization): that of the network that
     metator network stored in the map, for a validation run. A pipeline run
     stores the network of its contigs too (network, see
-    metator.metacool.Network), as metator network does. The map is refused
-    if it changed since planned, the input map as the run read it at its
-    start, was opened.
+    metator.metacool.Network), as metator network does, and what its
+    partition was (partition, an entry of its metator metadata), as
+    metator partition does. The map is refused if it changed since planned,
+    the input map as the run read it at its start, was opened.
 
     Raises
     ------
@@ -745,6 +744,7 @@ def pipeline_metacool(metacool, outdir, outfile, normalization=None, planned=Non
             normalization=normalization,
             planned=planned,
             network=network,
+            partition=partition,
         )
 
 
@@ -766,26 +766,36 @@ def network_metacool(metacool, outfile, network, planned=None):
         mtmc.store_network(metacool, outfile, network, force=True, planned=planned)
 
 
-def partition_metacool(metacool, outfile, contig_data_file, size, prefix, planned=None):
-    """Store the overlapping clusters of a partition run from a map in the
-    map at outfile (see writing_map): the round overlapping of its
-    clustering rounds (see metator.clusters.overlapping_round), the
-    overlapping clusters that reach size (--size), those that the run
-    writes a FASTA file for, with their contigs, in place of the rounds that
-    the map held. Its genomes and contigs tables are left as they were (see
-    metator.metacool.write_rounds): the validation writes the map of the
-    final clusters. The map is refused if it changed since planned, the
-    input map as the run read it at its start, was opened.
+def partition_metacool(metacool, outfile, clusters, names, entry, planned):
+    """Store the partition of a partition run from a map in the map at
+    outfile (see writing_map): its core and overlapping clusters, every one
+    with its contigs (names: the names of the contigs of the map, by ID - 1,
+    as the stored network numbers them: see stored_network), as the rounds
+    core and overlapping of its clustering
+    rounds (see metator.clusters.partition_rounds), in place of the rounds
+    that the map held, and what the run was (entry) under the partition key
+    of its metator metadata. Its genomes and contigs tables are left as they
+    were (see metator.metacool.write_rounds): the validation reads the
+    partition from the map, and writes the map of the final clusters. The
+    map is refused if it changed since planned, the input map as the run
+    read it at its start, was opened.
 
     Raises
     ------
     MetacoolError
         If the map cannot be written: the reason, and what is kept, is
-        logged as an error first. The other outputs of the run are kept.
+        logged as an error first.
     """
-    with writing_map(metacool, outfile, what="the map with its overlapping clusters"):
-        rounds = mtcl.overlapping_round(contig_data_file, size, prefix)
-        mtmc.write_rounds(metacool, outfile, rounds, names=[mtcl.OVERLAPPING], force=True, planned=planned)
+    with writing_map(metacool, outfile, what="the map with its partition"):
+        mtmc.write_rounds(
+            metacool,
+            outfile,
+            mtcl.partition_rounds(clusters, names),
+            names=list(mtmc.PARTITION_ROUNDS),
+            force=True,
+            planned=planned,
+            entries={"partition": entry},
+        )
 
 
 def mge_metacool(metacool, outfile, summary_file, planned=None):
@@ -837,7 +847,10 @@ def pairsfile_argument(help):
 
 
 ASSEMBLY_HELP = "The assembly that the map was made from: a FASTA file, plain or compressed with gzip."
-ASSEMBLY_PARTITION_HELP = "The assembly that the contigs come from: a FASTA file."
+SIZE_HELP = (
+    "Threshold size to keep clusters in base pair: miComplete checks the overlapping clusters of the partition that "
+    "reach it, and the clusters of the recursive partition larger than it."
+)
 
 
 def assembly_option(help):
@@ -914,8 +927,20 @@ def network_options(normalization_short):
     )
 
 
-def partition_options(iterations, overlap, iterations_help, overlap_help):
-    """Options of the Louvain or Leiden partition of the network."""
+def partition_options(iterations, overlap, iterations_help, overlap_help, size_help=None):
+    """Options of the Louvain or Leiden partition of the network, and, with
+    size_help, its --size: the size of a cluster that the validation keeps
+    (none for metator partition, which keeps every cluster)."""
+    size = _option(
+        "-s",
+        "--size",
+        type=click.INT,
+        default=500000,
+        show_default=True,
+        metavar="INT",
+        panel="Partition",
+        help=size_help,
+    )
     return _options(
         _option(
             "-A",
@@ -956,16 +981,7 @@ def partition_options(iterations, overlap, iterations_help, overlap_help):
             panel="Partition",
             help="Resolution parameter to use for the Leiden algorithm.",
         ),
-        _option(
-            "-s",
-            "--size",
-            type=click.INT,
-            default=500000,
-            show_default=True,
-            metavar="INT",
-            panel="Partition",
-            help="Threshold size to keep clusters in base pair.",
-        ),
+        *([size] if size_help else []),
     )
 
 
@@ -1130,37 +1146,31 @@ def network(
 @map_argument(
     required=True,
     help="The .metacool contact map of the contigs of the run, which metator network stored the network in, or an "
-    "entry of a .mmetacool collection (file.mmetacool::entries/NAME): the overlapping clusters of the run are stored in "
-    "its clustering rounds, in place, or in --output-map, which an entry needs.",
+    "entry of a .mmetacool collection (file.mmetacool::entries/NAME): the core and overlapping clusters of the run are "
+    "stored in its clustering rounds, in place, or in --output-map, which an entry needs.",
 )
-@assembly_option(ASSEMBLY_PARTITION_HELP)
 @partition_options(
     iterations=100,
     overlap=80,
     iterations_help="Number of iterations of Louvain or Leiden.",
     overlap_help="Hamming distance threshold to use to merge clusters (percentage).",
 )
-@outdir_option(default="./", help="Path to the directory to write the output.")
+@outdir_option(default="./", help="The output directory, of the log of the run.")
 @prefix_option()
-@force_option(
-    "Replace the directory of overlapping clusters of an earlier run in the output directory (overlapping_clusters), "
-    "and an existing --output-map."
-)
+@force_option("Replace an existing --output-map.")
 @tmpdir_option()
 @threads_option(help="Number of parallel threads allocated for the partition.")
 @no_clean_up_option()
 @output_map_option(
-    help="Store the overlapping clusters of the run in a copy of MAP written to FILE (replaced only with -F), and "
-    "leave MAP as it was. By default, the run updates MAP in place.",
+    help="Store the partition of the run in a copy of MAP written to FILE (replaced only with -F), and leave MAP as it "
+    "was. By default, the run updates MAP in place.",
 )
 def partition(
     map,  # the argument MAP
-    assembly,
     algorithm,
     iterations,
     overlap,
     res_param,
-    size,
     outdir,
     prefix,
     force,
@@ -1179,9 +1189,6 @@ def partition(
     Hamming distance (close to 1), bigger than the percentage (overlapping
     parameter) given.
 
-    It will also write the data of the contigs, with their clusters
-    (contig_data_partition.txt).
-
     Furthermore, both Leiden and Louvain algorithm are available here.
     However, the benchmark made show that here the Louvain algorithm have
     better performance and is faster on seawater and gut metagenomic
@@ -1189,11 +1196,12 @@ def partition(
 
     [cyan]metator partition MAP ...[/] runs on the map of the contigs of a
     run step by step ([cyan]metator network MAP[/], partition, validation):
-    it stores the overlapping clusters that reach --size, with their
-    contigs, in the clustering rounds of the map (its /clusters group), in
-    place of those it held, and updates the map in place (or writes
-    --output-map). Its genomes and contigs tables are left as they were:
-    [cyan]metator validation MAP[/] writes the final clusters there.
+    it stores every core and overlapping cluster, with its contigs, as the
+    rounds core and overlapping of the clustering rounds of the map (its
+    /clusters group), in place of those it held, and updates the map in
+    place (or writes --output-map). Its genomes and contigs tables are left
+    as they were: [cyan]metator validation MAP[/] checks the overlapping
+    clusters that reach its --size, and writes the final clusters there.
     """
     # Private temporary directory inside --tmpdir, and the lock of the map
     # the run writes, held until its end.
@@ -1201,46 +1209,22 @@ def partition(
         # Defined the output directory.
         outdir = outdir or "."
         os.makedirs(outdir, exist_ok=True)
-        fasta_dir = join(outdir, "overlapping_clusters")
 
-        # Enable file logging, the map of the run checked and locked, the
-        # network that metator network stored in it read, with the data of
-        # its contigs, and the directory of the clusters made (see
-        # start_step).
-        log_file, metacool_file, bins_prefix, planned, stored = start_step(
-            "partition",
-            outdir,
-            [fasta_dir],
-            map,
-            output_map,
-            force,
-            held,
-            prefix,
-            inputs=[assembly],
-            assembly=assembly,
+        # Enable file logging, the map of the run checked and locked, and
+        # the network that metator network stored in it read, with the data
+        # of its contigs (see start_step).
+        log_file, metacool_file, bins_prefix, planned, stored, _ = start_step(
+            "partition", outdir, [], map, output_map, force, held, prefix
         )
 
         # Partition the network
-        contig_data_file = mtp.partition(
-            algorithm,
-            assembly,
-            stored.table,
-            iterations,
-            stored.network,
-            outdir,
-            fasta_dir,
-            overlap / 100,
-            res_param,
-            size,
-            threads,
-            bins_prefix,
+        clusters = mtp.partition(algorithm, stored.network, iterations, overlap / 100, res_param, threads, bins_prefix)
+
+        # The core and overlapping clusters, stored in the map, their
+        # contigs by name: the IDs of the network are their positions in it.
+        partition_metacool(
+            map, metacool_file, clusters, list(stored.table["Name"]), partition_entry(stored.normalization), planned
         )
-
-        # Delete pyfastx index (only made if a bin passed the size threshold):
-        mio.remove_pyfastx_index(assembly)
-
-        # The overlapping clusters, stored in the map.
-        partition_metacool(map, metacool_file, contig_data_file, size, bins_prefix, planned)
 
     generate_log_footer(log_file)
 
@@ -1254,31 +1238,17 @@ def partition(
 @map_argument(
     required=True,
     help="The .metacool contact map of the contigs of the run (that of network MAP and partition MAP), which metator "
-    "network stored the network in, or an entry of a .mmetacool collection (file.mmetacool::entries/NAME): it becomes "
-    "the map of the clusters of the run, as pipeline MAP writes it, in place, or in --output-map, which an entry needs.",
+    "network stored the network in, and metator partition its partition, or an entry of a .mmetacool collection "
+    "(file.mmetacool::entries/NAME): it becomes the map of the clusters of the run, as pipeline MAP writes it, in place, "
+    "or in --output-map, which an entry needs.",
 )
-@assembly_option(ASSEMBLY_PARTITION_HELP)
-@_option(
-    "-c",
-    "--contigs",
-    required=True,
-    metavar="FILE",
-    panel="Input",
-    help="The path to the file containing the data of the contigs from the partition step (13 columns).",
-)
-@_option(
-    "-f",
-    "--fasta",
-    required=True,
-    metavar="DIR",
-    panel="Input",
-    help="Path to the directory containing the input fasta files of the clusters to decontaminate.",
-)
+@assembly_option(ASSEMBLY_HELP)
 @partition_options(
     iterations=10,
     overlap=90,
     iterations_help="Number of recursive iterations of Louvain or Leiden.",
     overlap_help="Hamming distance threshold to use to merge clusters (percentage).",
+    size_help=SIZE_HELP,
 )
 @outdir_option(default="./", help="Path to the directory to write the output.")
 @prefix_option()
@@ -1286,7 +1256,7 @@ def partition(
     "Replace the directories of recursive and final clusters of an earlier run in the output directory "
     "(recursive_clusters, final_clusters), and an existing --output-map."
 )
-@tmpdir_option()
+@tmpdir_option(help="Temporary directory, where the run writes the clusters it checks with miComplete.")
 @threads_option(help="Number of parallel threads allocated for the partition.")
 @no_clean_up_option()
 @output_map_option(
@@ -1296,8 +1266,6 @@ def partition(
 def validation(
     map,  # the argument MAP
     assembly,
-    contigs,
-    fasta,
     algorithm,
     iterations,
     overlap,
@@ -1312,6 +1280,11 @@ def validation(
     output_map,
 ):
     """Use miComplete to validate the clusters.
+
+    The clusters to validate are the overlapping clusters of the partition
+    that [cyan]metator partition MAP[/] stored in the map that reach
+    --size: the run writes their FASTA files from the assembly, in its
+    temporary directory, for miComplete to check.
 
     Recursively decontaminate the contaminated clusters evaluated by
     miComplete. The command returns new decontaminated fasta and summary
@@ -1337,21 +1310,18 @@ def validation(
 
     # Private temporary directory inside --tmpdir, and the lock of the map
     # the run writes, held until its end.
-    with private_tmp_dir(tmpdir, clean_up=not no_clean_up), ExitStack() as held:
+    with private_tmp_dir(tmpdir, clean_up=not no_clean_up) as tmp_dir, ExitStack() as held:
         # Defined the output directory and output file names.
         outdir = outdir or "."
         os.makedirs(outdir, exist_ok=True)
         recursive_fasta_dir = join(outdir, "recursive_clusters")
         final_fasta_dir = join(outdir, "final_clusters")
-        # The clusters to validate in a directory that -F removes: refused
-        # before anything is removed.
-        refuse_an_input_in_the_outputs(fasta, [recursive_fasta_dir, final_fasta_dir], force, "-f")
 
         # Enable file logging, the map of the run checked and locked, the
-        # network that metator network stored in it read, in the IDs of the
-        # contigs of the partition, and the directories of the clusters made
-        # (see start_step).
-        log_file, metacool_file, bins_prefix, planned, stored = start_step(
+        # network that metator network stored in it and the partition that
+        # metator partition stored in it read, the assembly checked, and the
+        # directories of the clusters made (see start_step).
+        log_file, metacool_file, bins_prefix, planned, stored, clusters = start_step(
             "validation",
             outdir,
             [recursive_fasta_dir, final_fasta_dir],
@@ -1360,18 +1330,27 @@ def validation(
             force,
             held,
             prefix,
-            contigs,
             [assembly],
             assembly,
+            partition=True,
         )
+
+        # The contig data of the partition, with the clusters of each contig,
+        # and the FASTA files of the overlapping clusters to check, in the
+        # temporary directory of the run.
+        partition_file = write_partition_table(stored.table, clusters, tmp_dir)
+        overlapping_fasta_dir = join(tmp_dir, "overlapping_clusters")
+        mtv.write_overlapping_fasta(map, assembly, clusters, stored.table, size, overlapping_fasta_dir, tmp_dir)
 
         mtv.recursive_decontamination(
             algorithm,
             assembly,
-            contigs,
+            partition_file,
             final_fasta_dir,
-            fasta,
+            overlapping_fasta_dir,
             iterations,
+            # The network that metator network stored in the map, by the
+            # positions of its contigs, as the partition numbers them.
             stored.network,
             outdir,
             overlap / 100,
@@ -1380,6 +1359,7 @@ def validation(
             size,
             threads,
             bins_prefix,
+            clusters,
         )
 
         # Delete pyfastx index (only made if a bin was re-partitioned):
@@ -1405,6 +1385,7 @@ def validation(
     overlap=80,
     iterations_help="Number of iterations of Louvain or Leiden for the partition step.",
     overlap_help="Hamming distance threshold to use to merge clusters for the first step (percentage).",
+    size_help=SIZE_HELP,
 )
 @_option(
     "-j",
@@ -1517,10 +1498,9 @@ def pipeline(
 
         # The clusters of an earlier run: refused now without --force, before
         # the assembly is read, and replaced only once it is checked.
-        overlapping_fasta_dir = join(outdir, "overlapping_clusters")
         recursive_fasta_dir = join(outdir, "recursive_clusters")
         final_fasta_dir = join(outdir, "final_clusters")
-        bin_dirs = [overlapping_fasta_dir, recursive_fasta_dir, final_fasta_dir]
+        bin_dirs = [recursive_fasta_dir, final_fasta_dir]
         for path in bin_dirs:
             refuse_output_dir(path, force)
 
@@ -1542,26 +1522,20 @@ def pipeline(
         network = mtn.map_network(map, mtn.network_weights(table, normalization), contacts)
 
         # Partition the network
-        contigs_data_file = mtp.partition(
-            algorithm,
-            assembly,
-            table,
-            iterations,
-            network,
-            outdir,
-            overlapping_fasta_dir,
-            overlapping_parameter,
-            res_param,
-            size,
-            threads,
-            bins_prefix,
-        )
+        clusters = mtp.partition(algorithm, network, iterations, overlapping_parameter, res_param, threads, bins_prefix)
+
+        # The contig data of the partition, with the clusters of each contig,
+        # and the FASTA files of the overlapping clusters to check, in the
+        # temporary directory of the run, as a validation run writes them.
+        partition_file = write_partition_table(table, clusters, tmp_dir)
+        overlapping_fasta_dir = join(tmp_dir, "overlapping_clusters")
+        mtv.write_overlapping_fasta(map, assembly, clusters, table, size, overlapping_fasta_dir, tmp_dir)
 
         # Launch validation.
         mtv.recursive_decontamination(
             algorithm,
             assembly,
-            contigs_data_file,
+            partition_file,
             final_fasta_dir,
             overlapping_fasta_dir,
             rec_iter,
@@ -1573,10 +1547,8 @@ def pipeline(
             size,
             threads,
             bins_prefix,
+            clusters,
         )
-
-        # Remove contig_data_partition file
-        os.remove(join(outdir, "contig_data_partition.txt"))
 
         # Delete pyfastx index:
         mio.remove_pyfastx_index(assembly)
@@ -1591,6 +1563,7 @@ def pipeline(
                 normalization=normalization,
                 planned=planned,
                 network=mtmc.Network(table, normalization, network_entry(columns_from_map), tmp_dir),
+                partition=partition_entry(normalization),
             )
 
     generate_log_footer(log_file)

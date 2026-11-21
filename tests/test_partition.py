@@ -1,11 +1,12 @@
 # Test for partition module
 
-import os
+import random
+
+import metator.clusters as mtc
 import metator.partition as mtp
 import numpy as np
 import pandas as pd
 import pytest
-import shutil
 
 assembly = "tests_data/assembly.fa"
 # The network of a run, as metator.network.map_network gives it.
@@ -17,7 +18,6 @@ threads = 8
 
 overlapping_parameter = 0.6
 
-contigs_data = pd.read_csv("tests_data/outdir/contig_data_partition.txt", sep="\t")
 output_partition = {
     1: "0;13;0;10;5",
     2: "0;6;3;10;5",
@@ -106,25 +106,6 @@ def test_detect_core_bins():
     assert (cc_iterations == core_bins_iterations).all().all()
 
 
-def test_generate_fasta(tmp_path, monkeypatch):
-    """One fasta per bin of 50 kb or more, the records of its contigs. They
-    are written with pyfastx's Python API: through its command, which the
-    shell did not find without the virtual environment on the PATH (as
-    here), the files were empty."""
-    monkeypatch.setenv("PATH", str(tmp_path))
-    # A private copy of the assembly: pyfastx indexes it (.fxi) in place.
-    shutil.copyfile(assembly, tmp_path / "assembly.fa")
-    out = tmp_path / "bins"
-    out.mkdir()
-    mtp.generate_fasta(str(tmp_path / "assembly.fa"), overlapping_bins, contigs_data, 50_000, str(out), "MetaTOR")
-    big = [b for b, ids in overlapping_bins.items() if int(contigs_data.loc[ids[0] - 1, "Overlapping_cluster_size"]) >= 50_000]
-    assert sorted(os.listdir(out)) == [f"MetaTOR_{b:05d}_00000.fa" for b in sorted(big)]
-    for path in out.iterdir():
-        contigs = overlapping_bins[int(path.name.split("_")[1])]
-        names = [line[1:].split()[0] for line in path.read_text().splitlines() if line.startswith(">")]
-        assert names == [contigs_data.loc[contig_id - 1, "Name"] for contig_id in contigs]
-
-
 # Number of the 5 iterations in which two core bins of core_bins_iterations
 # share their community: 5 times one minus their normalized Hamming distance.
 shared_iterations = np.array(
@@ -197,23 +178,43 @@ def test_network_graph():
     assert graph.es["weight"] == list(network.weight)
 
 
-def test_update_contigs_data():
-    # Updating contigs data with partition values.
-    tmp_dir = "tmp_partition_contigs"
-    os.makedirs(tmp_dir, exist_ok=True)
+def test_partition_table():
+    """The contig data table of a partition, as contig_data_partition.txt held
+    it: the contig data, left as it is, with the core and the overlapping
+    cluster of each contig, its number of contigs and its size."""
     contig_data = pd.read_csv("tests_data/outdir/contig_data_network.txt", sep="\t")
     before = contig_data.copy()
-    contigs_data, path = mtp.update_contigs_data(
-        contig_data,
-        core_bins_contigs,
-        overlapping_bins,
-        tmp_dir,
+    partition = mtc.Partition(
+        core={core_id + 1: contigs for core_id, contigs in core_bins_contigs.items()},
+        overlapping=overlapping_bins,
+        names={number: mtc.overlapping_name("metator", number) for number in overlapping_bins},
     )
-    # The contig data given is left as it is; the one returned is written.
+    contigs_data = mtp.partition_table(contig_data, partition)
+    # The contig data given is left as it is.
     pd.testing.assert_frame_equal(contig_data, before)
-    pd.testing.assert_frame_equal(pd.read_csv(path, sep="\t", dtype=str), contigs_data.astype(str))
     assert list(contigs_data.columns) == cols
     assert contigs_data.loc[3, "Overlapping_cluster_ID"] == "00002"
     assert contigs_data.loc[0, "Overlapping_cluster_contigs"] == 2
     assert contigs_data.loc[1, "Overlapping_cluster_size"] == 37801
-    shutil.rmtree(tmp_dir)
+    assert list(contigs_data.Core_cluster_ID[:4]) == ["00001", "00002", "00003", "00003"]
+    # A contig in no cluster (no edge in the network): "-".
+    assert (contigs_data.loc[10:, ["Core_cluster_ID", "Overlapping_cluster_ID"]] == "-").all().all()
+
+
+def test_partition():
+    """The partition of the network: its core clusters, numbered from 1, and
+    its overlapping clusters, each of the contigs of its core clusters in the
+    order of their numbers, then of their IDs, named after the prefix; every
+    contig of the network in one core cluster and in one overlapping
+    cluster."""
+    random.seed(0)
+    partition = mtp.partition("louvain", network, iterations, overlapping_parameter, resolution_parameter, 1, "sample")
+    nodes = sorted(set(network.contig1) | set(network.contig2))
+    assert sorted(contig for contigs in partition.core.values() for contig in contigs) == nodes
+    assert sorted(contig for contigs in partition.overlapping.values() for contig in contigs) == nodes
+    assert sorted(partition.core) == list(range(1, len(partition.core) + 1))
+    core = {contig: number for number, contigs in partition.core.items() for contig in contigs}
+    for number, contigs in partition.overlapping.items():
+        assert contigs == sorted(contigs, key=lambda contig: (core[contig], contig))
+        assert partition.names[number] == f"sample_{number:05d}_00000"
+    assert all(contigs == sorted(contigs) for contigs in partition.core.values())

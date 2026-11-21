@@ -78,19 +78,19 @@ def test_command_help(monkeypatch, capsys):
     assert "map" in out.lower() and "--network" not in out
 
 
-def test_command_runs(monkeypatch, tmp_path, private_link, metagenome_network, metagenome_files):
+def test_command_runs(monkeypatch, tmp_path, metagenome_network):
     """partition MAP, on a map whose network metator network stored (see
-    metagenome_network)."""
+    metagenome_network): it stores its partition in the map."""
     import shutil
+
+    import metacooler
 
     out = tmp_path / "out"
     metacool = shutil.copyfile(metagenome_network["map"], tmp_path / "network.metacool")
     with pytest.raises(SystemExit) as exit:
-        _run(monkeypatch, "partition", str(metacool), "-a", private_link(str(metagenome_files["assembly"])), "-i", "2",
-             "-s", "30000", "-o", str(out), "-T", str(tmp_path / "tmp"))  # fmt: skip
+        _run(monkeypatch, "partition", str(metacool), "-i", "2", "-o", str(out), "-T", str(tmp_path / "tmp"))
     assert not exit.value.code
-    assert (out / "contig_data_partition.txt").exists()
-    assert any((out / "overlapping_clusters").iterdir())
+    assert [entry["name"] for entry in metacooler.MetaCooler(str(metacool)).cluster_rounds] == ["core", "overlapping"]
 
 
 def test_python_m(monkeypatch, capsys):
