@@ -48,7 +48,7 @@ the weights of its normalisation (below), which `metator network` stores in
 the map as the weights `metator_<normalization>` of its bins. The contacts of
 several libraries are those of their map, summed. The nodes of the network are
 the contigs of the map, by their position in it (the `ID` column of
-`contig_data_partition.txt`, from 1): a run that regroups the map
+`contig_data_final.txt`, from 1): a run that regroups the map
 (`validation`, `pipeline`) moves them, so join a table to the network of
 another map by contig name, not by ID. `metator network` writes no table of
 it; metacooler exports it, by contig names, once the contacts within each
