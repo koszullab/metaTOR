@@ -187,36 +187,6 @@ def metagenome_files(metagenome, tmp_path_factory):
 
 
 @pytest.fixture(scope="session")
-def metagenome_indexed_pairs(metagenome_files, tmp_path_factory):
-    """The pairs sorted, compressed and indexed for pypairix, as metator mge
-    reads them: by chr1, chr2, pos1 and pos2 (the contig names byte by
-    byte, as pairtools sorts them, so that each forms one block; the
-    positions as numbers), with "#sorted: chr1-chr2-pos1-pos2" after the
-    "## pairs format" line, compressed with BGZF (Biopython) and indexed
-    with pypairix."""
-    import pypairix
-    from Bio import bgzf
-
-    header, rows = [], []
-    with open(metagenome_files["pairs"]) as pairs:
-        for line in pairs:
-            (header if line.startswith("#") else rows).append(line)
-
-    def key(line):
-        fields = line.split("\t")
-        return fields[1].encode(), fields[3].encode(), int(fields[2]), int(fields[4])
-
-    rows.sort(key=key)
-    header = [line for line in header if not line.startswith("#sorted")]
-    header.insert(1 if header and header[0].startswith("##") else 0, "#sorted: chr1-chr2-pos1-pos2\n")
-    path = tmp_path_factory.mktemp("metagenome_pairs") / "synthetic_sorted.pairs.gz"
-    with bgzf.BgzfWriter(str(path), "wb") as out:
-        out.write("".join(header + rows).encode())
-    pypairix.build_index(str(path), force=1)
-    return path
-
-
-@pytest.fixture(scope="session")
 def metagenome_network(metagenome_files, tmp_path_factory):
     """The network (empirical_hit) of the mock community, and the data of its
     contigs, as metator network stores them in the map of its pairs (see

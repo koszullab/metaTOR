@@ -1874,7 +1874,6 @@ dependencies = [
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pandas", version = "3.1.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pyfastx" },
-    { name = "pypairix" },
     { name = "rich-click" },
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
@@ -1912,7 +1911,6 @@ requires-dist = [
     { name = "numpy" },
     { name = "pandas" },
     { name = "pyfastx" },
-    { name = "pypairix" },
     { name = "rich-click", specifier = ">=1.9" },
     { name = "scipy" },
     { name = "zensical", marker = "extra == 'docs'", specifier = ">=0.0.43" },
@@ -3323,12 +3321,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/47/b0/c98e5189398dc14ad
 wheels = [
     { url = "https://files.pythonhosted.org/packages/09/ea/6efb2c6c3dd91156bad5e46c292164a9115a35a83cac285f0ed8e7d3a810/pymdown_extensions-13.1-py3-none-any.whl", hash = "sha256:093d1fab98168526d98fbb17aa5c9da68eef3664324f6b25ebbf78b2709babeb", size = 284594, upload-time = "2026-11-11T14:08:37.03Z" },
 ]
-
-[[package]]
-name = "pypairix"
-version = "0.3.9"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/03/dd/c07c30421975664c8b3716542c2c22331606856019852229bf6974fd5caa/pypairix-0.3.9.tar.gz", hash = "sha256:a1dc8b11b35ab6b7763935898ec45abf422e060517295a1dadc33b6e9eaad03a", size = 66886, upload-time = "2025-01-30T21:49:54.477Z" }
 
 [[package]]
 name = "pyparsing"

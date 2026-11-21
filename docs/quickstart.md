@@ -49,9 +49,8 @@ contig.
     hicstuff 3.3.0 with `metacooler create pairs`, as above.
 
     It writes the map `hicstuff/sample.metacool`, with one bin per restriction
-    fragment, and the pairs `hicstuff/sample.valid_idx.pairs.gz`, which
-    `metator mge` reads once indexed with pairix. `metacooler merge` sums the
-    maps of several libraries: see
+    fragment, and the pairs `hicstuff/sample.valid_idx.pairs.gz`.
+    `metacooler merge` sums the maps of several libraries: see
     [Other tools](other-tools.md#from-the-reads-to-the-map).
 
 ## Step 2: run the pipeline

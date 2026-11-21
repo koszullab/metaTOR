@@ -33,7 +33,6 @@ global_args = {
     "OVERLAPPING_BINS": "tests_data/overlapping_clusters/",
     "SUBSET_FASTA": "tests_data/subset.assembly.fa",
     "SUBSET_PAIRS": "tests_data/subset.pairs.gz",
-    "SUBSET_MGES": "tests_data/subset.mges.txt",
 }
 
 

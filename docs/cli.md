@@ -15,7 +15,6 @@ metator --version
 |---|---|
 | Several libraries | One map, which sums them: make the map of each library, then merge them with `metacooler merge` (see [Other tools](other-tools.md)). |
 | Several enzymes | Separated by commas: `DpnII,HinfI`. |
-| Pairs files | `mge` takes the pairs files of a run as arguments: those that hicstuff writes with the map, `<prefix>.valid_idx.pairs.gz`, once indexed with `pairix -p pairs` (see [Clustering mobile genetic elements](guides/mge.md#running-it)); it stores its MGE clusters in the map given with `--map`. |
 | `-F, --force` | Replace the outputs of an earlier run, in the output directory and at `--output-map`. Without it, a command refuses to overwrite them. A run from a map updates that map in place without it, and warns, before any work, of the clusters and clustering rounds that it replaces there: `--output-map` writes the map of the run to another file instead, and leaves the map as it was. |
 | Writing a map | Through metacooler: a run holds the lock of the map it writes, `<map>.lock` (FILE's with `--output-map`), from its checks to its end, and writes the map in an edit session, one staged copy next to it (`.<map>.<uuid>.<n>.d/`), validated, then renamed over it, so a run that stops leaves the map as it was. `MAP` given as a symbolic link is updated where the link points; a symbolic link at `--output-map` is replaced (`-F`), not its target, and a hard link of `MAP` there is refused. A map that another process holds, a map without write permission, or one whose directory is not writable (with room for a copy of the map and for the new map), is refused before any work: write a copy with `--output-map`. A run killed by SIGTERM (a job scheduler's time limit) or SIGKILL leaves its lock and its staged copy, which the next run that writes the map on the same host takes over and removes; on another host, delete the files that the error names. |
 | `-T, --tmpdir` | Each run works in a directory of its own inside it, removed at the end, unless `--no-clean-up` or the run fails. |
@@ -217,51 +216,62 @@ metator validation sample.metacool -a assembly.fa -c binning/contig_data_partiti
 
 ### `mge` { #mge }
 
-Cluster the contigs of mobile genetic elements from the contacts between them.
-**API:** `metator.mge.mge_binning`, `metator.metacool.write_round`.
+Cluster the contigs of mobile genetic elements from the contacts between them,
+and store the MGE clusters in the contact map.
+**API:** `metator.mge.mge_binning`, `metator.mge.write_mges_fasta`,
+`metator.metacool.write_round`.
 **Guide:** [Clustering mobile genetic elements](guides/mge.md).
 
 ```console
-metator mge [OPTIONS] PAIRSFILE...
+metator mge [OPTIONS] MAP
 ```
 
-`PAIRSFILE` is the pairs files of the run: the contacts within an MGE contig
-are counted between reads more than 1 kb apart, which a contact map does not
-tell, so a map given in their place is refused. With `--map MAP`, the run
-also stores its MGE clusters in the contact map of the run: as the round
-`mge` of its clustering rounds, with the columns of `mges_cluster_summary.tsv`
-and the contigs of each cluster, in place of the round `mge` of an earlier
-run, after the rounds of the clustering run, which are kept; its genomes and
-contigs tables, the final clusters, are left as they were. The map is updated
-in place, or written to `--output-map`, as `metator partition MAP` writes it
-(see [Step by step](guides/metacool.md#step-by-step)), and refused as it
-refuses it, before any work. `--random` is refused with `--map`. A run that
-replaces the clusters of the map drops the round `mge`, with a warning.
+`MAP` is a contact map that `metator network` stored the network of its
+contigs in: that of `network MAP`, `pipeline MAP` or `validation MAP` (their
+`--output-map`, if they wrote one), or an entry of a `.mmetacool` collection
+(`file.mmetacool::entries/<name>`, with `--output-map`). The contacts of the
+MGE contigs come from it: between two contigs, its contacts summed by pair of
+contigs, whatever its bin size; within a contig, those between reads more
+than 1 kb apart, which its contact statistics count (metacooler's QC block,
+made from the pairs at 1001 bp: by `hicstuff pipeline -M metacool` or
+`metacooler create pairs`, with metacooler 0.4.0 or later). The GC content
+and hits of each contig are those that `metator network` stored in it; its
+clusters, if it has any, are not read. A map without those contact
+statistics, with them measured from its pixels or at another distance, or
+without the columns of `network`, is refused before anything is written,
+with how to make one; so is a map that holds none of the MGE contigs. An
+MGE contig that the map lacks is left out, with a warning. The MGE contigs
+are taken the longest first, ties by name, whatever the order of the map:
+that order breaks the ties of the scores, and numbers the clusters of one
+contig (see [Clustering mobile genetic elements](guides/mge.md#how-it-works)).
+
+The run writes `mges_binned.fa` and stores its MGE clusters in the map: as
+the round `mge` of its clustering rounds, with their contigs, length, GC
+content, hits and clustering score, in place of the round `mge` of an earlier
+run, after the other rounds, which are kept; the entry `mge` of the `metator`
+key of its metadata records the run. Its genomes and contigs tables are left
+as they were. The map is updated in place, or written to `--output-map`, as
+`metator partition MAP` writes it (see
+[Step by step](guides/metacool.md#step-by-step)), and refused as it refuses
+it, before any work. `--random` stores the round `mge_random` and writes
+`mges_binned_random.fa`, and leaves the round `mge` as it was. A run that
+replaces the clusters of the map (`partition`, `validation`, `pipeline`)
+drops the rounds `mge` and `mge_random`, and their entries, with a warning:
+run `mge` again on its map.
 
 | Option | Default | Description |
 |---|---|---|
-| `-a, --assembly` | *required* | The assembly, as a FASTA file. |
-| `-c, --contigs` | *required* | The contig data table of the run. |
-| `-b, --binning` | *required* | The clusters of the contigs: `binning.txt`, or a collection exported by anvi'o. |
+| `-a, --assembly` | *required* | The assembly that the map was made from: a FASTA file, plain or compressed with gzip. |
 | `-m, --mges` | *required* | The MGE contigs, one name per line. |
-| `--map` | none | A `.metacool` contact map of the run, or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`), that the run stores its MGE clusters in. |
 | `-s, --threshold-bin` | `0.8` | The score above which two contigs, or clusters, are merged. |
-| `-r, --random` | off | Shuffle the contigs between the clusters: a random clustering of the same shape. Refused with `--map`. |
+| `-r, --random` | off | Shuffle the contigs between the clusters: a random clustering of the same shape, stored as the round `mge_random` and written to `mges_binned_random.fa`. |
 | `-o, --outdir` | the current directory | The output directory. |
 | `-F, --force` | off | Replace an existing `--output-map` file. |
-| `-T, --tmpdir` | `./tmp` | The temporary directory. |
-| `-N, --no-clean-up` | off | Keep the temporary files, and the index of the assembly. |
-| `--output-map` | none | With `--map`: write the map with the MGE clusters to this file (replaced only with `-F`), and leave `MAP` as it was. |
+| `-T, --tmpdir` | `./tmp` | The temporary directory, where metacooler copies a compressed assembly, plain, while it reads it. `mge` writes no temporary file of its own. |
+| `-N, --no-clean-up` | off | Keep the temporary directory of the run: `mge` leaves nothing in it. |
+| `--output-map` | none | Write the map with the MGE clusters to this file (replaced only with `-F`), and leave `MAP` as it was. |
 
 ```bash
-# Index the pairs that hicstuff wrote with the map (once): mge needs the index
-# of a compressed pairs file
-python -c 'import pypairix; pypairix.build_index("hicstuff/sample.valid_idx.pairs.gz", "pairs")'
-
-metator mge -a assembly.fa -c binning/contig_data_final.txt -b binning/binning.txt \
-    -m mges.txt -o mge hicstuff/sample.valid_idx.pairs.gz
-
-# Also store the MGE clusters in the map of the run
-metator mge -a assembly.fa -c binning/contig_data_final.txt -b binning/binning.txt \
-    -m mges.txt -o mge --map hicstuff/sample.metacool hicstuff/sample.valid_idx.pairs.gz
+# The map of the run, after network, pipeline or validation
+metator mge sample.metacool -a assembly.fa -m mges.txt -o mge
 ```

@@ -258,7 +258,7 @@ REPLACED_IN_PLACE = {
 }
 
 
-def warn_of_what_is_replaced(command, metacool):
+def warn_of_what_is_replaced(command, metacool, rounds=None):
     """Warn, before any work, that a run (command) that updates the map
     metacool in place replaces what the map holds already: its clusters (the
     genomes other than __unbinned__, of an earlier run, or of another
@@ -267,13 +267,15 @@ def warn_of_what_is_replaced(command, metacool):
     history says only that its contigs were reassigned. A run from a map
     replaced them without -F, and without a warning. --output-map writes
     the map of the run to another file instead, which leaves metacool as it
-    is."""
+    is. rounds names the clustering rounds that the run replaces, when it
+    knows them: mge replaces its round of one name (mge, or mge_random)."""
     clusters, steps = REPLACED_IN_PLACE[command]
+    replaced = (lambda entry: entry.get("step") in steps) if rounds is None else (lambda entry: entry.get("name") in rounds)
     try:
         with mtmc.read_errors(metacool):
             mc = mtmc.open_map(metacool)
             n_clusters = int((mc.genomes["name"].astype(str) != "__unbinned__").sum()) if clusters else 0
-            rounds = [str(entry["name"]) for entry in mc.cluster_rounds if entry.get("step") in steps]
+            rounds = [str(entry["name"]) for entry in mc.cluster_rounds if replaced(entry)]
     except mtmc.MetacoolError as error:
         logger.error(str(error))
         raise
@@ -289,50 +291,35 @@ def warn_of_what_is_replaced(command, metacool):
         )
 
 
-def step_map(command, input_map, output_map, force, held, contigs=None, inputs=(), option=None, assembly=None):
-    """The map that a partition, validation or mge run (command) writes, or
-    None for a run without one. A run step by step from a map (network MAP,
-    then partition MAP and validation MAP) updates the map, its first
-    argument (input_map), in place, or writes output_map (--output-map)
-    instead (see run_map_path), as pipeline MAP does. mge updates the map
-    given with an option (option: --map) so.
+def step_map(command, input_map, output_map, force, held, contigs=None, inputs=(), assembly=None, rounds=None):
+    """The map that a partition, validation or mge run (command) writes. A
+    run step by step from a map (network MAP, then partition MAP and
+    validation MAP; mge MAP after them) updates the map, its first argument
+    (input_map), in place, or writes output_map (--output-map) instead (see
+    run_map_path), as pipeline MAP does.
 
     The map is checked as run_input checks the map of a network or pipeline
     run, then the run holds the lock of the map that it writes until its
     end, and opens its input map under it (in held, an ExitStack: see
     hold_map). Refused before any work, the reason logged as an error, as
-    MetacoolError: output_map without input_map; an input map that is not
-    there or is no file, is no map, is named as a URI, or that metacooler
-    cannot open (a .mmetacool collection rather than one of its entries,
-    for example); a map that is no map of the contigs of contigs, the
-    contig data file of the run (other contigs or lengths: see
-    metator.metacool.check_map_of_contigs); an output_map that is one of the
-    files of contigs and inputs, or the pyfastx index of the assembly (see
-    refuse_an_input_as_the_map); what run_map_path refuses (an entry of a
-    collection without output_map, an output_map that is an entry, a
-    directory, the collection of the input entry, a hard link of the input
-    map, or that exists and is not the input map, without force); a map
-    that another run holds; and, in place, a read-only map. A run that
-    updates the map in place warns of the clusters and the rounds that it
-    replaces there (see warn_of_what_is_replaced). Returns the map to write
-    (None for a run without one) and the input map as the run read it once
-    it held the lock (a metacooler.MetaCooler, or None), which its map is
-    refused to be written from if it changed since (see
-    metator.metacool.reassign_metacool)."""
-    if option is None:
-        updates, given, map_of = (
-            f"{command} MAP",
-            "as the first argument",
-            f"the map of the contigs of the run as the first argument of {command}",
-        )
-    else:
-        updates, given, map_of = f"{command} {option} MAP", f"with {option}", f"the map of the run with {option}, or leave it out"
-    if input_map is None:
-        if output_map is not None:
-            reason = f"--output-map writes the map that {updates} updates: give the map {given}, or drop --output-map."
-            logger.error(reason)
-            raise mtmc.MetacoolError(reason)
-        return None, None
+    MetacoolError: an input map that is not there or is no file, is no map,
+    is named as a URI, or that metacooler cannot open (a .mmetacool
+    collection rather than one of its entries, for example); a map that is
+    no map of the contigs of contigs, the contig data file of the run
+    (other contigs or lengths: see metator.metacool.check_map_of_contigs);
+    an output_map that is one of the files of contigs and inputs, or the
+    pyfastx index of the assembly (see refuse_an_input_as_the_map); what
+    run_map_path refuses (an entry of a collection without output_map, an
+    output_map that is an entry, a directory, the collection of the input
+    entry, a hard link of the input map, or that exists and is not the
+    input map, without force); a map that another run holds; and, in place,
+    a read-only map. A run that updates the map in place warns of the
+    clusters and the rounds that it replaces there (rounds: those of these
+    names, see warn_of_what_is_replaced). Returns the map to write and the
+    input map as the run read it once it held the lock (a
+    metacooler.MetaCooler), which its map is refused to be written from if
+    it changed since (see metator.metacool.reassign_metacool)."""
+    map_of = f"the map of the {'clusters' if command == 'mge' else 'contigs'} of the run as the first argument of {command}"
     path = refuse_missing_map(input_map)
     if not mtmc.is_map(input_map):
         reason = f"{input_map} is not a .metacool contact map: give {map_of}."
@@ -348,7 +335,7 @@ def step_map(command, input_map, output_map, force, held, contigs=None, inputs=(
             raise
     refuse_an_input_as_the_map(output_map, [contigs, *inputs], assembly)
     outfile, in_place = run_map_path(input_map, output_map, force)
-    return outfile, hold_map(held, command, input_map, outfile, in_place)
+    return outfile, hold_map(held, command, input_map, outfile, in_place, rounds)
 
 
 def _is_in(path, directory):
@@ -566,20 +553,21 @@ def hold_lock(held, path, in_place):
         raise mtmc.MetacoolError(message) from error
 
 
-def hold_map(held, command, input_map, outfile, in_place):
+def hold_map(held, command, input_map, outfile, in_place, rounds=None):
     """Hold the lock of the map that a run (command) writes, outfile, until
     the end of the run (see hold_lock), then open its input map: the map as
     the run reads it, under that lock when the run updates it in place
     (in_place), which the map of the run is refused to be written from if
     it changed since (see metator.metacool.reassign_metacool's planned). A
     run in place then refuses a read-only map, and warns of what it
-    replaces there (see refuse_a_read_only_map and warn_of_what_is_replaced).
+    replaces there (see refuse_a_read_only_map and warn_of_what_is_replaced:
+    rounds, the clustering rounds that the run replaces, by name).
     Returns the input map, opened (a metacooler.MetaCooler)."""
     hold_lock(held, outfile, in_place)
     planned = open_input_map(input_map)
     if in_place:
         refuse_a_read_only_map(outfile)
-        warn_of_what_is_replaced(command, input_map)
+        warn_of_what_is_replaced(command, input_map, rounds)
     return planned
 
 
@@ -788,17 +776,20 @@ def partition_metacool(metacool, outfile, contig_data_file, size, prefix, planne
         mtmc.write_rounds(metacool, outfile, rounds, names=[mtcl.OVERLAPPING], force=True, planned=planned)
 
 
-def mge_metacool(metacool, outfile, summary_file, planned=None):
+def mge_metacool(metacool, outfile, summary, name=mtcl.MGE, planned=None):
     """Store the MGE clusters of an mge run in the map at outfile (see
-    writing_map): the round mge of its clustering rounds (see
-    metator.clusters.mge_round), from the summary that the run wrote
-    (summary_file), in place of the round mge that the map held, after the
-    rounds of the binning run, which are kept as they were. Its genomes and
-    contigs tables, the final clusters, are left as they were, and so is
-    everything else (see metator.metacool.write_round). The round records
-    the version of metaTOR, and the command line and the parameters of the
-    run. The map is refused if it changed since planned, the input map as
-    the run read it at its start, was opened.
+    writing_map): the round name of its clustering rounds (mge, or
+    mge_random for a random clustering: see metator.clusters.mge_round),
+    from their summary (see metator.mge.generate_bin_summary), in place of
+    the round of that name that the map held, after the other rounds, which
+    are kept as they were. Its genomes and contigs tables, the final
+    clusters, are left as they were, and so is everything else (see
+    metator.metacool.write_round). The round records the version of
+    metaTOR, and the command line and the parameters of the run, and so
+    does the entry name of the metator metadata of the map, with the
+    columns of the map that the run read. The map is refused if it changed
+    since planned, the input map as the run read it at its start, was
+    opened.
 
     Raises
     ------
@@ -806,9 +797,12 @@ def mge_metacool(metacool, outfile, summary_file, planned=None):
         If the map cannot be written: the reason, and what is kept, is
         logged as an error first. The other outputs of the run are kept.
     """
+    run = {"version": __version__, **run_metadata(columns_from_map=[*mtm.MGE_COLUMNS, mtm.INTRA_LONG])}
     with writing_map(metacool, outfile, what="the map with its MGE clusters"):
-        entry = {"name": mtcl.MGE, "tool": "metaTOR", "version": __version__, "step": "mge", **run_metadata()}
-        mtmc.write_round(metacool, outfile, mtcl.mge_round(summary_file), entry, force=True, planned=planned)
+        entry = {"name": name, "tool": "metaTOR", "step": "mge", **run}
+        mtmc.write_round(
+            metacool, outfile, mtcl.mge_round(summary, name), entry, force=True, planned=planned, metadata={name: run}
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -830,10 +824,6 @@ def _options(*decorators):
         return f
 
     return decorate
-
-
-def pairsfile_argument(help):
-    return click.argument("pairsfile", nargs=-1, required=True, help=help, panel="Input")
 
 
 ASSEMBLY_HELP = "The assembly that the map was made from: a FASTA file, plain or compressed with gzip."
@@ -1601,14 +1591,17 @@ def pipeline(
 # ---------------------------------------------------------------------------
 
 
-@cli.command(short_help="Cluster the MGE contigs into MGE MAGs from the metaHiC pairs.")
-@pairsfile_argument(
-    help="Pairs file(s) of the run: the contacts within each MGE contig are counted from the positions of their reads, "
-    "which a .metacool map does not hold (give the map to store the MGE clusters in with --map)."
+@cli.command(short_help="Cluster the MGE contigs of a .metacool map into MGE MAGs, and store them in the map.")
+@map_argument(
+    required=True,
+    help="The .metacool contact map of the run, which metator network stored the network of its contigs in (that of "
+    "network MAP, pipeline MAP or validation MAP), or an entry of a .mmetacool collection "
+    "(file.mmetacool::entries/NAME): the contacts of the MGE contigs come from it, and the MGE clusters are stored in "
+    "its clustering rounds, in place, or in --output-map, which an entry needs. It must hold the contact statistics of "
+    "the reads of its contigs at 1001 bp (made from the pairs by hicstuff pipeline -M metacool or metacooler create "
+    "pairs, with metacooler 0.4.0 or later).",
 )
-@_option("-a", "--assembly", required=True, metavar="FILE", panel="Input", help="Path to the assembly fasta file.")
-@_option("-c", "--contigs", required=True, metavar="FILE", panel="Input", help="Path to the MetaTOR contig data file.")
-@_option("-b", "--binning", required=True, metavar="FILE", panel="Input", help="Path to the anvio binning file.")
+@assembly_option(ASSEMBLY_HELP)
 @_option(
     "-m",
     "--mges",
@@ -1616,17 +1609,6 @@ def pipeline(
     metavar="FILE",
     panel="Input",
     help="Path to the file listing MGE-containing contigs.",
-)
-@_option(
-    "--map",
-    # A file, or an entry of a collection (file::group), which is no path:
-    # step_map checks it.
-    type=click.Path(dir_okay=False),
-    metavar="MAP",
-    panel="Input",
-    help="A .metacool contact map of the run (that of pipeline, for example), or an entry of a .mmetacool collection "
-    "(file.mmetacool::entries/NAME): the MGE clusters are stored in its clustering rounds, as the round mge, in place "
-    "of an earlier one, in place (or in --output-map). Its genomes and contigs tables are left as they were.",
 )
 @_option(
     "-s",
@@ -1638,22 +1620,29 @@ def pipeline(
     panel="Clustering",
     help="Threshold to use for clustering.",
 )
-@_option("-r", "--random", is_flag=True, panel="Clustering", help="If enabled, make a random clustering. Refused with --map.")
+@_option(
+    "-r",
+    "--random",
+    is_flag=True,
+    panel="Clustering",
+    help="Make a random clustering of the same shape, to compare the MGE clusters with: stored as the round "
+    "mge_random, which leaves the round mge as it was, and written to mges_binned_random.fa.",
+)
 @outdir_option(help="Path to the output directory where the output will be written. Default: current directory.")
 @force_option("Replace an existing --output-map.")
-@tmpdir_option(help="Path to temporary directory.")
-@no_clean_up_option(help="If enabled, intermediary files will be kept.")
+@tmpdir_option(
+    help="Path to temporary directory: where metacooler copies a compressed assembly, plain, while it reads it. mge "
+    "writes no temporary file of its own."
+)
+@no_clean_up_option(help="Keep the temporary directory of the run: mge leaves nothing in it.")
 @output_map_option(
-    help="Store the MGE clusters in a copy of MAP written to FILE (replaced only with -F), and leave MAP as it was. Only "
-    "with --map, whose map is updated in place by default.",
+    help="Store the MGE clusters in a copy of MAP written to FILE (replaced only with -F), and leave MAP as it was. By "
+    "default, the run updates MAP in place.",
 )
 def mge(
-    pairsfile,
+    map,  # the argument MAP
     assembly,
-    contigs,
-    binning,
     mges,
-    map,  # --map
     threshold_bin,
     random,
     outdir,
@@ -1664,88 +1653,53 @@ def mge(
 ):
     """Cluster MGE contigs.
 
-    Cluster the MGE contigs into MGE MAGs using pairs, host MAG sequence and
-    information.
+    Cluster the MGE contigs of a map into MGE MAGs, from the Hi-C contacts
+    between them: those that the map holds between two contigs, and those
+    within each contig between reads more than 1 kb apart, which the
+    contact statistics of the map count (its QC block, made from the pairs
+    at 1001 bp). The GC content and hits of each contig are those that
+    metator network stored in the map.
 
-    Command will return the updated MGE data and the MGE fasta.
+    Writes the MGE fasta, mges_binned.fa: one record per MGE MAG, its contigs
+    joined by 200 "N".
 
-    The MGE fasta will contain one entry by MGE MAG, with 200 "N" spacers
-    between contigs.
-
-    [cyan]metator mge ... --map MAP[/] also stores the MGE clusters in the
-    .metacool contact map of the run, MAP: as the round mge of its
-    clustering rounds (its /clusters group), with their contigs and the
-    columns of mges_cluster_summary.tsv, in place of an earlier round mge, after
-    the rounds of the clustering run, which are kept. Its genomes and contigs
-    tables, the final clusters, are left as they were. MAP is updated in
-    place (or written to --output-map), and locked while the run writes it.
-    The contacts of the MGE contigs still come from the pairs files: those
-    within a contig are counted only between reads more than 1 kb apart,
-    which a map does not tell.
+    The MGE clusters are stored in the map, MAP: as the round mge of its
+    clustering rounds (its /clusters group), with their contigs and their
+    length, GC content, hits and clustering score, in place of an earlier
+    round mge, after the other rounds, which are kept (--random stores the
+    round mge_random, and leaves the round mge as it was). Its genomes and
+    contigs tables are left as they were. MAP is updated in place (or
+    written to --output-map), and locked while the run writes it. A run
+    that replaces the clusters of the map (partition, validation, pipeline)
+    drops the rounds of mge, with a warning: run mge again then.
     """
     # Generate log
     log_file = log_file_name("", "mge")
     generate_log_header(log_file)
 
-    # The contacts within each MGE contig need the positions of the reads.
-    maps = [path for path in pairsfile if mtmc.is_map(path)]
-    if maps:
-        reason = (
-            f"{maps[0]} is a contact map, not a pairs file: metator mge counts the contacts within each MGE contig "
-            "between reads more than 1 kb apart, which a map does not tell. Give the pairs files of the run, and the "
-            "map to store the MGE clusters in with --map."
-        )
-        logger.error(reason)
-        raise mtmc.MetacoolError(reason)
-    if random and map is not None:
-        reason = "--random makes a random clustering, to compare the MGE clusters with: it is not stored in a map. Drop --map."
-        logger.error(reason)
-        raise mtmc.MetacoolError(reason)
-
     # Private temporary directory inside --tmpdir, and the lock of the map
     # the run writes, held until its end.
-    with private_tmp_dir(tmpdir, clean_up=not no_clean_up), ExitStack() as held:
+    with private_tmp_dir(tmpdir, clean_up=not no_clean_up) as tmp_dir, ExitStack() as held:
         # The map that the run stores its MGE clusters in, checked and
         # locked.
-        metacool_file, planned = step_map(
-            "mge",
-            map,
-            output_map,
-            force,
-            held,
-            contigs,
-            # The pairs files and their pypairix index too.
-            [assembly, binning, mges, *pairsfile, *(f"{path}.px2" for path in pairsfile)],
-            option="--map",
-            assembly=assembly,
-        )
+        name = mtcl.MGE_RANDOM if random else mtcl.MGE
+        metacool_file, planned = step_map("mge", map, output_map, force, held, inputs=[assembly, mges], rounds=[name])
 
-        # Defined the output directory and output file names.
-        outdir = outdir or "."
-        os.makedirs(outdir, exist_ok=True)
-
-        # Import the files
-        binning_result = mio.import_anvio_binning(binning)
+        # The MGE contigs, and their clusters from the contacts of the map:
+        # what the map cannot give is refused before anything is written.
         mges_list = mio.import_mges_contigs(mges)
-        contigs_data, mges_list_id = mio.import_contig_data_mges(contigs, binning_result, mges_list)
-
-        # Run the mges binning
-        mtm.mge_binning(
-            fasta_mges_contigs=assembly,
-            contigs_data=contigs_data,
-            mges_list_id=mges_list_id,
-            out_dir=outdir,
-            pairs_files=list(pairsfile),
-            threshold_bin=threshold_bin,
-            random=random,
-        )
+        try:
+            summary, mge_bins = mtm.mge_binning(map, mges_list, threshold_bin=threshold_bin, random=random)
+            # Defined the output directory, and one record per MGE cluster.
+            outdir = outdir or "."
+            os.makedirs(outdir, exist_ok=True)
+            fasta = join(outdir, "mges_binned_random.fa" if random else "mges_binned.fa")
+            mtm.write_mges_fasta(map, assembly, mge_bins, fasta, temp_dir=tmp_dir)
+        except mtmc.MetacoolError as error:
+            logger.error(str(error))
+            raise
 
         # The MGE clusters, stored in the map.
-        if metacool_file is not None:
-            mge_metacool(map, metacool_file, join(outdir, "mges_cluster_summary.tsv"), planned)
-
-    if not no_clean_up:
-        # Delete pyfastx index:
-        mio.remove_pyfastx_index(assembly)
+        mge_metacool(map, metacool_file, summary, name, planned)
 
     generate_log_footer(log_file)
