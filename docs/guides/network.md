@@ -51,12 +51,15 @@ the contigs of the map, by their position in it (the `ID` column of
 `contig_data_final.txt`, from 1): a run that regroups the map
 (`validation`, `pipeline`) moves them, so join a table to the network of
 another map by contig name, not by ID. `metator network` writes no table of
-it; metacooler exports it, by contig names, once the contacts within each
-contig, which metacooler writes too and are no edge, are dropped (see
-[The network](../formats.md#the-network)):
+it. `metator dump` writes it from the map of the clusters of a run, as
+`network.txt`; metacooler exports it from any map that holds it, by contig
+names, once the contacts within each contig, which metacooler writes too and
+are no edge, are dropped (see [The network](../formats.md#the-network)):
 
 ```bash
-# The normalised network: node1, node2, value (the raw counts without --balance)
+# From the map of the clusters of a run: network.txt, among its tables
+metator dump sample.metacool -o tables
+# From any map that holds it: node1, node2, value (the raw counts without --balance)
 metacooler network sample.metacool --level contig --balance metator_empirical_hit --header \
     | awk -F '\t' '$1 != $2 && $3 != 0' > network.tsv
 ```

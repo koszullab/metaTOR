@@ -144,6 +144,11 @@ The output files will be in the ouput directory given as parmater or in working 
 | **final_clusters** |**Directory with the fasta of the final clusters**|||**X**|**X**|
 | The input map |The network of the contigs (`network`); its partition, the core and overlapping clusters (`partition`); the contact map of the contigs, grouped by cluster (`validation`, `pipeline`): updated in place, or written to `--output-map` (see [Starting from a contact map](#starting-from-a-contact-map))|X|X|X|X|
 
+**The tables of a run**
+`metator dump MAP -o DIR` writes them from the map of the clusters, which `validation` or `pipeline` wrote:
+`contig_data_final.txt` (without its `ID` column), `cluster_summary.txt`, `binning.txt`, `clusters.txt`,
+`cluster_members.txt` (every clustering round, `mge` included) and `network.txt`. The map is read only.
+
 **The partition**
 `metator partition` stores every core and overlapping cluster in the map, with their contigs, as its
 clustering rounds `core` and `overlapping`: no table and no FASTA file. `validation` reads them there, and
@@ -153,11 +158,11 @@ the contig data of the partition, in its temporary directory (`-N` keeps them).
 **The network**
 `metator network` stores the network in the map: what it measured on each contig, in the contigs table
 of the map, and the weights of its normalization, in its bins table. `partition` and `validation` read
-it there. metacooler writes it out, one line per pair of contigs in contact, by their names, with
-the normalised weight of their edge (columns `node1`, `node2` and `value`), once the contacts within
-each contig, which it writes too and are no edge, are dropped:
+it there. `metator dump` writes it from the map of the clusters as `network.txt`: one line per pair
+of contigs in contact, by their names, with the weight of their edge. metacooler writes it from any map
+that holds it (columns `node1`, `node2` and `value`), once the contacts within each contig, which it
+writes too and are no edge, are dropped:
 `metacooler network MAP --level contig --balance metator_empirical_hit --header | awk -F '\t' '$1 != $2 && $3 != 0'`.
-`metator dump` will write `network.txt`.
 
 **Contig data files**
 These are the files with all the informations from the contigs:
@@ -169,6 +174,7 @@ These are the files with all the informations from the contigs:
 
 They have to have the header when they are use as input but the order of the columns nd if they are others columns doesn't matter when they are used as input files.
 Their rows are the contigs of the map, in its order, and the ID of a contig is its position in the map.
+`metator dump` writes `contig_data_final.txt` without the ID, in the order of the map of the clusters.
 Depending on which step of the pipeline have been launch they just have some of these columns:
 
 * `contig_data_final.txt`: All the columns: ID, Name, Size, GC content, Hit, Shotgun_coverage and

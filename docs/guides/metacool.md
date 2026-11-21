@@ -86,6 +86,9 @@ clr.matrix(balance="metator_empirical_hit")[:]  # the contacts, normalized as th
 ```bash
 metacooler info sample.metacool
 metacooler dump -t genomes -H sample.metacool
+# The tables of the run (contig_data_final.txt, cluster_summary.txt,
+# binning.txt, clusters.txt, cluster_members.txt and network.txt)
+metator dump sample.metacool -o tables
 # The network of the contigs, normalized as metaTOR's (without the contacts
 # within each contig, which metacooler writes too and are no edge)
 metacooler network sample.metacool --level contig --balance metator_empirical_hit --header \

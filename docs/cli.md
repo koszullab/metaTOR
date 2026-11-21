@@ -100,15 +100,12 @@ an earlier network; and its command line, under the `network` entry of the
 its partition too: when the run stores another network than the one the
 partition was made on, it says so with a warning, and `metator validation
 MAP` refuses the partition until `metator partition MAP` partitions the new
-network. The map is updated in place, or written to `--output-map`. It writes
-no table: `network.txt` and
-`contig_data_network.txt` are gone. To export the network, by contig names,
-run `metacooler network MAP --level contig --balance metator_<normalization>
---header`, piped to `awk -F '\t' '$1 != $2 && $3 != 0'`, which drops the
-contacts within each contig that metacooler writes too (columns `node1`,
-`node2` and `value`; the raw counts without `--balance`): see
-[The network](formats.md#the-network). `metator dump` will write
-`network.txt`.
+network ([`metator dump MAP`](#dump) refuses the map too). The map is updated
+in place, or written to `--output-map`. It writes no table: `network.txt` and
+`contig_data_network.txt` are gone. [`metator dump`](#dump) writes the
+network, `network.txt`, from the map of the clusters of a run; metacooler
+writes it from any map that holds it (see
+[The network](formats.md#the-network)).
 
 | Option | Default | Description |
 |---|---|---|
@@ -177,9 +174,9 @@ clusters, their summary and every clustering round in the map; the tables
 of the validation (`cluster_summary.txt`, `contig_data_final.txt`,
 `binning.txt`, `clusters.txt`, `cluster_members.txt`, miComplete's results)
 and `recursive_clusters/` stay in its temporary directory, which `-N`
-keeps, and `metator dump` (coming in metaTOR 2.0) writes the tables from the
-map. An earlier version wrote them in the output directory: there, they are
-refused without `-F`, which removes them. **Guide:**
+keeps, and [`metator dump`](#dump) writes the tables from the map. An
+earlier version wrote them in the output directory: there, they are refused
+without `-F`, which removes them. **Guide:**
 [Partition and validation](guides/binning.md#validation).
 
 ```console
@@ -230,6 +227,54 @@ metator validation sample.metacool -a assembly.fa -t 16 -o binning
 
 ## After the clustering
 
+### `dump` { #dump }
+
+Write the tables of a run from the map of its clusters: those that metaTOR
+1.x wrote at the end of a run, which a run of 2.0 keeps in its temporary
+directory only (with `-N`). **API:** `metator.dump.dump`.
+
+```console
+metator dump [OPTIONS] MAP
+```
+
+The map is the one that `metator validation MAP` or `metator pipeline MAP`
+wrote, which holds every result of the run: the network that `metator network`
+stored, the partition that `metator partition` stored, and the clustering
+rounds, the final clusters and their summary that the validation stored. It
+is read only, without a lock, and the tables are of one state of it: a map
+that another run replaces or writes while it is read is refused, and no
+table is written. A map without the clusters of a validation (the
+`validation` entry of the `metator` key of its metadata, and the clustering
+round `final`) is refused, and so is one without the network or the partition
+of its run, each with the step to run. The output directory is made if it is
+not there; one that holds a table of an earlier dump is refused, without
+`-F`, which replaces them (a symbolic link there is replaced, not its target).
+
+| Table | What it holds |
+|---|---|
+| `contig_data_final.txt` | One row per contig of the map, in its order: `Name`, `Size`, `GC_content`, `Hit`, `Shotgun_coverage`, `Restriction_site`, then the ID, number of contigs and size of its core, overlapping and recursive clusters, then `Final_cluster` (see [The contig data tables](formats.md#the-contig-data-tables)). No `ID` column: the ID of a contig was its position in the map that the run read. |
+| `cluster_summary.txt` | The summary of the final clusters, one row per cluster, with the columns that the validation recorded (`summary_columns`), in its order: the genomes table of the map. |
+| `binning.txt` | Each contig of a final cluster and its cluster, without a header: the binning that anvi'o imports. |
+| `clusters.txt`, `cluster_members.txt` | Every clustering round of the map (`core`, `overlapping`, `recursive_<k>`, `final`, and `mge` or `mge_random` of `metator mge`), every cluster with its parent and the columns its round stored, and the contigs of each cluster. |
+| `network.txt` | The network of the contigs, without a header: `contig1`, `contig2` (their names) and the weight of their edge, the normalization that `metator network` stored (the count of their contacts for `None`); one row per pair of contigs in contact, in the order of the map, without the contacts within a contig (see [The network](formats.md#the-network)). |
+
+The values are those of the tables that the run kept in its temporary
+directory: `cluster_summary.txt` and `clusters.txt` are the same files. The
+rows of `contig_data_final.txt`, `binning.txt` and `cluster_members.txt` come
+in the order of the map, which a validation regroups by cluster: the run's
+tables followed the map as it read it.
+
+| Option | Default | Description |
+|---|---|---|
+| `MAP` | *required* | The map of the clusters of a run, which `metator validation` or `metator pipeline` wrote, or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`). Read only. |
+| `-o, --outdir` | the current directory | The output directory of the tables, made if it is not there. |
+| `-F, --force` | off | Replace the tables of an earlier dump that the output directory holds. |
+
+```bash
+# The tables of a run, from the map of its clusters
+metator dump sample.metacool -o binning
+```
+
 ### `mge` { #mge }
 
 Cluster the contigs of mobile genetic elements from the contacts between them.
@@ -256,7 +301,7 @@ replaces the clusters of the map drops the round `mge`, with a warning.
 | Option | Default | Description |
 |---|---|---|
 | `-a, --assembly` | *required* | The assembly, as a FASTA file. |
-| `-c, --contigs` | *required* | The contig data table of the run. |
+| `-c, --contigs` | *required* | The contig data table of the run: `contig_data_final.txt`, which `metator dump` writes. |
 | `-b, --binning` | *required* | The clusters of the contigs: `binning.txt`, or a collection exported by anvi'o. |
 | `-m, --mges` | *required* | The MGE contigs, one name per line. |
 | `--map` | none | A `.metacool` contact map of the run, or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`), that the run stores its MGE clusters in. |
@@ -269,6 +314,9 @@ replaces the clusters of the map drops the round `mge`, with a warning.
 | `--output-map` | none | With `--map`: write the map with the MGE clusters to this file (replaced only with `-F`), and leave `MAP` as it was. |
 
 ```bash
+# The tables of the run, which mge reads
+metator dump hicstuff/sample.metacool -o binning
+
 # Index the pairs that hicstuff wrote with the map (once): mge needs the index
 # of a compressed pairs file
 python -c 'import pypairix; pypairix.build_index("hicstuff/sample.valid_idx.pairs.gz", "pairs")'
