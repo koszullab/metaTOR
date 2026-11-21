@@ -3,8 +3,8 @@
 
 """metaTOR command line interface.
 
-One function per command: network, partition, validation, pipeline and
-mge. The ``metator`` entry point is :func:`cli`.
+One function per command: network, partition, validation, pipeline, mge
+and dump. The ``metator`` entry point is :func:`cli`.
 """
 
 import logging
@@ -21,6 +21,7 @@ from os.path import exists, join
 import rich_click as click
 
 import metator.clusters as mtcl
+import metator.dump as mtd
 import metator.io as mio
 import metator.log as mtl
 import metator.metacool as mtmc
@@ -1028,7 +1029,7 @@ def no_clean_up_option(help="Do not remove temporary files."):
 @click.group("metator", context_settings={"help_option_names": ["-h", "--help"]})
 @click.rich_config(help_config=click.RichHelpConfiguration(text_markup="rich", show_arguments=True, max_width=100))
 @click.command_panel("Clustering", commands=["network", "partition", "validation", "pipeline"])
-@click.command_panel("Other commands", commands=["mge"])
+@click.command_panel("Other commands", commands=["mge", "dump"])
 @click.version_option(__version__, "-v", "--version", prog_name="metator", message="%(version)s")
 def cli():
     """MetaHiC pipeline for generating and manipulating MAGs.
@@ -1706,5 +1707,64 @@ def mge(
     if not no_clean_up:
         # Delete pyfastx index:
         mio.remove_pyfastx_index(assembly)
+
+    generate_log_footer(log_file)
+
+
+# ---------------------------------------------------------------------------
+# dump
+# ---------------------------------------------------------------------------
+
+
+@cli.command(short_help="Write the tables of a run from the map of its clusters.")
+@map_argument(
+    required=True,
+    help="The map of the clusters of a run, which metator validation or metator pipeline wrote: a .metacool file, or "
+    "an entry of a .mmetacool collection (file.mmetacool::entries/NAME). It is read only.",
+)
+@outdir_option(help="The output directory of the tables, made if it is not there. Default: current directory.")
+@force_option("Replace the tables of an earlier dump that the output directory holds.")
+def dump(
+    map,  # the argument MAP
+    outdir,
+    force,
+):
+    """Write the tables of a run from the map of its clusters.
+
+    [cyan]metator dump MAP -o DIR[/] writes, from the map that a run wrote
+    ([cyan]metator validation MAP[/], or [cyan]metator pipeline MAP[/]), the
+    tables that metaTOR 1.x wrote at the end of a run, which a run of 2.0
+    keeps in its temporary directory only (with -N):
+
+    - contig_data_final.txt: one row per contig of the map, in its order,
+      with its contig data, its core, overlapping and recursive clusters, and
+      its final cluster (no ID column);
+    - cluster_summary.txt: the summary of the final clusters;
+    - binning.txt: each contig of a final cluster, and its cluster;
+    - clusters.txt and cluster_members.txt: every clustering round of the
+      map, the MGE clusters of metator mge included, and their contigs;
+    - network.txt: the network of the contigs, by contig name, weighed with
+      the normalization that metator network stored.
+
+    The map is read only, and the tables are of one state of it: a map that
+    another run replaces as it is read is refused. A map without the
+    clusters of a validation (the validation entry of its metator metadata,
+    and the clustering round final) is refused, and so is an output
+    directory that holds tables of an earlier dump, without -F.
+    """
+    outdir = outdir or "."
+    os.makedirs(outdir, exist_ok=True)
+
+    # Enable file logging
+    log_file = log_file_name(outdir, "dump")
+    generate_log_header(log_file)
+
+    # The map, checked before anything is read.
+    run_input(map)
+    try:
+        mtd.dump(map, outdir, force)
+    except mtmc.MetacoolError as error:
+        logger.error(str(error))
+        raise
 
     generate_log_footer(log_file)

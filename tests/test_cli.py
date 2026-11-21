@@ -41,7 +41,8 @@ mtmc_write_map = mtmc.write_map
 # that partition and validation update is their first argument too; the
 # commands qc, contactmap, metacool, scaffold and pairs are gone, and so are
 # the --scaffold and --junctions options of pipeline, --self-contacts of
-# network and --cluster-matrix of partition, validation and pipeline.
+# network and --cluster-matrix of partition, validation and pipeline. 2.0
+# adds dump, which writes the tables of a run from its map.
 INVENTORY = json.loads((TESTS_DATA / "cli_inventory.json").read_text())["metator"]
 
 # Options whose value is one of a list, wherever they appear.
