@@ -62,7 +62,8 @@ def contig_contacts(metacool, chunksize=METACOOL_CHUNKSIZE):
     """Contacts of a .metacool contact map summed by pair of contigs.
 
     metacooler sums the pixels of the map between the bins of each two
-    contigs (metacooler.network at the contig level), whatever the bin size
+    contigs (metacooler.network at the contig level, by contig id: the row
+    of each contig in the contigs table of the map), whatever the bin size
     of the map, at most chunksize pixels read at a time: the memory used
     grows with the number of contig pairs in contact, not with the pixels.
     The contacts of two contigs are those of the pairs that the map was made
@@ -116,26 +117,17 @@ def contig_contacts(metacool, chunksize=METACOOL_CHUNKSIZE):
                 f"{metacool} holds contact counts of type {count_dtype}: a network is built from counts of pairs, "
                 "which are integers."
             )
-        names = pd.Index(mc.contigs["name"].astype(str))
-        # Without out, metacooler returns the edges rather than write them.
-        edges = cast(pd.DataFrame, metacooler.network(metacool, level="contig", out=None, chunksize=chunksize))
+        # Without out, metacooler returns the edges rather than write them,
+        # and with ids, each contig as its row in /contigs: its position in
+        # the map, from 0, which no name is read for.
+        edges = cast(pd.DataFrame, metacooler.network(metacool, level="contig", out=None, chunksize=chunksize, ids=True))
     return pd.DataFrame(
         {
-            "id1": _contig_positions(names, edges["node1"]),
-            "id2": _contig_positions(names, edges["node2"]),
-            "count": edges["value"].to_numpy().astype(np.int64),
+            "id1": edges["node1"].to_numpy(dtype=np.int64),
+            "id2": edges["node2"].to_numpy(dtype=np.int64),
+            "count": edges["value"].to_numpy(dtype=np.int64),
         }
     )
-
-
-def _contig_positions(names, nodes):
-    """The positions in the map, from 0, of the contigs that metacooler's
-    network names (nodes): metacooler gives the contigs of its edges by
-    name, and names (the names of the contigs of the map, in its order)
-    turns them back into positions. It is the one place to change once
-    metacooler can give the positions itself: on a large map, naming the
-    contigs and looking the names up again cost more than the sums."""
-    return names.get_indexer(nodes.astype(str)).astype(np.int64)
 
 
 def contig_hits(contacts, n_contigs):
