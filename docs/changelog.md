@@ -27,7 +27,7 @@ All notable changes to this project will be documented in this file.
   `map_contig_table` and `stored_weights` of `metator.network` read through
   a map already opened (`mc`); `metator.metacool.MapReplacedError`.
 - metaTOR reads back the numbers of the tables it wrote exactly (pandas'
-  `round_trip` parser): the clustering rounds, the summary of `metator mge`,
+  `round_trip` parser, under pandas 2; pandas 3 reads them exactly by default): the clustering rounds, the summary of `metator mge`,
   miComplete's results and the contig data of the partition. pandas 2's
   default parser could read the last digit of one off, and the map would
   store another number than the run's tables.
