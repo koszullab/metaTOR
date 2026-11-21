@@ -71,7 +71,7 @@ metator pipeline [OPTIONS]
 | `--no-metacool` | off | Do not keep the contact map of the contigs, grouped by bin, `metator.metacool` (`<prefix>.metacool` with `--prefix`): a run from reads, alignments or pairs still builds the map of its contigs from the pairs files (a map that cannot be built stops the run), reads its networks from it, and removes it at the end, with the maps of its libraries (`<prefix>.mmetacool`) when it has several. |
 
 The validation is the step that needs the most memory: miComplete runs
-prodigal and hmmer on every bin.
+Prodigal and HMMER (pyrodigal and pyhmmer) on every bin.
 
 ```bash
 # Reads to bins, with the recommended aligner

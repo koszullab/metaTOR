@@ -46,6 +46,10 @@ dependencies = [
     "matplotlib>=3.9",
     "scipy",
     "micomplete",
+    # Prodigal and HMMER for miComplete, in place of the programs (see
+    # metator._micomplete).
+    "pyrodigal>=3.0",
+    "pyhmmer>=0.10.11",
     "pypairix",
     "rich-click>=1.9",
     "metacooler>=0.3.0",
@@ -54,8 +58,6 @@ dependencies = [
     #"bowtie2"
     #"bwa"
     #"samtools"
-    #"prodigal"
-    #"hmmer"
 ]
 
 [project.optional-dependencies]
