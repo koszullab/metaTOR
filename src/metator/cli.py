@@ -1095,8 +1095,10 @@ def cli():
 @network_options("-n")
 @outdir_option(help="The output directory, of the log of the run. Default: current directory.")
 @force_option("Replace an existing --output-map.")
-@tmpdir_option()
-@no_clean_up_option()
+@tmpdir_option(
+    help="Temporary directory, where the run writes, in a directory of its own, the contig data that it stores in the map (contig_data_network.txt)."
+)
+@no_clean_up_option(help="Keep the temporary directory of the run, which the log names, and its contig_data_network.txt.")
 @output_map_option(
     help="Store the network in a copy of MAP written to FILE (replaced only with -F), and leave MAP as it was. By "
     "default, the run updates MAP in place.",
@@ -1116,8 +1118,8 @@ def network(
     """Build the metaHiC network of the contigs, and store it in the map.
 
     [cyan]metator network MAP -a ASSEMBLY[/] builds the network from a
-    .metacool contact map of the contigs, whose libraries are summed (see
-    the README): that of the pairs it was made of. hicstuff
+    .metacool contact map of the contigs (metacooler merge sums the maps of
+    several libraries): that of the pairs it was made of. hicstuff
     ([cyan]hicstuff pipeline -M metacool[/]) or metacooler
     ([cyan]metacooler create pairs[/]) makes the map from the reads or the
     pairs.
@@ -1139,8 +1141,8 @@ def network(
     network too, with a warning, as [cyan]metator validation MAP[/] refuses
     it until [cyan]metator partition MAP[/] partitions the new network. The
     map is updated in place (or written to --output-map), and locked while
-    the run writes it. [cyan]metacooler network MAP --level contig --balance
-    metator_<normalization>[/] writes the network.
+    the run writes it. [cyan]metator dump[/] writes the network, as
+    network.txt, from the map of the clusters of a run.
     """
     # Private temporary directory inside --tmpdir, and the lock of the map
     # the run writes, held until its end.
@@ -1209,9 +1211,9 @@ def network(
 @outdir_option(default="./", help="The output directory, of the log of the run.")
 @prefix_option("the overlapping clusters")
 @force_option("Replace an existing --output-map.")
-@tmpdir_option()
+@tmpdir_option(help="Temporary directory: partition writes no temporary file in it.")
 @threads_option(help="Number of parallel threads allocated for the partition.")
-@no_clean_up_option()
+@no_clean_up_option(help="Keep the temporary directory of the run: partition leaves nothing in it.")
 @output_map_option(
     help="Store the partition of the run in a copy of MAP written to FILE (replaced only with -F), and leave MAP as it "
     "was. By default, the run updates MAP in place.",

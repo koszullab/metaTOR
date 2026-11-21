@@ -115,8 +115,8 @@ writes it from any map that holds it (see
 | `-n, --normalization` | `empirical_hit` | As `--normalization` (`-m`) in `pipeline`. |
 | `-o, --outdir` | the current directory | The output directory, of the log of the run. |
 | `-F, --force` | off | Replace an existing `--output-map` file. |
-| `-T, --tmpdir` | `./tmp` | The temporary directory. |
-| `-N, --no-clean-up` | off | Keep the temporary files: the contig data that the run stores in the map, `contig_data_network.txt`. |
+| `-T, --tmpdir` | `./tmp` | The temporary directory, where the run writes, in a directory of its own, the contig data that it stores in the map (`contig_data_network.txt`). |
+| `-N, --no-clean-up` | off | Keep the temporary directory of the run, which the log names, and its `contig_data_network.txt`. |
 | `--output-map` | none | Store the network in a copy of `MAP` written to this file (replaced only with `-F`), and leave `MAP` as it was. By default, the run updates `MAP` in place. |
 
 ```bash
@@ -156,9 +156,9 @@ among it (`network_digest`): the map is updated in place, or written to
 | `-o, --outdir` | `./` | The output directory, of the log of the run. |
 | `-p, --prefix` | none | Name the overlapping clusters `<prefix>_metator_…`. |
 | `-F, --force` | off | Replace an existing `--output-map` file. |
-| `-T, --tmpdir` | `./tmp` | The temporary directory. |
+| `-T, --tmpdir` | `./tmp` | The temporary directory: `partition` writes no temporary file in it. |
 | `-t, --threads` | `1` | Threads for the partition. |
-| `-N, --no-clean-up` | off | Keep the temporary files. |
+| `-N, --no-clean-up` | off | Keep the temporary directory of the run: `partition` leaves nothing in it. |
 | `--output-map` | none | Write the map with the partition to this file (replaced only with `-F`), and leave `MAP` as it was. By default, the run updates `MAP` in place. |
 
 ```bash
@@ -280,8 +280,8 @@ that fails leaves the output directory as it was.
 
 The values are those of the tables that the run kept in its temporary
 directory: `cluster_summary.txt` is the same file, and so is `clusters.txt`,
-but for the rounds that a later command stored in the map (`metator mge
---map`), which it lists after those of the run, with `cluster_members.txt`.
+but for the rounds that a later command stored in the map (`metator mge`),
+which it lists after those of the run, with `cluster_members.txt`.
 The rows of `contig_data_final.txt`, `binning.txt` and `cluster_members.txt`
 come in the order of the map, which a validation regroups by cluster: the
 run's tables followed the map as it read it.
