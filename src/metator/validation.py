@@ -243,8 +243,8 @@ def merge_micomplete(out_bact105, out_arch131, outfile):
         Final merged output.
     """
     # Reads both files.
-    bact105 = pd.read_csv(out_bact105, sep="\t", comment="#", index_col=0).loc[:, :"CDs"]
-    arch131 = pd.read_csv(out_arch131, sep="\t", comment="#", index_col=0).loc[:, :"CDs"]
+    bact105 = pd.read_csv(out_bact105, sep="\t", comment="#", index_col=0, float_precision=mtc.ROUND_TRIP).loc[:, :"CDs"]
+    arch131 = pd.read_csv(out_arch131, sep="\t", comment="#", index_col=0, float_precision=mtc.ROUND_TRIP).loc[:, :"CDs"]
 
     # Write header
     with open(outfile, "w") as out:
@@ -297,6 +297,7 @@ def micomplete_compare_bins(
         sep="\t",
         comment="#",
         index_col=0,
+        float_precision=mtc.ROUND_TRIP,
     ).iloc[:, :13]
 
     # Group the recursive bins by parent bin, keeping the best completeness of
@@ -824,6 +825,8 @@ def recursive_decontamination(
         # as pandas writes a missing value, is one.
         keep_default_na=False,
         na_values=[""],
+        # The numbers as the map gives them (see metator.clusters.ROUND_TRIP).
+        float_precision=mtc.ROUND_TRIP,
     )
     contigs_data["index"] = contigs_data["ID"] - 1
     contigs_data = contigs_data.set_index("index")

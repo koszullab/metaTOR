@@ -6,9 +6,9 @@
 A run of metaTOR (``metator pipeline``, or ``network``, ``partition`` and
 ``validation`` one by one) keeps everything it finds in its map (see
 metator.metacool): the network of the contigs, every clustering round and the
-summary of the final clusters. It writes the tables of 1.x in its temporary
-directory only, which ``-N`` keeps. ``metator dump MAP -o DIR`` writes them
-from the map, read only:
+summary of the final clusters. It writes the tables of its validation in its
+temporary directory only, which ``-N`` keeps. ``metator dump MAP -o DIR``
+writes them from the map, read only:
 
 - ``contig_data_final.txt``: one row per contig of the map, in its order:
   ``Name``, ``Size``, ``GC_content``, ``Hit``, ``Shotgun_coverage``,
@@ -27,9 +27,17 @@ from the map, read only:
   map, as the validation writes them (see metator.clusters).
 - ``network.txt``: the network of the contigs, as metator network stored it
   (see :func:`network_table`).
+
+The map must be the map of the clusters as the run wrote it (see
+:func:`check_dumpable`), and the tables are of one state of it: every table
+is read through one opened map, and a map replaced while it is read is
+refused. The tables are written under temporary names, then renamed onto
+their own all at once: a dump that fails leaves the output directory as it
+was.
 """
 
 import os
+import uuid
 from os.path import join
 
 import numpy as np
@@ -62,24 +70,34 @@ ABUNDANCE_COLUMNS = ("HiC_abundance", "SG_abundance")
 #: __unbinned__.
 STEP_COLUMN = "step"
 
-#: The columns of the clustering rounds that metacooler computes from their
-#: members (see metacooler.MetaCooler.clusters), which no run writes.
-COMPUTED_CLUSTER_COLUMNS = ("n_contigs", "length", "genome")
-
 #: The columns that a recursive step of the validation sets.
 RECURSIVE_COLUMNS = ("Recursive_cluster_ID", "Recursive_cluster_contigs", "Recursive_cluster_size")
 
 
 def check_dumpable(metacool, mc):
-    """Refuse a map that holds no run to dump: one without the validation
-    entry of its metator metadata, or without the clustering round final,
-    which metator validation and pipeline write. The error names what is
-    missing, and the step that writes it.
+    """Refuse a map that holds no run to dump, or whose clusters were edited
+    since the run wrote them.
+
+    A map without the validation entry of its metator metadata, or without
+    the clustering round final, which metator validation and pipeline write,
+    holds no run: the error names what is missing, and the step that writes
+    it. A map whose genomes are no longer the final clusters of its run (a
+    metacooler reassign of the map, a curation by hand) is refused too: the
+    summary of the clusters (its genomes table) and the clustering rounds
+    describe the clusters of the run, and the tables would contradict each
+    other. That is so when a final cluster is not exactly a genome of the map
+    (its contigs; metacooler computes the genome of each cluster, missing for
+    none), or when a genome is no final cluster (but __unbinned__).
+
+    Returns
+    -------
+    dict
+        The validation entry of the metator metadata of the map.
 
     Raises
     ------
     metator.metacool.MetacoolError
-        If the map lacks either.
+        If the map lacks either, or its clusters were edited.
     """
     missing = []
     metator = mc.metadata.get("metator")
@@ -92,6 +110,29 @@ def check_dumpable(metacool, mc):
         raise mtmc.MetacoolError(
             f"{metacool} holds no clusters of a validation to dump: it lacks {' and '.join(missing)}. Run metator "
             "validation (or metator pipeline) on it first, which writes the map of the clusters."
+        )
+    from metacooler.schema import CLUSTER_GENOME_COLUMN
+
+    clusters = mc.clusters
+    final = clusters.loc[(clusters["round"] == mtcl.FINAL).to_numpy(), ["name", CLUSTER_GENOME_COLUMN]]
+    edited = [
+        str(name)
+        for name, genome in zip(final["name"], final[CLUSTER_GENOME_COLUMN], strict=True)
+        if pd.isna(genome) or str(genome) != str(name)
+    ]
+    final_names = set(final["name"].astype(str))
+    extra = [name for name in mc.genomes["name"].astype(str) if name != UNBINNED_GENOME and name not in final_names]
+    if edited or extra:
+        changed = []
+        if edited:
+            changed.append(f"final cluster(s) whose contigs are no longer a genome of the map: {mtmc._shown(edited)}")
+        if extra:
+            changed.append(f"genome(s) that are no final cluster: {mtmc._shown(extra)}")
+        raise mtmc.MetacoolError(
+            f"The clusters of {metacool} were edited after the run that wrote it (by metacooler reassign, for example): "
+            f"{'; and '.join(changed)}. Its summary of the clusters and its clustering rounds no longer describe "
+            "them, and its tables would contradict each other. Run metator validation on the map again, or write "
+            "the edited assignment with metacooler dump (metacooler dump -t contigs MAP)."
         )
     return validation
 
@@ -216,7 +257,8 @@ def cluster_summary(metacool, mc, validation):
     final = mc.clusters
     ordered = [str(name) for name in final.loc[(final["round"] == mtcl.FINAL).to_numpy(), "name"]]
     clusters = [name for name in ordered if name in genomes.index]
-    clusters += [name for name in genomes.index if name != UNBINNED_GENOME and name not in set(clusters)]
+    listed = set(clusters)
+    clusters += [name for name in genomes.index if name != UNBINNED_GENOME and name not in listed]
     summary = genomes.loc[clusters, columns].copy()
     if STEP_COLUMN in summary.columns and pd.api.types.is_numeric_dtype(summary[STEP_COLUMN]):
         summary[STEP_COLUMN] = summary[STEP_COLUMN].round().astype("Int64")
@@ -225,29 +267,6 @@ def cluster_summary(metacool, mc, validation):
             summary[column] = summary[column].map(lambda value: "" if pd.isna(value) else "%.4f" % value)
     summary.index.name = None
     return summary
-
-
-def round_tables(mc):
-    """The two tables of the clustering rounds of the map (clusters.txt and
-    cluster_members.txt), as metator.clusters.Rounds writes them: every
-    cluster of every round, in the order of the rounds and of their clusters,
-    with its parent and the columns its round stored (not those that
-    metacooler computes), and every contig of a cluster, in the order of the
-    map. A missing value is NA, as the validation writes it: the empty text
-    that the map stores where a text column has none, too.
-
-    Returns
-    -------
-    tuple of pandas.DataFrame
-        The clusters and their contigs.
-    """
-    clusters = mc.clusters.drop(columns=list(COMPUTED_CLUSTER_COLUMNS), errors="ignore").reset_index(drop=True)
-    for column in clusters.columns:
-        if not pd.api.types.is_numeric_dtype(clusters[column]):
-            values = clusters[column].astype(object)
-            clusters[column] = values.where(values.notna() & (values.astype(str) != ""), None)
-    members = mc.cluster_members().reset_index(drop=True)
-    return clusters, members[["round", "cluster", "contig"]]
 
 
 def network_table(table, network):
@@ -283,11 +302,19 @@ def existing_tables(outdir):
     return [name for name in TABLES if os.path.lexists(join(outdir, name))]
 
 
+#: What to do about a map replaced while metator dump reads it.
+DUMP_AGAIN = "No table was written: run metator dump again once the run that writes the map has ended."
+
+
 def dump(metacool, outdir, force=False):
     """Write the tables of the run that wrote the map metacool (see the module's
     docstring) in outdir, made if it is not there. The map is read only:
-    every table comes from one state of the map, which is refused if it was
-    replaced or written while it was read.
+    every table comes from one state of the map, read through one opened
+    map, which is refused if it was replaced or written while it was read.
+
+    The tables are written under temporary names in outdir, then renamed onto
+    their own: the tables of an earlier dump are replaced all at once, or
+    not at all.
 
     Parameters
     ----------
@@ -307,45 +334,83 @@ def dump(metacool, outdir, force=False):
     Raises
     ------
     metator.metacool.MetacoolError
-        If outdir holds one of the tables already (without force), or the map
-        cannot be read, holds no clusters of a validation (see
+        If outdir holds one of the tables already (without force), or a
+        directory in the place of one, the map cannot be read, holds no
+        clusters of a validation or clusters edited since (see
         check_dumpable), no network, partition or summary that metaTOR
-        stored, or changed while it was read.
+        stored, or was replaced while it was read, or a table cannot be
+        written.
     """
+    blocked = [name for name in TABLES if os.path.isdir(join(outdir, name)) and not os.path.islink(join(outdir, name))]
+    if blocked:
+        raise mtmc.MetacoolError(
+            f"{outdir} holds a directory where metator dump writes {', '.join(blocked)}: remove it, or give another "
+            "output directory."
+        )
     existing = existing_tables(outdir)
     if existing and not force:
         raise mtmc.MetacoolError(
             f"{outdir} holds the table(s) of an earlier dump: {', '.join(existing)}. Give -F to replace them, or "
             "another output directory."
         )
-    with mtmc._metacooler_logging(), mtmc.read_errors(metacool):
-        mc = mtmc.open_map(metacool)
-        validation = check_dumpable(metacool, mc)
-    # The network, read once: the contig data of the contigs of the map, and
-    # the network weighed with the stored normalization (whose Hit column must
-    # be that of its contacts).
-    stored = mtn.stored_network(metacool)
-    with mtmc._metacooler_logging(), mtmc.read_errors(metacool):
-        data = contig_data_final(metacool, mc, stored.table)
-        summary = cluster_summary(metacool, mc, validation)
-        clusters, members = round_tables(mc)
-        # Every table is of the map as it was opened: a read through mc checks
-        # its file.
-        with mc.open():
-            pass
-    os.makedirs(outdir, exist_ok=True)
-    paths = [join(outdir, name) for name in TABLES]
-    contig_file, summary_file, binning_file, clusters_file, members_file, network_file = paths
-    for path in paths:
-        if os.path.islink(path):
-            os.remove(path)
-    data.to_csv(contig_file, sep="\t", index=False)
-    summary.to_csv(summary_file, sep="\t", float_format="%.2f")
-    binning(data).to_csv(binning_file, sep="\t", header=False, index=False)
-    mtcl.write_round_tables(clusters, members, clusters_file, members_file)
-    network_table(stored.table, stored.network).to_csv(network_file, sep="\t", header=False, index=False)
+    try:
+        with mtmc._metacooler_logging(), mtmc.read_errors(metacool, DUMP_AGAIN):
+            mc = mtmc.open_map(metacool)
+            validation = check_dumpable(metacool, mc)
+        # The network, read once, through mc: the contig data of the contigs of
+        # the map, and the network weighed with the stored normalization
+        # (whose Hit column must be that of its contacts).
+        stored = mtn.stored_network(metacool, mc)
+        with mtmc._metacooler_logging(), mtmc.read_errors(metacool, DUMP_AGAIN):
+            data = contig_data_final(metacool, mc, stored.table)
+            summary = cluster_summary(metacool, mc, validation)
+            clusters, members = mtmc.map_rounds(mc)
+    except mtmc.MapReplacedError as error:
+        # A replacement found by a read of stored_network, which names
+        # another remedy.
+        raise mtmc.MapReplacedError(
+            f"{metacool} was replaced or written while metator dump read it, by a run that updated it: what was "
+            f"read of it would mix two maps. {DUMP_AGAIN}"
+        ) from error
+    try:
+        os.makedirs(outdir, exist_ok=True)
+    except OSError as error:
+        raise mtmc.MetacoolError(f"The output directory {outdir} cannot be made: {error}.") from error
+    writers = {
+        CONTIG_DATA_FILE: lambda path: data.to_csv(path, sep="\t", index=False),
+        SUMMARY_FILE: lambda path: summary.to_csv(path, sep="\t", float_format="%.2f"),
+        BINNING_FILE: lambda path: binning(data).to_csv(path, sep="\t", header=False, index=False),
+        NETWORK_FILE: lambda path: network_table(stored.table, stored.network).to_csv(path, sep="\t", header=False, index=False),
+    }
+    _write_all(metacool, outdir, writers, (clusters, members))
     logger.info(
         f"The tables of {metacool} are written in {outdir}: {len(data)} contigs, {len(summary)} final clusters, "
         f"{clusters['round'].nunique()} clustering rounds and {len(stored.network)} edges of the network."
     )
-    return paths
+    return [join(outdir, name) for name in TABLES]
+
+
+def _write_all(metacool, outdir, writers, rounds):
+    """Write the tables of a dump in outdir (see dump): each under a
+    temporary name (.<table>.<random>.tmp), then each renamed onto its own,
+    once all are written, which replaces a table of an earlier dump, or a
+    symbolic link there, not its target. A table that cannot be written
+    removes the temporary files, and leaves the tables of outdir as they
+    were: MetacoolError, with the reason."""
+    token = uuid.uuid4().hex[:12]
+    temporary = {name: join(outdir, f".{name}.{token}.tmp") for name in TABLES}
+    clusters_file, members_file = temporary[mtcl.CLUSTERS_FILE], temporary[mtcl.CLUSTER_MEMBERS_FILE]
+    replaced = []
+    try:
+        for name, write in writers.items():
+            write(temporary[name])
+        mtcl.write_round_tables(*rounds, clusters_file, members_file)
+        for name in TABLES:
+            os.replace(temporary[name], join(outdir, name))
+            replaced.append(name)
+    except OSError as error:
+        for path in temporary.values():
+            if os.path.lexists(path):
+                os.remove(path)
+        written = f"; already replaced: {', '.join(replaced)}" if replaced else "; no table was replaced"
+        raise mtmc.MetacoolError(f"The tables of {metacool} cannot be written in {outdir}: {error}{written}.") from error

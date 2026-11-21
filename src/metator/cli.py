@@ -1960,8 +1960,8 @@ def dump(
 
     [cyan]metator dump MAP -o DIR[/] writes, from the map that a run wrote
     ([cyan]metator validation MAP[/], or [cyan]metator pipeline MAP[/]), the
-    tables that metaTOR 1.x wrote at the end of a run, which a run of 2.0
-    keeps in its temporary directory only (with -N):
+    tables of its validation, which a run keeps in its temporary directory
+    only (with -N), and its network:
 
     - contig_data_final.txt: one row per contig of the map, in its order,
       with its contig data, its core, overlapping and recursive clusters, and
@@ -1974,10 +1974,13 @@ def dump(
       the normalization that metator network stored.
 
     The map is read only, and the tables are of one state of it: a map that
-    another run replaces as it is read is refused. A map without the
-    clusters of a validation (the validation entry of its metator metadata,
-    and the clustering round final) is refused, and so is an output
-    directory that holds tables of an earlier dump, without -F.
+    another run replaces as it is read is refused (run the dump again). A
+    map without the clusters of a validation (the validation entry of its
+    metator metadata, and the clustering round final) is refused, and so is
+    one whose clusters were edited after the run (by metacooler reassign),
+    and an output directory that holds tables of an earlier dump, without
+    -F. The tables are replaced all at once: a dump that fails leaves them
+    as they were.
     """
     outdir = outdir or "."
     os.makedirs(outdir, exist_ok=True)

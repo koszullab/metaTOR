@@ -302,7 +302,7 @@ class StoredNetwork(NamedTuple):
     digest: str
 
 
-def stored_network(metacool):
+def stored_network(metacool, mc=None):
     """The network that metator network stored in a map, read in full, as
     partition and validation read it: the contig data of its contigs (see
     map_contig_table), the network of its contacts weighed with the stored
@@ -310,6 +310,12 @@ def stored_network(metacool):
     network_normalization), and its identity (see network_digest), which
     partition records with the partition that it stores, and validation
     checks.
+
+    Given mc, the map opened, every table is read through it, and the
+    contacts, which metacooler reads by path, are checked against it: a map
+    replaced since mc was opened is refused as replaced (see
+    metator.metacool.read_errors), before its Hit column is checked against
+    contacts that would be another map's.
 
     The Hit column of the map must still be the hits of its contacts (see
     contig_hits): an edit that changed the contacts since metator network
@@ -323,6 +329,8 @@ def stored_network(metacool):
     metacool : str
         Path to the .metacool file, or URI of an entry of a .mmetacool
         collection: ``file.mmetacool::entries/<name>``.
+    mc : metacooler.MetaCooler, optional
+        The map, opened: by default, metacool is opened.
 
     Returns:
     --------
@@ -340,9 +348,16 @@ def stored_network(metacool):
         to run again.
     """
     with mtmc._metacooler_logging(), mtmc.read_errors(metacool):
-        normalization = network_normalization(metacool, mtmc.open_map(metacool))
-    table = map_contig_table(metacool)
+        if mc is None:
+            mc = mtmc.open_map(metacool)
+        normalization = network_normalization(metacool, mc)
+    table = map_contig_table(metacool, mc)
     contacts = contig_contacts(metacool)
+    # The contacts of the map that mc opened: a read through mc checks its
+    # file.
+    with mtmc._metacooler_logging(), mtmc.read_errors(metacool):
+        with mc.open():
+            pass
     hits = contig_hits(contacts, len(table))
     stale = table["Name"][table["Hit"].to_numpy() != hits].tolist()
     if stale:
@@ -351,7 +366,7 @@ def stored_network(metacool):
             f"{mtmc._shown(stale)}. Its contacts changed since metator network stored the network (a merge of maps "
             "keeps the contigs table of the first): run metator network on the map again."
         )
-    weights = stored_weights(metacool)
+    weights = stored_weights(metacool, mc)
     return StoredNetwork(
         table,
         map_network(metacool, weights, contacts),
@@ -371,13 +386,14 @@ def _check_network_columns(metacool, columns):
         )
 
 
-def stored_weights(metacool):
+def stored_weights(metacool, mc=None):
     """The weights of the contigs of a map for the normalization of its
     network, which metator network stored in it as the weights
     metator_<normalization> of its bins (see network_normalization and
     metator.metacool.store_network): one per contig, in the order of the
     map, the weight of each of its bins. None for the normalization None,
-    whose network is the counts.
+    whose network is the counts. Given mc, the map opened, it is read
+    through it.
 
     Raises:
     -------
@@ -390,7 +406,8 @@ def stored_weights(metacool):
     import metacooler
 
     with mtmc._metacooler_logging(), mtmc.read_errors(metacool):
-        mc = mtmc.open_map(metacool)
+        if mc is None:
+            mc = mtmc.open_map(metacool)
         normalization = network_normalization(metacool, mc)
         if normalization == "None":
             return None
@@ -501,11 +518,12 @@ def contig_data_table(contig_data, names, hits, metacool=None):
     )
 
 
-def map_contig_table(metacool):
+def map_contig_table(metacool, mc=None):
     """The contig data of the contigs of a map, in its order (see
     contig_table), as metator network stored them in its contigs table (see
     metator.metacool.store_network): GC_content and Hit, and
-    Shotgun_coverage and Restriction_site when the run measured them.
+    Shotgun_coverage and Restriction_site when the run measured them. Given
+    mc, the map opened, it is read through it.
 
     Raises:
     -------
@@ -515,7 +533,8 @@ def map_contig_table(metacool):
         edit of the map dropped it since metator network stored it).
     """
     with mtmc._metacooler_logging(), mtmc.read_errors(metacool):
-        mc = mtmc.open_map(metacool)
+        if mc is None:
+            mc = mtmc.open_map(metacool)
         network_normalization(metacool, mc)
         contigs = mc.contigs
     _check_network_columns(metacool, contigs.columns)
