@@ -603,7 +603,18 @@ def run_map_path(input_map, output_map=None, force=False):
     given as file::/, the root of the file, is the file). output_map updates
     the input map in place when it names that file itself (see
     metator.metacool.is_input_map); any other output_map is a map of its own, a
-    symbolic link there replaced, not its target."""
+    symbolic link there replaced, not its target.
+
+    Raises
+    ------
+    MetacoolError
+        If output_map names an entry of a collection or a directory, is the
+        collection of the input map (an entry) or a hard link of the input map,
+        or exists and is not the input map, without force; if the input map is
+        an entry of a .mmetacool collection, without output_map; or if the
+        directory of output_map cannot be made. It is raised before the run does
+        any work, and its reason is logged as an error.
+    """
     reason = None
     if output_map and "::" in str(output_map):
         reason = f"--output-map takes the path of a .metacool file, not an entry of a collection: {output_map}."
@@ -660,7 +671,15 @@ def write_map(metacool, outfile, planned, what="the map of the clusters", **stor
     metacooler.
 
     The map is refused if it changed since planned was opened, and outfile is
-    only replaced once the new map is written and validated."""
+    only replaced once the new map is written and validated.
+
+    Raises
+    ------
+    MetacoolError
+        If the map cannot be written. The reason, and what is kept, is logged
+        as an error first: the input map stays as it was, and so do the other
+        outputs of the run.
+    """
     # What the error adds when the new map is not written.
     kept = ""
     try:

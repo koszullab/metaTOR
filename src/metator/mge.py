@@ -208,7 +208,15 @@ def generate_bin_summary(contigs_data: "pd.DataFrame", mge_bins: dict) -> "pd.Da
         The MGE contigs (see mge_contigs): Name, Size, GC_content and Hit.
     mge_bins : dict
         Dictionary with the mge bin id as key and its contigs ("Contigs") and
-        score ("Score") as value."""
+        score ("Score") as value.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per cluster, in the order of mge_bins: BinName
+        (``MetaTOR_MGE_<ID>``), BinLength, GC, Hit, BinningScore, ContigsNumber and
+        Contigs (by name, comma-separated).
+    """
     # Create output empty DataFrame
     cols = {
         "BinName": pd.Series(dtype="str"),
@@ -264,9 +272,9 @@ def mge_binning(
 
     Returns
     -------
-    pandas.DataFrame:
+    pandas.DataFrame
         The summary of the MGE clusters (see generate_bin_summary).
-    dict:
+    dict
         The MGE clusters: their id as key, their contigs ("Contigs", the
         longest first, ties by name: see mge_contigs) and score ("Score") as
         value.
@@ -303,7 +311,7 @@ def write_mges_fasta(metacool, assembly, mge_bins, out_file, temp_dir=None):
     """Write the FASTA file with one record per MGE cluster, so that the tools
     that check the quality of an MGE genome, which expect one sequence per
     genome, read each cluster as one: named after the cluster
-    (MetaTOR_MGE_<ID>), its contigs, in the order of the cluster (the longest
+    (``MetaTOR_MGE_<ID>``), its contigs, in the order of the cluster (the longest
     first, ties by name: see mge_binning), joined by 200 N, in lines of 80
     bases (metacooler.write_fasta, stitched). The file is replaced if it
     exists.
@@ -359,7 +367,14 @@ def resolve_matrix(mat: "np.ndarray", threshold: float = 0.8) -> List[Tuple]:
     mat : np.array
         Matrix of the raw contacts between the contigs.
     threshold : float
-        Threshold of score to bin contigs."""
+        Threshold of score to bin contigs.
+
+    Returns
+    -------
+    list of list
+        Each binning, in the order made: the two rows of the matrix binned
+        together, then their score.
+    """
 
     bins: list = []
     n = len(mat)
@@ -431,9 +446,9 @@ def shuffle_mge_bins(
 
     Returns
     -------
-    pandas.DataFrame:
+    pandas.DataFrame
         Input table with the mge bin id column randomly shuffled.
-    dict:
+    dict
         Dictionary with the mge bin id as key and the list of the contigs name
         as value from the shuffle contigs bins."""
 
@@ -465,9 +480,9 @@ def update_mge_data(mges_data: pd.DataFrame, bins: List[Tuple]) -> pd.DataFrame:
 
     Returns
     -------
-    pandas.DataFrame :
+    pandas.DataFrame
         Table wit the mge contig information updated.
-    dictionnary :
+    dictionnary
         Dictionary of the mge bins."""
     # Initiation
     mges_data["MetaTOR_MGE_bin"] = 0

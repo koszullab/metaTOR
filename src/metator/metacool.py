@@ -406,7 +406,7 @@ def normalization_weight_name(normalization):
 
 def store_normalization(metacool, normalization):
     """Store a normalization of the network in a .metacool map, as a weight column
-    of its bins table: metator_<normalization>.
+    of its bins table: ``metator_<normalization>``.
 
     Every bin of a contig takes its contig's weight, so the normalized contact
     of two contigs is their count times both weights, as cooler stores
@@ -575,7 +575,7 @@ class Network:
         has them) go to the contigs table of the map.
     normalization : str
         The normalization of the network, stored as the weights
-        metator_<normalization> of the bins of the map (see
+        ``metator_<normalization>`` of the bins of the map (see
         store_normalization): none for "None", the raw counts.
     entry : dict or None
         What the map records of the run that stored the network, under the

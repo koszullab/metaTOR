@@ -40,8 +40,11 @@ def bin_quality(completeness, redundancy):
     """The quality class of a bin, from miComplete's weighted completeness and
     weighted redundancy, its contamination being the redundancy minus 1:
 
-    HQ: completion >= 90% and contamination <= 5%; MQ: >= 70% and <= 10%; LQ:
-    >= 50% and <= 10%; "Contaminated": >= 50% and > 10%; "Other": < 50%.
+    - HQ: completion >= 90% and contamination <= 5%;
+    - MQ: completion >= 70% and contamination <= 10%;
+    - LQ: completion >= 50% and contamination <= 10%;
+    - Contaminated: completion >= 50% and contamination > 10%;
+    - Other: completion < 50%.
 
     Parameters
     ----------
@@ -52,8 +55,9 @@ def bin_quality(completeness, redundancy):
 
     Returns
     -------
-    str:
-        The class of the bin: "HQ", "MQ", "LQ", "Contaminated" or "Other"."""
+    str
+        The class of the bin: "HQ", "MQ", "LQ", "Contaminated" or "Other".
+    """
     completeness, redundancy = float(completeness), float(redundancy)
     if completeness < 0.5:
         return "Other"
@@ -68,7 +72,7 @@ def bin_quality(completeness, redundancy):
 
 def correct_final_bin(contigs_data, written, bin_summary):
     """Function to set the final bin of each contig from the contigs of the FASTA
-    files of the final bins: the contigs written in <bin>.fa (written, the
+    files of the final bins: the contigs written in ``<bin>.fa`` (written, the
     contigs of each FASTA file of the run, by cluster name: see
     write_overlapping_fasta and write_recursive_fasta) get the bin as
     Final_cluster.
@@ -123,7 +127,7 @@ def get_bin_coverage(bin_summary, contigs_data):
 
     Returns
     -------
-    dict:
+    dict
         Dictionnary with the informations of the final bins kept by MetaTOR
         with the coverage."""
     # Compute HiC_coverage
@@ -192,8 +196,17 @@ def give_results_info(bin_summary):
 
 
 def merge_micomplete(out_bact105, out_arch131, outfile):
-    """Function to merge bacterial and archaeal output of micomplete into one
-    file."""
+    """Merge the bacterial and archaeal outputs of miComplete into one file.
+
+    Parameters
+    ----------
+    out_bact105 : str
+        Output of miComplete with its 105 bacterial markers.
+    out_arch131 : str
+        Output of miComplete with its 131 archaeal markers.
+    outfile : str
+        Path of the merged output.
+    """
     # Reads both files.
     bact105 = pd.read_csv(out_bact105, sep="\t", comment="#", index_col=0, **mtc.EXACT_FLOATS).loc[:, :"CDs"]
     arch131 = pd.read_csv(out_arch131, sep="\t", comment="#", index_col=0, **mtc.EXACT_FLOATS).loc[:, :"CDs"]
@@ -238,7 +251,7 @@ def micomplete_compare_bins(
 
     Returns
     -------
-    dict:
+    dict
         Dictionnary with the informations of the final bins kept by MetaTOR."""
     # Setup contamination
     contamination = False
@@ -332,7 +345,7 @@ def micomplete_quality(fasta_dir, outfile, threads):
 
 def write_overlapping_fasta(metacool, assembly, partition, contig_data, size, outdir, temp_dir=None):
     """Write the FASTA file of each overlapping cluster of a partition that
-    reaches size bp (--size), for miComplete to check: <outdir>/<name>.fa, the
+    reaches size bp (--size), for miComplete to check: ``<outdir>/<name>.fa``, the
     records of its contigs as they are in the assembly, in the order of the
     partition (that of its core clusters, then of their contigs: see
     metator.clusters.Partition), through metacooler.write_fasta.
@@ -358,7 +371,7 @@ def write_overlapping_fasta(metacool, assembly, partition, contig_data, size, ou
 
     Returns
     -------
-    dict:
+    dict
         The names of the contigs of each cluster written, in the order of their
         records, by cluster name, the clusters by number.
 
@@ -396,7 +409,7 @@ def plain_assembly(assembly, directory):
 
 def write_recursive_fasta(metacool, assembly, groups, outdir, temp_dir=None):
     """Write the FASTA file of each cluster of a recursive step for miComplete to
-    check: <outdir>/<name>.fa, the records of its contigs (groups: their names,
+    check: ``<outdir>/<name>.fa``, the records of its contigs (groups: their names,
     by cluster name) as they are in the assembly, in their order, through
     metacooler.write_fasta, as write_overlapping_fasta writes those of the
     overlapping clusters.
@@ -468,7 +481,7 @@ def recursive_clustering(
 
     Returns
     -------
-    boolean:
+    boolean
         True if at least one new recursive bin has been generated.
     pandas.DataFrame
         Updated dictionnary which has as keys the values of the iterations from
@@ -571,7 +584,7 @@ def _bin_contigs(bin_id, contigs_data):
 def bin_contig_ids(bin_id, contigs_data):
     """Function to list the IDs of the contigs of a bin from the contigs data:
     those of its overlapping bin and recursive bin, given by its name
-    (<prefix>_<overlapping bin ID>_<recursive bin ID>).
+    (``<prefix>_<overlapping bin ID>_<recursive bin ID>``).
 
     Parameters
     ----------
@@ -582,7 +595,7 @@ def bin_contig_ids(bin_id, contigs_data):
 
     Returns
     -------
-    list of int:
+    list of int
         IDs of the contigs of the bin."""
     over_bin_id = str(bin_id.split("_")[-2])
     rec_bin_id = str(bin_id.split("_")[-1])
@@ -692,7 +705,7 @@ def recursive_decontamination(
         one in the recursive partition.
     recursive_fasta_dir : str
         Path to write the fasta decontaminated bins, one directory per
-        recursive step (step_<k>): in the temporary directory of the run.
+        recursive step (``step_<k>``): in the temporary directory of the run.
     resolution_parameter : float
         Resolution parameter to use if Leiden algorithm is chosen.
     size : int
@@ -717,10 +730,10 @@ def recursive_decontamination(
 
     Returns
     -------
-    pandas.DataFrame:
+    pandas.DataFrame
         The contig data of the validation, with the final cluster of each
         contig (Final_cluster, ND for none), as contig_data_final.txt holds it.
-    metator.io.SummaryLayout:
+    metator.io.SummaryLayout
         How the summary of the final clusters (cluster_summary.txt) is written:
         its rows, its columns and their format."""
 
@@ -953,12 +966,12 @@ def name_recursive_clusters(bin_id, contigs_data, recursive_bins, size, parent_d
         Sample prefix to use.
     groups : dict
         The names of the contigs of each new bin, in the order of the
-        partition, by bin name (<prefix>_<overlapping ID>_<recursive ID>),
+        partition, by bin name (``<prefix>_<overlapping ID>_<recursive ID>``),
         updated in place.
 
     Returns
     -------
-    boolean:
+    boolean
         True if one bin is larger than size."""
     contamination = False
     # Add recursive bin information

@@ -31,7 +31,7 @@ def check_is_fasta(in_file):
 
     Returns
     -------
-    bool :
+    bool
         True if the input is in fasta format, False otherwise"""
     try:
         with read_compressed(in_file) as handle:
@@ -108,7 +108,7 @@ def get_restriction_site(enzyme):
 
     Returns
     -------
-    str :
+    str
         Regex that corresponds to all possible restriction sites given a set of
         enzyme.
 
@@ -148,7 +148,7 @@ def import_mges_contigs(mges_file):
 
     Returns
     -------
-    list:
+    list
         List of the mges contigs names."""
     mges_list = []
     with open(mges_file, "r") as mges:

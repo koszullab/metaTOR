@@ -53,7 +53,7 @@ def contig_contacts(metacool, chunksize=METACOOL_CHUNKSIZE):
 
     Returns
     -------
-    pandas.DataFrame:
+    pandas.DataFrame
         One row per pair of contigs in contact, in the order of the map:
         columns id1 and id2, the positions of the two contigs in the contigs
         table of the map, from 0 (id1 <= id2: a contact within a contig has id1
@@ -149,7 +149,7 @@ def map_network(metacool, weights="stored", contacts=None):
 
     Returns
     -------
-    pandas.DataFrame:
+    pandas.DataFrame
         One row per edge, in the order of the map: columns contig1 and contig2,
         the IDs of the two contigs (their positions in the map as it is read,
         from 1: the ID column of the contig data that a run writes from it, see
@@ -202,7 +202,7 @@ def relabel_network(network, names, ids):
 
     Returns
     -------
-    pandas.DataFrame:
+    pandas.DataFrame
         The network, with the IDs of the table."""
     new_ids = np.array([ids[str(name)] for name in names], dtype=np.int64)
     first, second = new_ids[network["contig1"].to_numpy() - 1], new_ids[network["contig2"].to_numpy() - 1]
@@ -276,7 +276,7 @@ def stored_network(metacool, mc=None):
 
     Returns
     -------
-    StoredNetwork:
+    StoredNetwork
         The contig data, the network, its normalization and its digest.
 
     Raises
@@ -328,7 +328,7 @@ def _check_network_columns(metacool, columns):
 
 def stored_weights(metacool, mc=None):
     """The weights of the contigs of a map for the normalization of its network,
-    which metator network stored in it as the weights metator_<normalization>
+    which metator network stored in it as the weights ``metator_<normalization>``
     of its bins (see network_normalization and metator.metacool.write_map):
     one per contig, in the order of the map, the weight of each of its bins.
     None for the normalization None, whose network is the counts.
@@ -382,7 +382,7 @@ def contig_table(names, lengths, gc, hits, coverage=None, sites=None):
 
     Returns
     -------
-    pandas.DataFrame:
+    pandas.DataFrame
         The contig data."""
     n_contigs = len(names)
     # The text columns of the type that pandas reads text as (that of
@@ -423,7 +423,7 @@ def contig_data_table(contig_data, names, hits, metacool=None):
 
     Returns
     -------
-    pandas.DataFrame:
+    pandas.DataFrame
         The contig data."""
     names = [str(name) for name in names]
     if metacool is not None:
@@ -537,7 +537,7 @@ def read_depth(depth_file):
 
     Returns
     -------
-    dict:
+    dict
         The length (int) and the coverage (float) of each contig, by name."""
     depths = {}
     with open(depth_file, "r") as depth:
@@ -564,7 +564,7 @@ def create_contig_data(assembly, depth_file=None, enzyme=None):
 
     Returns
     -------
-    dict:
+    dict
         The data of each contig of the assembly, by name, in the order of the
         assembly: "length", "GC", "coverage" (``-`` without a depth file) and
         "RS" (the restriction sites plus one; ``-`` without an enzyme)."""
@@ -635,7 +635,7 @@ def map_columns(metacool):
 
     Returns
     -------
-    list of str:
+    list of str
         The columns of MAP_COLUMNS that give values in the contigs table of the
         map.
 
@@ -690,7 +690,7 @@ def contig_data_from_map(metacool, contig_data, enzyme=None, depth=None):
 
     Returns
     -------
-    list of str:
+    list of str
         The columns of MAP_COLUMNS read from the map, in that order.
 
     Raises
@@ -761,7 +761,7 @@ def normalization_weights(lengths, hits, coverage, sites, normalization):
 
     Returns
     -------
-    numpy.ndarray:
+    numpy.ndarray
         One weight per contig, NaN for a contig that has none.
 
     Raises
@@ -824,7 +824,7 @@ def network_digest(contacts, weights, names, normalization):
 
     Returns
     -------
-    str:
+    str
         The SHA-256, in hexadecimal."""
     import hashlib
 

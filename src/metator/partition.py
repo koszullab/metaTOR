@@ -46,7 +46,7 @@ def algo_partition(
 
     Returns
     -------
-    dict:
+    dict
         Dictionnary with the id of the contig as key and the list of the
         results of each iterations separated by a semicolon as values."""
     if algorithm == "leiden":
@@ -83,7 +83,7 @@ def defined_overlapping_bins(
 
     Returns
     -------
-    dict:
+    dict
         A dictionnary with the id of the overlapping bins as keys and the list
         of id of their contigs as values."""
     # Extract bins which are connected, i.e. bins with an hamming distance
@@ -129,10 +129,10 @@ def detect_core_bins(output_partition, iterations):
 
     Returns
     -------
-    dict:
+    dict
         Dictionnary which has as keys the core bins id and as value the id of
         the contigs of the core bin.
-    pandas.core.frame.DataFrame:
+    pandas.core.frame.DataFrame
         Table with the id of the core bin and their values for each iterations."""
     # finding duplicate values in the output of louvain or leiden using a
     # flipped dictionary.
@@ -185,7 +185,7 @@ def get_distances_splitmat(bins, core_bins_iterations):
 
     Returns
     -------
-    scipy.sparse.csr.csr_matrix:
+    scipy.sparse.csr.csr_matrix
         matrix of the distance of the possible pairs from the slice of the
         table and the table itself."""
     x = sparse.csr_matrix(1 - cdist(core_bins_iterations, bins.values, metric="hamming"))
@@ -205,7 +205,7 @@ def get_hamming_distance(core_bins_iterations, threads):
 
     Returns
     -------
-    scipy.sparse.csr.csr_matrix:
+    scipy.sparse.csr.csr_matrix
         Matrix with all the previously computed hamming distance between two
         core bins."""
 
@@ -241,7 +241,7 @@ def leiden_iterations(network, iterations, resolution_parameter):
 
     Returns
     -------
-    dict:
+    dict
         Dictionnary with the id of the contig as key and the list of the
         results of each iterations separated by a semicolon as values."""
     graph, contigs = network_graph(network)
@@ -269,7 +269,7 @@ def louvain_iterations(network, iterations):
 
     Returns
     -------
-    dict:
+    dict
         Dictionnary with the id of the contig as key and the list of the
         results of each iterations separated by a semicolon as values."""
     graph, contigs = network_graph(network)
@@ -289,7 +289,7 @@ def merge_iterations(contigs, memberships):
 
     Returns
     -------
-    dict:
+    dict
         Dictionnary with the id of the contig as key and the list of the
         results of each iterations separated by a semicolon as values."""
     memberships = np.array(memberships).T
@@ -329,7 +329,7 @@ def partition(
 
     Returns
     -------
-    metator.clusters.Partition:
+    metator.clusters.Partition
         The core and the overlapping clusters, numbered from 1, each with the
         IDs of its contigs."""
 
@@ -380,9 +380,9 @@ def network_graph(network):
 
     Returns
     -------
-    igraph.Graph:
+    igraph.Graph
         Weighted undirected network.
-    numpy.ndarray:
+    numpy.ndarray
         Contig ids of the vertices."""
     contigs, vertices = np.unique(network[["contig1", "contig2"]].to_numpy().ravel(), return_inverse=True)
     graph = ig.Graph(
@@ -407,7 +407,7 @@ def partition_table(contig_data, partition):
 
     Returns
     -------
-    pandas.core.frame.DataFrame:
+    pandas.core.frame.DataFrame
         Table with all the information on the contigs included their
         appartenance to the bins."""
 

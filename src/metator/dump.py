@@ -156,7 +156,7 @@ def contig_data_final(metacool, mc, table):
 
 def _is_recursive_round(name):
     """Whether a clustering round is a step of the recursive partition of the
-    validation (recursive_<k>)."""
+    validation (``recursive_<k>``)."""
     prefix = mtcl.recursive_round("")
     return name.startswith(prefix) and name[len(prefix) :].isdigit()
 
@@ -443,7 +443,7 @@ def dump(metacool, outdir, force=False):
 
 def _write_all(metacool, outdir, writers, rounds):
     """Write the tables of a dump in outdir (see dump): each under a temporary
-    name (.<table>.<random>.tmp), then each renamed onto its own, once all are
+    name (``.<table>.<random>.tmp``), then each renamed onto its own, once all are
     written, which replaces a table of an earlier dump, or a symbolic link
     there, not its target."""
     token = uuid.uuid4().hex[:12]
