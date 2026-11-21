@@ -1,7 +1,7 @@
 # Test for network module
 
 import gzip
-import metator.io as mio
+import pandas as pd
 import numpy as np
 import metator.network as mtn
 import pytest
@@ -180,7 +180,7 @@ def test_write_contig_data():
     # Test contig data writer.
     tmp_file = "tmp_contig_data_test.tsv"
     mtn.write_contig_data(contigs_data, tmp_file)
-    data = mio.read_contig_data(tmp_file)
+    data = pd.read_csv(tmp_file, sep="\t").set_index("Name", drop=False)
     assert data.loc["NODE_1", "Size"] == 642311
     assert data.loc["NODE_8", "Hit"] == 206333
     assert data.loc["NODE_6", "Restriction_site"] == 2505

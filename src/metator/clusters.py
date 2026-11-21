@@ -32,7 +32,6 @@ from os.path import exists, join
 
 import pandas as pd
 
-import metator.io as mio
 from metator.log import logger
 
 
@@ -215,7 +214,7 @@ def overlapping_round(contig_data_file, size, prefix):
         The clusters and their contigs (see :meth:`Rounds.tables`).
     """
     # Names as written: a contig called NA, None or nan is a contig.
-    table = mio.rename_1x_columns(pd.read_csv(contig_data_file, sep="\t", dtype=str, keep_default_na=False))
+    table = pd.read_csv(contig_data_file, sep="\t", dtype=str, keep_default_na=False)
     # A contig with no edge in the network is in no overlapping cluster.
     clustered = table[table["Overlapping_cluster_ID"] != "-"]
     kept = clustered[clustered["Overlapping_cluster_size"].astype("int64") >= size]

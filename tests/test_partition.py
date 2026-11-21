@@ -87,15 +87,6 @@ def test_algo_partition():
             assert algorithm == "error"
 
 
-def test_build_clustering_matrix():
-    # Test clustering matrix building.
-    hamming_distance = mtp.get_hamming_distance(core_bins_iterations, threads)
-    M = mtp.build_clustering_matrix(core_bins_contigs, hamming_distance, 10)
-    assert np.sum(M.data) == pytest.approx(14.6, abs=1e-5)
-    assert M.shape == (11, 11)
-    assert M.nnz == 21
-
-
 def test_defined_overlapping_bins():
     # Test overlapping bin detection.
     hamming_distance = mtp.get_hamming_distance(core_bins_iterations, threads)
@@ -214,21 +205,3 @@ def test_update_contigs_data():
     assert contigs_data.loc[0, "Overlapping_cluster_contigs"] == 2
     assert contigs_data.loc[1, "Overlapping_cluster_size"] == 37801
     shutil.rmtree(tmp_dir)
-
-
-def test_update_contigs_data_of_1x(tmp_path):
-    """A contig data table of a partition of metaTOR 1.x, its columns named
-    after bins, given in place of that of the network: its bin columns are
-    replaced, as 1.x replaced them, under their names of 2.0."""
-    network = pd.read_csv("tests_data/outdir/contig_data_network.txt", sep="\t")
-    old = network.assign(Core_bin_ID="x", Core_bin_contigs=0, Core_bin_size=0, Overlapping_bin_ID="x",
-                         Overlapping_bin_contigs=0, Overlapping_bin_size=0)  # fmt: skip
-    old.to_csv(tmp_path / "old.txt", sep="\t", index=False)
-    for name in ("a", "b"):
-        (tmp_path / name).mkdir()
-    expected, _ = mtp.update_contigs_data(
-        "tests_data/outdir/contig_data_network.txt", core_bins_contigs, overlapping_bins, str(tmp_path / "a")
-    )
-    got, path = mtp.update_contigs_data(str(tmp_path / "old.txt"), core_bins_contigs, overlapping_bins, str(tmp_path / "b"))
-    pd.testing.assert_frame_equal(got, expected)
-    assert list(pd.read_csv(path, sep="\t").columns) == cols

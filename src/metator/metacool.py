@@ -51,7 +51,6 @@ from contextlib import contextmanager, suppress
 import numpy as np
 import pandas as pd
 
-import metator.io as mio
 from metator.log import logger
 from metator.version import __version__
 
@@ -195,7 +194,7 @@ def read_contig_data(contig_data):
         )
     try:
         _check_field_counts(contig_data)
-        table = mio.rename_1x_columns(pd.read_csv(contig_data, sep="\t", dtype=str, keep_default_na=False))
+        table = pd.read_csv(contig_data, sep="\t", dtype=str, keep_default_na=False)
     except (ValueError, OSError) as error:
         raise MetacoolError(f"{contig_data} cannot be read as a table: {str(error).strip().rstrip('.')}.") from error
     missing = [column for column in ["Name", "Size", "Final_cluster"] if column not in table.columns]
@@ -897,11 +896,8 @@ def _write_back_columns(path, contig_data, contig_columns, header):
 
     stored = metacooler.MetaCooler(path)
     # The columns of a contig data file but Name (the contigs' own name
-    # column) and those of the map that metacooler derives, its bin columns
-    # under their names of metaTOR 1.x too, which a map made with the
-    # contig data of a 1.x run carries (see metator.io.rename_1x_columns).
-    of_1x = {old for old, new in mio.CONTIG_DATA_1X_COLUMNS.items() if new in header}
-    of_metator = (set(header) | of_1x | set(CONTIG_COLUMNS)) - {"Name"}
+    # column) and those of the map that metacooler derives.
+    of_metator = (set(header) | set(CONTIG_COLUMNS)) - {"Name"}
     carried = [f"contigs.{column}" for column in stored.contigs.columns if column in of_metator - {"name", "length", "genome_id"}]
     if carried:
         metacooler.annotate(path, drop=carried, inplace=True)

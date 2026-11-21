@@ -13,7 +13,6 @@ import cooler
 import metacooler
 import pandas as pd
 import pytest
-from scipy import sparse
 
 import metator.metacool as mtmc
 import metator.network as mtn
@@ -56,7 +55,6 @@ def test_network_edges_follow_genomes(metagenome, metagenome_files, tmp_path, no
         str(tmp_path),
         1,
         normalization,
-        False,
     )
     truth = metagenome.truth
     edges = _named_edges(network, contig_data_file)
@@ -88,10 +86,9 @@ def test_partition_recovers_the_genomes(metagenome, metagenome_inputs, metagenom
     fasta_dir = tmp_path / "overlapping_clusters"
     fasta_dir.mkdir()
     # A private copy of the assembly: pyfastx indexes it (.fxi) in place.
-    _, contig_data_file = mtp.partition(
+    contig_data_file = mtp.partition(
         algorithm,
         str(metagenome_inputs["assembly"]),
-        False,
         str(metagenome_network["contig_data"]),
         10,
         str(metagenome_network["network"]),
@@ -167,7 +164,6 @@ def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenom
         "-i", "10",
         "-t", "1",
         "-F",
-        "-C",
     ]  # fmt: skip
     run_cli("validation", *args)
     assert not (out / "recursive_clusters" / "metator_00009_00000.fa").exists()
@@ -198,47 +194,6 @@ def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenom
     # The bins of the split are recursive bins, of step 1; the others are not.
     assert list(summary.recursive) == list(summary.step > 0)
     assert summary.recursive.any() and not summary.recursive.all()
-    # The clustering matrix of the recursive partition: a row and a column per
-    # contig ID, and values only between contigs of the bin partitioned again.
-    # It was 2 columns wide, and validation failed with --cluster-matrix.
-    matrix = sparse.load_npz(out / "clustering_matrix_recursive.npz").tocoo()
-    assert matrix.shape == (len(final) + 1, len(final) + 1)
-    split = set(final.ID[final.Overlapping_cluster_ID == 1])
-    assert matrix.nnz > 0 and set(matrix.row) | set(matrix.col) <= split
-    assert 0 < matrix.data.min() and matrix.data.max() <= 1
-
-
-def test_validation_of_a_partition_of_1x(metagenome, metagenome_inputs, metagenome_network, tmp_path, monkeypatch, run_cli):
-    """validation reads the contig data of a partition of metaTOR 1.x, its
-    columns named after bins (Overlapping_bin_ID...): it writes what it
-    writes from the same table of 2.0, byte for byte."""
-    monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
-    partition_file, fasta_dir = _partition_with_merged_bin(
-        metagenome, metagenome_network["contig_data"], tmp_path, merged=("genome_1", "genome_2")
-    )
-    tables = {"2.0": str(partition_file), "1.x": synthetic.as_1x(partition_file, tmp_path / "contig_data_partition_1x.txt")}
-    written = {}
-    for version, table in tables.items():
-        random.seed(0)
-        fasta = shutil.copytree(fasta_dir, tmp_path / f"overlapping_{version}")
-        out = tmp_path / f"out_{version}"
-        args = [
-            "-a", str(metagenome_inputs["assembly"]),
-            "-c", table,
-            "-f", str(fasta),
-            "-n", str(metagenome_network["network"]),
-            "-o", str(out),
-            "-T", str(tmp_path / "tmp"),
-            "-s", "50000",
-            "-i", "10",
-            "-t", "1",
-        ]  # fmt: skip
-        run_cli("validation", *args)
-        names = ["contig_data_final.txt", "cluster_summary.txt", "binning.txt", "clusters.txt", "cluster_members.txt"]
-        written[version] = {name: (out / name).read_bytes() for name in names}
-        written[version] |= {f"final_clusters/{p.name}": p.read_bytes() for p in (out / "final_clusters").glob("*.fa")}
-    assert written["1.x"] == written["2.0"]
-    assert b"Final_cluster" in written["2.0"]["contig_data_final.txt"].split(b"\n")[0]
 
 
 def test_validation_without_contaminated_bin(metagenome, metagenome_inputs, metagenome_network, tmp_path, monkeypatch, run_cli):
@@ -309,7 +264,6 @@ def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, tmp_path, 
         "-j", "5",
         "-o", str(out),
         "-T", str(tmp_path / "tmp"),
-        "-C",
     ]  # fmt: skip
     run_cli("pipeline", *args)
 
@@ -329,8 +283,6 @@ def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, tmp_path, 
     bases = (truth.Length * truth.Abundance).groupby(final.set_index("Name").Final_cluster).sum()
     expected = 100 * bases / (truth.Length * truth.Abundance).sum()
     assert summary.SG_abundance.astype(float).to_numpy() == pytest.approx(expected[summary.index].to_numpy(), rel=0.1)
-    # Outputs of the optional steps.
-    assert (out / "clustering_matrix.npz").stat().st_size > 0
     # The contact map, updated in place: one bin per contig, one genome per
     # cluster (the cluster summary columns with it), and every pair a
     # contact.

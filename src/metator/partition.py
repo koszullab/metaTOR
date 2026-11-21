@@ -10,7 +10,6 @@ different bins).
 
 Core functions to partition the network are:
     - algo_partition
-    - build_clustering_matrix
     - defined_overlapping_bins
     - detect_core_bins
     - generate_fasta
@@ -75,54 +74,6 @@ def algo_partition(
         logger.error('algorithm should be either "louvain" or "leiden"')
         raise ValueError
     return output_partition
-
-
-def build_clustering_matrix(core_bins_contigs, hamming_distance, N):
-    """Function to return the clustering matrix in sparse format.
-
-    For each contigs, the value correspond to the number of iterations where the
-    contigs are clusterized together divided by the number of iterations. A
-    value of 1 means that the contigs are in the same core bin.
-
-    Parameters:
-    -----------
-    core_bins_contigs : dict
-        Dictionnary which has as keys the core bins id and as value the id of
-        the contigs of the core bin.
-    hamming_distance : scipy.sparse.csr.csr_matrix:
-        Matrix with all the previously computed hamming distance between two
-        core bins.
-    N : int
-        Number of contigs in the assembly.
-
-    Returns:
-    --------
-    scipy.sparse.coo.coo_matrix:
-        Matrix with all the previously computed hamming distance between two
-        contigs.
-    """
-    # To do it we build a transition matrix T which look like the identity
-    # matrix but not square to extend our matrix as fellow: B = T.T * A * T
-    rows = []
-    cols = []
-    values = []
-    for core_bin in core_bins_contigs:
-        for contig_id in core_bins_contigs[core_bin]:
-            rows.append(core_bin)
-            cols.append(contig_id)
-            values.append(1)
-    transition_matrix = sparse.coo_matrix(
-        (values, (rows, cols)),
-        shape=(len(core_bins_contigs), N + 1),
-        dtype=np.int32,
-    )
-    # Compute the clustering matrix on only the upper triangle of the hamming
-    # distance matrix as it's symmetric to reduce memory usage.
-    hamming_distance = sparse.triu(hamming_distance, k=0)
-    M = transition_matrix.T.dot(hamming_distance).dot(transition_matrix)
-    M = (M + M.T).tocsr()
-    M[M > 1] = 1
-    return sparse.triu(M.tocoo(), k=0)
 
 
 def defined_overlapping_bins(
@@ -428,7 +379,6 @@ def merge_iterations(contigs, memberships):
 def partition(
     algorithm,
     assembly,
-    cluster_matrix,
     contig_data_file,
     iterations,
     network_file,
@@ -448,8 +398,6 @@ def partition(
         Algorithm to use to partition the network. Either leiden or louvain.
     assembly : str
         Path to the assembly file used for the partition.
-    cluster_matrix : bool
-        If True, build and save the clustering matrix.
     contig_data_file : str
         Path to the contig data table to update.
     iterations : int
@@ -476,9 +424,6 @@ def partition(
 
     Returns:
     --------
-    scipy.sparse.coo.coo_matrix:
-        Matrix with all the previously computed hamming distance between two
-        contigs.
     str:
         Path to the new contig data file with the bin informations in it.
     """
@@ -527,17 +472,7 @@ def partition(
         prefix,
     )
 
-    if cluster_matrix:
-        # Build clustering matrix and save it.
-        logger.info("Build  clustering matrix")
-        clustering_matrix = build_clustering_matrix(core_bins_contigs, hamming_distance, len(contigs_data.ID))
-        # Save the clustering matrix
-        clustering_matrix_file = join(outdir, "clustering_matrix_partition")
-        sparse.save_npz(clustering_matrix_file, clustering_matrix)
-    else:
-        clustering_matrix_file = None
-
-    return clustering_matrix_file, contigs_data_file
+    return contigs_data_file
 
 
 def read_network(network_file):
@@ -598,7 +533,7 @@ def update_contigs_data(contig_data_file, core_bins_contigs, overlapping_bins, o
     """
 
     # Read the table
-    contigs_data = mio.rename_1x_columns(pd.read_csv(contig_data_file, sep="\t", header=0, index_col=False))
+    contigs_data = pd.read_csv(contig_data_file, sep="\t", header=0, index_col=False)
 
     # Add new empty columns. Use object dtype as they will mix "-" and ints.
     for col in [

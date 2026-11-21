@@ -34,7 +34,8 @@ mtmc_reassign_metacool = mtmc.reassign_metacool
 # --aligner, --aligner-mode, --min-quality) and --edge are gone; the map
 # that partition and validation update is their first argument too; the
 # commands qc, contactmap, metacool, scaffold and pairs are gone, and so are
-# the --scaffold and --junctions options of pipeline.
+# the --scaffold and --junctions options of pipeline, --self-contacts of
+# network and --cluster-matrix of partition, validation and pipeline.
 INVENTORY = json.loads((TESTS_DATA / "cli_inventory.json").read_text())["metator"]
 
 # Options whose value is one of a list, wherever they appear.
@@ -316,17 +317,16 @@ def stub_pipeline(monkeypatch, tmp_path):
 
     def partition(*args):
         calls["partition"] = args
-        out_dir = args[6]
+        out_dir = args[5]
         # What the network step left in the output directory.
         calls["partition_outdir"] = sorted(os.listdir(out_dir))
         Path(out_dir, "contig_data_partition.txt").write_text("x")
-        return os.path.join(out_dir, "clustering_matrix_partition"), os.path.join(out_dir, "contig_data_partition.txt")
+        return os.path.join(out_dir, "contig_data_partition.txt")
 
     def recursive_decontamination(*args):
         calls["recursive_decontamination"] = args
         # pyfastx indexes the assembly while extracting the bins.
         Path(f"{args[1]}.fxi").write_text("x")
-        return os.path.join(args[8], "clustering_matrix_validation")
 
     def reassign_metacool(metacool, contig_data, outfile, **kwargs):
         # The input map must still be there.
@@ -356,7 +356,7 @@ def _final_tables(monkeypatch, contig, final_bin="metator_00001_00000", summary=
     stub = mtcli.mtv.recursive_decontamination
 
     def recursive_decontamination(*args, **kwargs):
-        out_dir = args[8]
+        out_dir = args[7]
         Path(out_dir, "contig_data_final.txt").write_text(
             "\tID\tName\tSize\tGC_content\tHit\tFinal_cluster\n"
             f"0\t1\t{contig}\t100\t40.5\t{hits[0]}\t{final_bin}\n1\t2\tc2\t50\t35.0\t{hits[1]}\tND\n"
@@ -531,11 +531,11 @@ def test_pipeline_from_a_metacool(no_metacool, stub_pipeline, tmp_path, run_cli)
     calls = stub_pipeline
     fasta, depth, enzyme = calls["create_contig_data"]
     assert (fasta, depth, enzyme) == (str(tmp_path / "assembly.fa"), str(TESTS_DATA / "depth.txt"), None)
-    uri, out_dir, network, contig_data, tmp_dir, threads, normalization, self_contacts = calls["metacool_to_contacts"]
+    uri, out_dir, network, contig_data, tmp_dir, threads, normalization = calls["metacool_to_contacts"]
     assert (uri, out_dir, network, contig_data) == (str(metacool), str(out), "network.txt", "contig_data_network.txt")
     assert Path(tmp_dir).parent == tmp_path / "tmp"
-    assert (threads, normalization, self_contacts) == (3, "abundance", False)
-    assert calls["partition"][5] == str(out / "network.txt")
+    assert (threads, normalization) == (3, "abundance")
+    assert calls["partition"][4] == str(out / "network.txt")
     assert metacool.read_bytes() == before
     # The contig data of the network step is kept. A map sums its
     # libraries: no network_0.txt.
@@ -692,7 +692,7 @@ def test_run_reads_the_columns_of_its_map(command, stub_pipeline, tmp_path, monk
     run_cli(command, metacool, "-a", _assembly(tmp_path), "-n" if command == "network" else "-m",
             "theoritical_hit", "-o", out, "-T", tmp_path / "tmp")  # fmt: skip
     assert {name: (data["RS"], data["coverage"]) for name, data in contig_data.items()} == {"c1": (3, 1.5), "c2": (2, 0.5)}
-    assert stub_pipeline["metacool_to_contacts"][-2:] == ("theoritical_hit", False)
+    assert stub_pipeline["metacool_to_contacts"][-1] == "theoritical_hit"
     if command == "pipeline":
         # Where the values that the map of the bins stores came from.
         metadata = stub_pipeline["reassign_metacool"][4]["metadata"]
@@ -724,8 +724,7 @@ def test_run_refused_for_a_column_that_lacks_contigs(command, stub_pipeline, tmp
 def test_pipeline_refused_for_a_column_that_lacks_contigs_keeps_the_clusters(stub_pipeline, tmp_path, monkeypatch, run_cli):
     """A run from a map with -F (a rebinning in the output directory of an
     earlier run) that its columns refuse once the assembly is read leaves
-    the clusters of the earlier run, under their names and under those of
-    metaTOR 1.x, which -F removes too: the contig data is read before they
+    the clusters of the earlier run: the contig data is read before they
     are replaced (they were removed, then the run refused)."""
     monkeypatch.setattr("metator.network.contig_data_from_map", mtn_contig_data_from_map)
     contig_data = {name: {"id": i, "length": length, "GC": 50.0, "hit": 0, "coverage": "-", "RS": "-"}
@@ -733,8 +732,7 @@ def test_pipeline_refused_for_a_column_that_lacks_contigs_keeps_the_clusters(stu
     monkeypatch.setattr("metator.network.create_contig_data", lambda *args: contig_data)
     metacool = _map_with_columns(tmp_path, {"Restriction_site": [3, 2]})
     out = tmp_path / "out"
-    names = ["overlapping_clusters", "recursive_clusters", "final_clusters", "overlapping_bin", "recursive_bin",
-             "final_bin_unscaffold"]  # fmt: skip
+    names = ["overlapping_clusters", "recursive_clusters", "final_clusters"]
     clusters = [out / name / "cluster.fa" for name in names]
     for path in clusters:
         path.parent.mkdir(parents=True)
@@ -902,7 +900,7 @@ def _rounds_tables(monkeypatch, members):
         rounds.add(mtcl.OVERLAPPING, "metator_00001_00000", members, columns={"Completeness": 0.9, "Lineage": "x"})
         rounds.close_round(mtcl.OVERLAPPING)
         rounds.add(mtcl.FINAL, "metator_00001_00000", ["c1"], parent="metator_00001_00000", columns={"step": 0})
-        rounds.write(args[8])
+        rounds.write(args[7])
         return result
 
     monkeypatch.setattr("metator.validation.recursive_decontamination", recursive_decontamination)
@@ -1600,16 +1598,16 @@ def test_network_from_a_metacool(monkeypatch, tmp_path, run_cli):
     _collection(tmp_path / "maps.mmetacool", "lib1")
     monkeypatch.chdir(tmp_path)
     run_cli("network", "maps.mmetacool::entries/lib1", "-a", _assembly(tmp_path), "-e", "DpnII",
-            "-s", "-t", "2", "-n", "RS", "-o", out, "-T", tmp_path / "tmp")  # fmt: skip
+            "-t", "2", "-n", "RS", "-o", out, "-T", tmp_path / "tmp")  # fmt: skip
     assert calls["create_contig_data"] == (str(tmp_path / "assembly.fa"), None, "DpnII")
     # The restriction sites and the coverage that the map gives where the
     # options give none.
     assert calls["contig_data_from_map"] == ("maps.mmetacool::entries/lib1", {"c1": {}}, "DpnII", None)
     uri, contig_data, *args = calls["metacool_to_contacts"]
     assert uri == "maps.mmetacool::entries/lib1" and contig_data == {"c1": {}}
-    out_dir, network, contigs, tmp_dir, threads, normalization, self_contacts = args
-    assert (out_dir, network, contigs, threads, normalization, self_contacts) == (
-        str(out), "network.txt", "contig_data_network.txt", 2, "RS", True)  # fmt: skip
+    out_dir, network, contigs, tmp_dir, threads, normalization = args
+    assert (out_dir, network, contigs, threads, normalization) == (
+        str(out), "network.txt", "contig_data_network.txt", 2, "RS")  # fmt: skip
     assert Path(tmp_dir).parent == tmp_path / "tmp"
 
 
@@ -1778,35 +1776,6 @@ def _earlier_run(command, tmp_path):
     return files
 
 
-# The outputs that an earlier run of each step left, named as metaTOR 1.x
-# names them, with their names since 2.0.
-STEP_OUTPUTS_OF_1X = {
-    "partition": {"overlapping_bin": "overlapping_clusters"},
-    "validation": {
-        "recursive_bin": "recursive_clusters",
-        "final_bin": "final_clusters",
-        "final_bin_unscaffold": "final_clusters",
-        "bin_summary.txt": "cluster_summary.txt",
-    },
-}
-
-
-def _outputs_of_1x(out, names):
-    """The outputs that an earlier run left in out, named as metaTOR 1.x
-    names them: a directory with a FASTA file, or bin_summary.txt."""
-    paths = []
-    for name in names:
-        path = out / name
-        if name.endswith(".txt"):
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text("\tCompleteness\nmetator_00001_00000\t0.9\n")
-        else:
-            path.mkdir(parents=True)
-            (path / "earlier.fa").write_text(">c1\nACGT\n")
-        paths.append(path)
-    return paths
-
-
 def _partition_table(monkeypatch, size=150):
     """Have the stub partition write the contig data of a partition of the
     contigs c1 and c2 of _contig_map, as metator.partition writes it: one
@@ -1815,7 +1784,7 @@ def _partition_table(monkeypatch, size=150):
 
     def partition(*args):
         result = stub(*args)
-        Path(args[6], "contig_data_partition.txt").write_text(
+        Path(args[5], "contig_data_partition.txt").write_text(
             "ID\tName\tSize\tOverlapping_cluster_ID\tOverlapping_cluster_contigs\tOverlapping_cluster_size\n"
             f"1\tc1\t100\t00001\t2\t{size}\n2\tc2\t50\t00001\t2\t{size}\n"
         )
@@ -2181,7 +2150,7 @@ def test_a_step_refuses_a_bad_prefix_before_replacing_the_clusters(command, with
     """An invalid --prefix is refused before -F replaces the directories of
     clusters of an earlier run, as pipeline refuses it: it emptied them
     first, then was refused."""
-    earlier = _earlier_run(command, tmp_path) + _outputs_of_1x(tmp_path / "out", STEP_OUTPUTS_OF_1X[command])
+    earlier = _earlier_run(command, tmp_path)
     metacool = _contig_map(tmp_path / "input.metacool") if with_map else None
     with pytest.raises(ValueError, match="Invalid --prefix"):
         run_cli(command, *_step_run(command, metacool, tmp_path, "-F", "-p", "bad.prefix"))
@@ -2211,73 +2180,11 @@ def test_pipeline_refuses_an_input_as_its_output_map(stub_pipeline, tmp_path, ru
     assert assembly.read_bytes() == before and not stub_pipeline
 
 
-@pytest.mark.parametrize("command, name", [(command, name) for command, names in STEP_OUTPUTS_OF_1X.items() for name in names])
-def test_a_step_refuses_the_outputs_of_1x(command, name, stub_pipeline, tmp_path, run_cli, logged):
-    """An output of an earlier run that metaTOR 1.x named after bins
-    (overlapping_bin, bin_summary.txt...) is refused without -F, as those of
-    2.0 are: the run would leave it next to its own. -F removes it."""
-    (path,) = _outputs_of_1x(tmp_path / "out", [name])
-    with pytest.raises(ValueError):
-        run_cli(command, *_step_run(command, None, tmp_path))
-    assert path.exists() and not stub_pipeline
-    # Refused before the run makes its own directories.
-    assert not [name for name in STEP_DIRS[command] if (tmp_path / "out" / name).exists()]
-    new = STEP_OUTPUTS_OF_1X[command][name]
-    message = (
-        f"{path} already existed: an output of an earlier run, named as metaTOR 1.x names it ({new} now). Remove it "
-        "or use -F argument to remove it."
-    )
-    assert ("ERROR", message) in logged()
-    run_cli(command, *_step_run(command, None, tmp_path, "-F"))
-    assert not path.exists() and stub_pipeline
-    assert ("INFO", f"Removed {path}, an output of an earlier run named as metaTOR 1.x names it ({new} now).") in logged()
-
-
-def test_validation_refuses_the_plots_of_an_earlier_run(stub_pipeline, tmp_path, run_cli, logged):
-    """The plots of an earlier run (plot/), which metaTOR 2.0 no longer
-    draws, are refused without -F, as the outputs that 1.x named after bins
-    are: the run would leave them next to its own. -F removes them."""
-    path = tmp_path / "out" / "plot"
-    path.mkdir(parents=True)
-    (path / "network_heatmap.png").write_bytes(b"png")
-    with pytest.raises(ValueError):
-        run_cli("validation", *_step_run("validation", None, tmp_path))
-    assert path.exists() and not stub_pipeline
-    message = (
-        f"{path} already existed: the plots of an earlier run, which metaTOR 2.0 no longer draws. Remove it or use -F "
-        "argument to remove it."
-    )
-    assert ("ERROR", message) in logged()
-    run_cli("validation", *_step_run("validation", None, tmp_path, "-F"))
-    assert not path.exists() and stub_pipeline
-    assert ("INFO", f"Removed {path}, the plots of an earlier run, which metaTOR 2.0 no longer draws.") in logged()
-
-
-@pytest.mark.parametrize("dangling", [False, True], ids=["link", "dangling link"])
-def test_force_removes_a_link_of_1x_not_its_target(dangling, stub_pipeline, tmp_path, run_cli):
-    """An output of 1.x that is a symbolic link, to a directory elsewhere or
-    to nothing, is refused without -F, and removed with it, its target
-    kept."""
-    target = tmp_path / "elsewhere"
-    if not dangling:
-        target.mkdir()
-        (target / "earlier.fa").write_text(">c1\nACGT\n")
-    link = tmp_path / "out" / "overlapping_bin"
-    link.parent.mkdir()
-    link.symlink_to(target)
-    with pytest.raises(ValueError):
-        run_cli("partition", *_step_run("partition", None, tmp_path))
-    assert os.path.lexists(link) and not stub_pipeline
-    run_cli("partition", *_step_run("partition", None, tmp_path, "-F"))
-    assert not os.path.lexists(link) and stub_pipeline
-    assert dangling or (target / "earlier.fa").exists()
-
-
-@pytest.mark.parametrize("name", ["final_bin", "final_bin_unscaffold", "final_clusters", "recursive_bin/step_1"])
+@pytest.mark.parametrize("name", ["final_clusters", "recursive_clusters/step_1"])
 def test_validation_refuses_its_input_in_what_force_removes(name, stub_pipeline, tmp_path, run_cli, logged):
-    """The clusters to validate (-f) in a directory that -F removes, of 1.x
-    or of 2.0: refused before anything is removed. -F removed them, then
-    the run failed, or found no cluster."""
+    """The clusters to validate (-f) in a directory that -F removes: refused
+    before anything is removed. -F removed them, then the run failed, or
+    found no cluster."""
     fasta = tmp_path / "out" / name
     fasta.mkdir(parents=True)
     (fasta / "metator_00001_00000.fa").write_text(">c1\nACGT\n")
@@ -2312,19 +2219,19 @@ def test_steps_without_a_map_are_unchanged(command, stub_pipeline, tmp_path, run
     out, assembly, contigs = str(tmp_path / "out"), str(tmp_path / "assembly.fa"), str(tmp_path / "contig_data.txt")
     expected = {
         "partition": (
-            "louvain", assembly, False, contigs, 100, "network.txt", out, f"{out}/overlapping_clusters", 0.8, 1.0,
-            1000, 1, "sample_metator",
+            "louvain", assembly, contigs, 100, "network.txt", out, f"{out}/overlapping_clusters", 0.8, 1.0, 1000, 1,
+            "sample_metator",
         ),
         "validation": (
-            "louvain", assembly, False, contigs, f"{out}/final_clusters", "overlapping_clusters", 10, "network.txt", out,
-            0.9, f"{out}/recursive_clusters", 1.0, 1000, "tmp_dir", 1, "sample_metator",
+            "louvain", assembly, contigs, f"{out}/final_clusters", "overlapping_clusters", 10, "network.txt", out, 0.9,
+            f"{out}/recursive_clusters", 1.0, 1000, "tmp_dir", 1, "sample_metator",
         ),
     }[command]  # fmt: skip
     called = list(stub_pipeline[step])
     if command == "validation":
         # The private temporary directory of the run, inside --tmpdir.
-        assert Path(called[13]).parent == tmp_path / "tmp"
-        called[13] = "tmp_dir"
+        assert Path(called[12]).parent == tmp_path / "tmp"
+        called[12] = "tmp_dir"
     assert tuple(called) == expected
     assert set(stub_pipeline) == ({step, "partition_outdir"} if command == "partition" else {step})
     files = {
@@ -2414,27 +2321,18 @@ def test_pipeline_refused_keeps_the_bins_of_an_earlier_run(args, tmp_path, run_c
     }
     args = [arg.format(**names) for arg in args]
     out = tmp_path / "out"
-    # The outputs of a run of 2.0, and of 1.x, named after bins, and its plots.
-    names = ["overlapping_clusters", "recursive_clusters", "final_clusters", "overlapping_bin", "final_bin_unscaffold",
-             "plot"]  # fmt: skip
+    # The outputs of an earlier run.
+    names = ["overlapping_clusters", "recursive_clusters", "final_clusters"]
     bins = [out / name / "bin.fa" for name in names]
     for path in bins:
         path.parent.mkdir(parents=True)
         path.write_text(">c1\nACGT\n")
-    (out / "bin_summary.txt").write_text("earlier\n")
     with pytest.raises(ValueError):
         run_cli("pipeline", "-a", TESTS_DATA / "assembly.fa", *args, "-o", out, "-F", "-T", tmp_path / "tmp")
-    assert all(path.exists() for path in bins) and (out / "bin_summary.txt").exists()
+    assert all(path.exists() for path in bins)
 
 
-@pytest.mark.parametrize(
-    "existing, message",
-    [
-        ("recursive_clusters", "already existed."),
-        ("recursive_bin", "already existed: an output of an earlier run, named as metaTOR 1.x names it"),
-    ],
-)
-def test_pipeline_refuses_earlier_bins_before_reading_the_assembly(existing, message, tmp_path, monkeypatch, run_cli):
+def test_pipeline_refuses_earlier_bins_before_reading_the_assembly(tmp_path, monkeypatch, run_cli):
     """Without --force, the clusters of an earlier run are refused before
     the assembly is read (minutes on a large metagenome)."""
 
@@ -2443,22 +2341,20 @@ def test_pipeline_refuses_earlier_bins_before_reading_the_assembly(existing, mes
 
     monkeypatch.setattr("metator.network.create_contig_data", create_contig_data)
     out = tmp_path / "out"
-    (out / existing).mkdir(parents=True)
+    (out / "recursive_clusters").mkdir(parents=True)
     assembly = tmp_path / "assembly.fa"
     shutil.copyfile(TESTS_DATA / "subset.assembly.fa", assembly)
     with pytest.raises(ValueError):
         run_cli("pipeline", _contig_map(tmp_path / "map.metacool"), "-a", assembly, "-o", out, "-T", tmp_path / "tmp")
     (log,) = out.glob("metator_pipeline_*.log")
-    assert f"ERROR :: {out / existing} {message}" in log.read_text()
+    assert f"ERROR :: {out / 'recursive_clusters'} already existed." in log.read_text()
 
 
 def test_pipeline_without_pyfastx_index(stub_pipeline, tmp_path, monkeypatch, run_cli):
     """No bin passed the size threshold, so pyfastx never indexed the
     assembly: the run ends without removing an index that is not there (it
     used to fail at its very end, with FileNotFoundError)."""
-    monkeypatch.setattr(
-        "metator.validation.recursive_decontamination", lambda *args, **kwargs: os.path.join(args[8], "clustering_matrix")
-    )
+    monkeypatch.setattr("metator.validation.recursive_decontamination", lambda *args, **kwargs: None)
     assembly = tmp_path / "assembly.fa"
     shutil.copyfile(TESTS_DATA / "subset.assembly.fa", assembly)
     out = tmp_path / "out"
