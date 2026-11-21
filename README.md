@@ -202,9 +202,9 @@ of the run before any clustering, every contig in `__unbinned__` (by `hicstuff p
 `metacooler create pairs`: see [From hicstuff to metaTOR](#from-hicstuff-to-metator)). It reads its
 network from the map (see [Starting from a contact map](#starting-from-a-contact-map)) and, at its end,
 writes the map of the clusters over it, once: what `network`, `partition` and `validation` store one by
-one, the network of its contigs, then its final clusters, with `metacooler reassign` (`--output-map`
-writes it to another file). It is written through metacooler, from a fresh copy of the map, so a map updated in place holds at most the space
-that the edits of its last run left behind: it does not grow with each run. The map also stores the
+one, its final clusters, which `metacooler reassign` writes anew from the map, then the network of its
+contigs (`--output-map` writes it to another file). It is written through metacooler, so a map updated in
+place holds at most the space that the edits of its last run left behind: it does not grow with each run. The map also stores the
 clustering rounds of the run (the core, overlapping, recursive and final clusters, with their contigs),
 which the run writes as `clusters.txt` and `cluster_members.txt` in its temporary directory too (`-N`
 keeps them). For a run whose `partition` and `validation` were not given
