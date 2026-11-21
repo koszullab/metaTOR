@@ -133,18 +133,22 @@ The output files will be in the ouput directory given as parmater or in working 
 
 | Files/Commands | description | network | partition | validation | pipeline |
 | - | :-: | :-: | :-: | :-: | :-: |
-| contig_data_partition.txt |Information on contigs after partition step||X|||
 | overlapping_micomplete_results.txt |miComplete results summary file from the partition step|||X|X|
 | recursive_micomplete_stepN.txt |miComplete results summary file from the recursive step N|||X|X|
 | contig_data_final.txt |Information on contigs after whole pipeline|||X|X|
 | **cluster_summary.txt** |**Information on the final clusters**|||**X**|**X**|
-| clusters.txt |Every cluster of every round (overlapping, recursive, final), with its parent and miComplete's columns|||X|X|
+| clusters.txt |Every cluster of every round (core, overlapping, recursive, final), with its parent and miComplete's columns|||X|X|
 | cluster_members.txt |The contigs of each cluster of `clusters.txt`|||X|X|
 | binning.txt |File with contigs names and their final clustering|||X|X|
-| overlapping_clusters |Directory with the fasta of the partition clusters||X|X|X|
 | recursive_clusters |Directory with the fasta of the recursive clusters|||X|X|
 | **final_clusters** |**Directory with the fasta of the final clusters**|||**X**|**X**|
-| The input map |The network of the contigs (`network`); the contact map of the contigs, grouped by cluster (`validation`, `pipeline`): updated in place, or written to `--output-map` (see [Starting from a contact map](#starting-from-a-contact-map))|X|X|X|X|
+| The input map |The network of the contigs (`network`); its partition, the core and overlapping clusters (`partition`); the contact map of the contigs, grouped by cluster (`validation`, `pipeline`): updated in place, or written to `--output-map` (see [Starting from a contact map](#starting-from-a-contact-map))|X|X|X|X|
+
+**The partition**
+`metator partition` stores every core and overlapping cluster in the map, with their contigs, as its
+clustering rounds `core` and `overlapping`: no table and no FASTA file. `validation` reads them there, and
+writes the FASTA files of the overlapping clusters that reach its `--size`, which miComplete checks, and
+the contig data of the partition, in its temporary directory (`-N` keeps them).
 
 **The network**
 `metator network` stores the network in the map: what it measured on each contig, in the contigs table
@@ -167,10 +171,9 @@ They have to have the header when they are use as input but the order of the col
 Their rows are the contigs of the map, in its order, and the ID of a contig is its position in the map.
 Depending on which step of the pipeline have been launch they just have some of these columns:
 
-* `contig_data_partition.txt`: ID, Name, Size, GC content, Hit, Shotgun_coverage and Restriction Site,
-  which the network step stores in the map, with the information of core clusters and overlapping
-  clusters.
-* `contig_data_final.txt`: All the columns.
+* `contig_data_final.txt`: All the columns: ID, Name, Size, GC content, Hit, Shotgun_coverage and
+  Restriction Site, which the network step stores in the map, then the core and overlapping clusters,
+  which the partition stores there, then the recursive and final clusters of the validation.
 
 The shotgun coverage will be filled only if the depth.txt file is given, otherwise it will be filled with `-`. This column is only necessarry for the *abundance* and the *theoritical_hit* normalization. The restriction will also be filled with `-` if no enzyme are given. This column is only necessary for the *RS* and the *theoritical_hit* normalization. A run from a contact map reads both columns from the map when the options are not given (see [Starting from a contact map](#starting-from-a-contact-map)).
 Moreover, if the contig is not clustered (no HiC reads mapped on it) all the columns with clustering information will be filled with `-`, and if a cluster is not recursively decontamined because it's smaller than the size threshold or it doesn't have any contamination the recusive cluster information will be filled `0`, `-`, `-`. Finally, if the contig is not in a final cluster, it will be annotated `ND` in the last column (for not determined).
@@ -382,38 +385,44 @@ scheduler's signal to the job, reaches it too.
 The three steps of `pipeline MAP` take the map as their first argument too: the map is the network
 that they share. Run one after the other on one map, they read and update it as `pipeline MAP` does,
 and write the map that it writes from the same clusters, but for the date the map was written and the
-command lines and parameters that it stores (those of `network` and `validation`). Louvain draws random numbers: two runs give the same clusters only from the same random
-stream, as the tests check in one process, so steps run as separate commands differ from `pipeline` as
-two `pipeline` runs do. `partition MAP` on a map that holds the clusters of an earlier run replaces its
-clustering rounds with its own, and leaves its genomes, contigs and the `metator` key of its metadata as
-the earlier run wrote them, until `validation MAP` writes the new ones:
+command lines and parameters that it stores (those of `network`, `partition` and `validation`). Louvain
+draws random numbers: two runs give the same clusters only from the same random stream, as the tests
+check in one process, so steps run as separate commands differ from `pipeline` as two `pipeline` runs
+do. `partition MAP` on a map that holds the clusters of an earlier run replaces its clustering rounds
+with its own, and the `partition` entry of the `metator` key of its metadata with what the run was (the
+network it partitioned among it), and leaves its genomes, contigs and the rest of its metadata as the
+earlier run wrote them, until `validation MAP` writes the new ones. `validation MAP` refuses a partition
+made on another network than the one stored in the map: `network MAP` run again keeps the partition,
+with a warning, until `partition MAP` partitions the new network:
 
 ```sh
 # 1. The network, stored in the map.
 metator network sample.metacool -a assembly.fa -d depth.txt -e DpnII -o binning
-# 2. The partition: overlapping_clusters/ and contig_data_partition.txt. The map stores the overlapping clusters.
-metator partition sample.metacool -a assembly.fa -o binning
+# 2. The partition: the map stores its core and overlapping clusters.
+metator partition sample.metacool -o binning
 # 3. The validation: the final clusters. The map becomes the map of the clusters.
-metator validation sample.metacool -a assembly.fa -c binning/contig_data_partition.txt \
-    -f binning/overlapping_clusters -o binning
+metator validation sample.metacool -a assembly.fa -o binning
 ```
 
 `network MAP` stores the network of the contigs in the map (the `GC_content`, `Hit`,
 `Shotgun_coverage` and `Restriction_site` columns of its contigs table, the weights of its
 normalization and the `network` entry of its metadata), in place of an earlier one; `partition` and
-`validation` refuse a map without it. `partition MAP` stores its overlapping clusters that reach `--size`, those of `overlapping_clusters/`, with
-their contigs, as the round `overlapping` of the clustering rounds of the map, in place of the rounds
-that it held (without the columns of miComplete, which the validation runs), and leaves the genomes
-and contigs tables of the map as they were. `validation MAP` writes the map of the clusters, as
-`pipeline MAP` does at its end, with every round (`overlapping`, `recursive_<k>`, `final`). Both write
-the map as `pipeline MAP` does: in place, through a map written next to it and validated in full, or to
-`--output-map FILE`, which leaves the map as it was (give the next step that FILE; a run from an entry
-of a `.mmetacool` collection needs it). They lock the map while they run, and refuse what `pipeline
-MAP` refuses (a map that is not there or that metacooler cannot open, a lock that another run holds, a
-FILE that exists without `-F`...), a map that is no map of the contigs of their contig data (`-c`:
-other contigs or lengths), an `--output-map` that is one of their inputs, and an invalid `--prefix`,
-before any work and before `-F` replaces the directories of clusters of an earlier run. Both need the
-map: metaTOR 2.0 removed their runs from the tables of the network (`-n`, `-c`).
+`validation` refuse a map without it. `partition MAP` stores its partition, every core and overlapping
+cluster with its contigs, as the rounds `core` and `overlapping` of the clustering rounds of the map,
+in place of the rounds that it held (without the columns of miComplete, which the validation runs),
+and the `partition` entry of its metadata, and leaves the genomes and contigs tables of the map as
+they were; it writes no table and no FASTA file. `validation MAP` reads the partition from the map
+(refused without it, or when it was made on another network than the one stored in the map), checks
+the overlapping clusters that reach its `--size`, and writes the map of
+the clusters, as `pipeline MAP` does at its end, with every round (`core`, `overlapping`,
+`recursive_<k>`, `final`). Both write the map as `pipeline MAP` does: in place, through a map written
+next to it and validated in full, or to `--output-map FILE`, which leaves the map as it was (give the
+next step that FILE; a run from an entry of a `.mmetacool` collection needs it). They lock the map
+while they run, and refuse what `pipeline MAP` refuses (a map that is not there or that metacooler
+cannot open, a lock that another run holds, a FILE that exists without `-F`...), an `--output-map`
+that is one of their inputs, and an invalid `--prefix`, before any work and before `-F` replaces the
+directories of clusters of an earlier run. Both need the map: metaTOR 2.0 removed their runs from the
+tables of the network and of the partition (`-n`, `-c`, `-f`).
 
 #### mge on a contact map
 

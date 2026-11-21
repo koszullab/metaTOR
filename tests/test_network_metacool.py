@@ -460,6 +460,54 @@ def _stored_network(tmp_path, halves=False, normalization="length"):
     return str(metacool)
 
 
+@pytest.mark.parametrize("normalization", ["length", "None"])
+def test_network_digest_is_that_of_the_network(tmp_path, normalization):
+    """The digest of the network stored in a map (see network_digest), which
+    metator partition records with its partition, is that of the network:
+    the same once a run regroups the map (validation, pipeline), which moves
+    its contigs (here from a, b, c to c, b, a: the edge a-b, the first from
+    a, is the last from b), and another for another normalization, other
+    contacts, other weights or other names."""
+    metacool = _stored_network(tmp_path, normalization=normalization)
+    stored = mtn.stored_network(metacool)
+    contacts = mtn.contig_contacts(metacool)
+    weights = mtn.stored_weights(metacool)
+    names = list(stored.table.Name)
+    assert stored.digest == mtn.network_digest(contacts, weights, names, normalization)
+    # The map of the clusters c, then a and b: genome-then-length.
+    table = stored.table.assign(Final_cluster=["m_2", "m_2", "m_1"])
+    table.to_csv(tmp_path / "contig_data_final.txt", sep="\t", index=False)
+    regrouped = tmp_path / "regrouped.metacool"
+    mtmc.reassign_metacool(
+        metacool,
+        str(tmp_path / "contig_data_final.txt"),
+        str(regrouped),
+        normalization=None if normalization == "None" else normalization,
+    )
+    again = mtn.stored_network(str(regrouped))
+    assert list(again.table.Name) == ["c", "b", "a"]
+    assert again.digest == stored.digest
+    other_counts = contacts.assign(count=contacts["count"] + 1)
+    other_weights = None if weights is None else weights * 2
+    others = [
+        mtn.network_digest(contacts, weights, names, "RS"),
+        mtn.network_digest(other_counts, weights, names, normalization),
+        mtn.network_digest(contacts, other_weights if weights is not None else [1.0, 1.0, 1.0], names, normalization),
+        mtn.network_digest(contacts, weights, ["a", "b", "d"], normalization),
+    ]
+    assert stored.digest not in others and len(set(others)) == len(others)
+    # One NaN, whatever its bits: a contig without weight.
+    if weights is not None:
+        nan = weights.copy()
+        nan[0] = np.nan
+        payload = nan.copy()
+        payload.view(np.uint64)[0] |= 1
+        assert np.isnan(payload[0]) and payload.tobytes() != nan.tobytes()
+        assert mtn.network_digest(contacts, payload, names, normalization) == mtn.network_digest(
+            contacts, nan, names, normalization
+        )
+
+
 def test_network_stored_in_a_map(tmp_path):
     """A map that metator network stored the network in gives it to the
     steps after it: the network of its contacts, weighed with the stored

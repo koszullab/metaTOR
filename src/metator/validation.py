@@ -14,9 +14,13 @@ bin of completeness c; otherwise the original bin is kept. The step repeats on
 the new bins, 9 times at most.
 
 
+The clusters that miComplete checks first are the overlapping clusters of the
+partition that the map stores (see metator.metacool.read_partition) that
+reach --size: their FASTA files, written by metacooler from the assembly in
+the temporary directory of the run (see write_overlapping_fasta).
+
 Functions in this module:
     - bin_quality
-    - check_partition_table
     - correct_final_bin
     - get_bin_coverage
     - give_results_info
@@ -28,6 +32,7 @@ Functions in this module:
     - recursive_decontamination
     - update_contigs_data_recursive
     - write_bins_contigs
+    - write_overlapping_fasta
 """
 
 import logging
@@ -48,36 +53,6 @@ from os.path import join
 
 # The fasta files of the bins that miComplete evaluates.
 FASTA_EXTENSIONS = (".fa", ".fasta", ".fna")
-
-#: The columns of the contig data table of a partition that the validation
-#: reads (see check_partition_table).
-PARTITION_COLUMNS = ("ID", "Name", "Size", "Hit", "Shotgun_coverage", "Overlapping_cluster_ID")
-
-
-def check_partition_table(contig_data_file):
-    """Refuse a contig data table that lacks a column the validation reads
-    (PARTITION_COLUMNS): the error, logged, names them. Only its header is
-    read: a table refused here costs no miComplete run.
-
-    Parameters:
-    -----------
-    contig_data_file : str
-        Path to the contig data table of a partition
-        (contig_data_partition.txt).
-
-    Raises:
-    -------
-    ValueError
-        If the table lacks one of PARTITION_COLUMNS.
-    """
-    header = pd.read_csv(contig_data_file, sep="\t", nrows=0).columns
-    missing = [column for column in PARTITION_COLUMNS if column not in header]
-    if missing:
-        logger.error(
-            f"{contig_data_file} has no {', '.join(missing)} column: give the contig data table of a partition "
-            "(contig_data_partition.txt)."
-        )
-        raise ValueError(f"{contig_data_file} lacks the columns {', '.join(missing)}.")
 
 
 def bin_quality(completeness, redundancy):
@@ -376,6 +351,62 @@ def micomplete_quality(fasta_dir, outfile, threads):
     shutil.rmtree(workdir)
 
 
+def write_overlapping_fasta(metacool, assembly, partition, contig_data, size, outdir, temp_dir=None):
+    """Write the FASTA file of each overlapping cluster of a partition that
+    reaches size bp (--size), for miComplete to check: <outdir>/<name>.fa,
+    the records of its contigs as they are in the assembly, in the order of
+    the partition (that of its core clusters, then of their contigs: see
+    metator.clusters.Partition), through metacooler.write_fasta.
+
+    Parameters:
+    -----------
+    metacool : str
+        The map of the partition (a path, or an entry of a collection).
+    assembly : str
+        Path to the assembly that the map was made from.
+    partition : metator.clusters.Partition
+        The core and the overlapping clusters.
+    contig_data : pandas.DataFrame
+        The contig data of the contigs of the map, in its order (see
+        metator.network.contig_table): their names and sizes.
+    size : int
+        The size in bp that an overlapping cluster reaches to be checked.
+    outdir : str
+        The directory to write the files in, made if missing.
+    temp_dir : str, optional
+        Where metacooler copies a compressed assembly, plain: the temporary
+        directory of the run.
+
+    Returns:
+    --------
+    list of str:
+        The names of the clusters written, by number.
+
+    Raises:
+    -------
+    ValueError
+        If the assembly lacks a contig of a cluster, or gives it another
+        length than the map (the reason is logged as an error).
+    """
+    import metacooler
+
+    names = contig_data["Name"].to_numpy()
+    sizes = partition.sizes(contig_data["Size"].to_numpy())
+    kept = [number for number in partition.overlapping if sizes[number] >= size]
+    groups = {partition.names[number]: [str(names[contig - 1]) for contig in partition.overlapping[number]] for number in kept}
+    os.makedirs(outdir, exist_ok=True)
+    if groups:
+        try:
+            metacooler.write_fasta(metacool, assembly, outdir, groups=groups, force=True, temp_dir=temp_dir)
+        except (KeyError, ValueError, OSError) as error:
+            message = f"The clusters to check cannot be written from {assembly}: {error}"
+            logger.error(message)
+            raise ValueError(message) from error
+    logger.info(f"{len(kept)} clusters have been extracted")
+    logger.info(f"Total size of the extracted clusters: {round(sum(sizes[number] for number in kept) / 10**6, 3)}Mb")
+    return list(groups)
+
+
 def recursive_clustering(
     assembly,
     iterations,
@@ -616,6 +647,7 @@ def recursive_decontamination(
     size,
     threads,
     prefix,
+    partition,
 ):
     """Function to validate bins do the recursive decontamination using Louvain
     or Leiden algorithm
@@ -628,19 +660,23 @@ def recursive_decontamination(
     assembly : str
         Path to the assembly file used for the partition.
     contig_data_file : str
-        Path to the contig data table to update.
+        Path to the contig data table of the partition (see
+        metator.partition.partition_table), to update.
     final_fasta_dir : str
         Path to write the final fasta decontaminated bins.
     input_fasta_dir : str
-        Path to the directory where the fasta bin from the partition are.
+        Path to the directory of the FASTA files of the overlapping clusters
+        to check (see write_overlapping_fasta).
     iterations : int
         Number of iterations to use for the recursive partition.
     network : pandas.DataFrame
         The network of the contigs of the map, in the IDs of the contigs in
-        contig_data_file (see metator.network.relabel_network). The IDs of
-        metator.network.map_network are the positions of the contigs in the
-        map as it is read, which a run that regroups the map (validation,
-        pipeline) moves: join by contig name.
+        contig_data_file: their positions in the map as the run read it (see
+        metator.network.map_network), which the contig data of the partition
+        numbers them by too (see metator.partition.partition_table). A run
+        that regroups the map (validation, pipeline) moves its contigs: join
+        the network of the map it wrote to these tables by contig name (see
+        metator.network.relabel_network).
     outdir : str
         Path to the output directory where to write the output files.
     overlapping_parameter : int
@@ -659,17 +695,17 @@ def recursive_decontamination(
         Number of threads to use.
     prefix : str
         Sample prefix to use.
+    partition : metator.clusters.Partition
+        The core and the overlapping clusters of the partition, recorded as
+        the first rounds of the run (see metator.clusters.record_partition):
+        every cluster, those that miComplete checked with its columns.
     """
-
-    # A table without the columns of a partition: refused before miComplete
-    # runs on every cluster.
-    check_partition_table(contig_data_file)
 
     # No bin to validate: miComplete would write no result to read.
     if not any(path.endswith(FASTA_EXTENSIONS) for path in os.listdir(input_fasta_dir)):
         logger.error(
-            f"{input_fasta_dir} holds no cluster to validate (no .fa, .fasta or .fna file): partition writes none when "
-            "no cluster reaches its minimum size (--size of partition or pipeline)."
+            "No overlapping cluster of the partition reaches the minimum size of a cluster to check (--size of "
+            "validation or pipeline): there is no cluster to validate."
         )
         raise ValueError
 
@@ -692,6 +728,10 @@ def recursive_decontamination(
         header=0,
         # As written: "00008", not 8.
         converters={"Overlapping_cluster_ID": str},
+        # A contig named NA (or null, N/A...) is a name: only an empty field,
+        # as pandas writes a missing value, is one.
+        keep_default_na=False,
+        na_values=[""],
     )
     contigs_data["index"] = contigs_data["ID"] - 1
     contigs_data = contigs_data.set_index("index")
@@ -706,11 +746,9 @@ def recursive_decontamination(
     bin_summary = mio.micomplete_results_to_dict(overlapping_micomplete_file)
 
     # The clustering rounds of the run, for its map (see metator.clusters):
-    # first the overlapping clusters that miComplete checked.
-    rounds = mtc.Rounds()
-    for bin_id, info in bin_summary.items():
-        rounds.add(mtc.OVERLAPPING, bin_id, _bin_contigs(bin_id, contigs_data), columns=info)
-    rounds.close_round(mtc.OVERLAPPING)
+    # first those of the partition, every core and overlapping cluster, the
+    # overlapping clusters that miComplete checked with its columns.
+    rounds = mtc.record_partition(mtc.Rounds(), partition, list(contigs_data.sort_index()["Name"]), quality=bin_summary)
 
     # Add columns about recursive step.
     for bin_id in bin_summary:

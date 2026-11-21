@@ -1875,3 +1875,181 @@ def test_store_normalization_hands_its_weights_to_metacooler(metagenome, metagen
     metacooler.annotate(str(outfile), drop=["contigs.Shotgun_coverage", "contigs.Restriction_site"], inplace=True)
     with pytest.raises(mtmc.MetacoolError, match="reads the Shotgun_coverage and Restriction_site column"):
         mtmc.store_normalization(str(outfile), "theoritical_hit")
+
+
+def _three_contigs(path):
+    """A map of the contigs a (300 bp), b (200 bp) and c (100 bp), in that
+    order, every one in __unbinned__, one bin each."""
+    import metacooler
+
+    pairs = path.with_suffix(".pairs")
+    pairs.write_text("## pairs format v1.0\nr1\ta\t10\tb\t20\t+\t-\nr2\tb\t10\tc\t90\t+\t-\n")
+    bins = pd.DataFrame({"chrom": ["a", "b", "c"], "start": 0, "end": [300, 200, 100]})
+    metacooler.from_pairs(str(path), pairs=str(pairs), bins=bins, contig_genome_map=None, ps=False)
+    pairs.unlink()
+    return path
+
+
+def _stored_rounds(path, clusters):
+    """Store clusters in the map at path as metacooler stores clustering
+    rounds: by round, each cluster's name and contigs."""
+    import metacooler
+
+    rounds = list(dict.fromkeys(round_name for round_name, _, _ in clusters))
+    metacooler.write_clusters(
+        str(path),
+        rounds,
+        pd.DataFrame({"round": [round_name for round_name, _, _ in clusters], "name": [name for _, name, _ in clusters]}),
+        pd.DataFrame(
+            [(round_name, name, contig) for round_name, name, contigs in clusters for contig in contigs],
+            columns=["round", "cluster", "contig"],
+        ),
+    )
+
+
+def test_read_partition_gives_the_partition_back(tmp_path):
+    """The partition that a map stores, read back with the IDs of the
+    contigs, their positions in the map: the core clusters by number, their
+    contigs by ID; the overlapping clusters by number, named as stored, their
+    contigs in the order of their core clusters, then of their IDs (that of
+    the FASTA file of the cluster, which the rounds do not keep). The
+    partition stored by metator partition comes back as it was."""
+    import metator.clusters as mtcl
+
+    metacool = _three_contigs(tmp_path / "map.metacool")
+    _stored_rounds(
+        metacool,
+        [
+            ("core", "core_00002", ["a", "c"]),
+            ("core", "core_00001", ["b"]),
+            ("overlapping", "my_sample_metator_00003_00000", ["a", "b", "c"]),
+        ],
+    )
+    partition = mtmc.read_partition(str(metacool))
+    assert partition.core == {1: [2], 2: [1, 3]}
+    assert partition.overlapping == {3: [2, 1, 3]}
+    assert partition.names == {3: "my_sample_metator_00003_00000"}
+    # As metator partition stores it, and back.
+    stored = mtcl.Partition(
+        core={1: [1, 3], 2: [2]}, overlapping={1: [2], 7: [1, 3]}, names={1: "m_00001_00000", 7: "m_00007_00000"}
+    )
+    mtmc.write_rounds(
+        str(metacool),
+        str(metacool),
+        mtcl.partition_rounds(stored, ["a", "b", "c"]),
+        names=list(mtmc.PARTITION_ROUNDS),
+        force=True,
+    )
+    assert mtmc.read_partition(str(metacool)) == stored
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["no round", "no overlapping", "a core cluster of another name", "two of one number", "a contig in no core cluster"],
+)
+def test_read_partition_refused(case, tmp_path):
+    """A map that holds no partition, or one that metator partition did not
+    store (its clusters named otherwise, or an overlapping cluster with a
+    contig in no core cluster), is refused, with what to run."""
+    metacool = _three_contigs(tmp_path / "map.metacool")
+    clusters = {
+        "no round": [],
+        "no overlapping": [("core", "core_00001", ["a"])],
+        "a core cluster of another name": [("core", "core_1", ["a"]), ("overlapping", "m_00001_00000", ["a"])],
+        "two of one number": [
+            ("core", "core_00001", ["a"]),
+            ("core", "core_000001", ["b"]),
+            ("overlapping", "m_00001_00000", ["a", "b"]),
+        ],
+        "a contig in no core cluster": [("core", "core_00001", ["a"]), ("overlapping", "m_00001_00000", ["a", "c"])],
+    }[case]
+    if clusters:
+        _stored_rounds(metacool, clusters)
+    message = {
+        "no round": "holds no partition of its network (the clustering round(s) core and overlapping): run metator partition",
+        "no overlapping": "holds no partition of its network (the clustering round(s) overlapping): run metator partition",
+        "a core cluster of another name": "The clustering round core of",
+        "two of one number": "The clustering round core of",
+        "a contig in no core cluster": "hold contig(s) in no core cluster: 'c'.",
+    }[case]
+    with pytest.raises(mtmc.MetacoolError, match=re.escape(message)):
+        mtmc.read_partition(str(metacool))
+
+
+def test_read_partition_of_the_network_of_the_map(tmp_path):
+    """With the digest of the network of the map, read_partition reads the
+    partition only when the map records that it was made on that network,
+    as metator partition records it with the partition: a partition without
+    that record, or with that of another network, is refused, with the step
+    to run again. holds_partition says whether the map holds a partition at
+    all, and partition_network gives the network that it records."""
+    import metacooler
+
+    import metator.clusters as mtcl
+
+    metacool = _three_contigs(tmp_path / "map.metacool")
+    assert not mtmc.holds_partition(metacooler.MetaCooler(str(metacool)))
+    clusters = mtcl.Partition(core={1: [1, 2, 3]}, overlapping={1: [1, 2, 3]}, names={1: "m_00001_00000"})
+    for entries, made_on in [
+        (None, None),
+        ({"partition": {"version": "x"}}, None),
+        ({"partition": {mtmc.NETWORK_DIGEST: "f00"}}, "f00"),
+    ]:
+        mtmc.write_rounds(
+            str(metacool),
+            str(metacool),
+            mtcl.partition_rounds(clusters, ["a", "b", "c"]),
+            names=list(mtmc.PARTITION_ROUNDS),
+            force=True,
+            entries=entries,
+        )
+        mc = metacooler.MetaCooler(str(metacool))
+        assert mtmc.holds_partition(mc) and mtmc.partition_network(mc) == made_on
+        assert mtmc.read_partition(str(metacool)) == clusters
+    assert mtmc.read_partition(str(metacool), network="f00") == clusters
+    with pytest.raises(mtmc.MetacoolError) as refused:
+        mtmc.read_partition(str(metacool), network="ba5")
+    assert str(refused.value) == (
+        f"{metacool} holds a partition of another network than the one stored in it now: metator network stored another "
+        f"network in the map since metator partition ran on it. Run metator partition {metacool} again, which "
+        "partitions the network stored in the map."
+    )
+    mtmc.write_rounds(
+        str(metacool),
+        str(metacool),
+        mtcl.partition_rounds(clusters, ["a", "b", "c"]),
+        names=list(mtmc.PARTITION_ROUNDS),
+        force=True,
+        entries={"partition": "not an entry"},
+    )
+    with pytest.raises(mtmc.MetacoolError, match=re.escape(f"{metacool} does not record the network that its partition")):
+        mtmc.read_partition(str(metacool), network="f00")
+
+
+def test_the_partition_entry_is_kept_in_the_map_of_the_clusters(tmp_path):
+    """The map of the clusters that a validation writes keeps the entry
+    partition of the metator metadata of its input map, which metator
+    partition stored there, as it keeps the entry network; a pipeline run
+    stores its own."""
+    import metacooler
+
+    import metator.clusters as mtcl
+
+    metacool = _three_contigs(tmp_path / "map.metacool")
+    clusters = mtcl.Partition(core={1: [1, 2]}, overlapping={1: [1, 2]}, names={1: "metator_00001_00000"})
+    entry = {"version": "x", "normalization": "None"}
+    mtmc.write_rounds(
+        str(metacool),
+        str(metacool),
+        mtcl.partition_rounds(clusters, ["a", "b", "c"]),
+        names=list(mtmc.PARTITION_ROUNDS),
+        force=True,
+        entries={"partition": entry},
+    )
+    assert metacooler.MetaCooler(str(metacool)).metadata["metator"] == {"partition": entry}
+    table = tmp_path / "contig_data_final.txt"
+    table.write_text("Name\tSize\tFinal_cluster\na\t300\tmetator_00001_00000\nb\t200\tmetator_00001_00000\nc\t100\tND\n")
+    for given, expected in [(None, entry), ({"version": "y"}, {"version": "y"})]:
+        written = tmp_path / f"clusters_{given is None}.metacool"
+        mtmc.reassign_metacool(str(metacool), str(table), str(written), partition=given)
+        assert metacooler.MetaCooler(str(written)).metadata["metator"]["partition"] == expected

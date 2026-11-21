@@ -11,7 +11,7 @@ principle; this page covers the parameters and the outputs.
 ## Partition
 
 ```bash
-metator partition sample.metacool -a assembly.fa -t 16 -o binning
+metator partition sample.metacool -t 16 -o binning
 ```
 
 | Option | Default | Effect |
@@ -20,21 +20,31 @@ metator partition sample.metacool -a assembly.fa -t 16 -o binning
 | `--iterations` (`-i`) | 100 | How many times the network is partitioned. More iterations split the contigs into more, smaller core clusters; 100 is enough to find every cluster in our benchmarks |
 | `--overlap` (`-O`) | 80 | Two core clusters are merged into one overlapping cluster when they fall in the same community in at least this percentage of the iterations. A higher threshold gives less contaminated, but less complete, clusters |
 | `--res-param` (`-r`) | 1.0 | The resolution of the modularity that the Leiden algorithm optimises (1 is plain modularity, as in Louvain): the higher, the more, smaller communities |
-| `--size` (`-s`) | 500000 | The size, in base pairs, an overlapping cluster must reach to be written |
-| `--prefix` (`-p`) | none | Names the clusters `<prefix>_metator_…` |
+| `--prefix` (`-p`) | none | Names the overlapping clusters `<prefix>_metator_…` |
 
-`partition` writes the overlapping clusters of at least `--size` base pairs to
-`overlapping_clusters/`, one FASTA file each, and the contig data table with the
-core and overlapping cluster of each contig to `contig_data_partition.txt`. When
-no cluster reaches `--size`, there is nothing to validate: the pipeline stops
-there with an error.
+`partition` stores every core cluster (`core_00001`…) and every overlapping
+cluster (`metator_00001_00000`…) in the map, with their contigs, as the rounds
+`core` and `overlapping` of its clustering rounds: it writes no table and no
+FASTA file. The validation reads them there.
 
 ## Validation
 
 ```bash
-metator validation sample.metacool -a assembly.fa -c binning/contig_data_partition.txt \
-    -f binning/overlapping_clusters -t 16 -o binning
+metator validation sample.metacool -a assembly.fa -t 16 -o binning
 ```
+
+The clusters to validate are the overlapping clusters of the partition of the
+map of at least `--size` base pairs (500 kb by default): the validation writes
+them from the assembly as FASTA files, one each, in its temporary directory
+(`-N` keeps them), with the contig data table of the partition. Give the
+temporary directory room for them, at most the size of the assembly, and,
+from a gzip-compressed assembly, for its decompressed copy, which metacooler
+writes there while it writes them. When no cluster reaches `--size`, there
+is nothing to validate: the run stops there with an error.
+
+The partition is that of the network stored in the map: a validation refuses
+one made on another network (`metator network MAP` run again since, which
+warns of it), and `metator partition MAP` partitions the network again.
 
 Validation runs [miComplete](https://pypi.org/project/micomplete/) on every
 cluster: prodigal predicts its genes, and hmmer finds among them the
@@ -51,7 +61,8 @@ contigs:
 |---|---|---|
 | `--iterations` (`-i`) of `validation`, `--rec-iter` (`-j`) of `pipeline` | 10 | How many times each contaminated cluster is partitioned |
 | `--overlap` (`-O`) of `validation`, `--rec-overlap` (`-P`) of `pipeline` | 90 | The overlap threshold of the recursive partition |
-| `--algorithm`, `--res-param`, `--size`, `--prefix` | | As in the partition |
+| `--algorithm`, `--res-param`, `--prefix` | | As in the partition |
+| `--size` (`-s`) | 500000 | The size, in base pairs, an overlapping cluster must reach to be checked, and a recursive cluster must exceed |
 
 The parts of a cluster, its **recursive clusters**, are checked with
 miComplete in turn. They replace the cluster when the most complete of them

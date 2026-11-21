@@ -113,7 +113,6 @@ clusters.txt
 contig_data_final.txt
 final_clusters
 metator_pipeline_20261121023231.log
-overlapping_clusters
 overlapping_micomplete_results.txt
 recursive_clusters
 ```
@@ -122,7 +121,7 @@ recursive_clusters
 |---|---|
 | `final_clusters/` | One FASTA file per final cluster: the result |
 | `cluster_summary.txt` | One row per final cluster: size, GC content, completeness, redundancy, N50, Hi-C abundance… |
-| `clusters.txt`, `cluster_members.txt` | Every cluster of every round (overlapping, recursive, final), with its parent and miComplete's columns, and the contigs of each |
+| `clusters.txt`, `cluster_members.txt` | Every cluster of every round (core, overlapping, recursive, final), with its parent and miComplete's columns, and the contigs of each |
 | `contig_data_final.txt` | One row per contig: its size, GC content, hits, and the clusters it went through |
 | `binning.txt` | The contigs of the final clusters and their cluster, as anvi'o imports a binning |
 | `metator_pipeline_<date>.log` | The log of the run |

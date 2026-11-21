@@ -29,8 +29,6 @@ global_args = {
     "PAIRS": "tests_data/alignment.pairs",
     "NETWORK": "tests_data/network.txt",
     "CONTIGS": "tests_data/contig_data_network.txt",
-    "CONTIGS_PARTITION": "tests_data/contig_data_partition.txt",
-    "OVERLAPPING_BINS": "tests_data/overlapping_clusters/",
     "SUBSET_FASTA": "tests_data/subset.assembly.fa",
     "SUBSET_PAIRS": "tests_data/subset.pairs.gz",
     "SUBSET_MGES": "tests_data/subset.mges.txt",
@@ -127,7 +125,7 @@ def test_network_normalizations(norm, a_map, tmp_path, run_cli):
 
 @pytest.mark.parametrize(*ALGORITHM)
 def test_partition(alg, a_network_map, tmp_path, run_cli):
-    args = ("{MAP} -a {SUBSET_FASTA} -i 5 -o {OUT_TEST} -s 30000 -t 8 -T {TMP} -A {0} -F --no-clean-up").format(
+    args = ("{MAP} -i 5 -o {OUT_TEST} -t 8 -T {TMP} -A {0} -F --no-clean-up").format(
         alg,
         MAP=a_network_map(),
         TMP=Path(tmp_path, "tmp"),
@@ -136,23 +134,32 @@ def test_partition(alg, a_network_map, tmp_path, run_cli):
     )
     print("CLI command:\nmetator partition", *args.split(" "))
     run_cli("partition", *args.split(" "))
+    # The partition is in the map, and in no table or FASTA file.
+    assert sorted(path.name for path in Path(tmp_path, "out_test").iterdir() if path.suffix != ".log") == []
+
+
+def _partitioned(metacool, tmp_path, run_cli):
+    """The map metacool, in which metator partition stored its partition (two
+    iterations), which validation reads."""
+    run_cli("partition", metacool, "-i", "2", "-o", Path(tmp_path, "partition"), "-T", Path(tmp_path, "tmp"))
+    return metacool
 
 
 def test_validation(a_network_map, tmp_path, run_cli):
-    """From the tables of a partition of the map of the subset: their IDs,
-    those of the assembly, are not the positions of the contigs in the map,
-    which the validation reads its network in (see
-    metator.network.relabel_network)."""
-    args = (
-        "{MAP} -a {SUBSET_FASTA} -c {CONTIGS_PARTITION} -f {OVERLAPPING_BINS} -i 5 -o {OUT_TEST} -t 8 -T {TMP} -F --no-clean-up"
-    ).format(
-        MAP=a_network_map(),
+    """From the partition that partition MAP stores in the map of the subset:
+    its overlapping clusters of 30 kb or more, written in the temporary
+    directory of the run (kept with --no-clean-up), for miComplete."""
+    args = ("{MAP} -a {SUBSET_FASTA} -i 5 -s 30000 -o {OUT_TEST} -t 8 -T {TMP} -F --no-clean-up").format(
+        MAP=_partitioned(a_network_map(), tmp_path, run_cli),
         TMP=Path(tmp_path, "tmp"),
         OUT_TEST=Path(tmp_path, "out_test"),
         **global_args,
     )
     print("CLI command:\nmetator validation", *args.split(" "))
     run_cli("validation", *args.split(" "))
+    assert list(Path(tmp_path, "tmp").glob("*/overlapping_clusters/*.fa"))
+    assert list(Path(tmp_path, "tmp").glob("*/contig_data_partition.txt"))
+    assert not Path(tmp_path, "out_test", "overlapping_clusters").exists()
 
 
 def test_network_partition_validation(tmp_dir, a_map, run_cli):
@@ -168,7 +175,7 @@ def test_network_partition_validation(tmp_dir, a_map, run_cli):
     print("CLI command:\nmetator network", *args.split(" "))
     run_cli("network", *args.split(" "))
 
-    args = ("{MAP} -a {SUBSET_FASTA} -i 5 -o {OUT_TEST} -s 30000 -t 8 -T {TMP} -F --no-clean-up").format(
+    args = ("{MAP} -i 5 -o {OUT_TEST} -t 8 -T {TMP} -F --no-clean-up").format(
         MAP=metacool,
         TMP=tmp,
         OUT_TEST=out,
@@ -177,10 +184,7 @@ def test_network_partition_validation(tmp_dir, a_map, run_cli):
     print("CLI command:\nmetator partition", *args.split(" "))
     run_cli("partition", *args.split(" "))
 
-    args = (
-        "{MAP} -a {SUBSET_FASTA} -c {OUT_TEST}/contig_data_partition.txt -f {OUT_TEST}/overlapping_clusters/ -i 5 "
-        "-o {OUT_TEST} -t 8 -T {TMP} -F --no-clean-up"
-    ).format(
+    args = ("{MAP} -a {SUBSET_FASTA} -s 30000 -i 5 -o {OUT_TEST} -t 8 -T {TMP} -F --no-clean-up").format(
         MAP=metacool,
         TMP=tmp,
         OUT_TEST=out,
@@ -368,7 +372,7 @@ def test_network_default_outdir(a_map, tmp_path, monkeypatch, run_cli):
 
 def test_invalid_prefix_is_rejected(a_network_map, tmp_path, run_cli):
     """miComplete drops dots from bin names, so a dotted --prefix is refused."""
-    args = ("{MAP} -a {SUBSET_FASTA} -o {OUT} -T {TMP} -p my.sample").format(
+    args = ("{MAP} -o {OUT} -T {TMP} -p my.sample").format(
         MAP=a_network_map(), OUT=tmp_path / "out", TMP=tmp_path / "tmp", **global_args
     )
     with pytest.raises(ValueError, match="Invalid --prefix"):
@@ -382,7 +386,7 @@ def test_spinglass_is_rejected_before_any_work(tmp_path, monkeypatch, run_cli):
         raise AssertionError("recursive decontamination should not start")
 
     monkeypatch.setattr(mtc.mtv, "recursive_decontamination", not_reached)
-    args = ("map.metacool -a {SUBSET_FASTA} -c {CONTIGS_PARTITION} -f {OVERLAPPING_BINS} -o {OUT} -T {TMP} -A spinglass").format(
+    args = ("map.metacool -a {SUBSET_FASTA} -o {OUT} -T {TMP} -A spinglass").format(
         OUT=tmp_path / "out", TMP=tmp_path / "tmp", **global_args
     )
     result = run_cli("validation", *args.split(" "), exit_code=2)
@@ -459,7 +463,7 @@ def test_pipeline_bad_choices(case, tmp_path, run_cli):
     assert not (tmp_path / "out").exists()
 
 
-@pytest.mark.parametrize("existing", ["overlapping_clusters", "recursive_clusters", "final_clusters"])
+@pytest.mark.parametrize("existing", ["recursive_clusters", "final_clusters"])
 def test_pipeline_refuses_existing_outputs(existing, a_map, tmp_path, run_cli, logged):
     """A directory of clusters of an earlier run is refused without -F,
     named in the log."""
@@ -475,12 +479,13 @@ def test_pipeline_force_replaces_outputs(a_map, network_from_a_map, tmp_path, ru
     """With --force the output directories are emptied once the arguments
     and the assembly are checked, then the run goes on (here up to the
     partition, which network_from_a_map stops). The outputs that metaTOR
-    1.x named after bins, and the plots of an earlier run, are no output
-    of 2.0: they are neither refused nor removed."""
-    for existing in ["overlapping_clusters", "recursive_clusters", "final_clusters"]:
+    1.x named after bins, the plots of an earlier run, and the overlapping
+    clusters that partition wrote before it stored them in the map, are no
+    output of 2.0: they are neither refused nor removed."""
+    for existing in ["recursive_clusters", "final_clusters"]:
         (tmp_path / "out" / existing).mkdir(parents=True)
         (tmp_path / "out" / existing / "stale.fa").write_text(">old\nA\n")
-    others = ["overlapping_bin", "final_bin", "plot"]
+    others = ["overlapping_bin", "final_bin", "plot", "overlapping_clusters"]
     for existing in others:
         (tmp_path / "out" / existing).mkdir(parents=True)
         (tmp_path / "out" / existing / "earlier.fa").write_text(">old\nA\n")
@@ -494,55 +499,31 @@ def test_pipeline_force_replaces_outputs(a_map, network_from_a_map, tmp_path, ru
     assert not [message for _, message in logged() if message.startswith("Removed ")]
 
 
-def test_validation_refuses_a_table_without_the_columns_of_a_partition(a_network_map, tmp_path, monkeypatch, run_cli):
-    """A contig data table that lacks a column the validation reads, here a
-    table of metaTOR 1.x (its columns named after bins), is refused before
-    miComplete runs on any cluster, the missing columns named in the log of
-    the run. It ran miComplete on every cluster, then failed with
-    KeyError: 'Overlapping_cluster_ID', the traceback on the terminal only."""
-    from tests import synthetic
-
-    def micomplete_quality(*args):
-        raise AssertionError("miComplete ran")
-
-    monkeypatch.setattr("metator.validation.micomplete_quality", micomplete_quality)
-    table = synthetic.as_1x(global_args["CONTIGS_PARTITION"], tmp_path / "contig_data_partition_1x.txt")
-    out = tmp_path / "out"
-    with pytest.raises(ValueError):
-        run_cli("validation", a_network_map(), "-a", global_args["SUBSET_FASTA"], "-c", table, "-f",
-                global_args["OVERLAPPING_BINS"], "-o", out, "-T", tmp_path / "tmp")  # fmt: skip
-    (log,) = out.glob("metator_validation_*.log")
-    message = (
-        f"{table} has no Overlapping_cluster_ID column: give the contig data table of a partition (contig_data_partition.txt)."
-    )
-    assert f"ERROR :: {message}" in log.read_text()
-
-
 @pytest.mark.parametrize("existing", ["recursive_clusters", "final_clusters"])
-def test_validation_refuses_existing_outputs(existing, a_network_map, tmp_path, run_cli):
+def test_validation_refuses_existing_outputs(existing, a_network_map, tmp_path, run_cli, logged):
     (tmp_path / "out" / existing).mkdir(parents=True)
-    args = ("{MAP} -a {SUBSET_FASTA} -c {CONTIGS_PARTITION} -f {OVERLAPPING_BINS} -o {OUT} -T {TMP}").format(
-        MAP=a_network_map(), OUT=tmp_path / "out", TMP=tmp_path / "tmp", **global_args
+    args = ("{MAP} -a {SUBSET_FASTA} -o {OUT} -T {TMP}").format(
+        MAP=_partitioned(a_network_map(), tmp_path, run_cli), OUT=tmp_path / "out", TMP=tmp_path / "tmp", **global_args
     )
     with pytest.raises(ValueError):
         run_cli("validation", *args.split(" "))
+    message = f"{tmp_path / 'out' / existing} already existed. Remove directory or use -F argument to overwrite it."
+    assert ("ERROR", message) in logged()
 
 
-def test_partition_existing_outputs(metagenome_inputs, metagenome_network, tmp_path, run_cli):
-    """An existing overlapping_clusters is refused, or replaced with --force; the
-    --prefix names the bins."""
-    fasta_dir = tmp_path / "out" / "overlapping_clusters"
-    fasta_dir.mkdir(parents=True)
-    (fasta_dir / "stale.fa").write_text(">old\nA\n")
+def test_partition_prefix_names_the_clusters(metagenome_network, tmp_path, run_cli):
+    """The --prefix names the overlapping clusters that partition MAP stores
+    in the map; an unknown algorithm is refused before anything is
+    written."""
+    import metacooler
+
     metacool = shutil.copyfile(metagenome_network["map"], tmp_path / "network.metacool")
-    args = [str(metacool), "-a", str(metagenome_inputs["assembly"]), "-o", str(tmp_path / "out"),
-            "-T", str(tmp_path / "tmp"), "-i", "5", "-s", "50000", "-p", "sample-1"]  # fmt: skip
-    with pytest.raises(ValueError):
-        run_cli("partition", *args)
-    # An unknown algorithm is refused before anything is replaced.
-    run_cli("partition", *args, "-F", "-A", "spinglass", exit_code=2)
-    assert (fasta_dir / "stale.fa").exists()
-    run_cli("partition", *args, "-F")
-    bins = sorted(p.name for p in fasta_dir.iterdir())
-    assert "stale.fa" not in bins
-    assert bins and all(name.startswith("sample-1_metator_") for name in bins)
+    before = Path(metacool).read_bytes()
+    args = [str(metacool), "-o", str(tmp_path / "out"), "-T", str(tmp_path / "tmp"), "-i", "5", "-p", "sample-1"]
+    run_cli("partition", *args, "-A", "spinglass", exit_code=2)
+    assert Path(metacool).read_bytes() == before
+    run_cli("partition", *args)
+    clusters = metacooler.MetaCooler(str(metacool)).clusters
+    overlapping = list(clusters.name[clusters["round"] == "overlapping"])
+    assert overlapping and all(name.startswith("sample-1_metator_") and name.endswith("_00000") for name in overlapping)
+    assert all(name.startswith("core_") for name in clusters.name[clusters["round"] == "core"])

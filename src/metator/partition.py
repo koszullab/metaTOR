@@ -8,11 +8,15 @@ of a map (see metator.network.map_network) using Louvain algorithm. If an
 overlapping threshold is given, it will use the Hamming distance to group
 together bins relatively closed (to avaoid to split genomes in different bins).
 
+A partition is its core and overlapping clusters (metator.clusters.Partition),
+which metator partition MAP stores in the map as clustering rounds. The
+validation reads them back, and gives the contigs their clusters in the contig
+data table of the partition (partition_table).
+
 Core functions to partition the network are:
     - algo_partition
     - defined_overlapping_bins
     - detect_core_bins
-    - generate_fasta
     - get_distances_splitmat
     - get_hamming_distance
     - leiden_iterations
@@ -20,7 +24,7 @@ Core functions to partition the network are:
     - merge_iterations
     - network_graph
     - partition
-    - update_contigs_data
+    - partition_table
 
 """
 
@@ -28,12 +32,10 @@ import igraph as ig
 import multiprocessing
 import numpy as np
 import pandas as pd
-import pyfastx
 
 from functools import partial
-import metator.io as mio
+import metator.clusters as mtc
 from metator.log import logger
-from os.path import join
 from scipy import sparse
 from scipy.spatial.distance import cdist
 
@@ -191,53 +193,6 @@ def detect_core_bins(output_partition, iterations):
     return core_bins_contigs, core_bins_iterations
 
 
-def generate_fasta(assembly, overlapping_bins, contigs_data, size, output_dir, prefix):
-    """Generate the fasta files of each bins from the assembly.
-
-    Parameters:
-    -----------
-    assembly : str
-        Path to the fasta file of the original assembly.
-    overlapping_bins : dict
-        A dictionnary with the id of the overlapping bins as keys and the list
-        of id of their contigs as values.
-    contigs_data : pandas.core.frame.DataFrame
-        Table with all the information on the contigs included their
-        appartenance to the bins.
-    size :  int
-        Thrshold size chosen to write the bins.
-    output_dir : str
-        Path to the output directory where the fasta of all the bin will be
-        written.
-    prefix : str
-        Sample prefix to use.
-    """
-
-    # Indexed (<assembly>.fxi) only when a bin is extracted from it.
-    fasta = None
-    nb_bins = 0
-    length_bins = 0
-    # For each bin create a list of the contigs and extract them from the
-    # assembly to create a new fasta file with only the bin.
-    for bin_id in overlapping_bins:
-        # Extract the list of the contigs from the contigs data file.
-        list_contigs_id = overlapping_bins[bin_id]
-        list_contigs_name = []
-        # Test if the bin is bigger than the size threshold given.
-        length_bin = int(contigs_data.loc[list_contigs_id[0] - 1, "Overlapping_cluster_size"])
-        if length_bin >= size:
-            nb_bins += 1
-            length_bins += length_bin
-            for contig_id in list_contigs_id:
-                list_contigs_name.append(contigs_data.loc[contig_id - 1, "Name"])
-            # Create the fasta file.
-            if fasta is None:
-                fasta = pyfastx.Fasta(assembly)
-            mio.write_contigs(fasta, list_contigs_name, join(output_dir, f"{prefix}_{bin_id:05d}_{0:05d}.fa"))
-    logger.info(f"{nb_bins} clusters have been extracted")
-    logger.info(f"Total size of the extracted clusters: {round(length_bins / 10**6, 3)}Mb")
-
-
 def get_distances_splitmat(bins, core_bins_iterations):
     """This function takes a segment of the full iterative clustering matrix and
     computes, for each index (i.e. contig), the hamming distance to each of the
@@ -374,38 +329,25 @@ def merge_iterations(contigs, memberships):
 
 def partition(
     algorithm,
-    assembly,
-    contig_data,
-    iterations,
     network,
-    outdir,
-    fasta_dir,
+    iterations,
     overlapping_parameter,
     resolution_parameter,
-    size,
     threads,
     prefix,
 ):
-    """Function to call the others functions to partition the network.
+    """Partition the network of the contigs of a map: its core clusters, then
+    its overlapping clusters.
 
     Parameters:
     -----------
     algorithm : str
         Algorithm to use to partition the network. Either leiden or louvain.
-    assembly : str
-        Path to the assembly file used for the partition.
-    contig_data : pandas.DataFrame
-        The contig data of the contigs of the map, in its order (see
-        metator.network.contig_table), to add the clusters to.
-    iterations : int
-        Number of iterations to use for the partition.
     network : pandas.DataFrame
         The network of the contigs of the map (see
         metator.network.map_network).
-    outdir : str
-        Path to the output directory where to write the output files.
-    fasta_dir : str
-        Path to directory where to write the fasta files.
+    iterations : int
+        Number of iterations to use for the partition.
     overlapping_parameter : int
         Hamming distance threshold to use to merge bins (percentage).
     resolution_parameter : float
@@ -413,17 +355,17 @@ def partition(
         factor of the cost function used. A resolution parameter of 1 will be
         equivalent as the modularity function used in Louvain. Higher these
         parameters, smaller the bins will be in the output.
-    size : int
-        Threshold size in base pair of the output bins.
     threads : int
         Number of threads to use.
     prefix : str
-        Sample prefix to use.
+        Sample prefix to use, which names the overlapping clusters (see
+        metator.clusters.overlapping_name).
 
     Returns:
     --------
-    str:
-        Path to the new contig data file with the bin informations in it.
+    metator.clusters.Partition:
+        The core and the overlapping clusters, numbered from 1, each with the
+        IDs of its contigs.
     """
 
     # Perform the iterations of Louvain or Leiden to partition the network.
@@ -451,26 +393,13 @@ def partition(
         core_bins_contigs,
     )
 
-    # Update the contigs_data_file.
-    logger.info("Extract clusters:")
-    contigs_data, contigs_data_file = update_contigs_data(
-        contig_data,
-        core_bins_contigs,
-        overlapping_bins,
-        outdir,
+    # The core bins numbered from 1, as the contig data tables number them,
+    # and the overlapping bins, numbered from 1 already.
+    return mtc.Partition(
+        core={core_id + 1: contigs for core_id, contigs in core_bins_contigs.items()},
+        overlapping=dict(overlapping_bins),
+        names={number: mtc.overlapping_name(prefix, number) for number in overlapping_bins},
     )
-
-    # Generate Fasta file
-    generate_fasta(
-        assembly,
-        overlapping_bins,
-        contigs_data,
-        size,
-        fasta_dir,
-        prefix,
-    )
-
-    return contigs_data_file
 
 
 def network_graph(network):
@@ -501,29 +430,25 @@ def network_graph(network):
     return graph, contigs
 
 
-def update_contigs_data(contig_data, core_bins_contigs, overlapping_bins, outdir):
-    """Add bin information in the contigs data, and write it in
-    contig_data_partition.txt.
+def partition_table(contig_data, partition):
+    """The contig data table of a partition: the contig data with the core and
+    the overlapping cluster of each contig, as contig_data_partition.txt held
+    it, and as the validation reads it.
 
     The contig data of the contigs of the map (see
     metator.network.contig_table) has the columns: contig id, contig name,
     contig length, GC content, hit, coverage, restriction site. The
     function will add six columns: core bin id, core bin number of contigs, core
     bin length, overlapping bin id, overlapping bin number of contigs,
-    overlapping bin length.
+    overlapping bin length. A contig in no cluster (one with no edge in the
+    network) has ``-`` in them.
 
     Parameters:
     -----------
     contig_data : pandas.DataFrame
         The contig data, which is left as it is.
-    core_bins_contigs : dict
-        Dictionnary which has as keys the core bins id and as value the id of
-        the contigs of the core bin.
-    overlapping_bins : dict
-        A dictionnary with the id of the overlapping bins as keys and the list
-        of id of their contigs as values.
-    outdir : str
-        Path of the output directory to write the update contigs data file.
+    partition : metator.clusters.Partition
+        The core and the overlapping clusters of the partition.
 
     Returns:
     --------
@@ -547,21 +472,21 @@ def update_contigs_data(contig_data, core_bins_contigs, overlapping_bins, outdir
         contigs_data[col] = pd.Series("-", index=contigs_data.index, dtype=object)
 
     # Add core bin information
-    for i in core_bins_contigs:
+    for i, contigs in partition.core.items():
         # Extract contigs of the bin
-        core_bin = [id - 1 for id in core_bins_contigs[i]]
+        core_bin = [id - 1 for id in contigs]
         core_bin_data = contigs_data.iloc[core_bin]
         core_bin_contigs_number = len(core_bin)
         core_bin_length = sum(core_bin_data.Size)
         # Write the new information
-        contigs_data.loc[core_bin, "Core_cluster_ID"] = f"{i + 1:05d}"
+        contigs_data.loc[core_bin, "Core_cluster_ID"] = f"{i:05d}"
         contigs_data.loc[core_bin, "Core_cluster_contigs"] = core_bin_contigs_number
         contigs_data.loc[core_bin, "Core_cluster_size"] = core_bin_length
 
     # Add overlapping information
-    for i in overlapping_bins:
+    for i, contigs in partition.overlapping.items():
         # Extract contigs of the bin
-        overlapping_bin = [id - 1 for id in overlapping_bins[i]]
+        overlapping_bin = [id - 1 for id in contigs]
         overlapping_bin_data = contigs_data.iloc[overlapping_bin]
         overlapping_bin_contigs_number = len(overlapping_bin)
         overlapping_bin_length = sum(overlapping_bin_data.Size)
@@ -570,8 +495,4 @@ def update_contigs_data(contig_data, core_bins_contigs, overlapping_bins, outdir
         contigs_data.loc[overlapping_bin, "Overlapping_cluster_contigs"] = overlapping_bin_contigs_number
         contigs_data.loc[overlapping_bin, "Overlapping_cluster_size"] = overlapping_bin_length
 
-    # Write the new file
-    contig_data_file_2 = join(outdir, "contig_data_partition.txt")
-    contigs_data.to_csv(contig_data_file_2, sep="\t", header=True, index=False)
-
-    return contigs_data, contig_data_file_2
+    return contigs_data
