@@ -636,8 +636,11 @@ def recursive_decontamination(
     iterations : int
         Number of iterations to use for the recursive partition.
     network : pandas.DataFrame
-        The network of the contigs of the map (see
-        metator.network.map_network).
+        The network of the contigs of the map, in the IDs of the contigs in
+        contig_data_file (see metator.network.relabel_network). The IDs of
+        metator.network.map_network are the positions of the contigs in the
+        map as it is read, which a run that regroups the map (validation,
+        pipeline) moves: join by contig name.
     outdir : str
         Path to the output directory where to write the output files.
     overlapping_parameter : int

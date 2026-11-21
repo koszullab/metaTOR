@@ -395,33 +395,52 @@ def start_step(
     it replaces the directories of an earlier run (-F): against contigs,
     the contig data file of the run, whose contigs it must be a map of, and
     against inputs, the other input files, which output_map must not be (see
-    step_map); and for the network of its contigs, which metator network
-    stores in it and the run reads (see map_network_check). It checks the
-    prefix of the clusters (--prefix, see bin_prefix) before it replaces
-    them. Returns the log file, the map to write, the prefix, the input map
-    as the run read it at its start (see step_map), and the normalization of
-    the network of the map."""
+    step_map); then it reads the network of its contigs, which metator
+    network stored in it, and refuses one that it cannot read (see
+    stored_network). It checks the prefix of the clusters (--prefix, see
+    bin_prefix) before it replaces them. Returns the log file, the map to
+    write, the prefix, the input map as the run read it at its start (see
+    step_map), and the stored network (see stored_network)."""
     log_file = log_file_name(outdir, command)
     generate_log_header(log_file)
     metacool_file, planned = step_map(command, input_map, output_map, force, held, contigs, inputs, assembly=assembly)
-    normalization = map_network_check(input_map, planned)
+    stored = stored_network(input_map, contigs)
     bins_prefix = bin_prefix(prefix)
     for path in cluster_dirs:
         make_output_dir(path, force)
-    return log_file, metacool_file, bins_prefix, planned, normalization
+    return log_file, metacool_file, bins_prefix, planned, stored
 
 
-def map_network_check(metacool, planned):
-    """The normalization of the network that metator network stored in the
-    map of a partition or validation run, metacool, opened as planned (see
-    metator.network.check_network). A map without it is refused before any
-    work: the reason, which names the step to run, is logged as an error,
-    then its MetacoolError is raised."""
+def stored_network(metacool, contig_data_file=None):
+    """The network that metator network stored in the map of a partition or
+    validation run, metacool, read in full before the run replaces anything
+    (see metator.network.stored_network): the contig data of its contigs,
+    the network and its normalization. A map that cannot give them stops
+    the run: the reason, which names the step to run again, is logged as an
+    error, then its MetacoolError is raised.
+
+    With contig_data_file, the contig data of the partition of a validation
+    run (contig_data_partition.txt), the network takes the IDs of its
+    contigs, by contig name (see metator.network.relabel_network): the IDs
+    of the network are the positions of the contigs in the map, those of
+    the table the positions they had when partition wrote it, which differ
+    once a validation or pipeline run has written the map of its clusters,
+    grouped by cluster. A validation run again from the same partition reads
+    the same network. A table without the columns of a partition is refused
+    (see metator.validation.check_partition_table)."""
+    import pandas as pd
+
     try:
-        return mtn.check_network(metacool, planned)
+        stored = mtn.stored_network(metacool)
     except mtmc.MetacoolError as error:
         logger.error(str(error))
         raise
+    if contig_data_file is None:
+        return stored
+    mtv.check_partition_table(contig_data_file)
+    table = pd.read_csv(contig_data_file, sep="\t", usecols=["ID", "Name"], dtype={"Name": str}, keep_default_na=False)
+    ids = dict(zip(table["Name"], table["ID"], strict=True))
+    return stored._replace(network=mtn.relabel_network(stored.network, stored.table["Name"], ids))
 
 
 def map_contacts(metacool):
@@ -438,40 +457,6 @@ def map_contacts(metacool):
         logger.error(str(error))
         raise
     return contacts
-
-
-def map_network(metacool, contig_data=False):
-    """The network that metator network stored in the map of a partition or
-    validation run, metacool (see metator.network.map_network), and, with
-    contig_data, first the contig data of its contigs (see
-    metator.network.map_contig_table). A map that cannot give them stops the
-    run: the reason is logged as an error, then its MetacoolError is
-    raised."""
-    try:
-        network = mtn.map_network(metacool)
-        return (mtn.map_contig_table(metacool), network) if contig_data else network
-    except mtmc.MetacoolError as error:
-        logger.error(str(error))
-        raise
-
-
-def validation_network(metacool, names, contig_data_file):
-    """The network that metator network stored in the map of a validation run
-    (see map_network), with the IDs of the contigs in the contig data of its
-    partition (contig_data_file, contig_data_partition.txt, by contig name:
-    see metator.network.relabel_network). The IDs of the network are the
-    positions of the contigs in the map (names: their names, in its order),
-    those of the table the positions they had when partition wrote it, which
-    differ once a validation or pipeline run has written the map of its
-    clusters, grouped by cluster: a validation run again from the same
-    partition reads the same network. A table without the columns of a
-    partition is refused before any work (see
-    metator.validation.check_partition_table)."""
-    import pandas as pd
-
-    mtv.check_partition_table(contig_data_file)
-    table = pd.read_csv(contig_data_file, sep="\t", usecols=["ID", "Name"], dtype={"Name": str}, keep_default_na=False)
-    return mtn.relabel_network(map_network(metacool), names, dict(zip(table["Name"], table["ID"], strict=True)))
 
 
 def network_entry(columns_from_map=()):
@@ -1218,10 +1203,11 @@ def partition(
         os.makedirs(outdir, exist_ok=True)
         fasta_dir = join(outdir, "overlapping_clusters")
 
-        # Enable file logging, the map of the run checked, for its network
-        # too, and locked, and the directory of the clusters made (see
+        # Enable file logging, the map of the run checked and locked, the
+        # network that metator network stored in it read, with the data of
+        # its contigs, and the directory of the clusters made (see
         # start_step).
-        log_file, metacool_file, bins_prefix, planned, _ = start_step(
+        log_file, metacool_file, bins_prefix, planned, stored = start_step(
             "partition",
             outdir,
             [fasta_dir],
@@ -1234,17 +1220,13 @@ def partition(
             assembly=assembly,
         )
 
-        # The network that metator network stored in the map, and the data
-        # of its contigs.
-        contig_data, network = map_network(map, contig_data=True)
-
         # Partition the network
         contig_data_file = mtp.partition(
             algorithm,
             assembly,
-            contig_data,
+            stored.table,
             iterations,
-            network,
+            stored.network,
             outdir,
             fasta_dir,
             overlap / 100,
@@ -1365,10 +1347,11 @@ def validation(
         # before anything is removed.
         refuse_an_input_in_the_outputs(fasta, [recursive_fasta_dir, final_fasta_dir], force, "-f")
 
-        # Enable file logging, the map of the run checked, for its network
-        # too, and locked, and the directories of the clusters made (see
-        # start_step).
-        log_file, metacool_file, bins_prefix, planned, normalization = start_step(
+        # Enable file logging, the map of the run checked and locked, the
+        # network that metator network stored in it read, in the IDs of the
+        # contigs of the partition, and the directories of the clusters made
+        # (see start_step).
+        log_file, metacool_file, bins_prefix, planned, stored = start_step(
             "validation",
             outdir,
             [recursive_fasta_dir, final_fasta_dir],
@@ -1389,9 +1372,7 @@ def validation(
             final_fasta_dir,
             fasta,
             iterations,
-            # The network that metator network stored in the map, in the IDs
-            # of the contigs of the partition.
-            validation_network(map, planned.contigs["name"], contigs),
+            stored.network,
             outdir,
             overlap / 100,
             recursive_fasta_dir,
@@ -1406,7 +1387,7 @@ def validation(
 
         # The map of the clusters, written last, as pipeline MAP writes it,
         # with the normalization of the network of the map.
-        pipeline_metacool(map, outdir, metacool_file, normalization=normalization, planned=planned)
+        pipeline_metacool(map, outdir, metacool_file, normalization=stored.normalization, planned=planned)
 
     generate_log_footer(log_file)
 

@@ -107,8 +107,9 @@ def outside_contacts(pairs_file, contig_data):
     edges of the contigs, which the network counts. Counted from the pairs
     file."""
     last_base, position_0 = collections.Counter(), collections.Counter()
+    ids = {name: i for i, name in enumerate(contig_data, start=1)}
     for contig1, pos1, contig2, pos2 in read_pairs(pairs_file):
-        id1, id2 = contig_data[contig1]["id"], contig_data[contig2]["id"]
+        id1, id2 = ids[contig1], ids[contig2]
         if id1 == id2:
             continue
         edge = (min(id1, id2), max(id1, id2))
@@ -431,7 +432,7 @@ def test_small_map_network(tmp_path):
     assert network.to_dict("list") == {"contig1": [1, 1, 2], "contig2": [2, 3, 3], "weight": [1, 1, 1]}
 
 
-def _stored_network(tmp_path, halves=False):
+def _stored_network(tmp_path, halves=False, normalization="length"):
     """A map of the contigs a, b and c, with the network (normalization
     length) that metator network stores in it (see
     metator.metacool.store_network): one bin per contig, or two (halves)."""
@@ -455,22 +456,63 @@ def _stored_network(tmp_path, halves=False):
     names = [str(name) for name in metacooler.MetaCooler(str(metacool)).contigs["name"]]
     hits = mtn.contig_hits(mtn.contig_contacts(str(metacool)), len(names))
     table = mtn.contig_data_table(_contig_data(tmp_path, contigs), names, hits)
-    mtmc.store_network(str(metacool), str(metacool), mtmc.Network(table, "length"), force=True)
+    mtmc.store_network(str(metacool), str(metacool), mtmc.Network(table, normalization), force=True)
     return str(metacool)
 
 
 def test_network_stored_in_a_map(tmp_path):
     """A map that metator network stored the network in gives it to the
     steps after it: the network of its contacts, weighed with the stored
-    weights, and its contig data."""
+    weights, its contig data and its normalization."""
     metacool = _stored_network(tmp_path)
-    assert mtn.check_network(metacool) == "length"
+    stored = mtn.stored_network(metacool)
+    assert stored.normalization == "length"
     weights = mtn.stored_weights(metacool)
-    network = mtn.map_network(metacool)
     contacts = mtn.contig_contacts(metacool)
-    pd.testing.assert_frame_equal(network, mtn.map_network(metacool, weights, contacts))
+    pd.testing.assert_frame_equal(stored.network, mtn.map_network(metacool, weights, contacts))
+    pd.testing.assert_frame_equal(stored.network, mtn.map_network(metacool))
+    pd.testing.assert_frame_equal(stored.table, mtn.map_contig_table(metacool))
     # a: one contact with b, and one within a, counted twice.
-    assert list(mtn.map_contig_table(metacool).Hit) == [3, 2, 1]
+    assert list(stored.table.Hit) == [3, 2, 1]
+
+
+@pytest.mark.parametrize("weights", ["None", "length", "empirical_hit", ""])
+def test_map_network_takes_no_normalization_name(weights, tmp_path):
+    """map_network weighs the contacts with the stored weights ("stored"),
+    weights given, or none (None): the name of a normalization is no
+    weights, and is refused rather than read as "stored"."""
+    metacool = _stored_network(tmp_path)
+    with pytest.raises(ValueError, match=f"^map_network weighs the contacts with weights='stored'.*not {weights!r}\\.$"):
+        mtn.map_network(metacool, weights)
+    counts = mtn.map_network(metacool, None)
+    assert counts.to_dict("list") == {"contig1": [1, 2], "contig2": [2, 3], "weight": [1, 1]}
+    assert not counts.equals(mtn.map_network(metacool, "stored"))
+
+
+@pytest.mark.parametrize("normalization", ["None", "length"])
+def test_map_whose_contacts_changed_since_its_network(normalization, tmp_path):
+    """The Hit column of a map must be the hits of its contacts: the maps of
+    two libraries with their networks, summed by metacooler merge, keep the
+    contigs table of the first, and its Hit, stale. The steps refuse the
+    stored network, with the step to run again, whatever its normalization:
+    under None, no weights were stored that the merge would drop."""
+    from click.testing import CliRunner
+    from metacooler.cli.main import cli as metacooler_cli
+
+    metacool = _stored_network(tmp_path, normalization=normalization)
+    library = shutil.copyfile(metacool, tmp_path / "library_2.metacool")
+    merged = str(tmp_path / "merged.metacool")
+    # The command, which carries the metadata of the maps (metator's
+    # network entry among it), as the docs have the libraries merged.
+    result = CliRunner().invoke(metacooler_cli, ["merge", metacool, str(library), "-o", merged, "-q"])
+    assert result.exit_code == 0, result.output
+    with pytest.raises(mtmc.MetacoolError) as error:
+        mtn.stored_network(merged)
+    assert str(error.value) == (
+        f"The Hit column of {merged} is not the hits of its contacts for 3 contig(s): 'a', 'b', 'c'. Its contacts "
+        "changed since metator network stored the network (a merge of maps keeps the contigs table of the first): "
+        "run metator network on the map again."
+    )
 
 
 def test_map_whose_network_column_was_dropped(tmp_path):
@@ -482,7 +524,7 @@ def test_map_whose_network_column_was_dropped(tmp_path):
         f"{metacool} has no Hit column in its contigs table, which metator network stores (an edit of the map dropped "
         "it since): run metator network on the map again."
     )
-    for read in (mtn.check_network, mtn.map_contig_table):
+    for read in (mtn.stored_network, mtn.map_contig_table):
         with pytest.raises(mtmc.MetacoolError) as error:
             read(metacool)
         assert str(error.value) == message
@@ -498,7 +540,7 @@ def test_map_whose_network_weights_were_dropped(tmp_path):
         f"{metacool} lacks the weights metator_length of the length normalization of its network, which an edit of "
         "the map dropped since metator network stored them: run metator network on the map again."
     )
-    for read in (mtn.check_network, mtn.map_network):
+    for read in (mtn.stored_network, mtn.map_network):
         with pytest.raises(mtmc.MetacoolError) as error:
             read(metacool)
         assert str(error.value) == message
@@ -513,8 +555,9 @@ def test_weights_of_a_contig_that_differ_between_its_bins(tmp_path):
     assert len(weights) == 3
     with h5py.File(metacool, "r+") as group:
         group["bins/metator_length"][0] = 2 * group["bins/metator_length"][0]
-    with pytest.raises(mtmc.MetacoolError, match=r"metator_length of .* differ between the bins of a contig"):
-        mtn.stored_weights(metacool)
+    for read in (mtn.stored_weights, mtn.stored_network):
+        with pytest.raises(mtmc.MetacoolError, match=r"metator_length of .* differ between the bins of a contig"):
+            read(metacool)
 
 
 def test_contigs_table_with_text_in_a_network_column(tmp_path):
@@ -524,8 +567,9 @@ def test_contigs_table_with_text_in_a_network_column(tmp_path):
     with h5py.File(metacool, "r+") as group:
         del group["contigs/GC_content"]
         group["contigs/GC_content"] = np.array([b"high", b"low", b"low"])
-    with pytest.raises(mtmc.MetacoolError, match=r"holds a value that is not a number in a column that metator network"):
-        mtn.map_contig_table(metacool)
+    for read in (mtn.map_contig_table, mtn.stored_network):
+        with pytest.raises(mtmc.MetacoolError, match=r"holds a value that is not a number in a column that metator network"):
+            read(metacool)
 
 
 @pytest.mark.parametrize(

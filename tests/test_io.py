@@ -151,6 +151,24 @@ def test_import_mges_tables(tmp_path):
     assert list(data.MGE) == [False, True, True]
 
 
+def test_mge_contigs_that_the_contig_data_lacks(tmp_path, logged):
+    """The contig data tables list the contigs of the map of the run only:
+    the MGE contigs that a map made with a contig filter lacks are left out,
+    with a warning that says how many and names the first."""
+    pd.DataFrame({"ID": [1, 2], "Name": ["c1", "c2"], "Size": [10, 20]}).to_csv(tmp_path / "contigs.txt", sep="\t", index=False)
+    mges = ["c2", *(f"short_{i}" for i in range(7)), "short_0"]
+    data, mges_ids = mio.import_contig_data_mges(str(tmp_path / "contigs.txt"), {}, mges)
+    assert mges_ids == [1] and list(data.MGE) == [False, True]
+    assert logged() == [
+        (
+            "WARNING",
+            f"7 MGE contig(s) are not in the contig data {tmp_path / 'contigs.txt'}, which lists the contigs of the map "
+            "of the run only (a map made with a contig filter lacks some): they are left out of the MGE clusters: "
+            "'short_0', 'short_1', 'short_2', 'short_3', 'short_4', ... (+2 more).",
+        )
+    ]
+
+
 @pytest.mark.parametrize("shotgun", [True, False])
 def test_bin_summary_round_trip(tmp_path, shotgun):
     summary = {
