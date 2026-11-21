@@ -1861,7 +1861,7 @@ wheels = [
 [[package]]
 name = "metacooler"
 version = "0.3.0"
-source = { git = "https://github.com/js2264/metacooler?rev=d7f4ce6162594d7b4c4d4d724ccdde2b9624d157#d7f4ce6162594d7b4c4d4d724ccdde2b9624d157" }
+source = { git = "https://github.com/js2264/metacooler?rev=83efc0de33f97348d69f2dbd052193aaeabb9157#83efc0de33f97348d69f2dbd052193aaeabb9157" }
 dependencies = [
     { name = "click" },
     { name = "cooler" },
@@ -1936,7 +1936,7 @@ requires-dist = [
     { name = "hicstuff", specifier = ">=3.3.0" },
     { name = "igraph", specifier = ">=0.10.3" },
     { name = "matplotlib", specifier = ">=3.9" },
-    { name = "metacooler", git = "https://github.com/js2264/metacooler?rev=d7f4ce6162594d7b4c4d4d724ccdde2b9624d157" },
+    { name = "metacooler", git = "https://github.com/js2264/metacooler?rev=83efc0de33f97348d69f2dbd052193aaeabb9157" },
     { name = "micomplete" },
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'", specifier = ">=0.25" },
     { name = "numpy" },
