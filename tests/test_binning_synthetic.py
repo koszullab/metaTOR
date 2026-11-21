@@ -249,6 +249,37 @@ def test_validation_again_on_the_map_of_its_clusters(
     assert found["second"].equals(found["first"])
 
 
+def test_a_contig_named_na(tmp_path, monkeypatch, run_cli):
+    """A contig named NA, which pandas reads as a missing value unless told
+    otherwise, is a contig as any other: validation reads it by name from
+    the partition table of the run, and writes it into the map of the
+    clusters, in its final cluster, with its size (a missing name made the
+    Size column of contig_data_final.txt a float, which the map refused)."""
+    from tests.conftest import SYNTHETIC_SEED
+
+    metagenome = synthetic.make_metagenome(seed=SYNTHETIC_SEED)
+    contig = max(metagenome.molecule("genome_1").contigs, key=lambda contig: contig.length)
+    name, contig.name = contig.name, "NA"
+    for column in ["chr1", "chr2"]:
+        metagenome.pairs[column] = metagenome.pairs[column].replace(name, "NA")
+    files = metagenome.write_all(tmp_path / "inputs")
+    metacool = contig_map(
+        files["pairs"], mtn.create_contig_data(str(files["assembly"])), tmp_path / "input.metacool", columns=False
+    )
+    monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
+    common = ["-o", tmp_path / "out", "-T", tmp_path / "tmp"]
+    random.seed(0)
+    run_cli("network", metacool, "-a", files["assembly"], "-e", "DpnII", *common)
+    run_cli("partition", metacool, "-i", "10", *common)
+    run_cli("validation", metacool, "-a", files["assembly"], "-s", "50000", "-i", "5", *common)
+    final = pd.read_csv(tmp_path / "out" / "contig_data_final.txt", sep="\t", keep_default_na=False)
+    row = final[final.Name == "NA"]
+    assert len(row) == 1 and pd.api.types.is_integer_dtype(final.Size) and int(row.Size.iloc[0]) == contig.length
+    mc = metacooler.MetaCooler(str(metacool))
+    members = mc.cluster_members("final")
+    assert list(members.cluster[members.contig == "NA"]) == [row.Final_cluster.iloc[0]]
+
+
 def test_validation_without_contaminated_bin(metagenome, metagenome_inputs, metagenome_network, tmp_path, monkeypatch, run_cli):
     monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
     metacool = _map_with_merged_partition(metagenome, metagenome_network, tmp_path / "network.metacool", merged=())

@@ -728,6 +728,10 @@ def recursive_decontamination(
         header=0,
         # As written: "00008", not 8.
         converters={"Overlapping_cluster_ID": str},
+        # A contig named NA (or null, N/A...) is a name: only an empty field,
+        # as pandas writes a missing value, is one.
+        keep_default_na=False,
+        na_values=[""],
     )
     contigs_data["index"] = contigs_data["ID"] - 1
     contigs_data = contigs_data.set_index("index")
