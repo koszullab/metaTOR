@@ -36,6 +36,7 @@ which it stores in the map next to those of the run (:func:`mge_round`,
 
 import csv
 from dataclasses import dataclass
+from typing import Any
 from os.path import exists, join
 
 import pandas as pd
@@ -47,12 +48,14 @@ from metator.log import logger
 CLUSTERS_FILE = "clusters.txt"
 CLUSTER_MEMBERS_FILE = "cluster_members.txt"
 
-#: How metaTOR reads back the decimal numbers of the tables it wrote:
-#: exactly, each the number that was written (pandas' round_trip parser).
-#: pandas 2's default parser may read the last digit of one off (it reads
-#: 24.621666666666666 as 24.621666666666663), and the map would then store,
-#: and metator dump write, another number than the run's tables.
-ROUND_TRIP = "round_trip"
+#: The keywords of pandas.read_csv with which metaTOR reads back the decimal
+#: numbers of the tables it wrote: exactly, each the number that was written.
+#: Under pandas 2, its round_trip parser: the default one may read the last
+#: digit of a number off (24.621666666666666 as 24.621666666666663), and the
+#: map would then store, and metator dump write, another number than the
+#: run's tables. Under pandas 3, none: its default parser reads them
+#: exactly, and it deprecates the keyword.
+EXACT_FLOATS: dict[str, Any] = {"float_precision": "round_trip"} if int(pd.__version__.split(".")[0]) < 3 else {}
 
 #: The names of the rounds.
 CORE = "core"
@@ -290,14 +293,14 @@ def read_rounds(outdir):
         raise ValueError(f"{missing} is missing: the clustering rounds of the run need both of {', '.join(paths)}.")
     # Names as written: a contig called NA, None or nan is a contig. Only
     # the missing values of the clusters table are NA (Rounds.write). Its
-    # numbers are read back exactly (ROUND_TRIP), as the map stores them.
+    # numbers are read back exactly (EXACT_FLOATS), as the map stores them.
     clusters = pd.read_csv(
         paths[0],
         sep="\t",
         dtype={"name": str, "parent": str, "round": str, "parent_round": str},
         keep_default_na=False,
         na_values=["NA"],
-        float_precision=ROUND_TRIP,
+        **EXACT_FLOATS,
     )
     members = pd.read_csv(paths[1], sep="\t", dtype=str, keep_default_na=False)
     return clusters, members
@@ -335,7 +338,7 @@ def mge_round(summary_file):
         dtype=dict.fromkeys(text, str),
         keep_default_na=False,
         na_values={column: ["NA"] for column in missing},
-        float_precision=ROUND_TRIP,
+        **EXACT_FLOATS,
     )
     clusters = pd.DataFrame({"round": MGE, "name": summary["BinName"], "parent_round": None, "parent": None})
     for column in summary.columns:

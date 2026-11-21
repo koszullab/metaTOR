@@ -213,7 +213,7 @@ def import_contig_data_mges(contig_data_file, binning_result, mges_list):
     """
     from metator.metacool import _shown
 
-    contig_data = pd.read_csv(contig_data_file, sep="\t", float_precision=mtcl.ROUND_TRIP)
+    contig_data = pd.read_csv(contig_data_file, sep="\t", **mtcl.EXACT_FLOATS)
     listed = set(contig_data["Name"].astype(str))
     missing = [name for name in dict.fromkeys(mges_list) if name not in listed]
     if missing:
@@ -280,7 +280,7 @@ def micomplete_results_to_dict(micomplete_file):
         sep="\t",
         comment="#",
         index_col=0,
-        float_precision=mtcl.ROUND_TRIP,
+        **mtcl.EXACT_FLOATS,
     ).iloc[:, :13]
 
     # Transform to dictionnary.
