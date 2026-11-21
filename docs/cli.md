@@ -246,22 +246,35 @@ that another run replaces or writes while it is read is refused, and no
 table is written (run the dump again once that run has ended). A map without
 the clusters of a validation (the `validation` entry of the `metator` key of
 its metadata, and the clustering round `final`) is refused, and so is one
-without the network or the partition of its run, each with the step to run.
-A map whose clusters were edited after the run (by `metacooler reassign`: a
-final cluster that is no longer a genome of the map, or a genome that is no
-final cluster) is refused too, naming them: its summary and its rounds no
-longer describe its genomes. Run `metator validation` on it again, or write
-the edited assignment with `metacooler dump -t contigs MAP`. The output
-directory is made if it is not there; one that holds a table of an earlier
-dump is refused, without `-F`, which replaces them (a symbolic link there is
-replaced, not its target), and so is a directory where a table goes. The
-tables are written under temporary names, then renamed onto their own once
-all are written: a dump that fails leaves the output directory as it was.
+without the network or the partition of its run, each with the step to run,
+and one that a development build of metaTOR 2.0 validated, which does not
+record how the summary of its clusters is written (`summary_rows`,
+`summary_formats`): run `metator validation` on it again. A map whose
+clusters were edited after the run (by `metacooler reassign`: a final
+cluster that is no longer a genome of the map, or a genome that is no final
+cluster) is refused too, naming them: its summary and its rounds no longer
+describe its genomes. Run `metator validation` on it again, or write the
+edited assignment with `metacooler dump -t contigs MAP`. A map whose network
+is not the one that its clusters were made from (`metator network` ran on it
+after the run, with another normalization: the `network_digest` of its
+`partition` entry, see [`partition`](#partition)) is refused, since its
+network and its clusters would not go together: run `metator network -n
+<normalization>` with the normalization of the run, which stores its network
+again, or `metator partition` and `metator validation` again, which cluster
+the network stored now. The output directory is made if it is not there;
+one that holds a table of an earlier dump is refused, without `-F`, which
+replaces them (a symbolic link there is replaced, not its target), and so is
+a directory where a table goes. Give the dump a directory of its own, not
+the output directory of a run: a `validation` or `pipeline` run there would
+take its tables for those that an earlier version wrote there, which it
+refuses without `-F`, and removes with it. The tables are written under
+temporary names, then renamed onto their own once all are written: a dump
+that fails leaves the output directory as it was.
 
 | Table | What it holds |
 |---|---|
 | `contig_data_final.txt` | One row per contig of the map, in its order: `Name`, `Size`, `GC_content`, `Hit`, `Shotgun_coverage`, `Restriction_site`, then the ID, number of contigs and size of its core, overlapping and recursive clusters, then `Final_cluster` (see [The contig data tables](formats.md#the-contig-data-tables)). No `ID` column: the ID of a contig was its position in the map that the run read. |
-| `cluster_summary.txt` | The summary of the final clusters, one row per cluster, with the columns that the validation recorded (`summary_columns`), in its order: the genomes table of the map. |
+| `cluster_summary.txt` | The summary of the final clusters, one row per cluster: its values are those of the genomes table of the map, written as the `validation` entry of its metadata records it, its rows in order (`summary_rows`), its columns in order (`summary_columns`) and the format of each (`summary_formats`). |
 | `binning.txt` | Each contig of a final cluster and its cluster, without a header: the binning that anvi'o imports. |
 | `clusters.txt`, `cluster_members.txt` | Every clustering round of the map (`core`, `overlapping`, `recursive_<k>`, `final`, the round `mge` that `metator mge --map` stores, and `mge_random` when `metator mge --random` stores one), every cluster with its parent and the columns its round stored, and the contigs of each cluster. |
 | `network.txt` | The network of the contigs, without a header: `contig1`, `contig2` (their names) and the weight of their edge, the normalization that `metator network` stored (the count of their contacts for `None`); one row per pair of contigs in contact, in the order of the map, without the contacts within a contig (see [The network](formats.md#the-network)). |
@@ -282,7 +295,7 @@ run's tables followed the map as it read it.
 
 ```bash
 # The tables of a run, from the map of its clusters
-metator dump sample.metacool -o binning
+metator dump sample.metacool -o tables
 ```
 
 ### `mge` { #mge }
@@ -325,20 +338,16 @@ replaces the clusters of the map drops the round `mge`, with a warning.
 
 ```bash
 # The tables of the run, which mge reads
-metator dump hicstuff/sample.metacool -o binning
+metator dump hicstuff/sample.metacool -o tables
 
 # Index the pairs that hicstuff wrote with the map (once): mge needs the index
 # of a compressed pairs file
 python -c 'import pypairix; pypairix.build_index("hicstuff/sample.valid_idx.pairs.gz", "pairs")'
 
-# The tables of the clustering run: in its temporary directory, which -N kept
-# (its log names it); metator dump (coming in metaTOR 2.0) writes them from
-# the map
-tables=tmp/3f9c2a1b
-metator mge -a assembly.fa -c $tables/contig_data_final.txt -b $tables/binning.txt \
+metator mge -a assembly.fa -c tables/contig_data_final.txt -b tables/binning.txt \
     -m mges.txt -o mge hicstuff/sample.valid_idx.pairs.gz
 
 # Also store the MGE clusters in the map of the run
-metator mge -a assembly.fa -c $tables/contig_data_final.txt -b $tables/binning.txt \
+metator mge -a assembly.fa -c tables/contig_data_final.txt -b tables/binning.txt \
     -m mges.txt -o mge --map hicstuff/sample.metacool hicstuff/sample.valid_idx.pairs.gz
 ```

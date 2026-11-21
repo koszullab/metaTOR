@@ -171,7 +171,8 @@ and records how the table is written, under the `validation` entry of the
 the lines; `summary_columns`, the columns in order; and `summary_formats`,
 the format of each column as printf writes it (`%.2f`, `%.4f`, `%d`, or
 `%s` for text and booleans), a missing value being an empty field. From
-them, the map alone writes the table again, byte for byte.
+them, the map alone writes the table again, byte for byte, as
+[`metator dump`](cli.md#dump) does.
 
 ### binning.txt
 

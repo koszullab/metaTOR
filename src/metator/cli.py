@@ -102,9 +102,9 @@ CLUSTER_DIRS = ("recursive_clusters", "final_clusters")
 # its output directory, which a run now writes in its temporary directory,
 # which -N keeps: its tables, miComplete's, and the FASTA files of the
 # recursive clusters. The map of the clusters holds what the tables hold, and
-# metator dump (in metaTOR 2.0) writes them from it. An earlier run's, left
-# in the output directory, would pass for this run's: refused without -F,
-# removed with it (see refuse_earlier_outputs).
+# metator dump writes them from it. An earlier run's, left in the output
+# directory, would pass for this run's: refused without -F, removed with it
+# (see refuse_earlier_outputs).
 EARLIER_OUTPUTS = (
     "contig_data_final.txt",
     "cluster_summary.txt",
@@ -160,7 +160,7 @@ def refuse_earlier_outputs(outdir, force):
         logger.error(
             f"{outdir} holds what an earlier run wrote there, which metaTOR 2.0 no longer writes in the output "
             f"directory: {mtmc._shown([os.path.basename(path) for path in found])}. The map of the clusters holds "
-            "what the tables held (metator dump, in metaTOR 2.0, writes them from it), and -N keeps the tables of a "
+            "what the tables held (metator dump writes them from it), and -N keeps the tables of a "
             "run in its temporary directory. Remove them, or give -F to remove them."
         )
         raise ValueError
@@ -1497,8 +1497,7 @@ def validation(
     miComplete. The command writes the FASTA files of the final clusters in
     the output directory (final_clusters), and stores the clusters in the
     map: the tables of the validation stay in its temporary directory, which
-    -N keeps, and [cyan]metator dump MAP[/] (coming in metaTOR 2.0) writes
-    them from the map.
+    -N keeps, and [cyan]metator dump MAP[/] writes them from the map.
 
     Only clusters with a weighted completeness of at least 33% and a
     contamination, (weighted redundancy - 1) / weighted completeness, of at

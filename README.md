@@ -129,7 +129,7 @@ each one.
 
 ### Output files
 
-The output files will be in the ouput directory given as parmater or in working directory if no paramater were given. Depending on the command used, different files will be in the ouptut. The tables of a validation (marked *tmp*) are written in the temporary directory of the run (`-T`, in a directory of its own, which the log names), which `-N` keeps: the map holds what they hold, and `metator dump` (coming in metaTOR 2.0) writes them from it. An earlier version wrote them in the output directory: there, they are refused without `-F`, which removes them.
+The output files will be in the ouput directory given as parmater or in working directory if no paramater were given. Depending on the command used, different files will be in the ouptut. The tables of a validation (marked *tmp*) are written in the temporary directory of the run (`-T`, in a directory of its own, which the log names), which `-N` keeps: the map holds what they hold, and `metator dump` writes them from it (see *The tables of a run* below). An earlier version wrote them in the output directory: there, they are refused without `-F`, which removes them.
 
 | Files/Commands | description | network | partition | validation | pipeline |
 | - | :-: | :-: | :-: | :-: | :-: |

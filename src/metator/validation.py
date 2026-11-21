@@ -25,8 +25,8 @@ The tables of a validation (miComplete's results, the contig data and the
 summary of the final clusters, the clusters of every round, the binning of
 the contigs) are written in the temporary directory of the run, which -N
 keeps: the map of the clusters stores what they hold (see
-metator.metacool.write_map), and metator dump (coming in metaTOR 2.0)
-writes them from it.
+metator.metacool.write_map), and metator dump writes them from it (see
+metator.dump).
 
 Functions in this module:
     - bin_quality

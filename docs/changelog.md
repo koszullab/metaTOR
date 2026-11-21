@@ -8,20 +8,24 @@ All notable changes to this project will be documented in this file.
 - `metator dump MAP -o DIR` writes the tables of a run from the map of its
   clusters, read only: `contig_data_final.txt` (one row per contig of the
   map, in its order, without the `ID` column), `cluster_summary.txt` (the
-  genomes table of the map, with the columns that the validation recorded,
-  in their order), `binning.txt`, `clusters.txt` and `cluster_members.txt`
-  (every clustering round of the map, the round `mge` of `metator mge`
-  included), and `network.txt` (the network that `metator network` stored,
-  by contig names: 1.x wrote their IDs). The values are those of the tables
-  that the run keeps in its temporary directory with `-N`; the rows of
+  run's, from the genomes table of the map, as its `validation` entry
+  records it: `summary_rows`, `summary_columns` and `summary_formats`),
+  `binning.txt`, `clusters.txt` and `cluster_members.txt` (every clustering
+  round of the map, the round `mge` of `metator mge` included), and
+  `network.txt` (the network that `metator network` stored, by contig
+  names: 1.x wrote their IDs). The values are those of the tables that the
+  run keeps in its temporary directory with `-N`; the rows of
   `contig_data_final.txt`, `binning.txt` and `cluster_members.txt` come in
   the order of the map of the clusters. A map without the clusters of a
   validation (the `validation` entry of its `metator` metadata, and the
-  round `final`), whose clusters were edited after the run (by `metacooler
-  reassign`), or that changes while it is read, is refused, and so is an
-  output directory that holds the tables of an earlier dump, without `-F`.
-  The tables are replaced all at once: a dump that fails leaves them as they
-  were. Python API: `metator.dump`; `metator.clusters.write_round_tables`,
+  round `final`), validated by a development build (without
+  `summary_rows` and `summary_formats`), whose clusters were edited after
+  the run (by `metacooler reassign`), whose network is not the one its
+  clusters were made from (`metator network` ran on it after the run: the
+  `network_digest` of its `partition` entry), or that changes while it is
+  read, is refused, and so is an output directory that holds the tables of
+  an earlier dump, without `-F`. The tables are replaced all at once: a
+  dump that fails leaves them as they were. Python API: `metator.dump`; `metator.clusters.write_round_tables`,
   which `Rounds.write` calls too, and `metator.metacool.map_rounds`, the
   rounds of a map as `Rounds` gives them; `stored_network`,
   `map_contig_table` and `stored_weights` of `metator.network` read through
@@ -49,10 +53,10 @@ All notable changes to this project will be documented in this file.
   `clusters.txt`, `cluster_members.txt`, miComplete's results) and
   `recursive_clusters/` are written in the temporary directory of the run,
   which `-N` keeps and the log names, not in the output directory;
-  `metator dump` (coming in metaTOR 2.0) writes the tables from the map. An
-  earlier run's tables and `recursive_clusters/` in the output directory
-  are refused without `-F`, before any work, and `-F` removes them: left
-  there, they passed for the run's. The map of the clusters is written anew
+  `metator dump` writes the tables from the map. An earlier run's tables
+  and `recursive_clusters/` in the output directory are refused without
+  `-F`, before any work, and `-F` removes them: left there, they passed for
+  the run's. The map of the clusters is written anew
   from the input map by `metacooler reassign` (what its regroup does not
   carry, an extra group or attribute, is left out with its warning), then
   the network is stored last in the contigs and bins tables: `pipeline`

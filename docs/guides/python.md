@@ -21,16 +21,17 @@ This page shows the pieces to put together; the
 
 pandas reads `cluster_summary.txt`, indexed by cluster name, and the contig
 data table, indexed here by contig name, its names as text: the tables of a
-`validation` or `pipeline` run, in its temporary directory, which `-N` keeps
-(its log names it; `metator dump`, coming in metaTOR 2.0, writes them from
-the map):
+`validation` or `pipeline` run, which `metator dump MAP -o tables` writes
+from the map of its clusters. The run's own, in its temporary directory
+(`-N` keeps it, and its log names it), are read the same way, but for its
+`contig_data_final.txt`, which starts with a row number and the `ID` of the
+contig: give it `index_col=0` too.
 
 ```python
 import pandas as pd
 
-tables = "tmp/3f9c2a1b"  # The temporary directory of the run, which -N kept
-summary = pd.read_csv(f"{tables}/cluster_summary.txt", sep="\t", index_col=0)
-contigs = pd.read_csv(f"{tables}/contig_data_final.txt", sep="\t", index_col=0, dtype={"Name": str})
+summary = pd.read_csv("tables/cluster_summary.txt", sep="\t", index_col=0)
+contigs = pd.read_csv("tables/contig_data_final.txt", sep="\t", dtype={"Name": str})
 contigs = contigs.set_index("Name", drop=False)
 
 # The high-quality MAGs, and their contigs.
