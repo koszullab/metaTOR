@@ -360,6 +360,10 @@ def _rows_as_text(validation):
     validation["summary_rows"] = " ".join(validation["summary_rows"])
 
 
+def _columns_as_text(validation):
+    validation["summary_columns"] = " ".join(validation["summary_columns"])
+
+
 def _unknown_format(validation):
     validation["summary_formats"]["step"] = "%5.1f"
 
@@ -377,6 +381,7 @@ def _unknown_row(validation):
             "is written: a development build of metaTOR 2.0 validated the map",
         ),
         (_rows_as_text, "summary_rows, which must be the names of the clusters"),
+        (_columns_as_text, "summary_columns, which must be the names of the columns"),
         (_unknown_format, "summary_formats, which must give each column one of the formats %.2f, %.4f, %d, %s"),
         (_unknown_row, r"lacks the cluster\(s\) 'metator_99999_00000' of the summary of its clusters \(summary_rows\)"),
     ],
