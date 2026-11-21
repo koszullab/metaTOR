@@ -141,37 +141,64 @@ def test_the_tables_of_the_rounds_are_those_written(tmp_path):
     assert clusters.parent.isna().sum() == 2
 
 
-def test_the_overlapping_round_of_a_partition(tmp_path):
-    """The round overlapping of a partition, from its contig data: the
-    overlapping clusters that reach --size, named as the FASTA files that
-    partition writes for them (<prefix>_<ID>_00000), in the order of their
-    IDs (as numbers: an ID of six digits is the last), with their contigs in
-    their order; a contig of no cluster ("-", no edge in the network) is in
-    none, and a contig called NA is a contig."""
-    table = tmp_path / "contig_data_partition.txt"
-    table.write_text(
-        "ID\tName\tSize\tOverlapping_cluster_ID\tOverlapping_cluster_contigs\tOverlapping_cluster_size\n"
-        "1\tc1\t600\t100000\t2\t900\n"
-        "2\tNA\t300\t100000\t2\t900\n"
-        "3\tc3\t500\t00002\t1\t500\n"
-        "4\tc4\t499\t00003\t1\t499\n"
-        "5\tc5\t50\t-\t-\t-\n"
-        "6\tc6\t700\t00010\t1\t700\n"
+def test_the_names_of_the_clusters_of_a_partition():
+    """The core clusters are core_<number>, the overlapping ones
+    <prefix>_<number>_00000, a prefix of underscores too: their numbers, as
+    the contig data tables give them (00001...), come back from their names;
+    another name gives none."""
+    assert mtc.core_name(1) == "core_00001" and mtc.core_name(123456) == "core_123456"
+    assert mtc.overlapping_name("my_sample_metator", 2) == "my_sample_metator_00002_00000"
+    assert mtc.cluster_number(mtc.CORE, "core_00001") == 1
+    assert mtc.cluster_number(mtc.CORE, "core_123456") == 123456
+    assert mtc.cluster_number(mtc.OVERLAPPING, "my_sample_metator_00002_00000") == 2
+    for round_name, name in [
+        (mtc.CORE, "core_1"),
+        (mtc.CORE, "core_0000x"),
+        (mtc.CORE, "x_00001"),
+        (mtc.OVERLAPPING, "metator_00002_00001"),
+        (mtc.OVERLAPPING, "_00002_00000"),
+        (mtc.OVERLAPPING, "metator_00002"),
+        # Digits other than ASCII ones (full-width digit two).
+        (mtc.OVERLAPPING, "metator_" + "\uff12" * 5 + "_00000"),
+    ]:
+        assert mtc.cluster_number(round_name, name) is None, name
+
+
+def test_the_rounds_of_a_partition():
+    """The rounds core and overlapping of a partition, as partition MAP
+    stores them: every cluster, in the order of its number, with its
+    contigs (by name: a contig called NA is a contig), no parent and no
+    column; the overlapping clusters that miComplete checked get its
+    columns when the validation records them."""
+    partition = mtc.Partition(
+        core={2: [3], 1: [1, 2]},
+        overlapping={1: [1, 2, 3]},
+        names={1: "sample_metator_00001_00000"},
     )
-    clusters, members = mtc.overlapping_round(table, 500, "sample_metator")
-    names = ["sample_metator_00002_00000", "sample_metator_00010_00000", "sample_metator_100000_00000"]
-    assert list(clusters.name) == names
-    assert list(clusters.columns) == ["round", "name", "parent_round", "parent"]
-    assert set(clusters["round"]) == {mtc.OVERLAPPING} and clusters.parent.isna().all()
-    assert list(zip(members.cluster, members.contig, strict=True)) == [
-        (names[0], "c3"),
-        (names[1], "c6"),
-        (names[2], "c1"),
-        (names[2], "NA"),
+    names = ["c1", "NA", "c3"]
+    clusters, members = mtc.partition_rounds(partition, names)
+    assert list(zip(clusters["round"], clusters.name, strict=True)) == [
+        (mtc.CORE, "core_00001"),
+        (mtc.CORE, "core_00002"),
+        (mtc.OVERLAPPING, "sample_metator_00001_00000"),
     ]
-    assert set(members["round"]) == {mtc.OVERLAPPING}
-    # No cluster reaches the size: the round has none.
-    clusters, members = mtc.overlapping_round(table, 10_000, "metator")
+    assert list(clusters.columns) == ["round", "name", "parent_round", "parent"] and clusters.parent.isna().all()
+    assert list(zip(members["round"], members.cluster, members.contig, strict=True)) == [
+        (mtc.CORE, "core_00001", "c1"),
+        (mtc.CORE, "core_00001", "NA"),
+        (mtc.CORE, "core_00002", "c3"),
+        (mtc.OVERLAPPING, "sample_metator_00001_00000", "c1"),
+        (mtc.OVERLAPPING, "sample_metator_00001_00000", "NA"),
+        (mtc.OVERLAPPING, "sample_metator_00001_00000", "c3"),
+    ]
+    assert partition.sizes([100, 50, 25]) == {1: 175}
+    # The validation records them with the columns of miComplete of the
+    # clusters that it checked.
+    rounds = mtc.record_partition(mtc.Rounds(), partition, names, quality={"sample_metator_00001_00000": {"Completeness": 0.9}})
+    clusters, _ = rounds.tables()
+    assert list(clusters.Completeness.isna()) == [True, True, False]
+    # A partition of no cluster (a network without an edge): empty rounds.
+    clusters, members = mtc.partition_rounds(mtc.Partition(core={}, overlapping={}, names={}), names)
     assert clusters.empty and members.empty
 
 

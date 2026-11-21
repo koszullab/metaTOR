@@ -305,3 +305,26 @@ def test_bin_abundances_are_percentages():
     assert summary["A"]["SG_abundance"] == pytest.approx(100 * 300 / 900)
     assert sum(b["SG_abundance"] for b in summary.values()) == pytest.approx(100)
     assert sum(b["HiC_abundance"] for b in summary.values()) == pytest.approx(100)
+
+
+def test_write_overlapping_fasta_needs_the_assembly_of_the_map(metagenome_network, tmp_path, logged):
+    """The FASTA files of the overlapping clusters to check come from the
+    assembly that the map was made from: one that lacks a contig of a
+    cluster is refused, with metacooler's reason, logged as an error, and no
+    file is written. No cluster that reaches the size: no file, and none
+    needed."""
+    import metator.clusters as mtcl
+
+    table = metagenome_network["contig_table"]
+    ids = list(table.ID)
+    clusters = mtcl.Partition(core={1: ids}, overlapping={1: ids}, names={1: "metator_00001_00000"})
+    other = tmp_path / "other.fa"
+    other.write_text(">x\nACGT\n")
+    with pytest.raises(ValueError, match=r"^The clusters to check cannot be written from "):
+        mtv.write_overlapping_fasta(str(metagenome_network["map"]), str(other), clusters, table, 1, str(tmp_path / "fasta"))
+    assert [level for level, message in logged() if message.startswith("The clusters to check")] == ["ERROR"]
+    assert not list((tmp_path / "fasta").iterdir())
+    written = mtv.write_overlapping_fasta(
+        str(metagenome_network["map"]), str(other), clusters, table, int(table.Size.sum()) + 1, str(tmp_path / "none")
+    )
+    assert written == [] and not list((tmp_path / "none").iterdir())
