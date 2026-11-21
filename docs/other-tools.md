@@ -15,7 +15,7 @@ cluster of it, and `R1.fq.gz` and `R2.fq.gz` the Hi-C reads of the run.
 | The plots of `pipeline` and `validation`, the heatmap included | `metacooler show MAP -o map.png`: the contacts between the clusters (`--level genome`, the default); between the contigs of some of them with `--genomes NAME,... --level contig`. The genomes table of the map (`metacooler dump -t genomes -H MAP`) gives the completeness, redundancy and size of each cluster, as `cluster_summary.txt`. |
 | `metator metacool` | `pipeline` and `validation` write the map of the clusters. By hand, from the map of the contigs (`contigs.metacool`) and the tables of a run of an earlier version: `metacooler reassign contigs.metacool --contigs contig_data_final.txt --contigs-format Name,Final_cluster --genomes cluster_summary.txt --genomes-format 1 -o clusters.metacool`, then `metacooler annotate clusters.metacool --contigs contig_data_final.txt --contigs-format Name --columns contigs.GC_content,contigs.Hit,contigs.Shotgun_coverage,contigs.Restriction_site --inplace` for the columns of the contigs. |
 | `metator scaffold`, `pipeline --scaffold` | hicstuff's `pipeline -g NAME.fa -e ENZYME -M graal -o NAME R1.fq.gz R2.fq.gz` on the FASTA file of a cluster, then instaGRAAL on its matrix (`NAME/abs_fragments_contacts_weighted.txt`, `fragments_list.txt` and `info_contigs.txt`). |
-| `metator pairs` | hicstuff's `pipeline` writes its pairs sorted by `chr1`, `chr2`, `pos1` and `pos2`, and compressed with bgzip (`valid_idx.pairs.gz`, `valid_idx_filtered.pairs.gz` with `-f`): `pairix -p pairs` indexes them as they are. Another pairs file: sort it so, compress it with `bgzip`, then index it with `pairix -p pairs`. pip's `pypairix` installs neither the `pairix` nor the `bgzip` command; in Python, `pypairix.build_index(path, "pairs")` indexes a file. |
+| `metator pairs` | hicstuff's `pipeline` writes its pairs sorted by `chr1`, `chr2`, `pos1` and `pos2`, and compressed with bgzip (`valid_idx.pairs.gz`, `valid_idx_filtered.pairs.gz` with `-f`): `pairix -p pairs` indexes them as they are. Another pairs file: sort it so, compress it with `bgzip`, then index it with `pairix -p pairs`. metaTOR reads no pairs file, and no longer comes with `pypairix`: `metacooler create pairs` makes the map from a pairs file, sorted or not. |
 
 See [Migrating to 2.0](migration.md) for every removed option and output.
 
@@ -48,8 +48,9 @@ hicstuff aligns the reads with bowtie2 by default; `-m 5spm` aligns them with
 `bwa mem -5SPM`, close to metaTOR 1.x's `--aligner bwa`, which ran
 `bwa mem -5SP`. Besides the map,
 `<prefix>.metacool`, it writes the pairs of the library,
-`<prefix>.valid_idx.pairs.gz`, which `metator mge` reads once indexed with
-`pairix -p pairs` (see
+`<prefix>.valid_idx.pairs.gz`. The map holds the contact statistics of the
+reads of each contig, which `metator mge` reads, at 1001 bp with metacooler
+0.4.0 or later (see
 [Clustering mobile genetic elements](guides/mge.md#running-it)).
 
 From the pairs files of another aligner, `metacooler create pairs` makes the

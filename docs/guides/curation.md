@@ -19,15 +19,15 @@ of its clusters, `sample.metacool`, by `metator dump`, in `tables` below.
 ## 1. The contigs database
 
 The database holds only the contigs of the final clusters, those of
-`binning.txt`, extracted with [pyfastx](https://github.com/lmdu/pyfastx),
-which is installed with metaTOR:
+`binning.txt`, whose records the run wrote in `final_clusters/`, one FASTA file
+per cluster:
 
 ```bash
 # The tables of the run, from the map of its clusters
 metator dump sample.metacool -o tables
 mkdir -p anvio
 cut -f 1 tables/binning.txt > anvio/contigs.txt
-pyfastx extract -l anvio/contigs.txt -o anvio/contigs.fa assembly.fa
+cat binning/final_clusters/*.fa > anvio/contigs.fa
 ```
 
 anvi'o reads only contig names made of ASCII letters, digits and underscores:
@@ -121,12 +121,14 @@ counts them in the quality classes of its log:
 
 ```python
 import metacooler
-import metator.io as mio
 import metator.validation as mtv
 import pandas as pd
 
-# The collection exported by anvi'o: each contig and its cluster.
-binning = pd.Series(mio.import_anvio_binning("anvio/curated.txt"))
+# The collection exported by anvi'o: each split and its cluster, a split read
+# as its contig (NODE_1_split_00001 is NODE_1).
+collection = pd.read_csv("anvio/curated.txt", sep="\t", header=None, names=["split", "cluster"], dtype=str)
+binning = collection.set_index(collection["split"].str.split("_split").str[0])["cluster"]
+binning = binning[~binning.index.duplicated(keep="last")]
 
 # One FASTA file per curated cluster, the records of its contigs as they are
 # in the assembly, written by metacooler from the contact map of the run.
@@ -148,7 +150,7 @@ contig data table as a column, give them to the contact map of the run with
 [Other tools](../other-tools.md)):
 
 ```python
-binning = mio.import_anvio_binning("anvio/curated.txt")
+# binning: the curated cluster of each contig, read from the collection as above.
 contigs = pd.read_csv("tables/contig_data_final.txt", sep="\t", dtype={"Name": str})
 contigs["Anvio"] = contigs["Name"].map(binning).fillna("ND")
 contigs.to_csv("binning/contig_data_anvio.txt", sep="\t", index=False)

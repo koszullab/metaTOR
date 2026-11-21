@@ -109,7 +109,7 @@ reads it, and `partition` and `validation` update it as `pipeline` does (see
 [Step by step on a contact map](#step-by-step-on-a-contact-map)). hicstuff makes the map from the
 reads (`hicstuff pipeline -M metacool`), and metacooler from pairs files (`metacooler create pairs`,
 then `metacooler merge` for several libraries): metaTOR 2.0 reads no reads, alignments or pairs
-files (but `mge`).
+files, `mge` included, which reads the map.
 
 There are a number of other, optional, miscellaneous actions:
 
@@ -436,16 +436,18 @@ tables of the network and of the partition (`-n`, `-c`, `-f`).
 
 #### mge on a contact map
 
-`mge` reads the pairs files, as it counts the contacts within each MGE contig between reads
-more than 1 kb apart, which a map does not tell, but
-`metator mge ... --map MAP` stores its MGE clusters in the map: as the round
-`mge` of its clustering rounds, with the columns of `mges_cluster_summary.tsv`
-and the contigs of each cluster, after the rounds of the clustering run, which
-are kept, and in place of the round `mge` of an earlier run; a run that
-replaces the clusters of the map drops it, with a warning. The genomes and
-contigs tables of the map, the final MAGs, are left as they were. The map is
-written as `partition MAP` writes it (in place, or to `--output-map FILE`), and
-refused as it refuses it, before any work.
+`metator mge MAP` reads a map that `metator network` stored its network in (after `network`,
+`pipeline` or `validation`): the contacts between the MGE contigs from its pixels, and those within
+each contig, between reads more than 1 kb apart, from its contact statistics (metacooler's QC block,
+counted from the pairs at 1001 bp by `hicstuff pipeline -M metacool` and `metacooler create pairs`,
+with metacooler 0.4.0 or later); it reads no cluster of the map. It stores its MGE clusters in the
+map: as the round `mge` of its clustering rounds, with their contigs, length, GC content, hits and
+clustering score, after the other rounds, which are kept, and in place of the round `mge` of an
+earlier run (`--random`: the round `mge_random`); a run that replaces the clusters of the map drops
+it, with a warning. The genomes and contigs tables of the map are left as they were. The map is
+written as `partition MAP` writes it (in place, or to `--output-map FILE`), and refused as it refuses
+it, before any work; so is a map without those contact statistics or without the network of
+`metator network`.
 
 #### From hicstuff to metaTOR
 
@@ -491,28 +493,23 @@ metacooler create pairs --pairs L1.pairs.gz --pairs L2.pairs.gz --bins 1000 --no
 
 #### Usage of mge
 
-`metator mge` : given a list of contigs previously identified as MGE, this
-command will cluster the specific given contigs and return a fasta files as
-well as a summary file.
-
-With `--map MAP`, the MGE clusters are also stored in the `.metacool` contact map of the run, as the round `mge`
-of its clustering rounds (see [mge on a contact map](#mge-on-a-contact-map)).
+`metator mge MAP -a assembly.fa -m mges.txt` : given a list of contigs previously identified as
+MGE, this command clusters them from the contacts of the contact map of the run, MAP, stores the
+MGE clusters in the map, as the round `mge` of its clustering rounds (see
+[mge on a contact map](#mge-on-a-contact-map)), and writes their fasta file.
 
 #### Output
 
 **mges_binned.fa**
-fasta file of the mge obtained after the clustering step.
+fasta file of the mge clusters: one record per cluster, `MetaTOR_MGE_00001` and on, its contigs
+joined by 200 `N`.
 
-**mges_cluster_summary.tsv**
-
-This is the summary of the data of the final mge clusters build with the
-specific command mge.
-
-|BinName|BinLength|GC|Hit|BinningScore|ContigsNumber|Contigs|MetagenomicBin|AssociationScore|AssociatedBins|
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-|MetaTOR_MGE_00064|30610.00|68.93|18383.00|1.20|2.00|NODE_8199_len_17842,NODE_10116_len_12768|None|NA|NA|
-|MetaTOR_MGE_00105|23587.00|37.36|2662.00|NA|1.00|NODE_10949_len_23587|None|NA|NA|
-|MetaTOR_MGE_00106|2872.00|64.48|10.00|NA|1.00|NODE_10953_len_2872|None|NA|NA|
+**The round `mge` of the map**
+One cluster per MGE cluster, named as its record, with its contigs and its length, GC content
+(`GC`), hits (`Hit`) and clustering score (`BinningScore`, missing for a single contig):
+`metator dump MAP -o DIR` writes it in `clusters.txt` and `cluster_members.txt`, with the other
+rounds of the map, and `metacooler dump -t clusters MAP` prints it (see
+[File formats](docs/formats.md#mge-clusters)).
 
 ## Tutorials
 
