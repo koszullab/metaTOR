@@ -1,39 +1,67 @@
 # Quickstart
 
-This page clusters the contigs of an assembly from the reads of a metaHiC
-library, and looks at the clusters and at their contact map. It uses the test
-data of metaTOR's repository: 70,805 read pairs on an assembly of 1,219
-contigs, 2.2 Mb in all, so the run takes about a minute.
+This page makes the contact map of a metaHiC library, clusters the contigs of
+the assembly from it, and looks at the clusters and at their contact map. It
+uses the test data of metaTOR's repository: the 41,563 pairs of a library on an
+assembly of 1,219 contigs, 2.2 Mb in all, so the run takes under a minute.
 
 ## Input files
 
 | File | What it is |
 |---|---|
 | `assembly.fa` | The metagenome assembly, in FASTA format |
-| `for_paired.fq.gz` | The first mate of each metaHiC read pair (R1) |
-| `rev_paired.fq.gz` | The second mate, in the same order (R2) |
+| `alignment.pairs` | The pairs of the library: its read pairs aligned on the assembly, in the [pairs format](formats.md#pairs) |
 | `depth.txt` | *(optional)* The shotgun coverage of each contig, from `jgi_summarize_bam_contig_depths` |
 
 ```bash
 base=https://raw.githubusercontent.com/koszullab/metator/master/tests_data
 curl -LO "$base/assembly.fa"
-curl -LO "$base/for_paired.fq.gz"
-curl -LO "$base/rev_paired.fq.gz"
+curl -LO "$base/alignment.pairs"
 curl -LO "$base/depth.txt"
 ```
 
-## Step 1: run the pipeline
+## Step 1: make the contact map
+
+metaTOR starts from a contact map of the contigs, a `.metacool` file, made
+before any clustering. metacooler, which comes with metaTOR, makes it from the
+pairs:
 
 ```bash
-metator pipeline --forward for_paired.fq.gz --reverse rev_paired.fq.gz \
-    --assembly assembly.fa --aligner bwa --enzyme DpnII --depth depth.txt \
-    --size 20000 --threads 4 --outdir binning
+metacooler create pairs --pairs alignment.pairs --bins 1000 --no-ps \
+    --assembly-name assembly -o sample.metacool
 ```
 
-`--aligner bwa` aligns the read pairs with `bwa mem -5SP`, the recommended
-aligner: see [Aligning reads](guides/network.md#aligning-the-reads).
-`--enzyme` and `--depth` add the restriction sites and the shotgun coverage of
-each contig to its data; the default normalisation needs neither.
+The map cuts the contigs into 1 kb bins (`--bins 1000`) and puts them all in
+one genome, `__unbinned__`. metacooler warns that it clamped 719 pairs: those
+of this test file at position 0, which it counts in the first bin of their
+contig.
+
+!!! tip "From the reads"
+
+    hicstuff aligns the reads of a library and makes the map in one command:
+
+    ```bash
+    hicstuff pipeline -g assembly.fa -e DpnII -M metacool -o hicstuff -P sample R1.fq.gz R2.fq.gz
+    ```
+
+    It writes the map `hicstuff/sample.metacool`, with one bin per restriction
+    fragment, and the pairs `hicstuff/sample.valid_idx.pairs.gz`, which
+    `metator mge` reads once indexed with pairix. `metacooler merge` sums the
+    maps of several libraries: see
+    [Other tools](other-tools.md#from-the-reads-to-the-map).
+
+## Step 2: run the pipeline
+
+```bash
+metator pipeline sample.metacool --assembly assembly.fa --enzyme DpnII \
+    --depth depth.txt --size 20000 --threads 4 --outdir binning
+```
+
+The run reads the network of the contigs from the map. `--enzyme` and
+`--depth` add the restriction sites and the shotgun coverage of each contig to
+its data; the default normalisation needs neither. At its end, the run writes
+the contact map of the clusters over the map: `--output-map` writes it to
+another file, and leaves the map as it was.
 
 !!! note "`--size 20000` is for this test library only"
 
@@ -45,47 +73,44 @@ each contig to its data; the default normalisation needs neither.
 The run logs each step (excerpt):
 
 ```console
-INFO :: Alignment of for_paired.fq.gz and rev_paired.fq.gz:
-INFO :: 61974 pairs aligned.
-INFO :: Information of binning/metator.metacool:
-INFO :: 61974 contacts in the library.
-INFO :: 28510 contacts inter-contigs in the library.
-INFO :: 3D ratio : 0.46003162616581145
+INFO :: Information of sample.metacool:
+INFO :: 41563 contacts in the library.
+INFO :: 18632 contacts inter-contigs in the library.
+INFO :: 3D ratio : 0.44828332892235884
 INFO :: Detect core clusters:
-INFO :: 550 core clusters were found.
+INFO :: 429 core clusters were found.
 INFO :: Detect overlapping clusters:
-INFO :: 290 overlapping clusters were found.
+INFO :: 230 overlapping clusters were found.
 INFO :: Extract clusters:
-INFO :: 13 clusters have been extracted
+INFO :: 24 clusters have been extracted
 INFO :: Lauch miComplete quality check.
 INFO :: No more contaminated cluster has been found after 1 steps.
-INFO :: 13 clusters have been kept after the recursive iterations.
+INFO :: 24 clusters have been kept after the recursive iterations.
 INFO :: HQ MAGs: 0	Total Size: 0
 INFO :: MQ MAGs: 0	Total Size: 0
 INFO :: LQ MAGs: 0	Total Size: 0
 INFO :: Contaminated potential MAGs: 0	Total Size: 0
-INFO :: Other clusters: 13	Total Size: 380921
-INFO :: Writing binning/metator.metacool from the contact map binning/metator.metacool: 1219 contigs, 197 of them in 13 clusters.
+INFO :: Other clusters: 24	Total Size: 679917
+INFO :: Writing sample.metacool from the contact map sample.metacool: 1219 contigs, 301 of them in 24 clusters.
+INFO :: sample.metacool is written: the contact map of the clusters.
 ```
 
 The Louvain algorithm is randomised: another run finds about as many clusters,
 not always the same.
 
-## Step 2: look at what it wrote
+## Step 3: look at what it wrote
 
 ```console
 $ ls binning
-alignment_0.bam
 binning.txt
 cluster_members.txt
 cluster_summary.txt
 clusters.txt
 contig_data_final.txt
+contig_data_network.txt
 final_clusters
-metator.metacool
-metator_pipeline_20261118125820.log
+metator_pipeline_20261121023231.log
 network.txt
-network_0.txt
 overlapping_clusters
 overlapping_micomplete_results.txt
 recursive_clusters
@@ -98,21 +123,21 @@ recursive_clusters
 | `clusters.txt`, `cluster_members.txt` | Every cluster of every round (overlapping, recursive, final), with its parent and miComplete's columns, and the contigs of each |
 | `contig_data_final.txt` | One row per contig: its size, GC content, hits, and the clusters it went through |
 | `binning.txt` | The contigs of the final clusters and their cluster, as anvi'o imports a binning |
-| `metator.metacool` | The contact map of all the contigs, grouped by cluster |
 | `network.txt` | The normalised network of contigs |
 | `metator_pipeline_<date>.log` | The log of the run |
 
-[Running the pipeline](guides/pipeline.md#outputs) lists every output, and
-[File formats](formats.md) describes the tables.
+`sample.metacool`, next to them, is now the contact map of all the contigs,
+grouped by cluster. [Running the pipeline](guides/pipeline.md#outputs) lists
+every output, and [File formats](formats.md) describes the tables.
 
-## Step 3: read the cluster summary
+## Step 4: read the cluster summary
 
 ```console
 $ cut -f 1-6,9,10 binning/cluster_summary.txt | head -4
 	Length	GC-content	Present Markers	Completeness	Redundancy	Contigs	N50
-metator_00001_00000	49021.00	62.03	1.00	0.01	1.00	15.00	9019.00
-metator_00007_00000	24565.00	62.08	1.00	0.01	1.00	12.00	1777.00
-metator_00009_00000	24472.00	60.11	0.00	0.00	0.00	9.00	4643.00
+metator_00001_00000	36399.00	62.14	1.00	0.01	1.00	9.00	22786.00
+metator_00006_00000	30476.00	61.77	1.00	0.01	1.00	9.00	7448.00
+metator_00005_00000	20637.00	63.40	0.00	0.00	0.00	6.00	11969.00
 ```
 
 Completeness and redundancy are miComplete's, as fractions: a complete
@@ -121,16 +146,16 @@ clusters of this test library hold a few marker genes at most (a completeness
 under 10%), so they are classed as *Other clusters*; on a real sample, the log
 counts the high-, medium- and low-quality MAGs.
 
-## Step 4: open the contact map
+## Step 5: open the contact map
 
-`metator.metacool` is a [metacooler](https://github.com/js2264/metacooler)
-file: a [cooler](https://github.com/open2c/cooler) with one bin per contig,
-whose contigs are grouped into one genome per final cluster. metacooler, which
-comes with metaTOR, reads its genomes:
+`sample.metacool` is a [metacooler](https://github.com/js2264/metacooler)
+file: a [cooler](https://github.com/open2c/cooler) whose chromosomes are the
+contigs, grouped into one genome per final cluster. metacooler reads its
+genomes:
 
 ```bash
-metacooler info binning/metator.metacool
-metacooler dump -t genomes -H binning/metator.metacool
+metacooler info sample.metacool
+metacooler dump -t genomes -H sample.metacool
 ```
 
 The genomes table holds the columns of `cluster_summary.txt`, and the contigs
@@ -147,7 +172,7 @@ import pandas as pd
 clusters = pd.read_csv("binning/cluster_summary.txt", sep="\t", index_col=0)
 contigs = mio.read_contig_data("binning/contig_data_final.txt")
 
-mc = metacooler.MetaCooler("binning/metator.metacool")
+mc = metacooler.MetaCooler("sample.metacool")
 mc.genomes   # one row per cluster, and __unbinned__, with the columns of cluster_summary.txt
 mc.contigs   # one row per contig: GC content, hits, coverage, restriction sites
 ```
@@ -157,7 +182,7 @@ mc.contigs   # one row per contig: GC content, hits, coverage, restriction sites
 - [Concepts](concepts.md): the network, the partition, the validation.
 - [Running the pipeline](guides/pipeline.md): every input, output and option,
   and the steps run one by one.
-- [Other tools](other-tools.md): the contact map of one cluster, its
-  scaffold, and the quality of a library, with metacooler, hicstuff and
-  instaGRAAL.
+- [Other tools](other-tools.md): the map from the reads, the contact map of one
+  cluster, its scaffold, and the quality of a library, with hicstuff,
+  metacooler and instaGRAAL.
 - [CLI reference](cli.md): every command.

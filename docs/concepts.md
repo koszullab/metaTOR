@@ -17,10 +17,9 @@ joined finds the genomes.
 
 ## The pipeline
 
-`metator pipeline` runs these steps (rounded) in order, and writes the files
-(slanted) between them. `--start` starts it from the alignments or the pairs
-instead of from the reads, and a contact map given as its first argument
-from the map:
+`metator pipeline` runs these steps (rounded) in order, from the contact map
+of the contigs, its first argument, and writes the files (slanted) between
+them. hicstuff makes the map from the reads, and metacooler from pairs files:
 
 ```mermaid
 ---
@@ -29,18 +28,14 @@ config:
     wrappingWidth: 400
 ---
 flowchart TD
-    reads[/"R1 and R2 reads · start fastq"/]
-    align("Align the reads")
-    bams[/"BAM files · start bam"/]
-    pair("Pair the mates")
-    pairs[/"Pairs · start pair"/]
-    map[/"A .metacool contact map · the first argument"/]
+    reads[/"R1 and R2 reads"/]
+    hicstuff("hicstuff pipeline -M metacool: align the reads, pair the mates")
+    map[/"A .metacool contact map of the contigs · the first argument"/]
     network("Build the network of contigs")
     partition("Partition the network, many times")
     validation("Validate the clusters, partition the contaminated ones again")
     clusters[/"Final clusters, cluster summary, contact map of the clusters"/]
-    reads --> align --> bams --> pair --> pairs --> network
-    map --> network
+    reads --> hicstuff --> map --> network
     network --> partition --> validation --> clusters
 ```
 
@@ -54,8 +49,9 @@ The three steps are also three commands, `metator network`,
 
 metaTOR first measures every contig of the assembly: its size, its GC
 content, its number of restriction fragments (with `--enzyme`), its shotgun
-coverage (with `--depth`), and its number of **hits**, the ends of the pairs
-that lie on it (a pair within the contig counts twice). These go to the
+coverage (with `--depth`), and its number of **hits**, the ends of the
+contacts of the map that lie on it (a contact within the contig counts
+twice). These go to the
 **contig data** table, which every step reads and extends with the clusters of
 the contig.
 
@@ -66,7 +62,7 @@ between them. The contigs are the nodes of the network, and its edges hold
 the contacts between two contigs, **normalised** so that a large or abundant
 contig does not attract every other one. The default normalisation,
 `empirical_hit`, divides the contacts between two contigs by the geometric
-mean of their hits. [Aligning reads and building the network](guides/network.md)
+mean of their hits. [Building the network](guides/network.md)
 lists the other normalisations.
 
 ## Partition: core and overlapping clusters
@@ -131,6 +127,8 @@ At the end of a run, metaTOR writes the contacts of all the contigs, grouped
 by cluster, as a `.metacool` file: the contact map format of
 [metacooler](https://github.com/js2264/metacooler), a
 [cooler](https://github.com/open2c/cooler) whose contigs are grouped into
-genomes, one per final cluster. A run can also start from such a map, made from
-the pairs files of [hicstuff](https://koszullab.github.io/hicstuff/), for
-instance. See [The contact map of the clusters](guides/metacool.md).
+genomes, one per final cluster, over the map it started from: a map of the
+contigs, made before any clustering by
+[hicstuff](https://koszullab.github.io/hicstuff/) from the reads, or by
+metacooler from pairs files. See
+[The contact map of the clusters](guides/metacool.md).

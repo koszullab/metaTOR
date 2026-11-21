@@ -13,7 +13,7 @@ metaTOR's development environment is managed by
 uv, and the programs metaTOR runs, which uv cannot install:
 
 ```bash
-sudo apt install bowtie2 bwa samtools hmmer prodigal   # or: brew install bowtie2 bwa samtools hmmer prodigal
+sudo apt install hmmer prodigal   # or: brew install hmmer prodigal
 ```
 
 Then, from a clone of your fork:

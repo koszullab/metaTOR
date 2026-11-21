@@ -28,13 +28,16 @@ Each contig that was never merged is an MGE cluster of its own.
 ## Running it
 
 ```bash
+# Index the pairs of the library that hicstuff wrote with the map (once)
+pairix -p pairs hicstuff/sample.valid_idx.pairs.gz
+
 metator mge -a assembly.fa -c binning/contig_data_final.txt -b binning/binning.txt \
-    -m mges.txt -o mge binning/alignment_0_sorted.pairs.gz
+    -m mges.txt -o mge hicstuff/sample.valid_idx.pairs.gz
 ```
 
 | Input | What it is |
 |---|---|
-| The pairs files | The pairs files of the run, sorted and indexed with pairix as `metator network` writes them (`metator pipeline` deletes them, unless `--no-clean-up`). An uncompressed pairs file without index is read whole, which is slower: pairix's tools index it (see [Other tools](../other-tools.md)) |
+| The pairs files | The pairs files of the run: those that hicstuff writes with the map, `<prefix>.valid_idx.pairs.gz`, sorted and compressed, once indexed with pairix (`pairix -p pairs FILE`; from Python, `pypairix.build_index(FILE, "pairs")`, as pypairix comes with metaTOR). A compressed pairs file needs the index; an uncompressed one without index is read whole, which is slower |
 | `--assembly` (`-a`) | The assembly, as a FASTA file |
 | `--contigs` (`-c`) | The contig data table of the run: the size, GC content and hits of each contig |
 | `--binning` (`-b`) | The clusters of the contigs, two columns: the contig, and its cluster. `binning.txt`, or the collection exported by anvi'o, whose split names (`NODE_1_split_00001`) are read as their contig (`NODE_1`) |
@@ -68,7 +71,7 @@ the run, that of `metator pipeline` (see
 
 ```bash
 metator mge -a assembly.fa -c binning/contig_data_final.txt -b binning/binning.txt \
-    -m mges.txt -o mge --map binning/metator.metacool binning/alignment_0_sorted.pairs.gz
+    -m mges.txt -o mge --map hicstuff/sample.metacool hicstuff/sample.valid_idx.pairs.gz
 ```
 
 They become the round `mge` of the clustering rounds of the map (see
@@ -91,7 +94,7 @@ and metadata.
 ```python
 import metacooler
 
-mc = metacooler.MetaCooler("binning/metator.metacool")
+mc = metacooler.MetaCooler("hicstuff/sample.metacool")
 mc.clusters[mc.clusters["round"] == "mge"]  # one row per MGE cluster
 mc.cluster_members("mge")                   # their contigs
 ```

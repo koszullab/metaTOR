@@ -1,8 +1,12 @@
 # Installation
 
-metaTOR needs Python 3.10 to 3.14, and four programs that are not on PyPI:
-an aligner (bwa, recommended, or bowtie2), samtools, and the prodigal and
-hmmer that miComplete runs to validate the clusters.
+metaTOR needs Python 3.10 to 3.14, and two programs that are not on PyPI:
+the prodigal and hmmer that miComplete runs to validate the clusters. It
+starts from a contact map of the contigs, which
+[hicstuff](https://koszullab.github.io/hicstuff/) makes from the reads
+(`hicstuff pipeline -M metacool`), or
+[metacooler](https://github.com/js2264/metacooler) from pairs files
+(`metacooler create pairs`): see [Quickstart](quickstart.md).
 
 ## With conda (recommended)
 
@@ -24,28 +28,24 @@ conda activate metator
 Install the programs first, then metaTOR:
 
 ```bash
-# Debian or Ubuntu; on macOS: brew install bowtie2 bwa samtools hmmer prodigal
-sudo apt install bowtie2 bwa samtools hmmer prodigal
+# Debian or Ubuntu; on macOS: brew install hmmer prodigal
+sudo apt install hmmer prodigal
 
 pip install metator
 ```
 
 | Program | Used for |
 |---|---|
-| `bwa` | Aligning the reads with `--aligner bwa`, the recommended aligner |
-| `bowtie2` | Aligning the reads with `--aligner bowtie2`, the default |
-| `samtools` | Handling the alignments |
 | `prodigal`, `hmmer` | Finding the marker genes of the clusters, with miComplete |
 
-Only the aligner a run uses is needed: `--aligner bwa` needs bwa, not
-bowtie2. A run that starts from BAM files, a pairs file or a contact map, with
-the assembly given as a FASTA file, needs no aligner. pip installs metaTOR's Python dependencies, among them
-[hicstuff](https://koszullab.github.io/hicstuff/),
+pip installs metaTOR's Python dependencies, among them
 [metacooler](https://github.com/js2264/metacooler),
 [cooler](https://github.com/open2c/cooler) and
 [miComplete](https://pypi.org/project/micomplete/); install metaTOR in an
 environment of its own so that they do not change the versions other tools
-rely on.
+rely on. hicstuff, which makes the map from the reads, is not one of them:
+install it with its aligner, bowtie2 or bwa, where the reads are aligned (see
+[hicstuff's documentation](https://koszullab.github.io/hicstuff/)).
 
 ## With Docker
 
@@ -60,7 +60,7 @@ docker pull ghcr.io/koszullab/metator:v<version>
 ## Development version
 
 The development version is managed with [uv](https://docs.astral.sh/uv/).
-With the programs above installed:
+With prodigal and hmmer installed:
 
 ```bash
 git clone https://github.com/koszullab/metator.git

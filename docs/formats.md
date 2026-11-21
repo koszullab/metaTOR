@@ -6,10 +6,8 @@ The files metaTOR reads and writes. Every table is tab-separated.
 
 ### Assembly
 
-A FASTA file of the contigs, compressed with gzip or not, or the basename of
-its bowtie2 or bwa index (`--assembly`). Contig names must be ASCII for the
-contact map of the clusters (see
-[Names and failures](guides/metacool.md#names-and-failures)).
+A FASTA file of the contigs, compressed with gzip or not (`--assembly`): the
+assembly that the contact map was made from.
 
 ### Depth
 
@@ -29,7 +27,8 @@ error.
 
 ### Pairs
 
-The pairs files that metaTOR writes, and that `--start pair` reads, follow the
+The pairs files that `metator mge` reads, those that hicstuff writes with the
+map (`<prefix>.valid_idx.pairs.gz`), follow the
 [pairs format](https://github.com/4dn-dcic/pairix/blob/master/pairs_format_specification.md)
 of the 4D Nucleome, with 7 columns: read name, contig and position of the
 first mate, contig and position of the second, and the strand of each.
@@ -44,11 +43,11 @@ first mate, contig and position of the second, and the strand of each.
 H9:1:HGJYYBBXY:8:1102:3792:13693	NODE_100063	161	NODE_100063	402	-	-
 ```
 
-metaTOR writes them sorted, compressed with bgzip and indexed with pairix
-(`alignment_<i>_sorted.pairs.gz` and `.px2`): `metator network` does, and
-`metator pipeline` with `--no-clean-up`. Without, the pairs files of a `pipeline`
-run are temporary: `alignment_<i>.pairs`, plain text, its pairs in the order
-of the reads of the alignments, not by position, in its temporary directory.
+hicstuff writes them sorted by position and compressed with bgzip, with two
+more columns (the restriction fragment of each mate); `pairix -p pairs` indexes
+them (`.px2`), which `metator mge` needs to read a compressed pairs file.
+`metacooler create pairs` makes a contact map from them, or from the pairs
+files of another aligner.
 
 ### Lists of contigs
 
@@ -69,9 +68,9 @@ with a header. Each step adds its columns to those of the step before:
 | `Name` | network | Its name |
 | `Size` | network | Its length, in bp |
 | `GC_content` | network | Its GC content, in percent |
-| `Hit` | network | Its hits: the ends of the pairs that lie on it, in all libraries (a pair within the contig counts twice) |
-| `Shotgun_coverage` | network | Its coverage in the depth file, `-` without `--depth` (from a map, its `Shotgun_coverage` column, when it gives every contig a value) |
-| `Restriction_site` | network | Its number of restriction sites plus one (its restriction fragments), `-` without `--enzyme` (from a map, its `Restriction_site` column, when it gives every contig a value) |
+| `Hit` | network | Its hits: the ends of the contacts of the map that lie on it (a contact within the contig counts twice) |
+| `Shotgun_coverage` | network | Its coverage in the depth file, or in the `Shotgun_coverage` column of the map, when it gives every contig a value; `-` otherwise |
+| `Restriction_site` | network | Its number of restriction sites plus one (its restriction fragments), from `--enzyme`, or in the `Restriction_site` column of the map, when it gives every contig a value; `-` otherwise |
 | `Core_cluster_ID`, `Core_cluster_contigs`, `Core_cluster_size` | partition | Its core cluster: the ID, number of contigs and size in bp of the cluster |
 | `Overlapping_cluster_ID`, `Overlapping_cluster_contigs`, `Overlapping_cluster_size` | partition | Its overlapping cluster, likewise |
 | `Recursive_cluster_ID`, `Recursive_cluster_contigs`, `Recursive_cluster_size` | validation | Its recursive cluster, likewise: `00000`, `-`, `-` when its cluster was not partitioned again |
@@ -89,16 +88,11 @@ another contig) has `-` in the columns of its core and overlapping clusters. As
 inputs, the tables are read by the headers of their columns: other columns
 may be added, in any order, such as the bins of another binning.
 
-With several libraries, `hit_data_alignment.txt` holds the hits of each
-contig in each library: its ID, its name, then one column per library,
-without header.
-
 ## The network
 
 `network.txt` holds the network of contigs, one line per pair of contigs in
 contact, without header: the IDs of the two contigs, and the normalised
-weight of their edge. `network_<i>.txt` holds the network of library `i`
-alone.
+weight of their edge.
 
 ```text
 1	2	0.014220405247506712
@@ -200,9 +194,10 @@ which the validation leaves there.
 
 ## The contact map of the clusters
 
-`metator.metacool` is a `.metacool` file of
-[metacooler](https://github.com/js2264/metacooler): a cooler, one bin per
-contig, whose contigs are grouped into one genome per final cluster. See
+The map that a run starts from, and writes the map of its clusters over, is
+a `.metacool` file of [metacooler](https://github.com/js2264/metacooler): a
+cooler whose contigs are grouped into genomes, one per final cluster in the
+map of the clusters, which keeps the bins of the map. See
 [The contact map of the clusters](guides/metacool.md).
 
 ## MGE cluster summary

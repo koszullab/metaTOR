@@ -54,11 +54,10 @@ A run also relies on the tools it runs, which deserve a citation too:
   et al., 2008) or [Leiden](https://doi.org/10.1038/s41598-019-41695-z)
   (Traag, Waltman and van Eck, 2019) algorithm, which partitions the
   network;
-- the aligner, [bwa](https://github.com/lh3/bwa) or
-  [bowtie2](https://github.com/BenLangmead/bowtie2), and
-  [hicstuff](https://koszullab.github.io/hicstuff/citation/), whose functions
-  align the reads in the iterative and cutsite modes, and build the contact
-  map of a cluster;
+- [hicstuff](https://koszullab.github.io/hicstuff/citation/), which makes the
+  contact map from the reads, and the aligner it runs,
+  [bowtie2](https://github.com/BenLangmead/bowtie2) or
+  [bwa](https://github.com/lh3/bwa);
 - [metacooler](https://github.com/js2264/metacooler) and
   [cooler](https://github.com/open2c/cooler) (Abdennur and Mirny,
   *Bioinformatics* 2020), for the contact map of the clusters.
