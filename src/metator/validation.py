@@ -43,6 +43,7 @@ Functions in this module:
     - write_recursive_fasta
 """
 
+import gzip
 import logging
 import metator.clusters as mtc
 import metator.io as mio
@@ -421,6 +422,23 @@ def write_overlapping_fasta(metacool, assembly, partition, contig_data, size, ou
     logger.info(f"{len(kept)} clusters have been extracted")
     logger.info(f"Total size of the extracted clusters: {round(sum(sizes[number] for number in kept) / 10**6, 3)}Mb")
     return groups
+
+
+def plain_assembly(assembly, directory):
+    """The assembly as the run hands it to metacooler.write_fasta: the file
+    itself, when it is plain, or its copy decompressed in directory (the
+    temporary directory of the run), when it is compressed with gzip, made
+    once for the run: write_fasta would copy it again for every FASTA file
+    write (the overlapping clusters, each recursive step). The copy is named
+    after the assembly, without its .gz: an error of write_fasta names it."""
+    if mio.file_compression(assembly) != "gz":
+        return assembly
+    name = os.path.basename(assembly)
+    plain = join(directory, name[: -len(".gz")] if name.endswith(".gz") else f"{name}.fa")
+    logger.info(f"Decompressing {assembly} into {plain}, once, for the FASTA files of the clusters.")
+    with gzip.open(assembly, "rb") as source, open(plain, "wb") as copy:
+        shutil.copyfileobj(source, copy)
+    return plain
 
 
 def write_recursive_fasta(metacool, assembly, groups, outdir, temp_dir=None):

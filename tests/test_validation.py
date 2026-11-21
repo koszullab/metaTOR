@@ -200,6 +200,23 @@ def test_name_recursive_clusters():
     assert parents == {} and groups == {} and set(data.Recursive_cluster_ID) == {"00000"}
 
 
+def test_plain_assembly(tmp_path):
+    """A plain assembly is given as it is; one compressed with gzip is
+    decompressed once in the directory, named after it without its .gz (or
+    with .fa, for another name)."""
+    import gzip
+
+    plain = tmp_path / "contigs.fasta"
+    plain.write_text(">c1\nACGT\n")
+    directory = tmp_path / "tmp"
+    directory.mkdir()
+    assert mtv.plain_assembly(str(plain), str(directory)) == str(plain)
+    for name, copy in [("contigs.fasta.gz", "contigs.fasta"), ("contigs.fasta.z", "contigs.fasta.z.fa")]:
+        (tmp_path / name).write_bytes(gzip.compress(plain.read_bytes()))
+        assert mtv.plain_assembly(str(tmp_path / name), str(directory)) == str(directory / copy)
+        assert (directory / copy).read_text() == ">c1\nACGT\n"
+
+
 def test_correct_final_bin():
     """The final bin of each contig: the bin of the FASTA file it was written
     in (written, the contigs of each file by bin name). The contigs of a

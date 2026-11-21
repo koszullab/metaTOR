@@ -2100,6 +2100,70 @@ def _earlier_run(command, tmp_path):
     return files
 
 
+# What a validation or pipeline run of an earlier version wrote in its output
+# directory (see metator.cli.EARLIER_OUTPUTS): files, and a directory.
+EARLIER_OUTPUTS = [
+    "binning.txt",
+    "cluster_members.txt",
+    "cluster_summary.txt",
+    "clusters.txt",
+    "contig_data_final.txt",
+    "overlapping_micomplete_results.txt",
+    "recursive_clusters",
+    "recursive_micomplete_step_1.txt",
+]
+
+
+@pytest.mark.parametrize("command", ["validation", "pipeline"])
+@pytest.mark.parametrize("force", [False, True], ids=["refused", "-F"])
+def test_the_outputs_of_an_earlier_version(command, force, stub_pipeline, tmp_path, run_cli):
+    """What a run of an earlier version wrote in the output directory, which
+    a run now keeps in its temporary directory (its tables, miComplete's, the
+    recursive clusters, a symbolic link of them too), is refused without
+    -F, before any work, named, and the log says why; -F removes it, a link
+    and not its target. Left there, an earlier run's tables passed for this
+    run's."""
+    metacool = _contig_map(tmp_path / "network.metacool", network=True, partition=True)
+    out = tmp_path / "out"
+    (out / "recursive_clusters" / "step_1").mkdir(parents=True)
+    (out / "recursive_clusters" / "step_1" / "earlier.fa").write_text(">c1\nACGT\n")
+    for name in EARLIER_OUTPUTS:
+        if name != "recursive_clusters":
+            (out / name).write_text("an earlier run's\n")
+    # The tables of another tool are left alone.
+    (out / "binning_other.txt").write_text("another tool's\n")
+    (tmp_path / "kept.txt").write_text("the target of a link\n")
+    (out / "cluster_summary.txt").unlink()
+    (out / "cluster_summary.txt").symlink_to(tmp_path / "kept.txt")
+    if command == "validation":
+        args = _step_run("validation", metacool, tmp_path, *(["-F"] if force else []))
+    else:
+        args = _map_run(metacool, tmp_path, *(["-F"] if force else []))
+    if not force:
+        with pytest.raises(ValueError):
+            run_cli(command, *args)
+        assert sorted(path.name for path in out.iterdir() if not path.name.endswith(".log")) == sorted(
+            [*EARLIER_OUTPUTS, "binning_other.txt"]
+        )
+        assert _no_step(stub_pipeline)
+        (log,) = out.glob(f"metator_{command}_*.log")
+        shown = ", ".join(repr(name) for name in EARLIER_OUTPUTS[:5])
+        assert (
+            f"ERROR :: {out} holds what an earlier run wrote there, which metaTOR 2.0 no longer writes in the output "
+            f"directory: {shown}, ... (+3 more). The map of the clusters holds what the tables held (metator dump, in "
+            "metaTOR 2.0, writes them from it), and -N keeps the tables of a run in its temporary directory. Remove "
+            "them, or give -F to remove them."
+        ) in log.read_text()
+        return
+    run_cli(command, *args)
+    assert sorted(path.name for path in out.iterdir() if not path.name.endswith(".log")) == [
+        "binning_other.txt", "final_clusters"
+    ]  # fmt: skip
+    assert (tmp_path / "kept.txt").read_text() == "the target of a link\n"
+    (log,) = out.glob(f"metator_{command}_*.log")
+    assert f"INFO :: Removing {out / 'recursive_clusters'}, which an earlier run wrote." in log.read_text()
+
+
 @pytest.mark.parametrize("command", ["validation", "pipeline"])
 @pytest.mark.parametrize(
     "where", ["in final_clusters", "recursive_clusters", "through a link of -o", "through a link of final_clusters"]
@@ -2138,10 +2202,12 @@ def test_tmpdir_in_the_clusters_refused(command, where, stub_pipeline, tmp_path,
     # The map made, nothing read yet.
     stub_pipeline.clear()
     result = run_cli(command, *args, exit_code=2)
-    message = (
-        f"Invalid value for '-T' / '--tmpdir': {tmpdir} is in {clusters}, where the run writes its clusters, which it "
-        "makes anew (-F replaces an earlier one): give a temporary directory outside it."
+    where = (
+        "where an earlier version wrote its recursive clusters, which -F removes"
+        if where == "recursive_clusters"
+        else "where the run writes its clusters, which it makes anew (-F replaces an earlier one)"
     )
+    message = f"Invalid value for '-T' / '--tmpdir': {tmpdir} is in {clusters}, {where}: give a temporary directory outside it."
     assert message in " ".join(result.output.replace("│", " ").split())
     assert all(path.exists() for path in earlier)
     assert sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*")) == before
@@ -2727,9 +2793,11 @@ def test_final_clusters_are_those_of_their_fasta_files(tmp_path, caplog):
 
 
 def test_pipeline_leaves_the_directory_of_the_assembly_alone(stub_pipeline, tmp_path, run_cli):
-    """metacooler writes the FASTA files of the clusters, and indexes
-    nothing beside the assembly: the run neither writes nor removes a
-    pyfastx index there (it removed any <assembly>.fxi at its end)."""
+    """The run writes nothing beside the assembly, and removes nothing there:
+    the pyfastx index of another program (<assembly>.fxi), which the run
+    removed at its end, is left as it was. (The stub validation writes no
+    FASTA file of a recursive step: see
+    test_validation_splits_a_merged_bin.)"""
     assembly = tmp_path / "assembly.fa"
     shutil.copyfile(TESTS_DATA / "subset.assembly.fa", assembly)
     index = Path(f"{assembly}.fxi")
@@ -2737,8 +2805,10 @@ def test_pipeline_leaves_the_directory_of_the_assembly_alone(stub_pipeline, tmp_
     out = tmp_path / "out"
     run_cli("pipeline", _contig_map(tmp_path / "map.metacool"), "-a", assembly, "-o", out, "-T", tmp_path / "tmp")
     assert stub_pipeline["contig_contacts"] and index.read_text() == "another program's index"
-    assert sorted(path.name for path in tmp_path.iterdir() if path.name.startswith("assembly")) == [
-        "assembly.fa", "assembly.fa.fxi"
+    # tests_data: the link to the data of the tests (see tests/conftest.py);
+    # the temporary directory of the run is removed at its end.
+    assert sorted(path.name for path in tmp_path.iterdir()) == [
+        "assembly.fa", "assembly.fa.fxi", "map.metacool", "out", "tests_data"
     ]  # fmt: skip
 
 

@@ -7,6 +7,7 @@ One function per command: network, partition, validation, pipeline and
 mge. The ``metator`` entry point is :func:`cli`.
 """
 
+import glob
 import logging
 import os
 import re
@@ -73,7 +74,8 @@ def private_tmp_dir(tmpdir, clean_up=True):
 
     Nothing is removed without clean_up (--no-clean-up), nor when the run
     fails: its files are left for inspection. An empty --tmpdir (-T '') is
-    the default, ./tmp.
+    the default, ./tmp. The log says, at the end of a run, whether the
+    directory, and the tables that the log named in it, is removed or kept.
     """
     base = tmpdir or "./tmp"
     base_created = not exists(base)
@@ -81,14 +83,37 @@ def private_tmp_dir(tmpdir, clean_up=True):
     logger.debug("Temporary directory: %s", tmp_dir)
     yield tmp_dir
     if clean_up:
+        logger.info(f"The temporary directory of the run, {tmp_dir}, is removed with its files: -N keeps them.")
         shutil.rmtree(tmp_dir)
         if base_created and not os.listdir(base):
             os.rmdir(base)
+    else:
+        logger.info(f"The temporary directory of the run, {tmp_dir}, and its files are kept (-N).")
 
 
-# The directories of the clusters that a validation or pipeline run writes in
-# its output directory, which -F replaces.
+# The directories of the clusters in the output directory of a validation or
+# pipeline run: final_clusters, which the run writes there, and -F replaces,
+# and recursive_clusters, which an earlier version wrote there, and -F removes
+# (see EARLIER_OUTPUTS).
 CLUSTER_DIRS = ("recursive_clusters", "final_clusters")
+
+# What a validation or pipeline run of an earlier version of metaTOR wrote in
+# its output directory, which a run now writes in its temporary directory,
+# which -N keeps: its tables, miComplete's, and the FASTA files of the
+# recursive clusters. The map of the clusters holds what the tables hold, and
+# metator dump (in metaTOR 2.0) writes them from it. An earlier run's, left
+# in the output directory, would pass for this run's: refused without -F,
+# removed with it (see refuse_earlier_outputs).
+EARLIER_OUTPUTS = (
+    "contig_data_final.txt",
+    "cluster_summary.txt",
+    "binning.txt",
+    "clusters.txt",
+    "cluster_members.txt",
+    "overlapping_micomplete_results.txt",
+    "recursive_micomplete_step_*.txt",
+    "recursive_clusters",
+)
 
 
 def _within(path, directory):
@@ -111,11 +136,46 @@ def refuse_tmpdir_in_the_clusters(tmpdir, outdir):
         as_written = _within(os.path.abspath(base), os.path.abspath(directory))
         resolved = _within(os.path.realpath(base), join(os.path.realpath(outdir or "."), name))
         if as_written or resolved:
+            where = (
+                "where the run writes its clusters, which it makes anew (-F replaces an earlier one)"
+                if name == "final_clusters"
+                else "where an earlier version wrote its recursive clusters, which -F removes"
+            )
             raise click.BadParameter(
-                f"{base} is in {directory}, where the run writes its clusters, which it makes anew (-F replaces an "
-                "earlier one): give a temporary directory outside it.",
+                f"{base} is in {directory}, {where}: give a temporary directory outside it.",
                 param_hint="'-T' / '--tmpdir'",
             )
+
+
+def refuse_earlier_outputs(outdir, force):
+    """Refuse, without force (-F), before any work, what a validation or
+    pipeline run of an earlier version of metaTOR wrote in outdir, which a
+    run no longer writes there (see EARLIER_OUTPUTS): the reason, which
+    names them, is logged as an error, then ValueError is raised. Returns
+    them, a symbolic link too, even one to nothing: see
+    remove_earlier_outputs."""
+    found = sorted({path for pattern in EARLIER_OUTPUTS for path in glob.glob(join(glob.escape(outdir), pattern))})
+    if found and not force:
+        logger.error(
+            f"{outdir} holds what an earlier run wrote there, which metaTOR 2.0 no longer writes in the output "
+            f"directory: {mtmc._shown([os.path.basename(path) for path in found])}. The map of the clusters holds "
+            "what the tables held (metator dump, in metaTOR 2.0, writes them from it), and -N keeps the tables of a "
+            "run in its temporary directory. Remove them, or give -F to remove them."
+        )
+        raise ValueError
+    return found
+
+
+def remove_earlier_outputs(outdir, force):
+    """Remove what a run of an earlier version wrote in outdir (see
+    refuse_earlier_outputs, which refuses it without force): a symbolic
+    link is removed, not its target."""
+    for path in refuse_earlier_outputs(outdir, force):
+        logger.info(f"Removing {path}, which an earlier run wrote.")
+        if os.path.isdir(path) and not os.path.islink(path):
+            shutil.rmtree(path)
+        else:
+            os.remove(path)
 
 
 def refuse_output_dir(path, force):
@@ -400,7 +460,9 @@ def start_step(
     """Start a partition or validation run (command) in outdir: its log file,
     the map that it writes (see step_map) and its directories of clusters
     (cluster_dirs, see make_output_dir), refused without force when an
-    earlier run left them. The run checks its map, in its log file, before
+    earlier run left them, as, with partition (a validation run), what a run
+    of an earlier version wrote in outdir (see refuse_earlier_outputs),
+    which force removes. The run checks its map, in its log file, before
     it replaces the directories of an earlier run (-F): against inputs, the
     other input files, which output_map must not be (see step_map); then it
     reads the network of its contigs, which metator network stored in it,
@@ -421,8 +483,15 @@ def start_step(
     if assembly is not None:
         check_assembly(assembly)
     bins_prefix = bin_prefix(prefix)
+    # Refused, all of them, before anything is replaced.
+    for path in cluster_dirs:
+        refuse_output_dir(path, force)
+    if partition:
+        refuse_earlier_outputs(outdir, force)
     for path in cluster_dirs:
         make_output_dir(path, force)
+    if partition:
+        remove_earlier_outputs(outdir, force)
     return log_file, metacool_file, bins_prefix, planned, stored, clusters
 
 
@@ -813,10 +882,12 @@ def run_validation(
     clusters that reach size are checked).
 
     The run works in its temporary directory (tmp_dir): the contig data of
-    the partition, the FASTA files of the clusters that miComplete checks,
-    those of the recursive steps, miComplete's results and the tables of
-    the validation (see metator.validation.recursive_decontamination), which
-    -N keeps. The FASTA files of the final clusters go to final_fasta_dir.
+    the partition, the assembly decompressed, when it is compressed with
+    gzip (see metator.validation.plain_assembly), the FASTA files of the
+    clusters that miComplete checks, those of the recursive steps,
+    miComplete's results and the tables of the validation (see
+    metator.validation.recursive_decontamination), which -N keeps. The FASTA
+    files of the final clusters go to final_fasta_dir.
 
     Returns the final clusters as the map stores them (a
     metator.metacool.FinalClusters): the final cluster of each binned
@@ -824,6 +895,9 @@ def run_validation(
     entry validation of the metator metadata (see validation_entry, the
     normalization of the network: normalization)."""
     partition_file = write_partition_table(table, partition, tmp_dir)
+    # Decompressed once for the run, when it is compressed: the FASTA files
+    # of the clusters are written from it at each step.
+    assembly = mtv.plain_assembly(assembly, tmp_dir)
     overlapping_fasta_dir = join(tmp_dir, "overlapping_clusters")
     written = mtv.write_overlapping_fasta(metacool, assembly, partition, table, size, overlapping_fasta_dir, tmp_dir)
     contigs_data, summary = mtv.recursive_decontamination(
@@ -1382,8 +1456,8 @@ def partition(
 @outdir_option(default="./", help="Path to the directory to write the output.")
 @prefix_option("the recursive clusters")
 @force_option(
-    "Replace the directory of the final clusters of an earlier run in the output directory (final_clusters), and an "
-    "existing --output-map."
+    "Replace the final clusters of an earlier run in the output directory (final_clusters), remove the tables and the "
+    "recursive clusters that earlier versions wrote there, and replace an existing --output-map."
 )
 @tmpdir_option(help=TMPDIR_TABLES_HELP)
 @threads_option(help="Number of parallel threads allocated for the partition.")
@@ -1542,8 +1616,8 @@ def validation(
 @outdir_option(help="The output directory. Default: current directory.")
 @prefix_option("the clusters")
 @force_option(
-    "Replace the directory of the final clusters of an earlier run in the output directory (final_clusters), and an "
-    "existing --output-map."
+    "Replace the final clusters of an earlier run in the output directory (final_clusters), remove the tables and the "
+    "recursive clusters that earlier versions wrote there, and replace an existing --output-map."
 )
 @tmpdir_option(help=TMPDIR_TABLES_HELP)
 @threads_option(help="Number of parallel threads allocated for the partition and the validation.")
@@ -1633,10 +1707,13 @@ def pipeline(
         logger.info(f"Recursive partition iterations: {rec_iter}")
         logger.info(f"Recursive overlapping parameter: {recursive_overlapping_parameter}\n")
 
-        # The final clusters of an earlier run: refused now without --force,
-        # before the assembly is read, and replaced only once it is checked.
+        # The final clusters of an earlier run, and what a run of an earlier
+        # version wrote in the output directory: refused now without
+        # --force, before the assembly is read, and replaced or removed only
+        # once it is checked.
         final_fasta_dir = join(outdir, "final_clusters")
         refuse_output_dir(final_fasta_dir, force)
+        refuse_earlier_outputs(outdir, force)
 
         # The network, as metator network makes it: the contig data,
         # measured on the assembly and read from the map, before the clusters
@@ -1646,6 +1723,7 @@ def pipeline(
         check_assembly(assembly)
         network, contacts = run_network(map, planned, assembly, depth, enzyme, normalization, tmp_dir)
         make_output_dir(final_fasta_dir, force)
+        remove_earlier_outputs(outdir, force)
         edges = mtn.map_network(map, mtn.network_weights(network.table, normalization), contacts)
 
         # Partition the network, as metator partition does.

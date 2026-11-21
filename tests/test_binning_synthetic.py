@@ -281,6 +281,44 @@ def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenom
     assert not os.path.exists(f"{metagenome_inputs['assembly']}.fxi")
 
 
+def test_validation_decompresses_the_assembly_once(
+    metagenome, metagenome_inputs, metagenome_network, tmp_path, monkeypatch, run_cli
+):
+    """An assembly compressed with gzip is decompressed once for the run, in
+    its temporary directory: every FASTA file of the clusters (the
+    overlapping clusters, each recursive step) is written from that copy,
+    where metacooler copied it again for each write. The final clusters are
+    those of the run from the plain assembly."""
+    import gzip
+
+    monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
+    written = []
+    write_fasta = metacooler.write_fasta
+
+    def recorded(uri, fasta, out, **kwargs):
+        written.append(Path(fasta))
+        return write_fasta(uri, fasta, out, **kwargs)
+
+    monkeypatch.setattr(metacooler, "write_fasta", recorded)
+    compressed = tmp_path / "assembly.fa.gz"
+    compressed.write_bytes(gzip.compress(Path(metagenome_inputs["assembly"]).read_bytes()))
+    finals = {}
+    for name, assembly in [("plain", metagenome_inputs["assembly"]), ("gz", compressed)]:
+        metacool = _map_with_merged_partition(
+            metagenome, metagenome_network, tmp_path / f"{name}.metacool", merged=("genome_1", "genome_2")
+        )
+        written.clear()
+        random.seed(0)
+        run_cli("validation", metacool, "-a", assembly, "-o", tmp_path / name, "-T", tmp_path / f"tmp_{name}",
+                "-s", "50000", "-i", "10", "-t", "1")  # fmt: skip
+        finals[name] = {path.name: path.read_bytes() for path in (tmp_path / name / "final_clusters").iterdir()}
+    # The overlapping clusters, then the clusters of the recursive step.
+    assert len(written) == 2 and len(set(written)) == 1
+    (plain,) = set(written)
+    assert plain.name == "assembly.fa" and plain.parent.parent == tmp_path / "tmp_gz"
+    assert finals["gz"] == finals["plain"]
+
+
 def test_validation_checks_the_clusters_in_the_order_of_the_partition(
     metagenome, metagenome_inputs, metagenome_network, tmp_path, monkeypatch, run_cli
 ):

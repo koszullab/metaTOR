@@ -481,16 +481,17 @@ def test_pipeline_refuses_existing_outputs(existing, a_map, tmp_path, run_cli, l
 def test_pipeline_force_replaces_outputs(a_map, network_from_a_map, tmp_path, run_cli, logged):
     """With --force the output directories are emptied once the arguments
     and the assembly are checked, then the run goes on (here up to the
-    partition, which network_from_a_map stops). The outputs that metaTOR
-    1.x named after bins, the plots of an earlier run, the overlapping
-    clusters that partition wrote before it stored them in the map, and the
-    recursive clusters that validation wrote before they went to its
-    temporary directory, are no output of 2.0: they are neither refused nor
-    removed."""
-    for existing in ["final_clusters"]:
+    partition, which network_from_a_map stops): final_clusters is replaced,
+    and the recursive clusters that validation wrote there before they went
+    to its temporary directory are removed (see
+    metator.cli.EARLIER_OUTPUTS). The outputs that metaTOR 1.x named after
+    bins, the plots of an earlier run, and the overlapping clusters that
+    partition wrote before it stored them in the map are no output of 2.0:
+    they are neither refused nor removed."""
+    for existing in ["final_clusters", "recursive_clusters"]:
         (tmp_path / "out" / existing).mkdir(parents=True)
         (tmp_path / "out" / existing / "stale.fa").write_text(">old\nA\n")
-    others = ["overlapping_bin", "final_bin", "plot", "overlapping_clusters", "recursive_clusters"]
+    others = ["overlapping_bin", "final_bin", "plot", "overlapping_clusters"]
     for existing in others:
         (tmp_path / "out" / existing).mkdir(parents=True)
         (tmp_path / "out" / existing / "earlier.fa").write_text(">old\nA\n")
@@ -498,7 +499,7 @@ def test_pipeline_force_replaces_outputs(a_map, network_from_a_map, tmp_path, ru
     args = [a_map(), "-a", global_args["SUBSET_FASTA"], "-F", "-o", str(tmp_path / "out"), "-T", str(tmp_path / "tmp")]
     with pytest.raises(RuntimeError, match=r"^network built$"):
         run_cli("pipeline", *args)
-    assert not list((tmp_path / "out").glob("*/stale.fa"))
+    assert not list((tmp_path / "out").glob("*/stale.fa")) and not (tmp_path / "out" / "recursive_clusters").exists()
     assert all((tmp_path / "out" / name / "earlier.fa").exists() for name in others)
     assert (tmp_path / "out" / "bin_summary.txt").exists()
     assert not [message for _, message in logged() if message.startswith("Removed ")]
