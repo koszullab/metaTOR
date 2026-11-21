@@ -129,7 +129,7 @@ each one.
 
 ### Output files
 
-The output files will be in the ouput directory given as parmater or in working directory if no paramater were given. Depending on the command used, different files will be in the ouptut. The tables of a validation (marked *tmp*) are written in the temporary directory of the run (`-T`), which `-N` keeps: the map holds what they hold, and `metator dump` writes them from it.
+The output files will be in the ouput directory given as parmater or in working directory if no paramater were given. Depending on the command used, different files will be in the ouptut. The tables of a validation (marked *tmp*) are written in the temporary directory of the run (`-T`, in a directory of its own, which the log names), which `-N` keeps: the map holds what they hold, and `metator dump` (coming in metaTOR 2.0) writes them from it. An earlier version wrote them in the output directory: there, they are refused without `-F`, which removes them.
 
 | Files/Commands | description | network | partition | validation | pipeline |
 | - | :-: | :-: | :-: | :-: | :-: |
@@ -245,9 +245,12 @@ and the tools built on it read it as any `.cool` file, and `metacooler` adds the
   from the `Hit`, `Shotgun_coverage` and `Restriction_site` columns of the contigs table, which the
   column records, so that metacooler drops it when an edit changes one of them; a normalization that
   metacooler fails to store fails the map, which is then not written, with the reason;
-* the metadata of the file hold the version of metaTOR, the command line and its parameters, under
-  the `metator` key, and those of the run that stored the network, with its normalization, under its
-  `network` entry.
+* the metadata of the file hold, under the `metator` key, one entry per step (`network`,
+  `partition`, `validation`), each with the version of metaTOR, the command line and its parameters
+  of the run that made it, and what it read of the map (`read`); the `network` entry records its
+  normalization, the `partition` entry the network it partitioned, and the `validation` entry how
+  the summary of the clusters is written from the genomes table (`summary_rows`,
+  `summary_columns`, `summary_formats`).
 
 ```python
 import cooler
@@ -293,8 +296,8 @@ point, as jgi's depth files have: metacooler can store a longer one one unit off
 which changes the last digits of the contig data files and of a network normalized by it, and has
 `--depth` warn that it replaces the map's value). `--enzyme` and `--depth` fill in a
 column that the map lacks, and replace one that it has (a warning counts the contigs whose value
-differs); the map of the clusters stores what the run used, and the metadata of the map that `pipeline`
-writes which columns it read (`columns_from_map`). A column is read only if it gives every contig of the assembly a value (a number
+differs); the map of the clusters stores what the run used, and its metadata which columns it read
+(`read`, under the `network` entry). A column is read only if it gives every contig of the assembly a value (a number
 of restriction sites, plus one, of at least 1; a coverage of at least 0; a contig of no length, which
 no map holds, gets 1 and 0): one with no valid value, such as one of `-`, as metaTOR writes what it did
 not measure, is as no column, and one that lacks some contigs is not read, with a warning that names

@@ -9,11 +9,12 @@ several libraries, which `metacooler merge` sums: see
 and `metator pipeline` read the network of the contigs from it (see
 [Starting from a contact map](#starting-from-a-contact-map)). At its end,
 `pipeline` writes the contact map of all the contigs, grouped by cluster, over
-it, from the final tables, with `metacooler reassign` (`--output-map` writes
-it to another file; `--no-metacool` writes none, and leaves the map as it
-was). It is written through metacooler, from a fresh copy of the map, so a map
-updated in place holds at most the space that the edits of its last run left
-behind: it does not grow with each run. A `.metacool` file is the contact map format of
+it, with its final clusters, their summary, every clustering round and the
+network of the contigs, with `metacooler reassign` from the map as the run
+read it (`--output-map` writes it to another file, and leaves the map as it
+was). It is written through metacooler, anew from the map, so a map updated
+in place holds at most the space that the edits of its last run left behind:
+it does not grow with each run. A `.metacool` file is the contact map format of
 [metacooler](https://github.com/js2264/metacooler): a
 [cooler](https://github.com/open2c/cooler) whose chromosomes are the contigs,
 grouped by genome. `cooler` and the tools built on it read it as any `.cool`
@@ -22,8 +23,8 @@ file, and metacooler adds the genomes.
 ## What it holds
 
 - **The bins of the map the run started from, and one genome per final
-  cluster.** The contigs that are in no final cluster (`ND` in
-  `contig_data_final.txt`) are kept, with all their contacts, in the
+  cluster.** The contigs that are in no final cluster are kept, with all
+  their contacts, in the
   `__unbinned__` genome: all the contigs, for a run with no final cluster. The
   contigs come genome by genome, the longest first.
 - **The contacts** of the map the run started from: the raw contacts, without
@@ -33,14 +34,14 @@ file, and metacooler adds the genomes.
   counts of each genome and the contact statistics that metacooler computed
   while making the map.
 - **The contigs table** (the chromosomes table of `cooler`) holds what
-  metaTOR measured on each contig: the `GC_content`, `Hit`,
-  `Shotgun_coverage` and `Restriction_site` columns of
-  `contig_data_final.txt`, except those that are `-` on every contig
-  (`Shotgun_coverage` of a run without `--depth`, `Restriction_site` of a run
-  without `--enzyme`, when the map that a run starts from does not give them
-  either), and the contact statistics that metacooler computes
-  within each contig (`qc_intra_contig_short`, `qc_intra_contig_long`). The
-  genome of a contig is its final cluster.
+  metaTOR measured on each contig, the network of the contigs, last: the
+  `GC_content`, `Hit`, `Shotgun_coverage` and `Restriction_site` columns,
+  but those that the run did not measure (`Shotgun_coverage` of a run without
+  `--depth`, `Restriction_site` of a run without `--enzyme`, when the map
+  that a run starts from does not give them either), and the contact
+  statistics that metacooler computes within each contig
+  (`qc_intra_contig_short`, `qc_intra_contig_long`). The genome of a contig
+  is its final cluster.
 - **The normalization of the network**, which `metator network` stores in
   the map, as `metator pipeline` does: the weights `metator_<normalization>`
   of its bins (`--normalization`, `empirical_hit` by default; none for
@@ -54,15 +55,22 @@ file, and metacooler adds the genomes.
   changes one of them: `partition` and `validation` then refuse the map, and
   `metator network` stores them again. A normalization that metacooler fails
   to store fails the map, which is then not written, with the reason.
-- **The metadata** hold the version of metaTOR, the command line and its
-  parameters, under the `metator` key, and, under its `network` entry, those
-  of the run that stored the network (`metator network`, or `pipeline`), with
-  its normalization and the columns of the map that it read; under its
-  `partition` entry, those of the run that stored the partition
-  (`metator partition`, or `pipeline`), with the normalization and the
-  identity of the network that it partitioned (`network_digest`: the
-  SHA-256 of what the network is computed from, by contig name), which
-  `validation` checks against the network stored in the map.
+- **The metadata** hold, under the `metator` key, one entry per step, each
+  with the version of metaTOR, the command line and its parameters of the
+  run that made it (the step, or `pipeline`), and what it read of the map
+  (`read`: columns of the contigs table, weights of the bins, clustering
+  rounds). The `network` entry is the run that stored the network, with its
+  normalization (and, under `read`, the columns of the map that it read in
+  place of `--enzyme` and `--depth`); the `partition` entry, the run that
+  stored the partition, with the normalization and the identity of the
+  network that it partitioned (`network_digest`: the SHA-256 of what the
+  network is computed from, by contig name), which `validation` checks
+  against the network stored in the map; the `validation` entry, the run
+  that wrote the map of the clusters, with how the summary of the clusters,
+  `cluster_summary.txt`, is written from the genomes table: its rows
+  (`summary_rows`, the clusters in order), its columns (`summary_columns`)
+  and the format of each (`summary_formats`, as printf writes it: `%.2f`,
+  `%.4f`, `%d` or `%s`; a missing value is an empty field).
 
 ```python
 import cooler
@@ -107,15 +115,16 @@ The contig and cluster names must be ASCII, as `cooler` reads them as ASCII
 text. No cluster may be named as metacooler marks a contig in no cluster:
 `NA`, `NaN`, `N/A`, `N/D`, `-1` or `__unbinned__` in any case, and `nd` in any
 case other than `ND`, which marks a contig in no cluster. metaTOR's own cluster
-names never are, but those of a hand-edited `contig_data_final.txt` can be.
-Each row of `cluster_summary.txt` must have as many fields as its header, as
-metaTOR writes it.
+names never are (`--prefix` takes letters, digits, `_` and `-`). The clusters
+of a run are clusters of the contigs of its map, by their names in it: a
+contig of a final FASTA file that the run cannot find back by its name
+stops the run, as a bug of metaTOR would.
 
 When the map of the clusters cannot be written, `metator pipeline` logs the
 reason as an error and stops with it, and keeps its other outputs. The map
 that the run started from is then left as it was, as it is when the run stops
 with an error before (in the partition or the validation, for example): a new
-run can start from it again, with `-F`, which replaces the cluster directories
+run can start from it again, with `-F`, which replaces the final clusters
 that the stopped run left in the output directory.
 
 ## Starting from a contact map
@@ -167,7 +176,7 @@ refused before any work.
   - `--enzyme` and `--depth` fill in a column that the map lacks, and replace
     one that it has, with a warning that counts the contigs whose value
     differs. The map of the clusters stores what the run used, and its metadata
-    that `pipeline` writes which columns it read (`columns_from_map`).
+    which columns it read (`read`, under the `network` entry).
   - A column is read only if it gives every contig of the assembly a value: a
     number of restriction sites (plus one) of at least 1, a coverage of at
     least 0. A contig of no length, which no map holds, gets 1 and 0. A
@@ -180,15 +189,16 @@ refused before any work.
     replaces anything: before any work when the map has no such column, once
     the assembly is read when the column lacks contigs.
 At its end, `pipeline` updates the input map in place with the map of its
-clusters, with `metacooler reassign` (`--output-map FILE` writes it to FILE
-instead):
+clusters, which `metacooler reassign` writes anew from the input map
+(`--output-map FILE` writes it to FILE instead):
 
 - the bins and contacts of the input map, at its bin size; one genome per
   final cluster and `__unbinned__` for the other contigs, grouped genome by
   genome, the longest first;
-- the columns of `cluster_summary.txt` and `contig_data_final.txt`, last: they
-  replace those the input map had (the map of an earlier clustering, for
-  example);
+- the columns of `cluster_summary.txt`, in the genomes table, and the
+  network of the contigs, last in the contigs and bins tables: they replace
+  those the input map had (the map of an earlier clustering, for example),
+  and so do every clustering round of the run;
 - the contact statistics (the `qc` block of the metadata and the `qc_*`
   columns of the genomes and contigs tables) of the input map, when it has
   them, carried over to the clusters: metacooler keeps the counts within each
@@ -198,7 +208,10 @@ instead):
   which hold no read positions (at one bin per contig, every contact within a
   contig then counts as short-range, and the numbers of pairs read and left
   out are lost, which metacooler warns about for a map made from pairs files);
-- the assembly name and the history of the commands of the input map.
+- the assembly name and the history of the commands of the input map; what
+  metacooler's regroup does not carry (an extra group, or an extra
+  attribute of the file or of its tables) is left out, with a warning that
+  names it.
 
 The input map is replaced only once the map of the clusters is written and
 validated in full. metaTOR writes it in an edit session of metacooler
@@ -256,9 +269,8 @@ the file of the map before and after each read. Run it again once the other
 run has ended.
 
 Neither metaTOR nor metacooler handles signals. A run stopped by Ctrl-C
-removes its staged copy and its lock; its temporary directory, and the
-working directory of miComplete in the output directory, stay, as after any
-failure. miComplete runs in the process group of the run: a Ctrl-C in the
+removes its staged copy and its lock; its temporary directory, with the
+working directory of miComplete in it, stays, as after any failure. miComplete runs in the process group of the run: a Ctrl-C in the
 terminal, or the signal that a job scheduler sends to the job, reaches it too.
 A run killed by SIGTERM (a job scheduler's time limit, or a cancelled job) or
 SIGKILL (`kill -9`), or on a machine that goes down, leaves its lock, and its

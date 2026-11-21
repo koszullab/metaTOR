@@ -50,10 +50,8 @@ hicstuff pipeline -g assembly.fa -e DpnII -M metacool -o hicstuff -P sample R1.f
 metator pipeline hicstuff/sample.metacool --enzyme DpnII --depth depth.txt --threads 16 \
     --assembly assembly.fa --outdir binning
 
-# The clusters, their completeness and contamination
-head binning/cluster_summary.txt
-
-# The contact map of the clusters, with metacooler
+# The clusters, their completeness and contamination, in the contact map of
+# the clusters, with metacooler
 metacooler dump -t genomes -H hicstuff/sample.metacool
 ```
 

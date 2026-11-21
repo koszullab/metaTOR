@@ -589,9 +589,10 @@ def network_entry(columns_from_map=()):
 def check_assembly(assembly):
     """Refuse, before any work, an assembly (-a) that is not a FASTA file,
     plain or compressed with gzip, as the network, the validation and the
-    pipeline read it (Biopython, metacooler and pyfastx;
-    metator.io.check_is_fasta reads bzip2 and zip files too): the reason is
-    logged as an error, then ValueError is raised."""
+    pipeline read it (Biopython, and metacooler, which writes the FASTA
+    files of the clusters; metator.io.check_is_fasta reads bzip2 and zip
+    files too): the reason is logged as an error, then ValueError is
+    raised."""
     compression = mio.file_compression(assembly) if os.path.isfile(assembly) else None
     if compression in ("bz2", "zip"):
         logger.error(
@@ -1030,17 +1031,19 @@ ASSEMBLY_HELP = "The assembly that the map was made from: a FASTA file, plain or
 # metator.validation.write_overlapping_fasta), which decompresses a
 # gzip-compressed one into the temporary directory of the run first, once.
 CHECKED_ASSEMBLY_HELP = (
-    ASSEMBLY_HELP + " A compressed one is decompressed into --tmpdir while the run writes the clusters that miComplete checks."
+    ASSEMBLY_HELP + " A compressed one is decompressed once, into the temporary directory of the run, for the FASTA "
+    "files of the clusters."
 )
 TMPDIR_TABLES_HELP = (
     "Temporary directory, where the run writes, in a directory of its own, the clusters that miComplete checks (at "
     "most the size of the assembly), miComplete's results and the tables of the validation, and, from a compressed "
-    "assembly, its decompressed copy while it writes the clusters: give it room for both."
+    "assembly, its decompressed copy: give it room for both. Not in final_clusters, which the run makes anew, nor in "
+    "recursive_clusters, which -F removes."
 )
 NO_CLEAN_UP_TABLES_HELP = (
-    "Do not remove the temporary directory of the run: it keeps miComplete's results, the FASTA files of the clusters "
-    "it checked and the tables of the validation (contig_data_final.txt, cluster_summary.txt, binning.txt, "
-    "clusters.txt, cluster_members.txt)."
+    "Do not remove the temporary directory of the run, which the log names: it keeps miComplete's results, the FASTA "
+    "files of the clusters it checked and the tables of the validation (contig_data_final.txt, cluster_summary.txt, "
+    "binning.txt, clusters.txt, cluster_members.txt)."
 )
 SIZE_HELP = (
     "Threshold size to keep clusters in base pair: miComplete checks the overlapping clusters of the partition that "
@@ -1493,7 +1496,8 @@ def validation(
     miComplete. The command writes the FASTA files of the final clusters in
     the output directory (final_clusters), and stores the clusters in the
     map: the tables of the validation stay in its temporary directory, which
-    -N keeps, and [cyan]metator dump MAP[/] writes them from the map.
+    -N keeps, and [cyan]metator dump MAP[/] (coming in metaTOR 2.0) writes
+    them from the map.
 
     Only clusters with a weighted completeness of at least 33% and a
     contamination, (weighted redundancy - 1) / weighted completeness, of at

@@ -20,13 +20,18 @@ This page shows the pieces to put together; the
 ## Reading the outputs
 
 pandas reads `cluster_summary.txt`, indexed by cluster name, and the contig
-data table, indexed here by contig name:
+data table, indexed here by contig name, its names as text: the tables of a
+`validation` or `pipeline` run, in its temporary directory, which `-N` keeps
+(its log names it; `metator dump`, coming in metaTOR 2.0, writes them from
+the map):
 
 ```python
 import pandas as pd
 
-summary = pd.read_csv("binning/cluster_summary.txt", sep="\t", index_col=0)
-contigs = pd.read_csv("binning/contig_data_final.txt", sep="\t", index_col=0).set_index("Name", drop=False)
+tables = "tmp/3f9c2a1b"  # The temporary directory of the run, which -N kept
+summary = pd.read_csv(f"{tables}/cluster_summary.txt", sep="\t", index_col=0)
+contigs = pd.read_csv(f"{tables}/contig_data_final.txt", sep="\t", index_col=0, dtype={"Name": str})
+contigs = contigs.set_index("Name", drop=False)
 
 # The high-quality MAGs, and their contigs.
 hq = summary[(summary["Weighted completeness"] >= 0.9) & (summary["Weighted redundancy"] <= 1.05)]

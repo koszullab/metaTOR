@@ -79,12 +79,15 @@ parts are left out of the final clusters (`ND`).
 
 `validation` and `pipeline` write the FASTA files of the final clusters in
 the output directory, and store the clusters in the map. The other files
-below are written in the temporary directory of the run (`-T`), which `-N`
-keeps; `metator dump` writes the tables from the map.
+below are written in the temporary directory of the run (`-T`, in a
+directory of its own, which the log names), which `-N` keeps; `metator dump`
+(coming in metaTOR 2.0) writes the tables from the map. An earlier version
+wrote them in the output directory: a run refuses them there without `-F`,
+which removes them.
 
 | File | What it holds |
 |---|---|
-| `final_clusters/` | One FASTA file per final cluster |
+| `final_clusters/` | One FASTA file per final cluster, in the output directory |
 | `recursive_clusters/` | One FASTA file per recursive cluster, in `step_<n>/` for step `n` |
 | `cluster_summary.txt` | One row per final cluster, with miComplete's measures and the cluster's abundance |
 | `contig_data_final.txt` | The contig data table, with the recursive and final cluster of each contig |
