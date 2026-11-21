@@ -229,9 +229,9 @@ metator validation sample.metacool -a assembly.fa -t 16 -o binning
 
 ### `dump` { #dump }
 
-Write the tables of a run from the map of its clusters: those that metaTOR
-1.x wrote at the end of a run, which a run of 2.0 keeps in its temporary
-directory only (with `-N`). **API:** `metator.dump.dump`.
+Write the tables of a run from the map of its clusters: those of its
+validation, which a run keeps in its temporary directory only (with `-N`),
+and its network. **API:** `metator.dump.dump`.
 
 ```console
 metator dump [OPTIONS] MAP
@@ -243,26 +243,36 @@ stored, the partition that `metator partition` stored, and the clustering
 rounds, the final clusters and their summary that the validation stored. It
 is read only, without a lock, and the tables are of one state of it: a map
 that another run replaces or writes while it is read is refused, and no
-table is written. A map without the clusters of a validation (the
-`validation` entry of the `metator` key of its metadata, and the clustering
-round `final`) is refused, and so is one without the network or the partition
-of its run, each with the step to run. The output directory is made if it is
-not there; one that holds a table of an earlier dump is refused, without
-`-F`, which replaces them (a symbolic link there is replaced, not its target).
+table is written (run the dump again once that run has ended). A map without
+the clusters of a validation (the `validation` entry of the `metator` key of
+its metadata, and the clustering round `final`) is refused, and so is one
+without the network or the partition of its run, each with the step to run.
+A map whose clusters were edited after the run (by `metacooler reassign`: a
+final cluster that is no longer a genome of the map, or a genome that is no
+final cluster) is refused too, naming them: its summary and its rounds no
+longer describe its genomes. Run `metator validation` on it again, or write
+the edited assignment with `metacooler dump -t contigs MAP`. The output
+directory is made if it is not there; one that holds a table of an earlier
+dump is refused, without `-F`, which replaces them (a symbolic link there is
+replaced, not its target), and so is a directory where a table goes. The
+tables are written under temporary names, then renamed onto their own once
+all are written: a dump that fails leaves the output directory as it was.
 
 | Table | What it holds |
 |---|---|
 | `contig_data_final.txt` | One row per contig of the map, in its order: `Name`, `Size`, `GC_content`, `Hit`, `Shotgun_coverage`, `Restriction_site`, then the ID, number of contigs and size of its core, overlapping and recursive clusters, then `Final_cluster` (see [The contig data tables](formats.md#the-contig-data-tables)). No `ID` column: the ID of a contig was its position in the map that the run read. |
 | `cluster_summary.txt` | The summary of the final clusters, one row per cluster, with the columns that the validation recorded (`summary_columns`), in its order: the genomes table of the map. |
 | `binning.txt` | Each contig of a final cluster and its cluster, without a header: the binning that anvi'o imports. |
-| `clusters.txt`, `cluster_members.txt` | Every clustering round of the map (`core`, `overlapping`, `recursive_<k>`, `final`, and `mge` or `mge_random` of `metator mge`), every cluster with its parent and the columns its round stored, and the contigs of each cluster. |
+| `clusters.txt`, `cluster_members.txt` | Every clustering round of the map (`core`, `overlapping`, `recursive_<k>`, `final`, the round `mge` that `metator mge --map` stores, and `mge_random` when `metator mge --random` stores one), every cluster with its parent and the columns its round stored, and the contigs of each cluster. |
 | `network.txt` | The network of the contigs, without a header: `contig1`, `contig2` (their names) and the weight of their edge, the normalization that `metator network` stored (the count of their contacts for `None`); one row per pair of contigs in contact, in the order of the map, without the contacts within a contig (see [The network](formats.md#the-network)). |
 
 The values are those of the tables that the run kept in its temporary
-directory: `cluster_summary.txt` and `clusters.txt` are the same files. The
-rows of `contig_data_final.txt`, `binning.txt` and `cluster_members.txt` come
-in the order of the map, which a validation regroups by cluster: the run's
-tables followed the map as it read it.
+directory: `cluster_summary.txt` is the same file, and so is `clusters.txt`,
+but for the rounds that a later command stored in the map (`metator mge
+--map`), which it lists after those of the run, with `cluster_members.txt`.
+The rows of `contig_data_final.txt`, `binning.txt` and `cluster_members.txt`
+come in the order of the map, which a validation regroups by cluster: the
+run's tables followed the map as it read it.
 
 | Option | Default | Description |
 |---|---|---|

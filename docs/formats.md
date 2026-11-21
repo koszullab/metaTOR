@@ -197,7 +197,8 @@ they were made: `core` and `overlapping` (every core and overlapping cluster
 of the partition, those that miComplete checks with its columns),
 `recursive_<k>` (those that step `k` of the validation makes by partitioning
 a contaminated cluster again) and `final`; that of `metator dump` holds the
-round `mge` (or `mge_random`) of `metator mge` too. Tab-separated, with a
+round `mge` that `metator mge --map` stores too (and `mge_random`, when
+`metator mge --random` stores one). Tab-separated, with a
 header: the round, the name, the round and name of its parent (the cluster it
 was split from, or for a final cluster the cluster it is; `NA` for none), then
 miComplete's columns, `NA` where the cluster has none.

@@ -17,10 +17,20 @@ All notable changes to this project will be documented in this file.
   `contig_data_final.txt`, `binning.txt` and `cluster_members.txt` come in
   the order of the map of the clusters. A map without the clusters of a
   validation (the `validation` entry of its `metator` metadata, and the
-  round `final`), or that changes while it is read, is refused, and so is an
+  round `final`), whose clusters were edited after the run (by `metacooler
+  reassign`), or that changes while it is read, is refused, and so is an
   output directory that holds the tables of an earlier dump, without `-F`.
-  Python API: `metator.dump`; `metator.clusters.write_round_tables`, which
-  `Rounds.write` calls too.
+  The tables are replaced all at once: a dump that fails leaves them as they
+  were. Python API: `metator.dump`; `metator.clusters.write_round_tables`,
+  which `Rounds.write` calls too, and `metator.metacool.map_rounds`, the
+  rounds of a map as `Rounds` gives them; `stored_network`,
+  `map_contig_table` and `stored_weights` of `metator.network` read through
+  a map already opened (`mc`); `metator.metacool.MapReplacedError`.
+- metaTOR reads back the numbers of the tables it wrote exactly (pandas'
+  `round_trip` parser): the clustering rounds, the summary of `metator mge`,
+  miComplete's results and the contig data of the partition. pandas 2's
+  default parser could read the last digit of one off, and the map would
+  store another number than the run's tables.
 - **Breaking:** what `validation` finds lives in the map, and `pipeline`
   runs the three steps on one map. `validation` and `pipeline` write the
   FASTA files of the final clusters in the output directory
