@@ -92,19 +92,22 @@ CLUSTER_DIRS = ("recursive_clusters", "final_clusters")
 # What a validation or pipeline run of an earlier version of metaTOR wrote in
 # its output directory, which a run now writes in its temporary directory,
 # which -N keeps: its tables, miComplete's, and the FASTA files of the
-# recursive clusters. The map of the clusters holds what the tables hold, and
-# metator dump writes them from it. An earlier run's, left in the output
-# directory, would pass for this run's: refused without -F, removed with it
-# (see refuse_earlier_outputs).
+# recursive clusters, under their 2.0 names and under those of 1.x
+# (bin_summary.txt, recursive_bin/). The map of the clusters holds what the
+# tables hold, and metator dump writes them from it. An earlier run's, left
+# in the output directory, would pass for this run's: refused without -F,
+# removed with it (see refuse_earlier_outputs).
 EARLIER_OUTPUTS = (
     "contig_data_final.txt",
     "cluster_summary.txt",
+    "bin_summary.txt",
     "binning.txt",
     "clusters.txt",
     "cluster_members.txt",
     "overlapping_micomplete_results.txt",
     "recursive_micomplete_step_*.txt",
     "recursive_clusters",
+    "recursive_bin",
 )
 
 

@@ -2051,17 +2051,22 @@ def _earlier_run(command, tmp_path):
 
 
 # What a validation or pipeline run of an earlier version wrote in its output
-# directory (see metator.cli.EARLIER_OUTPUTS): files, and a directory.
+# directory (see metator.cli.EARLIER_OUTPUTS): files, and directories, under
+# their 2.0 names and under those of 1.x (bin_summary.txt, recursive_bin), in
+# the order the refusal names them.
 EARLIER_OUTPUTS = [
+    "bin_summary.txt",
     "binning.txt",
     "cluster_members.txt",
     "cluster_summary.txt",
     "clusters.txt",
     "contig_data_final.txt",
     "overlapping_micomplete_results.txt",
+    "recursive_bin",
     "recursive_clusters",
     "recursive_micomplete_step_1.txt",
 ]
+EARLIER_DIRECTORIES = ["recursive_bin", "recursive_clusters"]
 
 
 @pytest.mark.parametrize("command", ["validation", "pipeline"])
@@ -2069,16 +2074,17 @@ EARLIER_OUTPUTS = [
 def test_the_outputs_of_an_earlier_version(command, force, stub_pipeline, tmp_path, run_cli):
     """What a run of an earlier version wrote in the output directory, which
     a run now keeps in its temporary directory (its tables, miComplete's, the
-    recursive clusters, a symbolic link of them too), is refused without
-    -F, before any work, named, and the log says why; -F removes it, a link
-    and not its target. Left there, an earlier run's tables passed for this
-    run's."""
+    recursive clusters, under the names of 2.0 and of 1.x, a symbolic link of
+    them too), is refused without -F, before any work, named, and the log
+    says why; -F removes it, a link and not its target. Left there, an
+    earlier run's tables passed for this run's."""
     metacool = _contig_map(tmp_path / "network.metacool", network=True, partition=True)
     out = tmp_path / "out"
-    (out / "recursive_clusters" / "step_1").mkdir(parents=True)
-    (out / "recursive_clusters" / "step_1" / "earlier.fa").write_text(">c1\nACGT\n")
+    for directory in EARLIER_DIRECTORIES:
+        (out / directory / "step_1").mkdir(parents=True)
+        (out / directory / "step_1" / "earlier.fa").write_text(">c1\nACGT\n")
     for name in EARLIER_OUTPUTS:
-        if name != "recursive_clusters":
+        if name not in EARLIER_DIRECTORIES:
             (out / name).write_text("an earlier run's\n")
     # The tables of another tool are left alone.
     (out / "binning_other.txt").write_text("another tool's\n")
@@ -2100,7 +2106,7 @@ def test_the_outputs_of_an_earlier_version(command, force, stub_pipeline, tmp_pa
         shown = ", ".join(repr(name) for name in EARLIER_OUTPUTS[:5])
         assert (
             f"ERROR :: {out} holds what an earlier run wrote there, which metaTOR 2.0 no longer writes in the output "
-            f"directory: {shown}, ... (+3 more). The map of the clusters holds what the tables held (metator dump "
+            f"directory: {shown}, ... (+5 more). The map of the clusters holds what the tables held (metator dump "
             "writes them from it), and -N keeps the tables of a run in its temporary directory. Remove them, or give "
             "-F to remove them."
         ) in log.read_text()
@@ -2111,7 +2117,8 @@ def test_the_outputs_of_an_earlier_version(command, force, stub_pipeline, tmp_pa
     ]  # fmt: skip
     assert (tmp_path / "kept.txt").read_text() == "the target of a link\n"
     (log,) = out.glob(f"metator_{command}_*.log")
-    assert f"INFO :: Removing {out / 'recursive_clusters'}, which an earlier run wrote." in log.read_text()
+    for directory in EARLIER_DIRECTORIES:
+        assert f"INFO :: Removing {out / directory}, which an earlier run wrote." in log.read_text()
 
 
 @pytest.mark.parametrize("command", ["validation", "pipeline"])
