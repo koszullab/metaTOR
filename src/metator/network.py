@@ -1,28 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""Generate metaHiC contigs network from fastq reads or bam files.
+"""Generate the metaHiC network of the contigs from a .metacool contact map.
 
-General utility functions for handling aligment files from align module and
-generating metaHiC networks.
-
-The network can also be built from a .metacool contact map (see
-metacool_to_contacts), instead of the pairs files.
+The network sums the contacts of the map by pair of contigs (see
+metacool_to_contacts), normalizes them, and writes them with the data of the
+contigs measured on the assembly (see create_contig_data).
 
 Core function to build the network are:
-    - alignment_to_contacts
     - check_map_contigs
-    - compute_network
     - contig_data_from_map
     - create_contig_data
     - map_columns
     - metacool_to_contacts
     - normalization_weights
     - normalize_pair
-    - precompute_network
     - read_metacool_contacts
     - write_contig_data
-    - write_hit_data
 """
 
 import csv
@@ -31,7 +25,7 @@ import pandas as pd
 import re
 from Bio import SeqIO
 from Bio import SeqUtils
-from os.path import join, basename
+from os.path import join
 from metator.log import logger
 import metator.io as mio
 import metator.metacool as mtmc
@@ -39,118 +33,6 @@ import metator.metacool as mtmc
 # Pixels of a .metacool file read at a time (about 20 bytes each): the
 # network is summed chunk by chunk, never from the whole pixel table at once.
 METACOOL_CHUNKSIZE = 1_000_000
-
-
-def alignment_to_contacts(
-    alignment_files,
-    contig_data,
-    edge,
-    hit_data,
-    out_dir,
-    output_file_network,
-    output_file_contig_data,
-    tmp_dir,
-    n_cpus,
-    normalization,
-    self_contacts,
-):
-    """Generates a network file (in edgelist form) from an alignment. Contigs
-    are the network nodes and the edges are the contact counts.
-
-    The network is in a strict barebone form so that it can be reused and
-    imported quickly into other applications etc. Verbose information about
-    every single node in the network is written on a 'contig data' file.
-
-    Parameters:
-    -----------
-    alignment_files : list of str
-        List of path to the alignment file(s) used as input.
-    contig_data : dict
-        Dictionary of the all the contigs from the assembly, the contigs names
-        are the keys to the data of the contig available with the following
-        keys: "id", "length", "GC", "hit", "coverage". Coverage still at 0 and
-        need to be updated later.
-    edge : int
-        Distance of the edge region in base pair on the contigs where the
-        mapping reads are not considered as inter contigs. With 0, there is
-        no edge region (see precompute_network).
-    hit_data : dict:
-        Dictionary for hit information on each contigs.
-    out_dir : str
-        The output directory to write the network and chunk data into.
-    output_file_network : str, optional
-        The specific file name for the output network file. Default is
-        'network.txt'
-    output_file_contig_data : str, optional
-        The specific file name for the output chunk data file. Default is
-        'idx_contig_length_GC_hit_cov.txt'
-    tmp_dir : str
-        Path to th temporary directory. Default in the working directory
-    normalization : str
-        If None, do not normalized the count of a contact by the geometric mean
-        of the coverage of the contigs. Otherwise it's the type of
-        normalization.
-    self_contacts : bool
-        Whether to return network with self contact. Default is False.
-
-    Returns:
-    --------
-    str:
-        Path to the network file.
-    str:
-        Path to the verbose contig data file.
-    """
-
-    # Create temporary and output file which will be necessary
-    precompute_network_file = join(tmp_dir, "precompute_network_file.txt")
-    pre_network_sorted_file = join(tmp_dir, "tmp_network_sorted.txt")
-    network_file = join(out_dir, output_file_network)
-    contig_data_file = join(out_dir, output_file_contig_data)
-    hit_data_file = join(out_dir, "hit_data_alignment.txt")
-    nb_alignment = len(alignment_files)
-
-    # Create a contact file easily readable for counting the contacts.
-    contig_data, out_files_list = precompute_network(
-        alignment_files,
-        contig_data,
-        edge,
-        hit_data,
-        precompute_network_file,
-        tmp_dir,
-        self_contacts,
-    )
-
-    # Compute network
-    compute_network(
-        precompute_network_file,
-        network_file,
-        contig_data,
-        tmp_dir,
-        pre_network_sorted_file,
-        n_cpus,
-        normalization,
-    )
-
-    # Compute sample network
-    for i, precompute_network_file_sample in enumerate(out_files_list):
-        network_file_sample = join(out_dir, "network_{0}.txt".format(i))
-        pre_network_sorted_file = join(tmp_dir, "tmp_network_sorted_{0}.txt".format(i))
-        compute_network(
-            precompute_network_file_sample,
-            network_file_sample,
-            contig_data,
-            tmp_dir,
-            pre_network_sorted_file,
-            n_cpus,
-            normalization,
-        )
-
-    # Write the data from the contigs
-    write_contig_data(contig_data, contig_data_file)
-    if nb_alignment > 1:
-        write_hit_data(hit_data, hit_data_file)
-
-    return network_file, contig_data_file
 
 
 def metacool_to_contacts(
@@ -164,36 +46,29 @@ def metacool_to_contacts(
     normalization,
     self_contacts=False,
     chunksize=METACOOL_CHUNKSIZE,
-    libraries=None,
 ):
     """Generates the network file (in edgelist form) from a .metacool contact
-    map instead of pairs files: the network that alignment_to_contacts makes
-    from the pairs the map was made of.
+    map: the network of the pairs the map was made of.
 
     The contacts between two contigs are the sum of the pixels between their
     bins, whatever the bin size of the map. The hits of a contig are the sum
     of the pixels of its bins, a pixel between two of its bins counting
-    twice, as a pair with both reads on the contig does in the pairs files.
-    The intra-contig contacts are left out of the network unless
-    self_contacts is set. The network is then normalized and written as from
-    pairs files: same normalizations, edges in the same order, same contig
-    data file.
+    twice, as a pair with both reads on the contig does in the pairs files
+    the map was made of. The intra-contig contacts are left out of the
+    network unless self_contacts is set. The network is then normalized
+    (see normalize_pair) and written with the contig data file.
 
     The map may lack contigs of the assembly (a map made with a contig
     filter, for example, which leaves out the pairs with a read on the
     contigs it drops): those have no contacts and 0 hits, as a contig that
-    no read of the pairs files maps to. The network is then that of the
-    pairs the map holds.
+    no read maps to. The network is then that of the pairs the map holds.
 
-    It is the network of the pairs at edge 0, byte for byte: a pair with a
-    read on the first or the last base of a contig counts in both (and at
-    position 0, which a 1-based pairs file should not hold but some do,
-    where metacooler puts the read on the first base), a pair with a read
-    past the end of its contig in neither. The map holds the contacts of
-    all its libraries, summed: the network of each library and its hits
-    come from a map of that library (libraries), as alignment_to_contacts
-    writes them for several pairs files. The map holds no positions of the
-    reads: the edge region of the pairs path (edge > 0) cannot be applied.
+    It is the network of the pairs the map holds, each counted once: a pair
+    with a read on the first or the last base of a contig counts in both
+    (and at position 0, which a 1-based pairs file should not hold but some
+    do, where metacooler puts the read on the first base), a pair with a
+    read past the end of its contig in neither. The map holds the contacts
+    of all its libraries, summed.
 
     Parameters:
     -----------
@@ -225,12 +100,6 @@ def metacool_to_contacts(
         False.
     chunksize : int
         Number of pixels read at a time.
-    libraries : list of str, optional
-        The maps of the libraries whose contacts metacool sums, in order
-        (``file.mmetacool::entries/<name>``): each gives its network,
-        network_{i}.txt in out_dir, normalized with the hits of all the
-        libraries as the network of the pairs files of library i is, and
-        its hits, the columns of hit_data_alignment.txt.
 
     Returns:
     --------
@@ -257,31 +126,6 @@ def metacool_to_contacts(
     for name, data in contig_data.items():
         data["hit"] = int(hits[data["id"]])
         names[data["id"]] = name
-    # Each library first, as precompute_network reads its pairs files, then
-    # the sum, as it reports their sum.
-    libraries = list(libraries or [])
-    library_hits = []
-    for i, library in enumerate(libraries):
-        own_hits, own_contacts = read_metacool_contacts(library, contig_data, chunksize)
-        _log_contacts(library, own_contacts, allow_empty=True)
-        # Normalized with the hits of all the libraries, as the network of
-        # the pairs files of library i is (compute_network).
-        _write_map_network(
-            own_contacts,
-            names,
-            contig_data,
-            join(out_dir, f"network_{i}.txt"),
-            join(tmp_dir, f"precompute_network_file_{i}.txt"),
-            join(tmp_dir, f"tmp_network_sorted_{i}.txt"),
-            tmp_dir,
-            n_cpus,
-            normalization,
-            self_contacts,
-            chunksize,
-        )
-        library_hits.append(own_hits)
-    if libraries:
-        logger.info("General information:")
     _log_contacts(metacool, contacts)
     _write_map_network(
         contacts,
@@ -297,29 +141,20 @@ def metacool_to_contacts(
         chunksize,
     )
     write_contig_data(contig_data, contig_data_file)
-    if libraries:
-        # One column of hits per library, the contigs in the order of the
-        # assembly, as alignment_to_contacts writes them.
-        hit_data = {
-            name: {"id": data["id"], "hit": [int(own[data["id"]]) for own in library_hits]} for name, data in contig_data.items()
-        }
-        write_hit_data(hit_data, join(out_dir, "hit_data_alignment.txt"))
     return network_file, contig_data_file
 
 
-def _log_contacts(source, contacts, allow_empty=False):
-    """Count the contacts of a map, as precompute_network counts those of a
-    library: a map without any is refused (a library may hold none of a
-    run's sum)."""
+def _log_contacts(source, contacts):
+    """Count the contacts of a map, within and between contigs: a map
+    without any is refused."""
     all_contacts = int(contacts["count"].sum())
     inter_contacts = int(contacts["count"][contacts["id1"] != contacts["id2"]].sum())
-    if not all_contacts and not allow_empty:
+    if not all_contacts:
         raise mtmc.MetacoolError(f"{source} holds no contact: there is no network to build.")
     logger.info(f"Information of {source}:")
     logger.info(f"{all_contacts} contacts in the library.")
     logger.info(f"{inter_contacts} contacts inter-contigs in the library.")
-    if all_contacts:
-        logger.info(f"3D ratio : {inter_contacts / all_contacts}\n")
+    logger.info(f"3D ratio : {inter_contacts / all_contacts}\n")
 
 
 def _write_map_network(
@@ -336,8 +171,8 @@ def _write_map_network(
     chunksize,
 ):
     """Write the network of the contacts of a map: the edges by contig names,
-    a block at a time, sorted as compute_network sorts the pairs (the
-    network lists its edges in the same order), normalized with the hits of
+    a block at a time, sorted by the names of their contigs (with sort -V,
+    as metaTOR has always listed its edges), normalized with the hits of
     contig_data."""
     with open(pre_network_file, "w") as pre_network:
         for start in range(0, len(contacts), chunksize):
@@ -515,64 +350,6 @@ def _sum_by_key(keys, counts):
     return keys[starts], np.add.reduceat(counts, starts)
 
 
-def compute_network(
-    pre_network_file,
-    network_file,
-    contig_data,
-    tmp_dir,
-    tmp_file,
-    n_cpus,
-    normalization,
-):
-    """Generate the network file from the prenetwork file.
-
-    Parameters:
-    -----------
-    pre_network_file  : str
-        Path of the input file (prenetwork file, output from the precompute
-        network function)
-    network_file : str
-        Path of the output file (network file).
-    contig_data : dict
-        Dictionary of the all the contigs from the assembly, the contigs names
-        are the keys to the data of the contig available with the following
-        keys: "id", "length", "GC", "hit", "coverage", "RS".
-    tmp_dir : str
-        Path to the temporary directory.
-    tmp_file : str
-        Path of the temporary file to write the sorted precompute network.
-    n_cpus : int
-        Number of cpus used to sort the prenetwork.
-    normalization : str
-        If None, do not normalized the count of a contact by the geometric mean
-        of the coverage of the contigs. Otherwise it's the type of
-        normalization.
-    """
-
-    # Sort the pre-network so that identical contig pairs are adjacent.
-    mio.sort_pairs(
-        pre_network_file,
-        tmp_file,
-        tmp_dir=tmp_dir,
-        threads=n_cpus,
-    )
-
-    # Count each contig pair from the sorted file: with several libraries, or
-    # pairs not grouped by contig, the unsorted file repeats a pair in separate
-    # runs, which wrote the same edge on several lines.
-    with open(tmp_file, "r") as pairs, open(network_file, "w") as net:
-        prev_pair, n_occ = None, 0
-        for pair in csv.reader(pairs, delimiter="\t"):
-            if pair == prev_pair:
-                n_occ += 1
-                continue
-            if prev_pair is not None:
-                write_edge(net, contig_data, prev_pair, n_occ, normalization)
-            prev_pair, n_occ = pair, 1
-        if prev_pair is not None:
-            write_edge(net, contig_data, prev_pair, n_occ, normalization)
-
-
 def write_edge(net, contig_data, pair, n_occ, normalization):
     """Write one network edge: the two contig ids and the contact weight.
 
@@ -622,15 +399,13 @@ def read_depth(depth_file):
     return depths
 
 
-def create_contig_data(assembly, nb_alignment=1, depth_file=None, enzyme=None):
+def create_contig_data(assembly, depth_file=None, enzyme=None):
     """Create a dictionnary with data on each Contig.
 
     Parameters:
     -----------
     assembly : str
-        Path to the assembly fasta file
-    nb_alignement : int
-        Numbers of alignment files.  [Default: 1]
+        Path to the assembly fasta file, plain or compressed.
     depth_file : str or None
         Path to the depth.txt file from jgi_summarize_bam_contig_depths from
         Metabat2 Software, read by contig name: it must hold every contig of
@@ -644,18 +419,12 @@ def create_contig_data(assembly, nb_alignment=1, depth_file=None, enzyme=None):
     dict:
         Dictionary of the all the contigs from the assembly, the contigs names
         are the keys to the data of the contig available with the following
-        keys: "id", "length", "GC", "hit", "coverage", "RS". Hit is set to 0 and
-        need to be updated later.
-    dict:
-        Dictionary for hit information on each contigs.
+        keys: "id", "length", "GC", "hit", "coverage", "RS". Hit is set to 0:
+        the network step counts it on the contacts of the map.
     """
 
     # Create a contig data dictionnary from the assembly file
     contig_data = dict()
-    if nb_alignment > 1:
-        hit_data = dict()
-    else:
-        hit_data = None
 
     # Extract restriction sites if an enzyme is given.
     if enzyme:
@@ -685,11 +454,6 @@ def create_contig_data(assembly, nb_alignment=1, depth_file=None, enzyme=None):
                 "coverage": coverage,
                 "RS": (len(re.findall(pattern, str(contig.seq))) + 1) if enzyme else "-",
             }
-            if nb_alignment > 1:
-                hit_data[contig.id] = {
-                    "id": global_id,
-                    "hit": [0] * nb_alignment,
-                }
             global_id += 1
 
     # A depth file of another assembly would give the contigs wrong coverages.
@@ -701,7 +465,7 @@ def create_contig_data(assembly, nb_alignment=1, depth_file=None, enzyme=None):
             )
             raise ValueError(f"The depth file {depth_file} is not that of the assembly {assembly}.")
 
-    return contig_data, hit_data
+    return contig_data
 
 
 # The columns of the contigs table of a .metacool map that a run from the map
@@ -972,138 +736,6 @@ def normalization_weights(lengths, hits, coverage, sites, normalization):
     return weights
 
 
-def precompute_network(
-    alignment_files,
-    contig_data,
-    edge,
-    hit_data,
-    out_file,
-    tmp_dir,
-    self_contacts=False,
-):
-    """Write a file with only the contig id separated by a tabulation and count
-    the contacts by contigs to be able to compute directly the normalized
-    network.
-
-    Parameters:
-    -----------
-    alignment_files : list of str
-        List of path to the alignment file(s).
-    contig_data : dict
-        Dictionary of the all the contigs from the assembly, the contigs names
-        are the keys to the data of the contig available with the following
-        keys: "id", "length", "GC", "hit", "coverage". Coverage still at 0 and
-        need to be updated later.
-    edge : int
-        Distance of the edge region in base pair on the contigs where the
-        mapping reads are not considered as inter contigs. With 0, there is
-        no edge region: the network counts the pairs as a .metacool map of
-        them does. A pair with a read past the end of its contig counts
-        nowhere, its hits neither, whatever the edge.
-    hit_data : dict
-        Dictionary with the count of hits for each alignment file.
-    out_file : str
-        Path to the write the output_file which will be necessary to compute the
-        network.
-    tmp_dir : str
-        Directory where to store temporary files.
-    self_contacts : bool
-        If True, the contacts on the same contigs will be kept. Otherwise only
-        displays the inter contigs contacts. [Default False]
-
-    Return:
-    -------
-    dict:
-        Dictionary of the all the contigs from the assembly, the contigs names
-        are the keys to the data of the contig available with the following
-        keys: "id", "length", "GC", "hit", "coverage" "RS". Coverage still at 0
-        and need to be updated later.
-    """
-    # Initiate value to compute 3D ratio
-    all_contacts = 0
-    inter_contacts = 0
-    out_files_list = []
-
-    # Prepare a file to save contact with their global ID
-    with open(out_file, "w") as pre_net:
-        # Iterates on the alignment files
-        for i, alignment_file in enumerate(alignment_files):
-            all_contacts_temp = 0
-            inter_contacts_temp = 0
-            past_end = 0
-            out_file_sample = join(tmp_dir, "prenetwork" + str(i) + ".txt")
-            out_files_list.append(out_file_sample)
-
-            # Read the alignment_file and build pairs for the network
-            pairs = mio.read_compressed(alignment_file)
-            with open(out_file_sample, "w") as pre_net_sample:
-                for pair in pairs:
-                    # Ignore header lines
-                    if pair.startswith("#"):
-                        continue
-
-                    # Split the line on the tabulation
-                    p = pair.split("\t")
-
-                    # Extract the contig names which are at the position 2 and
-                    # 4.
-                    contig1, contig2 = p[1], p[3]
-                    pos1, pos2 = int(p[2]), int(p[4])
-                    len1 = contig_data[contig1]["length"]
-                    len2 = contig_data[contig2]["length"]
-                    # A read past the end of its contig makes no contact, as
-                    # metacooler leaves it out of a map.
-                    if pos1 > len1 or pos2 > len2:
-                        past_end += 1
-                        continue
-                    id1 = contig_data[contig1]["id"]
-                    id2 = contig_data[contig2]["id"]
-
-                    # Count the contact
-                    all_contacts_temp += 1
-                    contig_data[contig1]["hit"] += 1
-                    contig_data[contig2]["hit"] += 1
-                    if len(alignment_files) > 1:
-                        hit_data[contig1]["hit"][i] += 1
-                        hit_data[contig2]["hit"][i] += 1
-
-                    # Write the file used for the computation of the network:
-                    # the pairs within a contig with self contacts, and the
-                    # pairs between two contigs with both reads out of the
-                    # edges of their contig (defined by edge): with edge 0,
-                    # there is no edge, from the first base (or 0, which some
-                    # pairs files hold) to the last one. The edges concern the
-                    # contacts between contigs, self contacts or not.
-                    if id1 == id2:
-                        if self_contacts:
-                            pre_net.write("\t".join(map(str, [contig1, contig2])) + "\n")
-                            pre_net_sample.write("\t".join(map(str, [contig1, contig2])) + "\n")
-                    elif not edge or (pos1 > edge and pos2 > edge and len1 - pos1 > edge and len2 - pos2 > edge):
-                        inter_contacts_temp += 1
-                        first, second = (contig1, contig2) if id1 < id2 else (contig2, contig1)
-                        pre_net.write("\t".join(map(str, [first, second])) + "\n")
-                        pre_net_sample.write("\t".join(map(str, [first, second])) + "\n")
-
-            # Count contacts and return sample informations.
-            all_contacts += all_contacts_temp
-            inter_contacts += inter_contacts_temp
-            logger.info(f"Information of {basename(alignment_file)}:")
-            if past_end:
-                logger.info(f"{past_end} pairs with a read past the end of its contig are left out.")
-            logger.info(f"{all_contacts_temp} contacts in the library.")
-            logger.info(f"{inter_contacts_temp} contacts inter-contigs in the library.")
-            logger.info(f"3D ratio : {inter_contacts_temp / all_contacts_temp}\n")
-
-    # Return information about the network
-    if len(alignment_files) > 1:
-        logger.info("General information:")
-        logger.info("{0} contacts in the library.".format(all_contacts))
-        logger.info("{0} contacts inter-contigs in the library.".format(inter_contacts))
-        logger.info("3D ratio : {0}\n".format(inter_contacts / all_contacts))
-
-    return contig_data, out_files_list
-
-
 def write_contig_data(contig_data, output_path):
     """Function to write the contig data file at the output path given. The file
     will contains 7 columns separated by a tabulation: id, name, length,
@@ -1133,28 +765,3 @@ def write_contig_data(contig_data, output_path):
             RS = contig_data[name]["RS"]
             line = "{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(idx, name, length, GC_content, hit, coverage, RS)
             contig_data_file_handle.write(line)
-
-
-def write_hit_data(hit_data, output_path):
-    """Function to write the contig data file at the output path given. The file
-    will contains 6 columns separated by a tabulation: id, name, length,
-    GC_content, hit, coverage for each contig.
-
-    Parameters:
-    -----------
-    hit_data : dict
-        Dictionary of the all the contigs from the assembly, the contigs names
-        are the keys to a list of hits from each alignment files separately.
-    output_path : str
-        Path to the output file where the data from the dictionary will be
-        written.
-    """
-
-    # For each contig extract the data and write them in the file.
-    with open(output_path, "w") as hit_data_file_handle:
-        for name in hit_data:
-            hit_list = map(str, hit_data[name]["hit"])
-            hit_str = "\t".join(hit_list)
-            idx = hit_data[name]["id"]
-            line = "{0}\t{1}\t{2}\n".format(idx, name, hit_str)
-            hit_data_file_handle.write(line)

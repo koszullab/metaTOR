@@ -23,20 +23,6 @@ All notable changes to this project will be documented in this file.
   `metator.metacool.store_normalization`,
   `metator.network.normalization_weights`, `metator.metacool.stores_weights`,
   and `normalization` of `metator.metacool.reassign_metacool`.
-- A `pipeline` run with several libraries builds the map of each library,
-  the entries `library_0`, `library_1`... of `<prefix>.mmetacool`, and the
-  map of their sum, `<prefix>.metacool`, merged from them with metacooler
-  merge (contacts and contact statistics summed; its counts are stored as
-  64-bit integers, where a map written from all the pairs files at once
-  stores 32-bit ones). It reads `network.txt` and `contig_data_network.txt`
-  from the sum, and the network of each library (`network_N.txt`) and
-  `hit_data_alignment.txt` from its map, instead of parsing the pairs files
-  again: the same files, byte for byte, as from the pairs files. So zstd and
-  LZ4 pairs files work with several libraries too, and a pair on a contig
-  that the assembly lacks is left out, as metacooler warns, where the run
-  stopped on a `KeyError`. `--no-metacool` removes both files at the end.
-  Python API: `metator.metacool.write_library_maps`, and `libraries` of
-  `metator.network.metacool_to_contacts`.
 - The clustering rounds of a run: the validation writes `clusters.txt`,
   every cluster of every round (`overlapping`, `recursive_<k>`, `final`)
   with the round and name of its parent and miComplete's columns, and
@@ -47,35 +33,27 @@ All notable changes to this project will be documented in this file.
   `metator.clusters`, and `rounds` of `metator.metacool.reassign_metacool`,
   which stores them (without them, the map keeps none).
 - `pipeline --output-map FILE` writes the map of the clusters to FILE
-  (replaced only with `-F`). A run from reads, alignments or pairs writes
-  the maps of its libraries next to FILE, `<name>.mmetacool`, with several
-  (and removes an earlier run's there, with one): one that is there is
-  refused without `-F` too, before any work. A FILE named `.mmetacool`,
-  where the maps of the libraries would be written over the map, is
-  refused.
+  (replaced only with `-F`), and leaves the map of the run as it was.
 - `network` and `pipeline` start from a `.metacool` contact map, their
   first argument (`metator pipeline MAP -a ASSEMBLY`: a file, or an entry
-  `file.mmetacool::entries/<name>`), at any bin size, in place of `-1`,
-  `-2` and `--start`, which a run from a map refuses. The network is that
-  of the pairs the map was made of, byte for byte, as both count every
-  pair (see Changed). A map may lack contigs of the assembly, which get
-  no contacts; a map of other contigs or lengths, or that stores both
-  triangles, is refused, and so is a first argument that is a file but no
-  map. A map sums its libraries: no `network_{i}.txt` or
-  `hit_data_alignment.txt`. `-1` is no longer required: a run takes a map or
-  reads, alignments or pairs. Python API:
+  `file.mmetacool::entries/<name>`), at any bin size: a map that hicstuff
+  makes from the reads, or metacooler from pairs files (see Removed). The
+  network is that of the pairs the map was made of, byte for byte, as both
+  count every pair (see Changed). A map may lack contigs of the assembly,
+  which get no contacts; a map of other contigs or lengths, or that stores
+  both triangles, is refused, and so is a first argument that is a file
+  but no map. Python API:
   `metator.network.metacool_to_contacts`, `read_metacool_contacts`.
 - A `pipeline` run from a map writes the map of its bins from it, with
-  `metacooler reassign`: its bins and contacts, grouped by final bin as
-  from pairs, with this run's genome and contig columns (the contig
-  columns last, as from pairs, whatever columns the input map carried),
+  `metacooler reassign`: its bins and contacts, grouped by final bin,
+  with this run's genome and contig columns (the contig columns last,
+  whatever columns the input map carried),
   and the contact statistics of the input map, carried over to the bins
   (a map written by metacooler 0.2.0 has them computed again from the
   pixels: at one bin per contig, every intra-contig contact then counts
   as short-range). The output may be the input map, replaced only once
   the new map is validated. Python API:
-  `metator.metacool.reassign_metacool`. The README shows the route from
-  the pairs of `hicstuff` through `metacooler create pairs`.
+  `metator.metacool.reassign_metacool`.
 - A run from a map (`network MAP` and `pipeline MAP`)
   reads the restriction sites and the shotgun coverage of the contigs from
   the `Restriction_site` and `Shotgun_coverage` columns of the map, which
@@ -93,10 +71,8 @@ All notable changes to this project will be documented in this file.
   (`columns_from_map`). With pandas 2, a coverage of more than 15
   significant digits, or of 16 or more digits after the decimal point,
   can be stored one unit off in its last place, which changes the last
-  digits of the contig data files and of a network normalized by it. A
-  run from pairs reads its contig data before it replaces the bins of an
-  earlier run (`-F`): a depth file of another assembly, which it refuses
-  then, leaves them (they were removed first). Python API:
+  digits of the contig data files and of a network normalized by it.
+  Python API:
   `metator.network.contig_data_from_map`, `map_columns`,
   `check_map_contigs`.
 - `partition` and `validation` take the map of a run step by step as
@@ -178,20 +154,6 @@ All notable changes to this project will be documented in this file.
   Name,Final_cluster` for a table of 2.0. The help, the logs and the docs
   call them clusters too, and the help groups the three steps and `pipeline`
   under Clustering.
-- `pipeline` no longer sorts, compresses and indexes the pairs files of
-  a run from reads or alignments, which it removed at its end: the maps
-  of the contigs read them once, in any order, and the networks come
-  from the maps. Without `-N`, which keeps them sorted in the output
-  directory as before, it writes them to its temporary directory as they are
-  made (`alignment_<i>.pairs`), and removes them once its network is built:
-  a run that stops later leaves none, but leaves the contact map of its
-  contigs, which a run restarts from. The tables of the alignments of the
-  mates of each library, as large as its pairs, are removed once its pairs
-  are written, where they stayed in the temporary directory until the end of
-  the run (`-N` keeps them, in `pipeline` and `network`). The map and the
-  network are those of the sorted pairs. Python API:
-  `metator.align.get_contact_pairs` takes `sort_pairs` and `keep_temp` (by
-  default, it removes those tables).
 - A `pipeline` run from a `.metacool` map updates that map in place, where
   it wrote a new map at `<outdir>/<prefix>.metacool`: the map of the
   clusters is written next to it, validated in full, then renamed over it (a
@@ -215,8 +177,7 @@ All notable changes to this project will be documented in this file.
   or a Ctrl-C that Python would drop, as a pool of processes starts or ends,
   kills the run at once, which leaves the map as it was. `--output-map`
   refuses, before any work: `--no-metacool`, which writes no map; an entry
-  of a collection, a `.mmetacool` file, a directory, and the collection of
-  an input entry. Only the runs that write a map take its lock: a read of a
+  of a collection, a directory, and the collection of an input entry. Only the runs that write a map take its lock: a read of a
   map (`network MAP`, the input map of a run with `--output-map`) stops with
   an error when another run replaces it, or writes it, as it reads it:
   metacooler reads a map one chunk of pixels at a time, and such a read
@@ -233,62 +194,13 @@ All notable changes to this project will be documented in this file.
   `pipeline` with the reason, logged as an error (it was a warning, and
   the run went on to exit 0). The other outputs of the run are kept, and
   so is the map it would have replaced.
-- `pipeline` from reads, alignments or pairs reads its pairs files into
-  its `.metacool` map once, as soon as it has them: the map of the
-  contigs, every contig in `__unbinned__`, with their contacts, the
-  contact statistics measured on the reads and the contig columns measured
-  on the assembly. At the end, it writes the map of its bins over it with
-  `metacooler reassign`, where it read every pairs file again: the map is
-  the one it wrote before, but for its history (the `annotate` and
-  `reassign` keys of its metadata) and the type of its counts with several
-  libraries (64-bit integers, where it stored 32-bit ones).
-  `--no-metacool` builds it all the same and removes it at the end. An
-  earlier run's map at its path is removed before the build,
-  `--no-metacool` or not (it was removed at the end, and left there with
-  `--no-metacool`): an input of the run that is that map, and from pairs a
-  contact map, are refused before any work. A map of the contigs that
-  cannot be built stops the run before its network, `--no-metacool` or
-  not, whatever the number of libraries, with the reason logged as an
-  error, and leaves none; a map of the bins that cannot be written over
-  it, and a run that stops with an error once it is built, leave the map
-  of the contigs, in no bin, which a new run can start from
-  (`metator pipeline MAP`, with `-F` in the same output directory). Python
-  API: `metator.metacool.write_contig_map`.
-- `pipeline` checks what the map of the contigs needs before any work. A
-  run that is not from a map refuses an assembly whose contig names are
-  not ASCII, which it gives, before it builds its index or aligns a read:
-  the map, which needs ASCII names, could only be built once the reads
-  were aligned. From pairs, it refuses an empty pairs file, and one that
-  metacooler, which builds the map, could not read (it goes by the first
-  bytes of the file, whatever its name): a zip archive. A map that
-  metacooler cannot build from the pairs files of a run from pairs stops the
-  run with what it needs of them: the same number of fields on every row
-  (their header lines may come anywhere, so files of one assembly
-  concatenated are one library), and one file per library, given
-  comma-separated.
-- `pipeline` from reads, alignments or pairs with one library reads
-  `network.txt` and `contig_data_network.txt` from its map of the
-  contigs, as a run from a map does, instead of parsing its pairs files
-  again: the same files, byte for byte. It still writes `network_0.txt`,
-  the network of its library, as a copy of `network.txt`, the bytes its
-  pairs files give. A run with several libraries reads them from one map
-  per library, in a `.mmetacool` collection (see Added). A pair on a
-  contig that the assembly lacks is left out, as metacooler warns, where
-  the run stopped on a `KeyError`, and pairs that make no contact stop
-  the run with an error that says so, where it stopped on a
-  `ZeroDivisionError`. Its log names the map ("Information of
-  <outdir>/metator.metacool:") instead of the pairs file, with the same
-  counts, and no longer has the line that counted the pairs with a read
-  past the end of their contig ("N pairs with a read past the end of its
-  contig are left out."): metacooler's warning, which stays, counts them
-  with the other pairs it leaves out.
 - The temporary directory of a command is named from the random numbers
   of the system (`metator.io.generate_temp_dir`), not from Python's
   `random` module, which the partition draws from (igraph): the clusters
   of a run no longer depend on how many of its temporary directories it
   made, so that the steps run one by one in one process, after one seed,
-  draw the stream that `pipeline` draws (the alignment of hicstuff still
-  draws from it). A run seeded as before gives other clusters.
+  draw the stream that `pipeline` draws. A run seeded as before gives
+  other clusters.
 - metaTOR requires metacooler 0.3.0. The `.metacool` maps it writes also
   store the contact statistics of each contig (the `qc_intra_contig_short`
   and `qc_intra_contig_long` columns of the contigs table), which
@@ -299,8 +211,7 @@ All notable changes to this project will be documented in this file.
   `metator.mge.mge_binning` and `generate_mges_fasta` `tmp_dir`: they only
   held the contig lists of the `pyfastx` command. `partition` and `mge`
   write no temporary file any more.
-- The network of pairs files counts the pairs as metacooler counts them
-  in a map: a pair with a read on the last base of a contig, or at
+- The network counts the pairs as metacooler counts them in a map: a pair with a read on the last base of a contig, or at
   position 0 (which a 1-based pairs file should not hold, but some do), is
   a contact, which `--edge 0`, the default, left out; a pair with a read
   past the end of its contig is none, and its hits no longer count. The
@@ -318,10 +229,9 @@ All notable changes to this project will be documented in this file.
   in `docs/guides/`, brought up to date with the commands and outputs of
   this version, the changelog is `docs/changelog.md`, and `CONTRIBUTING.md`
   points to the contributing guide of the site. `tests/test_docs.py` checks
-  the CLI reference against the CLI. The docstrings that disagreed with
-  their code (`metator.align.get_contact_pairs`, `merge_alignment`,
-  `process_bamfile` and `process_bwa_bamfile`, and
-  `metator.validation.correct_final_bin`) are corrected.
+  the CLI reference against the CLI. The docstring of
+  `metator.validation.correct_final_bin`, which disagreed with its code, is
+  corrected.
 - Python API: `metator.validation.recursive_clustering` takes the
   clustering matrix of the earlier recursive steps (`clustering_matrix`)
   and returns it, updated, instead of writing
@@ -351,18 +261,58 @@ All notable changes to this project will be documented in this file.
   A command line that names one of them is refused as an unknown command or
   option. A `validation` or `pipeline` run in the output directory of an
   earlier one refuses its `plot/` without `-F`, and removes it with `-F`, as
-  the outputs that 1.x named after bins. `pipeline` no longer refuses zstd
-  and LZ4 pairs files, which only `--scaffold` could not read. Python API:
+  the outputs that 1.x named after bins. Python API:
   the modules `metator.figures` (but `bin_quality`, now
   `metator.validation.bin_quality`), `metator.quality_check`,
   `metator.contact_map`, `metator.scaffold` and `metator.regions`;
   `metator.metacool.write_metacool`; and `metator.io.get_pairs_data` and
   `read_bin_summary`.
+- **Breaking:** the reads, alignments and pairs inputs of `network` and
+  `pipeline`: a run starts from a `.metacool` contact map of the contigs,
+  `MAP`, their first argument, which they now require. hicstuff makes it
+  from the reads (`hicstuff pipeline -M metacool`, from hicstuff's next
+  release), and metacooler from
+  pairs files (`metacooler create pairs`) or a `.cool` file (`metacooler
+  create cool`); `metacooler merge` sums the maps of several libraries (see
+  [Other tools](other-tools.md#from-the-reads-to-the-map) and the
+  [migration guide](migration.md)). On the test reads of 1.x, the map of
+  hicstuff and the map that metacooler makes from `tests_data/alignment.pairs`
+  give the same network and contig data, byte for byte. Removed with them:
+  - the options `-1/--forward`, `-2/--reverse`, `-S/--start`,
+    `-b/--aligner`, `-B/--aligner-mode` and `-q/--min-quality`: a command
+    line that gives one is refused by click as an unknown option, a usage
+    error (exit status 2), as is `--edge` (below); click may suggest an
+    option of a near name (`--force` for `--forward`);
+  - the outputs of the alignment: `alignment_<i>.bam`,
+    `alignment_<i>_for.bam` and `alignment_<i>_rev.bam`; the pairs files
+    `alignment_<i>_sorted.pairs.gz` and their index (`network`, and
+    `pipeline -N`); the network of each library, `network_<i>.txt`
+    (`network_0.txt` included), and `hit_data_alignment.txt`. `pipeline` no
+    longer writes `<outdir>/metator.metacool`: it writes the map of the
+    clusters over `MAP`, or to `--output-map`, and `--prefix` names the
+    clusters only;
+  - `--assembly` as the basename of a bowtie2 or bwa index: it is the FASTA
+    file of the assembly, plain or compressed with gzip, and one compressed
+    with bzip2 or zip, which pyfastx cannot read, is refused before any work;
+  - the dependencies on hicstuff and pysam, and the programs bowtie2, bwa
+    and samtools: prodigal and hmmer stay, for miComplete. `metator mge`
+    still reads pairs files: those of hicstuff, once indexed with pairix.
+
+  Python API: the module `metator.align`; `metator.network.alignment_to_contacts`,
+  `precompute_network`, `compute_network` and `write_hit_data`, and
+  `nb_alignment` and `hit_data`, of `create_contig_data`, which returns the
+  contig data alone; and `metator.io.check_fasta_index`,
+  `generate_fasta_index`, `retrieve_fasta`, `sort_and_index_pairs` and
+  `check_pypairix`.
+- Python's warnings (`warnings.warn`, which cooler gives the problems of a
+  map with) are shown, and written to the log file of a run, as metaTOR's
+  own messages (`WARNING :: ...`): logging dropped them once metaTOR no
+  longer imported hicstuff, which printed them.
 - **Breaking:** `--edge` (`-E`) of `network` and `pipeline`: the network
   counts every pair, as its contact map does, which holds the contacts of
   bins, not the positions of the reads (see Changed for the pairs that
   `--edge 0`, the default, left out). A command line that still gives it
-  is refused with this reason. See the
+  is refused as an unknown option. See the
   [migration guide](migration.md).
 - Python API: the CheckM functions (`metator.validation.checkm` and
   `checkm_compare_bins`, `metator.io.check_checkm` and
@@ -379,16 +329,11 @@ All notable changes to this project will be documented in this file.
 - The commands that write a map refuse an output path that holds `::`,
   which metacooler reads as `file::group`. A map given as `file::/`, the
   root of the file, is the file itself, and a map whose file name holds `::`
-  is refused, as metacooler would read a group of it; so is a `::` in the
-  `-o` or `--prefix` of a `pipeline` run, which names its map.
+  is refused, as metacooler would read a group of it; so is a `::` in an
+  `--output-map`.
 - `validation -F` refuses clusters to validate (`--fasta`) in a directory
   that `-F` removes (`final_clusters/`, or a directory of 1.x such as
   `final_bin/`), before it removes anything. It removed them, then failed.
-- `network` and `pipeline --start bam --aligner bwa` no longer fail without
-  `--reverse` (`AttributeError: 'NoneType' object has no attribute
-  'split'`): a BAM file of bwa holds both mates. A `pipeline` run given
-  no input, neither `--forward` nor a map, failed with the same error: it
-  is refused, with what to give.
 - `validation` and `pipeline --cluster-matrix` no longer fail as soon as a
   bin is partitioned again (`ValueError: axis 1 index … exceeds matrix
   dimension 2`): the clustering matrix of the recursive partition was built
@@ -422,15 +367,6 @@ All notable changes to this project will be documented in this file.
   from the assembly.
 - `network` and `pipeline` read an assembly compressed with gzip, which
   they refused as not being a FASTA file.
-- The index of the assembly is that of its own name only
-  (`assembly.fa.amb`... for bwa, `assembly.fa.1.bt2`... for bowtie2): with
-  bwa, any bwa index of the directory of the assembly, that of another
-  assembly for instance, was taken for its index, and with bowtie2 any
-  index whose name starts with that of the assembly.
-- Python API: `metator.network.alignment_to_contacts` with
-  `self_contacts` leaves out the contacts between contigs within `edge`
-  of a contig end, as without `self_contacts`: `edge` was ignored with
-  it.
 - The map that `pipeline` writes no longer leaves metacooler's partial file
   (`<outfile>.partial`) next to the outfile when metacooler cannot write the
   map: metacooler removes it and says so at INFO, where it logged, at ERROR,

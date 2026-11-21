@@ -13,9 +13,9 @@ metator --version
 
 | Convention | Meaning |
 |---|---|
-| Several libraries | Comma-separated lists, in the same order in `--forward` and `--reverse`: `-1 L1_R1.fq.gz,L2_R1.fq.gz -2 L1_R2.fq.gz,L2_R2.fq.gz`. |
+| Several libraries | One map, which sums them: make the map of each library, then merge them with `metacooler merge` (see [Other tools](other-tools.md)). |
 | Several enzymes | Separated by commas: `DpnII,HinfI`. |
-| Pairs files | `mge` takes the pairs files of a run as arguments: `alignment_<i>_sorted.pairs.gz`, which `metator network` writes and `metator pipeline` keeps with `--no-clean-up`; it stores its MGE clusters in the map given with `--map`. |
+| Pairs files | `mge` takes the pairs files of a run as arguments: those that hicstuff writes with the map, `<prefix>.valid_idx.pairs.gz`, once indexed with `pairix -p pairs` (see [Clustering mobile genetic elements](guides/mge.md#running-it)); it stores its MGE clusters in the map given with `--map`. |
 | `-F, --force` | Replace the outputs of an earlier run, in the output directory and at `--output-map`. Without it, a command refuses to overwrite them. A run from a map updates that map in place without it, and warns, before any work, of the clusters and clustering rounds that it replaces there: `--output-map` writes the map of the run to another file instead, and leaves the map as it was. |
 | `-T, --tmpdir` | Each run works in a directory of its own inside it, removed at the end, unless `--no-clean-up` or the run fails. |
 | `-N, --no-clean-up` | Keep the temporary files. |
@@ -35,28 +35,22 @@ in one command, and write the contact map of the clusters. **Guide:**
 [Running the pipeline](guides/pipeline.md).
 
 ```console
-metator pipeline [OPTIONS] [MAP]
+metator pipeline [OPTIONS] MAP
 ```
 
-The run starts from a `.metacool` contact map of the contigs, `MAP`, or from
-the reads, alignments or pairs of `-1` (and `-2`, `--start`): one or the other.
-
-**Recommended:** `--aligner bwa`. See
-[Aligning the reads](guides/network.md#aligning-the-reads).
+The run starts from a `.metacool` contact map of the contigs, `MAP`, which
+hicstuff makes from the reads (`hicstuff pipeline -M metacool`, from
+hicstuff's next release), or metacooler from pairs files
+(`metacooler create pairs`): see
+[Other tools](other-tools.md#from-the-reads-to-the-map).
 
 | Option | Default | Description |
 |---|---|---|
-| `MAP` | none | A `.metacool` contact map of the contigs, or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`): the run starts from it, in place of `-1`, `-2` and `--start`. See [Starting from a contact map](guides/metacool.md#starting-from-a-contact-map). |
-| `-1, --forward` | none | The R1 reads (FASTQ), or their alignments (BAM), or the pairs files, of each library, separated by commas. Pairs files may be plain or compressed with gzip, bzip2, zstd or LZ4, whatever their name. Without `MAP`, needed. |
-| `-2, --reverse` | none | The R2 reads, or their alignments, in the same order. Not needed from pairs files, or the BAM files of bwa, which hold both mates. |
-| `-a, --assembly` | *required* | The assembly: a FASTA file, or the basename of its bowtie2 or bwa index. |
-| `-S, --start` | `fastq` | What `--forward` and `--reverse` are: `fastq`, `bam` or `pair`. Not with `MAP`. |
-| `-d, --depth` | none | The coverage of the contigs, from `jgi_summarize_bam_contig_depths` of MetaBAT2. From a map, its `Shotgun_coverage` column gives it without `--depth`, which replaces it: see [Starting from a contact map](guides/metacool.md#starting-from-a-contact-map). |
-| `-b, --aligner` | `bowtie2` | `bwa`, the recommended one, or `bowtie2`. |
-| `-B, --aligner-mode` | `normal` | `normal`, `iterative` or `cutsite`. `cutsite` needs `--enzyme`: without it, the reads are aligned iteratively. |
-| `-e, --enzyme` | none | The restriction enzymes of the library. From a map (`MAP`), its `Restriction_site` column gives the restriction sites without `--enzyme`, which replaces it. |
-| `-q, --min-quality` | `30` | The minimum mapping quality of both mates of a pair. |
-| `-m, --normalization` | `empirical_hit` | `None`, `abundance`, `length`, `RS`, `empirical_hit` or `theoritical_hit`. `RS` and `theoritical_hit` need `--enzyme`; `abundance` and `theoritical_hit` need `--depth`, or, from a map, the columns that give them. See [Normalising the network](guides/network.md#normalising-the-network). |
+| `MAP` | *required* | A `.metacool` contact map of the contigs, or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`): the run reads its network from it, and writes the map of its clusters over it. See [Starting from a contact map](guides/metacool.md#starting-from-a-contact-map). |
+| `-a, --assembly` | *required* | The assembly that the map was made from: a FASTA file, plain or compressed with gzip. |
+| `-d, --depth` | none | The coverage of the contigs, from `jgi_summarize_bam_contig_depths` of MetaBAT2. The `Shotgun_coverage` column of the map gives it without `--depth`, which replaces it: see [Starting from a contact map](guides/metacool.md#starting-from-a-contact-map). |
+| `-e, --enzyme` | none | The restriction enzymes of the library. The `Restriction_site` column of the map gives the restriction sites without `--enzyme`, which replaces it. |
+| `-m, --normalization` | `empirical_hit` | `None`, `abundance`, `length`, `RS`, `empirical_hit` or `theoritical_hit`. `RS` and `theoritical_hit` need `--enzyme`; `abundance` and `theoritical_hit` need `--depth`, or the columns of the map that give them. See [Normalising the network](guides/network.md#normalising-the-network). |
 | `-A, --algorithm` | `louvain` | The partition algorithm: `louvain` or `leiden`. |
 | `-i, --iterations` | `100` | The iterations of the partition. |
 | `-O, --overlap` | `80` | The percentage of iterations in which two core clusters must fall together to be merged into one overlapping cluster. |
@@ -66,62 +60,53 @@ the reads, alignments or pairs of `-1` (and `-2`, `--start`): one or the other.
 | `-j, --rec-iter` | `10` | The iterations of the recursive partition of the contaminated clusters. |
 | `-P, --rec-overlap` | `90` | The overlap threshold of the recursive partition, in percent. |
 | `-o, --outdir` | the current directory | The output directory. |
-| `-p, --prefix` | none | Name the clusters `<prefix>_metator_…`, the map `<prefix>.metacool` and, with several libraries, the maps of the libraries `<prefix>.mmetacool`. Letters, digits, `_` and `-` only. |
+| `-p, --prefix` | none | Name the clusters `<prefix>_metator_…`. Letters, digits, `_` and `-` only. |
 | `-F, --force` | off | Replace the directories of clusters of an earlier run, and an existing `--output-map` file. Removes the outputs of a run of metaTOR 1.x: `overlapping_bin/`, `recursive_bin/`, `final_bin/`, `final_bin_unscaffold/` and `bin_summary.txt`, and the plots of an earlier run, `plot/`, which metaTOR 2.0 no longer draws. |
-| `-T, --tmpdir` | `./tmp` | The temporary directory, where the index of the assembly is built, and the pairs files written (see `-N`). |
-| `-t, --threads` | `1` | Threads for the alignment, the partition and miComplete. |
-| `-N, --no-clean-up` | off | Keep the temporary files, and the pairs files of the run, sorted, compressed and indexed in the output directory (`alignment_<i>_sorted.pairs.gz`). Without `-N`, the run writes them to its temporary directory as they are made, and removes them once its network is built. |
-| `--no-metacool` | off | Do not keep the contact map of the contigs, grouped by cluster: a run from reads, alignments or pairs still builds the map of its contigs from the pairs files (a map that cannot be built stops the run), reads its networks from it, and removes it at the end, with the maps of its libraries (`<prefix>.mmetacool`) when it has several; a run from a map leaves that map as it was. |
-| `--output-map` | none | Write the contact map of the clusters to this file (replaced only with `-F`), a `.metacool` file, not a `.mmetacool` collection. A run from reads, alignments or pairs writes the maps of its libraries next to it, `<name>.mmetacool`, with several, and removes an earlier run's there with one: replaced only with `-F` too. By default, a run from a `.metacool` map updates that map in place, and any other run writes `<outdir>/<prefix>.metacool` (`metator.metacool` without `--prefix`). |
+| `-T, --tmpdir` | `./tmp` | The temporary directory. |
+| `-t, --threads` | `1` | Threads to sort the network, and for the partition and the validation (miComplete). |
+| `-N, --no-clean-up` | off | Keep the temporary files. |
+| `--no-metacool` | off | Do not write the contact map of the clusters: the map of the run is left as it was. |
+| `--output-map` | none | Write the contact map of the clusters to this file (replaced only with `-F`), and leave `MAP` as it was. By default, the run updates `MAP` in place. |
 
 The validation is the step that needs the most memory: miComplete runs
 prodigal and hmmer on every cluster.
 
 ```bash
-# Reads to clusters, with the recommended aligner
-metator pipeline -b bwa -e DpnII -d depth.txt -t 16 -1 R1.fq.gz -2 R2.fq.gz \
-    -a assembly.fa -o binning
+# The map of the contigs, from the reads, with hicstuff
+hicstuff pipeline -g assembly.fa -e DpnII -M metacool -o hicstuff -P sample R1.fq.gz R2.fq.gz
 
-# Two libraries, keeping the pairs files
-metator pipeline -b bwa -e DpnII -t 16 -1 L1_R1.fq.gz,L2_R1.fq.gz \
-    -2 L1_R2.fq.gz,L2_R2.fq.gz -a assembly.fa -N -o binning
+# The clusters: hicstuff/sample.metacool becomes the map of the clusters
+metator pipeline hicstuff/sample.metacool -a assembly.fa -e DpnII -d depth.txt -t 16 -o binning
 
-# From a contact map of the contigs
-metator pipeline sample.metacool -a assembly.fa -e DpnII -o binning
+# The same, leaving the map of hicstuff as it was
+metator pipeline hicstuff/sample.metacool -a assembly.fa -e DpnII -o binning --output-map binning/sample.metacool
 ```
 
 ### `network` { #network }
 
-Align the reads, pair the mates, and build the network of contigs: the first
-step of the pipeline. Writes `network.txt`, `contig_data_network.txt` and the
-pairs files. **Guide:**
-[Aligning reads and building the network](guides/network.md).
+Build the network of contigs from the map: the first step of the pipeline.
+Writes `network.txt` and `contig_data_network.txt`. **Guide:**
+[Building the network](guides/network.md).
 
 ```console
-metator network [OPTIONS] [MAP]
+metator network [OPTIONS] MAP
 ```
 
 | Option | Default | Description |
 |---|---|---|
-| `MAP` | none | As in `pipeline`. |
-| `-1, --forward` | none | As in `pipeline`, but not zstd or LZ4 pairs files: `network` reads pairs files itself. |
-| `-2, --reverse` | none | As in `pipeline`. |
+| `MAP` | *required* | As in `pipeline`: the map is only read. |
 | `-a, --assembly` | *required* | As in `pipeline`. |
-| `-S, --start` | `fastq` | `fastq`, `bam` or `pair`. Not with `MAP`. |
 | `-d, --depth` | none | As in `pipeline`. |
-| `-b, --aligner` | `bowtie2` | `bwa`, the recommended one, or `bowtie2`. |
-| `-B, --aligner-mode` | `normal` | `normal`, `iterative` or `cutsite`. |
-| `-e, --enzyme` | none | The restriction enzymes of the library. From a map (`MAP`), its `Restriction_site` column gives the restriction sites without `--enzyme`, which replaces it. |
-| `-q, --min-quality` | `30` | The minimum mapping quality of both mates of a pair. |
+| `-e, --enzyme` | none | As in `pipeline`. |
 | `-n, --normalization` | `empirical_hit` | As `--normalization` (`-m`) in `pipeline`. |
 | `-s, --self-contacts` | off | Count the contacts of each contig with itself. |
 | `-o, --outdir` | the current directory | The output directory. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory. |
-| `-t, --threads` | `1` | Threads for the alignment. |
+| `-t, --threads` | `1` | Threads to sort the network. |
 | `-N, --no-clean-up` | off | Keep the temporary files. |
 
 ```bash
-metator network -1 R1.fq.gz -2 R2.fq.gz -a assembly.fa -b bwa -e DpnII -t 16 -o binning
+metator network sample.metacool -a assembly.fa -e DpnII -t 16 -o binning
 ```
 
 ### `partition` { #partition }
@@ -264,10 +249,14 @@ replaces the clusters of the map drops the round `mge`, with a warning.
 | `--output-map` | none | With `--map`: write the map with the MGE clusters to this file (replaced only with `-F`), and leave `MAP` as it was. |
 
 ```bash
+# Index the pairs that hicstuff wrote with the map (once): mge needs the index
+# of a compressed pairs file
+python -c 'import pypairix; pypairix.build_index("hicstuff/sample.valid_idx.pairs.gz", "pairs")'
+
 metator mge -a assembly.fa -c binning/contig_data_final.txt -b binning/binning.txt \
-    -m mges.txt -o mge binning/alignment_0_sorted.pairs.gz
+    -m mges.txt -o mge hicstuff/sample.valid_idx.pairs.gz
 
 # Also store the MGE clusters in the map of the run
 metator mge -a assembly.fa -c binning/contig_data_final.txt -b binning/binning.txt \
-    -m mges.txt -o mge --map binning/metator.metacool binning/alignment_0_sorted.pairs.gz
+    -m mges.txt -o mge --map hicstuff/sample.metacool hicstuff/sample.valid_idx.pairs.gz
 ```

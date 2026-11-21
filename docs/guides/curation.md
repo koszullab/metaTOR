@@ -9,7 +9,10 @@ page goes from the outputs of metaTOR to anvi'o and back; anvi'o's own
 explains the refinement itself.
 
 The commands below were written for anvi'o 7. They run on the output
-directory `binning` of a run with `--aligner bwa` and two libraries.
+directory `binning` of a run on the map of two libraries, `L1` and `L2`, each
+made with `hicstuff pipeline -M metacool -n`, from hicstuff's next release (see
+[Other tools](../other-tools.md#from-the-reads-to-the-map)): `-n` keeps the
+alignments of hicstuff, which give the coverage of the contigs.
 
 ## 1. The contigs database
 
@@ -49,20 +52,20 @@ anvi-display-contigs-stats anvio/contigs.db
 anvi'o compares the coverage of the contigs across samples: give it each
 library on its own (shotgun libraries can be added the same way). Its profiles
 are made from BAM files sorted by position and indexed, which `anvi-init-bam`
-writes from metaTOR's, sorted by read name:
+writes from those of hicstuff: with `-n`, hicstuff keeps the alignments of
+each mate in its temporary directory (`<outdir>/tmp` by default), as
+`<prefix>.for.bam` and `<prefix>.rev.bam`. Profile those of the first mates,
+as the second mates tell the same:
 
 ```bash
-for i in 0 1; do
-    anvi-init-bam binning/alignment_${i}.bam -o anvio/alignment_${i}.bam
-    anvi-profile -i anvio/alignment_${i}.bam -c anvio/contigs.db -o anvio/HiC${i} -S HiC${i} \
+for lib in L1 L2; do
+    anvi-init-bam hicstuff_${lib}/tmp/${lib}.for.bam -o anvio/${lib}.bam
+    anvi-profile -i anvio/${lib}.bam -c anvio/contigs.db -o anvio/HiC_${lib} -S HiC_${lib} \
         -M 500 -T 16 --skip-hierarchical-clustering --skip-SNV-profiling \
         --contigs-of-interest anvio/contigs.txt
 done
-anvi-merge -c anvio/contigs.db -o anvio/merged -S HiC -W anvio/HiC*/PROFILE.db
+anvi-merge -c anvio/contigs.db -o anvio/merged -S HiC -W anvio/HiC_*/PROFILE.db
 ```
-
-With `--aligner bowtie2`, each mate has its BAM file: profile
-`alignment_<i>_for.bam`, as the reverse mates tell the same.
 
 - `--skip-hierarchical-clustering` leaves anvi'o's hierarchical clustering to
   each cluster, when it is refined.
@@ -151,7 +154,7 @@ contigs.to_csv("binning/contig_data_anvio.txt", sep="\t")
 ```
 
 ```bash
-metacooler reassign binning/metator.metacool --contigs binning/contig_data_anvio.txt \
+metacooler reassign sample.metacool --contigs binning/contig_data_anvio.txt \
     --contigs-format Name,Anvio -o anvio/curated.metacool
 metacooler extract anvio/curated.metacool --genomes metator_00001_00000 -o metator_00001_00000.cool
 ```
