@@ -11,9 +11,9 @@ and `metator pipeline` read the network of the contigs from it (see
 `pipeline` writes the contact map of all the contigs, grouped by cluster, over
 it, from the final tables, with `metacooler reassign` (`--output-map` writes
 it to another file; `--no-metacool` writes none, and leaves the map as it
-was). It is written through metacooler, in a fresh copy, which holds none of
-the space that the edits making it leave behind, so a map updated in place does
-not grow with each run. A `.metacool` file is the contact map format of
+was). It is written through metacooler, from a fresh copy of the map, so a map
+updated in place holds at most the space that the edits of its last run left
+behind: it does not grow with each run. A `.metacool` file is the contact map format of
 [metacooler](https://github.com/js2264/metacooler): a
 [cooler](https://github.com/open2c/cooler) whose chromosomes are the contigs,
 grouped by genome. `cooler` and the tools built on it read it as any `.cool`
@@ -192,8 +192,10 @@ The input map is replaced only once the map of the clusters is written and
 validated in full. metaTOR writes it in an edit session of metacooler
 (`metacooler.staged_edit`): every edit of the step goes into one copy of the
 map, staged in a private directory next to it (`.<map>.<uuid>.<n>.d/`), which
-metacooler validates in full, then renames over the map through a fresh file,
-which holds none of the space that the edits left behind.
+metacooler validates in full, then renames over the map. The copy starts fresh,
+so the map holds at most the space that the edits of the last run left behind
+(HDF5 does not reclaim the space of what an edit replaces): a map updated run
+after run does not grow.
 When it cannot be written, the run stops with the reason, and the input map is
 left as it was, as it is when the run stops for any other reason (Ctrl-C
 included). A map given through a symbolic link is updated where the link
@@ -202,10 +204,10 @@ copy are next to the file it points to. The map keeps its mode, its owner and
 group, and its extended attributes (POSIX ACLs included), where the run may
 set them: a warning names those it cannot keep (the owner of a map of another
 user, written through its group, for example). The directory of the map must
-be writable, with room for two copies of the map at most (the copy of the
-edit session, and the map that `metacooler reassign` writes from the input
-map), plus cooler's temporary files, and a map without write permission is
-refused before any work.
+be writable, with room, beside the map, for the copy of the edit session and
+for the new map that `metacooler reassign` writes from the input map, plus
+cooler's temporary files, and a map without write permission is refused
+before any work.
 `--output-map FILE` leaves the input map as it was: a run from an entry of a
 `.mmetacool` collection needs it, as a run does not update a collection in
 place, and a FILE that exists is replaced only with `-F`. FILE is a map of its

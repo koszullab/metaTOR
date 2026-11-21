@@ -195,8 +195,8 @@ of the run before any clustering, every contig in `__unbinned__` (by `hicstuff p
 network from the map (see [Starting from a contact map](#starting-from-a-contact-map)) and, at its end,
 writes the map of the clusters over it, from the final tables, with `metacooler reassign`
 (`--output-map` writes it to another file; `--no-metacool` writes none, and leaves the map as it was). It
-is written through metacooler, in a fresh copy, which holds none of the space that the edits making it
-leave behind, so a map updated in place does not grow with each run. The map also stores the clustering rounds of the
+is written through metacooler, from a fresh copy of the map, so a map updated in place holds at most the
+space that the edits of its last run left behind: it does not grow with each run. The map also stores the clustering rounds of the
 run (the overlapping, recursive and final clusters, with their contigs), which the run writes as
 `clusters.txt` and `cluster_members.txt` too. For a run whose `partition` and `validation` were not given
 the map, `metacooler reassign` writes the map of its clusters from the map of its contigs and its tables
@@ -332,8 +332,9 @@ included, but for its assembly name and its history. The new map is
 written through metacooler, in an edit session (`metacooler.staged_edit`): every
 edit of the step goes into one copy of the map, staged in a private directory
 next to it (`.<map>.<uuid>.<n>.d/`), which `metacooler` validates in full, then
-renames over the map through a fresh file, which holds none of the space that
-the edits left behind, so a map updated run after run does not grow. When the map cannot be written, the run stops with the reason, and the
+renames over the map. The copy starts fresh, so the map holds at most the space
+that the edits of the last run left behind, and a map updated run after run
+does not grow. When the map cannot be written, the run stops with the reason, and the
 map is left as it was, as it is when the run stops for any other reason (Ctrl-C
 included). A map given through a symbolic link is updated where the link
 points (the link keeps pointing at it), and its lock and its staged copy are
@@ -342,9 +343,9 @@ file: a symbolic link there is replaced, not its target, and a hard link of
 the input map (the same file under another name) is refused before any work.
 The map keeps its mode, owner, group and extended attributes, where the run
 may set them (a warning names those it cannot keep). The directory of the map
-must be writable, with room for two copies of the map at most, plus cooler's
-temporary files, and a map without write permission is refused before any
-work. A run from an entry of a `.mmetacool` collection needs `--output-map`,
+must be writable, with room, beside the map, for its copy and for the new map
+that `metacooler reassign` writes from it, plus cooler's temporary files, and a
+map without write permission is refused before any work. A run from an entry of a `.mmetacool` collection needs `--output-map`,
 and a FILE that exists, a symbolic link too, is replaced only with `-F`. A run that updates a map in place warns, before any work, of the
 clusters and the clustering rounds of an earlier run (or of another binner)
 that it replaces there: `--output-map` keeps them, as it leaves the map as it

@@ -162,8 +162,9 @@ All notable changes to this project will be documented in this file.
   the edits of a step go into one copy of the map, staged in a private
   directory next to it (`.<map>.<uuid>.<n>.d/`), which metacooler validates
   in full, then renames over the map, so a run that stops, for any reason,
-  leaves it as it was; it installs it through a fresh file, so a map
-  updated run after run does not grow. A map given through a symbolic link
+  leaves it as it was; the copy starts fresh, so the map holds at most the
+  space that the edits of the last run left behind, and a map updated run
+  after run does not grow. A map given through a symbolic link
   is updated where the link points, and the link keeps pointing at it. The
   map keeps its mode, owner, group and extended attributes where the run may
   set them, and a warning names those it cannot keep. `--output-map FILE`
@@ -179,9 +180,10 @@ All notable changes to this project will be documented in this file.
   (`annotate --inplace`, `normalize`...), stops before any work, naming the
   process that holds it; runs from one map, each with its own
   `--output-map`, run side by side. So the directory of the map must be
-  writable, with room for two copies of the map at most, plus cooler's
-  temporary files, and a map whose directory is not, or a map without write
-  permission, is refused before any work: write it elsewhere with
+  writable, with room, beside the map, for its copy and for the new map that
+  `metacooler reassign` writes from it, plus cooler's temporary files, and a
+  map whose directory is not, or a map without write permission, is refused
+  before any work: write it elsewhere with
   `--output-map`. A map that changed since the run read it (another run
   replaced it, or a program that takes no metacooler lock, `cooler balance`
   or a script, wrote it) is refused when the run writes its map, rather
