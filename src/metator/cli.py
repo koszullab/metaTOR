@@ -83,40 +83,44 @@ def private_tmp_dir(tmpdir, clean_up=True):
         logger.info(f"The temporary directory of the run, {tmp_dir}, and its files are kept (-N).")
 
 
-# The directories of the clusters in the output directory of a validation or
-# pipeline run: final_clusters, which the run writes there, and -F replaces,
-# and recursive_clusters, which an earlier version wrote there, and -F removes
-# (see EARLIER_OUTPUTS).
-CLUSTER_DIRS = ("recursive_clusters", "final_clusters")
+# What a validation or pipeline run writes in its output directory besides its
+# log: final_clusters, which -F replaces.
+CLUSTER_DIRS = ("final_clusters",)
 
-# What a validation or pipeline run of an earlier version of metaTOR wrote in
-# its output directory, which a run now writes in its temporary directory,
-# which -N keeps: its tables, miComplete's, and the FASTA files of the
-# recursive clusters, under their 2.0 names and under those of 1.x
-# (bin_summary.txt, recursive_bin/). The map of the clusters holds what the
-# tables hold, and metator dump writes them from it. An earlier run's, left
-# in the output directory, would pass for this run's: refused without -F,
-# removed with it (see refuse_earlier_outputs).
+# The results of a run of an earlier version of metaTOR in the output directory
+# of a validation or pipeline run, which a run of 2.0 does not write there and
+# does not replace: the tables and the recursive clusters of a validation of
+# 2.0's development builds, which a run now keeps in its temporary directory;
+# and the outputs of 1.x (its tables and networks, its directories of bins,
+# its plots and clustering matrices). Left next to this run's final_clusters,
+# they would pass for its results: refused, with or without -F, and never
+# removed (see refuse_earlier_outputs). A user's own file of one of these names
+# is refused too, and left as it is.
 EARLIER_OUTPUTS = (
-    "contig_data_final.txt",
+    "contig_data_*.txt",
     "cluster_summary.txt",
-    "bin_summary.txt",
     "binning.txt",
     "clusters.txt",
     "cluster_members.txt",
     "overlapping_micomplete_results.txt",
     "recursive_micomplete_step_*.txt",
     "recursive_clusters",
+    "bin_summary.txt",
+    "network.txt",
+    "clustering_matrix*.npz",
     "recursive_bin",
+    "final_bin",
+    "final_bin_unscaffold",
+    "overlapping_bin",
+    "scaffold_bin",
+    "plot",
 )
 
-
-# What an mge run of an earlier version of metaTOR wrote in its output
-# directory and no longer writes: the summary of its MGE clusters (1.x's, and
-# that of a development build of 2.0), which the round mge of the map holds
-# (metator dump writes the rounds). An earlier run's, left next to this run's
-# mges_binned.fa, would pass for this run's: refused without -F, removed with
-# it (see refuse_earlier_outputs).
+# The summary of the MGE clusters that an mge run of an earlier version wrote
+# in its output directory (1.x's, and that of a development build of 2.0),
+# which a run now stores in the map, as the round mge: left next to this run's
+# mges_binned.fa, it would pass for this run's. Refused, with or without -F,
+# and never removed (see refuse_earlier_outputs).
 MGE_EARLIER_OUTPUTS = ("mges_bin_summary.tsv", "mges_cluster_summary.tsv")
 
 
@@ -125,25 +129,30 @@ def _within(path, directory):
     return os.path.commonpath([path, directory]) == directory
 
 
+def _earlier_directories():
+    """The directories among EARLIER_OUTPUTS."""
+    return tuple(name for name in EARLIER_OUTPUTS if "." not in name)
+
+
 def refuse_tmpdir_in_the_clusters(tmpdir, outdir):
-    """Refuse, as a usage error, before the run creates or removes anything, a
-    --tmpdir in a directory of the clusters that a validation or pipeline run
-    writes in its output directory, outdir (see CLUSTER_DIRS): the run makes
-    that directory anew, which -F removes, with the temporary directory of the
-    run in it, where a run without -F would find the directory of an earlier
-    run. --tmpdir is in it as written, or once the symbolic links of both are
-    resolved, but for the directory of the clusters itself: -F removes a
-    symbolic link, not its target."""
+    """Refuse, as a usage error, before the run creates or removes anything,
+    a --tmpdir in a directory of the output directory, outdir, that a
+    validation or pipeline run makes anew (final_clusters, which -F replaces,
+    with the temporary directory of the run in it) or refuses as the results
+    of an earlier run (see EARLIER_OUTPUTS: the run would make it, then
+    refuse it). --tmpdir is in it as written, or once the symbolic links of
+    both are resolved, but for that directory itself: -F replaces a symbolic
+    link, not its target."""
     base = tmpdir or "./tmp"
-    for name in CLUSTER_DIRS:
+    for name in (*CLUSTER_DIRS, *_earlier_directories()):
         directory = join(outdir or ".", name)
         as_written = _within(os.path.abspath(base), os.path.abspath(directory))
         resolved = _within(os.path.realpath(base), join(os.path.realpath(outdir or "."), name))
         if as_written or resolved:
             where = (
                 "where the run writes its clusters, which it makes anew (-F replaces an earlier one)"
-                if name == "final_clusters"
-                else "where an earlier version wrote its recursive clusters, which -F removes"
+                if name in CLUSTER_DIRS
+                else "where an earlier version wrote its results, which the run refuses"
             )
             raise click.BadParameter(
                 f"{base} is in {directory}, {where}: give a temporary directory outside it.",
@@ -151,44 +160,34 @@ def refuse_tmpdir_in_the_clusters(tmpdir, outdir):
             )
 
 
-# Where what an earlier run wrote in its output directory is now (see
-# refuse_earlier_outputs), by the outputs of the runs of an earlier version.
-EARLIER_OUTPUTS_HELD = {
-    EARLIER_OUTPUTS: (
-        "The map of the clusters holds what the tables held (metator dump writes them from it), and -N keeps the "
-        "tables of a run in its temporary directory."
-    ),
-    MGE_EARLIER_OUTPUTS: "The round mge of the map holds what the summary held (metator dump writes the rounds).",
-}
+def _is_or_holds(path, kept):
+    """Whether path is one of the files of kept (the maps of the run), or a directory holding one."""
+    real = os.path.realpath(path)
+    return any(real == os.path.realpath(file) or _within(os.path.realpath(file), real) for file in kept if file)
 
 
-def refuse_earlier_outputs(outdir, force, outputs=EARLIER_OUTPUTS):
-    """Refuse, without force (-F), before any work, what a run of an earlier
-    version of metaTOR wrote in outdir, which a run no longer writes there
-    (outputs: those of a validation or pipeline run, EARLIER_OUTPUTS, or of an
-    mge run, MGE_EARLIER_OUTPUTS): the reason, which names them, is logged as
-    an error, then ValueError is raised."""
-    found = sorted({path for pattern in outputs for path in glob.glob(join(glob.escape(outdir), pattern))})
-    if found and not force:
+def refuse_earlier_outputs(outdir, outputs=EARLIER_OUTPUTS, keep=()):
+    """Refuse, with or without -F, before any work, the results of a run of
+    an earlier version of metaTOR in outdir, which this run does not write
+    and does not replace (outputs: those of a validation or pipeline run,
+    EARLIER_OUTPUTS, or of an mge run, MGE_EARLIER_OUTPUTS): nothing is
+    removed. A symbolic link counts, even one to nothing; the maps of the run
+    (keep: its input map and its --output-map) never do, nor a directory that
+    holds one. The reason, which names them, is logged as an error, then
+    ValueError is raised."""
+    kept = [mtmc.map_file(path) if path else None for path in keep]
+    found = sorted(
+        path
+        for path in {path for pattern in outputs for path in glob.glob(join(glob.escape(outdir), pattern))}
+        if not _is_or_holds(path, kept)
+    )
+    if found:
         logger.error(
-            f"{outdir} holds what an earlier run wrote there, which metaTOR 2.0 no longer writes in the output "
-            f"directory: {mtmc._shown([os.path.basename(path) for path in found])}. {EARLIER_OUTPUTS_HELD[outputs]} "
-            "Remove them, or give -F to remove them."
+            f"{outdir} holds results of an earlier run, which this run does not write and does not replace: "
+            f"{mtmc._shown([os.path.basename(path) for path in found])}. Move them away, or give the run another "
+            "output directory with -o."
         )
         raise ValueError
-    return found
-
-
-def remove_earlier_outputs(outdir, force, outputs=EARLIER_OUTPUTS):
-    """Remove what a run of an earlier version wrote in outdir (see
-    refuse_earlier_outputs, which refuses it without force): a symbolic link is
-    removed, not its target."""
-    for path in refuse_earlier_outputs(outdir, force, outputs):
-        logger.info(f"Removing {path}, which an earlier run wrote.")
-        if os.path.isdir(path) and not os.path.islink(path):
-            shutil.rmtree(path)
-        else:
-            os.remove(path)
 
 
 def refuse_output_dir(path, force):
@@ -408,11 +407,9 @@ def start_step(
     for path in cluster_dirs:
         refuse_output_dir(path, force)
     if partition:
-        refuse_earlier_outputs(outdir, force)
+        refuse_earlier_outputs(outdir, keep=(input_map, output_map))
     for path in cluster_dirs:
         make_output_dir(path, force)
-    if partition:
-        remove_earlier_outputs(outdir, force)
     return log_file, metacool_file, bins_prefix, planned, stored, clusters
 
 
@@ -889,7 +886,7 @@ TMPDIR_TABLES_HELP = (
     "Temporary directory, where the run writes, in a directory of its own, the clusters that miComplete checks (at "
     "most the size of the assembly), miComplete's results and the tables of the validation, and, from a compressed "
     "assembly, its decompressed copy: give it room for both. Not in final_clusters, which the run makes anew, nor in "
-    "recursive_clusters, which -F removes."
+    "a directory of the results of an earlier run (recursive_clusters, final_bin...), which the run refuses."
 )
 NO_CLEAN_UP_TABLES_HELP = (
     "Do not remove the temporary directory of the run, which the log names: it keeps miComplete's results, the FASTA "
@@ -1142,7 +1139,10 @@ def network(
     it until [cyan]metator partition MAP[/] partitions the new network. The
     map is updated in place (or written to --output-map), and locked while
     the run writes it. [cyan]metator dump[/] writes the network, as
-    network.txt, from the map of the clusters of a run.
+    network.txt, from the map of the clusters of a run; from a map that only
+    metator network has run on, which dump refuses, [cyan]metacooler network
+    MAP --level contig --balance metator_<normalization>[/] writes it, with a
+    row per contig for the contacts within it, which are no edge.
     """
     # Private temporary directory inside --tmpdir, and the lock of the map
     # the run writes, held until its end.
@@ -1312,11 +1312,12 @@ def partition(
 @outdir_option(default="./", help="Path to the directory to write the output.")
 @prefix_option("the recursive clusters")
 @force_option(
-    "Replace the final clusters of an earlier run in the output directory (final_clusters), remove the tables and the "
-    "recursive clusters that earlier versions wrote there, and replace an existing --output-map."
+    "Replace the final clusters of an earlier run in the output directory (final_clusters), and an existing "
+    "--output-map. The other results of an earlier run in the output directory (its tables, recursive_clusters, "
+    "1.x's outputs) are refused, with or without -F: they are never removed."
 )
 @tmpdir_option(help=TMPDIR_TABLES_HELP)
-@threads_option(help="Number of parallel threads allocated for the partition.")
+@threads_option(help="Number of parallel threads, for the partition and miComplete.")
 @no_clean_up_option(help=NO_CLEAN_UP_TABLES_HELP)
 @output_map_option(
     help="Write the contact map of the clusters to FILE (replaced only with -F), and leave MAP as it was. By default, "
@@ -1472,8 +1473,9 @@ def validation(
 @outdir_option(help="The output directory. Default: current directory.")
 @prefix_option("the clusters")
 @force_option(
-    "Replace the final clusters of an earlier run in the output directory (final_clusters), remove the tables and the "
-    "recursive clusters that earlier versions wrote there, and replace an existing --output-map."
+    "Replace the final clusters of an earlier run in the output directory (final_clusters), and an existing "
+    "--output-map. The other results of an earlier run in the output directory (its tables, recursive_clusters, "
+    "1.x's outputs) are refused, with or without -F: they are never removed."
 )
 @tmpdir_option(help=TMPDIR_TABLES_HELP)
 @threads_option(help="Number of parallel threads allocated for the partition and the validation.")
@@ -1569,7 +1571,7 @@ def pipeline(
         # once it is checked.
         final_fasta_dir = join(outdir, "final_clusters")
         refuse_output_dir(final_fasta_dir, force)
-        refuse_earlier_outputs(outdir, force)
+        refuse_earlier_outputs(outdir, keep=(map, output_map))
 
         # The network, as metator network makes it: the contig data,
         # measured on the assembly and read from the map, before the clusters
@@ -1579,7 +1581,6 @@ def pipeline(
         check_assembly(assembly)
         network, contacts = run_network(map, planned, assembly, depth, enzyme, normalization, tmp_dir)
         make_output_dir(final_fasta_dir, force)
-        remove_earlier_outputs(outdir, force)
         edges = mtn.map_network(map, mtn.network_weights(network.table, normalization), contacts)
 
         # Partition the network, as metator partition does.
@@ -1668,8 +1669,8 @@ def pipeline(
 )
 @outdir_option(help="Path to the output directory where the output will be written. Default: current directory.")
 @force_option(
-    "Replace an existing --output-map, and remove the summary of the MGE clusters that an earlier version wrote in the "
-    "output directory (mges_bin_summary.tsv or mges_cluster_summary.tsv), which the round mge of the map replaces."
+    "Replace an existing --output-map. A summary of the MGE clusters that an earlier version wrote in the output "
+    "directory (mges_bin_summary.tsv or mges_cluster_summary.tsv) is refused, with or without -F: it is never removed."
 )
 @tmpdir_option(
     help="Path to temporary directory: where metacooler copies a compressed assembly, plain, while it reads it. mge "
@@ -1730,7 +1731,7 @@ def mge(
         check_assembly(assembly)
         # The summary of an earlier version, which would pass for this run's.
         outdir = outdir or "."
-        refuse_earlier_outputs(outdir, force, MGE_EARLIER_OUTPUTS)
+        refuse_earlier_outputs(outdir, MGE_EARLIER_OUTPUTS, keep=(map, output_map))
 
         # The MGE contigs, and their clusters from the contacts of the map:
         # what the map cannot give is refused before anything is written.
@@ -1739,7 +1740,6 @@ def mge(
             summary, mge_bins = mtm.mge_binning(map, mges_list, threshold_bin=threshold_bin, random=random)
             # The output directory, and one record per MGE cluster.
             os.makedirs(outdir, exist_ok=True)
-            remove_earlier_outputs(outdir, force, MGE_EARLIER_OUTPUTS)
             fasta = join(outdir, "mges_binned_random.fa" if random else "mges_binned.fa")
             mtm.write_mges_fasta(map, assembly, mge_bins, fasta, temp_dir=tmp_dir)
         except mtmc.MetacoolError as error:

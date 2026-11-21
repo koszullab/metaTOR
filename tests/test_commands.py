@@ -475,28 +475,21 @@ def test_pipeline_refuses_existing_outputs(existing, a_map, tmp_path, run_cli, l
 def test_pipeline_force_replaces_outputs(a_map, network_from_a_map, tmp_path, run_cli, logged):
     """With --force the output directories are emptied once the arguments
     and the assembly are checked, then the run goes on (here up to the
-    partition, which network_from_a_map stops): final_clusters is replaced,
-    and the summary and recursive clusters of an earlier validation, which a
-    run now keeps in its temporary directory, are removed, under the names
-    of 2.0 and of 1.x (bin_summary.txt, recursive_bin: see
-    metator.cli.EARLIER_OUTPUTS). The other outputs that metaTOR 1.x named
-    after bins, the plots of an earlier run, and the overlapping clusters
-    that partition wrote before it stored them in the map pass for no output
-    of this run: they are neither refused nor removed."""
-    for existing in ["final_clusters", "recursive_clusters", "recursive_bin"]:
-        (tmp_path / "out" / existing).mkdir(parents=True)
-        (tmp_path / "out" / existing / "stale.fa").write_text(">old\nA\n")
-    others = ["overlapping_bin", "final_bin", "plot", "overlapping_clusters"]
-    for existing in others:
-        (tmp_path / "out" / existing).mkdir(parents=True)
-        (tmp_path / "out" / existing / "earlier.fa").write_text(">old\nA\n")
-    (tmp_path / "out" / "bin_summary.txt").write_text("earlier\n")
+    partition, which network_from_a_map stops): final_clusters, which the
+    run writes, is replaced. A directory that no version of metaTOR writes in
+    the output directory any more, and that would pass for no result of this
+    run (the overlapping clusters of a development build), is left as it is;
+    the results of an earlier run are refused, with or without -F (see
+    test_cli's test_the_outputs_of_an_earlier_version)."""
+    (tmp_path / "out" / "final_clusters").mkdir(parents=True)
+    (tmp_path / "out" / "final_clusters" / "stale.fa").write_text(">old\nA\n")
+    (tmp_path / "out" / "overlapping_clusters").mkdir(parents=True)
+    (tmp_path / "out" / "overlapping_clusters" / "earlier.fa").write_text(">old\nA\n")
     args = [a_map(), "-a", global_args["SUBSET_FASTA"], "-F", "-o", str(tmp_path / "out"), "-T", str(tmp_path / "tmp")]
     with pytest.raises(RuntimeError, match=r"^network built$"):
         run_cli("pipeline", *args)
-    assert not list((tmp_path / "out").glob("*/stale.fa"))
-    assert not any((tmp_path / "out" / name).exists() for name in ["recursive_clusters", "recursive_bin", "bin_summary.txt"])
-    assert all((tmp_path / "out" / name / "earlier.fa").exists() for name in others)
+    assert not (tmp_path / "out" / "final_clusters" / "stale.fa").exists()
+    assert (tmp_path / "out" / "overlapping_clusters" / "earlier.fa").exists()
     assert not [message for _, message in logged() if message.startswith("Removed ")]
 
 
