@@ -1532,6 +1532,28 @@ def test_a_map_updated_again_and_again_does_not_grow(metagenome, binning, tmp_pa
     metacooler.validate(str(metacool), full=True)
 
 
+def test_a_network_stored_again_and_again_stays_bounded(metagenome, metagenome_inputs, tmp_path):
+    """The network stored in place run after run (metator network) stays
+    bounded as the map of the clusters does: each edit session starts from a
+    fresh copy of the map, so the map holds at most the space that the edits
+    of one run left behind (about 28 kB here, which the second run adds).
+    From the second run on, it keeps its size, but for the history of the
+    runs that its metadata gains (two annotate entries a run: the columns of
+    the network dropped, then added again), which the edits of a run
+    rewrite: two pages in six runs."""
+    metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, metagenome_inputs["pairs"])
+    names = metacooler.MetaCooler(str(metacool)).contigs["name"]
+    hits = mtn.contig_hits(mtn.contig_contacts(str(metacool)), len(names))
+    table = mtn.contig_data_table(assembly_contig_data(metagenome_inputs), names, hits)
+    sizes = []
+    for _ in range(6):
+        mtmc.store_network(str(metacool), str(metacool), mtmc.Network(table, "empirical_hit"), force=True)
+        sizes.append(metacool.stat().st_size)
+    assert max(sizes[1:]) - sizes[1] < 12_000, sizes
+    assert len(metacooler.MetaCooler(str(metacool)).metadata["annotate"]) == 1 + 2 * 5
+    metacooler.validate(str(metacool), full=True)
+
+
 def _one_round(metacool):
     """The tables of one clustering round, overlapping: one cluster of the
     first two contigs of the map."""
