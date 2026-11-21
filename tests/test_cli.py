@@ -2107,6 +2107,54 @@ def _earlier_run(command, tmp_path):
     return files
 
 
+@pytest.mark.parametrize("command", ["validation", "pipeline"])
+@pytest.mark.parametrize(
+    "where", ["in final_clusters", "recursive_clusters", "through a link of -o", "through a link of final_clusters"]
+)
+def test_tmpdir_in_the_clusters_refused(command, where, stub_pipeline, tmp_path, run_cli):
+    """A --tmpdir in a directory of the clusters that a validation or
+    pipeline run writes, which it makes anew (-F removes it, and the
+    temporary directory of the run with it), is refused as a usage error
+    before the run creates or removes anything: the clusters of an earlier
+    run stay, and no temporary directory is made. It is in it as written, or
+    once the symbolic links are resolved (an output directory given through
+    a link), or through a directory of the clusters that is a link, which -F
+    removes, not its target."""
+    metacool = _contig_map(tmp_path / "network.metacool", network=True, partition=True)
+    earlier = _earlier_run("validation", tmp_path)
+    out = tmp_path / "out"
+    if where == "through a link of -o":
+        (tmp_path / "alias").symlink_to(out)
+    if where == "through a link of final_clusters":
+        shutil.move(out / "final_clusters", tmp_path / "elsewhere")
+        (out / "final_clusters").symlink_to(tmp_path / "elsewhere")
+        earlier = [tmp_path / "elsewhere" / "earlier.fa", earlier[0]]
+    outdir = tmp_path / "alias" if where == "through a link of -o" else out
+    tmpdir = {
+        "in final_clusters": out / "final_clusters" / "tmp",
+        "recursive_clusters": out / "recursive_clusters",
+        "through a link of -o": out / "final_clusters" / "tmp",
+        "through a link of final_clusters": out / "final_clusters" / "tmp",
+    }[where]
+    clusters = outdir / ("recursive_clusters" if where == "recursive_clusters" else "final_clusters")
+    if command == "validation":
+        args = _step_run("validation", metacool, tmp_path, "-o", outdir, "-T", tmpdir, "-F")
+    else:
+        args = [metacool, "-a", _assembly(tmp_path), "-o", outdir, "-T", tmpdir, "-F"]
+    before = sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*"))
+    # The map made, nothing read yet.
+    stub_pipeline.clear()
+    result = run_cli(command, *args, exit_code=2)
+    message = (
+        f"Invalid value for '-T' / '--tmpdir': {tmpdir} is in {clusters}, where the run writes its clusters, which it "
+        "makes anew (-F replaces an earlier one): give a temporary directory outside it."
+    )
+    assert message in " ".join(result.output.replace("│", " ").split())
+    assert all(path.exists() for path in earlier)
+    assert sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*")) == before
+    assert not stub_pipeline
+
+
 @pytest.mark.parametrize("command", ["partition", "validation"])
 def test_help_of_a_step_on_a_map(command, run_cli):
     """The help of partition and validation shows MAP, their first argument,

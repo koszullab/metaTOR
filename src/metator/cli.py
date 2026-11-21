@@ -86,6 +86,38 @@ def private_tmp_dir(tmpdir, clean_up=True):
             os.rmdir(base)
 
 
+# The directories of the clusters that a validation or pipeline run writes in
+# its output directory, which -F replaces.
+CLUSTER_DIRS = ("recursive_clusters", "final_clusters")
+
+
+def _within(path, directory):
+    """Whether path is directory, or in it (both absolute)."""
+    return os.path.commonpath([path, directory]) == directory
+
+
+def refuse_tmpdir_in_the_clusters(tmpdir, outdir):
+    """Refuse, as a usage error, before the run creates or removes anything,
+    a --tmpdir in a directory of the clusters that a validation or pipeline
+    run writes in its output directory, outdir (see CLUSTER_DIRS): the run
+    makes that directory anew, which -F removes, with the temporary
+    directory of the run in it, where a run without -F would find the
+    directory of an earlier run. --tmpdir is in it as written, or once the
+    symbolic links of both are resolved, but for the directory of the
+    clusters itself: -F removes a symbolic link, not its target."""
+    base = tmpdir or "./tmp"
+    for name in CLUSTER_DIRS:
+        directory = join(outdir or ".", name)
+        as_written = _within(os.path.abspath(base), os.path.abspath(directory))
+        resolved = _within(os.path.realpath(base), join(os.path.realpath(outdir or "."), name))
+        if as_written or resolved:
+            raise click.BadParameter(
+                f"{base} is in {directory}, where the run writes its clusters, which it makes anew (-F replaces an "
+                "earlier one): give a temporary directory outside it.",
+                param_hint="'-T' / '--tmpdir'",
+            )
+
+
 def refuse_output_dir(path, force):
     """Refuse an existing output directory of bins, unless --force replaces
     it: a symbolic link too, even one to nothing."""
@@ -1351,8 +1383,10 @@ def validation(
     # if the contamination decrease without a huge decrease of the completion
     # keep the new bins. Otherwise go back to the old state.
 
-    # Private temporary directory inside --tmpdir, and the lock of the map
-    # the run writes, held until its end.
+    # Private temporary directory inside --tmpdir, out of the directories of
+    # the clusters, and the lock of the map the run writes, held until its
+    # end.
+    refuse_tmpdir_in_the_clusters(tmpdir, outdir)
     with private_tmp_dir(tmpdir, clean_up=not no_clean_up) as tmp_dir, ExitStack() as held:
         # Defined the output directory and output file names.
         outdir = outdir or "."
@@ -1504,8 +1538,10 @@ def pipeline(
     decontaminates the clusters when it's necessary; it is the critical step
     for memory usage (~40G).
     """
-    # Private temporary directory inside --tmpdir, and the lock of the map
-    # the run writes, held until its end.
+    # Private temporary directory inside --tmpdir, out of the directories of
+    # the clusters, and the lock of the map the run writes, held until its
+    # end.
+    refuse_tmpdir_in_the_clusters(tmpdir, outdir)
     with private_tmp_dir(tmpdir, clean_up=not no_clean_up) as tmp_dir, ExitStack() as held:
         # Defined the output directory and output file names.
         outdir = outdir or "."
