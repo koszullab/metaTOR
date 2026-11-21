@@ -1504,17 +1504,19 @@ def test_a_map_updated_in_place_keeps_its_mode(metagenome, binning, tmp_path, mo
 
 
 def test_a_map_updated_again_and_again_does_not_grow(metagenome, binning, tmp_path):
-    """A map updated in place run after run keeps its size, but for the
-    history of the runs that its metadata gains (it grew by what each run's
-    edits replaced)."""
+    """A map updated in place run after run stays bounded: each edit session
+    starts from a fresh copy of the map, so the map holds at most the space
+    that the edits of one run left behind. From the second run on, it keeps
+    its size, but for the history of the runs that its metadata gains (it
+    grew by what each run's edits replaced)."""
     metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
     sizes = []
-    for _ in range(4):
+    for _ in range(6):
         mtmc.reassign_metacool(
             str(metacool), str(binning["contig_data"]), str(metacool), bin_summary=str(binning["bin_summary"]), force=True
         )
         sizes.append(metacool.stat().st_size)
-    assert max(sizes) - min(sizes) < 8_000, sizes
+    assert max(sizes[1:]) - sizes[1] < 8_000, sizes
     metacooler.validate(str(metacool), full=True)
 
 
@@ -1577,18 +1579,17 @@ def test_rounds_name_the_map_that_lacks_their_contigs(metagenome, binning, tmp_p
 
 
 def test_rounds_written_in_place_keep_the_size_of_the_map(metagenome, binning, tmp_path):
-    """Rounds written in place, run after run, keep the size of the map:
-    write_rounds copies the map without the rounds it held, then stores the
-    new ones. Copied with them, then replaced, they left their space in the
-    file, which HDF5 does not reclaim: the map grew with each run. It passes
-    against this commit's first version, which left the rounds out and had
-    no test of it; it fails when they are copied."""
+    """Rounds written in place, run after run, keep the size of the map from
+    the second run on: each edit session starts from a fresh copy of the
+    map, so the map holds the space of the rounds that the last run replaced
+    at most, which HDF5 does not reclaim. Replaced in the map itself, they
+    left their space in the file at every run: the map grew with each run."""
     metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
     sizes = []
-    for _ in range(4):
+    for _ in range(6):
         mtmc.write_rounds(str(metacool), str(metacool), _one_round(metacool), force=True)
         sizes.append(metacool.stat().st_size)
-    assert max(sizes) - min(sizes) < 1024, sizes
+    assert max(sizes[1:]) - sizes[1] < 1024, sizes
 
 
 def test_rounds_written_to_a_copy_of_a_map(metagenome, binning, tmp_path):
