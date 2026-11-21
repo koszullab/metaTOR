@@ -34,11 +34,13 @@ def held_lock(metacool, command="metator pipeline"):
     process = subprocess.Popen(
         [sys.executable, "-c", HOLD, str(metacool), command], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True
     )
+    stdin, stdout = process.stdin, process.stdout
+    assert stdin is not None and stdout is not None
     try:
-        assert process.stdout.readline().strip() == "held"
+        assert stdout.readline().strip() == "held"
         yield json.loads(lock_file(metacool).read_text())
     finally:
-        process.stdin.close()
+        stdin.close()
         process.wait(timeout=60)
 
 

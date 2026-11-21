@@ -113,10 +113,14 @@ def test_micomplete_runs_in_the_process_group_of_the_run(tmp_path, monkeypatch):
     """miComplete runs in the process group of the run, not a session of its
     own: a Ctrl-C in the terminal, or the signal that a job scheduler sends
     to the job, reaches it too. A stand-in for miComplete writes its process
-    group."""
+    group, which Python itself reads (no ps)."""
+    import shlex
+    import sys
+
     stand_in = tmp_path / "python"
     groups = tmp_path / "groups"
-    stand_in.write_text(f"#!/bin/sh\nps -o pgid= -p $$ >> {groups}\nexit 3\n")
+    group_of_the_stand_in = "import os; print(os.getpgrp())"
+    stand_in.write_text(f"#!/bin/sh\n{shlex.quote(sys.executable)} -c {shlex.quote(group_of_the_stand_in)} >> {groups}\nexit 3\n")
     stand_in.chmod(0o755)
     monkeypatch.setattr(mtv.sys, "executable", str(stand_in))
     bins = tmp_path / "bins"

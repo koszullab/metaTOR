@@ -469,12 +469,14 @@ def test_read_contig_data_size_not_a_whole_number(size, tmp_path):
 
 
 def test_outfile_in_a_file(metagenome, binning, tmp_path):
-    """An outfile whose directory cannot be made: a MetacoolError, with the
-    message of the OSError."""
+    """An outfile whose directory cannot be made: a MetacoolError that says
+    so, with the reason of the OSError."""
     metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
     (tmp_path / "file").write_text("not a directory")
-    with pytest.raises(mtmc.MetacoolError, match=r"^\[Errno 17\] File exists: ") as error:
-        mtmc.reassign_metacool(str(metacool), str(binning["contig_data"]), str(tmp_path / "file" / "map.metacool"))
+    outfile = tmp_path / "file" / "map.metacool"
+    message = f"The directory of {outfile} cannot be made (File exists): write the map elsewhere."
+    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$") as error:
+        mtmc.reassign_metacool(str(metacool), str(binning["contig_data"]), str(outfile))
     assert isinstance(error.value.__cause__, FileExistsError)
 
 
@@ -997,13 +999,15 @@ def test_map_of_the_bins_from_a_contig_data_of_other_contigs(metagenome, binning
 @pytest.mark.parametrize("how", ["path", "root URI", "link to the outfile", "outfile a link"])
 def test_map_of_the_bins_replaces_the_input_map(how, metagenome, binning, tmp_path, logged):
     """The outfile may be the input map itself (a rebinning into the same
-    directory): the same path (also as the URI of its root, file::/), the
-    input given as a symbolic link to the outfile, or the outfile a
-    symbolic link to the input map. The map of the bins is written in an
-    edit session of metacooler, validated, and only then replaces the input
-    map: the file that a symbolic link points to, as metacooler edits the
-    target of a link, which keeps pointing at it. No other file is left,
-    and the log says it is written."""
+    directory): the same path (also as the URI of its root, file::/), or the
+    file that the input map, given as a symbolic link, points to. The map
+    of the bins is written in an edit session of metacooler, validated, and
+    only then replaces the input map: the file that a symbolic link points
+    to, as metacooler edits the target of a link, which keeps pointing at
+    it. An outfile that is a symbolic link to the input map is a map of its
+    own: the link is replaced (force), and the input map left as it was, as
+    before the map went through metacooler. No other file is left, and the
+    log says it is written."""
     out = tmp_path / "out"
     out.mkdir()
     outfile = out / "metator.metacool"
@@ -1018,19 +1022,87 @@ def test_map_of_the_bins_replaces_the_input_map(how, metagenome, binning, tmp_pa
     before = Path(mtmc.map_file(metacool)).read_bytes()
     if how == "root URI":
         metacool = f"{metacool}::/"
-    assert mtmc.is_input_map(str(metacool), str(outfile))
+    in_place = how != "outfile a link"
+    assert mtmc.is_input_map(str(metacool), str(outfile)) == in_place
     mtmc.reassign_metacool(
         str(metacool), str(binning["contig_data"]), str(outfile), bin_summary=str(binning["bin_summary"]), force=True
     )
 
-    assert outfile.is_symlink() == (how == "outfile a link")
+    assert not outfile.is_symlink()
     metacooler.validate(str(outfile), full=True)
     assert_same_map(outfile, mtmc_map(binning, tmp_path))
     assert sorted(path.name for path in out.iterdir()) == ["metator.metacool"]
     assert ("INFO", f"{outfile} is written: the contact map of the clusters.") in logged()
-    # The input map itself is the map edited.
-    assert Path(mtmc.map_file(metacool)).read_bytes() != before
+    # In place, the input map is the map edited (through a link, its
+    # target); else it is left as it was.
+    assert (Path(mtmc.map_file(metacool)).read_bytes() == before) != in_place
+    if how == "link to the outfile":
+        assert Path(metacool).is_symlink() and Path(metacool).resolve() == outfile
     assert not [path.name for path in tmp_path.iterdir() if path.name.startswith(".") or path.suffix == ".lock"]
+
+
+@pytest.mark.parametrize("writer", ["reassign_metacool", "write_rounds"])
+def test_a_hard_link_of_the_input_map_is_refused(writer, metagenome, binning, tmp_path):
+    """An outfile that is the input map under another name (a hard link) is
+    refused before any work, with metaTOR's reason: written as a map of its
+    own, it would replace that name only, and metacooler refuses an output
+    that is the same file as an input. It updated the input map in place,
+    and the hard link kept the old map."""
+    metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
+    outfile = tmp_path / "bins.metacool"
+    os.link(metacool, outfile)
+    before = metacool.read_bytes()
+    message = (
+        f"{outfile} is a hard link of the input map {metacool}: the same file under another name. Write the map to "
+        f"another file, or to {os.path.realpath(metacool)} to update the map in place."
+    )
+    write = {
+        "reassign_metacool": lambda: mtmc.reassign_metacool(str(metacool), str(binning["contig_data"]), str(outfile), force=True),
+        "write_rounds": lambda: mtmc.write_rounds(str(metacool), str(outfile), _one_round(metacool), force=True),
+    }[writer]
+    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
+        write()
+    assert metacool.read_bytes() == before and os.path.samefile(metacool, outfile)
+    assert not [path.name for path in tmp_path.iterdir() if path.name.startswith(".") or path.suffix == ".lock"]
+
+
+def test_map_of_the_bins_whose_only_edit_is_the_reassignment(metagenome, binning, tmp_path):
+    """A map of the bins whose only edit is the reassignment (a contig data
+    without a column that metaTOR measured, no rounds, no normalization):
+    metacooler reassign writes the staged map by a rename of its own, which
+    the edit session must count as a write, and the map is written. A guard
+    for the re-pin: metacooler's revised edit session installs a map only
+    when it was written."""
+    metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
+    table = pd.read_csv(binning["contig_data"], sep="\t", dtype=str, keep_default_na=False)[["Name", "Size", "Final_cluster"]]
+    contig_data = tmp_path / "contig_data_final.txt"
+    table.to_csv(contig_data, sep="\t", index=False)
+    mtmc.reassign_metacool(str(metacool), str(contig_data), str(metacool), force=True)
+    genomes = set(metacooler.MetaCooler(str(metacool)).genomes.name.astype(str))
+    assert genomes - {"__unbinned__"} == set(table.Final_cluster) - mtmc.UNBINNED
+
+
+def test_a_map_written_as_metacooler_copies_it_keeps_metacoolers_reason(metagenome, binning, tmp_path, monkeypatch):
+    """A map that a program writes as metacooler copies it into the map of
+    the bins (to another file): the map is not written, with metacooler's
+    reason, kept, not a read of the map that would mix two maps."""
+    import metacooler.io.staging as staging
+
+    metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
+    copy_fresh = staging.copy_fresh
+
+    def copied_then_written(source, target, **kwargs):
+        copy_fresh(source, target, **kwargs)
+        state = os.stat(metacool)
+        os.utime(metacool, ns=(state.st_atime_ns, state.st_mtime_ns + 1_000_000))
+
+    monkeypatch.setattr(staging, "copy_fresh", copied_then_written)
+    outfile = tmp_path / "bins.metacool"
+    with pytest.raises(mtmc.MetacoolError) as raised:
+        mtmc.reassign_metacool(str(metacool), str(binning["contig_data"]), str(outfile))
+    assert isinstance(raised.value.__cause__, metacooler.MapChangedError)
+    assert str(raised.value) == str(raised.value.__cause__)
+    assert not outfile.exists()
 
 
 def _fail_in_reassign(uri, table, output, **kwargs):
@@ -1446,27 +1518,6 @@ def test_a_map_updated_again_and_again_does_not_grow(metagenome, binning, tmp_pa
     metacooler.validate(str(metacool), full=True)
 
 
-def test_a_map_not_copied_fresh_is_kept_with_a_warning(metagenome, binning, tmp_path, monkeypatch, logged):
-    """The map of a run is copied into a fresh file once written (see
-    _compact): a copy that fails (here, metacooler refuses it) leaves the
-    map as it was written, whole and valid, with a warning; the run goes
-    on."""
-    metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
-    before = metacool.read_bytes()
-
-    def refused(*args, **kwargs):
-        raise OSError("No space left on device")
-
-    monkeypatch.setattr(metacooler, "staged_edit", refused)
-    mtmc._compact(str(metacool))
-    assert metacool.read_bytes() == before
-    assert (
-        "WARNING",
-        f"{metacool} is written, but not copied into a fresh file (No space left on device): it holds the space that "
-        "the edits making it left behind.",
-    ) in logged()
-
-
 def _one_round(metacool):
     """The tables of one clustering round, overlapping: one cluster of the
     first two contigs of the map."""
@@ -1598,14 +1649,6 @@ def test_rounds_written_to_a_map_refused(case, metagenome, binning, tmp_path):
     assert sorted(path.name for path in tmp_path.iterdir() if path.name.startswith(".")) == []
 
 
-# The normalization of the network, which the map of the bins stores, with
-# metacooler.store_weights: from metacooler's next release (js2264/metacooler
-# pull request #19).
-needs_store_weights = pytest.mark.skipif(
-    not mtmc.stores_weights(), reason="metacooler.store_weights comes with metacooler's next release"
-)
-
-
 def _contig_map_and_final_tables(metagenome, inputs, tmp_path, measured=True):
     """The map of the contigs that a pipeline run starts from, made from its
     pairs (see tests.maps.contig_map), and its final contig data (the hits
@@ -1640,7 +1683,6 @@ def _normalized_contacts(path, name):
     return {(a, b): value for a, b, value in pairs.itertuples(index=False) if a != b}
 
 
-@needs_store_weights
 @pytest.mark.parametrize("normalization", ["empirical_hit", "length", "RS", "abundance", "theoritical_hit"])
 def test_map_of_the_bins_stores_the_normalization_of_the_network(normalization, metagenome, metagenome_inputs, tmp_path, logged):
     """Written over the map of the contigs, as a pipeline run does at its
@@ -1671,7 +1713,6 @@ def test_map_of_the_bins_stores_the_normalization_of_the_network(normalization, 
     assert not [message for level, message in logged() if level == "WARNING"]
 
 
-@needs_store_weights
 def test_map_of_the_bins_at_1kb_stores_the_weight_of_each_contig_on_its_bins(metagenome, metagenome_inputs, tmp_path):
     """From a map of the contigs at a fixed bin size, made before any
     binning: every bin of a contig has the weight of its contig."""
@@ -1693,7 +1734,6 @@ def test_map_of_the_bins_at_1kb_stores_the_weight_of_each_contig_on_its_bins(met
     np.testing.assert_allclose(weights, expected)
 
 
-@needs_store_weights
 def test_map_of_the_bins_not_written_when_its_normalization_cannot_be_stored(
     metagenome, metagenome_inputs, tmp_path, monkeypatch
 ):
@@ -1713,10 +1753,12 @@ def test_map_of_the_bins_not_written_when_its_normalization_cannot_be_stored(
     with pytest.raises(mtmc.MetacoolError, match=r"^weights refused$"):
         mtmc.reassign_metacool(str(outfile), str(contig_data_file), str(outfile), force=True, normalization="length")
     assert outfile.read_bytes() == before
-    assert sorted(path.name for path in outfile.parent.iterdir() if path.name.startswith(outfile.name)) == [outfile.name]
+    # No lock, and no staging directory (.<map>.<uuid>.<n>.d) left.
+    assert sorted(
+        path.name for path in outfile.parent.iterdir() if path.name.startswith((outfile.name, f".{outfile.name}."))
+    ) == [outfile.name]
 
 
-@needs_store_weights
 def test_map_of_the_bins_without_a_column_that_the_normalization_reads(metagenome, metagenome_inputs, tmp_path, logged):
     """A run without an enzyme has no restriction sites: the map of the bins
     is written, without the RS normalization, and a warning says why."""
@@ -1732,7 +1774,6 @@ def test_map_of_the_bins_without_a_column_that_the_normalization_reads(metagenom
     )
 
 
-@needs_store_weights
 @pytest.mark.parametrize("normalization", ["abundance", "None"])
 def test_map_of_the_bins_replaces_the_normalization_of_an_earlier_run(
     normalization, metagenome, metagenome_inputs, tmp_path, logged
@@ -1798,23 +1839,3 @@ def test_store_normalization_hands_its_weights_to_metacooler(metagenome, metagen
     metacooler.annotate(str(outfile), drop=["contigs.Shotgun_coverage", "contigs.Restriction_site"], inplace=True)
     with pytest.raises(mtmc.MetacoolError, match="reads the Shotgun_coverage and Restriction_site column"):
         mtmc.store_normalization(str(outfile), "theoritical_hit")
-
-
-def test_map_of_the_bins_with_a_metacooler_that_stores_no_weights(metagenome, metagenome_inputs, tmp_path, monkeypatch, logged):
-    """With metacooler 0.3.0, which has no store_weights: the map of the
-    bins is written as before, without the normalization, which the log
-    says, without a warning; store_normalization refuses."""
-    # metacooler exports store_weights lazily, through its __getattr__.
-    monkeypatch.setattr(mtmc, "stores_weights", lambda: False)
-    outfile, contig_data_file, _ = _contig_map_and_final_tables(metagenome, metagenome_inputs, tmp_path)
-    mtmc.reassign_metacool(str(outfile), str(contig_data_file), str(outfile), force=True, normalization="empirical_hit")
-
-    metacooler.validate(str(outfile), full=True)
-    assert list(cooler.Cooler(str(outfile)).bins()[:].columns) == ["chrom", "start", "end"]
-    assert not [message for level, message in logged() if level == "WARNING"]
-    assert any(
-        level == "INFO" and message.startswith(f"{outfile} stores no empirical_hit normalization of the network: metacooler")
-        for level, message in logged()
-    )
-    with pytest.raises(mtmc.MetacoolError, match="cannot store weights"):
-        mtmc.store_normalization(str(outfile), "empirical_hit")

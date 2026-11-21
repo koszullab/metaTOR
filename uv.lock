@@ -1835,7 +1835,7 @@ wheels = [
 [[package]]
 name = "metacooler"
 version = "0.3.0"
-source = { git = "https://github.com/js2264/metacooler?rev=72dfc97dd9414edc3c7ab15e5884d6a3d5398f28#72dfc97dd9414edc3c7ab15e5884d6a3d5398f28" }
+source = { git = "https://github.com/js2264/metacooler?rev=0fe3239781fb8e8da74b54e84fe816bb07f63547#0fe3239781fb8e8da74b54e84fe816bb07f63547" }
 dependencies = [
     { name = "click" },
     { name = "cooler" },
@@ -1906,7 +1906,7 @@ requires-dist = [
     { name = "biopython", specifier = ">=1.80" },
     { name = "igraph", specifier = ">=0.10.3" },
     { name = "matplotlib", specifier = ">=3.9" },
-    { name = "metacooler", git = "https://github.com/js2264/metacooler?rev=72dfc97dd9414edc3c7ab15e5884d6a3d5398f28" },
+    { name = "metacooler", git = "https://github.com/js2264/metacooler?rev=0fe3239781fb8e8da74b54e84fe816bb07f63547" },
     { name = "micomplete" },
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'", specifier = ">=0.25" },
     { name = "numpy" },

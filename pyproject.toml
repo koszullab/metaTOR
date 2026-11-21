@@ -85,7 +85,7 @@ dev = [
 # delete this table, require metacooler>=0.4.0 and run
 # `uv lock --upgrade-package metacooler`. The repository is private, so CI
 # cannot install it until then.
-metacooler = { git = "https://github.com/js2264/metacooler", rev = "72dfc97dd9414edc3c7ab15e5884d6a3d5398f28" }
+metacooler = { git = "https://github.com/js2264/metacooler", rev = "0fe3239781fb8e8da74b54e84fe816bb07f63547" }
 
 [project.urls]
 homepage = "https://github.com/koszullab/metator"
