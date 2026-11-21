@@ -11,6 +11,7 @@ rounds recursive_1 and recursive_2: a contig ends in the cluster of the last
 step that split its cluster).
 """
 
+import json
 import os
 import random
 import shutil
@@ -23,6 +24,7 @@ import pandas as pd
 import pytest
 
 import metator.dump as mtd
+import metator.io as mio
 import metator.metacool as mtmc
 import metator.network as mtn
 from tests import synthetic
@@ -49,7 +51,8 @@ def _without_contacts(pairs, isolated, path):
 @pytest.fixture(scope="module")
 def run(metagenome, metagenome_files, tmp_path_factory):
     """A seeded pipeline run of the mock community, its map of the clusters
-    (map) and the tables it kept in its temporary directory (kept)."""
+    (map), the tables it kept in its temporary directory (kept), and its
+    assembly."""
     from click.testing import CliRunner
 
     from metator.cli import cli
@@ -71,7 +74,7 @@ def run(metagenome, metagenome_files, tmp_path_factory):
         result = CliRunner().invoke(cli, args, catch_exceptions=False)
     assert result.exit_code == 0, result.output
     (kept,) = [path.parent for path in (directory / "tmp").glob("*/contig_data_final.txt")]
-    return {"map": metacool, "kept": kept}
+    return {"map": metacool, "kept": kept, "assembly": assembly}
 
 
 @pytest.fixture
@@ -329,31 +332,135 @@ def test_dump_refuses_a_map_that_changes_while_it_is_read(copied, tmp_path, monk
 
 
 def test_dump_refuses_a_summary_the_map_lacks(copied, tmp_path):
-    """The columns of the summary come from the genomes table of the map: one
-    that an edit dropped is named, and so is a validation entry without the
-    columns of its summary."""
+    """The values of the summary come from the genomes table of the map: a
+    column that an edit dropped is named, and so is one whose format does
+    not write its values (a text written as a number)."""
     metacooler.annotate(str(copied), drop=["genomes.Completeness"], inplace=True)
     with pytest.raises(mtmc.MetacoolError, match=r"lacks the column\(s\) 'Completeness' of the summary"):
         mtd.dump(str(copied), str(tmp_path / "out"))
-    mc = metacooler.MetaCooler(str(copied))
-    validation = dict(mc.metadata["metator"]["validation"])
-    del validation["summary_columns"]
+    validation = _validation(copied)
+    validation["summary_columns"].remove("Completeness")
+    validation["summary_formats"]["parent"] = "%.2f"
     mtmc._store_metator_entries(str(copied), {"validation": validation})
-    with pytest.raises(mtmc.MetacoolError, match="records no columns of the summary of its clusters"):
+    with pytest.raises(mtmc.MetacoolError, match=r"The column parent of the genomes table of .* holds a value that"):
         mtd.dump(str(copied), str(tmp_path / "out"))
+    assert not (tmp_path / "out").exists()
 
 
-def test_cluster_summary_writes_the_values_as_the_validation(run):
-    """The rows and the columns of the summary are those of the run's
-    cluster_summary.txt, in its order; the step is a whole number, though the
-    genomes table stores it as decimals next to the missing value of
-    __unbinned__; the abundances have four decimals."""
+def _validation(metacool):
+    """A copy of the validation entry of the metator metadata of a map."""
+    return json.loads(json.dumps(metacooler.MetaCooler(str(metacool)).metadata["metator"]["validation"]))
+
+
+def _without_rows_and_formats(validation):
+    del validation["summary_rows"], validation["summary_formats"]
+
+
+def _rows_as_text(validation):
+    validation["summary_rows"] = " ".join(validation["summary_rows"])
+
+
+def _unknown_format(validation):
+    validation["summary_formats"]["step"] = "%5.1f"
+
+
+def _unknown_row(validation):
+    validation["summary_rows"].append("metator_99999_00000")
+
+
+@pytest.mark.parametrize(
+    "edit, message",
+    [
+        (
+            _without_rows_and_formats,
+            r"lacks summary_rows, summary_formats, which record how the summary of its clusters \(cluster_summary.txt\) "
+            "is written: a development build of metaTOR 2.0 validated the map",
+        ),
+        (_rows_as_text, "summary_rows, which must be the names of the clusters"),
+        (_unknown_format, "summary_formats, which must give each column one of the formats %.2f, %.4f, %d, %s"),
+        (_unknown_row, r"lacks the cluster\(s\) 'metator_99999_00000' of the summary of its clusters \(summary_rows\)"),
+    ],
+)
+def test_dump_refuses_a_summary_that_the_validation_did_not_record(copied, tmp_path, edit, message):
+    """The map records how the validation wrote the summary of its clusters:
+    a map that a development build validated, which does not, is refused,
+    and so is one that does not record it as metator validation does."""
+    validation = _validation(copied)
+    edit(validation)
+    mtmc._store_metator_entries(str(copied), {"validation": validation})
+    with pytest.raises(mtmc.MetacoolError, match=message):
+        mtd.dump(str(copied), str(tmp_path / "out"))
+    assert not (tmp_path / "out").exists()
+
+
+def test_cluster_summary_is_the_summary_of_the_run(run):
+    """The fields of the summary, written, are the run's cluster_summary.txt:
+    its rows and columns in its order, each value in the format of its
+    column, though the map stores the step as decimals next to the missing
+    value of __unbinned__."""
     mc = metacooler.MetaCooler(str(run["map"]))
-    summary = mtd.cluster_summary(str(run["map"]), mc, mc.metadata["metator"]["validation"])
-    written = pd.read_csv(run["kept"] / "cluster_summary.txt", sep="\t", index_col=0, dtype=str, keep_default_na=False)
-    assert list(summary.index) == list(written.index) and list(summary.columns) == list(written.columns)
-    assert str(summary["step"].dtype) == "Int64" and list(summary["step"].astype(str)) == list(written["step"])
-    assert list(summary["HiC_abundance"]) == list(written["HiC_abundance"])
+    layout = mtd.summary_layout(str(run["map"]), mc.metadata["metator"]["validation"])
+    summary = mtd.cluster_summary(str(run["map"]), mc, layout)
+    assert summary.to_csv(sep="\t") == (run["kept"] / "cluster_summary.txt").read_text()
+    assert list(summary.index) == layout.rows != sorted(layout.rows)
+
+
+def test_cluster_summary_writes_each_value_in_its_format():
+    """Each value in the format of its column, from the genomes table, in the
+    order of the rows of the summary: a missing value (NaN, None, an empty
+    text) is an empty field, a whole number stored as decimals is written
+    whole, a number written with decimals keeps them."""
+
+    class Map:
+        genomes = pd.DataFrame(
+            {
+                "name": ["b", "a", "__unbinned__"],
+                "x": [1.005, np.nan, np.nan],
+                "n": [3.0, 2.0, np.nan],
+                "t": pd.Series(["yes", "", None], dtype=object),
+                "ab": [0.12345, 1.0, np.nan],
+            }
+        )
+
+    layout = mio.SummaryLayout(["a", "b"], ["x", "n", "t", "ab"], {"x": "%.2f", "n": "%d", "t": "%s", "ab": "%.4f"})
+    summary = mtd.cluster_summary("map", Map(), layout)
+    assert summary.to_csv(sep="\t") == "\tx\tn\tt\tab\na\t\t2\t\t1.0000\nb\t1.00\t3\tyes\t0.1235\n"
+
+
+def test_dump_refuses_a_map_whose_network_changed(copied, run, tmp_path, run_cli):
+    """metator network run on the map after the run that wrote it, with
+    another normalization, stores another network there and keeps the
+    clusters: the dump refuses the map, naming metator network with the
+    normalization of the run, which stores the network of the run again, and
+    gives the tables of the run back."""
+    common = ["-a", run["assembly"], "-o", tmp_path / "logs", "-T", tmp_path / "tmp"]
+    run_cli("network", copied, "-n", "length", *common)
+    with pytest.raises(mtmc.MetacoolError) as refused:
+        mtd.dump(str(copied), str(tmp_path / "out"))
+    assert str(refused.value) == (
+        f"The network stored in {copied} is not the one that its clusters were made from: metator network stored "
+        "another network in the map (normalization length) after the run that wrote them partitioned its own "
+        "(normalization empirical_hit), and kept them. Its tables would give the network of the one and the clusters "
+        "of the other. Run metator network -n empirical_hit on the map, which stores the network of the run again if "
+        "its contacts are those that the run read, or metator partition, then metator validation, on the map again "
+        "(or metator pipeline), which cluster the network stored now."
+    )
+    assert not (tmp_path / "out").exists()
+    run_cli("network", copied, "-n", "empirical_hit", *common)
+    mtd.dump(str(copied), str(tmp_path / "out"))
+    mtd.dump(str(run["map"]), str(tmp_path / "dump"))
+    for name in TABLES:
+        assert (tmp_path / "out" / name).read_bytes() == (tmp_path / "dump" / name).read_bytes(), name
+
+
+def test_dump_refuses_a_map_that_records_no_network_of_its_clusters(copied, tmp_path):
+    """A partition entry without the digest of the network that it partitioned
+    leaves the network of the clusters unknown: refused."""
+    partition = metacooler.MetaCooler(str(copied)).metadata["metator"]["partition"]
+    del partition[mtmc.NETWORK_DIGEST]
+    mtmc._store_metator_entries(str(copied), {"partition": partition})
+    with pytest.raises(mtmc.MetacoolError, match="does not record the network that its clusters were made from"):
+        mtd.dump(str(copied), str(tmp_path / "out"))
 
 
 def test_network_table_of_the_counts(metagenome_network):

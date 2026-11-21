@@ -19,9 +19,9 @@ writes them from the map, read only:
   ``ID`` column: the ID of a contig was its position in the map that the
   run read, which a run that writes the map of its clusters changes (see
   :func:`contig_data_final`).
-- ``cluster_summary.txt``: one row per final cluster, with the columns of
-  the summary that the validation recorded, in its order (see
-  :func:`cluster_summary`).
+- ``cluster_summary.txt``: one row per final cluster, as the validation
+  wrote it: the map records its rows, its columns and their formats, and
+  holds its values (see :func:`cluster_summary`).
 - ``binning.txt``: each contig of a final cluster, and its cluster.
 - ``clusters.txt`` and ``cluster_members.txt``: every clustering round of the
   map, as the validation writes them (see metator.clusters).
@@ -29,11 +29,11 @@ writes them from the map, read only:
   (see :func:`network_table`).
 
 The map must be the map of the clusters as the run wrote it (see
-:func:`check_dumpable`), and the tables are of one state of it: every table
-is read through one opened map, and a map replaced while it is read is
-refused. The tables are written under temporary names, then renamed onto
-their own all at once: a dump that fails leaves the output directory as it
-was.
+:func:`check_dumpable`, :func:`summary_layout` and :func:`check_network`),
+and the tables are of one state of it: every table is read through one
+opened map, and a map replaced while it is read is refused. The tables are
+written under temporary names, then renamed onto their own all at once: a
+dump that fails leaves the output directory as it was.
 """
 
 import os
@@ -44,6 +44,7 @@ import numpy as np
 import pandas as pd
 
 import metator.clusters as mtcl
+import metator.io as mio
 import metator.metacool as mtmc
 import metator.network as mtn
 import metator.partition as mtp
@@ -59,16 +60,15 @@ TABLES = (CONTIG_DATA_FILE, SUMMARY_FILE, BINNING_FILE, mtcl.CLUSTERS_FILE, mtcl
 #: metacooler's genome of the contigs in no genome: those in no final cluster.
 UNBINNED_GENOME = "__unbinned__"
 
-#: The columns of the summary of the final clusters that the validation
-#: writes with four decimals (see metator.io.write_bin_summary); the other
-#: decimals have two.
-ABUNDANCE_COLUMNS = ("HiC_abundance", "SG_abundance")
+#: The keys of the validation entry of the metator metadata of a map that
+#: record how the run wrote the summary of its final clusters
+#: (cluster_summary.txt): its rows, its columns and their formats (see
+#: metator.cli.validation_entry and metator.io.SummaryLayout).
+SUMMARY_KEYS = ("summary_rows", "summary_columns", "summary_formats")
 
-#: The column of the summary of the final clusters that the validation writes
-#: as a whole number: the recursive step that made the cluster. The genomes
-#: table of the map may store it as decimals, next to the missing value of
-#: __unbinned__.
-STEP_COLUMN = "step"
+#: The formats of the columns of the summary that the validation writes (see
+#: metator.io.SummaryLayout).
+SUMMARY_FORMATS = ("%.2f", "%.4f", "%d", "%s")
 
 #: The columns that a recursive step of the validation sets.
 RECURSIVE_COLUMNS = ("Recursive_cluster_ID", "Recursive_cluster_contigs", "Recursive_cluster_size")
@@ -222,51 +222,153 @@ def binning(data):
     return binned[["Name", "Final_cluster"]]
 
 
-def cluster_summary(metacool, mc, validation):
-    """The summary of the final clusters of a run (cluster_summary.txt), from
-    the genomes table of its map: one row per final cluster, named by the
-    first column, in the order of the clustering round final, with the
-    columns that the validation recorded (the summary_columns of its entry,
-    see metator.cli.validation_entry), in their order.
+def summary_layout(metacool, validation):
+    """How the run wrote the summary of its final clusters
+    (cluster_summary.txt), as the validation entry of its map records it
+    (validation, see metator.cli.validation_entry): its rows, its columns and
+    their formats, with which the values in the genomes table of the map
+    write it again (see cluster_summary).
 
-    The values are written as the validation writes them (see
-    metator.io.write_bin_summary): the abundances with four decimals, the
-    step a whole number, the other decimal numbers with two, and nothing for
-    a missing value. The map stores them as the summary gave them.
+    Returns
+    -------
+    metator.io.SummaryLayout
+        The rows, the columns and the format of each column.
 
     Raises
     ------
     metator.metacool.MetacoolError
-        If the validation entry records no columns, or the genomes table
-        lacks one of them (an edit of the map dropped it).
+        If the entry lacks one of them, as that of a map that a development
+        build of metaTOR 2.0 validated does, or does not record them as
+        metator validation records them: each time, run metator validation
+        on the map again.
     """
-    columns = validation.get("summary_columns")
-    if not isinstance(columns, list) or not all(isinstance(column, str) for column in columns):
+    missing = [key for key in SUMMARY_KEYS if key not in validation]
+    if missing:
         raise mtmc.MetacoolError(
-            f"The validation entry of the metator metadata of {metacool} records no columns of the summary of its "
-            "clusters (summary_columns): run metator validation on the map again."
+            f"The validation entry of the metator metadata of {metacool} lacks {', '.join(missing)}, which record how "
+            "the summary of its clusters (cluster_summary.txt) is written: a development build of metaTOR 2.0 "
+            "validated the map. Run metator validation on the map again."
         )
+    rows, columns, formats = (validation[key] for key in SUMMARY_KEYS)
+    malformed = []
+    if not _texts(rows):
+        malformed.append("summary_rows, which must be the names of the clusters")
+    if not _texts(columns):
+        malformed.append("summary_columns, which must be the names of the columns")
+    elif not isinstance(formats, dict) or any(formats.get(column) not in SUMMARY_FORMATS for column in columns):
+        malformed.append(f"summary_formats, which must give each column one of the formats {', '.join(SUMMARY_FORMATS)}")
+    if malformed:
+        raise mtmc.MetacoolError(
+            f"The validation entry of the metator metadata of {metacool} does not record the summary of its clusters "
+            f"as metator validation records it: {'; '.join(malformed)}. Run metator validation on the map again."
+        )
+    return mio.SummaryLayout(rows, columns, {column: formats[column] for column in columns})
+
+
+def _texts(values):
+    """Whether values is a list of texts."""
+    return isinstance(values, list) and all(isinstance(value, str) for value in values)
+
+
+def cluster_summary(metacool, mc, layout):
+    """The summary of the final clusters of a run (cluster_summary.txt), from
+    the genomes table of its map, as the validation wrote it (layout, see
+    summary_layout): a line per row of the summary, in its order, the name
+    of the cluster then the value of each column in the genomes table,
+    written with the format of the column (an empty field for a missing
+    value: NaN, None or an empty text), after a header, an empty field then
+    the columns.
+
+    Returns
+    -------
+    pandas.DataFrame
+        The fields of the summary, as text, indexed by the names of the
+        clusters (an index without a name, which gives the header its empty
+        field).
+
+    Raises
+    ------
+    metator.metacool.MetacoolError
+        If the genomes table lacks a column or a cluster of the summary, or
+        holds a value that the format of its column does not write (an edit
+        of the map changed them since the run).
+    """
     genomes = mc.genomes.set_index(mc.genomes["name"].astype(str))
-    missing = [column for column in columns if column not in genomes.columns]
+    missing = [column for column in layout.columns if column not in genomes.columns]
     if missing:
         raise mtmc.MetacoolError(
             f"The genomes table of {metacool} lacks the column(s) {mtmc._shown(missing)} of the summary of its "
             "clusters, which metator validation stored there (an edit of the map dropped them since): run metator "
             "validation on the map again."
         )
-    final = mc.clusters
-    ordered = [str(name) for name in final.loc[(final["round"] == mtcl.FINAL).to_numpy(), "name"]]
-    clusters = [name for name in ordered if name in genomes.index]
-    listed = set(clusters)
-    clusters += [name for name in genomes.index if name != UNBINNED_GENOME and name not in listed]
-    summary = genomes.loc[clusters, columns].copy()
-    if STEP_COLUMN in summary.columns and pd.api.types.is_numeric_dtype(summary[STEP_COLUMN]):
-        summary[STEP_COLUMN] = summary[STEP_COLUMN].round().astype("Int64")
-    for column in ABUNDANCE_COLUMNS:
-        if column in summary.columns and pd.api.types.is_numeric_dtype(summary[column]):
-            summary[column] = summary[column].map(lambda value: "" if pd.isna(value) else "%.4f" % value)
-    summary.index.name = None
-    return summary
+    absent = [row for row in layout.rows if row not in genomes.index]
+    if absent:
+        raise mtmc.MetacoolError(
+            f"The genomes table of {metacool} lacks the cluster(s) {mtmc._shown(absent)} of the summary of its "
+            "clusters (summary_rows): run metator validation on the map again."
+        )
+    values = genomes.loc[layout.rows, layout.columns]
+    fields = {}
+    for column in layout.columns:
+        written = layout.formats[column]
+        try:
+            fields[column] = ["" if _missing(value) else written % value for value in values[column]]
+        except (TypeError, ValueError) as error:
+            raise mtmc.MetacoolError(
+                f"The column {column} of the genomes table of {metacool} holds a value that metator validation did "
+                f"not write there ({written}: {error}): an edit of the map changed it since. Run metator validation "
+                "on the map again."
+            ) from error
+    return pd.DataFrame(fields, index=pd.Index(layout.rows, dtype=object), columns=layout.columns, dtype=object)
+
+
+def _missing(value):
+    """Whether a value of the genomes table of a map is missing: NaN, None, or
+    an empty text, which metacooler stores for a missing text."""
+    if isinstance(value, str):
+        return value == ""
+    return bool(pd.isna(value))
+
+
+def check_network(metacool, mc, stored):
+    """Refuse a map whose network is not the one that its clusters were made
+    from: metator partition records the digest of the network that it
+    partitioned (see metator.metacool.partition_network), which that of the
+    network stored in the map (stored, see metator.network.stored_network)
+    must be. metator network, run on the map after the run that wrote its
+    clusters (with another normalization, or on the contacts of another
+    library), stores another network there and keeps the clusters: the
+    network and the clusters of the tables would not go together.
+
+    Raises
+    ------
+    metator.metacool.MetacoolError
+        With the remedies: metator network with the normalization of the run,
+        which stores its network again on the contacts that it read, or
+        metator partition and validation, which cluster the network stored
+        now.
+    """
+    made_on = mtmc.partition_network(mc)
+    if made_on == stored.digest:
+        return
+    if made_on is None:
+        raise mtmc.MetacoolError(
+            f"{metacool} does not record the network that its clusters were made from (the "
+            f"{mtmc.NETWORK_DIGEST} of the partition entry of its metator metadata, which metator partition "
+            "records): run metator partition, then metator validation, on the map again (or metator pipeline)."
+        )
+    partition = mtmc._metator_metadata(mc).get("partition")
+    normalization = partition.get("normalization") if isinstance(partition, dict) else None
+    run = f" (normalization {normalization})" if isinstance(normalization, str) else ""
+    option = f" -n {normalization}" if isinstance(normalization, str) else ""
+    raise mtmc.MetacoolError(
+        f"The network stored in {metacool} is not the one that its clusters were made from: metator network stored "
+        f"another network in the map (normalization {stored.normalization}) after the run that wrote them "
+        f"partitioned its own{run}, and kept them. Its tables would give the network of the one and the clusters of "
+        f"the other. Run metator network{option} on the map, which stores the network of the run again if its "
+        "contacts are those that the run read, or metator partition, then metator validation, on the map again "
+        "(or metator pipeline), which cluster the network stored now."
+    )
 
 
 def network_table(table, network):
@@ -337,9 +439,11 @@ def dump(metacool, outdir, force=False):
         If outdir holds one of the tables already (without force), or a
         directory in the place of one, the map cannot be read, holds no
         clusters of a validation or clusters edited since (see
-        check_dumpable), no network, partition or summary that metaTOR
-        stored, or was replaced while it was read, or a table cannot be
-        written.
+        check_dumpable), no summary of them that metaTOR 2.0 records (see
+        summary_layout), no network, partition or summary that metaTOR
+        stored, or a network other than the one its clusters were made from
+        (see check_network), or was replaced while it was read, or a table
+        cannot be written.
     """
     blocked = [name for name in TABLES if os.path.isdir(join(outdir, name)) and not os.path.islink(join(outdir, name))]
     if blocked:
@@ -356,14 +460,16 @@ def dump(metacool, outdir, force=False):
     try:
         with mtmc._metacooler_logging(), mtmc.read_errors(metacool, DUMP_AGAIN):
             mc = mtmc.open_map(metacool)
-            validation = check_dumpable(metacool, mc)
+            layout = summary_layout(metacool, check_dumpable(metacool, mc))
         # The network, read once, through mc: the contig data of the contigs of
         # the map, and the network weighed with the stored normalization
-        # (whose Hit column must be that of its contacts).
+        # (whose Hit column must be that of its contacts), which must be the
+        # one that the clusters were made from.
         stored = mtn.stored_network(metacool, mc)
         with mtmc._metacooler_logging(), mtmc.read_errors(metacool, DUMP_AGAIN):
+            check_network(metacool, mc, stored)
             data = contig_data_final(metacool, mc, stored.table)
-            summary = cluster_summary(metacool, mc, validation)
+            summary = cluster_summary(metacool, mc, layout)
             clusters, members = mtmc.map_rounds(mc)
     except mtmc.MapReplacedError as error:
         # A replacement found by a read of stored_network, which names
@@ -378,7 +484,7 @@ def dump(metacool, outdir, force=False):
         raise mtmc.MetacoolError(f"The output directory {outdir} cannot be made: {error}.") from error
     writers = {
         CONTIG_DATA_FILE: lambda path: data.to_csv(path, sep="\t", index=False),
-        SUMMARY_FILE: lambda path: summary.to_csv(path, sep="\t", float_format="%.2f"),
+        SUMMARY_FILE: lambda path: summary.to_csv(path, sep="\t"),
         BINNING_FILE: lambda path: binning(data).to_csv(path, sep="\t", header=False, index=False),
         NETWORK_FILE: lambda path: network_table(stored.table, stored.network).to_csv(path, sep="\t", header=False, index=False),
     }

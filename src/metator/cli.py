@@ -1977,10 +1977,12 @@ def dump(
     another run replaces as it is read is refused (run the dump again). A
     map without the clusters of a validation (the validation entry of its
     metator metadata, and the clustering round final) is refused, and so is
-    one whose clusters were edited after the run (by metacooler reassign),
-    and an output directory that holds tables of an earlier dump, without
-    -F. The tables are replaced all at once: a dump that fails leaves them
-    as they were.
+    one that a development build of metaTOR 2.0 validated, one whose
+    clusters were edited after the run (by metacooler reassign), one whose
+    network metator network replaced after the run (run it again with the
+    normalization of the run), and an output directory that holds tables of
+    an earlier dump, without -F. The tables are replaced all at once: a dump
+    that fails leaves them as they were.
     """
     outdir = outdir or "."
     os.makedirs(outdir, exist_ok=True)
