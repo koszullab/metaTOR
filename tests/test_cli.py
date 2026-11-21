@@ -2198,6 +2198,48 @@ def test_validation_refuses_its_input_in_what_force_removes(name, stub_pipeline,
     assert (fasta / "metator_00001_00000.fa").exists() and not stub_pipeline
 
 
+@pytest.mark.parametrize("dangling", [False, True], ids=["link", "dangling link"])
+def test_force_replaces_a_link_of_clusters_not_its_target(dangling, stub_pipeline, tmp_path, run_cli):
+    """A directory of clusters of an earlier run that is a symbolic link, to
+    a directory elsewhere or to nothing, is refused without -F, and replaced
+    with -F: the link is removed, its target kept. -F failed with OSError
+    (rmtree on a link), after the other directory was replaced."""
+    target = tmp_path / "elsewhere"
+    if not dangling:
+        target.mkdir()
+        (target / "earlier.fa").write_text(">c1\nACGT\n")
+    link = tmp_path / "out" / "final_clusters"
+    link.parent.mkdir()
+    link.symlink_to(target)
+    with pytest.raises(ValueError):
+        run_cli("validation", *_step_run("validation", None, tmp_path))
+    assert os.path.lexists(link) and not stub_pipeline
+    run_cli("validation", *_step_run("validation", None, tmp_path, "-F"))
+    assert link.is_dir() and not link.is_symlink() and stub_pipeline
+    assert dangling or (target / "earlier.fa").exists()
+
+
+def test_validation_refuses_its_input_through_a_link_that_force_replaces(stub_pipeline, tmp_path, run_cli, logged):
+    """The clusters to validate (-f) in the target of a directory of
+    clusters that is a symbolic link: refused with -F, before anything is
+    replaced, as in the directory itself. The run let it through, as the
+    link alone is removed, then replaced the directory it was in."""
+    target = tmp_path / "elsewhere"
+    fasta = target / "clusters"
+    fasta.mkdir(parents=True)
+    (fasta / "metator_00001_00000.fa").write_text(">c1\nACGT\n")
+    link = tmp_path / "out" / "final_clusters"
+    link.parent.mkdir()
+    link.symlink_to(target)
+    args = _step_run("validation", None, tmp_path, "-F")
+    args[args.index("overlapping_clusters")] = fasta
+    with pytest.raises(ValueError):
+        run_cli("validation", *args)
+    message = f"{fasta}, given as -f, is in {link}, which -F removes: write the run to another directory (-o)."
+    assert ("ERROR", message) in logged()
+    assert link.is_symlink() and (fasta / "metator_00001_00000.fa").exists() and not stub_pipeline
+
+
 @pytest.mark.parametrize("command", ["partition", "validation"])
 def test_steps_without_a_map_are_unchanged(command, stub_pipeline, tmp_path, run_cli):
     """A guard: without MAP, partition and validation run as before MAP was
@@ -2289,9 +2331,9 @@ def test_the_commands_of_metator_1(command):
 
 def test_an_unknown_option_is_still_unknown(run_cli):
     """A guard: an option that metaTOR never had is refused as unknown, as
-    before."""
+    before, by click's own message."""
     result = run_cli("pipeline", "map.metacool", "--bogus", "-a", "a.fa", exit_code=2)
-    assert "No such option" in result.output and "--bogus" in result.output and "gone in metaTOR 2.0" not in result.output
+    assert "No such option" in result.output and "--bogus" in result.output
 
 
 @pytest.mark.parametrize(

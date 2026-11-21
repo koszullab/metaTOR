@@ -44,6 +44,7 @@ def metacool_to_contacts(
     tmp_dir,
     n_cpus,
     normalization,
+    *,
     chunksize=METACOOL_CHUNKSIZE,
 ):
     """Generates the network file (in edgelist form) from a .metacool contact
@@ -54,8 +55,8 @@ def metacool_to_contacts(
     of the pixels of its bins, a pixel between two of its bins counting
     twice, as a pair with both reads on the contig does in the pairs files
     the map was made of. The intra-contig contacts are left out of the
-    network. The network is then normalized
-    (see normalize_pair) and written with the contig data file.
+    network. The network is then normalized (see normalize_pair) and written
+    with the contig data file.
 
     The map may lack contigs of the assembly (a map made with a contig
     filter, for example, which leaves out the pairs with a read on the

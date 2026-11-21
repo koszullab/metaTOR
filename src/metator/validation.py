@@ -16,6 +16,7 @@ the new bins, 9 times at most.
 
 Functions in this module:
     - bin_quality
+    - check_partition_table
     - correct_final_bin
     - get_bin_coverage
     - give_results_info
@@ -50,6 +51,36 @@ from os.path import join
 
 # The fasta files of the bins that miComplete evaluates.
 FASTA_EXTENSIONS = (".fa", ".fasta", ".fna")
+
+#: The columns of the contig data table of a partition that the validation
+#: reads (see check_partition_table).
+PARTITION_COLUMNS = ("ID", "Name", "Size", "Hit", "Shotgun_coverage", "Overlapping_cluster_ID")
+
+
+def check_partition_table(contig_data_file):
+    """Refuse a contig data table that lacks a column the validation reads
+    (PARTITION_COLUMNS): the error, logged, names them. Only its header is
+    read: a table refused here costs no miComplete run.
+
+    Parameters:
+    -----------
+    contig_data_file : str
+        Path to the contig data table of a partition
+        (contig_data_partition.txt).
+
+    Raises:
+    -------
+    ValueError
+        If the table lacks one of PARTITION_COLUMNS.
+    """
+    header = pd.read_csv(contig_data_file, sep="\t", nrows=0).columns
+    missing = [column for column in PARTITION_COLUMNS if column not in header]
+    if missing:
+        logger.error(
+            f"{contig_data_file} has no {', '.join(missing)} column: give the contig data table of a partition "
+            "(contig_data_partition.txt)."
+        )
+        raise ValueError(f"{contig_data_file} lacks the columns {', '.join(missing)}.")
 
 
 def bin_quality(completeness, redundancy):
@@ -670,6 +701,10 @@ def recursive_decontamination(
     prefix : str
         Sample prefix to use.
     """
+
+    # A table without the columns of a partition: refused before miComplete
+    # runs on every cluster.
+    check_partition_table(contig_data_file)
 
     # No bin to validate: miComplete would write no result to read.
     if not any(path.endswith(FASTA_EXTENSIONS) for path in os.listdir(input_fasta_dir)):

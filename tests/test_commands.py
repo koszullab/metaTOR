@@ -434,6 +434,30 @@ def test_pipeline_force_replaces_outputs(a_map, network_from_a_map, tmp_path, ru
     assert not [message for _, message in logged() if message.startswith("Removed ")]
 
 
+def test_validation_refuses_a_table_without_the_columns_of_a_partition(tmp_path, monkeypatch, run_cli):
+    """A contig data table that lacks a column the validation reads, here a
+    table of metaTOR 1.x (its columns named after bins), is refused before
+    miComplete runs on any cluster, the missing columns named in the log of
+    the run. It ran miComplete on every cluster, then failed with
+    KeyError: 'Overlapping_cluster_ID', the traceback on the terminal only."""
+    from tests import synthetic
+
+    def micomplete_quality(*args):
+        raise AssertionError("miComplete ran")
+
+    monkeypatch.setattr("metator.validation.micomplete_quality", micomplete_quality)
+    table = synthetic.as_1x(global_args["CONTIGS_PARTITION"], tmp_path / "contig_data_partition_1x.txt")
+    out = tmp_path / "out"
+    with pytest.raises(ValueError):
+        run_cli("validation", "-a", global_args["SUBSET_FASTA"], "-c", table, "-f", global_args["OVERLAPPING_BINS"],
+                "-n", global_args["NETWORK"], "-o", out, "-T", tmp_path / "tmp")  # fmt: skip
+    (log,) = out.glob("metator_validation_*.log")
+    message = (
+        f"{table} has no Overlapping_cluster_ID column: give the contig data table of a partition (contig_data_partition.txt)."
+    )
+    assert f"ERROR :: {message}" in log.read_text()
+
+
 @pytest.mark.parametrize("existing", ["recursive_clusters", "final_clusters"])
 def test_validation_refuses_existing_outputs(existing, tmp_path, run_cli):
     (tmp_path / "out" / existing).mkdir(parents=True)

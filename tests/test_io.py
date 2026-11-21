@@ -137,9 +137,9 @@ def test_sort_pairs(tmp_path, monkeypatch, version, parallel):
 
 def test_rename_1x_columns(logged):
     """The columns of the contig data that metaTOR 1.x named after bins get
-    their 2.0 names (for host.py, which reads the tables of 1.x). A table of 2.0 is returned as it is, and a column of a
-    2.0 name wins over the 1.x column of the same meaning, which is left as
-    it is."""
+    their 2.0 names (for host.py, which reads the tables of 1.x). A table of
+    2.0 is returned as it is, and a column of a 2.0 name wins over the 1.x
+    column of the same meaning, which is left as it is."""
     old = [
         "Core_bin_ID", "Core_bin_contigs", "Core_bin_size", "Overlapping_bin_ID", "Overlapping_bin_contigs",
         "Overlapping_bin_size", "Recursive_bin_ID", "Recursive_bin_contigs", "Recursive_bin_size", "Final_bin",

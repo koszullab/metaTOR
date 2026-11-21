@@ -621,3 +621,20 @@ def purity(truth: Sequence, found: Sequence) -> float:
     table = pd.DataFrame({"truth": list(truth), "found": list(found)})
     majority = table.groupby("found")["truth"].agg(lambda genomes: genomes.value_counts().iloc[0])
     return majority.sum() / len(table)
+
+
+# -- metaTOR 1.x ------------------------------------------------------------
+
+
+def as_1x(path, out) -> str:
+    """A copy, at out, of the contig data file path, its columns named as
+    metaTOR 1.x named them, after bins (metator.io.CONTIG_DATA_1X_COLUMNS):
+    the table of a 1.x run. Returns out, as a string."""
+    import metator.io as mio
+
+    names = {new: old for old, new in mio.CONTIG_DATA_1X_COLUMNS.items()}
+    header, *rows = Path(path).read_text().split("\n")
+    renamed = "\t".join(names.get(name, name) for name in header.split("\t"))
+    assert renamed != header, f"{path} has no column that metaTOR 1.x named otherwise"
+    Path(out).write_text("\n".join([renamed, *rows]))
+    return str(out)

@@ -144,9 +144,13 @@ All notable changes to this project will be documented in this file.
   `binning.txt`, which anvi'o imports, and the names of the clusters are
   kept. A script that gives the overlapping clusters of `partition` to
   `validation -f` names `overlapping_clusters/` now: see
-  [Migrating to metaTOR 2.0](migration.md). The commands and the Python
-  functions read the contig data tables of 2.0 only: rename the columns of a
-  table of 1.x first (`metator.io.rename_1x_columns` does). A run in the
+  [Migrating to metaTOR 2.0](migration.md). No step renames the columns of
+  a contig data table of 1.x: `partition` keeps them as extra columns, which
+  `validation` carries into `contig_data_final.txt`; `validation` refuses a
+  table without the columns of a partition (`Overlapping_cluster_ID`...),
+  before miComplete runs, naming them; `mge` reads only `Name`, `Size`,
+  `Hit` and `GC_content`, the same in both versions; and `metator.host`
+  still reads the tables of 1.x (`metator.io.rename_1x_columns`). A run in the
   output directory of a run of 1.x leaves the outputs that 1.x named after
   bins as they are, with or without `-F`. metacooler's
   `--contigs-format metator` names `Final_bin`: give `--contigs-format
@@ -320,27 +324,35 @@ All notable changes to this project will be documented in this file.
 - **Breaking:** the small features that nothing else used:
   - `--cluster-matrix` (`-C`) of `partition`, `validation` and `pipeline`,
     and the clustering matrices that it wrote, `clustering_matrix_partition.npz`,
-    `clustering_matrix_recursive.npz` and `clustering_matrix.npz`: the
-    clustering rounds of a run (`clusters.txt`, `cluster_members.txt` and
-    the `/clusters` group of the map) say which contigs each round put
-    together;
+    `clustering_matrix_recursive.npz` and `clustering_matrix.npz`: the share
+    of the iterations that put each two contigs together has no replacement.
+    The clustering rounds of a run (`clusters.txt`, `cluster_members.txt`
+    and the `/clusters` group of the map) give the contigs of each cluster
+    of each round;
   - `--self-contacts` (`-s`) of `network`: the network has no edge from a
-    contig to itself; the contacts within each contig are in the map
-    (`qc_intra_contig_short`, `qc_intra_contig_long`);
+    contig to itself. The contacts within each contig are in the map, in
+    its `qc_intra_contig_short` and `qc_intra_contig_long` columns, when it
+    holds metacooler's QC block (the default, but with `--no-qc`);
   - the module `metator.main` (`python -m metator.main`), the former entry
     point: run `metator`, or `python -m metator`.
 
   A command line that gives one of these options is refused as an unknown
-  option. Python API: `metator.partition.build_clustering_matrix` and
-  `metator.validation.replace_clustering_values`; the `cluster_matrix`
-  argument of `metator.partition.partition`, which returns the path of the
-  contig data table only, of `metator.validation.recursive_clustering`,
-  which returns no matrix, and of `recursive_decontamination`, which returns
-  nothing; the `self_contacts` argument of
-  `metator.network.metacool_to_contacts`; `metator.io.read_contig_data` and
+  option. Python API: `metator.partition.build_clustering_matrix`; the
+  `cluster_matrix` argument of `metator.partition.partition`, which returns
+  the path of the contig data table only (it returned that of the clustering
+  matrix too), of `metator.validation.recursive_clustering`, which returns
+  `(contamination, contigs_data, parent_dict)` (without the path of the
+  matrix), and of `recursive_decontamination`, which returns nothing (it
+  returned the path of the matrix); `metator.io.read_contig_data` and
   `save_sparse_matrix`; and `metator.cli.check_output_path`.
 
 ### Fixed
+- `-F` replaces a directory of clusters of an earlier run that is a
+  symbolic link (`partition`, `validation`, `pipeline`): the link is
+  removed, not its target, where the run failed with `OSError`, some of the
+  directories already replaced. A link to nothing is refused without
+  `-F`, as a directory is. `validation -F` refuses clusters to validate
+  (`--fasta`) in the target of such a link, before anything is replaced.
 - The commands that write a map refuse an output path that holds `::`,
   which metacooler reads as `file::group`. A map given as `file::/`, the
   root of the file, is the file itself, and a map whose file name holds `::`

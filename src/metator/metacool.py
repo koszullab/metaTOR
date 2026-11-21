@@ -51,6 +51,7 @@ from contextlib import contextmanager, suppress
 import numpy as np
 import pandas as pd
 
+import metator.io as mio
 from metator.log import logger
 from metator.version import __version__
 
@@ -896,8 +897,13 @@ def _write_back_columns(path, contig_data, contig_columns, header):
 
     stored = metacooler.MetaCooler(path)
     # The columns of a contig data file but Name (the contigs' own name
-    # column) and those of the map that metacooler derives.
-    of_metator = (set(header) | set(CONTIG_COLUMNS)) - {"Name"}
+    # column) and those of the map that metacooler derives, its cluster
+    # columns under their names of metaTOR 1.x too, which a map made with
+    # the contig data of a 1.x run carries (see
+    # metator.io.CONTIG_DATA_1X_COLUMNS): they would contradict the clusters
+    # of this run.
+    of_1x = {old for old, new in mio.CONTIG_DATA_1X_COLUMNS.items() if new in header}
+    of_metator = (set(header) | of_1x | set(CONTIG_COLUMNS)) - {"Name"}
     carried = [f"contigs.{column}" for column in stored.contigs.columns if column in of_metator - {"name", "length", "genome_id"}]
     if carried:
         metacooler.annotate(path, drop=carried, inplace=True)

@@ -25,6 +25,7 @@ import metator.log as mtl
 import metator.metacool as mtmc
 import metator.network as mtn
 from metator.version import __version__
+from tests import synthetic
 from tests.hdf5 import walk
 from tests.maps import contig_map, pairs_map
 
@@ -897,27 +898,33 @@ def test_map_of_the_bins_from_the_map_of_an_earlier_run(earlier_bins, metagenome
     assert clr.info["metadata"]["qc"] == ref.info["metadata"]["qc"]
 
 
-def test_map_of_the_bins_drops_the_columns_of_an_earlier_run(metagenome, binning, tmp_path):
+@pytest.mark.parametrize("earlier", ["2.0", "1.x"])
+def test_map_of_the_bins_drops_the_columns_of_an_earlier_run(earlier, metagenome, binning, tmp_path):
     """From a map made with the contig data of an earlier run as its
     contigs table (metacooler create pairs --contigs-format Name,Final_cluster,
     which stores all its columns): the bins and contig ids of that run, and
     its other columns, are not carried into the map of the bins; only this
-    run's contig columns, and a column that metaTOR does not write."""
+    run's contig columns, and a column that metaTOR does not write. The same
+    from the contig data of a run of metaTOR 1.x, its cluster columns named
+    after bins (Final_bin, Overlapping_bin_ID...): they would contradict the
+    clusters of this run."""
     contig_data = str(binning["contig_data"])
-    table = pd.read_csv(contig_data, sep="\t", index_col=0)
+    earlier_table = contig_data if earlier == "2.0" else synthetic.as_1x(contig_data, tmp_path / "contig_data_1x.txt")
+    final, bins = {"2.0": ("Final_cluster", "cluster"), "1.x": ("Final_bin", "bin")}[earlier]
+    table = pd.read_csv(earlier_table, sep="\t", index_col=0)
     earlier_map = tmp_path / "earlier.metacool"
     metacooler.from_pairs(
         str(earlier_map),
         bins=pd.DataFrame({"chrom": table.Name, "start": 0, "end": table.Size}),
         pairs=str(binning["pairs"]),
-        contig_genome_map=contig_data,
-        contig_table_format="Name,Final_cluster",
+        contig_genome_map=earlier_table,
+        contig_table_format=f"Name,{final}",
         ps=False,
     )
     taxa = tmp_path / "taxa.tsv"
     taxa.write_text("Name\ttaxon\n" + "".join(f"{name}\tt_{i % 3}\n" for i, name in enumerate(table.Name)))
     metacooler.annotate(str(earlier_map), contigs_table=str(taxa), contigs_table_format="Name", inplace=True)
-    stale = {"Unnamed: 0", "ID", "Size", "Restriction_site", "Overlapping_cluster_ID", "Recursive_cluster_contigs"}
+    stale = {"Unnamed: 0", "ID", "Size", "Restriction_site", f"Overlapping_{bins}_ID", f"Recursive_{bins}_contigs"}
     assert stale <= set(metacooler.MetaCooler(str(earlier_map)).contigs.columns)
     out = tmp_path / "bins.metacool"
     mtmc.reassign_metacool(str(earlier_map), contig_data, str(out), bin_summary=str(binning["bin_summary"]))

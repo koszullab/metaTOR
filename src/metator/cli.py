@@ -90,8 +90,8 @@ def private_tmp_dir(tmpdir, clean_up=True):
 
 def refuse_output_dir(path, force):
     """Refuse an existing output directory of bins, unless --force replaces
-    it."""
-    if exists(path) and not force:
+    it: a symbolic link too, even one to nothing."""
+    if os.path.lexists(path) and not force:
         logger.error(
             "%s already existed. Remove directory or use -F argument to overwrite it.",
             path,
@@ -101,10 +101,12 @@ def refuse_output_dir(path, force):
 
 def make_output_dir(path, force):
     """Create an output directory of bins; an existing one is replaced with
-    --force, or refused.
+    --force, or refused. A symbolic link is removed, not its target.
     """
     refuse_output_dir(path, force)
-    if exists(path):
+    if os.path.islink(path):
+        os.remove(path)
+    elif exists(path):
         shutil.rmtree(path)
     os.makedirs(path)
 
@@ -352,17 +354,16 @@ def _is_in(path, directory):
 
 def refuse_an_input_in_the_outputs(path, outputs, force, option):
     """Refuse an input (validation -f) that is, or is in, an output that the
-    run removes with --force (see start_step): the run would remove it
-    before reading it. Without --force, those outputs are refused anyway.
-    Through a symbolic link, the link is removed, not its target."""
+    run replaces with --force (see start_step): the run would remove it
+    before reading it, or replace the output it is in, through a symbolic
+    link too. Without --force, those outputs are refused anyway."""
     if not force:
         return
     for output in outputs:
         if not os.path.lexists(output):
             continue
         inside = _is_in(os.path.abspath(path), os.path.abspath(output))
-        if not os.path.islink(output):
-            inside = inside or _is_in(os.path.realpath(path), os.path.realpath(output))
+        inside = inside or _is_in(os.path.realpath(path), os.path.realpath(output))
         if inside:
             logger.error(
                 "%s, given as %s, is in %s, which -F removes: write the run to another directory (-o).", path, option, output
@@ -414,16 +415,16 @@ def start_step(
     return log_file, metacool_file, bins_prefix
 
 
-def contig_network(metacool, contig_data, outdir, tmp_dir, threads, *args):
-    """network.txt and contig_data_network.txt of a run (args: the
-    normalization), from the .metacool map metacool, its first argument
+def contig_network(metacool, contig_data, outdir, tmp_dir, threads, normalization):
+    """network.txt and contig_data_network.txt of a run, normalized
+    (normalization), from the .metacool map metacool, its first argument
     (see metator.network.metacool_to_contacts). A map that cannot give them
     stops the run, as metaTOR stops on an input it cannot use: the reason is
     logged as an error, in the log file of the run, and its MetacoolError is
     raised."""
     files = ("network.txt", "contig_data_network.txt")
     try:
-        return mtn.metacool_to_contacts(metacool, contig_data, outdir, *files, tmp_dir, threads, *args)
+        return mtn.metacool_to_contacts(metacool, contig_data, outdir, *files, tmp_dir, threads, normalization)
     except mtmc.MetacoolError as error:
         logger.error(str(error))
         raise

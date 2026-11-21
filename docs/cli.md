@@ -189,7 +189,7 @@ does at its end: in place, or to `--output-map`. See
 | `-s, --size` | `500000` | The size, in bp, a cluster must reach to be kept. |
 | `-o, --outdir` | `./` | The output directory. |
 | `-p, --prefix` | none | Name the clusters `<prefix>_metator_…`. |
-| `-F, --force` | off | Replace `recursive_clusters/` and `final_clusters/`, and an existing `--output-map` file. Refused when `--fasta` is in one of these directories. |
+| `-F, --force` | off | Replace `recursive_clusters/` and `final_clusters/`, and an existing `--output-map` file. Refused when `--fasta` is in one of these directories, or in the target of one that is a symbolic link. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory. |
 | `-t, --threads` | `1` | Threads for the partition and miComplete. |
 | `-N, --no-clean-up` | off | Keep the temporary files. |
