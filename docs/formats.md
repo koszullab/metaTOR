@@ -65,7 +65,7 @@ those of the step before; the first come from the network, which
 
 | Column | Written by | What it holds |
 |---|---|---|
-| `ID` | network | The ID of the contig, from 1: its position in the map, the ID of its node in the network |
+| `ID` | network | The ID of the contig, from 1: its position in the map as the run read it, the ID of its node in the network. A run that regroups the map (`validation`, `pipeline`) moves its contigs: join a table to the network of another map by contig name (`metator.network.relabel_network`), not by ID |
 | `Name` | network | Its name |
 | `Size` | network | Its length, in bp |
 | `GC_content` | network | Its GC content, in percent |
@@ -94,11 +94,21 @@ may be added, in any order, such as the bins of another binning.
 The network of contigs is in the map, which `metator network` stores it in
 (see [Building the network](guides/network.md#building-the-network)): metaTOR
 2.0 writes no `network.txt`. metacooler exports it, one line per pair of
-contigs in contact, by their names, with the normalised weight of their edge:
+contigs in contact, by their names, with the normalised weight of their edge.
+It also writes a line per contig for the contacts within it (`node1` equal to
+`node2`), which are no edge of the network, and would write the edges of
+weight 0, which metaTOR leaves out: drop them, as `awk` does here.
 
 ```console
-metacooler network sample.metacool --level contig --balance metator_empirical_hit
+metacooler network sample.metacool --level contig --balance metator_empirical_hit --header \
+    | awk -F '\t' '$1 != $2 && $3 != 0' > network.tsv
 ```
+
+`network.tsv` has three columns: `node1` and `node2`, the names of the two
+contigs of an edge, and `value`, its weight (the raw count of their contacts
+without `--balance`, for the normalisation `None`). Without `--header`,
+metacooler writes no header line. `metator dump` will write `network.txt`, as
+metaTOR 1.x did.
 
 ## The clusters
 
@@ -120,7 +130,7 @@ column. Its first columns are those of miComplete:
 | `step` | The recursive step that made the cluster, 0 for an overlapping cluster |
 | `parent` | The cluster it was split from (an overlapping cluster at step 1, a recursive cluster after), empty otherwise |
 | `HiC_abundance` | The share of the hits of all the contigs that are on the cluster, in percent |
-| `SG_abundance` | The share of the shotgun reads (size × coverage) of all the contigs that are on the cluster, in percent; with `--depth` only |
+| `SG_abundance` | The share of the shotgun reads (size × coverage) of all the contigs of the map that are on the cluster, in percent; with `--depth` only. The clusters of a map made with a contig filter add up to 100%, where 1.x counted every contig of the assembly |
 
 ```text
 	Length	GC-content	Present Markers	Completeness	Redundancy	Weighted completeness	Weighted redundancy	Contigs	N50	L50	N90	L90	CDs	recursive	step	parent	HiC_abundance	SG_abundance

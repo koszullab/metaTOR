@@ -23,8 +23,8 @@ All notable changes to this project will be documented in this file.
   `reassign_metacool`; `metator.network.contig_contacts`, `contig_hits`,
   `log_contacts`, `contig_data_table`, `contig_table`, `map_contig_table`,
   `map_network`, `network_weights`, `network_normalization`,
-  `check_network`, `stored_weights` and `relabel_network`;
-  `metator.partition.network_graph`.
+  `stored_network` and `StoredNetwork`, `stored_weights` and
+  `relabel_network`; `metator.partition.network_graph`.
 - The map of the clusters of a `pipeline` run stores the normalization of its
   network (`--normalization`, `empirical_hit` by default), as the weights
   `metator_<normalization>` of its bins, the way cooler stores balancing
@@ -151,8 +151,12 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - **Breaking:** `partition` and `validation` require the map, `MAP`, and read
   the network that `metator network` stored in it, and `partition` the data of
-  its contigs too: a map without them is refused before any work, with the
-  step to run. `partition` loses `-c, --contigs` and `-n, --network`,
+  its contigs too. They read it in full before they replace the outputs of an
+  earlier run (`-F`), and refuse a map without it, or whose network an edit
+  changed since (a column, a value or the weights dropped, or contacts whose
+  hits are no longer its `Hit` column, as after `metacooler merge`, which
+  keeps the contigs table of the first map), with the step to run again.
+  `partition` loses `-c, --contigs` and `-n, --network`,
   `validation` loses `-n, --network`; `network` loses `-t, --threads`, as
   there is no network file to sort. The network is in memory: each edge
   weighs the contacts of two contigs times the weights of the normalization
@@ -165,7 +169,12 @@ All notable changes to this project will be documented in this file.
   records of their FASTA files follow it, where they followed the
   assembly. The contigs of the assembly that the map lacks are in no table
   of the run, and the shotgun abundance of a cluster is its share of the
-  sequenced bases of the contigs of the map. `validation` reads the contigs
+  sequenced bases of the contigs of the map: the clusters of a map made with
+  a contig filter add up to 100%, where 1.x counted every contig of the
+  assembly. `mge -c` reads these tables: it leaves out an MGE contig that
+  the map lacks, with a warning that names it. `metator.network.create_contig_data`
+  gives no `id` and `hit` of a contig: its ID is its position in the map,
+  and its hits are counted on the map. `validation` reads the contigs
   of `contig_data_partition.txt` by their IDs, in the order of the map when
   `partition` wrote it: a validation run again on the map of the clusters,
   whose contigs are grouped by cluster, reads the same network.
@@ -191,8 +200,7 @@ All notable changes to this project will be documented in this file.
   a contig data table of 1.x: `partition` keeps them as extra columns, which
   `validation` carries into `contig_data_final.txt`; `validation` refuses a
   table without the columns of a partition (`Overlapping_cluster_ID`...),
-  before miComplete runs, naming them; `mge` reads only `Name`, `Size`,
-  `Hit` and `GC_content`, the same in both versions; and `metator.host`
+  before miComplete runs, naming them; and `metator.host`
   still reads the tables of 1.x (`metator.io.rename_1x_columns`). A run in the
   output directory of a run of 1.x leaves the outputs that 1.x named after
   bins as they are, with or without `-F`. metacooler's
@@ -309,7 +317,9 @@ All notable changes to this project will be documented in this file.
 ### Removed
 - **Breaking:** `network.txt` and `contig_data_network.txt`: the network is
   in the map (see Added). `metacooler network MAP --level contig --balance
-  metator_<normalization>` writes it, by contig names. A network of your
+  metator_<normalization>` writes it, by contig names, with the contacts
+  within each contig, which are no edge: drop them (see
+  [The network](formats.md#the-network)). A network of your
   own, given to `partition -n` and `validation -n`, is gone with them. The
   network is no longer sorted with the external `sort`, nor written to
   temporary files, and the validation no longer writes the subnetwork of
