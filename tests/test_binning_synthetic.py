@@ -209,6 +209,55 @@ def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenom
     assert summary.recursive.any() and not summary.recursive.all()
 
 
+def test_validation_checks_the_clusters_in_the_order_of_the_partition(
+    metagenome, metagenome_inputs, metagenome_network, tmp_path, monkeypatch, run_cli
+):
+    """The FASTA file of each overlapping cluster that miComplete checks lists
+    its contigs as metator partition lists them (see
+    metator.partition.partition): by core cluster, in the order of their
+    numbers, then by ID, as the files of overlapping_clusters/ did, not in
+    the order of the map. Here, an overlapping cluster of two core clusters,
+    the first of which holds the later contigs of the map."""
+    data = metagenome_network["contig_table"]
+    host = data.Name.map(metagenome.truth.Host)
+    # genome_1 and genome_2 in one overlapping cluster, the genome whose
+    # contigs come last in the map in the first core cluster.
+    late, early = sorted(["genome_1", "genome_2"], key=lambda genome: -data.ID[host == genome].min())
+    others = [genome.name for genome in metagenome.genomes if genome.name not in (late, early)]
+    core = {number + 1: sorted(data.ID[host == genome]) for number, genome in enumerate([late, early, *others])}
+    overlapping = {1: core[1] + core[2], **{number: core[number + 1] for number in range(2, len(core))}}
+    clusters = mtcl.Partition(
+        core=core, overlapping=overlapping, names={number: mtcl.overlapping_name("metator", number) for number in overlapping}
+    )
+    assert overlapping[1] != sorted(overlapping[1])
+    metacool = _network_map(metagenome_network, tmp_path / "network.metacool")
+    entry = {mtmc.NETWORK_DIGEST: mtn.stored_network(str(metacool)).digest}
+    mtmc.write_rounds(
+        str(metacool),
+        str(metacool),
+        mtcl.partition_rounds(clusters, list(data.Name)),
+        names=list(mtmc.PARTITION_ROUNDS),
+        force=True,
+        entries={"partition": entry},
+    )
+    assert mtmc.read_partition(str(metacool)) == clusters
+    checked = {}
+    fake = synthetic.fake_micomplete(metagenome)
+
+    def micomplete_quality(fasta_dir, outfile, threads):
+        if not checked:
+            checked.update({path.stem: list(synthetic.read_fasta(path)) for path in Path(fasta_dir).glob("*.fa")})
+        fake(fasta_dir, outfile, threads)
+
+    monkeypatch.setattr("metator.validation.micomplete_quality", micomplete_quality)
+    run_cli("validation", metacool, "-a", metagenome_inputs["assembly"], "-o", tmp_path / "out", "-T", tmp_path / "tmp",
+            "-s", "50000", "-i", "5")  # fmt: skip
+    names = list(data.Name)
+    expected = {clusters.names[number]: [names[contig - 1] for contig in contigs] for number, contigs in overlapping.items()}
+    assert checked and checked == {name: expected[name] for name in checked}
+    assert checked[clusters.names[1]] != [names[contig - 1] for contig in sorted(overlapping[1])]
+
+
 def test_validation_again_on_the_map_of_its_clusters(
     metagenome, metagenome_inputs, metagenome_network, tmp_path, monkeypatch, run_cli
 ):
@@ -657,7 +706,7 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, tmp_path, monke
     final = pd.read_csv(mcool / "contig_data_final.txt", sep="\t", dtype=str)
     overlapping = mc.clusters[mc.clusters["round"] == "overlapping"]
     assert set(overlapping.name) == {f"metator_{number}_00000" for number in set(final.Overlapping_cluster_ID) - {"-"}}
-    checked = overlapping["Weighted completeness"].astype(str) != ""
+    checked = overlapping["Weighted completeness"].notna()
     assert checked.any() and (checked == (overlapping["length"] >= 50000)).all()
     assert not (mcool / "overlapping_clusters").exists()
     genome_of = dict(zip(mc.contigs.name, mc.contigs.genome_id.map(mc.genomes.name), strict=True))
