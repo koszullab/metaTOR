@@ -3,8 +3,7 @@
 # They check what a user sees (the commands listed, the options of a command,
 # a failure on a missing or unknown command), not the layout of the help
 # text, which belongs to the command line parsing library. The `metator`
-# command runs metator.cli.cli; metator.main.main, the former entry point,
-# and `python -m metator` run the same command line.
+# command runs metator.cli.cli, and so does `python -m metator`.
 
 import re
 import runpy
@@ -13,7 +12,6 @@ import sys
 import pytest
 
 import metator.cli as mtcli
-import metator.main as mtm
 from metator.version import __version__
 from tests.ansi import plain
 
@@ -21,9 +19,9 @@ COMMANDS = ["network", "partition", "validation", "pipeline", "mge"]
 
 
 def _run(monkeypatch, *argv):
-    """Run metator.main.main() on the command line `metator *argv`."""
+    """Run metator.cli.cli() on the command line `metator *argv`."""
     monkeypatch.setattr(sys, "argv", ["metator", *argv])
-    mtm.main()
+    mtcli.cli()
 
 
 def _shown(exit, capsys):
@@ -31,10 +29,6 @@ def _shown(exit, capsys):
     captured = capsys.readouterr()
     message = "" if isinstance(exit.value.code, int) or exit.value.code is None else str(exit.value.code)
     return plain(captured.out + captured.err + message)
-
-
-def test_main_is_the_cli():
-    assert mtm.main is mtcli.cli
 
 
 def test_help(monkeypatch, capsys):
@@ -95,13 +89,18 @@ def test_command_runs(monkeypatch, tmp_path, private_link):
     assert any((out / "overlapping_clusters").iterdir())
 
 
-@pytest.mark.parametrize("module", ["metator", "metator.main"])
-def test_python_m(monkeypatch, capsys, module):
-    """`python -m metator` and `python -m metator.main` run the command line."""
-    monkeypatch.setattr(sys, "argv", [module, "--version"])
+def test_python_m(monkeypatch, capsys):
+    """`python -m metator` runs the command line."""
+    monkeypatch.setattr(sys, "argv", ["metator", "--version"])
     # Run from a fresh copy, as python does.
-    monkeypatch.delitem(sys.modules, "metator.__main__" if module == "metator" else module, raising=False)
+    monkeypatch.delitem(sys.modules, "metator.__main__", raising=False)
     with pytest.raises(SystemExit) as exit:
-        runpy.run_module(module, run_name="__main__", alter_sys=True)
+        runpy.run_module("metator", run_name="__main__", alter_sys=True)
     assert not exit.value.code
     assert capsys.readouterr().out == f"{__version__}\n"
+
+
+def test_python_m_metator_main_is_gone():
+    """`python -m metator.main`, the former entry point, is gone in 2.0."""
+    with pytest.raises(ImportError):
+        runpy.run_module("metator.main", run_name="__main__", alter_sys=True)

@@ -16,6 +16,7 @@ the new bins, 9 times at most.
 
 Functions in this module:
     - bin_quality
+    - check_partition_table
     - correct_final_bin
     - get_bin_coverage
     - give_results_info
@@ -25,7 +26,6 @@ Functions in this module:
     - recursive_clustering
     - recursive_clustering_worker
     - recursive_decontamination
-    - replace_clustering_values
     - run_in_its_own_group
     - update_contigs_data_recursive
     - write_bins_contigs
@@ -35,7 +35,6 @@ import logging
 import metator.clusters as mtc
 import metator.io as mio
 import metator.partition as mtp
-import numpy as np
 import os
 import pandas as pd
 import pyfastx
@@ -49,10 +48,39 @@ from functools import partial
 from importlib.metadata import version
 from metator.log import logger
 from os.path import join
-from scipy import sparse
 
 # The fasta files of the bins that miComplete evaluates.
 FASTA_EXTENSIONS = (".fa", ".fasta", ".fna")
+
+#: The columns of the contig data table of a partition that the validation
+#: reads (see check_partition_table).
+PARTITION_COLUMNS = ("ID", "Name", "Size", "Hit", "Shotgun_coverage", "Overlapping_cluster_ID")
+
+
+def check_partition_table(contig_data_file):
+    """Refuse a contig data table that lacks a column the validation reads
+    (PARTITION_COLUMNS): the error, logged, names them. Only its header is
+    read: a table refused here costs no miComplete run.
+
+    Parameters:
+    -----------
+    contig_data_file : str
+        Path to the contig data table of a partition
+        (contig_data_partition.txt).
+
+    Raises:
+    -------
+    ValueError
+        If the table lacks one of PARTITION_COLUMNS.
+    """
+    header = pd.read_csv(contig_data_file, sep="\t", nrows=0).columns
+    missing = [column for column in PARTITION_COLUMNS if column not in header]
+    if missing:
+        logger.error(
+            f"{contig_data_file} has no {', '.join(missing)} column: give the contig data table of a partition "
+            "(contig_data_partition.txt)."
+        )
+        raise ValueError(f"{contig_data_file} lacks the columns {', '.join(missing)}.")
 
 
 def bin_quality(completeness, redundancy):
@@ -391,11 +419,9 @@ def recursive_clustering(
     bin_summary,
     contigs_data,
     network,
-    cluster_matrix,
     size,
     threads,
     prefix,
-    clustering_matrix=None,
 ):
     """Function to run recursive iterations on contaminated bins in order to try
     to improve the quality of the bins using Louvain or Leiden algorithm.
@@ -426,17 +452,12 @@ def recursive_clustering(
     network : pandas.DataFrame
         Metator full network: one row per edge, with the columns contig1,
         contig2 and weight.
-    cluster_matrix : bool
-        If True, build the clustering matrix.
     size : int
         Size threshold in base pairs of the bins.
     threads : int
         Number of threads to use.
     prefix : str
         Sample prefix to use.
-    clustering_matrix : scipy.sparse.coo_matrix or None
-        With cluster_matrix, the clustering matrix of the earlier recursive
-        steps, which this step updates; None for the first step.
 
     Returns:
     --------
@@ -446,23 +467,12 @@ def recursive_clustering(
         Updated dictionnary which has as keys the values of the iterations from
         the recursive partition separated by a semicolon and as values the list
         of the id of the contigs.
-    scipy.sparse.coo.coo_matrix:
-        With cluster_matrix, the clustering matrix of the recursive steps so
-        far: for each two contigs of a bin partitioned again, the share of the
-        iterations of its latest partition that put them together (see
-        replace_clustering_values). None otherwise.
     dict
         Dictionnary with recursive bin_id as key and parent bin as values.
     """
 
     # Default no contamination
     contamination = False
-
-    # The clustering matrix of the earlier steps, or an empty one: row and
-    # column i are the contig of ID i.
-    N = len(contigs_data.ID)
-    if cluster_matrix and clustering_matrix is None:
-        clustering_matrix = sparse.coo_matrix((N + 1, N + 1), dtype=np.float32)
 
     # Put iterations to on eif spinglass partition used.
     if algorithm == "spinglass":
@@ -483,9 +493,6 @@ def recursive_clustering(
                         bin_ids.append(bin_id)
         except KeyError:
             continue
-
-    # The contigs of each bin, before their recursive bins change their IDs.
-    bins_contigs = {bin_id: bin_contig_ids(bin_id, contigs_data) for bin_id in bin_ids}
 
     # Iterate on cmicomplete summary to find conatminated bins:
     # pool = multiprocessing.Pool(processes=threads)
@@ -545,18 +552,9 @@ def recursive_clustering(
             prefix,
         )
 
-        # The clustering matrix of the subnetwork: its values replace those
-        # of the pairs of contigs of the bin.
-        if cluster_matrix:
-            clustering_matrix = replace_clustering_values(
-                clustering_matrix,
-                bins_contigs[bin_id],
-                mtp.build_clustering_matrix(recursive_core_bins, hamming_distance, N),
-            )
-
         logger.info("Recursive step for {0} is done.".format(bin_id))
 
-    return contamination, contigs_data, clustering_matrix, parent_dict
+    return contamination, contigs_data, parent_dict
 
 
 def _bin_contigs(bin_id, contigs_data):
@@ -587,40 +585,6 @@ def bin_contig_ids(bin_id, contigs_data):
         contigs_data["Recursive_cluster_ID"].apply(str) == rec_bin_id
     )
     return list(contigs_data.loc[mask, "ID"])
-
-
-def replace_clustering_values(clustering_matrix, contig_ids, bin_matrix):
-    """Function to replace, in the clustering matrix, the values of the pairs
-    of contigs of a bin by those of the clustering matrix of its partition.
-
-    A bin partitioned again at a later recursive step is a part of a bin
-    partitioned before: its pairs of contigs keep the values of its latest
-    partition, and the pairs that this partition never puts together lose
-    theirs.
-
-    Parameters:
-    -----------
-    clustering_matrix : scipy.sparse.coo_matrix
-        Clustering matrix of the recursive partitions so far.
-    contig_ids : list of int
-        IDs of the contigs of the bin.
-    bin_matrix : scipy.sparse.coo_matrix
-        Clustering matrix of the partition of the bin, of the same shape: the
-        share of the iterations that put each two of its contigs together.
-
-    Returns:
-    --------
-    scipy.sparse.coo_matrix:
-        The clustering matrix, updated.
-    """
-    matrix = clustering_matrix.tocoo()
-    inside = np.isin(matrix.row, contig_ids) & np.isin(matrix.col, contig_ids)
-    kept = sparse.coo_matrix(
-        (matrix.data[~inside], (matrix.row[~inside], matrix.col[~inside])),
-        shape=matrix.shape,
-        dtype=np.float32,
-    )
-    return (kept + bin_matrix.astype(np.float32)).tocoo()
 
 
 def recursive_clustering_worker(
@@ -682,7 +646,6 @@ def recursive_clustering_worker(
 def recursive_decontamination(
     algorithm,
     assembly,
-    cluster_matrix,
     contig_data_file,
     final_fasta_dir,
     input_fasta_dir,
@@ -707,8 +670,6 @@ def recursive_decontamination(
         or louvain.
     assembly : str
         Path to the assembly file used for the partition.
-    cluster_matrix : bool
-        If True, build the clustering matrix and save it.
     contig_data_file : str
         Path to the contig data table to update.
     final_fasta_dir : str
@@ -739,13 +700,11 @@ def recursive_decontamination(
         Number of threads to use.
     prefix : str
         Sample prefix to use.
-
-    Returns:
-    --------
-    scipy.sparse.coo.coo_matrix:
-        Matrix with all the previously computed hamming distance between two
-        contigs.
     """
+
+    # A table without the columns of a partition: refused before miComplete
+    # runs on every cluster.
+    check_partition_table(contig_data_file)
 
     # No bin to validate: miComplete would write no result to read.
     if not any(path.endswith(FASTA_EXTENSIONS) for path in os.listdir(input_fasta_dir)):
@@ -782,14 +741,12 @@ def recursive_decontamination(
     )
 
     # Load contigs data:
-    contigs_data = mio.rename_1x_columns(
-        pd.read_csv(
-            contig_data_file,
-            sep="\t",
-            header=0,
-            # As written, of metaTOR 2.0 or 1.x: "00008", not 8.
-            converters={"Overlapping_cluster_ID": str, "Overlapping_bin_ID": str},
-        )
+    contigs_data = pd.read_csv(
+        contig_data_file,
+        sep="\t",
+        header=0,
+        # As written: "00008", not 8.
+        converters={"Overlapping_cluster_ID": str},
     )
     contigs_data["index"] = contigs_data["ID"] - 1
     contigs_data = contigs_data.set_index("index")
@@ -819,7 +776,6 @@ def recursive_decontamination(
     # Recursively remove contamination.
     contamination = True
     step = 1
-    clustering_matrix = None
 
     logger.info("Starts recursive decontamition step:")
 
@@ -836,7 +792,6 @@ def recursive_decontamination(
         (
             contamination,
             contigs_data,
-            clustering_matrix,
             parent_dict,
         ) = recursive_clustering(
             assembly,
@@ -850,11 +805,9 @@ def recursive_decontamination(
             bin_summary,
             contigs_data,
             network,
-            cluster_matrix,
             size,
             threads,
             prefix,
-            clustering_matrix=clustering_matrix,
         )
 
         # Put back the info log
@@ -909,13 +862,6 @@ def recursive_decontamination(
     for info in bin_summary.values():
         info["recursive"] = info["step"] > 0
 
-    # Save the clustering matrix of the recursive partitions.
-    if cluster_matrix:
-        clustering_matrix_file = join(outdir, "clustering_matrix_recursive")
-        sparse.save_npz(clustering_matrix_file, clustering_matrix)
-    else:
-        clustering_matrix_file = None
-
     # Create fasta directory and copy final bins.
     if not os.path.exists(final_fasta_dir):
         os.makedirs(final_fasta_dir)
@@ -963,8 +909,6 @@ def recursive_decontamination(
     # Write the new file
     contig_data_file_final = join(outdir, "contig_data_final.txt")
     contigs_data.to_csv(contig_data_file_final, sep="\t", header=True, index=True)
-
-    return clustering_matrix_file
 
 
 def update_contigs_data_recursive(

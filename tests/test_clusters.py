@@ -4,7 +4,6 @@ import pandas as pd
 import pytest
 
 import metator.clusters as mtc
-from tests import synthetic
 
 
 def _rounds():
@@ -174,17 +173,6 @@ def test_the_overlapping_round_of_a_partition(tmp_path):
     # No cluster reaches the size: the round has none.
     clusters, members = mtc.overlapping_round(table, 10_000, "metator")
     assert clusters.empty and members.empty
-
-
-def test_the_overlapping_round_of_a_partition_of_1x(tmp_path):
-    """The contig data of a partition of metaTOR 1.x, its columns named
-    after bins, gives the round of the same table of 2.0."""
-    table = "tests_data/contig_data_partition.txt"
-    old = synthetic.as_1x(table, tmp_path / "contig_data_partition.txt")
-    expected = mtc.overlapping_round(table, 50_000, "metator")
-    assert len(expected[0]) > 0
-    for got, frame in zip(mtc.overlapping_round(old, 50_000, "metator"), expected, strict=True):
-        pd.testing.assert_frame_equal(got, frame)
 
 
 def test_the_mge_round_of_a_summary(tmp_path):

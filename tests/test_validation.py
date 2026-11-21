@@ -332,21 +332,6 @@ def test_give_results_info(caplog):
         assert line in caplog.text
 
 
-def test_replace_clustering_values():
-    """The pairs of contigs of a bin partitioned again take the values of its
-    latest partition: those it never puts together lose theirs, and the other
-    pairs keep theirs."""
-    from scipy import sparse
-
-    earlier = sparse.coo_matrix(([1.0, 0.5, 0.25, 0.75], ([1, 1, 2, 3], [1, 2, 3, 4])), shape=(5, 5), dtype=np.float32)
-    latest = sparse.coo_matrix(([1.0, 1.0], ([1, 1], [1, 2])), shape=(5, 5))
-    updated = mtv.replace_clustering_values(earlier, [1, 2, 3], latest).toarray()
-    expected = np.zeros((5, 5), dtype=np.float32)
-    expected[1, 1] = expected[1, 2] = 1.0  # within the bin: its latest partition
-    expected[3, 4] = 0.75  # contig 4 is not in the bin
-    assert np.array_equal(updated, expected)
-
-
 def test_bin_abundances_are_percentages():
     contigs = pd.DataFrame(
         {

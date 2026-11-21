@@ -7,12 +7,9 @@ import subprocess as sp
 import zipfile
 
 import metator.io as mio
-import numpy as np
 import pandas as pd
 import pyfastx
 import pytest
-from scipy import sparse
-from tests import synthetic
 
 
 def test_check_is_fasta(tmp_path):
@@ -80,11 +77,6 @@ def test_file_compression(tmp_path):
     assert found == {"plain.gz": "uncompressed", "gzip.txt": "gz", "bzip2.gz": "bz2", "archive.txt": "zip"}
 
 
-def test_save_sparse_matrix_requires_coo(tmp_path):
-    with pytest.raises(ValueError, match="coo"):
-        mio.save_sparse_matrix(sparse.csr_matrix(np.eye(2)), tmp_path / "matrix.txt")
-
-
 def test_generate_temp_dir_without_permission(tmp_path, monkeypatch):
     def denied(path):
         raise PermissionError(path)
@@ -118,13 +110,6 @@ def test_remove_pyfastx_index(tmp_path):
     assert fasta.exists()
 
 
-def test_save_sparse_matrix(tmp_path):
-    matrix = sparse.coo_matrix(([1.5, 2.0], ([0, 1], [1, 2])), shape=(3, 3))
-    mio.save_sparse_matrix(matrix, tmp_path / "matrix.txt")
-    lines = (tmp_path / "matrix.txt").read_text().splitlines()
-    assert lines == ["3\t3\t2", "0\t1\t1.500", "1\t2\t2.000"]
-
-
 @pytest.mark.parametrize(
     "version, parallel",
     [("sort (GNU coreutils) 9.4", True), ("sort (GNU coreutils) 8.4", False), ("2.3-Apple (154)", False)],
@@ -152,9 +137,9 @@ def test_sort_pairs(tmp_path, monkeypatch, version, parallel):
 
 def test_rename_1x_columns(logged):
     """The columns of the contig data that metaTOR 1.x named after bins get
-    their 2.0 names. A table of 2.0 is returned as it is, and a column of a
-    2.0 name wins over the 1.x column of the same meaning, which is left as
-    it is."""
+    their 2.0 names (for host.py, which reads the tables of 1.x). A table of
+    2.0 is returned as it is, and a column of a 2.0 name wins over the 1.x
+    column of the same meaning, which is left as it is."""
     old = [
         "Core_bin_ID", "Core_bin_contigs", "Core_bin_size", "Overlapping_bin_ID", "Overlapping_bin_contigs",
         "Overlapping_bin_size", "Recursive_bin_ID", "Recursive_bin_contigs", "Recursive_bin_size", "Final_bin",
@@ -173,23 +158,6 @@ def test_rename_1x_columns(logged):
     assert mio.rename_1x_columns(both) is both
     message = f"Contig data of metaTOR 1.x: its columns {', '.join(old)} are read as {', '.join(new)}."
     assert logged() == [("INFO", message)]
-
-
-@pytest.mark.parametrize("name", ["contig_data_partition.txt", "contig_data_final.txt"])
-def test_contig_data_of_1x(name, tmp_path):
-    """A contig data file of metaTOR 1.x reads as the same file of 2.0, in
-    read_contig_data (qc) and import_contig_data_mges (mge)."""
-    table = f"tests_data/{name}"
-    old = synthetic.as_1x(table, tmp_path / name)
-    pd.testing.assert_frame_equal(mio.read_contig_data(old), mio.read_contig_data(table))
-    binning, mges = {"Contig_0": "metator_00009_00000"}, ["Contig_57977"]
-    for got, expected in zip(
-        mio.import_contig_data_mges(old, binning, mges), mio.import_contig_data_mges(table, binning, mges), strict=True
-    ):
-        if isinstance(expected, pd.DataFrame):
-            pd.testing.assert_frame_equal(got, expected)
-        else:
-            assert got == expected
 
 
 def test_import_mges_tables(tmp_path):
@@ -224,15 +192,6 @@ def test_bin_summary_round_trip(tmp_path, shotgun):
     assert table.loc["bin_1", "Weighted completeness"] == 0.91
     assert table.loc["bin_1", "HiC_abundance"] == 1.2346
     assert ("SG_abundance" in table.columns) == shotgun
-
-
-def test_read_contig_data(tmp_path):
-    pd.DataFrame({"ID": [1, 2], "Name": ["c1", "c2"], "Size": [10, 20]}).to_csv(
-        tmp_path / "contig_data.txt", sep="\t", index=False
-    )
-    data = mio.read_contig_data(str(tmp_path / "contig_data.txt"))
-    assert data.loc["c2", "Size"] == 20
-    assert list(data.Name) == ["c1", "c2"]
 
 
 @pytest.mark.parametrize("with_tmp_column", [True, False])

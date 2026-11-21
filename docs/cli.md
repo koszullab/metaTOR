@@ -56,12 +56,11 @@ hicstuff's next release), or metacooler from pairs files
 | `-O, --overlap` | `80` | The percentage of iterations in which two core clusters must fall together to be merged into one overlapping cluster. |
 | `-r, --res-param` | `1.0` | The resolution of the Leiden algorithm. |
 | `-s, --size` | `500000` | The size, in bp, a cluster must reach to be kept. |
-| `-C, --cluster-matrix` | off | Write the clustering matrices (`clustering_matrix*.npz`). |
 | `-j, --rec-iter` | `10` | The iterations of the recursive partition of the contaminated clusters. |
 | `-P, --rec-overlap` | `90` | The overlap threshold of the recursive partition, in percent. |
 | `-o, --outdir` | the current directory | The output directory. |
 | `-p, --prefix` | none | Name the clusters `<prefix>_metator_…`. Letters, digits, `_` and `-` only. |
-| `-F, --force` | off | Replace the directories of clusters of an earlier run, and an existing `--output-map` file. Removes the outputs of a run of metaTOR 1.x: `overlapping_bin/`, `recursive_bin/`, `final_bin/`, `final_bin_unscaffold/` and `bin_summary.txt`, and the plots of an earlier run, `plot/`, which metaTOR 2.0 no longer draws. |
+| `-F, --force` | off | Replace the directories of clusters of an earlier run, and an existing `--output-map` file. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory. |
 | `-t, --threads` | `1` | Threads to sort the network, and for the partition and the validation (miComplete). |
 | `-N, --no-clean-up` | off | Keep the temporary files. |
@@ -99,7 +98,6 @@ metator network [OPTIONS] MAP
 | `-d, --depth` | none | As in `pipeline`. |
 | `-e, --enzyme` | none | As in `pipeline`. |
 | `-n, --normalization` | `empirical_hit` | As `--normalization` (`-m`) in `pipeline`. |
-| `-s, --self-contacts` | off | Count the contacts of each contig with itself. |
 | `-o, --outdir` | the current directory | The output directory. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory. |
 | `-t, --threads` | `1` | Threads to sort the network. |
@@ -138,10 +136,9 @@ left as they were. See
 | `-O, --overlap` | `80` | The overlap threshold, in percent. |
 | `-r, --res-param` | `1.0` | The resolution of the Leiden algorithm. |
 | `-s, --size` | `500000` | The size, in bp, an overlapping cluster must reach to be written. |
-| `-C, --cluster-matrix` | off | Write `clustering_matrix_partition.npz`. |
 | `-o, --outdir` | `./` | The output directory. |
 | `-p, --prefix` | none | Name the clusters `<prefix>_metator_…`. |
-| `-F, --force` | off | Replace `overlapping_clusters/`, and an existing `--output-map` file. Removes the `overlapping_bin/` of a run of metaTOR 1.x. |
+| `-F, --force` | off | Replace `overlapping_clusters/`, and an existing `--output-map` file. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory. |
 | `-t, --threads` | `1` | Threads for the partition. |
 | `-N, --no-clean-up` | off | Keep the temporary files. |
@@ -190,10 +187,9 @@ does at its end: in place, or to `--output-map`. See
 | `-O, --overlap` | `90` | The overlap threshold of the recursive partition, in percent. |
 | `-r, --res-param` | `1.0` | The resolution of the Leiden algorithm. |
 | `-s, --size` | `500000` | The size, in bp, a cluster must reach to be kept. |
-| `-C, --cluster-matrix` | off | Write `clustering_matrix_recursive.npz`. |
 | `-o, --outdir` | `./` | The output directory. |
 | `-p, --prefix` | none | Name the clusters `<prefix>_metator_…`. |
-| `-F, --force` | off | Replace `recursive_clusters/` and `final_clusters/`, and an existing `--output-map` file. Removes the outputs of a run of metaTOR 1.x: `recursive_bin/`, `final_bin/`, `final_bin_unscaffold/` and `bin_summary.txt`, and the plots of an earlier run, `plot/`, which metaTOR 2.0 no longer draws. Refused when `--fasta` is in one of these directories. |
+| `-F, --force` | off | Replace `recursive_clusters/` and `final_clusters/`, and an existing `--output-map` file. Refused when `--fasta` is in one of these directories, or in the target of one that is a symbolic link. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory. |
 | `-t, --threads` | `1` | Threads for the partition and miComplete. |
 | `-N, --no-clean-up` | off | Keep the temporary files. |

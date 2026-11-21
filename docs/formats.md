@@ -172,18 +172,6 @@ cluster, with its round, cluster and contig, under a header. The map of the
 clusters stores both (see
 [Clustering rounds](guides/metacool.md#clustering-rounds)).
 
-### Clustering matrices
-
-With `--cluster-matrix`, `clustering_matrix_partition.npz`,
-`clustering_matrix_recursive.npz` and, in `pipeline`, `clustering_matrix.npz`
-(the mean of both) hold how often each two contigs were clustered together,
-from 0 to 1, as a sparse matrix of scipy (`scipy.sparse.load_npz`). The
-recursive matrix holds the pairs of contigs of the clusters partitioned again,
-each with the values of the latest partition of its cluster. Row and column
-*i* are the contig of ID *i* (row and column 0 are empty), and only the upper
-triangle is stored. See
-[The clustering matrices](guides/python.md#the-clustering-matrices).
-
 ### FASTA files of the clusters
 
 `overlapping_clusters/`, `recursive_clusters/step_<n>/` (the recursive

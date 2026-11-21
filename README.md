@@ -135,12 +135,9 @@ The output files will be in the ouput directory given as parmater or in working 
 | - | :-: | :-: | :-: | :-: | :-: |
 | network.txt |Normalized network of the metaHiC library|X|||X|
 | contig_data_network.txt |Information on contigs after network step|X||||
-| clustering_matrix_partition.txt |Matrix of clustering from the partition iterations||X|||
 | contig_data_partition.txt |Information on contigs after partition step||X|||
 | overlapping_micomplete_results.txt |miComplete results summary file from the partition step|||X|X|
 | recursive_micomplete_stepN.txt |miComplete results summary file from the recursive step N|||X|X|
-| clustering_matrix_validation.txt |Matrix of clustering from the recursive iterations|||X||
-| clustering_matrix.txt |Matrix of clustering from the partition and recursive iterations||||X|
 | contig_data_final.txt |Information on contigs after whole pipeline|||X|X|
 | **cluster_summary.txt** |**Information on the final clusters**|||**X**|**X**|
 | clusters.txt |Every cluster of every round (overlapping, recursive, final), with its parent and miComplete's columns|||X|X|
@@ -172,11 +169,6 @@ Depending on which step of the pipeline have been launch they just have some of 
 
 The shotgun coverage will be filled only if the depth.txt file is given, otherwise it will be filled with `-`. This column is only necessarry for the *abundance* and the *theoritical_hit* normalization. The restriction will also be filled with `-` if no enzyme are given. This column is only necessary for the *RS* and the *theoritical_hit* normalization. A run from a contact map reads both columns from the map when the options are not given (see [Starting from a contact map](#starting-from-a-contact-map)).
 Moreover, if the contig is not clustered (no HiC reads mapped on it) all the columns with clustering information will be filled with `-`, and if a cluster is not recursively decontamined because it's smaller than the size threshold or it doesn't have any contamination the recusive cluster information will be filled `0`, `-`, `-`. Finally, if the contig is not in a final cluster, it will be annotated `ND` in the last column (for not determined).
-
-**clustering matrix files**
-The clustering matrix files are at the `.npz` format which is a compresed foramt for sparsed matrix. This sparsed matrix contains the ratio of time each pairs of contigs are clusterize together by the algorithm of clustering (either Louvain or Leiden). The partition matrix contains the information for the partition step, the recursive one for the recursive step and the general one is the mean of both matrices. Be careful the index of the contigs are **zero-based** and not one-based as in the contig data file.
-
-It's possible to read them in python using the `scipy.sparse.load_npz()` function. If the users wants a tsv file instead, he or she could load the matrix in python using load_npz and make sure to transform the matrix in the `scipy.sparse.coo_matrix` function and used the function from metator `metator.io.save_sparse_matrix` to save it as tsv file.
 
 **binning.txt file**
 This is a tsv file with two columns: the contig name and the final were the

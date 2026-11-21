@@ -13,7 +13,6 @@ This mdoule contains all core I/O functions:
     - import_mges_contigs
     - process_ligation_sites
     - read_compressed
-    - read_contig_data
     - remove_pyfastx_index
     - rename_1x_columns
     - sort_pairs
@@ -25,7 +24,6 @@ This mdoule contains all core I/O functions:
 import bz2
 import gzip
 import io
-import numpy as np
 import os
 import pandas as pd
 import subprocess as sp
@@ -209,7 +207,7 @@ def import_contig_data_mges(contig_data_file, binning_result, mges_list):
     list
         List of the mge contigs ID.
     """
-    contig_data = rename_1x_columns(pd.read_csv(contig_data_file, sep="\t"))
+    contig_data = pd.read_csv(contig_data_file, sep="\t")
     contig_data["Binned"] = False
     contig_data["Final_cluster"] = "ND"
     contig_data["MGE"] = False
@@ -311,28 +309,12 @@ def read_compressed(filename):
         return open(filename, "r")
 
 
-def read_contig_data(contig_data_file):
-    """Read a contig data file from metator pipeline, of metaTOR 1.x too
-    (see rename_1x_columns).
-
-    Parameters
-    ----------
-    contig_data_file : str
-        Path to the contig data file.
-
-    Returns
-    -------
-    pandas.DataFrame
-        Table from contig data with contig name as index.
-    """
-    data = rename_1x_columns(pd.read_csv(contig_data_file, sep="\t"))
-    data = data.set_index("Name", drop=False)
-    return data
-
-
 #: The columns of the contig data files that metaTOR 1.x named after bins,
 #: with their names since metaTOR 2.0, which calls its groups of contigs
-#: clusters.
+#: clusters. No command reads the tables of 1.x anymore: host.py renames
+#: their columns (see rename_1x_columns), and the writer of the map of the
+#: clusters drops those that a map made from a table of 1.x carries
+#: (metator.metacool._write_back_columns).
 CONTIG_DATA_1X_COLUMNS = {
     "Core_bin_ID": "Core_cluster_ID",
     "Core_bin_contigs": "Core_cluster_contigs",
@@ -349,10 +331,11 @@ CONTIG_DATA_1X_COLUMNS = {
 
 def rename_1x_columns(contig_data):
     """The table of contig data contig_data, its columns named after bins by
-    metaTOR 1.x renamed as metaTOR 2.0 names them (CONTIG_DATA_1X_COLUMNS),
-    so that every command reads the contig data files of a 1.x run as those
-    of a 2.0 run. A column already named as in 2.0 is kept, and the 1.x
-    column of the same meaning then left as it is.
+    metaTOR 1.x renamed as metaTOR 2.0 names them (CONTIG_DATA_1X_COLUMNS).
+    Kept for host.py, which calls it to read the contig data files of a 1.x
+    run as those of a 2.0 run: no command reads the tables of 1.x anymore. A
+    column already named as in 2.0 is kept, and the 1.x column of the same
+    meaning then left as it is.
 
     Parameters
     ----------
@@ -417,33 +400,6 @@ def write_contigs(fasta, names, out_file):
     with open(out_file, "w") as out:
         for name in names:
             out.write(fasta[str(name)].raw)
-
-
-def save_sparse_matrix(s_mat, path):
-    """Save a sparse matrix
-
-    Saves a sparse matrix object into tsv format.
-
-    Parameters
-    ----------
-    s_mat : scipy.sparse.coo_matrix
-        The sparse matrix to save on disk
-    path : str
-        File path where the matrix will be stored
-    """
-    if s_mat.format != "coo":
-        raise ValueError("Sparse matrix must be in coo format")
-    _dtype = s_mat.dtype
-    sparse_arr = np.vstack([s_mat.row, s_mat.col, s_mat.data]).T
-
-    np.savetxt(
-        path,
-        sparse_arr,
-        header="{nrows}\t{ncols}\t{nonzero}".format(nrows=s_mat.shape[0], ncols=s_mat.shape[1], nonzero=s_mat.nnz),
-        comments="",
-        fmt=["%i", "%i", "%1.3f"],
-        delimiter="\t",
-    )
 
 
 def sort_pairs(in_file, out_file, tmp_dir=None, threads=1, buffer="2G"):

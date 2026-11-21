@@ -36,7 +36,8 @@ the map where the options give none (see
 The contacts of the map between two different contigs, summed over their
 bins, are the edge between them: every pair counts (metaTOR 2.0 removed
 `--edge`, which left out the pairs with a mate near the end of its contig).
-`--self-contacts` (`-s`) adds the contacts of each contig with itself.
+The contacts of a contig with itself are no edge (metaTOR 2.0 removed
+`--self-contacts`, which added them).
 
 `network.txt` holds the network, one line per pair of contigs in contact: the
 IDs of the two contigs (as in the contig data table, from 1) and the

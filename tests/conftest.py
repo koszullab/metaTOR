@@ -227,7 +227,6 @@ def metagenome_network(metagenome_files, tmp_path_factory):
         str(tmp_dir),
         1,
         "empirical_hit",
-        False,
     )
     return {"network": Path(network), "contig_data": Path(contig_data_file)}
 

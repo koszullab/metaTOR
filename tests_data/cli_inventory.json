@@ -77,14 +77,6 @@
       "required": false
      },
      {
-      "short": "-s",
-      "long": "--self-contacts",
-      "takes_value": false,
-      "metavar": null,
-      "default": false,
-      "required": false
-     },
-     {
       "short": "-t",
       "long": "--threads",
       "takes_value": true,
@@ -126,14 +118,6 @@
       "metavar": "FILE",
       "default": null,
       "required": true
-     },
-     {
-      "short": "-C",
-      "long": "--cluster-matrix",
-      "takes_value": false,
-      "metavar": null,
-      "default": false,
-      "required": false
      },
      {
       "short": "-c",
@@ -265,14 +249,6 @@
       "metavar": "FILE",
       "default": null,
       "required": true
-     },
-     {
-      "short": "-C",
-      "long": "--cluster-matrix",
-      "takes_value": false,
-      "metavar": null,
-      "default": false,
-      "required": false
      },
      {
       "short": "-c",
@@ -412,14 +388,6 @@
       "metavar": "FILE",
       "default": null,
       "required": true
-     },
-     {
-      "short": "-C",
-      "long": "--cluster-matrix",
-      "takes_value": false,
-      "metavar": null,
-      "default": false,
-      "required": false
      },
      {
       "short": "-d",
