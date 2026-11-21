@@ -30,6 +30,14 @@ store_normalization): the raw contacts stay as they are, and the
 normalized contact of two bins is their count times both weights, the
 way cooler stores its balancing weights.
 
+Every map is written through metacooler, in an edit session
+(metacooler.staged_edit): all the edits of a step go into one fresh copy of
+the map, which metacooler validates in full once, then renames over the map,
+or onto the map that the run writes instead (--output-map). The map is
+whole whatever stops the run, and does not grow from run to run. A run
+holds the lock of the map it writes from its checks to its end
+(metacooler.lock, see metator.cli.hold_lock), which the session re-enters.
+
 Core functions to write the file:
     - reassign_metacool, from a .metacool map
     - write_rounds, a .metacool map with the clustering rounds of a run
@@ -37,16 +45,10 @@ Core functions to write the file:
 """
 
 import gzip
-import json
 import logging
 import os
-import shutil
-import socket
-import sys
 import tempfile
-import time
-import uuid
-from contextlib import contextmanager, suppress
+from contextlib import ExitStack, contextmanager
 
 import numpy as np
 import pandas as pd
@@ -109,6 +111,8 @@ def _as_metacool_errors():
     error."""
     try:
         yield
+    except MetacoolError:
+        raise
     except KeyError as error:
         # The str() of a KeyError is the repr() of its message.
         raise MetacoolError(str(error.args[0]) if len(error.args) == 1 else str(error)) from error
@@ -258,50 +262,24 @@ def open_map(metacool):
         raise MetacoolError(f"Cannot read the contact map {metacool}: {reason}") from error
 
 
-def _file_state(path):
-    """What changes when the file at path is replaced (by another file,
-    another inode) or written (its size, its time of modification): None
-    when there is no file there."""
-    try:
-        stat = os.stat(path)
-    except FileNotFoundError:
-        return None
-    return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns
-
-
 @contextmanager
-def unchanged_while_read(metacool, outputs=()):
-    """Refuse what the with block reads of the map metacool when its file is
-    replaced or written meanwhile. A run that updates a map in place
-    (pipeline MAP, partition MAP, validation MAP, mge --map) replaces it at
-    its end, with the map of its clusters, whose bins are in another order,
-    and so are the bin ids of its pixels; the lock of the map keeps out the
-    other writers only. metacooler reads a map one chunk of pixels at a
-    time, opening its file for each: a read that spans the replacement
-    mixed the bins of one map with the pixels of the other, and gave wrong
-    contacts, silently. Raises a MetacoolError, from the error of the read
-    when it failed on the change, and removes outputs, the files written
-    from what was read."""
-    path = map_file(metacool)
-    before = _file_state(path)
+def read_errors(metacool):
+    """Raise, as a MetacoolError, metacooler's refusal of a read of the map
+    metacool that spans a replacement of its file (MapChangedError): a run
+    that updates a map in place replaces it with the map of its clusters,
+    whose bins are in another order, and so are the bin ids of its pixels.
+    metacooler reads a map one chunk of pixels at a time, and checks its file
+    before and after each: a read that spanned the replacement would mix the
+    bins of one map with the pixels of the other."""
+    import metacooler
 
-    def refuse(error=None):
-        for output in outputs:
-            if os.path.lexists(output):
-                os.remove(output)
+    try:
+        yield
+    except metacooler.MapChangedError as error:
         raise MetacoolError(
             f"{metacool} was replaced or written while it was read, by a run that updated it: what was read of it "
             "would mix two maps. Read it again once that run has ended."
         ) from error
-
-    try:
-        yield
-    except Exception as error:
-        if _file_state(path) != before:
-            refuse(error)
-        raise
-    if _file_state(path) != before:
-        refuse()
 
 
 def check_map_lengths(metacool, contigs, lengths, of, where):
@@ -462,7 +440,15 @@ def _checked_inputs(contig_data, outfile, force, inputs):
 
 
 def reassign_metacool(
-    metacool, contig_data, outfile, bin_summary=None, force=False, metadata=None, rounds=None, normalization=None
+    metacool,
+    contig_data,
+    outfile,
+    bin_summary=None,
+    force=False,
+    metadata=None,
+    rounds=None,
+    normalization=None,
+    planned=None,
 ):
     """Write the contact map of the final bins from a .metacool map of the
     contigs, without pairs files.
@@ -487,14 +473,15 @@ def reassign_metacool(
     assembly name and the history of the commands are those of the input
     map.
 
-    The map is written to a temporary file next to outfile, then given
-    metacooler's full validation, and only then moved to outfile, which it
-    replaces: a symbolic link at outfile is replaced, not its target.
-    outfile may thus be the input map itself (the same path, or a symbolic
-    link to it or from it): outfile is only replaced by a valid map of the
-    bins, and an input map that outfile links to is left as it was. On any
-    failure, outfile is left as it was, and the temporary files are
-    removed, metacooler's partial file among them.
+    The map is written in an edit session of metacooler (see
+    _staged_edit): metacooler reassign writes it from the input map into
+    the staged copy, where the columns, the normalization and the rounds of
+    the run are then stored, and metacooler validates it in full once,
+    then renames it over the input map, when outfile is the input map
+    itself (the same file, through a symbolic link to it or from it, whose
+    target is then the map edited), or onto outfile, a new file (a symbolic
+    link there is replaced, not followed). On any failure, outfile is left
+    as it was, and the staged copy is removed.
 
     Parameters
     ----------
@@ -529,6 +516,12 @@ def reassign_metacool(
         metator.network.normalize_pair), stored in the map as a weight
         column of its bins (see store_normalization). None or "None":
         none is stored.
+    planned : metacooler.MetaCooler, optional
+        The input map as the run read it, opened when the run started: the
+        map is refused if it changed since (another run replaced it, or a
+        program wrote it), rather than written from another map than the
+        one the clusters of the run come from. By default, the map as this
+        function reads it.
 
     Raises
     ------
@@ -580,178 +573,138 @@ def reassign_metacool(
         f"Writing {outfile} from the contact map {metacool}: {len(names)} contigs, "
         f"{sum(value != 'ND' for value in assignment.values())} of them in {len(final_bins)} clusters."
     )
-    with _metacooler_logging():
-        with _staged_map(outfile) as staged, tempfile.TemporaryDirectory() as scratch:
-            if bin_summary and final_bins:
-                genomes_table = bin_summary
-            else:
-                # Without a bin summary or without a bin, the bin names
-                # alone: the genome columns that the input map carried
-                # (those of an earlier run's bins) are then replaced by
-                # none, where metacooler would keep them and warn that
-                # they no longer describe their bins.
-                genomes_table = os.path.join(scratch, "bins.txt")
-                with open(genomes_table, "w") as handle:
-                    handle.write("".join(f"{name}\n" for name in ["bin", *sorted(final_bins)]))
-            # The input map, read as it is copied, when another run may
-            # update it: the run writes another file (--output-map).
-            with unchanged_while_read(metacool):
-                metacooler.reassign(
-                    metacool,
-                    assignment,
-                    staged,
-                    # Grouped by genome, then from the longest, whatever the
-                    # order of the input map: the pixels are remapped.
-                    layout="genome-then-length",
-                    # The bin names are the first column of the table,
-                    # unnamed in cluster_summary.txt. It replaces the columns
-                    # of the genomes table that the input map carried.
-                    genomes_table=genomes_table,
-                    genomes_table_format="1",
-                    metadata={"metator": {"version": __version__, **(metadata or {})}},
-                    # Over the empty temporary file.
-                    force=True,
-                    # On a failure, metacooler removes the partial file it
-                    # writes next to the temporary file.
-                    keep_partial=False,
-                )
-            # The normalization of an earlier run, which metacooler reassign
-            # carries over: it was computed from the columns that
-            # _write_back_columns replaces.
-            _drop_earlier_normalizations(staged)
-            _write_back_columns(staged, contig_data, contig_columns, header)
-            if normalization in (None, "None"):
+    with _metacooler_logging(), _as_metacool_errors(), ExitStack() as session:
+        _make_directory_of(outfile)
+        # Every edit in one staged copy, which replaces the map once it is
+        # valid (see _staged_edit): reassign writes it from the input map,
+        # then the columns, the normalization and the rounds of the run are
+        # stored in it.
+        with read_errors(metacool):
+            staged = session.enter_context(_staged_edit(metacool, outfile, planned=_read(mc, planned), force=force))
+        scratch = session.enter_context(tempfile.TemporaryDirectory())
+        if bin_summary and final_bins:
+            genomes_table = bin_summary
+        else:
+            # Without a bin summary or without a bin, the bin names alone:
+            # the genome columns that the input map carried (those of an
+            # earlier run's bins) are then replaced by none, where metacooler
+            # would keep them and warn that they no longer describe their
+            # bins.
+            genomes_table = os.path.join(scratch, "bins.txt")
+            with open(genomes_table, "w") as handle:
+                handle.write("".join(f"{name}\n" for name in ["bin", *sorted(final_bins)]))
+        with read_errors(metacool):
+            metacooler.reassign(
+                metacool,
+                assignment,
+                # The staged map, written anew from the input map: its
+                # history names the input map as the source.
+                staged,
+                # Grouped by genome, then from the longest, whatever the
+                # order of the input map: the pixels are remapped.
+                layout="genome-then-length",
+                # The bin names are the first column of the table, unnamed
+                # in cluster_summary.txt. It replaces the columns of the
+                # genomes table that the input map carried.
+                genomes_table=genomes_table,
+                genomes_table_format="1",
+                metadata={"metator": {"version": __version__, **(metadata or {})}},
+                # Over the staged copy of the map.
+                force=True,
+                # On a failure, metacooler removes the partial file it
+                # writes next to the staged map.
+                keep_partial=False,
+            )
+            # The input map as the run read it (mc): one replaced or written
+            # since, by a program that takes no lock of metacooler, is
+            # refused (a read through mc checks its file).
+            with mc.open():
                 pass
-            elif not stores_weights():
-                logger.info(
-                    f"{outfile} stores no {normalization} normalization of the network: metacooler "
-                    f"{metacooler.__version__} cannot store weights (metacooler.store_weights comes with its next "
-                    "release)."
-                )
+        # The normalization of an earlier run, which metacooler reassign
+        # carries over: it was computed from the columns that
+        # _write_back_columns replaces.
+        _drop_earlier_normalizations(staged)
+        _write_back_columns(staged, contig_data, contig_columns, header)
+        if normalization in (None, "None"):
+            pass
+        elif not stores_weights():
+            logger.info(
+                f"{outfile} stores no {normalization} normalization of the network: metacooler "
+                f"{metacooler.__version__} cannot store weights (metacooler.store_weights comes with its next "
+                "release)."
+            )
+        else:
+            try:
+                weights = _normalization_weights(staged, normalization)
+            except MetacoolError as error:
+                # Refused before anything is written: the map is written
+                # without it, an extra output of the run, as the map itself.
+                logger.warning(f"{outfile} stores no {normalization} normalization of the network. {error}")
             else:
-                try:
-                    store_normalization(staged, normalization)
-                except MetacoolError as error:
-                    # The map is written without it: an extra output of the
-                    # run, as the map itself.
-                    logger.warning(f"{outfile} stores no {normalization} normalization of the network. {error}")
-            store_rounds(staged, rounds, name=metacool)
-            _rewrite_in_a_fresh_file(staged)
-        logger.info(f"{outfile} is written: the contact map of the clusters.")
+                # A write that fails fails the session: the map is not
+                # written, with the reason.
+                _store_normalization(staged, normalization, weights)
+        store_rounds(staged, rounds, name=metacool)
+    # Once the session has validated the map and renamed it.
+    logger.info(f"{outfile} is written: the contact map of the clusters.")
+    with _metacooler_logging():
+        _compact(outfile)
     _warn_dropped_rounds(later, metacool, outfile, in_place)
 
 
-@contextmanager
-def _staged_map(outfile):
-    """A map written next to outfile, then moved over it once it is valid.
+def _make_directory_of(outfile):
+    """Make the directory of outfile, where metacooler locks and stages the
+    map before it renames it there."""
+    os.makedirs(os.path.dirname(os.path.abspath(outfile)), exist_ok=True)
 
-    Yields the path of an empty temporary file next to outfile, where the
-    map is written. Once it is, the map is given metacooler's full
-    validation, and only then moved to outfile, which it replaces
-    (os.replace): a symbolic link at outfile is replaced, not its target,
-    so outfile may be the input map of the run (the same path, or a
-    symbolic link to it or from it). The map keeps the mode of the file it
-    replaces (that of the target of a symbolic link): a private map stays
-    private. A new map gets the mode of any new file, from the umask, not
-    the private mode of the temporary file (mkstemp's 0600). On any
-    failure, Ctrl-C included, outfile is left as it was, and the temporary
-    file is removed, with those named after it: the partial files of
-    metacooler and cooler (<staged>.partial, <staged>.partial.__writing__),
-    which a Ctrl-C or a SIGTERM that stops cooler as it writes left next to
-    outfile. A ValueError, OSError or KeyError (metacooler's above all) is
-    raised as a MetacoolError, its message kept.
-    """
+
+def _read(mc, planned):
+    """The input map as it was read, which an edit session refuses to write
+    from when it changed since (see metacooler.staged_edit): mc, opened to
+    write the map, and planned, when the run gives the map as it read it at
+    its start."""
+    return [mc] if planned is None else [planned, mc]
+
+
+def _staged_edit(metacool, outfile, planned, force=False):
+    """The edit session of metacooler that a map of a run is written in
+    (metacooler.staged_edit): one staged copy of the map metacool, where
+    every edit of a step goes, validated in full once, when the session
+    ends. When outfile is the input map itself (the same file, through a
+    symbolic link to it or from it), the staged map then replaces the input
+    map (its target, through a symbolic link, which keeps pointing at it),
+    under the lock of the map, which the run holds, or which the session
+    takes; otherwise it is renamed onto outfile, a new file, which it
+    replaces with force (a symbolic link there is replaced, not followed):
+    the copy is of the map alone, so an entry of a .mmetacool collection
+    becomes a map of its own. The session refuses a map that changed since
+    planned, the input map as the run read it, was opened."""
     import metacooler
 
-    with _as_metacool_errors():
-        directory = os.path.dirname(outfile) or "."
-        os.makedirs(directory, exist_ok=True)
-        handle, staged = tempfile.mkstemp(prefix=f".{os.path.basename(outfile)}.", suffix=".tmp", dir=directory)
-        os.close(handle)
+    if is_input_map(metacool, outfile):
+        return metacooler.staged_edit(metacool, planned=planned)
+    return metacooler.staged_edit(metacool, output=outfile, force=force, planned=planned)
+
+
+def _compact(outfile):
+    """STOPGAP, until metacooler's edit sessions copy the map they install
+    into a fresh file: the writers of a session write its staged map in
+    place, and the session installs it with the space of what they replaced,
+    which metacooler reassign then copies as it is into the next run's map.
+    A session with no edit copies the map fresh. Without it, a map updated
+    in place grew by 125 kB a run (the map of the synthetic test data, whose
+    content is 121 kB). The map is written already: a failure is a
+    warning."""
+    import metacooler
+
     try:
-        with _as_metacool_errors():
-            yield staged
-            metacooler.validate(staged, full=True)
-            if os.path.exists(outfile):
-                shutil.copymode(outfile, staged)
-            else:
-                os.chmod(staged, 0o666 & ~_umask())
-            os.replace(staged, outfile)
-    except BaseException:
-        if os.path.lexists(staged):
-            os.remove(staged)
-        # cooler builds its writer out of the with that removes its file on
-        # a failure: stopped there, it leaves it. What cannot be removed is
-        # left: the error of the run is the one to raise.
-        named_after = f"{os.path.basename(staged)}."
-        for name in os.listdir(directory):
-            if name.startswith(named_after):
-                with suppress(OSError):
-                    os.remove(os.path.join(directory, name))
-        raise
-
-
-def _umask():
-    """The umask of the process, which can only be read by setting it: it
-    is set back at once."""
-    mask = os.umask(0o022)
-    os.umask(mask)
-    return mask
-
-
-def _map_group(metacool):
-    """The file of a map and the group of the map in it: "" for a map that
-    is its file (given as file, file::/ or file::), the group of an entry
-    of a .mmetacool collection (entries/NAME, from file::entries/NAME)."""
-    path, _, group = str(metacool).partition("::")
-    return path, group.strip().strip("/")
-
-
-def _copy_map(metacool, target, skip=()):
-    """Copy the map metacool, as stored, to the root of target, a new HDF5
-    file: every object of its group (the root of its file, or an entry of
-    a .mmetacool collection, which becomes a map of its own), with its
-    dtype, chunks, filters and attributes, the columns of a table in their
-    order, and the soft link /chroms as a link, then the attributes of the
-    group, with their dtypes; but the objects of the group named in skip."""
-    import h5py
-
-    path, group = _map_group(metacool)
-    with h5py.File(path, "r") as source, h5py.File(target, "w") as copy:
-        node = source[group] if group else source
-        for key in node:
-            if key in skip:
-                continue
-            link = node.get(key, getlink=True)
-            if isinstance(link, h5py.SoftLink):
-                copy[key] = h5py.SoftLink(link.path)
-            else:
-                source.copy(node[key], copy, name=key)
-        for key in node.attrs:
-            copy.attrs.create(key, node.attrs[key], dtype=node.attrs.get_id(key).dtype)
-
-
-def _rewrite_in_a_fresh_file(path):
-    """Copy the map at path into a fresh file, which takes its place.
-
-    metacooler reassign copies a map it relabels as it is, and metacooler
-    annotate and the clustering rounds edit it in place: each leaves the
-    space of what it replaces in the file, which HDF5 does not reclaim. A
-    map updated run after run grew with every run (from 129 kB to 272 kB
-    over four updates of the map of the synthetic test data). Every object
-    is copied as stored (see _copy_map); the file keeps its mode.
-    """
-    directory = os.path.dirname(os.path.abspath(path))
-    handle, fresh = tempfile.mkstemp(prefix=f"{os.path.basename(path)}.", suffix=".fresh", dir=directory)
-    os.close(handle)
-    try:
-        _copy_map(path, fresh)
-        shutil.copymode(path, fresh)
-        os.replace(fresh, path)
-    except BaseException:
-        if os.path.lexists(fresh):
-            os.remove(fresh)
-        raise
+        with metacooler.staged_edit(outfile):
+            pass
+    except (OSError, ValueError, KeyError) as error:
+        logger.warning(
+            f"{outfile} is written, but not copied into a fresh file ({error}): it holds the space that the edits "
+            "making it left behind."
+        )
 
 
 def stores_weights():
@@ -805,6 +758,17 @@ def store_normalization(metacool, normalization):
         0.3.0), or it cannot store the column (a ValueError, OSError or
         KeyError, message kept).
     """
+    weights = _normalization_weights(metacool, normalization)
+    with _metacooler_logging(), _as_metacool_errors():
+        _store_normalization(metacool, normalization, weights)
+
+
+def _normalization_weights(metacool, normalization):
+    """What store_normalization checks and computes before it writes
+    anything: the map, opened (a metacooler.MetaCooler), the weights of its
+    contigs, and the columns of its contigs table that they were computed
+    from. Raises MetacoolError when the normalization cannot be stored (see
+    store_normalization); a run then writes its map without it."""
     import metacooler
 
     import metator.network as mtn
@@ -835,20 +799,34 @@ def store_normalization(metacool, normalization):
         values.get("Restriction_site"),
         normalization,
     )
-    with _metacooler_logging(), _as_metacool_errors():
-        with mc.open() as group:
-            offsets = group["indexes/chrom_offset"][()]
-        metacooler.store_weights(
-            metacool,
-            normalization_weight_name(normalization),
-            np.repeat(weights, np.diff(offsets)),
-            method="metator",
-            # The hits are counted on the contacts that the pixels hold.
-            depends_on=(["pixels"] if "Hit" in columns else []) + [f"contigs/{column}" for column in columns],
-            parameters={"mode": normalization, "metator_version": __version__},
-            force=True,
-        )
-    masked = int(np.count_nonzero(np.isnan(weights)))
+    return mc, weights, columns
+
+
+def _store_normalization(metacool, normalization, weights):
+    """Store the weights that _normalization_weights computed (weights: the
+    map, the weights of its contigs and the columns they were computed
+    from) with metacooler.store_weights, every bin of a contig taking the
+    weight of its contig. Its errors are raised as they are: in an edit
+    session of metacooler, a write that fails fails the session, and the
+    map is not written."""
+    import metacooler
+
+    mc, contig_weights, columns = weights
+    with mc.open() as group:
+        offsets = group["indexes/chrom_offset"][()]
+    metacooler.store_weights(
+        metacool,
+        normalization_weight_name(normalization),
+        np.repeat(contig_weights, np.diff(offsets)),
+        method="metator",
+        # The hits are counted on the contacts that the pixels hold.
+        depends_on=(["pixels"] if "Hit" in columns else []) + [f"contigs/{column}" for column in columns],
+        parameters={"mode": normalization, "metator_version": __version__},
+        force=True,
+        # Refused if the map changed since the weights were computed from it.
+        source=mc,
+    )
+    masked = int(np.count_nonzero(np.isnan(contig_weights)))
     logger.info(
         f"Stored the {normalization} normalization of the network in {metacool}, as the weights "
         f"{normalization_weight_name(normalization)} of its bins" + (f" ({masked} contig(s) without one)." if masked else ".")
@@ -857,22 +835,25 @@ def store_normalization(metacool, normalization):
 
 def _drop_earlier_normalizations(path):
     """Remove from a map the normalizations that an earlier run of metaTOR
-    stored in it (see store_normalization): they describe the network of
-    that run, from the columns that this run replaces. Left in the map,
-    metacooler annotate would drop them all the same, with a warning to
-    compute them again, which this run then does."""
-    try:
-        from metacooler.io.weights import describe_weights
-    except ImportError:
-        # metacooler 0.3.0, which stores no weights.
-        return
-    names = [str(row["name"]) for row in describe_weights(path) if row["method"] == "metator"]
-    if not names:
-        return
+    stored in it (see store_normalization): the weight columns of its bins
+    whose normalization attribute (see metacooler's format) is metator.
+    They describe the network of that run, from the columns that this run
+    replaces. Left in the map, metacooler annotate would drop them all the
+    same, with a warning to compute them again, which this run then does."""
     with open_map(path).open("r+") as group:
+        bins = group["bins"]
+        names = [name for name in bins if _attribute(bins[name], "normalization") == "metator"]
         for name in names:
-            del group["bins"][name]
-    logger.info(f"Removed the normalization(s) of the network of an earlier run from the map: {_shown(names)}.")
+            del bins[name]
+    if names:
+        logger.info(f"Removed the normalization(s) of the network of an earlier run from the map: {_shown(names)}.")
+
+
+def _attribute(node, name):
+    """An attribute of an HDF5 object, as text when it is stored as bytes
+    (None when the object has none of that name)."""
+    value = node.attrs.get(name)
+    return value.decode() if isinstance(value, bytes) else value
 
 
 def _write_back_columns(path, contig_data, contig_columns, header):
@@ -1033,7 +1014,7 @@ def _store_clusters(path, entries, clusters, members, name=None):
     metacooler.write_clusters(path, entries, stored, members)
 
 
-def write_rounds(metacool, outfile, rounds, names=None, force=False):
+def write_rounds(metacool, outfile, rounds, names=None, force=False, planned=None):
     """Write the map metacool at outfile with the clustering rounds of a run
     in its /clusters group (see store_rounds), in place of those it held,
     and everything else as it was: its bins, contacts, genomes and contigs
@@ -1041,15 +1022,14 @@ def write_rounds(metacool, outfile, rounds, names=None, force=False):
     overlapping clusters so, before its validation writes the map of the
     final clusters (see reassign_metacool).
 
-    The map is copied as stored to a temporary file next to outfile, but
-    for its rounds, which are then stored there: the copy is given
-    metacooler's full validation and only then moved to outfile, which it
-    replaces, as reassign_metacool writes a map (see _staged_map). outfile
-    may thus be the input map itself (the same path, or a symbolic link to
-    it or from it): a symbolic link at outfile is replaced, not its target,
-    and the map keeps the mode of the file it replaces. On any failure,
-    outfile is left as it was, and the temporary file is removed. An entry
-    of a .mmetacool collection is written as a map of its own.
+    The rounds are stored in an edit session of metacooler, as
+    reassign_metacool writes a map (see _staged_edit): in a fresh copy of
+    the map, which metacooler validates in full, then renames over the
+    input map (when outfile is the input map itself: the same file, through
+    a symbolic link to it or from it), which keeps its mode, or onto
+    outfile, a new file. On any failure, outfile is left as it was, and the
+    staged copy is removed. An entry of a .mmetacool collection is written
+    as a map of its own.
 
     Parameters
     ----------
@@ -1065,14 +1045,17 @@ def write_rounds(metacool, outfile, rounds, names=None, force=False):
     force : bool
         Whether to replace an existing outfile: the input map itself, which
         a run updates in place, or another file.
+    planned : metacooler.MetaCooler, optional
+        The input map as the run read it (see reassign_metacool).
 
     Raises
     ------
     MetacoolError
         If the outfile is no file's path (a URI), exists (without force),
         or is the .mmetacool collection of the input map, the input map is
-        missing or cannot be read, or the rounds cannot be stored (a
-        ValueError, OSError or KeyError of metacooler, message kept).
+        missing, cannot be read or changed since planned was opened, or the
+        rounds cannot be stored (a ValueError, OSError or KeyError of
+        metacooler, message kept).
     """
     # The rounds of the map that the run does not make: said once the map
     # is written.
@@ -1090,11 +1073,12 @@ def write_rounds(metacool, outfile, rounds, names=None, force=False):
         store,
         f"with the {len(rounds[0])} clusters of the run",
         "with the clustering rounds of the run",
+        planned,
     )
     _warn_dropped_rounds(later, metacool, outfile, in_place)
 
 
-def write_round(metacool, outfile, rounds, entry, force=False):
+def write_round(metacool, outfile, rounds, entry, force=False, planned=None):
     """Write the map metacool at outfile with one clustering round of its
     /clusters group replaced, and everything else as it was: the other
     rounds, its bins, contacts, genomes and contigs tables, QC block and
@@ -1112,10 +1096,9 @@ def write_round(metacool, outfile, rounds, entry, force=False):
     number. So a column of whole numbers, or of booleans, that the round
     lacks is stored as decimals, or as text (True, False), as any column
     with a missing value is. The map is
-    written as write_rounds writes it: copied as stored next to outfile,
-    but for its rounds, which are then stored there, validated in full,
-    then moved over outfile (see _staged_map), which may be the input map
-    itself.
+    written as write_rounds writes it: in an edit session of metacooler,
+    whose copy of the map stores the rounds, validated in full, then
+    renamed over the input map, or onto outfile (see _staged_edit).
 
     Parameters
     ----------
@@ -1134,24 +1117,26 @@ def write_round(metacool, outfile, rounds, entry, force=False):
     force : bool
         Whether to replace an existing outfile: the input map itself, which
         a run updates in place, or another file.
+    planned : metacooler.MetaCooler, optional
+        The input map as the run read it (see reassign_metacool).
 
     Raises
     ------
     MetacoolError
         If the outfile is no file's path (a URI), exists (without force),
         or is the .mmetacool collection of the input map, the input map is
-        missing or cannot be read, or the rounds cannot be stored (a
-        ValueError, OSError or KeyError of metacooler, message kept).
+        missing, cannot be read or changed since planned was opened, or the
+        rounds cannot be stored (a ValueError, OSError or KeyError of
+        metacooler, message kept).
     """
-    from metacooler.schema import CLUSTER_GENOME_COLUMN
-
     clusters, members = rounds
     name = entry["name"]
 
     def store(staged, mc):
         held = mc.clusters
-        # The columns that metacooler computes, which it refuses as given.
-        computed = ["n_contigs", "length", CLUSTER_GENOME_COLUMN]
+        # The columns that metacooler computes, which it refuses as given
+        # (the /clusters group of metacooler's format).
+        computed = ["n_contigs", "length", "genome"]
         other = held[(held["round"] != name).to_numpy()].drop(columns=computed)
         held_members = mc.cluster_members()
         other_members = held_members[(held_members["round"] != name).to_numpy()]
@@ -1165,6 +1150,7 @@ def write_round(metacool, outfile, rounds, entry, force=False):
         store,
         f"with the {len(clusters)} clusters of the round {name} of its clustering rounds",
         f"with the round {name} of its clustering rounds",
+        planned,
     )
 
 
@@ -1174,15 +1160,14 @@ def _stacked(first, second):
     return second.reset_index(drop=True) if first.empty else pd.concat([first, second], ignore_index=True)
 
 
-def _write_with_rounds(metacool, outfile, force, store, writing, written):
+def _write_with_rounds(metacool, outfile, force, store, writing, written, planned=None):
     """What write_rounds and write_round share: the checks of outfile, then
-    the copy of the map metacool, as stored but for its /clusters group,
-    staged next to outfile, where store(staged, mc) stores the rounds (mc:
-    the input map, a metacooler.MetaCooler), validated and moved over
-    outfile (see _staged_map). writing and written say what the map holds,
-    in the messages of its writing."""
-    from metacooler.schema import CLUSTERS_GROUP
-
+    an edit session on the map metacool (see _staged_edit), whose copy
+    store(staged, mc) stores the rounds in (mc: the input map, a
+    metacooler.MetaCooler), validated in full and renamed over the input
+    map, or onto outfile. writing and written say what the map holds, in
+    the messages of its writing; planned is the input map as the run read
+    it (see reassign_metacool)."""
     metacool, outfile = str(metacool), str(outfile)
     if is_entry(metacool) and is_input_map(metacool, outfile):
         raise MetacoolError(
@@ -1193,140 +1178,11 @@ def _write_with_rounds(metacool, outfile, force, store, writing, written):
     with _metacooler_logging():
         mc = open_map(metacool)
         logger.info(f"Writing {outfile} from the contact map {metacool}, {writing}.")
-        with _staged_map(outfile) as staged:
-            # The rounds that the map held are not copied: the new ones
-            # replace them.
-            _copy_map(metacool, staged, skip={CLUSTERS_GROUP})
+        with _as_metacool_errors(), ExitStack() as session:
+            _make_directory_of(outfile)
+            with read_errors(metacool):
+                staged = session.enter_context(_staged_edit(metacool, outfile, planned=_read(mc, planned), force=force))
+            # The rounds of the copy are replaced by the new ones.
             store(staged, mc)
         logger.info(f"{outfile} is written: the contact map, {written}.")
-
-
-def lock_path(path):
-    """The lock file of the map at path: <path>.lock, next to it (next to a
-    symbolic link, not its target, as the link is what a run replaces). A
-    map given as file::/ is the file itself."""
-    return f"{map_file(path)}.lock"
-
-
-def _pid_is_running(pid):
-    """Whether the process pid runs on this host."""
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
-
-
-def _create_lock(lock, holder):
-    """Create the lock file, with what says who holds it (holder); False when
-    it exists already. Any other failure (a directory that is missing or
-    not writable) is raised as it is."""
-    try:
-        handle = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
-    except FileExistsError:
-        return False
-    with os.fdopen(handle, "w") as stream:
-        json.dump(holder, stream)
-    return True
-
-
-def _lock_holder(lock):
-    """What a lock file says of its holder: {} when it cannot be read, or
-    does not hold a JSON object."""
-    try:
-        with open(lock) as stream:
-            holder = json.load(stream)
-    except (OSError, ValueError):
-        return {}
-    return holder if isinstance(holder, dict) else {}
-
-
-def _take_stale_lock(lock, stale, holder):
-    """Replace a lock whose holder is gone (stale, what it says) by this run's
-    (holder), unless another run did first: True when this run holds it.
-
-    The stale lock is moved aside first, which only one run can do: a run
-    that moved another run's lock instead (taken in the meantime) puts it
-    back, and has not taken it. One case is left open: a third run that
-    creates the lock while it is moved aside holds it with the run whose
-    lock was moved, which cannot be put back. Both then run, the last to
-    end replacing the map: each map is whole, as each is staged and
-    validated before it replaces the map."""
-    aside = f"{lock}.{os.getpid()}.{uuid.uuid4().hex}"
-    try:
-        os.rename(lock, aside)
-    except FileNotFoundError:
-        # Another run moved it aside first: the lock is that run's to take.
-        return _create_lock(lock, holder)
-    if _lock_holder(aside) != stale:
-        try:
-            os.link(aside, lock)
-        except FileExistsError:
-            pass
-        os.remove(aside)
-        return False
-    os.remove(aside)
-    return _create_lock(lock, holder)
-
-
-@contextmanager
-def map_lock(path, elsewhere="--output-map"):
-    """Hold the lock of the map at path for the time of a run that writes it.
-
-    Two runs that write one map, at once, would each replace it with its own
-    clusters, the last one winning. The lock, <path>.lock, is created before
-    any work, and removed at the end of the run, whatever its end, by the run
-    that holds it only. It names that run (its pid, host, start and command,
-    and a uuid of its own, which the release compares): a lock whose process
-    no longer runs on this host (a run killed with SIGKILL) is removed, with
-    a warning, and taken (see _take_stale_lock). The refusals say how to
-    write the map elsewhere: with elsewhere, the option of the command.
-
-    Raises
-    ------
-    MetacoolError
-        If another run holds the lock, its holder cannot be told, or the lock
-        cannot be created (a directory that is missing or not writable).
-    """
-    lock = lock_path(path)
-    mine = {
-        "pid": os.getpid(),
-        "host": socket.gethostname(),
-        "started": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-        "command": " ".join(["metator", *sys.argv[1:]]),
-        "run": uuid.uuid4().hex,
-    }
-    try:
-        taken = _create_lock(lock, mine)
-        if not taken:
-            holder = _lock_holder(lock)
-            pid, host = holder.get("pid"), holder.get("host")
-            if isinstance(pid, int) and host == socket.gethostname() and not _pid_is_running(pid):
-                logger.warning(f"Removing {lock}: the run that held it (pid {pid}, since {holder.get('started')}) is gone.")
-                taken = _take_stale_lock(lock, holder, mine)
-    except OSError as error:
-        message = (
-            f"{lock} cannot be created ({error.strerror}): a run that writes {path} locks it there, so the directory "
-            f"of the map must exist and be writable; write this run's map elsewhere with {elsewhere}."
-        )
-        logger.error(message)
-        raise MetacoolError(message) from error
-    if not taken:
-        holder = _lock_holder(lock)
-        pid, host = holder.get("pid"), holder.get("host")
-        who = f"pid {pid} on {host}, since {holder.get('started')}" if holder else "a run that cannot be told"
-        message = (
-            f"{path} is being written by another metaTOR run ({who}): wait for it to end, write this run's map "
-            f"elsewhere with {elsewhere}, or, if no such run is going on, remove {lock}."
-        )
-        logger.error(message)
-        raise MetacoolError(message)
-    try:
-        yield lock
-    finally:
-        # This run's lock only: not one that another run took after it was
-        # removed by hand.
-        if _lock_holder(lock) == mine:
-            os.remove(lock)
+        _compact(outfile)

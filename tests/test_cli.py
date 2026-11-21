@@ -17,6 +17,7 @@ import pytest
 import metator.cli as mtcli
 import metator.metacool as mtmc
 from metator.version import __version__
+from tests.locks import described, held_lock, killed_lock, lock_file, refusal
 
 TESTS_DATA = Path(__file__).resolve().parents[1] / "tests_data"
 
@@ -859,7 +860,8 @@ def test_pipeline_metacool_from_a_map_metacooler_failure(error, stub_pipeline, t
     (log,) = out.glob("metator_pipeline_*.log")
     logged = log.read_text()
     (staged,) = re.findall(r"INFO :: Creation failed; the partial file (\S+)\.partial was removed and \1 was not written", logged)
-    assert Path(staged).parent == out and Path(staged).name.startswith(".metator.metacool.")
+    # Staged by metacooler in a private directory next to the map, removed.
+    assert Path(staged).parent.parent == out and Path(staged).parent.name.startswith(".metator.metacool.")
     assert "for inspection" not in logged
     kept = "It is still the input map of the run, as it was. The other outputs of the run are kept."
     if isinstance(error, ValueError):
@@ -876,11 +878,16 @@ def _map_run(metacool, tmp_path, *options):
     return [metacool, "-a", _assembly(tmp_path), "-o", out, "-T", tmp_path / "tmp", *options]
 
 
-def _lock(metacool, pid, host=None, started="2026-11-18T10:00:00+0000"):
-    """A lock of the map metacool, as a run of pid on host holds it."""
+def _lock(metacool, pid, host=None, start="2026-11-18T10:00:00+0000"):
+    """A lock file of the map metacool that names a process pid of host (this
+    host by default), but not the machine and the PID namespace where it
+    runs, which metacooler's locks name: metacooler cannot check it (as a
+    lock of another host, or one that metaTOR wrote before its map writes
+    went through metacooler), and never takes it over."""
     import socket
 
-    holder = {"pid": pid, "host": host or socket.gethostname(), "started": started, "command": "metator pipeline"}
+    holder = {"pid": pid, "host": host or socket.gethostname(), "start": start, "command": "metator pipeline",
+              "uuid": "0123456789abcdef0123456789abcdef"}  # fmt: skip
     lock = Path(f"{metacool}.lock")
     lock.write_text(json.dumps(holder))
     return lock
@@ -1092,19 +1099,23 @@ def test_pipeline_from_an_entry_needs_an_output_map(stub_pipeline, tmp_path, run
 
 
 def test_pipeline_from_a_map_through_a_symbolic_link(stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """The map given through a symbolic link: the link is replaced by the
-    map of the clusters, and the map it pointed to is left as it was."""
+    """The map given through a symbolic link: the map it points to is
+    updated in place, as metacooler edits the target of a link, and the
+    link keeps pointing at it. Its lock and its staged copy are next to the
+    target, and gone once the run has ended."""
+    import metacooler
+
     monkeypatch.setattr("metator.metacool.reassign_metacool", mtmc_reassign_metacool)
     _final_tables(monkeypatch, "c1")
-    target = _contig_map(tmp_path / "target.metacool")
+    (tmp_path / "maps").mkdir()
+    target = _contig_map(tmp_path / "maps" / "target.metacool")
     before = target.read_bytes()
     link = tmp_path / "link.metacool"
     link.symlink_to(target)
     run_cli("pipeline", *_map_run(link, tmp_path))
-    import metacooler
-
-    assert not link.is_symlink() and target.read_bytes() == before
-    assert list(metacooler.MetaCooler(str(link)).genomes.name) == ["__unbinned__", "metator_00001_00000"]
+    assert link.is_symlink() and link.resolve() == target and target.read_bytes() != before
+    assert list(metacooler.MetaCooler(str(target)).genomes.name) == ["__unbinned__", "metator_00001_00000"]
+    assert sorted(path.name for path in (tmp_path / "maps").iterdir()) == ["target.metacool"]
 
 
 @pytest.mark.parametrize("failure", ["partition", "Ctrl-C in the validation", "Ctrl-C in metacooler reassign"])
@@ -1143,44 +1154,56 @@ def test_pipeline_from_a_map_that_fails_leaves_it_as_it_was(failure, stub_pipeli
 
 
 def test_pipeline_from_a_map_refused_while_another_run_holds_it(stub_pipeline, tmp_path, run_cli):
-    """A second run on a map that a running run holds (here, this process)
-    is refused before any work, and leaves the lock to its holder."""
+    """A second run on a map that another run holds (here, another process
+    that holds its lock) is refused before any work, with metacooler's
+    reason (who holds it, and the files to delete if it is gone) and where
+    else to write the map, and leaves the lock to its holder."""
     metacool = _contig_map(tmp_path / "input.metacool")
-    lock = _lock(metacool, os.getpid())
-    message = (
-        f"{metacool} is being written by another metaTOR run (pid {os.getpid()} on {json.loads(lock.read_text())['host']}, "
-        f"since 2026-11-18T10:00:00+0000): wait for it to end, write this run's map elsewhere with --output-map, or, if "
-        f"no such run is going on, remove {lock}."
-    )
-    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
-        run_cli("pipeline", *_map_run(metacool, tmp_path))
-    assert "metacool_to_contacts" not in stub_pipeline and lock.exists()
+    with held_lock(metacool) as holder:
+        message = f"{refusal(metacool, holder)} Or write this run's map elsewhere with --output-map."
+        with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
+            run_cli("pipeline", *_map_run(metacool, tmp_path))
+        assert "metacool_to_contacts" not in stub_pipeline
+        assert json.loads(lock_file(metacool).read_text()) == holder
     (log,) = (tmp_path / "out").glob("metator_pipeline_*.log")
     assert f"ERROR :: {message}" in log.read_text()
 
 
-@pytest.mark.parametrize("holder", ["another host", "unreadable", "not an object"])
+@pytest.mark.parametrize("holder", ["another host", "no machine named", "unreadable", "not an object"])
 def test_pipeline_from_a_map_refused_with_a_lock_it_cannot_check(holder, stub_pipeline, tmp_path, run_cli):
-    """A lock of a run on another host, or one that says nothing readable
-    (not JSON, or JSON but not an object, which raised AttributeError),
-    cannot be told stale: the run is refused, and the lock left."""
+    """A lock that metacooler cannot tell stale is never taken over: that of
+    a process of another host; one that does not name the machine and the
+    PID namespace of its process (as metaTOR's own locks did, before its
+    map writes went through metacooler), even of a process that is gone;
+    or one that says nothing readable (not JSON, or JSON but not an
+    object). The run is refused, with the files to delete, and the lock
+    left."""
+    import subprocess
+
     metacool = _contig_map(tmp_path / "input.metacool")
-    if holder != "another host":
-        lock = Path(f"{metacool}.lock")
+    lock = Path(f"{metacool}.lock")
+    if holder in ("unreadable", "not an object"):
         lock.write_text("{not json" if holder == "unreadable" else "[1]")
-        who = "a run that cannot be told"
+        reason = f"{lock} does not say which process holds {metacool}: if none is writing it, delete {lock}."
     else:
-        lock = _lock(metacool, 1, host="elsewhere")
-        who = "pid 1 on elsewhere, since 2026-11-18T10:00:00+0000"
-    with pytest.raises(mtmc.MetacoolError, match=re.escape(f"another metaTOR run ({who})")):
+        gone = subprocess.Popen([sys.executable, "-c", "pass"])
+        gone.wait()
+        _lock(metacool, 1, host="elsewhere") if holder == "another host" else _lock(metacool, gone.pid)
+        record = json.loads(lock.read_text())
+        reason = (
+            f"{metacool} is locked by a process this host cannot check ({described(record)}: another host, machine "
+            f"or PID namespace): if it is no longer running, delete {lock} and "
+            f"{tmp_path}/.input.metacool.{record['uuid']}.*.d/ (its staged copies)."
+        )
+    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(reason)} Or write this run's map elsewhere"):
         run_cli("pipeline", *_map_run(metacool, tmp_path))
     assert lock.exists()
 
 
 def test_pipeline_from_a_map_whose_lock_cannot_be_created(stub_pipeline, tmp_path, monkeypatch, run_cli):
     """A map whose directory is not writable cannot be locked, nor updated in
-    place: the run is refused before any work, with what to do (it stopped
-    on a bare PermissionError)."""
+    place: the run is refused before any work, with metacooler's reason and
+    where else to write the map."""
     metacool = _contig_map(tmp_path / "input.metacool")
     lock = f"{metacool}.lock"
     opened = os.open
@@ -1190,10 +1213,11 @@ def test_pipeline_from_a_map_whose_lock_cannot_be_created(stub_pipeline, tmp_pat
             raise PermissionError(13, "Permission denied", path)
         return opened(path, *args, **kwargs)
 
-    monkeypatch.setattr(mtmc.os, "open", read_only)
+    monkeypatch.setattr(os, "open", read_only)
     message = (
-        f"{lock} cannot be created (Permission denied): a run that writes {metacool} locks it there, so the directory "
-        "of the map must exist and be writable; write this run's map elsewhere with --output-map."
+        f"{lock} cannot be created (Permission denied): an in-place write of {metacool} locks it there, so the "
+        "directory of the map must exist and be writable. Write a copy of the map instead. Or write this run's map "
+        "elsewhere with --output-map."
     )
     with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
         run_cli("pipeline", *_map_run(metacool, tmp_path))
@@ -1202,70 +1226,25 @@ def test_pipeline_from_a_map_whose_lock_cannot_be_created(stub_pipeline, tmp_pat
     assert f"ERROR :: {message}" in log.read_text()
 
 
-def test_the_lock_of_a_map_given_as_its_file_root(tmp_path):
-    """A map given as file::/ (the file itself) is locked as the file: next to
-    it, not at file::/.lock."""
+@pytest.mark.parametrize("command", ["pipeline", "partition", "validation"])
+def test_a_read_only_map_is_refused_before_any_work(command, stub_pipeline, tmp_path, run_cli):
+    """A map without write permission is refused before any work, with how
+    to write a copy instead: metacooler refuses to replace it, which it
+    would do at the end of the run. The map and its permission are left as
+    they were, and so is the lock."""
     metacool = _contig_map(tmp_path / "input.metacool")
-    with mtmc.map_lock(f"{metacool}::/") as lock:
-        assert lock == f"{metacool}.lock" and Path(lock).exists()
-    assert not Path(lock).exists()
-
-
-def test_a_run_removes_its_own_lock_only(tmp_path):
-    """A lock that another run took during this one (this run's removed by
-    hand) is that run's: it stays when this run ends."""
-    metacool = _contig_map(tmp_path / "input.metacool")
-    with mtmc.map_lock(metacool) as lock:
-        other = _lock(metacool, 1, host="elsewhere")
-    assert other.exists() and Path(lock) == other
-
-
-def test_a_stale_lock_is_taken_once(tmp_path):
-    """Two runs that both found a lock stale: the first moves it aside and
-    takes the lock; the second moves the first's lock aside, sees that it is
-    not the stale one, puts it back, and is refused (both ran, each having
-    removed the lock that the other had just taken)."""
-    import socket
-
-    metacool = _contig_map(tmp_path / "input.metacool")
-    stale = json.loads(_lock(metacool, 999999999).read_text())
-    first = {"pid": 1, "host": socket.gethostname(), "started": "now", "run": "first"}
-    second = {"pid": 2, "host": socket.gethostname(), "started": "now", "run": "second"}
-    lock = f"{metacool}.lock"
-    assert mtmc._take_stale_lock(lock, stale, first)
-    assert not mtmc._take_stale_lock(lock, stale, second)
-    assert json.loads(Path(lock).read_text()) == first
-    assert [path.name for path in tmp_path.iterdir() if ".lock." in path.name] == []
-    # Gone in the meantime (taken and released by another run): taken.
-    Path(lock).unlink()
-    assert mtmc._take_stale_lock(lock, stale, second)
-    assert json.loads(Path(lock).read_text()) == second
-
-
-def test_a_stale_lock_taken_by_a_third_run(tmp_path, monkeypatch):
-    """A guard of the case that _take_stale_lock leaves open: a second run
-    moves aside the lock that a first run took, and a third run creates the
-    lock in the meantime. The second cannot put the first's back: it leaves the third's,
-    and is refused (the first and the third then both run, the last to end
-    replacing the map)."""
-    import socket
-
-    metacool = _contig_map(tmp_path / "input.metacool")
-    stale = json.loads(_lock(metacool, 999999999).read_text())
-    runs = {name: {"pid": i, "host": socket.gethostname(), "started": "now", "run": name}
-            for i, name in enumerate(["first", "second", "third"], start=1)}  # fmt: skip
-    lock = f"{metacool}.lock"
-    assert mtmc._take_stale_lock(lock, stale, runs["first"])
-    rename = os.rename
-
-    def then_a_third_run(source, target):
-        rename(source, target)
-        assert mtmc._create_lock(lock, runs["third"])
-
-    monkeypatch.setattr(mtmc.os, "rename", then_a_third_run)
-    assert not mtmc._take_stale_lock(lock, stale, runs["second"])
-    assert json.loads(Path(lock).read_text()) == runs["third"]
-    assert [path.name for path in tmp_path.iterdir() if ".lock." in path.name] == []
+    metacool.chmod(0o444)
+    before = metacool.read_bytes()
+    message = (
+        f"{metacool} is read-only (mode -r--r--r--): the run would replace it with the map of its clusters. Make it "
+        "writable (chmod u+w), or write the map of the run to another file with --output-map."
+    )
+    arguments = _map_run(metacool, tmp_path) if command == "pipeline" else _step_run(command, metacool, tmp_path)
+    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
+        run_cli(command, *arguments)
+    assert not stub_pipeline
+    assert metacool.read_bytes() == before and metacool.stat().st_mode & 0o777 == 0o444
+    assert not Path(f"{metacool}.lock").exists()
 
 
 @pytest.mark.parametrize(
@@ -1377,176 +1356,70 @@ def test_map_directory_that_cannot_be_made(stub_pipeline, tmp_path, run_cli):
     assert not stub_pipeline
 
 
-def test_sigterm_stops_a_run_as_ctrl_c_does(monkeypatch):
-    """A job scheduler's SIGTERM stops the run with SystemExit(143), so that
-    it cleans up after itself; the handler, and sys.unraisablehook, are put
-    back after it. Under a handler that a host set from C, nothing is
-    changed."""
-    import signal
-    import sys
+@pytest.mark.parametrize(
+    ("command", "output"),
+    [("pipeline", False), ("pipeline", True), ("partition", False)],
+    ids=["pipeline in place", "pipeline --output-map", "partition in place"],
+)
+def test_a_map_changed_during_the_run_is_refused_at_its_end(command, output, stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """A map changed while a run works from it (here, rewritten by a program
+    that takes no lock of metacooler, once the partition is done) is refused
+    when the run writes its map: the run read the network from the map as it
+    was at its start, and would write its clusters into another map. The
+    map of the run is not written, with the reason; --output-map is not
+    written either, and the map is left as the other program left it."""
+    monkeypatch.setattr("metator.metacool.reassign_metacool", mtmc_reassign_metacool)
+    _final_tables(monkeypatch, "c1")
+    if command == "partition":
+        _partition_table(monkeypatch)
+    metacool = _contig_map(tmp_path / "input.metacool")
+    partition = mtcli.mtp.partition
 
-    hook = sys.unraisablehook
-    with pytest.raises(SystemExit) as stopped:
-        with mtcli.terminated_as_interrupted():
-            signal.raise_signal(signal.SIGTERM)
-    assert stopped.value.code == 143
-    assert signal.getsignal(signal.SIGTERM) is signal.SIG_DFL and sys.unraisablehook is hook
-    monkeypatch.setattr(signal, "getsignal", lambda signum: None)
-    monkeypatch.setattr(signal, "signal", lambda *args: pytest.fail("the handler must be left alone"))
-    with mtcli.terminated_as_interrupted():
-        assert sys.unraisablehook is hook
+    def partition_then_rewrite(*args, **kwargs):
+        written = partition(*args, **kwargs)
+        rewritten = tmp_path / "rewritten.tmp"
+        shutil.copyfile(metacool, rewritten)
+        os.replace(rewritten, metacool)
+        return written
 
-
-def test_a_process_forked_by_a_run_dies_of_sigterm():
-    """A process that a run forks (a worker of a multiprocessing pool, which
-    the pool ends with SIGTERM) dies of SIGTERM, as without the handler of
-    the run: it raised SystemExit in whatever it ran, its exit handlers
-    included, which printed a traceback ("Exception ignored in atexit
-    callback"). Here the child would then exit with status 0."""
-    import signal
-    import time
-    import warnings
-
-    with mtcli.terminated_as_interrupted():
-        # SIGTERM waits until the child is in its try block.
-        signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
-        with warnings.catch_warnings():
-            # The test process may run threads: the child only sleeps.
-            warnings.simplefilter("ignore", DeprecationWarning)
-            pid = os.fork()
-        if pid == 0:
-            try:
-                signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGTERM})
-                time.sleep(30)
-            finally:
-                os._exit(0)
-        signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGTERM})
-        os.kill(pid, signal.SIGTERM)
-        _, status = os.waitpid(pid, 0)
-    assert os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGTERM
-
-
-@pytest.mark.parametrize("thread", ["main thread", "another thread"])
-def test_a_sigterm_sent_as_a_process_is_forked_kills_it(thread):
-    """A process that a run forks dies of a SIGTERM sent the instant it is
-    forked, before it runs its after-fork code, from the main thread or
-    another (the thread of a multiprocessing pool that replaces a worker).
-    The handler of the run caught such a SIGTERM, then CPython dropped it:
-    about one child in four lived on. A pool closed and dropped at once
-    (metator.partition.get_hamming_distance) ends its workers so, and waited
-    forever for the one that missed it. The handler and the signal mask of
-    the run are left as they were."""
-    import signal
-    import threading
-    import time
-    import warnings
-
-    statuses = []
-
-    def fork_and_kill():
-        for _ in range(100):
-            pid = os.fork()
-            if pid == 0:
-                time.sleep(0.05)
-                os._exit(0)
-            os.kill(pid, signal.SIGTERM)
-            statuses.append(os.waitpid(pid, 0)[1])
-
-    with mtcli.terminated_as_interrupted():
-        handler = signal.getsignal(signal.SIGTERM)
-        with warnings.catch_warnings():
-            # The test process may run threads: the children only sleep.
-            warnings.simplefilter("ignore", DeprecationWarning)
-            if thread == "main thread":
-                fork_and_kill()
-            else:
-                forking = threading.Thread(target=fork_and_kill)
-                forking.start()
-                forking.join()
-        assert signal.getsignal(signal.SIGTERM) is handler
-        assert signal.SIGTERM not in signal.pthread_sigmask(signal.SIG_BLOCK, set())
-    assert len(statuses) == 100
-    assert [status for status in statuses if not (os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGTERM)] == []
-
-
-def _run_with_a_stop_handled_in(where, signame):
-    """The exit status and outputs of a Python process that runs under the
-    SIGTERM handler of a run (terminated_as_interrupted) and gets a SIGTERM,
-    or a Ctrl-C (SIGINT, with Python's own handler, which raises
-    KeyboardInterrupt), that is handled where CPython ignores what it
-    raises: in a fork hook, or in a finalizer. It prints "the run went on"
-    if it does."""
-    import subprocess
-    import sys
-
-    stop = {
-        # A fork hook that runs before metaTOR's sends it to the main thread.
-        # SIGTERM is blocked there until metaTOR's unblocks it, in its fork
-        # hook; SIGINT is not: it is handled at once, in this hook, as a
-        # Ctrl-C is in that of logging when it comes as a pool forks.
-        "a fork hook": (
-            f"os.register_at_fork(after_in_parent=lambda: signal.pthread_kill(threading.get_ident(), signal.{signame}))",
-            "    pid = os.fork()\n    if pid == 0:\n        os._exit(0)\n    os.waitpid(pid, 0)",
-        ),
-        # The finalizer of a dropped object, as a multiprocessing pool ends
-        # its workers in its finalizer.
-        "a finalizer": (
-            "class Dropped:\n    pass",
-            f"    dropped = Dropped()\n    weakref.finalize(dropped, signal.raise_signal, signal.{signame})\n    del dropped",
-        ),
-    }[where]
-    script = (
-        "import os, signal, threading, time, weakref\n"
-        # Python's handler of Ctrl-C, even when the tests run with SIGINT
-        # ignored (Python then leaves it ignored).
-        "signal.signal(signal.SIGINT, signal.default_int_handler)\n"
-        f"{stop[0]}\n"
-        "from metator.cli import terminated_as_interrupted\n"
-        "with terminated_as_interrupted():\n"
-        f"{stop[1]}\n"
-        "    time.sleep(2)\n"
-        "print('the run went on')\n"
+    monkeypatch.setattr(mtcli.mtp, "partition", partition_then_rewrite)
+    options = ["--output-map", tmp_path / "copy.metacool"] if output else []
+    arguments = (
+        _map_run(metacool, tmp_path, *options) if command == "pipeline" else _step_run(command, metacool, tmp_path, *options)
     )
-    return subprocess.run([sys.executable, "-W", "ignore", "-c", script], capture_output=True, text=True, timeout=120)
+    reason = (
+        f"{metacool} was replaced or written while it was read, by a run that updated it: what was read of it would "
+        "mix two maps. Read it again once that run has ended."
+    )
+    with pytest.raises(mtmc.MetacoolError, match=re.escape(reason)):
+        run_cli(command, *arguments)
+    rewritten = metacool.read_bytes()
+    assert not (tmp_path / "copy.metacool").exists()
+    import metacooler
 
-
-@pytest.mark.parametrize("signame", ["SIGTERM", "SIGINT"])
-@pytest.mark.parametrize("where", ["a fork hook", "a finalizer"])
-def test_a_stop_handled_where_python_ignores_it_kills_the_run(where, signame):
-    """A SIGTERM that the handler of the run handles in code whose exceptions
-    CPython ignores kills the run at once, as without the handler: the run
-    went on, its SIGTERM lost. That is a SIGTERM that comes as the run forks
-    from its main thread, where SIGTERM is blocked across the fork and handled
-    in metaTOR's fork hook once unblocked; or one that comes in a finalizer,
-    as in that of a multiprocessing pool dropped at once, which ends its
-    workers there (metator.partition.get_hamming_distance). A Ctrl-C raised
-    there kills the run with SIGINT so: the run went on, and replaced the
-    map that it was stopped from writing, with exit status 0."""
-    import signal
-
-    result = _run_with_a_stop_handled_in(where, signame)
-    assert result.returncode == -getattr(signal, signame), result.stdout + result.stderr
-    assert "the run went on" not in result.stdout
+    assert list(metacooler.MetaCooler(str(metacool)).genomes.name) == ["__unbinned__"]
+    assert metacool.read_bytes() == rewritten and not lock_file(metacool).exists()
 
 
 def test_pipeline_from_a_map_takes_a_stale_lock(stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """The lock of a run that no longer runs on this host (killed with
-    SIGKILL, say) is removed with a warning, and the run goes on; its own
-    lock is removed at its end."""
-    import subprocess
-
+    """The lock of a run that is gone (killed with SIGKILL, or SIGTERM:
+    neither metaTOR nor metacooler handles signals), and the copy that it
+    staged next to the map, are taken over and removed by the next run on
+    this host, each with a warning in its log; the run goes on, and removes
+    its own lock at its end."""
     monkeypatch.setattr("metator.metacool.reassign_metacool", mtmc_reassign_metacool)
     _final_tables(monkeypatch, "c1")
     metacool = _contig_map(tmp_path / "input.metacool")
-    process = subprocess.Popen([sys.executable, "-c", "pass"])
-    process.wait()
-    lock = _lock(metacool, process.pid)
+    holder = killed_lock(metacool)
+    staged = tmp_path / f".input.metacool.{holder['uuid']}.1.d"
+    staged.mkdir()
+    (staged / "input.metacool").write_text("the copy that the killed run staged")
     run_cli("pipeline", *_map_run(metacool, tmp_path))
-    assert not lock.exists()
+    assert not lock_file(metacool).exists() and not staged.exists()
     (log,) = (tmp_path / "out").glob("metator_pipeline_*.log")
-    assert (
-        f"WARNING :: Removing {lock}: the run that held it (pid {process.pid}, since 2026-11-18T10:00:00+0000) is gone."
-    ) in log.read_text()
+    logged = log.read_text()
+    assert f"WARNING :: Took over {lock_file(metacool)}: the process that held it ({described(holder)}) is gone." in logged
+    assert f"WARNING :: Removed {staged.name}, left beside {metacool} by a writer that no longer holds its lock." in logged
 
 
 def test_pipeline_from_a_map_without_writing_it_needs_no_lock(stub_pipeline, tmp_path, run_cli):
@@ -1562,16 +1435,6 @@ def test_pipeline_from_a_map_without_writing_it_needs_no_lock(stub_pipeline, tmp
     run_cli("pipeline", *_map_run(metacool, tmp_path, "--no-metacool"))
     assert metacool.read_bytes() == before and lock.exists()
     assert "reassign_metacool" not in stub_pipeline
-
-
-def test_pid_is_running_when_it_cannot_be_signalled(monkeypatch):
-    """A process of another user cannot be signalled, but runs."""
-
-    def kill(pid, signal):
-        raise PermissionError
-
-    monkeypatch.setattr("os.kill", kill)
-    assert mtmc._pid_is_running(1)
 
 
 def test_network_from_a_metacool(monkeypatch, tmp_path, run_cli):
@@ -1856,9 +1719,8 @@ STEP_MAP_ERRORS = {
     "a lock held by another run": (
         "{map}",
         [],
-        "{map} is being written by another metaTOR run (pid {pid} on {host}, since 2026-11-18T10:00:00+0000): wait "
-        "for it to end, write this run's map elsewhere with --output-map, or, if no such run is going on, remove "
-        "{map}.lock.",
+        # metacooler's reason (see tests.locks.refusal).
+        "{refusal} Or write this run's map elsewhere with --output-map.",
     ),
 }
 
@@ -1871,9 +1733,9 @@ def test_step_on_a_map_refused(command, case, stub_pipeline, tmp_path, run_cli):
     refused, the reason logged as an error in the log file of the run and
     raised as a MetacoolError, before the step and before -F replaces the
     directories of clusters of an earlier run. A lock that a running run
-    holds (here, this process) is left to it. A collection is refused with
-    metacooler's reason, which names its entries."""
-    import socket
+    holds (here, another process) is left to it. A collection is refused
+    with metacooler's reason, which names its entries."""
+    from contextlib import ExitStack
 
     names = {
         "command": command,
@@ -1883,8 +1745,6 @@ def test_step_on_a_map_refused(command, case, stub_pipeline, tmp_path, run_cli):
         "pairs": _pairs(tmp_path),
         "collection": _collection(tmp_path / "maps.mmetacool", "lib1"),
         "copy": tmp_path / "copy.metacool",
-        "pid": os.getpid(),
-        "host": socket.gethostname(),
         "colon_map": tmp_path / "run::1.metacool",
         "other_map": _contig_map(tmp_path / "other.metacool", {"c1": 100, "c3": 50}),
         "long_map": _contig_map(tmp_path / "long.metacool", {"c1": 120, "c2": 50}),
@@ -1895,19 +1755,21 @@ def test_step_on_a_map_refused(command, case, stub_pipeline, tmp_path, run_cli):
     names["entry"] = f"{names['collection']}::entries/lib1"
     names["directory"].mkdir()
     metacool, options, message = STEP_MAP_ERRORS[case]
-    if case == "a lock held by another run":
-        lock = _lock(names["map"], os.getpid())
-    earlier = _earlier_run(command, tmp_path)
-    metacool = None if metacool is None else metacool.format(**names)
-    message = message.format(**names)
-    pattern = f"^{re.escape(message)}" + (".*entries/lib1" if case == "a collection" else "$")
-    with pytest.raises(mtmc.MetacoolError, match=pattern):
-        run_cli(command, *_step_run(command, metacool, tmp_path, *[option.format(**names) for option in options], "-F"))
+    with ExitStack() as held:
+        if case == "a lock held by another run":
+            holder = held.enter_context(held_lock(names["map"]))
+            names["refusal"] = refusal(names["map"], holder)
+        earlier = _earlier_run(command, tmp_path)
+        metacool = None if metacool is None else metacool.format(**names)
+        message = message.format(**names)
+        pattern = f"^{re.escape(message)}" + (".*entries/lib1" if case == "a collection" else "$")
+        with pytest.raises(mtmc.MetacoolError, match=pattern):
+            run_cli(command, *_step_run(command, metacool, tmp_path, *[option.format(**names) for option in options], "-F"))
+        if case == "a lock held by another run":
+            assert json.loads(lock_file(names["map"]).read_text()) == holder
     assert not stub_pipeline and all(path.exists() for path in earlier)
     (log,) = (tmp_path / "out").glob(f"metator_{command}_*.log")
     assert f"ERROR :: {message}" in log.read_text()
-    if case == "a lock held by another run":
-        assert lock.exists()
     assert not (tmp_path / "copy.metacool").exists()
 
 
@@ -2020,19 +1882,18 @@ def test_partition_on_an_entry_of_a_collection(stub_pipeline, tmp_path, monkeypa
 
 
 def test_partition_on_a_map_through_a_symbolic_link(stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """The map given through a symbolic link: the link is replaced by the
-    map with the overlapping clusters, and the map it pointed to is left as
-    it was, as pipeline replaces it."""
+    """The map given through a symbolic link: the map it points to stores
+    the overlapping clusters, as metacooler edits the target of a link, and
+    the link keeps pointing at it, as pipeline updates it."""
     import metacooler
 
     _partition_table(monkeypatch)
     target = _contig_map(tmp_path / "target.metacool")
-    before = target.read_bytes()
     link = tmp_path / "link.metacool"
     link.symlink_to(target)
     run_cli("partition", *_step_run("partition", link, tmp_path, "-s", "100"))
-    assert not link.is_symlink() and target.read_bytes() == before
-    assert list(metacooler.MetaCooler(str(link)).clusters.name) == ["metator_00001_00000"]
+    assert link.is_symlink() and link.resolve() == target
+    assert list(metacooler.MetaCooler(str(target)).clusters.name) == ["metator_00001_00000"]
 
 
 @pytest.mark.parametrize("error", [ValueError("not valid"), KeyboardInterrupt()], ids=["ValueError", "Ctrl-C"])
@@ -2050,7 +1911,8 @@ def test_partition_on_a_map_that_cannot_be_written(error, stub_pipeline, tmp_pat
     def validate(*args, **kwargs):
         raise error
 
-    monkeypatch.setattr("metacooler.validate", validate)
+    # The full validation of the staged map, before metacooler renames it.
+    monkeypatch.setattr("metacooler.schema.validate", validate)
     args = _step_run("partition", metacool, tmp_path, "-s", "100")
     message = (
         f"{metacool} is not written: not valid. It is still the input map of the run, as it was. The other outputs of "
@@ -2113,35 +1975,36 @@ def test_validation_on_a_map_that_cannot_be_written(stub_pipeline, tmp_path, mon
     def validate(*args, **kwargs):
         raise ValueError("not valid")
 
-    monkeypatch.setattr("metacooler.validate", validate)
+    # The full validation of the staged map, before metacooler renames it.
+    monkeypatch.setattr("metacooler.schema.validate", validate)
     with pytest.raises(mtmc.MetacoolError, match=r"is not written: .* It is still the input map of the run, as it was\."):
         run_cli("validation", *_step_run("validation", metacool, tmp_path))
     assert metacool.read_bytes() == before
 
 
 @pytest.mark.parametrize("command", ["partition", "validation"])
-def test_a_step_on_a_map_runs_under_the_sigterm_handler(command, stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """partition MAP and validation MAP, which write a map, run their step
-    under the SIGTERM handler of a run (see terminated_as_interrupted), so
-    that SIGTERM stops them as Ctrl-C does and they clean up after
-    themselves, their lock and staged map. Without it, SIGTERM killed them
-    and left both. It passes against this commit's first version, which
-    had the handler and no test of it; it fails without the handler."""
+def test_a_step_on_a_map_holds_its_lock(command, stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """partition MAP and validation MAP, which write a map, hold its lock
+    (metacooler's) through their step, and set no signal handler: a run
+    killed by SIGTERM dies of it, and leaves its lock to the next writer
+    (see hold_lock). A step that fails releases the lock."""
     import signal
 
     seen = {}
+    metacool = _contig_map(tmp_path / "input.metacool")
 
     def step(*args, **kwargs):
+        lock = lock_file(metacool)
+        seen["held"] = lock.exists() and json.loads(lock.read_text())["pid"] == os.getpid()
         seen["handler"] = signal.getsignal(signal.SIGTERM)
         raise RuntimeError("stopped")
 
     target = {"partition": "metator.partition.partition", "validation": "metator.validation.recursive_decontamination"}
     monkeypatch.setattr(target[command], step)
-    metacool = _contig_map(tmp_path / "input.metacool")
     with pytest.raises(RuntimeError, match="stopped"):
         run_cli(command, *_step_run(command, metacool, tmp_path))
-    assert callable(seen["handler"]) and seen["handler"] not in (signal.SIG_DFL, signal.SIG_IGN)
-    assert signal.getsignal(signal.SIGTERM) is signal.SIG_DFL and not list(tmp_path.glob("*.lock"))
+    assert seen == {"held": True, "handler": signal.SIG_DFL}
+    assert not list(tmp_path.glob("*.lock"))
 
 
 @pytest.mark.parametrize("with_map", [False, True], ids=["without a map", "with a map"])

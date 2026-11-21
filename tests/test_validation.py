@@ -109,62 +109,21 @@ def test_micomplete_quality(tmp_path, monkeypatch):
     assert sorted(os.listdir(bins)) == before
 
 
-def _alive(pid):
-    """Whether the process pid runs: a zombie, whose status no parent has
-    read yet, has ended."""
-    try:
-        with open(f"/proc/{pid}/stat") as handle:
-            return handle.read().rsplit(")", 1)[1].split()[0] not in ("Z", "X")
-    except FileNotFoundError:
-        return False
-
-
-@pytest.mark.skipif(not os.path.isdir("/proc"), reason="reads the state of the processes in /proc")
-def test_a_stop_kills_what_micomplete_started(tmp_path, monkeypatch):
-    """A run stopped while miComplete runs (Ctrl-C, or SIGTERM: an exception
-    raised as the run waits for it) kills miComplete and the processes that
-    it started, the workers of its pool: subprocess.run killed miComplete
-    only, and its workers lived on, orphaned and blocked for good. Here a
-    stand-in for miComplete starts a process that would sleep a minute,
-    then waits for it."""
-    import signal
-    import threading
-    import time
-
-    started = tmp_path / "started"
+def test_micomplete_runs_in_the_process_group_of_the_run(tmp_path, monkeypatch):
+    """miComplete runs in the process group of the run, not a session of its
+    own: a Ctrl-C in the terminal, or the signal that a job scheduler sends
+    to the job, reaches it too. A stand-in for miComplete writes its process
+    group."""
     stand_in = tmp_path / "python"
-    stand_in.write_text(f"#!/bin/sh\nsleep 60 &\necho $! > {started}.tmp\nmv {started}.tmp {started}\nwait\n")
+    groups = tmp_path / "groups"
+    stand_in.write_text(f"#!/bin/sh\nps -o pgid= -p $$ >> {groups}\nexit 3\n")
     stand_in.chmod(0o755)
-    # miComplete is run as sys.executable -m metator._micomplete.
     monkeypatch.setattr(mtv.sys, "executable", str(stand_in))
     bins = tmp_path / "bins"
     bins.mkdir()
-
-    def interrupt_once_started():
-        deadline = time.monotonic() + 30
-        while not started.exists() and time.monotonic() < deadline:
-            time.sleep(0.05)
-        if started.exists():
-            signal.pthread_kill(threading.main_thread().ident, signal.SIGINT)
-
-    previous = signal.signal(signal.SIGINT, signal.default_int_handler)
-    interrupter = threading.Thread(target=interrupt_once_started)
-    interrupter.start()
-    try:
-        with pytest.raises(KeyboardInterrupt):
-            mtv.micomplete_quality(str(bins), str(tmp_path / "results.tsv"), 1)
-    finally:
-        interrupter.join()
-        signal.signal(signal.SIGINT, previous)
-    child = int(started.read_text())
-    try:
-        deadline = time.monotonic() + 10
-        while _alive(child) and time.monotonic() < deadline:
-            time.sleep(0.05)
-        assert not _alive(child)
-    finally:
-        if _alive(child):
-            os.kill(child, signal.SIGKILL)
+    with pytest.raises(Exception, match="returned non-zero exit status 3"):
+        mtv.micomplete_quality(str(bins), str(tmp_path / "results.tsv"), 1)
+    assert [int(line) for line in groups.read_text().split()] == [os.getpgrp()]
 
 
 def test_micomplete_failure_is_an_error(tmp_path, monkeypatch):
