@@ -514,9 +514,9 @@
    "mge": {
     "positional": [
      {
-      "name": "pairsfile",
+      "name": "map",
       "required": true,
-      "repeatable": true
+      "repeatable": false
      }
     ],
     "options": [
@@ -529,35 +529,11 @@
       "required": true
      },
      {
-      "short": "-b",
-      "long": "--binning",
-      "takes_value": true,
-      "metavar": "FILE",
-      "default": null,
-      "required": true
-     },
-     {
-      "short": "-c",
-      "long": "--contigs",
-      "takes_value": true,
-      "metavar": "FILE",
-      "default": null,
-      "required": true
-     },
-     {
       "short": "-F",
       "long": "--force",
       "takes_value": false,
       "metavar": null,
       "default": false,
-      "required": false
-     },
-     {
-      "short": null,
-      "long": "--map",
-      "takes_value": true,
-      "metavar": "MAP",
-      "default": null,
       "required": false
      },
      {

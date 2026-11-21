@@ -43,7 +43,6 @@ dependencies = [
     "matplotlib>=3.9",
     "scipy",
     "micomplete",
-    "pypairix",
     "rich-click>=1.9",
     "metacooler>=0.3.0",
 
@@ -165,7 +164,7 @@ exclude_lines = [
 
 [tool.ty.analysis]
 # C extensions that ship no type information.
-allowed-unresolved-imports = ["pypairix", "pyfastx"]
+allowed-unresolved-imports = ["pyfastx"]
 
 [tool.bumpversion]
 # src/metator/version.py is the single source of truth for the version; this

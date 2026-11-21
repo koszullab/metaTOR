@@ -51,6 +51,7 @@ Core functions to write the file:
 """
 
 import gzip
+import json
 import logging
 import os
 import tempfile
@@ -1112,15 +1113,42 @@ def _network_entry(mc):
     return {"network": entry} if entry is not None else {}
 
 
+def _set_metator_entries(path, entries):
+    """Set entries of the metator key of the metadata of the map at path, the
+    staged map of an edit session, the other keys of the metadata kept:
+    what the run that wrote the map was (metator mge records itself so,
+    under the name of its round)."""
+    mc = open_map(path)
+    metadata = dict(mc.metadata)
+    metadata["metator"] = {**_metator_metadata(mc), **entries}
+    with mc.open("r+") as group:
+        group.attrs["metadata"] = json.dumps(metadata)
+
+
+def _drop_metator_entries(path, names):
+    """Remove the entries names of the metator key of the metadata of the map
+    at path, the staged map of an edit session: what made the clustering
+    rounds of those names, which the map no longer holds (see write_rounds).
+    The map is opened for writing only when it holds one of them."""
+    mc = open_map(path)
+    metator = _metator_metadata(mc)
+    if not any(name in metator for name in names):
+        return
+    metadata = dict(mc.metadata)
+    metadata["metator"] = {key: value for key, value in metator.items() if key not in names}
+    with mc.open("r+") as group:
+        group.attrs["metadata"] = json.dumps(metadata)
+
+
 # The steps of the binning, which make the clustering rounds that a run
 # replaces (see store_rounds): a round that another step made (that of
-# metator mge --map), or another tool, is dropped with them.
+# metator mge), or another tool, is dropped with them.
 BINNING_STEPS = ("partition", "validation")
 
 
 def _later_rounds(mc):
     """The entries of the clustering rounds of the map mc that the binning
-    did not make: that of metator mge --map, or of another tool. A run that
+    did not make: those of metator mge, or of another tool. A run that
     replaces the clusters of the map stores its own rounds only, so its map
     does not keep them (see _warn_dropped_rounds)."""
     return [entry for entry in mc.cluster_rounds if entry.get("step") not in BINNING_STEPS]
@@ -1270,6 +1298,9 @@ def write_rounds(metacool, outfile, rounds, names=None, force=False, planned=Non
         with read_errors(metacool):
             later.extend(_later_rounds(mc))
         store_rounds(staged, rounds, names, name=metacool)
+        # What made the rounds of metator mge that the map no longer holds
+        # (see write_round's metadata).
+        _drop_metator_entries(staged, [entry["name"] for entry in later if _made_by(entry) == "metaTOR mge"])
 
     _edit_map(
         metacool,
@@ -1283,7 +1314,7 @@ def write_rounds(metacool, outfile, rounds, names=None, force=False, planned=Non
     _warn_dropped_rounds(later, metacool, outfile, in_place)
 
 
-def write_round(metacool, outfile, rounds, entry, force=False, planned=None):
+def write_round(metacool, outfile, rounds, entry, force=False, planned=None, metadata=None):
     """Write the map metacool at outfile with one clustering round of its
     /clusters group replaced, and everything else as it was: the other
     rounds, its bins, contacts, genomes and contigs tables, QC block and
@@ -1324,6 +1355,10 @@ def write_round(metacool, outfile, rounds, entry, force=False, planned=None):
         a run updates in place, or another file.
     planned : metacooler.MetaCooler, optional
         The input map as the run read it (see reassign_metacool).
+    metadata : dict, optional
+        Entries of the metator key of the metadata of the map, set in the
+        same edit session (see _set_metator_entries): what the run that
+        made the round was, under the name of the round.
 
     Raises
     ------
@@ -1350,6 +1385,8 @@ def write_round(metacool, outfile, rounds, entry, force=False, planned=None):
         other_members = held_members[(held_members["round"] != name).to_numpy()]
         entries = [stored for stored in held_rounds if stored["name"] != name]
         _store_clusters(staged, [*entries, entry], _stacked(other, clusters), _stacked(other_members, members), name=metacool)
+        if metadata:
+            _set_metator_entries(staged, metadata)
 
     _edit_map(
         metacool,

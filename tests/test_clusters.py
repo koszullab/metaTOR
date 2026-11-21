@@ -1,5 +1,6 @@
 """The clustering rounds of a run (metator.clusters)."""
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -175,37 +176,38 @@ def test_the_overlapping_round_of_a_partition(tmp_path):
     assert clusters.empty and members.empty
 
 
-def test_the_mge_round_of_a_summary(tmp_path):
-    """The round mge is the summary of metator mge, as written, in its
-    order: one cluster per row, named BinName, without a parent, with the
-    contigs of Contigs; its other columns but BinLength and ContigsNumber,
-    which the map computes from the contigs. NA is a missing value, None a
-    text (the host that mge leaves unknown); a contig called NA or nan is
-    a contig."""
-    summary = tmp_path / "mges_cluster_summary.tsv"
-    summary.write_text(
-        "BinName\tBinLength\tGC\tHit\tBinningScore\tContigsNumber\tContigs\tMetagenomicBin\tAssociationScore\tAssociatedBins\n"
-        "MetaTOR_MGE_00001\t12000.00\t45.12\t100.00\t0.91\t2.00\tnan,c7\tNone\tNA\tNA\n"
-        "MetaTOR_MGE_00002\t6000.00\t55.00\t50.00\tNA\t1.00\tNA\tNone\tNA\tNA\n"
+def _mge_summary(rows):
+    """A summary of MGE clusters, as metator.mge.generate_bin_summary gives
+    it."""
+    columns = ["BinName", "BinLength", "GC", "Hit", "BinningScore", "ContigsNumber", "Contigs"]
+    return pd.DataFrame(rows, columns=columns)
+
+
+@pytest.mark.parametrize("name", [mtc.MGE, mtc.MGE_RANDOM])
+def test_the_mge_round_of_a_summary(name):
+    """The round mge (or mge_random) is the summary of the MGE clusters of
+    metator mge, in its order: one cluster per row, named BinName, without
+    a parent, with the contigs of Contigs; its other columns but BinLength
+    and ContigsNumber, which the map computes from the contigs. A contig
+    called NA or nan is a contig."""
+    summary = _mge_summary(
+        [
+            ["MetaTOR_MGE_00001", 12000, 45.1234, 100, 0.9123, 2, "nan,c7"],
+            ["MetaTOR_MGE_00002", 6000, 55.0, 50, np.nan, 1, "NA"],
+        ]
     )
-    clusters, members = mtc.mge_round(str(summary))
-    assert list(clusters.columns) == ["round", "name", "parent_round", "parent", "GC", "Hit", "BinningScore",
-                                      "MetagenomicBin", "AssociationScore", "AssociatedBins"]  # fmt: skip
-    assert list(clusters["round"]) == [mtc.MGE] * 2 and list(clusters["name"]) == ["MetaTOR_MGE_00001", "MetaTOR_MGE_00002"]
+    clusters, members = mtc.mge_round(summary, name)
+    assert list(clusters.columns) == ["round", "name", "parent_round", "parent", "GC", "Hit", "BinningScore"]
+    assert list(clusters["round"]) == [name] * 2 and list(clusters["name"]) == ["MetaTOR_MGE_00001", "MetaTOR_MGE_00002"]
     assert clusters["parent_round"].isna().all() and clusters["parent"].isna().all()
-    assert list(clusters["GC"]) == [45.12, 55.0] and list(clusters["Hit"]) == [100, 50]
-    assert clusters["BinningScore"].iloc[0] == 0.91 and pd.isna(clusters["BinningScore"].iloc[1])
-    assert list(clusters["MetagenomicBin"]) == ["None", "None"] and clusters["AssociatedBins"].isna().all()
-    assert clusters["AssociationScore"].isna().all()
-    assert members.values.tolist() == [[mtc.MGE, "MetaTOR_MGE_00001", "nan"], [mtc.MGE, "MetaTOR_MGE_00001", "c7"],
-                                       [mtc.MGE, "MetaTOR_MGE_00002", "NA"]]  # fmt: skip
+    # The values as computed: the map stores them unrounded.
+    assert list(clusters["GC"]) == [45.1234, 55.0] and list(clusters["Hit"]) == [100, 50]
+    assert clusters["BinningScore"].iloc[0] == 0.9123 and pd.isna(clusters["BinningScore"].iloc[1])
+    assert members.values.tolist() == [[name, "MetaTOR_MGE_00001", "nan"], [name, "MetaTOR_MGE_00001", "c7"],
+                                       [name, "MetaTOR_MGE_00002", "NA"]]  # fmt: skip
 
 
-def test_the_mge_round_of_an_empty_summary(tmp_path):
+def test_the_mge_round_of_an_empty_summary():
     """No MGE cluster: a round with none."""
-    summary = tmp_path / "mges_cluster_summary.tsv"
-    summary.write_text(
-        "BinName\tBinLength\tGC\tHit\tBinningScore\tContigsNumber\tContigs\tMetagenomicBin\tAssociationScore\tAssociatedBins\n"
-    )
-    clusters, members = mtc.mge_round(str(summary))
+    clusters, members = mtc.mge_round(_mge_summary([]))
     assert clusters.empty and members.empty and list(members.columns) == ["round", "cluster", "contig"]
