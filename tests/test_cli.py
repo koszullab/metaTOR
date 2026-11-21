@@ -87,8 +87,8 @@ def _positional(params):
 
 
 def _required_args(command):
-    """A command line with every required option and argument of a command,
-    with made-up values."""
+    """A command line with every required option and argument of a command, with
+    made-up values."""
     args = []
     for option in INVENTORY["commands"][command]["options"]:
         if option["required"]:
@@ -256,8 +256,7 @@ def test_private_tmp_dir(tmp_path):
 
 
 def test_private_tmp_dir_kept(tmp_path, monkeypatch):
-    """Kept with --no-clean-up, and when the run fails. An empty --tmpdir
-    is ./tmp."""
+    """Kept with --no-clean-up, and when the run fails."""
     monkeypatch.chdir(tmp_path)
     with mtcli.private_tmp_dir("", clean_up=False) as tmp_dir:
         assert Path(tmp_dir).parent == Path("tmp")
@@ -304,16 +303,15 @@ CONTIG_CONTACTS = mtcli.mtn.contig_contacts
 
 def _no_step(calls):
     """No step of the stub pipeline ran (see stub_pipeline): a partition or
-    validation run reads the contacts of its map as it reads the network
-    stored in it (see metator.network.stored_network), before anything
-    else."""
+    validation run reads the contacts of its map as it reads the network stored
+    in it (see metator.network.stored_network), before anything else."""
     return not set(calls) - {"contig_contacts"}
 
 
 class _AnyContig(dict):
-    """The contig data of the stub create_contig_data: every contig of the
-    map, of 1000 bp, measured on nothing but its GC content (no depth file,
-    no enzyme), as create_contig_data gives a contig."""
+    """The contig data of the stub create_contig_data: every contig of the map, of
+    1000 bp, measured on nothing but its GC content (no depth file, no enzyme),
+    as create_contig_data gives a contig."""
 
     def __missing__(self, name):
         return {"length": 1000, "GC": 50.0, "coverage": "-", "RS": "-"}
@@ -321,10 +319,8 @@ class _AnyContig(dict):
 
 @pytest.fixture
 def stub_pipeline(monkeypatch, tmp_path):
-    """Replace the steps of the pipeline by stubs that write their outputs
-    and record their arguments. The network of the map is read and stored
-    for real (see metator.network), from the contig data of the stub
-    create_contig_data."""
+    """Replace the steps of the pipeline by stubs that write their outputs and
+    record their arguments."""
     calls = {}
     contig_contacts = mtcli.mtn.contig_contacts
 
@@ -375,8 +371,8 @@ def stub_pipeline(monkeypatch, tmp_path):
 
 def _one_cluster(network):
     """The partition of the stub partition: one core and overlapping cluster
-    (metator_00001_00000) of the contigs of the network, in the order of
-    their IDs (none for a network without an edge)."""
+    (metator_00001_00000) of the contigs of the network, in the order of their
+    IDs (none for a network without an edge)."""
     import metator.clusters as mtcl
 
     contigs = sorted({int(contig) for contig in network.contig1} | {int(contig) for contig in network.contig2})
@@ -392,11 +388,11 @@ def _assembly(tmp_path):
 
 
 def _final_tables(monkeypatch, contig, final_bin="metator_00001_00000", summary=None):
-    """Have the stub validation give the final clusters: the contig
-    ``contig`` in the bin ``final_bin`` (ND: in none) and c2 in none, write
-    the FASTA file of the bin in the directory of the final clusters, and
-    the bin summary (``summary``, if given) in the directory of its tables,
-    the temporary directory of the run."""
+    """Have the stub validation give the final clusters: the contig ``contig`` in
+    the bin ``final_bin`` (ND: in none) and c2 in none, write the FASTA file of
+    the bin in the directory of the final clusters, and the bin summary
+    (``summary``, if given) in the directory of its tables, the temporary
+    directory of the run."""
     stub = mtcli.mtv.recursive_decontamination
 
     def recursive_decontamination(*args, **kwargs):
@@ -412,9 +408,9 @@ def _final_tables(monkeypatch, contig, final_bin="metator_00001_00000", summary=
 
 
 def _contig_data(monkeypatch, contigs):
-    """Have the stub create_contig_data give the contig data of these
-    contigs: their length and GC content, by name, and nothing else
-    measured (no depth file, no enzyme), as create_contig_data does."""
+    """Have the stub create_contig_data give the contig data of these contigs:
+    their length and GC content, by name, and nothing else measured (no depth
+    file, no enzyme), as create_contig_data does."""
 
     def create_contig_data(*args):
         return {name: {"length": length, "GC": gc, "coverage": "-", "RS": "-"} for name, (length, gc) in contigs.items()}
@@ -465,9 +461,9 @@ def test_a_run_refuses_an_assembly_that_metacooler_cannot_read(compression, comm
 
 
 def test_pipeline_from_a_map_keeps_the_contig_names(stub_pipeline, tmp_path, run_cli):
-    """A guard: a run from a map does not check the contig names of the
-    assembly, as it builds no map of the contigs (nor does the map of its
-    clusters: see test_a_non_ascii_contig_that_the_map_lacks_is_left_out in
+    """A guard: a run from a map does not check the contig names of the assembly,
+    as it builds no map of the contigs (nor does the map of its clusters: see
+    test_a_non_ascii_contig_that_the_map_lacks_is_left_out in
     test_metacool.py)."""
     fasta = tmp_path / "assembly.fa"
     fasta.write_text(NON_ASCII_ASSEMBLY)
@@ -477,9 +473,9 @@ def test_pipeline_from_a_map_keeps_the_contig_names(stub_pipeline, tmp_path, run
 
 
 def test_pipeline_from_a_map_leaves_another_map_of_its_output_directory(stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """From a map stored elsewhere: the run updates that map in place, and a
-    map that an earlier run left in the output directory is not this run's
-    map: it is left as it is."""
+    """From a map stored elsewhere: the run updates that map in place, and a map
+    that an earlier run left in the output directory is not this run's map: it
+    is left as it is."""
     out = tmp_path / "out"
     out.mkdir()
     earlier = out / "metator.metacool"
@@ -492,8 +488,8 @@ def test_pipeline_from_a_map_leaves_another_map_of_its_output_directory(stub_pip
 
 
 def test_pipeline_map_stores_the_normalization_of_the_network(stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """With the real writers: the map of the clusters stores the normalization
-    of the network of the run, empirical_hit by default, as the weights
+    """With the real writers: the map of the clusters stores the normalization of
+    the network of the run, empirical_hit by default, as the weights
     metator_empirical_hit of its bins, one bin per contig: 1/sqrt(hits), the
     hits counted on the contacts of the map (c1: 3, c2: 1), which its Hit
     column stores."""
@@ -517,11 +513,7 @@ def test_pipeline_map_stores_the_normalization_of_the_network(stub_pipeline, tmp
 
 @pytest.mark.parametrize("case", ["a contig of another assembly", "no contact"])
 def test_pipeline_network_of_the_pairs_of_its_map(case, network_from_a_map, tmp_path, run_cli):
-    """The network of a run is that of the pairs that its map holds. A pair
-    on a contig that the assembly lacks is not in the map (metacooler left
-    it out as it made the map); a map that holds no contact (no pair within
-    the contigs) stops the run with the MetacoolError of the network, its
-    reason logged as an error."""
+    """The network of a run is that of the pairs that its map holds."""
     import metacooler
     import pandas as pd
 
@@ -559,9 +551,8 @@ def test_pipeline_network_of_the_pairs_of_its_map(case, network_from_a_map, tmp_
 
 def test_pipeline_from_a_metacool(stub_pipeline, tmp_path, run_cli):
     """From a contact map: the network is read from it, and the map of the
-    clusters is written back from it, once: what the three steps store, in
-    one edit session. The input map is not removed first: it is replaced
-    once the new map is validated."""
+    clusters is written back from it, once: what the three steps store, in one
+    edit session."""
     out = tmp_path / "out"
     out.mkdir()
     metacool = _contig_map(out / "metator.metacool")
@@ -631,16 +622,9 @@ def test_pipeline_from_a_metacool(stub_pipeline, tmp_path, run_cli):
 
 
 def _contig_map(path, lengths=None, network=False, normalization="empirical_hit", partition=False):
-    """A .metacool map of the contigs c1 and c2 of the stub validation's
-    tables (see _final_tables), made before any binning: every contig in
-    __unbinned__, one bin per contig. With network, the network of its
-    contigs stored in it, as metator network stores it (see
-    metator.metacool.write_map), which partition and validation read:
-    the contacts of c1 and c2 normalized by their hits (empirical_hit, by
-    default). With partition too, the partition of the stub partition stored
-    in it, as metator partition stores it (see
-    metator.metacool.write_map), which validation reads: one core and
-    overlapping cluster of c1 and c2."""
+    """A .metacool map of the contigs c1 and c2 of the stub validation's tables
+    (see _final_tables), made before any binning: every contig in __unbinned__,
+    one bin per contig."""
     import metacooler
     import pandas as pd
 
@@ -672,10 +656,10 @@ def _contig_map(path, lengths=None, network=False, normalization="empirical_hit"
 
 
 def _store_contig_network(path, normalization):
-    """Store the network of the contigs of the map at path (see _contig_map)
-    in it, as metator network stores it (see
-    metator.metacool.write_map), with normalization: the network of an
-    earlier run is replaced, its partition kept."""
+    """Store the network of the contigs of the map at path (see _contig_map) in
+    it, as metator network stores it (see metator.metacool.write_map), with
+    normalization: the network of an earlier run is replaced, its partition
+    kept."""
     import metacooler
 
     names = metacooler.MetaCooler(str(path)).contigs["name"]
@@ -729,8 +713,8 @@ DEPTH_ERROR = 'For "abundance" and "theoritical_hit" normalization, depth is req
          "map sites", "map coverage", "map sites and depth", "no need"],
 )  # fmt: skip
 def test_check_normalization(normalization, options, columns, message, tmp_path, logged):
-    """Before any work, from a map: --enzyme and --depth, or the columns of
-    the map that give values."""
+    """Before any work, from a map: --enzyme and --depth, or the columns of the
+    map that give values."""
     metacool = _map_with_columns(tmp_path, columns)
     args = (normalization, options.get("enzyme"), options.get("depth"), str(metacool))
     if message is None:
@@ -743,8 +727,8 @@ def test_check_normalization(normalization, options, columns, message, tmp_path,
 
 
 def test_check_normalization_once_the_map_is_read(tmp_path, logged):
-    """Once the run has read the columns of its map (read): those that it
-    could read, or a refusal for a column that lacks contigs."""
+    """Once the run has read the columns of its map (read): those that it could
+    read, or a refusal for a column that lacks contigs."""
     metacool = str(tmp_path / "map.metacool")
     mtcli.check_normalization("theoritical_hit", None, None, metacool, ["Restriction_site", "Shotgun_coverage"])
     mtcli.check_normalization("RS", None, "depth.txt", metacool, ["Restriction_site"])
@@ -761,9 +745,9 @@ def test_check_normalization_once_the_map_is_read(tmp_path, logged):
 
 @pytest.mark.parametrize("normalization", ["RS", "empirical_hit"])
 def test_check_normalization_of_an_unreadable_map(normalization, tmp_path, logged):
-    """A map that cannot be read is refused before any work when a
-    normalization needs its columns, its reason logged; otherwise the run
-    finds it at its network, as before."""
+    """A map that cannot be read is refused before any work when a normalization
+    needs its columns, its reason logged; otherwise the run finds it at its
+    network, as before."""
     metacool = str(tmp_path / "missing.metacool")
     if normalization == "empirical_hit":
         mtcli.check_normalization(normalization, None, None, metacool)
@@ -840,10 +824,10 @@ def test_run_refused_for_a_column_that_lacks_contigs(command, stub_pipeline, tmp
 
 
 def test_pipeline_refused_for_a_column_that_lacks_contigs_keeps_the_clusters(stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """A run from a map with -F (a rebinning in the output directory of an
-    earlier run) that its columns refuse once the assembly is read leaves
-    the clusters of the earlier run: the contig data is read before they
-    are replaced (they were removed, then the run refused)."""
+    """A run from a map with -F (a rebinning in the output directory of an earlier
+    run) that its columns refuse once the assembly is read leaves the clusters
+    of the earlier run: the contig data is read before they are replaced (they
+    were removed, then the run refused)."""
     monkeypatch.setattr("metator.network.contig_data_from_map", mtn_contig_data_from_map)
     contig_data = {name: {"length": length, "GC": 50.0, "coverage": "-", "RS": "-"}
                    for name, length in [("c1", 100), ("c2", 50), ("c3", 30)]}  # fmt: skip
@@ -879,12 +863,11 @@ def test_run_from_a_map_unreadable_for_its_columns(command, stub_pipeline, tmp_p
 
 
 def _merged_map(tmp_path, normalization):
-    """The map of two libraries (two copies of _contig_map with the network
-    of their contigs, normalized by normalization) summed by metacooler
-    merge, which keeps the contigs table of the first, and the metadata of
-    both: the network that metator network stored in the first, whose Hit
-    is no longer that of the contacts. A normalization other than None
-    loses its weights in the merge; None stores none to lose."""
+    """The map of two libraries (two copies of _contig_map with the network of
+    their contigs, normalized by normalization) summed by metacooler merge,
+    which keeps the contigs table of the first, and the metadata of both: the
+    network that metator network stored in the first, whose Hit is no longer
+    that of the contacts."""
     from metacooler.cli.main import cli as metacooler_cli
 
     library = _contig_map(tmp_path / "library_1.metacool", network=True, normalization=normalization)
@@ -896,9 +879,9 @@ def _merged_map(tmp_path, normalization):
 
 
 def _collection(path, *entries, network=False, partition=False):
-    """A .mmetacool collection at path, with a map of the contigs
-    (_contig_map, with its network with network, and its partition with
-    partition) as each entry of entries."""
+    """A .mmetacool collection at path, with a map of the contigs (_contig_map,
+    with its network with network, and its partition with partition) as each
+    entry of entries."""
     import metacooler
 
     maps = {
@@ -911,11 +894,10 @@ def _collection(path, *entries, network=False, partition=False):
 
 @pytest.mark.parametrize("where", ["elsewhere", "outdir", "output-map"])
 def test_pipeline_metacool_written_from_a_map(where, stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """With the real writer, from the final clusters of the (stub)
-    validation: the map of the clusters, from the input map, which it
-    replaces wherever it is, with the columns of its network (the GC content
-    of the stub contig data); with --output-map, written to that file, the
-    input map left as it was. No other map goes to the output directory."""
+    """With the real writer, from the final clusters of the (stub) validation: the
+    map of the clusters, from the input map, which it replaces wherever it is,
+    with the columns of its network (the GC content of the stub contig data);
+    with --output-map, written to that file, the input map left as it was."""
     monkeypatch.setattr("metator.metacool.write_map", mtmc_write_map)
     _contig_data(monkeypatch, CONTIGS)
     _final_tables(monkeypatch, "c1")
@@ -946,11 +928,9 @@ def test_pipeline_metacool_written_from_a_map(where, stub_pipeline, tmp_path, mo
 
 
 def test_pipeline_metacool_from_a_map_failure_keeps_it(stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """A map of the clusters that cannot be written from the input map
-    (here, a final cluster named as metacooler marks a contig in no cluster)
-    stops the run, with an error that says why and that the input map is
-    left as it was. The run's other outputs are kept: its temporary
-    directory, with the tables of the validation."""
+    """A map of the clusters that cannot be written from the input map (here, a
+    final cluster named as metacooler marks a contig in no cluster) stops the
+    run, with an error that says why and that the input map is left as it was."""
     monkeypatch.setattr("metator.metacool.write_map", mtmc_write_map)
     _final_tables(monkeypatch, "c1", final_bin="NA")
     out = tmp_path / "out"
@@ -978,13 +958,11 @@ def test_pipeline_metacool_from_a_map_failure_keeps_it(stub_pipeline, tmp_path, 
     "error", [ValueError("pixels out of order"), RuntimeError("unexpected failure")], ids=["ValueError", "RuntimeError"]
 )
 def test_pipeline_metacool_from_a_map_metacooler_failure(error, stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """metacooler fails while it writes the map of the clusters over the
-    input map (the validation of its edit session, here): it removes its
-    staged copy, and the run stops with an error that the map is not
-    written, with the reason of one of the errors that metacooler is
-    expected to raise (a ValueError here), or the traceback of another (a
-    RuntimeError). The input map is left as it was, and no other file is
-    left beside it."""
+    """metacooler fails while it writes the map of the clusters over the input map
+    (the validation of its edit session, here): it removes its staged copy, and
+    the run stops with an error that the map is not written, with the reason of
+    one of the errors that metacooler is expected to raise (a ValueError here),
+    or the traceback of another (a RuntimeError)."""
     monkeypatch.setattr("metator.metacool.write_map", mtmc_write_map)
     _final_tables(monkeypatch, "c1")
     out = tmp_path / "out"
@@ -1020,11 +998,11 @@ def _map_run(metacool, tmp_path, *options):
 
 
 def _lock(metacool, pid, host=None, start="2026-11-18T10:00:00+0000"):
-    """A lock file of the map metacool that names a process pid of host (this
-    host by default), but not the machine and the PID namespace where it
-    runs, which metacooler's locks name: metacooler cannot check it (as a
-    lock of another host, or one that metaTOR wrote before its map writes
-    went through metacooler), and never takes it over."""
+    """A lock file of the map metacool that names a process pid of host (this host
+    by default), but not the machine and the PID namespace where it runs, which
+    metacooler's locks name: metacooler cannot check it (as a lock of another
+    host, or one that metaTOR wrote before its map writes went through
+    metacooler), and never takes it over."""
     import socket
 
     holder = {"pid": pid, "host": host or socket.gethostname(), "start": start, "command": "metator pipeline",
@@ -1035,9 +1013,9 @@ def _lock(metacool, pid, host=None, start="2026-11-18T10:00:00+0000"):
 
 
 def _rounds_tables(monkeypatch, members):
-    """Have the stub validation also write the clustering rounds of the run
-    (see metator.clusters): metator_00001_00000, an overlapping cluster of
-    the contigs members, which is also the final cluster of c1."""
+    """Have the stub validation also write the clustering rounds of the run (see
+    metator.clusters): metator_00001_00000, an overlapping cluster of the
+    contigs members, which is also the final cluster of c1."""
     import metator.clusters as mtcl
 
     stub = mtcli.mtv.recursive_decontamination
@@ -1085,8 +1063,8 @@ def test_pipeline_from_a_map_stores_its_rounds(stub_pipeline, tmp_path, monkeypa
 
 
 def test_pipeline_from_a_map_without_rounds_drops_those_it_held(stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """The rounds of an earlier run describe the clusters it replaced: a run
-    that wrote none (here, the stub validation) leaves the map with none."""
+    """The rounds of an earlier run describe the clusters it replaced: a run that
+    wrote none (here, the stub validation) leaves the map with none."""
     import metacooler
     import pandas as pd
 
@@ -1104,10 +1082,9 @@ def test_pipeline_from_a_map_without_rounds_drops_those_it_held(stub_pipeline, t
 
 
 def _map_of_an_earlier_run(path):
-    """A map of the contigs c1 and c2 of _contig_map as an earlier run left
-    it: c1 in the cluster earlier_00001, c2 in __unbinned__, and the
-    clustering rounds overlapping (made by partition), final (by
-    validation) and mge (by mge)."""
+    """A map of the contigs c1 and c2 of _contig_map as an earlier run left it: c1
+    in the cluster earlier_00001, c2 in __unbinned__, and the clustering rounds
+    overlapping (made by partition), final (by validation) and mge (by mge)."""
     import metacooler
     import pandas as pd
 
@@ -1161,11 +1138,9 @@ def test_warn_of_what_a_run_replaces_in_a_map(command, replaced, tmp_path, logge
 
 @pytest.mark.parametrize("output", ["in place", "--output-map"])
 def test_pipeline_from_a_map_warns_of_what_it_replaces(output, stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """pipeline MAP, in place, warns before any work that it replaces the
-    clusters and the rounds that an earlier run left in the map: it
-    replaced them without a word, and without -F (the map keeps no trace of
-    them). With --output-map, which leaves the map as it was, it does not:
-    a guard, as it gave no warning before either."""
+    """pipeline MAP, in place, warns before any work that it replaces the clusters
+    and the rounds that an earlier run left in the map: it replaced them
+    without a word, and without -F (the map keeps no trace of them)."""
     monkeypatch.setattr("metator.metacool.write_map", mtmc_write_map)
     _final_tables(monkeypatch, "c1")
     metacool = _map_of_an_earlier_run(tmp_path / "input.metacool")
@@ -1196,8 +1171,8 @@ def test_a_step_warns_of_what_it_replaces_in_place(command, tmp_path, logged):
 
 
 def test_pipeline_from_a_map_to_an_existing_output_map(stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """--output-map replaces a file only with -F: refused before any work,
-    else the map of the clusters replaces it, the input map left as it was."""
+    """--output-map replaces a file only with -F: refused before any work, else
+    the map of the clusters replaces it, the input map left as it was."""
     monkeypatch.setattr("metator.metacool.write_map", mtmc_write_map)
     _final_tables(monkeypatch, "c1")
     metacool = _contig_map(tmp_path / "input.metacool")
@@ -1226,8 +1201,8 @@ def test_pipeline_from_a_map_to_itself_as_output_map(stub_pipeline, tmp_path, mo
 
 
 def test_pipeline_from_an_entry_needs_an_output_map(stub_pipeline, tmp_path, run_cli):
-    """An entry of a .mmetacool collection is not updated in place: that
-    would rewrite the collection. Refused before any work."""
+    """An entry of a .mmetacool collection is not updated in place: that would
+    rewrite the collection."""
     entry = f"{_collection(tmp_path / 'maps.mmetacool', 'rep1')}::entries/rep1"
     message = (
         f"{entry} is an entry of a .mmetacool collection, which a run does not update in place: write the map of its "
@@ -1239,10 +1214,9 @@ def test_pipeline_from_an_entry_needs_an_output_map(stub_pipeline, tmp_path, run
 
 
 def test_pipeline_from_a_map_through_a_symbolic_link(stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """The map given through a symbolic link: the map it points to is
-    updated in place, as metacooler edits the target of a link, and the
-    link keeps pointing at it. Its lock and its staged copy are next to the
-    target, and gone once the run has ended."""
+    """The map given through a symbolic link: the map it points to is updated in
+    place, as metacooler edits the target of a link, and the link keeps
+    pointing at it."""
     import metacooler
 
     monkeypatch.setattr("metator.metacool.write_map", mtmc_write_map)
@@ -1260,14 +1234,9 @@ def test_pipeline_from_a_map_through_a_symbolic_link(stub_pipeline, tmp_path, mo
 
 @pytest.mark.parametrize("failure", ["partition", "Ctrl-C in the validation", "Ctrl-C in metacooler reassign"])
 def test_pipeline_from_a_map_that_fails_leaves_it_as_it_was(failure, stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """A run that stops (an error mid-run, Ctrl-C, even while metacooler
-    writes the new map) leaves the input map byte for byte as it was, with
-    no file beside it: no staged map, no lock.
-
-    A guard: a run from a map wrote a new map in its output directory, and
-    left the input map alone, so this passes without the update in place
-    too; it holds the update to replacing the map only once it is written.
-    """
+    """A run that stops (an error mid-run, Ctrl-C, even while metacooler writes
+    the new map) leaves the input map byte for byte as it was, with no file
+    beside it: no staged map, no lock."""
     monkeypatch.setattr("metator.metacool.write_map", mtmc_write_map)
     _final_tables(monkeypatch, "c1")
     (tmp_path / "maps").mkdir()
@@ -1294,10 +1263,10 @@ def test_pipeline_from_a_map_that_fails_leaves_it_as_it_was(failure, stub_pipeli
 
 
 def test_pipeline_from_a_map_refused_while_another_run_holds_it(stub_pipeline, tmp_path, run_cli):
-    """A second run on a map that another run holds (here, another process
-    that holds its lock) is refused before any work, with metacooler's
-    reason (who holds it, and the files to delete if it is gone) and where
-    else to write the map, and leaves the lock to its holder."""
+    """A second run on a map that another run holds (here, another process that
+    holds its lock) is refused before any work, with metacooler's reason (who
+    holds it, and the files to delete if it is gone) and where else to write
+    the map, and leaves the lock to its holder."""
     metacool = _contig_map(tmp_path / "input.metacool")
     with held_lock(metacool) as holder:
         message = f"{refusal(metacool, holder)} Or write this run's map elsewhere with --output-map."
@@ -1311,13 +1280,11 @@ def test_pipeline_from_a_map_refused_while_another_run_holds_it(stub_pipeline, t
 
 @pytest.mark.parametrize("holder", ["another host", "no machine named", "unreadable", "not an object"])
 def test_pipeline_from_a_map_refused_with_a_lock_it_cannot_check(holder, stub_pipeline, tmp_path, run_cli):
-    """A lock that metacooler cannot tell stale is never taken over: that of
-    a process of another host; one that does not name the machine and the
-    PID namespace of its process (as metaTOR's own locks did, before its
-    map writes went through metacooler), even of a process that is gone;
-    or one that says nothing readable (not JSON, or JSON but not an
-    object). The run is refused, with the files to delete, and the lock
-    left."""
+    """A lock that metacooler cannot tell stale is never taken over: that of a
+    process of another host; one that does not name the machine and the PID
+    namespace of its process (as metaTOR's own locks did, before its map writes
+    went through metacooler), even of a process that is gone; or one that says
+    nothing readable (not JSON, or JSON but not an object)."""
     import subprocess
 
     metacool = _contig_map(tmp_path / "input.metacool")
@@ -1398,8 +1365,8 @@ def test_a_read_only_map_is_refused_before_any_work(command, stub_pipeline, tmp_
 )
 def test_pipeline_output_map_refusals(case, stub_pipeline, tmp_path, run_cli):
     """What --output-map cannot be, and an input map that is not there, are
-    refused before any work (they failed at the end of the run, or on a
-    bare error while locking)."""
+    refused before any work (they failed at the end of the run, or on a bare
+    error while locking)."""
     metacool = _contig_map(tmp_path / "input.metacool")
     options, given = [], metacool
     if case == "missing map":
@@ -1428,8 +1395,8 @@ def test_pipeline_output_map_refusals(case, stub_pipeline, tmp_path, run_cli):
 
 
 def test_pipeline_output_map_in_a_new_directory(stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """--output-map in a directory that is not there yet: the directory is
-    made, as the map will be written there (the lock failed on it)."""
+    """--output-map in a directory that is not there yet: the directory is made,
+    as the map will be written there (the lock failed on it)."""
     monkeypatch.setattr("metator.metacool.write_map", mtmc_write_map)
     _final_tables(monkeypatch, "c1")
     metacool = _contig_map(tmp_path / "input.metacool")
@@ -1441,9 +1408,8 @@ def test_pipeline_output_map_in_a_new_directory(stub_pipeline, tmp_path, monkeyp
 @pytest.mark.parametrize("root", ["::/", "::"])
 def test_pipeline_from_the_root_of_a_map(root, stub_pipeline, tmp_path, monkeypatch, run_cli):
     """A map given as file::/ (or file::), the root of the file, is the file
-    itself: it is updated in place as the file, next to which the run
-    stages its map. The URI, as the path of the map to write, made
-    metacooler write a group inside the file, truncating the input map."""
+    itself: it is updated in place as the file, next to which the run stages
+    its map."""
     import metacooler
 
     monkeypatch.setattr("metator.metacool.write_map", mtmc_write_map)
@@ -1456,8 +1422,8 @@ def test_pipeline_from_the_root_of_a_map(root, stub_pipeline, tmp_path, monkeypa
 
 
 def test_a_map_is_written_to_a_file_only(tmp_path):
-    """A map is not written to a URI (file::group), which metacooler reads
-    as a group inside the file: an existing file would be truncated."""
+    """A map is not written to a URI (file::group), which metacooler reads as a
+    group inside the file: an existing file would be truncated."""
     metacool = _contig_map(tmp_path / "input.metacool")
     before = metacool.read_bytes()
     clusters = mtmc.FinalClusters({}, str(tmp_path / "cluster_summary.txt"), None, {})
@@ -1469,8 +1435,8 @@ def test_a_map_is_written_to_a_file_only(tmp_path):
 
 
 def test_map_directory_that_cannot_be_made(stub_pipeline, tmp_path, run_cli):
-    """The directory of the map to write cannot be made (a file is in its
-    way): refused before any work, the reason logged."""
+    """The directory of the map to write cannot be made (a file is in its way):
+    refused before any work, the reason logged."""
     blocking = tmp_path / "afile"
     blocking.write_text("x")
     output = blocking / "x.metacool"
@@ -1526,8 +1492,8 @@ def test_a_map_changed_during_the_run_is_refused_at_its_end(command, output, stu
 
 
 def _output_map_run(command, metacool, tmp_path, *options):
-    """The arguments of a pipeline or partition run from the map metacool,
-    with options (--output-map, -F...)."""
+    """The arguments of a pipeline or partition run from the map metacool, with
+    options (--output-map, -F...)."""
     if command == "pipeline":
         return _map_run(metacool, tmp_path, *options)
     return _step_run(command, metacool, tmp_path, *options)
@@ -1580,12 +1546,8 @@ def test_output_map_a_link_to_the_input_map(kind, command, stub_pipeline, tmp_pa
 
 @pytest.mark.parametrize("case", ["a map that another process holds", "a link to nothing"])
 def test_output_map_a_symbolic_link_locks_its_own_name(case, stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """--output-map FILE, a symbolic link: the run locks FILE's own name, as
-    it replaces the link, never what it points to. A link to a map that
-    another process holds (a run that updates it in place) is no refusal,
-    and a link to nothing is replaced (-F). The run locked what the link
-    points to: it was refused on the lock of that map, or on a lock that
-    cannot be created beside nothing."""
+    """--output-map FILE, a symbolic link: the run locks FILE's own name, as it
+    replaces the link, never what it points to."""
     from contextlib import ExitStack
 
     import metacooler
@@ -1613,8 +1575,8 @@ def test_output_map_a_symbolic_link_locks_its_own_name(case, stub_pipeline, tmp_
 def test_hold_lock_follows_the_links_of_the_map_in_place_only(monkeypatch):
     """hold_lock locks the map that a run writes: in place, the file that a
     symbolic link points to, as metacooler edits it (metacooler.lock follows
-    links); with --output-map, FILE's own name (follow_symlinks=False), as
-    a link there is replaced, not its target."""
+    links); with --output-map, FILE's own name (follow_symlinks=False), as a
+    link there is replaced, not its target."""
     import contextlib
 
     import metacooler
@@ -1665,9 +1627,9 @@ def test_a_writer_before_the_lock_is_seen_by_the_run(command, stub_pipeline, tmp
 
 
 def _replaced_once_opened_by(monkeypatch, metacool, reader):
-    """Have the map metacool replaced by another file (a copy of itself), as
-    a run that updates it in place replaces it, once the function reader
-    opens it, before it reads it."""
+    """Have the map metacool replaced by another file (a copy of itself), as a run
+    that updates it in place replaces it, once the function reader opens it,
+    before it reads it."""
     opened = mtmc.open_map
 
     def open_map(path):
@@ -1720,9 +1682,9 @@ def test_a_map_replaced_as_the_run_checks_it(reader, command, options, stub_pipe
 
 
 def test_a_map_replaced_as_validation_reads_its_partition(stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """A map replaced as a validation run reads the partition that partition
-    MAP stored in it (see metator.metacool.read_partition) stops the run
-    with metaTOR's error, logged as an ERROR, before any work."""
+    """A map replaced as a validation run reads the partition that partition MAP
+    stored in it (see metator.metacool.read_partition) stops the run with
+    metaTOR's error, logged as an ERROR, before any work."""
     metacool = _contig_map(tmp_path / "input.metacool", network=True, partition=True)
     read_partition = mtmc.read_partition
 
@@ -1765,8 +1727,8 @@ def test_a_map_replaced_as_its_columns_are_read(reader, tmp_path, monkeypatch):
 def test_output_map_held_by_another_run_is_refused_without_the_hint(stub_pipeline, tmp_path, run_cli):
     """A run with --output-map FILE, which another process holds, is refused
     before any work with metacooler's reason only: the hint to write the map
-    elsewhere with --output-map, which a run in place gets, is no help to a
-    run that gives one."""
+    elsewhere with --output-map, which a run in place gets, is no help to a run
+    that gives one."""
     metacool = _contig_map(tmp_path / "input.metacool")
     out = tmp_path / "copy.metacool"
     with held_lock(out) as holder:
@@ -1779,11 +1741,11 @@ def test_output_map_held_by_another_run_is_refused_without_the_hint(stub_pipelin
 
 
 def test_pipeline_from_a_map_takes_a_stale_lock(stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """The lock of a run that is gone (killed with SIGKILL, or SIGTERM:
-    neither metaTOR nor metacooler handles signals), and the copy that it
-    staged next to the map, are taken over and removed by the next run on
-    this host, each with a warning in its log; the run goes on, and removes
-    its own lock at its end."""
+    """The lock of a run that is gone (killed with SIGKILL, or SIGTERM: neither
+    metaTOR nor metacooler handles signals), and the copy that it staged next
+    to the map, are taken over and removed by the next run on this host, each
+    with a warning in its log; the run goes on, and removes its own lock at its
+    end."""
     monkeypatch.setattr("metator.metacool.write_map", mtmc_write_map)
     _final_tables(monkeypatch, "c1")
     metacool = _contig_map(tmp_path / "input.metacool")
@@ -1800,10 +1762,9 @@ def test_pipeline_from_a_map_takes_a_stale_lock(stub_pipeline, tmp_path, monkeyp
 
 
 def test_network_from_a_metacool(monkeypatch, tmp_path, run_cli):
-    """metator network MAP reads the network from the map, with the contig
-    data of the assembly, and stores it in the map: in --output-map for an
-    entry of a collection, which is left as it was. The output directory
-    holds the log of the run, and nothing else."""
+    """metator network MAP reads the network from the map, with the contig data of
+    the assembly, and stores it in the map: in --output-map for an entry of a
+    collection, which is left as it was."""
     import metacooler
 
     calls = {}
@@ -1851,9 +1812,8 @@ def test_network_from_a_metacool(monkeypatch, tmp_path, run_cli):
 
 
 def test_network_on_an_entry_without_output_map(stub_pipeline, tmp_path, run_cli):
-    """metator network writes its map: an entry of a collection, which a run
-    does not update in place, needs --output-map, refused before any
-    work."""
+    """metator network writes its map: an entry of a collection, which a run does
+    not update in place, needs --output-map, refused before any work."""
     collection = _collection(tmp_path / "maps.mmetacool", "lib1")
     before = collection.read_bytes()
     entry = f"{collection}::entries/lib1"
@@ -1867,10 +1827,9 @@ def test_network_on_an_entry_without_output_map(stub_pipeline, tmp_path, run_cli
 
 
 def test_network_updates_its_map_in_place(stub_pipeline, tmp_path, run_cli):
-    """metator network MAP stores the network in MAP, in place, under its
-    lock, and replaces the network of an earlier run (its columns and its
-    weights): run again with another normalization, the map holds that
-    one only."""
+    """metator network MAP stores the network in MAP, in place, under its lock,
+    and replaces the network of an earlier run (its columns and its weights):
+    run again with another normalization, the map holds that one only."""
     import metacooler
 
     metacool = _contig_map(tmp_path / "input.metacool")
@@ -1895,10 +1854,7 @@ def test_network_updates_its_map_in_place(stub_pipeline, tmp_path, run_cli):
 
 def test_network_keeps_the_partition_of_the_map(stub_pipeline, tmp_path, run_cli):
     """metator network MAP keeps the clusters of the map, its partition among
-    them, with what partition recorded of it. The same network again leaves
-    it the partition of the network, which validation reads. Another network
-    is stored with a warning: validation refuses the partition until
-    partition MAP partitions that network, which it then reads."""
+    them, with what partition recorded of it."""
     import metacooler
 
     metacool = _contig_map(tmp_path / "input.metacool", network=True, partition=True)
@@ -2072,10 +2028,9 @@ STEP_DIRS = {"partition": [], "validation": ["recursive_clusters", "final_cluste
 
 
 def _step_run(command, metacool, tmp_path, *options):
-    """The arguments of a partition or validation run on the map metacool
-    (for None, a map of the contigs c1 and c2 with their network, which
-    metator network stores, and their partition, which metator partition
-    stores). A validation reads the assembly, which partition does not."""
+    """The arguments of a partition or validation run on the map metacool (for
+    None, a map of the contigs c1 and c2 with their network, which metator
+    network stores, and their partition, which metator partition stores)."""
     assembly = ["-a", _assembly(tmp_path)] if command == "validation" else []
     out = ["-o", tmp_path / "out", "-T", tmp_path / "tmp"]
     if metacool is None:
@@ -2403,17 +2358,13 @@ def test_step_on_a_map_refuses_an_existing_output_map(command, stub_pipeline, tm
 
 @pytest.mark.parametrize("output", ["in place", "--output-map", "-F --output-map"])
 def test_partition_on_a_map_stores_its_partition(output, stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """partition MAP stores its partition in the clustering rounds of the
-    map: every core cluster (core_00001...) and every overlapping cluster
+    """partition MAP stores its partition in the clustering rounds of the map:
+    every core cluster (core_00001...) and every overlapping cluster
     (metator_00001_00000...), whatever its size, as the rounds core and
-    overlapping, with their contigs and without the columns of miComplete,
-    in place of the rounds the map held, and what the run was, as the entry
-    partition of the metator metadata of the map; its genomes are left as
-    they were, and it writes no table and no FASTA file. In place, the map
-    keeps its mode; with --output-map, the map is left as it was, and the
-    copy is written to the file (an existing one, with -F, is replaced:
-    removed first, as pipeline does). The map is locked while the run
-    writes it."""
+    overlapping, with their contigs and without the columns of miComplete, in
+    place of the rounds the map held, and what the run was, as the entry
+    partition of the metator metadata of the map; its genomes are left as they
+    were, and it writes no table and no FASTA file."""
     import metacooler
     import pandas as pd
 
@@ -2477,8 +2428,8 @@ def test_partition_on_a_map_stores_its_partition(output, stub_pipeline, tmp_path
 
 
 def test_partition_on_an_entry_of_a_collection(stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """From an entry of a .mmetacool collection, --output-map is a map of its
-    own, with the partition, and the collection is left as it was."""
+    """From an entry of a .mmetacool collection, --output-map is a map of its own,
+    with the partition, and the collection is left as it was."""
     import metacooler
 
     collection = _collection(tmp_path / "maps.mmetacool", "lib1", "lib2", network=True)
@@ -2492,9 +2443,9 @@ def test_partition_on_an_entry_of_a_collection(stub_pipeline, tmp_path, monkeypa
 
 
 def test_partition_on_a_map_through_a_symbolic_link(stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """The map given through a symbolic link: the map it points to stores
-    the partition, as metacooler edits the target of a link, and the link
-    keeps pointing at it, as pipeline updates it."""
+    """The map given through a symbolic link: the map it points to stores the
+    partition, as metacooler edits the target of a link, and the link keeps
+    pointing at it, as pipeline updates it."""
     import metacooler
 
     target = _contig_map(tmp_path / "target.metacool", network=True)
@@ -2507,10 +2458,9 @@ def test_partition_on_a_map_through_a_symbolic_link(stub_pipeline, tmp_path, mon
 
 @pytest.mark.parametrize("error", [ValueError("not valid"), KeyboardInterrupt()], ids=["ValueError", "Ctrl-C"])
 def test_partition_on_a_map_that_cannot_be_written(error, stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """A map with the partition that cannot be written (here, its
-    validation fails) stops the run with an error that says why and that the
-    map is left as it was, as pipeline says it; Ctrl-C stops it too. The map
-    is left byte for byte, with no file beside it (no staged map, no lock)."""
+    """A map with the partition that cannot be written (here, its validation
+    fails) stops the run with an error that says why and that the map is left
+    as it was, as pipeline says it; Ctrl-C stops it too."""
     (tmp_path / "maps").mkdir()
     metacool = _contig_map(tmp_path / "maps" / "input.metacool", network=True)
     before = metacool.read_bytes()
@@ -2538,12 +2488,10 @@ def test_partition_on_a_map_that_cannot_be_written(error, stub_pipeline, tmp_pat
 
 @pytest.mark.parametrize("output", ["in place", "--output-map"])
 def test_validation_on_a_map_writes_the_map_of_the_clusters(output, stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """validation MAP writes the map of the clusters as pipeline MAP writes it
-    at its end, from the final clusters of the run, with its clustering
-    rounds: in place, keeping the mode of the map, or to --output-map, the
-    map left as it was. Its entry validation in the metadata says what the
-    run was: the map, and no --start, which validation does not have; the
-    entries of the network and the partition of the map are kept."""
+    """validation MAP writes the map of the clusters as pipeline MAP writes it at
+    its end, from the final clusters of the run, with its clustering rounds: in
+    place, keeping the mode of the map, or to --output-map, the map left as it
+    was."""
     import metacooler
 
     monkeypatch.setattr("metator.metacool.write_map", mtmc_write_map)
@@ -2574,9 +2522,8 @@ def test_validation_on_a_map_writes_the_map_of_the_clusters(output, stub_pipelin
 
 
 def test_validation_on_a_map_that_cannot_be_written(stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """A map of the clusters that cannot be written (here, its validation
-    fails) stops validation MAP as it stops pipeline MAP: the map is left
-    as it was."""
+    """A map of the clusters that cannot be written (here, its validation fails)
+    stops validation MAP as it stops pipeline MAP: the map is left as it was."""
     monkeypatch.setattr("metator.metacool.write_map", mtmc_write_map)
     _final_tables(monkeypatch, "c1")
     metacool = _contig_map(tmp_path / "input.metacool", network=True, partition=True)
@@ -2630,9 +2577,9 @@ def test_a_step_refuses_a_bad_prefix_before_replacing_the_clusters(command, stub
 
 
 def test_pipeline_replaces_an_earlier_map_named_after_its_assembly(stub_pipeline, tmp_path, run_cli):
-    """pipeline --output-map -F replaces the map of an earlier run named
-    after the assembly (assembly.fa.metacool, for -a assembly.fa): the
-    assembly itself is the input that --output-map must not name."""
+    """pipeline --output-map -F replaces the map of an earlier run named after the
+    assembly (assembly.fa.metacool, for -a assembly.fa): the assembly itself is
+    the input that --output-map must not name."""
     metacool = _contig_map(tmp_path / "input.metacool")
     output_map = _contig_map(tmp_path / "assembly.fa.metacool")
     run_cli("pipeline", *_map_run(metacool, tmp_path, "--output-map", output_map, "-F"))
@@ -2640,9 +2587,9 @@ def test_pipeline_replaces_an_earlier_map_named_after_its_assembly(stub_pipeline
 
 
 def test_pipeline_refuses_an_input_as_its_output_map(stub_pipeline, tmp_path, run_cli):
-    """pipeline --output-map that names the assembly of the run is refused
-    before any work: with -F, the map of the clusters replaced it at the
-    end of the run."""
+    """pipeline --output-map that names the assembly of the run is refused before
+    any work: with -F, the map of the clusters replaced it at the end of the
+    run."""
     metacool = _contig_map(tmp_path / "input.metacool")
     assembly = Path(_assembly(tmp_path))
     before = assembly.read_bytes()
@@ -2654,10 +2601,10 @@ def test_pipeline_refuses_an_input_as_its_output_map(stub_pipeline, tmp_path, ru
 
 @pytest.mark.parametrize("dangling", [False, True], ids=["link", "dangling link"])
 def test_force_replaces_a_link_of_clusters_not_its_target(dangling, stub_pipeline, tmp_path, run_cli):
-    """A directory of clusters of an earlier run that is a symbolic link, to
-    a directory elsewhere or to nothing, is refused without -F, and replaced
-    with -F: the link is removed, its target kept. -F failed with OSError
-    (rmtree on a link), after the other directory was replaced."""
+    """A directory of clusters of an earlier run that is a symbolic link, to a
+    directory elsewhere or to nothing, is refused without -F, and replaced with
+    -F: the link is removed, its target kept. -F failed with OSError (rmtree on
+    a link), after the other directory was replaced."""
     target = tmp_path / "elsewhere"
     if not dangling:
         target.mkdir()
@@ -2706,8 +2653,8 @@ def test_the_commands_of_metator_1(command):
 
 
 def test_an_unknown_option_is_still_unknown(run_cli):
-    """A guard: an option that metaTOR never had is refused as unknown, as
-    before, by click's own message."""
+    """A guard: an option that metaTOR never had is refused as unknown, as before,
+    by click's own message."""
     result = run_cli("pipeline", "map.metacool", "--bogus", "-a", "a.fa", exit_code=2)
     assert "No such option" in result.output and "--bogus" in result.output
 
@@ -2730,8 +2677,8 @@ def test_an_unknown_option_is_still_unknown(run_cli):
     ],
 )
 def test_pipeline_refused_keeps_the_bins_of_an_earlier_run(args, tmp_path, run_cli):
-    """A refused run with --force (a rebinning into the same directory)
-    stops before replacing the bins of the earlier run."""
+    """A refused run with --force (a rebinning into the same directory) stops
+    before replacing the bins of the earlier run."""
     names = {
         "map": _contig_map(tmp_path / "input.metacool"),
         "missing": tmp_path / "missing.metacool",
@@ -2751,8 +2698,8 @@ def test_pipeline_refused_keeps_the_bins_of_an_earlier_run(args, tmp_path, run_c
 
 
 def test_pipeline_refuses_earlier_bins_before_reading_the_assembly(tmp_path, monkeypatch, run_cli):
-    """Without --force, the clusters of an earlier run are refused before
-    the assembly is read (minutes on a large metagenome)."""
+    """Without --force, the clusters of an earlier run are refused before the
+    assembly is read (minutes on a large metagenome)."""
 
     def create_contig_data(*args):
         raise AssertionError("assembly read before the refusal")
@@ -2769,9 +2716,9 @@ def test_pipeline_refuses_earlier_bins_before_reading_the_assembly(tmp_path, mon
 
 
 def test_final_clusters_are_those_of_their_fasta_files(tmp_path, caplog):
-    """The final clusters of a validation are those of the FASTA files it
-    wrote: a file of a cluster without a contig, or a cluster without a
-    file, is refused, named, and the map is not written."""
+    """The final clusters of a validation are those of the FASTA files it wrote: a
+    file of a cluster without a contig, or a cluster without a file, is
+    refused, named, and the map is not written."""
     directory = tmp_path / "final_clusters"
     directory.mkdir()
     for name in ["m_00001_00000", "m_00002_00000"]:
@@ -2788,11 +2735,9 @@ def test_final_clusters_are_those_of_their_fasta_files(tmp_path, caplog):
 
 
 def test_pipeline_leaves_the_directory_of_the_assembly_alone(stub_pipeline, tmp_path, run_cli):
-    """The run writes nothing beside the assembly, and removes nothing there:
-    the pyfastx index of another program (<assembly>.fxi), which the run
-    removed at its end, is left as it was. (The stub validation writes no
-    FASTA file of a recursive step: see
-    test_validation_splits_a_merged_bin.)"""
+    """The run writes nothing beside the assembly, and removes nothing there: the
+    pyfastx index of another program (<assembly>.fxi), which the run removed at
+    its end, is left as it was."""
     assembly = tmp_path / "assembly.fa"
     shutil.copyfile(TESTS_DATA / "subset.assembly.fa", assembly)
     index = Path(f"{assembly}.fxi")
@@ -2810,10 +2755,10 @@ def test_pipeline_leaves_the_directory_of_the_assembly_alone(stub_pipeline, tmp_
 @pytest.mark.parametrize("random", [False, True], ids=["mge", "--random"])
 def test_mge_default_outdir(random, tmp_path, monkeypatch, run_cli):
     """Without --outdir, mge writes its MGE fasta to the current directory
-    (mges_binned_random.fa with --random), with the assembly that the map
-    was made from, and stores the round mge (mge_random) in the map; its
-    temporary directory is removed at its end, and nothing is written next
-    to the assembly."""
+    (mges_binned_random.fa with --random), with the assembly that the map was
+    made from, and stores the round mge (mge_random) in the map; its temporary
+    directory is removed at its end, and nothing is written next to the
+    assembly."""
     import metacooler
     import pandas as pd
 

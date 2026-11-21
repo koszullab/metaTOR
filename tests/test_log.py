@@ -11,8 +11,8 @@ import metator.log as mtl
 
 @pytest.fixture
 def restore_handlers():
-    """Put the handlers of the metator logger, and of Python's warnings,
-    back as they were."""
+    """Put the handlers of the metator logger, and of Python's warnings, back as
+    they were."""
     saved = {log: log.handlers[:] for log in (mtl.logger, mtl.warnings_logger)}
     yield
     for log, handlers in saved.items():
@@ -35,10 +35,9 @@ def test_set_file_handler(tmp_path, restore_handlers):
 
 
 def test_python_warnings_are_shown_and_logged(tmp_path):
-    """Python's warnings (warnings.warn, which cooler gives the problems of a
-    map with) are shown, and written to the log file of the run, as
-    metaTOR's own messages are: without a handler, logging dropped them. In
-    a process of its own, as pytest catches the warnings of its tests."""
+    """Python's warnings (warnings.warn, which cooler gives the problems of a map
+    with) are shown, and written to the log file of the run, as metaTOR's own
+    messages are: without a handler, logging dropped them."""
     log = tmp_path / "run.log"
     code = (
         "import warnings\n"

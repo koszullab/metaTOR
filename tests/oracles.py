@@ -1,29 +1,15 @@
-"""Oracles of the tests: what metaTOR computed before it computed it
-otherwise."""
+"""Oracles of the tests: what metaTOR computed before it computed it otherwise."""
 
 import numpy as np
 
 
 def normalize_pair(contig_data, pair, n_occ, normalization):
-    """The normalization of a contact of two contigs as metaTOR 1.x defined
-    it, edge by edge (its metator.network.normalize_pair): the count divided
-    by the geometric mean of one value of each contig, 0 when that mean is
-    0. metaTOR 2.0 stores one weight per contig instead (see
+    """The normalization of a contact of two contigs as metaTOR 1.x defined it,
+    edge by edge (its metator.network.normalize_pair): the count divided by the
+    geometric mean of one value of each contig, 0 when that mean is 0. metaTOR
+    2.0 stores one weight per contig instead (see
     metator.network.normalization_weights), whose products give the same
-    normalized contacts.
-
-    Parameters
-    ----------
-    contig_data : dict
-        The data of the contigs by name, as metator.network.create_contig_data
-        gives them, with their hits ("hit").
-    pair : tuple of str
-        The names of the two contigs.
-    n_occ : int
-        Their contact count.
-    normalization : str
-        abundance, length, RS, empirical_hit or theoritical_hit.
-    """
+    normalized contacts."""
     first, second = contig_data[pair[0]], contig_data[pair[1]]
 
     def mean(value):
@@ -41,8 +27,8 @@ def normalize_pair(contig_data, pair, n_occ, normalization):
 
 def partition_table(contig_data, partition):
     """The contig data table of a partition as metaTOR wrote it before it
-    vectorised it (metator.partition.partition_table, cluster by cluster
-    with pandas' .loc): the reference of its output, byte for byte."""
+    vectorised it (metator.partition.partition_table, cluster by cluster with
+    pandas' .loc): the reference of its output, byte for byte."""
     import pandas as pd
 
     contigs_data = contig_data.reset_index(drop=True).copy()

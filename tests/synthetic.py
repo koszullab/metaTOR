@@ -1,26 +1,4 @@
-"""Seeded, deterministic mock metagenome for metaTOR tests.
-
-The generator builds a small community with a known answer:
-
-* a few circular (or linear) genomes with distinct GC contents and
-  abundances, cut into contigs of log-normal lengths, each contig stored on a
-  random strand;
-* mobile genetic elements (MGEs): small circular molecules, cut into one or
-  more contigs, which contact one host genome much more than the others;
-* metaHiC read pairs drawn on the molecules themselves: the distance between
-  the two ends of a pair follows a power law (P(s) ~ 1/s) over a uniform
-  plateau, so contacts decay with the distance inside a contig, adjacent
-  contigs of a genome touch at their ends and every contig of a genome
-  contacts the others, while a small share of random ligations ("noise")
-  join two random molecules;
-* the files metaTOR reads: the assembly FASTA, a ``depth.txt`` in the format
-  of ``jgi_summarize_bam_contig_depths``, the pairs in the format that the
-  alignment of metaTOR 1.x wrote (from which metacooler makes the map) and
-  the true contig table.
-
-Everything derives from a ``numpy.random.Generator`` seeded by the caller, so
-the same seed gives the same files byte for byte.
-"""
+"""Seeded, deterministic mock metagenome for metaTOR tests."""
 
 from __future__ import annotations
 
@@ -130,11 +108,7 @@ def cut_lengths(
     sigma: float,
     bounds: Tuple[int, int],
 ) -> List[int]:
-    """Cut ``total`` bp into log-normal lengths clipped to ``bounds``.
-
-    The last piece absorbs a remainder shorter than the minimum length, so it
-    may exceed the maximum by less than the minimum.
-    """
+    """Cut ``total`` bp into log-normal lengths clipped to ``bounds``."""
     low, high = bounds
     lengths: List[int] = []
     remaining = total
@@ -148,18 +122,7 @@ def cut_lengths(
 
 
 class Metagenome:
-    """A simulated metaHiC experiment with its ground truth.
-
-    Attributes
-    ----------
-    molecules : list of Molecule
-        Genomes then MGEs.
-    contigs : list of Contig
-        Every contig, in assembly (FASTA) order.
-    pairs : pandas.DataFrame
-        Read pairs: readID, chr1, pos1, chr2, pos2, strand1, strand2 (1-based
-        positions, upper-triangle order as metaTOR 1.x wrote them).
-    """
+    """A simulated metaHiC experiment with its ground truth."""
 
     def __init__(self, molecules: List[Molecule], contigs: List[Contig], pairs: pd.DataFrame):
         self.molecules = molecules
@@ -181,12 +144,7 @@ class Metagenome:
 
     @property
     def truth(self) -> pd.DataFrame:
-        """One row per contig, in assembly order.
-
-        ``Genome`` is the molecule the contig comes from, ``Host`` is the
-        genome it travels with (itself for a genome contig, the host for an
-        MGE contig), ``Order`` its rank on the molecule.
-        """
+        """One row per contig, in assembly order."""
         rows = []
         for molecule in self.molecules:
             for order, contig in enumerate(molecule.contigs):
@@ -227,11 +185,7 @@ class Metagenome:
         return Path(path)
 
     def write_depth(self, path, rng_seed: int = 1) -> Path:
-        """Write a jgi_summarize_bam_contig_depths table (assembly order).
-
-        The depth of a contig is ten times the abundance of its molecule, with
-        a 5% jitter.
-        """
+        """Write a jgi_summarize_bam_contig_depths table (assembly order)."""
         rng = np.random.default_rng(rng_seed)
         abundance = {m.name: m.abundance for m in self.molecules}
         with open(path, "w") as depth:
@@ -286,42 +240,7 @@ def make_metagenome(
     strands: str = "random",
     prefix: str = "contig",
 ) -> Metagenome:
-    """Simulate a metaHiC experiment on a mock community.
-
-    Parameters
-    ----------
-    seed : int
-        Seed of every random draw.
-    genomes, mges : sequences of GenomeSpec and MgeSpec
-        The community.
-    n_pairs : int
-        Number of read pairs. Each molecule gets a share proportional to
-        abundance x length.
-    contig_median, contig_sigma, contig_bounds :
-        Log-normal law of the genome contig lengths (MGE contigs have the
-        lengths given in their spec).
-    p_noise : float
-        Share of pairs whose second end falls on a random molecule (weighted
-        like the first ends): the inter-genome noise.
-    mge_host_share : float
-        Share of the pairs of an MGE whose second end falls on its host.
-    min_distance : int
-        Shortest distance between the two ends of an intra-molecule pair.
-    decay : float
-        Exponent of the contact law P(s) ~ s^-decay inside a molecule.
-    intra_uniform : float
-        Share of the intra-molecule pairs whose second end is anywhere on the
-        molecule: the plateau of P(s) at long range, which keeps the contigs
-        of a genome together however far apart they are.
-    shuffle : bool
-        Whether to shuffle the contigs in the assembly (otherwise they come
-        genome by genome, in molecule order).
-    strands : str
-        Strand of the contigs relative to their molecule: "random",
-        "forward" (all forward) or "alternate" (forward, reverse, forward...).
-    prefix : str
-        Contig names are ``{prefix}_{rank:03d}``, ranked in assembly order.
-    """
+    """Simulate a metaHiC experiment on a mock community."""
     rng = np.random.default_rng(seed)
 
     molecules: List[Molecule] = []
@@ -516,11 +435,9 @@ def read_fasta(path) -> Dict[str, str]:
 
 def bin_quality(contig_names: Sequence[str], metagenome: Metagenome) -> Tuple[float, float]:
     """Completeness and redundancy of a bin, as an oracle miComplete would see
-    them: the completeness is the share of the best represented genome
-    present in the bin, and every other genome present adds its share to the
-    redundancy (two complete genomes: redundancy 2). MGE contigs carry no
-    markers.
-    """
+    them: the completeness is the share of the best represented genome present
+    in the bin, and every other genome present adds its share to the redundancy
+    (two complete genomes: redundancy 2)."""
     truth = metagenome.truth
     genome_length = {g.name: g.length for g in metagenome.genomes}
     present: Dict[str, int] = {}
@@ -548,8 +465,7 @@ def _nx(lengths: List[int], fraction: float) -> Tuple[int, int]:
 def write_micomplete_summary(fasta_dir, outfile, metagenome: Metagenome) -> pd.DataFrame:
     """Write the merged miComplete table that ``validation.merge_micomplete``
     writes, for the bins (fasta files) of ``fasta_dir``, with the oracle
-    qualities of :func:`bin_quality`.
-    """
+    qualities of :func:`bin_quality`."""
     rows = {}
     for path in sorted(os.listdir(fasta_dir)):
         if not path.endswith((".fa", ".fasta", ".fna")):
@@ -588,10 +504,7 @@ def write_micomplete_summary(fasta_dir, outfile, metagenome: Metagenome) -> pd.D
 
 
 def fake_micomplete(metagenome: Metagenome, calls: Optional[list] = None) -> Callable:
-    """A drop-in replacement of ``metator.validation.micomplete_quality``.
-
-    Each call is recorded in ``calls`` (fasta directory, output file).
-    """
+    """A drop-in replacement of ``metator.validation.micomplete_quality``."""
 
     def micomplete_quality(fasta_dir, outfile, threads):
         if calls is not None:
@@ -605,8 +518,8 @@ def first_cluster_contaminated(metagenome: Metagenome, kept_whole: bool = False)
     """A stub miComplete (see :func:`fake_micomplete`) that finds the first
     overlapping cluster contaminated (a weighted redundancy of 1.5): the
     validation partitions it again, which makes the round recursive_1, whose
-    clusters replace it; with kept_whole, they are too incomplete for that
-    (a weighted completeness of 0.1), and the cluster is kept whole."""
+    clusters replace it; with kept_whole, they are too incomplete for that (a
+    weighted completeness of 0.1), and the cluster is kept whole."""
 
     def micomplete_quality(fasta_dir, outfile, threads):
         write_micomplete_summary(fasta_dir, outfile, metagenome)
@@ -625,11 +538,11 @@ def first_cluster_contaminated(metagenome: Metagenome, kept_whole: bool = False)
 
 
 def contaminated_twice(metagenome: Metagenome) -> Callable:
-    """A stub miComplete (see :func:`fake_micomplete`) whose validation goes
-    two recursive steps deep: the first overlapping cluster is contaminated
-    (a weighted completeness of 1, a weighted redundancy of 1.5), its parts
-    complete enough to replace it, the first of which is contaminated again
-    at step 1, and partitioned again at step 2 (the rounds recursive_1 and
+    """A stub miComplete (see :func:`fake_micomplete`) whose validation goes two
+    recursive steps deep: the first overlapping cluster is contaminated (a
+    weighted completeness of 1, a weighted redundancy of 1.5), its parts
+    complete enough to replace it, the first of which is contaminated again at
+    step 1, and partitioned again at step 2 (the rounds recursive_1 and
     recursive_2)."""
 
     def micomplete_quality(fasta_dir, outfile, threads):
@@ -678,9 +591,9 @@ def purity(truth: Sequence, found: Sequence) -> float:
 
 
 def as_1x(path, out) -> str:
-    """A copy, at out, of the contig data file path, its columns named as
-    metaTOR 1.x named them, after bins (metator.io.CONTIG_DATA_1X_COLUMNS):
-    the table of a 1.x run. Returns out, as a string."""
+    """A copy, at out, of the contig data file path, its columns named as metaTOR
+    1.x named them, after bins (metator.io.CONTIG_DATA_1X_COLUMNS): the table
+    of a 1.x run."""
     import metator.io as mio
 
     names = {new: old for old, new in mio.CONTIG_DATA_1X_COLUMNS.items()}

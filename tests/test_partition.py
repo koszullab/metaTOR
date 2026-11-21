@@ -131,8 +131,8 @@ def test_get_distances_splitmat():
 
 
 def test_get_distances_splitmat_values():
-    """One column per core bin of the slice, one row per core bin, with the
-    values scikit-learn's 1 - pairwise_distances(metric="hamming") gave."""
+    """One column per core bin of the slice, one row per core bin, with the values
+    scikit-learn's 1 - pairwise_distances(metric="hamming") gave."""
     x = mtp.get_distances_splitmat(core_bins_iterations[2:5], core_bins_iterations)
     assert x.format == "csr"
     np.testing.assert_allclose(x.toarray(), shared_iterations[:, 2:5] / 5, rtol=0, atol=1e-12)
@@ -166,8 +166,8 @@ def test_louvain_iterations():
 
 
 def test_network_graph():
-    """The vertices are the contigs of the edges, in the order of their IDs;
-    the edges are the rows, in their order."""
+    """The vertices are the contigs of the edges, in the order of their IDs; the
+    edges are the rows, in their order."""
     graph, contigs = mtp.network_graph(network)
     assert graph.vcount() == len(contigs) == 1058
     assert graph.ecount() == 13415
@@ -179,9 +179,9 @@ def test_network_graph():
 
 
 def test_partition_table():
-    """The contig data table of a partition, as contig_data_partition.txt held
-    it: the contig data, left as it is, with the core and the overlapping
-    cluster of each contig, its number of contigs and its size."""
+    """The contig data table of a partition, as contig_data_partition.txt held it:
+    the contig data, left as it is, with the core and the overlapping cluster
+    of each contig, its number of contigs and its size."""
     contig_data = pd.read_csv("tests_data/outdir/contig_data_network.txt", sep="\t")
     before = contig_data.copy()
     partition = mtc.Partition(
@@ -202,9 +202,9 @@ def test_partition_table():
 
 
 def _random_partition(rng, n_contigs):
-    """A partition of n_contigs contigs: some in no cluster, core clusters of
-    one to eight contigs (an empty one too), overlapping clusters of one to
-    four core clusters, numbered past 99999 (six digits)."""
+    """A partition of n_contigs contigs: some in no cluster, core clusters of one
+    to eight contigs (an empty one too), overlapping clusters of one to four
+    core clusters, numbered past 99999 (six digits)."""
     clustered = rng.permutation(np.arange(1, n_contigs + 1))[: int(0.9 * n_contigs)]
     core, start, number = {}, 0, 0
     while start < len(clustered):
@@ -248,11 +248,10 @@ def test_partition_table_is_the_table_of_the_oracle(seed):
 
 
 def test_partition():
-    """The partition of the network: its core clusters, numbered from 1, and
-    its overlapping clusters, each of the contigs of its core clusters in the
-    order of their numbers, then of their IDs, named after the prefix; every
-    contig of the network in one core cluster and in one overlapping
-    cluster."""
+    """The partition of the network: its core clusters, numbered from 1, and its
+    overlapping clusters, each of the contigs of its core clusters in the order
+    of their numbers, then of their IDs, named after the prefix; every contig
+    of the network in one core cluster and in one overlapping cluster."""
     random.seed(0)
     partition = mtp.partition("louvain", network, iterations, overlapping_parameter, resolution_parameter, 1, "sample")
     nodes = sorted(set(network.contig1) | set(network.contig2))

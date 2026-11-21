@@ -72,8 +72,8 @@ def test_the_rounds_are_written_and_read_back(tmp_path):
 
 
 def test_names_that_read_as_numbers_stay_text(tmp_path):
-    """Cluster and contig names are read as text: ``read_csv`` would make 1.0
-    of a cluster called 1 in a column that also holds NA."""
+    """Cluster and contig names are read as text: ``read_csv`` would make 1.0 of a
+    cluster called 1 in a column that also holds NA."""
     rounds = mtc.Rounds()
     rounds.add(mtc.OVERLAPPING, "1", ["10"])
     rounds.close_round(mtc.OVERLAPPING)
@@ -96,9 +96,8 @@ def test_one_table_without_the_other_is_refused(tmp_path):
 
 
 def test_contig_names_that_read_as_missing_values_stay_names(tmp_path):
-    """A contig called NA, None, null or nan is a contig: read_rounds keeps
-    its name (pandas made them missing values, and the map's rounds lost
-    them)."""
+    """A contig called NA, None, null or nan is a contig: read_rounds keeps its
+    name (pandas made them missing values, and the map's rounds lost them)."""
     names = ["NA", "None", "null", "nan"]
     rounds = mtc.Rounds()
     rounds.add(mtc.OVERLAPPING, "O1", names)
@@ -110,8 +109,8 @@ def test_contig_names_that_read_as_missing_values_stay_names(tmp_path):
 
 
 def test_the_tables_of_the_rounds_are_in_the_log_file(tmp_path):
-    """The tables of the rounds are logged with the other lines of a run, in
-    its log file: they were logged to a logger that no handler hears."""
+    """The tables of the rounds are logged with the other lines of a run, in its
+    log file: they were logged to a logger that no handler hears."""
     import logging
 
     import metator.log as mtl
@@ -132,9 +131,9 @@ def test_the_tables_of_the_rounds_are_in_the_log_file(tmp_path):
 
 
 def test_the_tables_of_the_rounds_are_those_written(tmp_path):
-    """Rounds.tables, which a partition run from a map stores, are the tables
-    that Rounds.write writes: the same rows and columns, the parents
-    missing for none."""
+    """Rounds.tables, which a partition run from a map stores, are the tables that
+    Rounds.write writes: the same rows and columns, the parents missing for
+    none."""
     clusters, members = _rounds().tables()
     _rounds().write(tmp_path)
     assert clusters.to_csv(sep="\t", index=False, na_rep="NA") == (tmp_path / mtc.CLUSTERS_FILE).read_text()
@@ -144,8 +143,8 @@ def test_the_tables_of_the_rounds_are_those_written(tmp_path):
 
 def test_the_names_of_the_clusters_of_a_partition():
     """The core clusters are core_<number>, the overlapping ones
-    <prefix>_<number>_00000, a prefix of underscores too: their numbers, as
-    the contig data tables give them (00001...), come back from their names;
+    <prefix>_<number>_00000, a prefix of underscores too: their numbers, as the
+    contig data tables give them (00001...), come back from their names;
     another name gives none."""
     assert mtc.core_name(1) == "core_00001" and mtc.core_name(123456) == "core_123456"
     assert mtc.overlapping_name("my_sample_metator", 2) == "my_sample_metator_00002_00000"
@@ -166,11 +165,11 @@ def test_the_names_of_the_clusters_of_a_partition():
 
 
 def test_the_rounds_of_a_partition():
-    """The rounds core and overlapping of a partition, as partition MAP
-    stores them: every cluster, in the order of its number, with its
-    contigs (by name: a contig called NA is a contig), no parent and no
-    column; the overlapping clusters that miComplete checked get its
-    columns when the validation records them."""
+    """The rounds core and overlapping of a partition, as partition MAP stores
+    them: every cluster, in the order of its number, with its contigs (by name:
+    a contig called NA is a contig), no parent and no column; the overlapping
+    clusters that miComplete checked get its columns when the validation
+    records them."""
     partition = mtc.Partition(
         core={2: [3], 1: [1, 2]},
         overlapping={1: [1, 2, 3]},
@@ -204,19 +203,17 @@ def test_the_rounds_of_a_partition():
 
 
 def _mge_summary(rows):
-    """A summary of MGE clusters, as metator.mge.generate_bin_summary gives
-    it."""
+    """A summary of MGE clusters, as metator.mge.generate_bin_summary gives it."""
     columns = ["BinName", "BinLength", "GC", "Hit", "BinningScore", "ContigsNumber", "Contigs"]
     return pd.DataFrame(rows, columns=columns)
 
 
 @pytest.mark.parametrize("name", [mtc.MGE, mtc.MGE_RANDOM])
 def test_the_mge_round_of_a_summary(name):
-    """The round mge (or mge_random) is the summary of the MGE clusters of
-    metator mge, in its order: one cluster per row, named BinName, without
-    a parent, with the contigs of Contigs; its other columns but BinLength
-    and ContigsNumber, which the map computes from the contigs. A contig
-    called NA or nan is a contig."""
+    """The round mge (or mge_random) is the summary of the MGE clusters of metator
+    mge, in its order: one cluster per row, named BinName, without a parent,
+    with the contigs of Contigs; its other columns but BinLength and
+    ContigsNumber, which the map computes from the contigs."""
     summary = _mge_summary(
         [
             ["MetaTOR_MGE_00001", 12000, 45.1234, 100, 0.9123, 2, "nan,c7"],
@@ -258,9 +255,9 @@ def test_the_numbers_of_the_rounds_are_read_back_exactly(tmp_path):
 
 
 def test_the_numbers_of_an_mge_summary_are_kept_exactly():
-    """The round mge, which metator mge stores in the map, has the numbers of
-    its summary as computed: unrounded, where mges_cluster_summary.tsv
-    rounded them to two decimals."""
+    """The round mge, which metator mge stores in the map, has the numbers of its
+    summary as computed: unrounded, where mges_cluster_summary.tsv rounded them
+    to two decimals."""
     summary = _mge_summary([[f"MetaTOR_MGE_{i:05d}", 100, value, 5, value, 1, f"c{i}"] for i, value in enumerate(_LONG_NUMBERS)])
     clusters, _ = mtc.mge_round(summary)
     assert clusters["GC"].tolist() == _LONG_NUMBERS and clusters["BinningScore"].tolist() == _LONG_NUMBERS

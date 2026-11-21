@@ -1,15 +1,4 @@
-"""metator dump: the tables of a run, written from the map of its clusters.
-
-One pipeline run of the mock community, seeded, with -N (its tables kept in
-its temporary directory), is shared by the module: the dump of its map must
-give back the tables it wrote. The run takes every path of the tables: three
-contigs have no contact with another contig (in no core cluster, ``-``, and
-in no final cluster, ``ND``, so the map has an ``__unbinned__`` genome, next
-to which its genomes table stores the step of the clusters as decimals), and
-a stub miComplete makes the validation go two recursive steps deep (the
-rounds recursive_1 and recursive_2: a contig ends in the cluster of the last
-step that split its cluster).
-"""
+"""metator dump: the tables of a run, written from the map of its clusters."""
 
 import json
 import os
@@ -50,9 +39,8 @@ def _without_contacts(pairs, isolated, path):
 
 @pytest.fixture(scope="module")
 def run(metagenome, metagenome_files, tmp_path_factory):
-    """A seeded pipeline run of the mock community, its map of the clusters
-    (map), the tables it kept in its temporary directory (kept), and its
-    assembly."""
+    """A seeded pipeline run of the mock community, its map of the clusters (map),
+    the tables it kept in its temporary directory (kept), and its assembly."""
     from click.testing import CliRunner
 
     from metator.cli import cli
@@ -94,8 +82,8 @@ def _table(path):
 
 
 def test_the_run_takes_every_path_of_the_tables(run):
-    """What the other tests rely on: contigs in no core cluster and in no
-    final cluster, a step stored as decimals, and two recursive steps."""
+    """What the other tests rely on: contigs in no core cluster and in no final
+    cluster, a step stored as decimals, and two recursive steps."""
     written = _table(run["kept"] / "contig_data_final.txt").set_index("Name")
     assert (written.loc[ISOLATED, ["Core_cluster_ID", "Final_cluster"]] == ["-", "ND"]).all().all()
     assert (written["Recursive_cluster_ID"] != "00000").any()
@@ -109,9 +97,9 @@ def test_the_run_takes_every_path_of_the_tables(run):
 
 
 def test_dump_writes_the_tables_that_the_run_kept(run, tmp_path, run_cli):
-    """The tables of the dump are those that the run wrote, but for the ID of
-    the contigs and the order of the rows of the contigs: each in the order of
-    the map, which the run regrouped by cluster."""
+    """The tables of the dump are those that the run wrote, but for the ID of the
+    contigs and the order of the rows of the contigs: each in the order of the
+    map, which the run regrouped by cluster."""
     out = tmp_path / "dump"
     run_cli("dump", run["map"], "-o", out)
     assert sorted(path.name for path in out.iterdir() if not path.name.endswith(".log")) == sorted(TABLES)
@@ -162,8 +150,8 @@ def test_dump_of_an_entry_is_that_of_its_map(run, tmp_path, run_cli):
 
 
 def test_dump_refuses_a_map_without_a_validation(metagenome_network, tmp_path, run_cli, logged):
-    """A map of the contigs, with its network but no clusters, is refused,
-    naming both what it lacks."""
+    """A map of the contigs, with its network but no clusters, is refused, naming
+    both what it lacks."""
     metacool = tmp_path / "contigs.metacool"
     shutil.copyfile(metagenome_network["map"], metacool)
     with pytest.raises(
@@ -175,8 +163,8 @@ def test_dump_refuses_a_map_without_a_validation(metagenome_network, tmp_path, r
 
 
 def test_dump_refuses_a_map_without_the_round_final(copied, tmp_path):
-    """The validation entry alone is not a run to dump: the round final, which
-    the validation stores with it, is named."""
+    """The validation entry alone is not a run to dump: the round final, which the
+    validation stores with it, is named."""
     mc = metacooler.MetaCooler(str(copied))
     rounds = [entry for entry in mc.cluster_rounds if entry["name"] != "final"]
     clusters = mc.clusters
@@ -197,7 +185,7 @@ def _genomes(mc):
 def test_dump_refuses_clusters_edited_after_the_run(copied, tmp_path):
     """A map whose contigs were moved between clusters by hand (metacooler
     reassign) is refused before any table is written: its summary and its
-    rounds no longer describe its genomes. The clusters are named."""
+    rounds no longer describe its genomes."""
     genomes = _genomes(metacooler.MetaCooler(str(copied)))
     binned = sorted(name for name, genome in genomes.items() if genome != "__unbinned__")
     moved = binned[0]
@@ -216,9 +204,7 @@ def test_dump_refuses_clusters_edited_after_the_run(copied, tmp_path):
 def test_dump_refuses_a_genome_that_is_no_final_cluster(copied, tmp_path):
     """A cluster made by hand from contigs in no final cluster (the isolated
     contigs, in __unbinned__) is a genome that is no final cluster, though
-    every final cluster is still a genome: it is named. One that took contigs
-    from a final cluster names that cluster too; a map whose every contig was
-    unbinned by hand is refused for its final clusters."""
+    every final cluster is still a genome: it is named."""
     genomes = _genomes(metacooler.MetaCooler(str(copied)))
     assignment = {name: genome for name, genome in genomes.items() if genome != "__unbinned__"}
     metacooler.reassign(str(copied), {**assignment, **dict.fromkeys(ISOLATED, "my_bin")}, inplace=True)
@@ -271,9 +257,9 @@ def test_dump_refuses_a_directory_in_the_place_of_a_table(run, tmp_path):
 
 
 def test_a_table_that_cannot_be_written_replaces_none(run, tmp_path, monkeypatch, logged):
-    """A table that cannot be written (here clusters.txt) leaves the tables of
-    an earlier dump as they were, none of them replaced, and no temporary file:
-    a MetacoolError with the reason, which the command logs."""
+    """A table that cannot be written (here clusters.txt) leaves the tables of an
+    earlier dump as they were, none of them replaced, and no temporary file: a
+    MetacoolError with the reason, which the command logs."""
     out = tmp_path / "out"
     out.mkdir()
     for name in TABLES:
@@ -292,10 +278,10 @@ def test_a_table_that_cannot_be_written_replaces_none(run, tmp_path, monkeypatch
 
 
 def test_dump_refuses_a_map_replaced_as_it_reads_its_contacts(copied, run, tmp_path, monkeypatch):
-    """A map replaced while the dump reads it (here between its contigs table
-    and its contacts, as a run that regroups it in place renames another map
-    over it) is refused as replaced, with re-running the dump as the remedy,
-    not as a map whose hits are stale; no table is written."""
+    """A map replaced while the dump reads it (here between its contigs table and
+    its contacts, as a run that regroups it in place renames another map over
+    it) is refused as replaced, with re-running the dump as the remedy, not as
+    a map whose hits are stale; no table is written."""
     other = tmp_path / "other.metacool"
     shutil.copyfile(run["map"], other)
     names = list(metacooler.MetaCooler(str(other)).contigs["name"].astype(str))
@@ -316,9 +302,8 @@ def test_dump_refuses_a_map_replaced_as_it_reads_its_contacts(copied, run, tmp_p
 
 
 def test_dump_refuses_a_map_that_changes_while_it_is_read(copied, tmp_path, monkeypatch):
-    """A map written while the dump reads its clusters (by a program that
-    takes no lock) is refused, and no table is written: the tables are of one
-    map."""
+    """A map written while the dump reads its clusters (by a program that takes no
+    lock) is refused, and no table is written: the tables are of one map."""
     contig_data_final = mtd.contig_data_final
 
     def written_meanwhile(metacool, mc, table):
@@ -332,9 +317,9 @@ def test_dump_refuses_a_map_that_changes_while_it_is_read(copied, tmp_path, monk
 
 
 def test_dump_refuses_a_summary_the_map_lacks(copied, tmp_path):
-    """The values of the summary come from the genomes table of the map: a
-    column that an edit dropped is named, and so is one whose format does
-    not write its values (a text written as a number)."""
+    """The values of the summary come from the genomes table of the map: a column
+    that an edit dropped is named, and so is one whose format does not write
+    its values (a text written as a number)."""
     metacooler.annotate(str(copied), drop=["genomes.Completeness"], inplace=True)
     with pytest.raises(mtmc.MetacoolError, match=r"lacks the column\(s\) 'Completeness' of the summary"):
         mtd.dump(str(copied), str(tmp_path / "out"))
@@ -387,9 +372,9 @@ def _unknown_row(validation):
     ],
 )
 def test_dump_refuses_a_summary_that_the_validation_did_not_record(copied, tmp_path, edit, message):
-    """The map records how the validation wrote the summary of its clusters:
-    a map that a development build validated, which does not, is refused,
-    and so is one that does not record it as metator validation does."""
+    """The map records how the validation wrote the summary of its clusters: a map
+    that a development build validated, which does not, is refused, and so is
+    one that does not record it as metator validation does."""
     validation = _validation(copied)
     edit(validation)
     mtmc._store_metator_entries(str(copied), {"validation": validation})
@@ -399,10 +384,10 @@ def test_dump_refuses_a_summary_that_the_validation_did_not_record(copied, tmp_p
 
 
 def test_cluster_summary_is_the_summary_of_the_run(run):
-    """The fields of the summary, written, are the run's cluster_summary.txt:
-    its rows and columns in its order, each value in the format of its
-    column, though the map stores the step as decimals next to the missing
-    value of __unbinned__."""
+    """The fields of the summary, written, are the run's cluster_summary.txt: its
+    rows and columns in its order, each value in the format of its column,
+    though the map stores the step as decimals next to the missing value of
+    __unbinned__."""
     mc = metacooler.MetaCooler(str(run["map"]))
     layout = mtd.summary_layout(str(run["map"]), mc.metadata["metator"]["validation"])
     summary = mtd.cluster_summary(str(run["map"]), mc, layout)
@@ -433,11 +418,11 @@ def test_cluster_summary_writes_each_value_in_its_format():
 
 
 def test_dump_refuses_a_map_whose_network_changed(copied, run, tmp_path, run_cli):
-    """metator network run on the map after the run that wrote it, with
-    another normalization, stores another network there and keeps the
-    clusters: the dump refuses the map, naming metator network with the
-    normalization of the run, which stores the network of the run again, and
-    gives the tables of the run back."""
+    """metator network run on the map after the run that wrote it, with another
+    normalization, stores another network there and keeps the clusters: the
+    dump refuses the map, naming metator network with the normalization of the
+    run, which stores the network of the run again, and gives the tables of the
+    run back."""
     common = ["-a", run["assembly"], "-o", tmp_path / "logs", "-T", tmp_path / "tmp"]
     run_cli("network", copied, "-n", "length", *common)
     with pytest.raises(mtmc.MetacoolError) as refused:
@@ -469,8 +454,8 @@ def test_dump_refuses_a_map_that_records_no_network_of_its_clusters(copied, tmp_
 
 
 def test_network_table_of_the_counts(metagenome_network):
-    """Without weights (the normalization None), the network is the counts:
-    whole numbers, by contig name, no contact within a contig."""
+    """Without weights (the normalization None), the network is the counts: whole
+    numbers, by contig name, no contact within a contig."""
     table = metagenome_network["contig_table"]
     network = mtd.network_table(table, mtn.map_network(str(metagenome_network["map"]), None))
     assert network["weight"].dtype == np.int64 and (network["weight"] > 0).all()
@@ -482,8 +467,8 @@ def test_network_table_of_the_counts(metagenome_network):
 
 def test_final_clusters_are_those_the_run_wrote(run):
     """The final cluster of each contig, ND for those in none (the isolated
-    contigs, in metacooler's __unbinned__): as the run wrote them in its
-    contig data."""
+    contigs, in metacooler's __unbinned__): as the run wrote them in its contig
+    data."""
     mc = metacooler.MetaCooler(str(run["map"]))
     written = _table(run["kept"] / "contig_data_final.txt").set_index("Name")["Final_cluster"]
     final = dict(zip(mc.contigs["name"].astype(str), mtd.final_clusters(mc), strict=True))

@@ -5,9 +5,9 @@ import numpy as np
 
 
 def _plain(value):
-    """A value read by h5py, comparable with ==: text as it is, and an array
-    or a number as its dtype, shape and bytes (text of variable length in
-    an array as a list)."""
+    """A value read by h5py, comparable with ==: text as it is, and an array or a
+    number as its dtype, shape and bytes (text of variable length in an array
+    as a list)."""
     if isinstance(value, (str, bytes)):
         return value
     array = np.asarray(value)
@@ -17,10 +17,10 @@ def _plain(value):
 
 
 def walk(path):
-    """Every group, dataset and attribute of an HDF5 file, as stored, by
-    path: the order of the members of each group, the dtype, shape, chunks,
-    filters and values of each dataset, the dtype and value of each
-    attribute, and the soft links."""
+    """Every group, dataset and attribute of an HDF5 file, as stored, by path: the
+    order of the members of each group, the dtype, shape, chunks, filters and
+    values of each dataset, the dtype and value of each attribute, and the soft
+    links."""
     found = {}
 
     def attributes(node):

@@ -154,8 +154,8 @@ def test_build_contig_graph():
 
 
 def test_mge_mag_interactions_follow_the_network_rows(tmp_path):
-    """The MAGs of an MGE come in the order of its first contact with each in
-    the network (not in the order the contigs first appear in it), and a pair
+    """The MAGs of an MGE come in the order of its first contact with each in the
+    network (not in the order the contigs first appear in it), and a pair
     listed twice counts with its last signal."""
     mags = {name: mth.Mag(name) for name in ["metator_A", "metator_B"]}
     mags["metator_A"].add_contig("a", 10)
@@ -207,8 +207,8 @@ def test_background_noise(metagenome, binned):
 
 def _half_violins(ax):
     """What the split violins of ax show, by (x, side): the range and the
-    quartiles of each half violin, and the value of each line drawn in
-    place of a half violin."""
+    quartiles of each half violin, and the value of each line drawn in place of
+    a half violin."""
     violins, quartiles, lines = {}, {}, {}
     for body in [c for c in ax.collections if isinstance(c, PolyCollection)]:
         extents = body.get_paths()[0].get_extents()
@@ -231,8 +231,8 @@ def _half_violins(ax):
 
 
 def test_plot_mag_noise(binned, tmp_path, saved_figures):
-    """One split violin per quality: intra-MAG signals on the left half,
-    inter-MAG signals on the right half, with their quartiles."""
+    """One split violin per quality: intra-MAG signals on the left half, inter-MAG
+    signals on the right half, with their quartiles."""
     data, network, _, _ = binned
     mag_bins, _ = mth.create_bins(data)
     mag_bins = mth.estimate_noise(mag_bins, network)
@@ -331,8 +331,8 @@ def test_annotate_hosts(metagenome, binned, tmp_path):
 
 
 def test_create_bins_of_1x(binned):
-    """The contig data of metaTOR 1.x, its final clusters in Final_bin, gives
-    the MAGs and MGE-MAGs of the same table of 2.0."""
+    """The contig data of metaTOR 1.x, its final clusters in Final_bin, gives the
+    MAGs and MGE-MAGs of the same table of 2.0."""
     data, *_ = binned
     expected = mth.create_bins(data)
     got = mth.create_bins(data.rename(columns={"Final_cluster": "Final_bin"}))

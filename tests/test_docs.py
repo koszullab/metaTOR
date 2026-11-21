@@ -1,11 +1,4 @@
-"""The CLI reference of the documentation (docs/cli.md) follows the CLI.
-
-docs/cli.md is written by hand: one section per command, headed
-``### `command` { #command }``, with a table whose first column lists each
-option in backticks, short form first (``-a, --assembly``). These tests fail
-when a command or an option of the CLI is missing from it, or when it
-documents one the CLI does not have.
-"""
+"""The CLI reference of the documentation (docs/cli.md) follows the CLI."""
 
 import re
 from pathlib import Path

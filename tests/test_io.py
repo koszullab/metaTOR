@@ -33,10 +33,10 @@ def test_generate_temp_dir(tmp_path):
 
 
 def test_generate_temp_dir_leaves_the_random_stream_of_igraph(tmp_path):
-    """The name of a temporary directory is not drawn from Python's random
-    module, which igraph draws from: each command makes one, so a run step
-    by step (network, partition, validation) drew another stream than
-    pipeline, and partitioned the network otherwise under one seed."""
+    """The name of a temporary directory is not drawn from Python's random module,
+    which igraph draws from: each command makes one, so a run step by step
+    (network, partition, validation) drew another stream than pipeline, and
+    partitioned the network otherwise under one seed."""
     import random
 
     random.seed(0)
@@ -97,10 +97,8 @@ def test_read_compressed_zip(tmp_path):
 
 
 def test_rename_1x_columns(logged):
-    """The columns of the contig data that metaTOR 1.x named after bins get
-    their 2.0 names (for host.py, which reads the tables of 1.x). A table of
-    2.0 is returned as it is, and a column of a 2.0 name wins over the 1.x
-    column of the same meaning, which is left as it is."""
+    """The columns of the contig data that metaTOR 1.x named after bins get their
+    2.0 names (for host.py, which reads the tables of 1.x)."""
     old = [
         "Core_bin_ID", "Core_bin_contigs", "Core_bin_size", "Overlapping_bin_ID", "Overlapping_bin_contigs",
         "Overlapping_bin_size", "Recursive_bin_ID", "Recursive_bin_contigs", "Recursive_bin_size", "Final_bin",
@@ -146,12 +144,11 @@ def test_bin_summary_round_trip(tmp_path, shotgun):
 
 
 def test_bin_summary_layout_writes_it_again(tmp_path):
-    """The layout of the summary (its rows, columns and formats) writes it
-    again, byte for byte, from its values as they were (or as the genomes
-    table of the map gives them back: numbers, and text): two decimals for
-    the decimals, four for the abundances, the whole numbers as they are,
-    the text and the booleans as written, and an empty field for a missing
-    value."""
+    """The layout of the summary (its rows, columns and formats) writes it again,
+    byte for byte, from its values as they were (or as the genomes table of the
+    map gives them back: numbers, and text): two decimals for the decimals,
+    four for the abundances, the whole numbers as they are, the text and the
+    booleans as written, and an empty field for a missing value."""
     summary = {
         "b_2": {"Length": 1500.0, "GC-content": 40.123, "recursive": True, "step": 1, "parent": "b_1",
                 "HiC_abundance": 1.234567, "SG_abundance": 2.5},

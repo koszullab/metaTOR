@@ -36,21 +36,19 @@ global_args = {
 
 @pytest.fixture(autouse=True)
 def private_assemblies(private_link, monkeypatch):
-    """Each test reads the assemblies of tests_data through links of its
-    own (see private_link): two test sessions sharing tests_data removed
-    each other's pyfastx index (FileNotFoundError), when metaTOR read them
-    with pyfastx."""
+    """Each test reads the assemblies of tests_data through links of its own (see
+    private_link): two test sessions sharing tests_data removed each other's
+    pyfastx index (FileNotFoundError), when metaTOR read them with pyfastx."""
     for key in ["FASTA", "SUBSET_FASTA"]:
         monkeypatch.setitem(global_args, key, private_link(global_args[key]))
 
 
 @pytest.fixture(scope="session")
 def tests_data_maps(tmp_path_factory):
-    """The maps of the contigs of tests_data, in no cluster yet, as hicstuff
-    or metacooler make them from the pairs (see tests.maps.contig_map):
-    "full", of alignment.pairs on assembly.fa, and "subset", of
-    subset.pairs.gz on subset.assembly.fa. Shared by the session: a test
-    takes a copy of its own (see a_map)."""
+    """The maps of the contigs of tests_data, in no cluster yet, as hicstuff or
+    metacooler make them from the pairs (see tests.maps.contig_map): "full", of
+    alignment.pairs on assembly.fa, and "subset", of subset.pairs.gz on
+    subset.assembly.fa."""
     directory = tmp_path_factory.mktemp("tests_data_maps")
     maps = {}
     for name, assembly, pairs in [("full", "FASTA", "PAIRS"), ("subset", "SUBSET_FASTA", "SUBSET_PAIRS")]:
@@ -61,10 +59,9 @@ def tests_data_maps(tmp_path_factory):
 
 @pytest.fixture(scope="session")
 def tests_data_network_maps(tests_data_maps, tmp_path_factory):
-    """The maps of tests_data (see tests_data_maps) with their network stored
-    in them, as metator network -e HindIII,DpnII stores it (empirical_hit):
-    what partition and validation read. Shared by the session: a test
-    takes a copy of its own (see a_network_map)."""
+    """The maps of tests_data (see tests_data_maps) with their network stored in
+    them, as metator network -e HindIII,DpnII stores it (empirical_hit): what
+    partition and validation read."""
     directory = tmp_path_factory.mktemp("tests_data_network_maps")
     maps = {}
     for name, assembly in [("full", "FASTA"), ("subset", "SUBSET_FASTA")]:
@@ -93,8 +90,8 @@ def a_network_map(tests_data_network_maps, tmp_path):
 
 @pytest.fixture
 def a_map(tests_data_maps, tmp_path):
-    """A copy of a map of tests_data (see tests_data_maps), its own: runs
-    update their map in place."""
+    """A copy of a map of tests_data (see tests_data_maps), its own: runs update
+    their map in place."""
 
     def copy(name="subset"):
         path = tmp_path / "maps" / f"{name}.metacool"
@@ -146,9 +143,9 @@ def _partitioned(metacool, tmp_path, run_cli):
 
 
 def test_validation(a_network_map, tmp_path, run_cli):
-    """From the partition that partition MAP stores in the map of the subset:
-    its overlapping clusters of 30 kb or more, written in the temporary
-    directory of the run (kept with --no-clean-up), for miComplete."""
+    """From the partition that partition MAP stores in the map of the subset: its
+    overlapping clusters of 30 kb or more, written in the temporary directory
+    of the run (kept with --no-clean-up), for miComplete."""
     args = ("{MAP} -a {SUBSET_FASTA} -i 5 -s 30000 -o {OUT_TEST} -t 8 -T {TMP} -F --no-clean-up").format(
         MAP=_partitioned(a_network_map(), tmp_path, run_cli),
         TMP=Path(tmp_path, "tmp"),
@@ -259,8 +256,8 @@ def test_network_from_the_columns_of_a_metacool(tmp_path, run_cli):
     """metator network MAP, from a map of the contigs with the columns that
     metaTOR measures with a depth file and an enzyme: without --depth and
     --enzyme, its Restriction_site and Shotgun_coverage columns give the
-    network and the contig data that they give (theoritical_hit needs
-    both), byte for byte."""
+    network and the contig data that they give (theoritical_hit needs both),
+    byte for byte."""
     contig_data = mtn.create_contig_data(global_args["FASTA"], global_args["DEPTH"], "HindIII,DpnII")
     metacool = contig_map(global_args["PAIRS"], contig_data, tmp_path / "contigs.metacool")
     maps = {how: shutil.copyfile(metacool, tmp_path / f"{how}.metacool") for how in ["options", "map"]}
@@ -280,13 +277,12 @@ def test_network_from_the_columns_of_a_metacool(tmp_path, run_cli):
 
 @pytest.mark.parametrize("data", ["full", "subset"])
 def test_pipeline_network_is_that_of_network(data, a_map, network_from_a_map, tmp_path, run_cli):
-    """A pipeline run reads its network from its map, as metator network
-    does: the network and the contig data that its partition gets are those
-    that network MAP stores and the partition of a run step by step reads
-    (see metator.network.map_network and map_contig_table), on the map of
-    the pairs of tests_data (alignment.pairs holds reads at position 0) and
-    on the map of the subset. The run stops at the partition (see
-    network_from_a_map)."""
+    """A pipeline run reads its network from its map, as metator network does: the
+    network and the contig data that its partition gets are those that network
+    MAP stores and the partition of a run step by step reads (see
+    metator.network.map_network and map_contig_table), on the map of the pairs
+    of tests_data (alignment.pairs holds reads at position 0) and on the map of
+    the subset."""
     assembly = global_args["FASTA" if data == "full" else "SUBSET_FASTA"]
     depth = ["-d", global_args["DEPTH"]] if data == "full" else []
     common = ["-a", assembly, *depth, "-e", "HindIII,DpnII", "-T", tmp_path / "tmp"]
@@ -468,8 +464,8 @@ def test_pipeline_bad_choices(case, tmp_path, run_cli):
 
 @pytest.mark.parametrize("existing", ["final_clusters"])
 def test_pipeline_refuses_existing_outputs(existing, a_map, tmp_path, run_cli, logged):
-    """A directory of clusters of an earlier run is refused without -F,
-    named in the log."""
+    """A directory of clusters of an earlier run is refused without -F, named in
+    the log."""
     (tmp_path / "out" / existing).mkdir(parents=True)
     args = [a_map(), "-a", global_args["SUBSET_FASTA"], "-o", str(tmp_path / "out"), "-T", str(tmp_path / "tmp")]
     with pytest.raises(ValueError):
@@ -479,15 +475,11 @@ def test_pipeline_refuses_existing_outputs(existing, a_map, tmp_path, run_cli, l
 
 
 def test_pipeline_force_replaces_outputs(a_map, network_from_a_map, tmp_path, run_cli, logged):
-    """With --force the output directories are emptied once the arguments
-    and the assembly are checked, then the run goes on (here up to the
-    partition, which network_from_a_map stops): final_clusters is replaced,
-    and the recursive clusters that validation wrote there before they went
-    to its temporary directory are removed (see
-    metator.cli.EARLIER_OUTPUTS). The outputs that metaTOR 1.x named after
-    bins, the plots of an earlier run, and the overlapping clusters that
-    partition wrote before it stored them in the map are no output of 2.0:
-    they are neither refused nor removed."""
+    """With --force the output directories are emptied once the arguments and the
+    assembly are checked, then the run goes on (here up to the partition, which
+    network_from_a_map stops): final_clusters is replaced, and the recursive
+    clusters that validation wrote there before they went to its temporary
+    directory are removed (see metator.cli.EARLIER_OUTPUTS)."""
     for existing in ["final_clusters", "recursive_clusters"]:
         (tmp_path / "out" / existing).mkdir(parents=True)
         (tmp_path / "out" / existing / "stale.fa").write_text(">old\nA\n")
@@ -518,9 +510,8 @@ def test_validation_refuses_existing_outputs(existing, a_network_map, tmp_path, 
 
 
 def test_partition_prefix_names_the_clusters(metagenome_network, tmp_path, run_cli):
-    """The --prefix names the overlapping clusters that partition MAP stores
-    in the map; an unknown algorithm is refused before anything is
-    written."""
+    """The --prefix names the overlapping clusters that partition MAP stores in
+    the map; an unknown algorithm is refused before anything is written."""
     import metacooler
 
     metacool = shutil.copyfile(metagenome_network["map"], tmp_path / "network.metacool")

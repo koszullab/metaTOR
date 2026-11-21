@@ -69,10 +69,10 @@ def test_create_contig_data():
 
 
 def _normalized(contigs, pair, n_occ, normalization):
-    """The normalized contact of a pair of contigs (by name, in contigs:
-    their data, as create_contig_data gives it) through the weights of
-    normalization_weights: n_occ * w[i] * w[j], 0 for a contig without a
-    weight (NaN), whose contacts are no edge."""
+    """The normalized contact of a pair of contigs (by name, in contigs: their
+    data, as create_contig_data gives it) through the weights of
+    normalization_weights: n_occ * w[i] * w[j], 0 for a contig without a weight
+    (NaN), whose contacts are no edge."""
     names = list(contigs)
     values = {key: np.array([contigs[name][key] for name in names], dtype=float) for key in ("length", "hit", "coverage", "RS")}
     weights = mtn.normalization_weights(values["length"], values["hit"], values["coverage"], values["RS"], normalization)
@@ -113,8 +113,8 @@ NORMALIZED_CONTIGS = {
 @pytest.mark.parametrize("normalization", ["abundance", "length", "RS", "empirical_hit", "theoritical_hit"])
 def test_normalization_weights_factorise_the_normalizations_of_1x(normalization):
     """One weight per contig, whose products times a contact count are the
-    contacts that metaTOR 1.x normalized edge by edge: NaN where it gave 0,
-    for a contig without hits or without coverage."""
+    contacts that metaTOR 1.x normalized edge by edge: NaN where it gave 0, for
+    a contig without hits or without coverage."""
     names = list(NORMALIZED_CONTIGS)
     values = {
         key: np.array([NORMALIZED_CONTIGS[name][key] for name in names], dtype=float)
@@ -140,9 +140,8 @@ def test_normalization_weights_refusals():
 
 
 def test_create_contig_data_reads_the_depth_file_by_name(tmp_path):
-    """The depth file is read by contig name: in another order, it gives the
-    same lengths and coverages. It was read line by line, in the order of
-    the assembly, and gave each contig the coverage of another."""
+    """The depth file is read by contig name: in another order, it gives the same
+    lengths and coverages."""
     header, *lines = Path(depth_file).read_text().splitlines(keepends=True)
     reversed_depth = tmp_path / "depth.txt"
     reversed_depth.write_text(header + "".join(reversed(lines)))
@@ -180,10 +179,10 @@ def test_create_contig_data_from_a_compressed_assembly(tmp_path):
 
 
 def test_contig_data_table():
-    """The contig data of the contigs of a map, in its order: their IDs
-    are their positions in the map, from 1, and what was measured on them
-    their columns, as contig_data_network.txt held them; a column that the
-    run did not measure is "-"."""
+    """The contig data of the contigs of a map, in its order: their IDs are their
+    positions in the map, from 1, and what was measured on them their columns,
+    as contig_data_network.txt held them; a column that the run did not measure
+    is "-"."""
     names = ["NODE_8", "NODE_1", "NODE_6"]
     table = mtn.contig_data_table(contigs_data, names, [206333, 30795, 5533054])
     assert list(table.columns) == mtn.CONTIG_TABLE_COLUMNS
@@ -201,8 +200,8 @@ def test_contig_data_table():
 
 @pytest.mark.parametrize("normalization", ["None", "abundance", "length", "RS", "empirical_hit", "theoritical_hit"])
 def test_network_weights(normalization):
-    """The weights of a contig data table: those of normalization_weights,
-    none for None."""
+    """The weights of a contig data table: those of normalization_weights, none
+    for None."""
     names = list(contigs_data)
     table = mtn.contig_data_table(contigs_data, names, [contigs_data[name]["hit"] for name in names])
     weights = mtn.network_weights(table, normalization)
