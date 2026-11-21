@@ -78,12 +78,40 @@ UNBINNED = {"ND", "-", ""}
 # never one of them.
 METACOOLER_UNBINNED = frozenset({"__unbinned__", "na", "nan", "n/a", "nd", "n/d", "-1", ""})
 
-# The columns of contig_data_final.txt stored in the contigs table: what
-# metaTOR measured on each contig. Never a bin column (Final_cluster, the bin IDs
-# of the steps): the genome of a contig is its genome_id, and metacooler
-# reassign carries the contigs columns into the map of another binning, where
-# a bin column would be stale.
+# The columns of the network of the contigs that a map stores in its contigs
+# table (see Network): what metaTOR measures on each contig, the GC content,
+# the Hi-C hits counted on its contacts, and the shotgun coverage and the
+# restriction sites, measured on the assembly or read from the map. Never a
+# cluster column (Final_cluster, the cluster IDs of the steps): the final
+# cluster of a contig is its genome, and its clusters are the clustering
+# rounds of the map.
 CONTIG_COLUMNS = ["GC_content", "Hit", "Shotgun_coverage", "Restriction_site"]
+
+# The cluster columns of the contig data tables of metaTOR 2.0
+# (contig_data_partition.txt and contig_data_final.txt), which metaTOR 1.x
+# named after bins (see metator.io.CONTIG_DATA_1X_COLUMNS).
+CLUSTER_COLUMNS = [
+    "Core_cluster_ID",
+    "Core_cluster_contigs",
+    "Core_cluster_size",
+    "Overlapping_cluster_ID",
+    "Overlapping_cluster_contigs",
+    "Overlapping_cluster_size",
+    "Recursive_cluster_ID",
+    "Recursive_cluster_contigs",
+    "Recursive_cluster_size",
+    "Final_cluster",
+]
+
+# metaTOR's own columns in the contigs table of a map, which a run that
+# stores its network drops (see _write_back_columns): those of an earlier
+# network, and the columns of a contig data table of metaTOR, 2.0 or 1.x, its
+# unnamed index column too (Unnamed: 0, as pandas and metacooler read
+# contig_data_final.txt), which a map made with that table as its contigs
+# table carries (metacooler create pairs --contigs-format Name,Final_cluster
+# keeps all its columns): they would contradict the network and the
+# clusters of the run. Name is the name of the contigs, the map's own.
+METATOR_TABLE_COLUMNS = frozenset({"Unnamed: 0", "ID", "Size", *CONTIG_COLUMNS, *CLUSTER_COLUMNS, *mio.CONTIG_DATA_1X_COLUMNS})
 
 # The columns of the contigs table of a map that each normalization of the
 # network reads (see metator.network.normalization_weights), besides the
@@ -582,37 +610,34 @@ def _attribute(node, name):
     return value.decode() if isinstance(value, bytes) else value
 
 
-def _write_back_columns(path, contig_data, contig_columns, header, metadata=None):
-    """Give a map the columns of the network of this run, as metacooler
-    annotate edits them: the map that metator network, or pipeline, stores
-    the network of its contigs in (see _store_network). metadata: keys of
-    the metadata of the map that metacooler annotate sets as it adds the
-    columns.
+def _write_back_columns(path, contig_data, contig_columns, metadata=None):
+    """Give the map at path, the staged map of an edit session, the columns of
+    the network of a run, as metacooler annotate edits them (see
+    _store_network): those of the table contig_data that the run measured
+    (contig_columns), in their order, after every other column of the
+    contigs table (metacooler's QC columns included), whatever the map
+    carried. metadata: keys of the metadata of the map that metacooler
+    annotate sets as it adds them.
 
-    The columns of the contig data that metaTOR measured (contig_columns,
-    from the table contig_data) are stored last, in their order: the columns
-    of a contig data file (header: all of them) and those of CONTIG_COLUMNS
-    that the map carried are dropped first, then those of this run are
-    added. The dropped columns are also those that this run does not store:
-    one of CONTIG_COLUMNS that it had no values for (Shotgun_coverage
-    without a depth file, nor a column of the input map that gives every
-    contig its coverage...), which an earlier network left.
+    metaTOR's own columns that the map carried (METATOR_TABLE_COLUMNS) are
+    dropped first, then those of this run are added: the columns of an
+    earlier network, or of this one (a validation stores again the network
+    that the map stored, once it regrouped the map, which moved its columns
+    before the QC columns), one of CONTIG_COLUMNS that this run has no values
+    for (Shotgun_coverage without a depth file, nor a column of the map that
+    gives every contig its coverage...), and the columns of a contig data
+    table of metaTOR, 2.0 or 1.x, which would contradict the network and the
+    clusters of the run. The other columns of the map are kept.
     """
     import metacooler
 
     stored = metacooler.MetaCooler(path)
-    # The columns of a contig data file but Name (the contigs' own name
-    # column) and those of the map that metacooler derives, its cluster
-    # columns under their names of metaTOR 1.x too, which a map made with
-    # the contig data of a 1.x run carries (see
-    # metator.io.CONTIG_DATA_1X_COLUMNS): they would contradict the clusters
-    # of this run.
-    of_1x = {old for old, new in mio.CONTIG_DATA_1X_COLUMNS.items() if new in header}
-    of_metator = (set(header) | of_1x | set(CONTIG_COLUMNS)) - {"Name"}
-    carried = [f"contigs.{column}" for column in stored.contigs.columns if column in of_metator - {"name", "length", "genome_id"}]
+    carried = [f"contigs.{column}" for column in stored.contigs.columns if column in METATOR_TABLE_COLUMNS]
     if carried:
         metacooler.annotate(path, drop=carried, inplace=True)
     if not contig_columns:
+        if metadata:
+            _store_metadata(path, metadata)
         return
     # Columns that the map no longer has: annotate adds them, with the values
     # of this run on every contig of the map (none on a contig that the
@@ -649,11 +674,13 @@ class Network:
         The normalization of the network, stored as the weights
         metator_<normalization> of the bins of the map (see
         store_normalization): none for "None", the raw counts.
-    entry : dict
+    entry : dict or None
         What the map records of the run that stored the network, under the
         network key of its metator metadata: the version of metaTOR, the
         command line and the parameters of the run, and the columns of the
-        map that it read. The normalization is recorded with it.
+        map that it read (see metator.cli.network_entry). The normalization
+        is recorded with it. None: the entry that the map records, kept (a
+        validation stores again the network that the map stores).
     tmp_dir : str, optional
         Where the contig data is written for metacooler annotate
         (contig_data_network.txt): the temporary directory of the run. By
@@ -662,7 +689,7 @@ class Network:
 
     table: pd.DataFrame
     normalization: str
-    entry: dict = field(default_factory=dict)
+    entry: dict | None = field(default_factory=dict)
     tmp_dir: str | None = None
 
 
@@ -677,17 +704,20 @@ def network_columns(table):
 def _store_network(path, network):
     """Store the network of the contigs of a run (network, a Network) in the
     map at path, the staged map of an edit session (see write_map): its
-    measured columns in the contigs table, which replace those of an earlier
-    run as _write_back_columns replaces them, its entry under the network
-    key of the metator metadata of the map, the other keys of which are
-    kept, and the weights of its normalization, computed from the columns
-    just written, which replace those of an earlier run (see
-    store_normalization). A normalization that cannot be stored fails the
-    session: the network of the map is its weights."""
+    measured columns in the contigs table, last, which replace those of an
+    earlier run as _write_back_columns replaces them, its entry under the
+    network key of the metator metadata of the map (unless it keeps the
+    entry of the map: see Network), the other keys of which are kept, and
+    the weights of its normalization, computed from the columns just
+    written, which replace those of an earlier run (see
+    store_normalization), last of the bins table. A normalization that
+    cannot be stored fails the session: the network of the map is its
+    weights."""
     table = network.table
     measured = network_columns(table)
     metator = dict(_metator_metadata(open_map(path)))
-    metator["network"] = {**network.entry, "normalization": network.normalization}
+    if network.entry is not None:
+        metator["network"] = {**network.entry, "normalization": network.normalization}
     # Computed from the columns that this run replaces (see
     # _drop_earlier_normalizations).
     _drop_earlier_normalizations(path, network.normalization)
@@ -695,7 +725,7 @@ def _store_network(path, network):
         directory = network.tmp_dir or scratch.enter_context(tempfile.TemporaryDirectory())
         columns = os.path.join(directory, "contig_data_network.txt")
         table[["Name", *measured]].to_csv(columns, sep="\t", index=False)
-        _write_back_columns(path, columns, measured, ["Name", *measured], metadata={"metator": metator})
+        _write_back_columns(path, columns, measured, metadata={"metator": metator})
     if network.normalization != "None":
         _store_normalization(path, network.normalization, _normalization_weights(path, network.normalization))
 
@@ -710,15 +740,20 @@ def _metator_metadata(mc):
 def _store_metator_entries(path, entries):
     """Set entries (a dict: partition...) in the metator key of the metadata
     of the map at path, the staged map of an edit session, whose other keys,
-    and the other keys of the metadata, are kept: a write of metacooler's
+    and the other keys of the metadata, are kept (see _store_metadata)."""
+    _store_metadata(path, {"metator": {**_metator_metadata(open_map(path)), **entries}})
+
+
+def _store_metadata(path, keys):
+    """Set keys (a dict) in the metadata of the map at path, the staged map of
+    an edit session, whose other keys are kept: a write of metacooler's
     MetaCooler.open("r+"), which the session validates with the rest."""
     import json
 
     import metacooler
 
     mc = metacooler.MetaCooler(path)
-    metadata = dict(mc.metadata)
-    metadata["metator"] = {**_metator_metadata(mc), **entries}
+    metadata = {**mc.metadata, **keys}
     with mc.open("r+") as group:
         group.attrs["metadata"] = json.dumps(metadata)
 
@@ -1038,29 +1073,35 @@ def write_map(
 
     What is stored, in this order:
 
-    - network (metator network, pipeline): the network of the contigs, what
-      metaTOR measured on each of them in the contigs table, and the weights
-      of its normalization in the bins table, with the entry network of the
+    - clusters (metator validation, pipeline): the final clusters, first,
+      in a map written anew from the input map into the staged map
+      (metacooler reassign, see _store_final_clusters). Each contig goes to
+      its final cluster, the unbinned ones to __unbinned__, and the contigs
+      are grouped by cluster, then from the longest (layout
+      genome-then-length). The genomes table holds the columns of the
+      summary of the clusters, and the metator metadata the entry
+      validation (and partition, for a pipeline run). The QC block of the
+      input map, when it has one, is carried over to the clusters:
+      metacooler keeps the counts within each contig and counts the contacts
+      between contigs again. What metacooler's regroup does not carry (an
+      extra group or root attribute of the map...) is left out, with its
+      warning.
+    - network (metator network, pipeline; and validation, which stores the
+      network of the map again): the network of the contigs, what metaTOR
+      measured on each of them in the contigs table, and the weights of its
+      normalization in the bins table, with the entry network of the
       metator metadata (see _store_network). The columns and the weights of
-      an earlier network are replaced.
+      an earlier network, or those that the regroup carried, are replaced:
+      the network comes last in both tables, as in the map of the network
+      step, whether the steps run one by one or in pipeline.
     - partition and rounds (metator partition): the entry partition of the
       metator metadata, what the partition was, and the core and
       overlapping clusters, every one with its contigs, as the rounds core
       and overlapping (round_names: the names of the rounds, in order) of
       the clustering rounds of the map, in place of those it held (see
       store_rounds). The validation reads them back (see read_partition).
-    - clusters (metator validation, pipeline): the final clusters. Each
-      contig goes to its final cluster, the unbinned ones to __unbinned__,
-      and the contigs are grouped by cluster, then from the longest
-      (metacooler reassign of the copy in place, layout genome-then-length):
-      the contigs table keeps the columns of the network, and the bins table
-      its weights, which follow their contigs and bins. The genomes table
-      holds the columns of the summary of the clusters. The clustering rounds
-      of the run replace those of the map, with the entry validation (and
-      partition, for a pipeline run) of the metator metadata. The QC block of
-      the input map, when it has one, is carried over to the clusters:
-      metacooler keeps the counts within each contig and counts the contacts
-      between contigs again.
+      With clusters, the rounds are those of the run (FinalClusters.rounds),
+      which replace those of the map.
     - mge (metator mge): the round mge, (its tables, its entry), which
       replaces the round of that name of the map, after the others (see
       _store_round).
@@ -1083,9 +1124,10 @@ def write_map(
     rounds : tuple of pandas.DataFrame, optional
         Clustering rounds, which replace those of the map: the rounds core
         and overlapping of a partition (see metator.clusters.partition_rounds).
+        Not with clusters, which hold the rounds of their run.
     round_names : list of str, optional
         The names of the rounds, in the order they were made (see
-        store_rounds).
+        store_rounds). Not with clusters.
     clusters : FinalClusters, optional
     mge : tuple, optional
         The tables of the round mge (see metator.clusters.mge_round) and its
@@ -1102,15 +1144,24 @@ def write_map(
 
     Raises
     ------
+    ValueError
+        If clusters come with rounds or round_names: the rounds of a
+        validation are those of its clusters.
     MetacoolError
         If the outfile is no file's path (a URI), exists (without force), is
         the .mmetacool collection of the input map or a hard link of the
         input map, the input map is missing, cannot be read or changed since
-        planned was opened, a cluster name is not ASCII or one that
-        metacooler reads as no cluster (NA, nan, -1...), or metacooler cannot
-        write the map (a ValueError, OSError or KeyError, message kept). An
-        error of another type is raised as it is.
+        planned was opened, a contig of the clusters is not a contig of the
+        input map, a cluster name is not ASCII or one that metacooler reads
+        as no cluster (NA, nan, -1...), or metacooler cannot write the map (a
+        ValueError, OSError or KeyError, message kept). An error of another
+        type is raised as it is.
     """
+    if clusters is not None and (rounds is not None or round_names is not None):
+        raise ValueError(
+            "write_map takes the clustering rounds of a validation from its clusters (FinalClusters.rounds): give "
+            "clusters without rounds or round_names."
+        )
     metacool, outfile = str(metacool), str(outfile)
     if is_entry(metacool) and is_input_map(metacool, outfile):
         raise MetacoolError(
@@ -1130,17 +1181,22 @@ def write_map(
             # The rounds of the map that the run does not make: said once the
             # map is written.
             later = _later_rounds(mc) if clusters is not None or rounds is not None else []
+        if clusters is not None:
+            _check_clustered_contigs(metacool, contigs, clusters)
         writing, written = _what_is_written(contigs, network, rounds, clusters, mge)
         logger.info(f"Writing {outfile} from the contact map {metacool}{writing}.")
         with _as_metacool_errors(), ExitStack() as session:
             make_map_directory(outfile)
             # One staged copy, which replaces the map once it is valid (see
             # _staged_edit).
-            staged = _enter_session(session, metacool, outfile, _read(mc, planned), force)
+            read = _read(mc, planned)
+            staged = _enter_session(session, metacool, outfile, read, force)
+            if clusters is not None:
+                _store_final_clusters(staged, metacool, read, contigs, clusters, partition)
             if network is not None:
                 _store_network(staged, network)
             if clusters is not None:
-                _store_final_clusters(staged, metacool, clusters, partition)
+                store_rounds(staged, clusters.rounds, name=metacool)
             else:
                 if rounds is not None:
                     store_rounds(staged, rounds, round_names, name=metacool)
@@ -1177,17 +1233,35 @@ def _what_is_written(contigs, network, rounds, clusters, mge):
     return "", ""
 
 
-def _store_final_clusters(path, metacool, clusters, partition=None):
-    """Store the final clusters of a validation (clusters, a FinalClusters)
-    in the map at path, the staged map of an edit session (see write_map),
-    whose metator metadata keeps the entries of the steps before it
-    (network, partition: that of partition, for a pipeline run), and gets
-    the entry validation. metacool names the map in the warnings."""
+def _check_clustered_contigs(metacool, contigs, clusters):
+    """Refuse final clusters (clusters, a FinalClusters) with a contig that
+    the map metacool lacks (contigs: its contigs table): the clusters of a
+    run are clusters of the contigs of its map, by the names that it gives
+    them, and a table that read a name as another (00123 as the number 123)
+    gives another contig."""
+    names = set(contigs["name"].astype(str))
+    absent = [name for name in clusters.assignment if name not in names]
+    if absent:
+        raise MetacoolError(
+            f"{len(absent)} contig(s) of the final clusters are not contigs of {metacool}: {_shown(absent)}. The "
+            "clusters of a run are clusters of the contigs of its map, by their names in it."
+        )
+
+
+def _store_final_clusters(path, metacool, read, contigs, clusters, partition=None):
+    """Write the map of the final clusters of a validation (clusters, a
+    FinalClusters) at path, the staged map of an edit session (see
+    write_map), anew from the input map metacool with metacooler reassign,
+    which warns of what it leaves out. read: the maps opened on the input
+    map (see _read), the last one to write the map, whose contigs table is
+    contigs; one replaced or written while metacooler read the map is
+    refused. The metator metadata of the map keeps the entries of the steps
+    before the validation (network, partition: that of partition, for a
+    pipeline run), and gets the entry validation."""
     import metacooler
 
-    stored = open_map(path)
-    names = [str(name) for name in stored.contigs["name"]]
-    metator = {key: value for key, value in _metator_metadata(stored).items() if key not in LEGACY_RUN_KEYS}
+    names = [str(name) for name in contigs["name"]]
+    metator = {key: value for key, value in _metator_metadata(read[-1]).items() if key not in LEGACY_RUN_KEYS}
     if partition is not None:
         metator["partition"] = partition
     metator["validation"] = clusters.entry
@@ -1207,27 +1281,38 @@ def _store_final_clusters(path, metacool, clusters, partition=None):
             genomes_table = os.path.join(scratch.enter_context(tempfile.TemporaryDirectory()), "clusters.txt")
             with open(genomes_table, "w") as handle:
                 handle.write("".join(f"{name}\n" for name in ["cluster", *sorted(final)]))
-        metacooler.reassign(
-            path,
-            assignment,
-            # Grouped by cluster, then from the longest, whatever the order of
-            # the input map: the pixels are remapped, the columns of the
-            # contigs table and the weights of the bins follow them.
-            layout="genome-then-length",
-            # The cluster names are the first column of the table, unnamed in
-            # cluster_summary.txt. It replaces the columns of the genomes
-            # table that the input map carried.
-            genomes_table=genomes_table,
-            genomes_table_format="1",
-            metadata={"metator": metator},
-            # The staged copy of the map, which metacooler writes anew when it
-            # regroups its contigs: its history names the map of the run.
-            inplace=True,
-            # On a failure, metacooler removes the partial file it writes
-            # next to the staged map.
-            keep_partial=False,
-        )
-    store_rounds(path, clusters.rounds, name=metacool)
+        with read_errors(metacool):
+            metacooler.reassign(
+                metacool,
+                assignment,
+                # The staged map, written anew from the input map, which
+                # metacooler only reads: its history names the input map as
+                # the source.
+                path,
+                # Grouped by cluster, then from the longest, whatever the
+                # order of the input map: the pixels are remapped, the
+                # columns of the contigs table and the weights of the bins
+                # follow them.
+                layout="genome-then-length",
+                # The cluster names are the first column of the table,
+                # unnamed in cluster_summary.txt. It replaces the columns of
+                # the genomes table that the input map carried.
+                genomes_table=genomes_table,
+                genomes_table_format="1",
+                metadata={"metator": metator},
+                # Over the staged copy of the map.
+                force=True,
+                # On a failure, metacooler removes the partial file it writes
+                # next to the staged map.
+                keep_partial=False,
+            )
+            # The input map as the run read it: one replaced or written
+            # while metacooler read it, by a program that takes no lock of
+            # metacooler, is refused (a read through a map opened on it
+            # checks its file).
+            for mc in read:
+                with mc.open():
+                    pass
 
 
 def _store_round(path, metacool, rounds, entry):

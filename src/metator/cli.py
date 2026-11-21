@@ -724,14 +724,14 @@ def write_map(metacool, outfile, planned, what="the map of the clusters", **stor
     planned, the input map as the run read it at its start, was opened.
 
     outfile is only replaced once the new map has been written and
-    validated: an input map at outfile (the file of the input map, see
-    metator.metacool.is_input_map) stays as it was when the new map cannot
-    be written. Another map of the same name, left by an earlier run, is
-    removed first: this run has replaced the FASTA files of its clusters, so
-    it must not stay behind, passing for this run's, when the new map cannot
-    be written. A symbolic link at --output-map is removed, not its target.
-    The log says what (the map of the clusters, by default) replaces an
-    input map.
+    validated: the input map, when outfile names its file (see
+    metator.metacool.is_input_map), stays as it was when the new map cannot
+    be written, and the log says what (what: the map of the clusters, by
+    default) replaces it. Another file at outfile (--output-map, which -F
+    lets a run replace: an earlier run's map) is removed first: it must not
+    stay behind, passing for this run's next to the other outputs of the run,
+    when the new map cannot be written. A symbolic link there is removed,
+    not its target.
 
     Raises
     ------
@@ -1443,8 +1443,16 @@ def validation(
         )
 
         # The map of the clusters, written last, as pipeline MAP writes it:
-        # the network that the map stores is kept.
-        write_map(map, metacool_file, planned, clusters=final)
+        # the network that the map stores, which it keeps, comes after the
+        # columns and the weights that the regroup writes (see
+        # metator.metacool.write_map).
+        write_map(
+            map,
+            metacool_file,
+            planned,
+            clusters=final,
+            network=mtmc.Network(stored.table, stored.normalization, entry=None, tmp_dir=tmp_dir),
+        )
 
     generate_log_footer(log_file)
 
@@ -1624,7 +1632,9 @@ def pipeline(
             network=network,
             partition=partition_entry(
                 normalization,
-                mtn.network_digest(contacts, mtn.network_weights(network.table, normalization), network.table["Name"], normalization),
+                mtn.network_digest(
+                    contacts, mtn.network_weights(network.table, normalization), network.table["Name"], normalization
+                ),
             ),
             clusters=final,
         )

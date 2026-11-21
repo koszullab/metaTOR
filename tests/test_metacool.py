@@ -19,6 +19,7 @@ import metator.log as mtl
 import metator.metacool as mtmc
 import metator.network as mtn
 from metator.version import __version__
+from tests import synthetic
 from tests.hdf5 import walk
 from tests.maps import contig_map, pairs_map
 from tests.oracles import normalize_pair
@@ -204,11 +205,12 @@ def test_non_ascii_cluster_names_are_refused(metagenome, binning, tmp_path, monk
         reassign(str(metacool), str(contig_data), str(tmp_path / "map.metacool"))
 
 
-def test_a_non_ascii_contig_that_the_map_lacks_is_left_out(metagenome, binning, tmp_path):
-    """A contig of the contig data that the map lacks (a contig of the
-    assembly that no read maps to) need not have an ASCII name, as no map
-    holds it: the map of the clusters is written without it, where the run
-    stopped once its clusters were made."""
+def test_a_clustered_contig_that_the_map_lacks_is_refused(metagenome, binning, tmp_path):
+    """A contig of the final clusters that the map lacks (here one whose name
+    is not ASCII, which no map holds) is refused, named, and the map is not
+    written: the clusters of a run are clusters of the contigs of its map, by
+    their names in it, and a contig named otherwise (a name read as a number,
+    00123 as 123) is another contig."""
     final_bin = _bin_names(metagenome)
     clustered = next(name for name, cluster in final_bin.items() if cluster != "ND")
     contig_data = write_contig_data(metagenome, tmp_path / "contig_data_final.txt", final_bin)
@@ -216,9 +218,13 @@ def test_a_non_ascii_contig_that_the_map_lacks_is_left_out(metagenome, binning, 
     contig_data.write_text(text.replace(f"\t{clustered}\t", "\tcontig_é\t"))
     metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
     out = tmp_path / "map.metacool"
-    reassign(str(metacool), str(contig_data), str(out))
-    genome_of = assignment(out)
-    assert "contig_é" not in genome_of and genome_of[clustered] == "__unbinned__"
+    message = (
+        f"1 contig(s) of the final clusters are not contigs of {metacool}: 'contig_é'. The clusters of a run are "
+        "clusters of the contigs of its map, by their names in it."
+    )
+    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
+        reassign(str(metacool), str(contig_data), str(out))
+    assert not out.exists()
 
 
 def test_non_ascii_names_shown():
@@ -495,8 +501,9 @@ def mtmc_map(binning, tmp_path):
 def test_map_of_the_bins_from_a_cut_map(binned, metagenome, binning, tmp_path, logged):
     """From a map cut by metacooler extract (a .cool file), then made a map
     again by create cool: the contigs that it keeps, in their final bins.
-    A binned contig that the map lacks (a binning made on more contigs than
-    the map's) is left out."""
+    A binning made on more contigs than the map's, with binned contigs that
+    the map lacks, is refused: the clusters of a run are clusters of the
+    contigs of its map."""
     truth = metagenome.truth
     shortest = int(truth.Length.median())
     kept = set(truth.Name[truth.Length >= shortest])
@@ -512,6 +519,13 @@ def test_map_of_the_bins_from_a_cut_map(binned, metagenome, binning, tmp_path, l
         final_bin = {name: (bin_name if name in kept else "ND") for name, bin_name in final_bin.items()}
         contig_data = write_contig_data(metagenome, tmp_path / "cut_contig_data.txt", final_bin)
     out = tmp_path / "bins.metacool"
+    lacking = sorted(name for name, bin_name in final_bin.items() if bin_name != "ND" and name not in kept)
+    assert bool(lacking) == (binned == "assembly")
+    if lacking:
+        with pytest.raises(mtmc.MetacoolError, match=rf"^{len(lacking)} contig\(s\) of the final clusters are not contigs"):
+            reassign(str(metacool), str(contig_data), str(out), bin_summary=str(binning["bin_summary"]))
+        assert not out.exists()
+        return
     reassign(str(metacool), str(contig_data), str(out), bin_summary=str(binning["bin_summary"]), normalization="None")
 
     metacooler.validate(str(out), full=True)
@@ -526,10 +540,6 @@ def test_map_of_the_bins_from_a_cut_map(binned, metagenome, binning, tmp_path, l
     assert not [message for message in warnings if "Contigs table" in message]
     assert cooler.Cooler(str(out)).info["metadata"]["annotate"][-1]["contigs_table"].endswith("contig_data_network.txt")
     assert not [path.name for path in tmp_path.iterdir() if path.name.startswith(".")]
-    lacking = sorted(name for name, bin_name in final_bin.items() if bin_name != "ND" and name not in kept)
-    # The clusters of a run are those of the contigs of its map: one that
-    # the map lacks is in no cluster of the map.
-    assert bool(lacking) == (binned == "assembly") and not set(lacking) & set(assignment(out))
 
 
 def test_map_of_the_bins_from_an_mmetacool_entry(metagenome, binning, tmp_path):
@@ -606,6 +616,46 @@ def test_map_of_the_bins_without_a_bin_summary(metagenome, binning, tmp_path, lo
     assert_contig_columns(out, contig_data)
     assert [message for level, message in logged() if level == "WARNING"] == []
     assert set(tmp_path.iterdir()) - before == {out}
+
+
+@pytest.mark.parametrize("earlier", ["2.0", "1.x"])
+def test_map_of_the_bins_drops_the_columns_of_an_earlier_run(earlier, metagenome, binning, tmp_path):
+    """From a map made with the contig data of an earlier run as its
+    contigs table (metacooler create pairs --contigs-format Name,Final_cluster,
+    which stores all its columns): the clusters and contig ids of that run,
+    and its other columns, are not carried into the map of the clusters;
+    only the columns of the network of this run, and a column that metaTOR
+    does not write. The same from the contig data of a run of metaTOR 1.x,
+    its cluster columns named after bins (Final_bin, Overlapping_bin_ID...):
+    they would contradict the clusters of this run (see
+    metator.metacool.METATOR_TABLE_COLUMNS)."""
+    contig_data = str(binning["contig_data"])
+    earlier_table = contig_data if earlier == "2.0" else synthetic.as_1x(contig_data, tmp_path / "contig_data_1x.txt")
+    final, bins = {"2.0": ("Final_cluster", "cluster"), "1.x": ("Final_bin", "bin")}[earlier]
+    table = pd.read_csv(earlier_table, sep="\t", index_col=0)
+    earlier_map = tmp_path / "earlier.metacool"
+    metacooler.from_pairs(
+        str(earlier_map),
+        bins=pd.DataFrame({"chrom": table.Name, "start": 0, "end": table.Size}),
+        pairs=str(binning["pairs"]),
+        contig_genome_map=earlier_table,
+        contig_table_format=f"Name,{final}",
+        ps=False,
+    )
+    taxa = tmp_path / "taxa.tsv"
+    taxa.write_text("Name\ttaxon\n" + "".join(f"{name}\tt_{i % 3}\n" for i, name in enumerate(table.Name)))
+    metacooler.annotate(str(earlier_map), contigs_table=str(taxa), contigs_table_format="Name", inplace=True)
+    stale = {"Unnamed: 0", "ID", "Size", "Restriction_site", f"Overlapping_{bins}_ID", f"Recursive_{bins}_contigs"}
+    assert stale <= set(metacooler.MetaCooler(str(earlier_map)).contigs.columns)
+    out = tmp_path / "clusters.metacool"
+    reassign(str(earlier_map), contig_data, str(out), bin_summary=str(binning["bin_summary"]))
+
+    metacooler.validate(str(out), full=True)
+    assert assignment(out) == final_bins(metagenome)
+    contigs = metacooler.MetaCooler(str(out)).contigs
+    assert sorted(without_qc(contigs.columns)) == sorted(["name", "length", "genome_id", *CONTIG_COLUMNS, "taxon"])
+    # The network last, after the QC columns.
+    assert list(contigs.columns)[-len(CONTIG_COLUMNS) :] == CONTIG_COLUMNS
 
 
 @pytest.mark.parametrize("earlier_bins", ["same", "other"])
@@ -752,11 +802,10 @@ def test_a_map_written_as_metacooler_copies_it_keeps_metacoolers_reason(metageno
     assert not outfile.exists()
 
 
-def _fail_in_reassign(uri, table, **kwargs):
-    """metacooler.reassign, failing as it does when it cannot write the
-    staged map, in place: told to remove its partial file
-    (keep_partial=False), it leaves none."""
-    assert kwargs["keep_partial"] is False and kwargs["inplace"] is True
+def _fail_in_reassign(uri, table, output, **kwargs):
+    """metacooler.reassign, failing as it does when it cannot write: told
+    to remove its partial file (keep_partial=False), it leaves none."""
+    assert kwargs["keep_partial"] is False
     raise OSError("No space left on device")
 
 
@@ -775,7 +824,7 @@ def removed_partial(messages):
     return staged
 
 
-@pytest.mark.parametrize("failure", ["reassign", "validate"])
+@pytest.mark.parametrize("failure", ["reassign", "validate", "in metacooler"])
 @pytest.mark.parametrize("how", ["path", "link to the outfile"])
 def test_input_map_kept_when_the_map_of_the_bins_fails(how, failure, metagenome, binning, tmp_path, monkeypatch, logged):
     """When the map of the bins cannot be written or does not validate, the
@@ -793,10 +842,15 @@ def test_input_map_kept_when_the_map_of_the_bins_fails(how, failure, metagenome,
     if failure == "reassign":
         monkeypatch.setattr(metacooler, "reassign", _fail_in_reassign)
         message = "No space left on device"
-    else:
+    elif failure == "validate":
         # The full validation of the staged map, before metacooler renames
         # it over the outfile.
         monkeypatch.setattr("metacooler.schema.validate", _fail_in_validate)
+        message = "pixels out of order"
+    else:
+        # The validation of metacooler reassign, which writes the map to its
+        # partial file first.
+        monkeypatch.setattr("metacooler.io.reassign.validate", _fail_in_validate)
         message = "pixels out of order"
     with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$") as raised:
         reassign(str(metacool), str(binning["contig_data"]), str(outfile), bin_summary=str(binning["bin_summary"]), force=True)
@@ -905,13 +959,13 @@ def test_a_read_that_fails_on_a_replaced_map_says_why(metagenome, metagenome_fil
     assert isinstance(raised.value.__cause__, OSError)
 
 
-def _stopped_as_cooler_writes(uri, table, **kwargs):
+def _stopped_as_cooler_writes(uri, table, output, **kwargs):
     """metacooler.reassign stopped by a Ctrl-C (or the SIGTERM of a run) as
-    cooler writes the map, in place of the staged map (uri): cooler builds
-    its writer out of the with that would remove its file on a failure, and
-    metacooler leaves its partial file too."""
-    Path(f"{uri}.partial").write_text("metacooler's partial file")
-    Path(f"{uri}.partial.__writing__").write_text("cooler's file")
+    cooler writes the map: cooler builds its writer out of the with that
+    would remove its file on a failure, and metacooler leaves its partial
+    file too."""
+    Path(f"{output}.partial").write_text("metacooler's partial file")
+    Path(f"{output}.partial.__writing__").write_text("cooler's file")
     raise KeyboardInterrupt
 
 
@@ -1597,7 +1651,7 @@ def test_read_partition_of_the_network_of_the_map(tmp_path):
         ({"partition": {"version": "x"}}, None),
         ({"partition": {mtmc.NETWORK_DIGEST: "f00"}}, "f00"),
     ]:
-        mtmc.write_rounds(
+        write_rounds(
             str(metacool),
             str(metacool),
             mtcl.partition_rounds(clusters, ["a", "b", "c"]),
@@ -1616,7 +1670,7 @@ def test_read_partition_of_the_network_of_the_map(tmp_path):
         f"network in the map since metator partition ran on it. Run metator partition {metacool} again, which "
         "partitions the network stored in the map."
     )
-    mtmc.write_rounds(
+    write_rounds(
         str(metacool),
         str(metacool),
         mtcl.partition_rounds(clusters, ["a", "b", "c"]),

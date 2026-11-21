@@ -474,15 +474,14 @@ def test_network_digest_is_that_of_the_network(tmp_path, normalization):
     weights = mtn.stored_weights(metacool)
     names = list(stored.table.Name)
     assert stored.digest == mtn.network_digest(contacts, weights, names, normalization)
-    # The map of the clusters c, then a and b: genome-then-length.
-    table = stored.table.assign(Final_cluster=["m_2", "m_2", "m_1"])
-    table.to_csv(tmp_path / "contig_data_final.txt", sep="\t", index=False)
+    # The map of the clusters c, then a and b: genome-then-length, written
+    # as a validation writes it, with the network of the map stored again.
     regrouped = tmp_path / "regrouped.metacool"
-    mtmc.reassign_metacool(
+    mtmc.write_map(
         metacool,
-        str(tmp_path / "contig_data_final.txt"),
         str(regrouped),
-        normalization=None if normalization == "None" else normalization,
+        clusters=mtmc.FinalClusters({"a": "m_2", "b": "m_2", "c": "m_1"}, None, None, {"version": "x"}),
+        network=mtmc.Network(stored.table, stored.normalization, entry=None),
     )
     again = mtn.stored_network(str(regrouped))
     assert list(again.table.Name) == ["c", "b", "a"]

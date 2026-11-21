@@ -333,7 +333,7 @@ def test_validation_again_on_the_map_of_its_clusters(
     for run in ["first", "second"]:
         random.seed(0)
         run_cli("validation", metacool, "-o", tmp_path / run, *common)
-        finals[run] = pd.read_csv(tmp_path / run / "contig_data_final.txt", sep="\t")
+        finals[run] = pd.read_csv(_kept(tmp_path / run) / "contig_data_final.txt", sep="\t")
     after, regrouped = named(metacool)
     assert regrouped != names and sorted(regrouped) == sorted(names)
     assert after == before
@@ -349,7 +349,9 @@ def test_a_contig_named_na(tmp_path, monkeypatch, run_cli):
     otherwise, is a contig as any other: validation reads it by name from
     the partition table of the run, and writes it into the map of the
     clusters, in its final cluster, with its size (a missing name made the
-    Size column of contig_data_final.txt a float, which the map refused)."""
+    Size column of contig_data_final.txt a float, which the map refused;
+    the run keeps its tables in its temporary directory: see
+    _keep_the_tables)."""
     from tests.conftest import SYNTHETIC_SEED
 
     metagenome = synthetic.make_metagenome(seed=SYNTHETIC_SEED)
@@ -367,7 +369,7 @@ def test_a_contig_named_na(tmp_path, monkeypatch, run_cli):
     run_cli("network", metacool, "-a", files["assembly"], "-e", "DpnII", *common)
     run_cli("partition", metacool, "-i", "10", *common)
     run_cli("validation", metacool, "-a", files["assembly"], "-s", "50000", "-i", "5", *common)
-    final = pd.read_csv(tmp_path / "out" / "contig_data_final.txt", sep="\t", keep_default_na=False)
+    final = pd.read_csv(_kept(tmp_path / "out") / "contig_data_final.txt", sep="\t", keep_default_na=False)
     row = final[final.Name == "NA"]
     assert len(row) == 1 and pd.api.types.is_integer_dtype(final.Size) and int(row.Size.iloc[0]) == contig.length
     mc = metacooler.MetaCooler(str(metacool))
@@ -902,6 +904,19 @@ def _contig_map(metagenome_inputs, path, pairs=None):
     return contig_map(pairs or metagenome_inputs["pairs"], contig_data, path, assembly_name="synthetic")
 
 
+def _annotated(objects):
+    """The history of the metacooler annotate edits of a map (see
+    tests.hdf5.walk), the temporary table that the network was stored from
+    masked (the contigs_table of the entries that name one in the temporary
+    directory of the run, whose name is drawn at random)."""
+    (metadata,) = [json.loads(value) for key, _, value in objects["/"][2] if key == "metadata"]
+    entries = metadata.get("annotate", [])
+    for entry in entries:
+        if str(entry.get("contigs_table")).endswith("/contig_data_network.txt"):
+            entry["contigs_table"] = "<the temporary contig data of the network>"
+    return entries
+
+
 def _without_run(objects):
     """The objects of a map (see tests.hdf5.walk) but what differs between two
     runs of the same clusters: the date the map was written
@@ -909,10 +924,9 @@ def _without_run(objects):
     parameters of the run that wrote it and of the runs that stored its
     network and its partition (the command and parameters of the metator
     key of its metadata, a JSON text, and of its entries network and
-    partition), and the temporary
-    table that the network was stored from (the contigs_table of the
-    metacooler annotate entries of the history that name one in the
-    temporary directory of the run, whose name is drawn at random)."""
+    partition), and the history of its metacooler annotate edits, which
+    records each store of the network (see _annotated): the steps store it
+    twice, with network and validation, pipeline once."""
     kind, members, attributes = objects["/"]
     kept = []
     for key, dtype, value in attributes:
@@ -921,9 +935,7 @@ def _without_run(objects):
             for run in ["command", "parameters"]:
                 for step in ["network", "partition", "validation"]:
                     del metadata["metator"][step][run]
-            for entry in metadata.get("annotate", []):
-                if str(entry.get("contigs_table")).endswith("/contig_data_network.txt"):
-                    entry["contigs_table"] = "<the temporary contig data of the network>"
+            del metadata["annotate"]
             value = metadata
         if key != "creation-date":
             kept.append((key, dtype, value))
@@ -963,11 +975,13 @@ def test_steps_on_a_map_give_the_map_of_pipeline(metagenome, metagenome_inputs, 
     written (creation-date), the command line and parameters of the runs
     that wrote it (the command and parameters of the metator key of its
     metadata and of its entries network and partition: pipeline's,
-    network's, partition's and validation's), and the temporary table that
-    its network was stored from, which the history of the map names (see
-    _without_run). Each run is made in a directory of its own, with the same
-    relative paths, which the history of the map records (the input map of
-    metacooler reassign, the tables of metacooler annotate). The rounds are
+    network's, partition's and validation's), and the history of its
+    metacooler annotate edits (see _without_run), in which the steps store
+    the network twice, network MAP then validation MAP, which stores it
+    again after its regroup, and pipeline once. Each run is made in a
+    directory of its own, with the same relative paths, which the history of
+    the map records (the input map of metacooler reassign, the tables of
+    metacooler annotate). The rounds are
     core, overlapping, recursive_1 (a cluster that the stub miComplete finds
     contaminated, partitioned again) and final.
 
@@ -1060,6 +1074,16 @@ def test_steps_on_a_map_give_the_map_of_pipeline(metagenome, metagenome_inputs, 
     found = {name: walk(path) for name, path in written.items()}
     assert "/bins/metator_empirical_hit" in found["steps"]
     assert _without_run(found["steps"]) == _without_run(found["pipeline"])
+    # The history of the edits: the validation stores again the network that
+    # network MAP stored, once it regrouped the map, which put the network
+    # before the QC columns (see metator.metacool.write_map); pipeline
+    # stores it once, after its regroup. The network comes last in both.
+    network = [f"contigs.{column}" for column in ["GC_content", "Hit", "Shotgun_coverage", "Restriction_site"]]
+    annotated = {name: _annotated(objects) for name, objects in found.items()}
+    assert annotated["steps"][:-2] == annotated["pipeline"]
+    assert [(entry["dropped"], entry["added"]) for entry in annotated["steps"][-2:]] == [(network, []), ([], network)]
+    assert annotated["pipeline"][-1]["added"] == network
+    assert list(metacooler.MetaCooler(str(written["steps"])).contigs.columns)[-4:] == [name[8:] for name in network]
     # What differs: the command lines and their parameters, those of
     # pipeline, and of network and validation.
     metator = {name: _metator_metadata(objects) for name, objects in found.items()}

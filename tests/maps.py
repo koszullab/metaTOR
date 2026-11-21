@@ -74,7 +74,6 @@ def pairs_map(pairs, contig_data, outfile, bin_summary=None, assembly_name=None,
     final = table["Final_cluster"].str.strip()
     binned = ~final.isin(mtmc.UNBINNED)
     contig_bin = dict(zip(table["Name"][binned], final[binned], strict=True))
-    header = list(table.columns)
     contig_columns = [column for column in mtmc.CONTIG_COLUMNS if column in table and not table[column].str.strip().eq("-").all()]
     metacooler.from_pairs(
         str(outfile),
@@ -91,7 +90,7 @@ def pairs_map(pairs, contig_data, outfile, bin_summary=None, assembly_name=None,
     # In an edit session, as metaTOR stores its columns: a fresh copy of the
     # map, as metacooler stages every map it writes.
     with metacooler.staged_edit(str(outfile)) as staged:
-        mtmc._write_back_columns(staged, str(contig_data), contig_columns, header)
+        mtmc._write_back_columns(staged, str(contig_data), contig_columns)
     return outfile
 
 
