@@ -27,10 +27,9 @@ nav = [
     { "Partition and validation" = "guides/binning.md" },
     { "The contact map of the clusters" = "guides/metacool.md" },
     { "Clustering mobile genetic elements" = "guides/mge.md" },
-    { "Viewing and scaffolding MAGs" = "guides/visualisation.md" },
     { "Curating MAGs with anvi'o" = "guides/curation.md" },
-    { "Checking a library" = "guides/qc.md" },
-    { "Using the Python API" = "guides/python.md" }
+    { "Using the Python API" = "guides/python.md" },
+    { "Other tools" = "other-tools.md" }
   ]},
   { "Reference" = [
     { "CLI reference" = "cli.md" },
@@ -40,7 +39,6 @@ nav = [
       { "Partition and validation" = "api/binning.md" },
       { "Contact maps" = "api/metacool.md" },
       { "Mobile genetic elements" = "api/mge.md" },
-      { "Scaffolding and quality" = "api/scaffold.md" },
       { "Input and output" = "api/io.md" }
     ]}
   ]},

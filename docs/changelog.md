@@ -396,6 +396,32 @@ All notable changes to this project will be documented in this file.
   writes once, at the end.
 
 ### Removed
+- **Breaking:** the commands that did what hicstuff, metacooler or
+  instaGRAAL do, and the plots: metaTOR clusters contigs, and nothing else.
+  The [Other tools](other-tools.md) page says what replaces each one:
+  - `metator qc`: `metacooler qc MAP --per-genome`, and hicstuff's
+    `pipeline -f --plot` for the 3C events of a library;
+  - `metator contactmap`: `metacooler extract MAP --genomes NAME`;
+  - `metator scaffold`, and the `-v/--scaffold` and `-J/--junctions`
+    options of `pipeline`, with its `scaffolded_clusters/`: hicstuff's
+    `pipeline -M graal` on the FASTA file of a cluster, then instaGRAAL;
+  - `metator pairs`: pairix's tools;
+  - `metator metacool`: `pipeline` and `validation` write the map of the
+    clusters; `metacooler reassign` and `annotate` by hand;
+  - the plots of `validation` and `pipeline`, `plot/` (the quality, size,
+    GC content and coverage of the clusters, and the heatmap of their
+    network): the log counts the clusters in each quality class, and
+    `metacooler show` draws the map.
+
+  A command line that names one of them is refused as an unknown command or
+  option. zstd and LZ4 pairs files, which metaTOR read only for
+  `--scaffold`, are no longer refused anywhere. Python API: the modules
+  `metator.figures` (but `bin_quality`, now `metator.validation.bin_quality`),
+  `metator.quality_check`, `metator.contact_map`, `metator.scaffold` and
+  `metator.regions`; `metator.metacool.write_metacool`, `contig_contacts`,
+  `held_contigs` and `extract_contigs`; `metator.io.get_pairs_data` and
+  `read_bin_summary`; and the `metacool` argument of
+  `metator.validation.recursive_decontamination`.
 - **Breaking:** `--edge` (`-E`) of `network` and `pipeline`: the network
   counts every pair, as its contact map does, which holds the contacts of
   bins, not the positions of the reads (see Changed for the pairs that

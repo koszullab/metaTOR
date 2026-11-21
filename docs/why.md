@@ -35,9 +35,10 @@ that signal. It was described in [Baudry *et al.*, *Frontiers in Genetics*,
   [cooler](https://github.com/open2c/cooler) of all the contigs grouped by
   cluster, with the clusters' quality in its genomes table, which cooler and
   the tools built on it read.
-- **What comes next.** Contact maps of single clusters, scaffolding of a
-  cluster from its contacts, clustering of mobile genetic elements and their
-  association with their hosts, and a check of the library on its best MAGs.
+- **What comes next.** Clustering of mobile genetic elements and their
+  association with their hosts. metacooler, hicstuff and instaGRAAL take the
+  map and the clusters further: contact maps of single clusters, scaffolds,
+  and a check of the library (see [Other tools](other-tools.md)).
 
 ## A quick look
 

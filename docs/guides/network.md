@@ -18,7 +18,7 @@ A pair is kept when both mates align with a mapping quality of at least
 `--min-quality` (`-q`, 30 by default). The alignments are written to the
 output directory, sorted by read name; the pairs go to
 `alignment_<i>_sorted.pairs.gz`, sorted, compressed and indexed with pairix.
-`metator pipeline` writes them so only with `--no-clean-up` or `--scaffold`:
+`metator pipeline` writes them so only with `--no-clean-up`:
 otherwise, it reads them once and removes them (see
 [Running the pipeline](pipeline.md)).
 

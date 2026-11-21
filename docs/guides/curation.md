@@ -110,12 +110,11 @@ anvi-export-collection -p anvio/merged/PROFILE.db -C metator -O anvio/curated
 
 From `anvio/curated.txt`, metaTOR's Python API writes one FASTA file per
 cluster, checks the clusters with miComplete as `metator validation` does, and
-draws the plots of their quality:
+counts them in the quality classes of its log:
 
 ```python
 import os
 
-import metator.figures as mtf
 import metator.io as mio
 import metator.validation as mtv
 import pandas as pd
@@ -133,24 +132,16 @@ for bin_name, contigs in binning.groupby(binning):
 # miComplete on every cluster, with the bacterial and the archaeal markers.
 mtv.micomplete_quality("anvio/fasta", "anvio/micomplete.txt", threads=16)
 
-# The plots of metaTOR's validation, for the curated clusters.
+# The quality class of each curated cluster (HQ, MQ, LQ, Contaminated, Other).
 summary = pd.read_csv("anvio/micomplete.txt", sep="\t", comment="#", index_col=0)
-summary = summary.reset_index()
-mtf.figures_bins_distribution(summary, "anvio/bins_distribution.png")
-mtf.figures_bins_size_distribution(summary, assembly.size, 500000, "anvio/bins_size_distribution.png")
+quality = summary.apply(lambda row: mtv.bin_quality(row["Weighted completeness"], row["Weighted redundancy"]), axis=1)
+print(quality.value_counts())
 ```
 
-On the gut sample, before and after the curation:
-
-| |metaTOR|metaTOR, then anvi'o|
-|:-:|:-:|:-:|
-|**Completeness and contamination**|![The clusters of metaTOR](../images/bins_distribution.png)|![The clusters curated with anvi'o](../images/anvio_bins_distribution.png)|
-|**Quality classes**|![The clusters of metaTOR](../images/bins_size_distribution.png)|![The clusters curated with anvi'o](../images/anvio_bins_size_distribution.png)|
-
-To draw the contact map of a curated cluster, from the pairs files of the run
-(kept with `--no-clean-up`), add the curated clusters to the contig data
-table as a column, and give its header to `metator contactmap --object` (see
-[Viewing and scaffolding MAGs](visualisation.md)):
+To look at the contacts of a curated cluster, add the curated clusters to the
+contig data table as a column, give them to the contact map of the run with
+`metacooler reassign`, then extract a cluster with `metacooler extract` (see
+[Other tools](../other-tools.md)):
 
 ```python
 binning = mio.import_anvio_binning("anvio/curated.txt")
@@ -160,6 +151,7 @@ contigs.to_csv("binning/contig_data_anvio.txt", sep="\t")
 ```
 
 ```bash
-metator contactmap -a assembly.fa -c binning/contig_data_anvio.txt -e DpnII -O Anvio \
-    -n metator_00001_00000 binning/alignment_0_sorted.pairs.gz binning/alignment_1_sorted.pairs.gz
+metacooler reassign binning/metator.metacool --contigs binning/contig_data_anvio.txt \
+    --contigs-format Name,Anvio -o anvio/curated.metacool
+metacooler extract anvio/curated.metacool --genomes metator_00001_00000 -o metator_00001_00000.cool
 ```

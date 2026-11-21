@@ -1,7 +1,7 @@
 # Using the Python API
 
 Each command of metaTOR runs functions of its library, which can be called
-from Python to run a step, read the outputs, or redo a plot on other clusters.
+from Python to run a step, read the outputs, or check other clusters.
 This page shows the pieces to put together; the
 [Python API reference](../api/network.md) lists them all.
 
@@ -14,23 +14,21 @@ This page shows the pieces to put together; the
 | `metator.partition` | `mtp` | Partitioning the network into core and overlapping clusters |
 | `metator.validation` | `mtv` | miComplete, and the recursive partition of contaminated clusters |
 | `metator.metacool` | `mtmc` | Writing the `.metacool` contact map of the clusters |
-| `metator.contact_map` | `mtc` | The contact map of one contig or cluster |
-| `metator.scaffold`, `metator.regions` | `mts` | Scaffolding a cluster |
-| `metator.quality_check` | `mtq` | The quality of a library |
 | `metator.mge`, `metator.host` | `mtm` | Clustering MGE contigs, and finding their hosts |
-| `metator.figures` | `mtf` | The plots |
 | `metator.io` | `mio` | Reading and writing tables, pairs and FASTA files |
 | `metator.log` | `mtl` | The logger, `metator.log.logger` |
 
 ## Reading the outputs
 
-`read_bin_summary` and `read_contig_data` read the two main tables as pandas
-data frames, indexed by cluster name and by contig name:
+pandas reads `cluster_summary.txt`, indexed by cluster name, and
+`read_contig_data` the contig data table, indexed by contig name:
 
 ```python
+import pandas as pd
+
 import metator.io as mio
 
-summary = mio.read_bin_summary("binning/cluster_summary.txt")
+summary = pd.read_csv("binning/cluster_summary.txt", sep="\t", index_col=0)
 contigs = mio.read_contig_data("binning/contig_data_final.txt")
 
 # The high-quality MAGs, and their contigs.
@@ -105,12 +103,7 @@ clustering_matrix_file, contig_data_file = mtp.partition(
 | `metator network` | `metator.align.get_contact_pairs`, then `metator.network.alignment_to_contacts` (or `metacool_to_contacts`, from a contact map) |
 | `metator partition` | `metator.partition.partition` |
 | `metator validation` | `metator.validation.recursive_decontamination` |
-| `metator metacool` | `metator.metacool.write_metacool` |
-| `metator contactmap` | `metator.contact_map.generate_contact_map` |
-| `metator scaffold` | `metator.scaffold.get_scaffolds` |
-| `metator qc` | `metator.quality_check.quality_check` |
 | `metator mge` | `metator.mge.mge_binning` |
-| `metator pairs` | `metator.io.sort_and_index_pairs` |
 
 The commands also check their inputs, write their log file and clean up
 their temporary files, which the functions leave to the caller.
@@ -118,10 +111,10 @@ their temporary files, which the functions leave to the caller.
 ## Checking other clusters
 
 `metator.validation.micomplete_quality` runs miComplete on a directory of
-FASTA files, one per cluster, as the validation does, and the functions of
-`metator.figures` draw the plots of the validation from its results: see
-[Curating MAGs with anvi'o](curation.md#5-the-curated-clusters), which checks
-clusters curated by hand this way.
+FASTA files, one per cluster, as the validation does, and
+`metator.validation.bin_quality` gives the quality class of each from its
+results: see [Curating MAGs with anvi'o](curation.md#5-the-curated-clusters),
+which checks clusters curated by hand this way.
 
 ## Logging
 
