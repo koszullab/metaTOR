@@ -391,8 +391,8 @@ def remove_pyfastx_index(fasta):
 
 
 # The columns of the summary of the clusters that write_bin_summary writes with
-# four decimals: the abundances. Its other numbers have two, but its whole
-# numbers.
+# four decimals: the abundances. Its other decimal numbers have two, and its
+# whole numbers none.
 ABUNDANCE_COLUMNS = ("HiC_abundance", "SG_abundance")
 
 
