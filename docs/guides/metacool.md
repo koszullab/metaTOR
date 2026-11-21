@@ -332,7 +332,10 @@ metator validation sample.metacool -a assembly.fa -o binning
   clusters, as `pipeline MAP` does at its end: the final clusters are its
   genomes, and it holds every round (`core`, `overlapping`, `recursive_<k>`,
   `final`), the overlapping clusters that miComplete checked with its
-  columns, and the normalization of the network. The IDs of the contigs are
+  columns, and the network of the map (its columns and the weights of its
+  normalization), which it stores again once it has grouped the contigs by
+  cluster, last in the contigs and bins tables, as `pipeline MAP` stores it.
+  The IDs of the contigs are
   their positions in the map as the validation reads it: a validation run
   again on the map of the clusters, whose contigs are grouped by cluster,
   numbers them in that order.
