@@ -8,7 +8,7 @@ on:
   pull_request:
   workflow_dispatch:
   schedule:
-    # Weekly, so that upstream releases (pandas 3, hicstuff 3.2.5...) surface
+    # Weekly, so that upstream releases (pandas 3, metacooler...) surface
     # in the latest-dependencies job instead of on the next unrelated push.
     - cron: "17 5 * * 1"
 
@@ -56,7 +56,7 @@ jobs:
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         include:
           # The next Python release, allowed to fail. h5py (for cooler,
-          # through hicstuff) and pyfastx have no cp315 wheels yet: h5py is
+          # through metacooler) and pyfastx have no cp315 wheels yet: h5py is
           # built against the system HDF5, and pyfastx downloads the zlib,
           # sqlite and indexed_gzip sources it builds in.
           - python-version: "3.15"
@@ -68,7 +68,7 @@ jobs:
       - name: Install non-Python tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends bowtie2 bwa samtools prodigal hmmer zlib1g-dev ${{ matrix.extra-apt-packages }}
+          sudo apt-get install -y --no-install-recommends prodigal hmmer zlib1g-dev ${{ matrix.extra-apt-packages }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -107,7 +107,7 @@ jobs:
       - name: Install non-Python tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends bowtie2 bwa samtools prodigal hmmer zlib1g-dev
+          sudo apt-get install -y --no-install-recommends prodigal hmmer zlib1g-dev
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7

@@ -23,27 +23,11 @@
     "positional": [
      {
       "name": "map",
-      "required": false,
+      "required": true,
       "repeatable": false
      }
     ],
     "options": [
-     {
-      "short": "-b",
-      "long": "--aligner",
-      "takes_value": true,
-      "metavar": "STR",
-      "default": "bowtie2",
-      "required": false
-     },
-     {
-      "short": "-B",
-      "long": "--aligner-mode",
-      "takes_value": true,
-      "metavar": "STR",
-      "default": "normal",
-      "required": false
-     },
      {
       "short": "-a",
       "long": "--assembly",
@@ -66,22 +50,6 @@
       "takes_value": true,
       "metavar": "STR",
       "default": null,
-      "required": false
-     },
-     {
-      "short": "-1",
-      "long": "--forward",
-      "takes_value": true,
-      "metavar": "STR",
-      "default": null,
-      "required": false
-     },
-     {
-      "short": "-q",
-      "long": "--min-quality",
-      "takes_value": true,
-      "metavar": "INT",
-      "default": "30",
       "required": false
      },
      {
@@ -109,27 +77,11 @@
       "required": false
      },
      {
-      "short": "-2",
-      "long": "--reverse",
-      "takes_value": true,
-      "metavar": "STR",
-      "default": null,
-      "required": false
-     },
-     {
       "short": "-s",
       "long": "--self-contacts",
       "takes_value": false,
       "metavar": null,
       "default": false,
-      "required": false
-     },
-     {
-      "short": "-S",
-      "long": "--start",
-      "takes_value": true,
-      "metavar": "STR",
-      "default": "fastq",
       "required": false
      },
      {
@@ -440,7 +392,7 @@
     "positional": [
      {
       "name": "map",
-      "required": false,
+      "required": true,
       "repeatable": false
      }
     ],
@@ -451,22 +403,6 @@
       "takes_value": true,
       "metavar": "STR",
       "default": "louvain",
-      "required": false
-     },
-     {
-      "short": "-b",
-      "long": "--aligner",
-      "takes_value": true,
-      "metavar": "STR",
-      "default": "bowtie2",
-      "required": false
-     },
-     {
-      "short": "-B",
-      "long": "--aligner-mode",
-      "takes_value": true,
-      "metavar": "STR",
-      "default": "normal",
       "required": false
      },
      {
@@ -510,27 +446,11 @@
       "required": false
      },
      {
-      "short": "-1",
-      "long": "--forward",
-      "takes_value": true,
-      "metavar": "STR",
-      "default": null,
-      "required": false
-     },
-     {
       "short": "-i",
       "long": "--iterations",
       "takes_value": true,
       "metavar": "INT",
       "default": "100",
-      "required": false
-     },
-     {
-      "short": "-q",
-      "long": "--min-quality",
-      "takes_value": true,
-      "metavar": "INT",
-      "default": "30",
       "required": false
      },
      {
@@ -614,27 +534,11 @@
       "required": false
      },
      {
-      "short": "-2",
-      "long": "--reverse",
-      "takes_value": true,
-      "metavar": "STR",
-      "default": null,
-      "required": false
-     },
-     {
       "short": "-s",
       "long": "--size",
       "takes_value": true,
       "metavar": "INT",
       "default": "500000",
-      "required": false
-     },
-     {
-      "short": "-S",
-      "long": "--start",
-      "takes_value": true,
-      "metavar": "STR",
-      "default": "fastq",
       "required": false
      },
      {

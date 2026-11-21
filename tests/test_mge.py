@@ -445,7 +445,6 @@ def _map_of(path, lengths):
 # run would replace them with its map.
 MGE_INPUTS = {
     "the assembly": "assembly",
-    "a file of the index of the assembly": "index",
     "the contig data": "contigs",
     "the binning": "binning",
     "the MGE contigs": "mges",
@@ -566,10 +565,7 @@ def test_mge_on_a_map_refused(case, mge_run, metagenome_indexed_pairs, tmp_path,
     if case == "a lock held by another run":
         _lock(metacool, os.getpid())
     names.update(zip(["assembly", "contigs", "binning", "mges"], args[1:8:2], strict=True))
-    # The pyfastx index of the assembly, left by an earlier run.
-    names["index"] = f"{names['assembly']}.fxi"
     names["pairs_index"] = f"{names['pairs']}.px2"
-    Path(names["index"]).write_text("index")
     contig_data = pd.read_csv(names["contigs"], sep="\t")
     names["contig"], names["length"] = str(contig_data.Name[0]), int(contig_data.Size[0])
     names["short"] = names["length"] - 500
