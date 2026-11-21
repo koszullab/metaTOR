@@ -227,6 +227,15 @@ def test_a_clustered_contig_that_the_map_lacks_is_refused(metagenome, binning, t
     assert not out.exists()
 
 
+def test_write_map_takes_the_rounds_of_a_validation_from_its_clusters(tmp_path):
+    """Clusters given with rounds or round_names are refused before the map
+    is read: the rounds of a validation are those of its clusters."""
+    clusters = mtmc.FinalClusters({}, None, None, {})
+    for extra in [{"rounds": ()}, {"round_names": ["core"]}]:
+        with pytest.raises(ValueError, match=r"^write_map takes the clustering rounds of a validation from its clusters"):
+            mtmc.write_map(str(tmp_path / "absent.metacool"), str(tmp_path / "out.metacool"), clusters=clusters, **extra)
+
+
 def test_non_ascii_names_shown():
     """The first names, then how many more: the message ends with one period."""
     names = r"'é0', 'é1', 'é2', 'é3', 'é4', \.\.\. \(\+2 more\)"

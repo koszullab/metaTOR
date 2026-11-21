@@ -475,18 +475,20 @@ def map_partition(metacool, planned, network):
         raise
 
 
-def partition_entry(normalization, digest):
+def partition_entry(normalization, digest, table):
     """What a map records of the partition of its network, under the
     partition key of its metator metadata (see
     metator.metacool.write_map): the version of metaTOR, the command line
-    and the parameters of the run, and the normalization and the digest of
-    the network that it partitioned (see metator.network.network_digest),
-    which a validation checks against the network stored in the map (see
-    metator.metacool.read_partition)."""
+    and the parameters of the run, what it read of the map (read: the
+    network, see map_read; table: the contig data of the network), and the
+    normalization and the digest of the network that it partitioned (see
+    metator.network.network_digest), which a validation checks against the
+    network stored in the map (see metator.metacool.read_partition)."""
     return {
         "version": __version__,
         **run_metadata(),
         "normalization": normalization,
+        "read": map_read(table, normalization),
         mtmc.NETWORK_DIGEST: digest,
     }
 
@@ -506,9 +508,13 @@ def network_entry(columns_from_map=()):
     """What a map records of the run that stores the network of its contigs
     in it, under the network key of its metator metadata (see
     metator.metacool.Network): the version of metaTOR, the command line and
-    the parameters of the run, and the columns of the map that it read
-    (columns_from_map, see run_metadata)."""
-    return {"version": __version__, **run_metadata(columns_from_map)}
+    the parameters of the run, and what it read of the map (read): the
+    columns of its contigs table that it read in place of --enzyme and
+    --depth (contigs: columns_from_map, see
+    metator.network.contig_data_from_map), where the restriction sites and
+    the coverage that the map then stores came from. The network itself
+    comes from the contacts of the map."""
+    return {"version": __version__, **run_metadata(), "read": {"contigs": list(columns_from_map)}}
 
 
 def check_assembly(assembly):
@@ -551,20 +557,14 @@ def log_file_name(directory, command):
     return join(directory, f"metator_{command}_{now}.log")
 
 
-def run_metadata(columns_from_map=()):
+def run_metadata():
     """The command line and the parameters of the running command, as stored
-    in a .metacool file, and the columns that a run read from its map
-    (columns_from_map, see metator.network.contig_data_from_map): where the
-    restriction sites and the coverage that the map then stores came from,
-    which --enzyme and --depth do not say."""
+    in a .metacool file."""
     params = dict(click.get_current_context().params)
-    metadata = {
+    return {
         "command": shlex.join(["metator", *sys.argv[1:]]),
         "parameters": {name: list(value) if isinstance(value, tuple) else value for name, value in params.items()},
     }
-    if columns_from_map:
-        metadata["columns_from_map"] = list(columns_from_map)
-    return metadata
 
 
 def hold_lock(held, path, in_place):
@@ -826,7 +826,7 @@ def run_validation(
     partition_file = write_partition_table(table, partition, tmp_dir)
     overlapping_fasta_dir = join(tmp_dir, "overlapping_clusters")
     written = mtv.write_overlapping_fasta(metacool, assembly, partition, table, size, overlapping_fasta_dir, tmp_dir)
-    contigs_data, summary_columns = mtv.recursive_decontamination(
+    contigs_data, summary = mtv.recursive_decontamination(
         algorithm,
         assembly,
         partition_file,
@@ -850,32 +850,79 @@ def run_validation(
     )
     final = contigs_data["Final_cluster"].astype(str).str.strip()
     binned = ~final.isin(mtmc.UNBINNED)
+    assignment = dict(zip(contigs_data["Name"].astype(str)[binned], final[binned], strict=True))
+    check_final_clusters(assignment, final_fasta_dir)
     return mtmc.FinalClusters(
-        assignment=dict(zip(contigs_data["Name"].astype(str)[binned], final[binned], strict=True)),
+        assignment=assignment,
         summary=join(tmp_dir, "cluster_summary.txt"),
         rounds=mtcl.read_rounds(tmp_dir),
-        entry=validation_entry(normalization, table, summary_columns),
+        entry=validation_entry(normalization, table, summary),
     )
 
 
-def validation_entry(normalization, table, summary_columns):
+def check_final_clusters(assignment, final_fasta_dir):
+    """Refuse the final clusters of a validation (assignment: the final
+    cluster of each binned contig, by name) that are not those of the FASTA
+    files it wrote in final_fasta_dir: a file of a cluster without a contig,
+    or a cluster without a file. The contigs of a cluster are found by name,
+    from its FASTA file to the contig data of the run: a name read as another
+    (00123 as the number 123) would leave its cluster without them. The
+    reason is logged as an error, then ValueError is raised: the map of the
+    clusters is not written."""
+    written = {name[: -len(".fa")] for name in os.listdir(final_fasta_dir) if name.endswith(".fa")}
+    clustered = set(assignment.values())
+    if written == clustered:
+        return
+    reasons = []
+    if written - clustered:
+        reasons.append(f"no contig in the final cluster(s) {mtmc._shown(sorted(written - clustered))}")
+    if clustered - written:
+        reasons.append(f"no FASTA file for the final cluster(s) {mtmc._shown(sorted(clustered - written))}")
+    reason = (
+        f"The final clusters of the run are not those of their FASTA files in {final_fasta_dir}: "
+        f"{', and '.join(reasons)}. The map of the clusters is not written."
+    )
+    logger.error(reason)
+    raise ValueError(reason)
+
+
+def validation_entry(normalization, table, summary):
     """What a map records of the validation of its clusters, under the
     validation key of its metator metadata (see
     metator.metacool.write_map): the version of metaTOR, the command line and
-    the parameters of the run, what it read of the map (the columns of the
-    network of its contigs, from the contig data table, the weights of its
-    normalization, and the rounds of its partition), and the columns of the
-    summary of its clusters, in order (summary_columns: those of
-    cluster_summary.txt, which metator dump writes)."""
-    weights = [] if normalization == "None" else [mtmc.normalization_weight_name(normalization)]
-    read = {"contigs": mtmc.network_columns(table), "bins": weights, "rounds": list(mtmc.PARTITION_ROUNDS)}
+    the parameters of the run, what it read of the map (read: the columns of
+    the network of its contigs, from the contig data table, the weights of
+    its normalization, and the rounds of its partition), and how the summary
+    of its clusters, cluster_summary.txt, is written (summary, a
+    metator.io.SummaryLayout), which its values in the genomes table of the
+    map write again: its rows (summary_rows, the names of the clusters in
+    order), its columns (summary_columns, in order) and their formats
+    (summary_formats)."""
     return {
         "version": __version__,
         **run_metadata(),
         "normalization": normalization,
-        "read": read,
-        "summary_columns": list(summary_columns),
+        "read": map_read(table, normalization, mtmc.PARTITION_ROUNDS),
+        "summary_columns": list(summary.columns),
+        "summary_rows": list(summary.rows),
+        "summary_formats": dict(summary.formats),
     }
+
+
+def map_read(table, normalization, rounds=()):
+    """What a partition or validation run read of its map, as its entry of
+    the metator metadata records it (read, see partition_entry and
+    validation_entry): the columns of the contigs table that hold the
+    network (contigs: those of table, the contig data of the network, that
+    the map stores, see metator.metacool.network_columns), the weights of
+    its normalization in the bins table (bins: none for "None"), and the
+    clustering rounds (rounds: the partition, for a validation). pipeline
+    records what its steps read, which it holds already."""
+    weights = [] if normalization == "None" else [mtmc.normalization_weight_name(normalization)]
+    read = {"contigs": mtmc.network_columns(table), "bins": weights}
+    if rounds:
+        read["rounds"] = list(rounds)
+    return read
 
 
 # ---------------------------------------------------------------------------
@@ -1303,7 +1350,7 @@ def partition(
             metacool_file,
             planned,
             "the map with its partition",
-            partition=partition_entry(stored.normalization, stored.digest),
+            partition=partition_entry(stored.normalization, stored.digest, stored.table),
             rounds=mtcl.partition_rounds(clusters, list(stored.table["Name"])),
             round_names=list(mtmc.PARTITION_ROUNDS),
         )
@@ -1635,6 +1682,7 @@ def pipeline(
                 mtn.network_digest(
                     contacts, mtn.network_weights(network.table, normalization), network.table["Name"], normalization
                 ),
+                network.table,
             ),
             clusters=final,
         )

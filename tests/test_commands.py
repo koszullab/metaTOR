@@ -271,7 +271,7 @@ def test_network_from_the_columns_of_a_metacool(tmp_path, run_cli):
     pd.testing.assert_frame_equal(mtn.map_contig_table(str(maps["map"])), mtn.map_contig_table(str(maps["options"])))
     for path in maps.values():
         stored = metacooler.MetaCooler(str(path)).metadata["metator"]["network"]
-        assert stored.get("columns_from_map", []) == (["Restriction_site", "Shotgun_coverage"] if path == maps["map"] else [])
+        assert stored["read"] == {"contigs": ["Restriction_site", "Shotgun_coverage"] if path == maps["map"] else []}
     (log,) = (tmp_path / "map").glob("metator_network_*.log")
     logged = log.read_text()
     for what, column in [("restriction sites", "Restriction_site"), ("shotgun coverage", "Shotgun_coverage")]:

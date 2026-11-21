@@ -202,12 +202,29 @@ def test_name_recursive_clusters():
 
 def test_correct_final_bin():
     """The final bin of each contig: the bin of the FASTA file it was written
-    in (written, the contigs of each file by bin name)."""
-    data = pd.DataFrame({"Name": ["c1", "c2", "c3", "c4"], "Final_cluster": "ND"})
+    in (written, the contigs of each file by bin name). The contigs of a
+    bin partitioned again but kept whole, which keep the ID of their
+    recursive bin, are in it as the others are: binning.txt, which lists the
+    contigs by final bin, left them out."""
+    data = pd.DataFrame(
+        {"Name": ["c1", "c2", "c3", "c4"], "Recursive_cluster_ID": ["00000", "00001", "00003", "00000"], "Final_cluster": "ND"}
+    )
     written = {"B_00001_00000": ["c1", "c3"], "B_00002_00001": ["c2"], "B_00003_00000": ["c4"]}
     summary = {"B_00001_00000": {}, "B_00002_00001": {}}
     corrected = mtv.correct_final_bin(data, written, summary)
     assert list(corrected.Final_cluster) == ["B_00001_00000", "B_00002_00001", "B_00001_00000", "ND"]
+
+
+def test_correct_final_bin_refuses_a_contig_that_the_table_lacks():
+    """A contig of a final FASTA file that the contig data lacks (a name
+    that the table read as another: 00123 as the number 123) is refused,
+    named, rather than added to the table without a value."""
+    data = pd.DataFrame({"Name": ["123", "c2"], "Final_cluster": "ND"})
+    with pytest.raises(
+        ValueError,
+        match=r"^1 contig\(s\) of the FASTA files of the final clusters are not in the contig data of the validation: '00123'\.$",
+    ):
+        mtv.correct_final_bin(data, {"B_00001_00000": ["00123", "c2"]}, {"B_00001_00000": {}})
 
 
 @pytest.mark.parametrize(

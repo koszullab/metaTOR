@@ -30,6 +30,7 @@ from Bio.Restriction import RestrictionBatch
 from metator.log import logger
 from os.path import join, exists
 from secrets import randbits
+from typing import NamedTuple
 
 
 def check_is_fasta(in_file):
@@ -389,6 +390,52 @@ def remove_pyfastx_index(fasta):
         pass
 
 
+# The columns of the summary of the clusters that write_bin_summary writes with
+# four decimals: the abundances. Its other numbers have two, but its whole
+# numbers.
+ABUNDANCE_COLUMNS = ("HiC_abundance", "SG_abundance")
+
+
+class SummaryLayout(NamedTuple):
+    """How write_bin_summary wrote the summary of the final clusters
+    (cluster_summary.txt), which the map of the clusters records with its
+    values (see metator.cli.validation_entry), to write it again: a header
+    line, an empty field then the columns, then a line per row, its name
+    then a field per column, tab-separated.
+
+    Attributes
+    ----------
+    rows : list of str
+        The names of the clusters, in the order of the lines.
+    columns : list of str
+        The columns, in order, after the name of the cluster.
+    formats : dict
+        The format of each column, by name, as printf writes it: "%.2f" (a
+        number with two decimals), "%.4f" (four: the abundances), "%d" (a
+        whole number) or "%s" (text as it is: True or False for a boolean).
+        A missing value is an empty field.
+    """
+
+    rows: list
+    columns: list
+    formats: dict
+
+
+def _summary_format(column, values):
+    """The format of a column of the summary of the clusters, as
+    write_bin_summary writes it (see SummaryLayout): values, the column
+    before it is written."""
+    if column in ABUNDANCE_COLUMNS:
+        return "%.4f"
+    if pd.api.types.is_bool_dtype(values):
+        return "%s"
+    if pd.api.types.is_integer_dtype(values):
+        return "%d"
+    if pd.api.types.is_float_dtype(values):
+        return "%.2f"
+    return "%s"
+
+
 def write_bin_summary(bin_summary, bin_summary_file):
     """Function to write the bin summary from dictionnary to table text file.
 
@@ -401,14 +448,14 @@ def write_bin_summary(bin_summary, bin_summary_file):
 
     Returns
     -------
-    list of str
-        The columns of the summary, in order, after the name of the bin: what
-        the map of the clusters records of it (see
-        metator.metacool.write_map).
+    SummaryLayout
+        How the summary is written: its rows, its columns and their format,
+        which the map of the clusters records (see metator.cli.validation_entry).
     """
 
     # Transform dictionnary to pandas DataFrame.
     bin_summary = pd.DataFrame.from_dict(bin_summary, orient="index")
+    formats = {str(column): _summary_format(column, bin_summary[column]) for column in bin_summary.columns}
 
     # Change float format of the coverage.
     bin_summary["HiC_abundance"] = bin_summary["HiC_abundance"].map(lambda x: "%.4f" % x)
@@ -419,7 +466,7 @@ def write_bin_summary(bin_summary, bin_summary_file):
 
     # Write the file.
     bin_summary.to_csv(bin_summary_file, sep="\t", float_format="%.2f")
-    return [str(column) for column in bin_summary.columns]
+    return SummaryLayout([str(row) for row in bin_summary.index], list(formats), formats)
 
 
 def write_mge_data(mge_data, out_file):

@@ -12,6 +12,7 @@ from pathlib import Path
 
 import cooler
 import metacooler
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -71,6 +72,26 @@ def _kept(out):
         if found:
             return found[-1].parent
     raise FileNotFoundError(f"No tables of a validation of {out}")
+
+
+def _summary_from_the_map(path):
+    """The summary of the final clusters of the run that wrote the map of the
+    clusters at path (cluster_summary.txt), as the map alone writes it
+    again: its genomes table holds the values, and its entry validation how
+    they are written (its rows, columns and their formats, see
+    metator.cli.validation_entry), an empty field for a missing value."""
+    mc = metacooler.MetaCooler(str(path))
+    entry = mc.metadata["metator"]["validation"]
+    genomes = mc.genomes.set_index("name")
+    columns, formats = entry["summary_columns"], entry["summary_formats"]
+
+    def field(value, written):
+        return "" if value is None or value == "" or (isinstance(value, float) and np.isnan(value)) else written % value
+
+    lines = ["\t".join(["", *columns])]
+    for row in entry["summary_rows"]:
+        lines.append("\t".join([row, *(field(genomes.loc[row, column], formats[column]) for column in columns)]))
+    return "\n".join(lines) + "\n"
 
 
 def _named_edges(network, contig_data):
@@ -253,6 +274,11 @@ def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenom
     # The bins of the split are recursive bins, of step 1; the others are not.
     assert list(summary.recursive) == list(summary.step > 0)
     assert summary.recursive.any() and not summary.recursive.all()
+    # The map alone writes the summary again, byte for byte.
+    assert _summary_from_the_map(metacool) == (_kept(out) / "cluster_summary.txt").read_text()
+    # metacooler wrote the FASTA files of the clusters of the recursive step,
+    # and indexed nothing beside the assembly.
+    assert not os.path.exists(f"{metagenome_inputs['assembly']}.fxi")
 
 
 def test_validation_checks_the_clusters_in_the_order_of_the_partition(
@@ -342,6 +368,50 @@ def test_validation_again_on_the_map_of_its_clusters(
     assert list(finals["second"].ID) == list(range(1, len(regrouped) + 1))
     found = {run: final.set_index("Name").Final_cluster.sort_index() for run, final in finals.items()}
     assert found["second"].equals(found["first"])
+
+
+def test_contigs_named_by_numbers(tmp_path, monkeypatch, run_cli):
+    """Contigs named by numbers (000017, 1e5, 2.50), which pandas reads as
+    numbers unless told otherwise: a run reads every table of names as
+    text, and each contig goes by its name, as the map names it, to the
+    final cluster of the FASTA file that lists it (read as numbers, the
+    names lost their leading zeros, or their form, and the clusters their
+    contigs)."""
+    from tests.conftest import SYNTHETIC_SEED
+
+    metagenome = synthetic.make_metagenome(seed=SYNTHETIC_SEED)
+    renamed = {}
+    for i, contig in enumerate(metagenome.contigs):
+        renamed[contig.name] = {0: "1e5", 1: "2.50"}.get(i, f"{i:06d}")
+        contig.name = renamed[contig.name]
+    for column in ["chr1", "chr2"]:
+        metagenome.pairs[column] = metagenome.pairs[column].map(renamed)
+    files = metagenome.write_all(tmp_path / "inputs")
+    metacool = contig_map(
+        files["pairs"], mtn.create_contig_data(str(files["assembly"])), tmp_path / "input.metacool", columns=False
+    )
+    monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
+    out = tmp_path / "out"
+    common = ["-o", out, "-T", tmp_path / "tmp"]
+    random.seed(0)
+    run_cli("network", metacool, "-a", files["assembly"], "-e", "DpnII", *common)
+    run_cli("partition", metacool, "-i", "10", *common)
+    run_cli("validation", metacool, "-a", files["assembly"], "-s", "50000", "-i", "5", *common)
+    final = pd.read_csv(_kept(out) / "contig_data_final.txt", sep="\t", dtype={"Name": str}, keep_default_na=False)
+    assert sorted(final.Name) == sorted(renamed.values())
+    mc = metacooler.MetaCooler(str(metacool))
+    genome_of = dict(zip(mc.contigs["name"], mc.genomes["name"].to_numpy()[mc.contigs["genome_id"]], strict=True))
+    binned = final[final.Final_cluster != "ND"]
+    assert len(binned) and {name: genome_of[name] for name in binned.Name} == dict(
+        zip(binned.Name, binned.Final_cluster, strict=True)
+    )
+    # Each FASTA file of a final cluster lists the contigs of its cluster in
+    # the map.
+    files = sorted((out / "final_clusters").glob("*.fa"))
+    assert sorted(path.stem for path in files) == sorted(set(binned.Final_cluster))
+    for path in files:
+        listed = [line[1:].split()[0] for line in path.read_text().splitlines() if line.startswith(">")]
+        assert sorted(listed) == sorted(name for name, genome in genome_of.items() if genome == path.stem)
 
 
 def test_a_contig_named_na(tmp_path, monkeypatch, run_cli):
@@ -948,21 +1018,51 @@ def _metator_metadata(objects):
     return json.loads(metadata)["metator"]
 
 
-def _first_cluster_contaminated(metagenome):
+def _first_cluster_contaminated(metagenome, kept_whole=False):
     """A stub miComplete (see synthetic.fake_micomplete) that finds the first
     overlapping cluster contaminated (a weighted redundancy of 1.5): the
-    validation partitions it again, which makes the round recursive_1 (its
-    parts, too incomplete for one of them to replace it)."""
+    validation partitions it again, which makes the round recursive_1, whose
+    clusters replace it; with kept_whole, they are too incomplete for that
+    (a weighted completeness of 0.1), and the cluster is kept whole."""
 
     def micomplete_quality(fasta_dir, outfile, threads):
         synthetic.write_micomplete_summary(fasta_dir, outfile, metagenome)
+        # Three comment lines, the header, then a row per cluster.
+        lines = [line.split("\t") for line in Path(outfile).read_text().splitlines()]
         if Path(fasta_dir).name == "overlapping_clusters":
-            # Three comment lines, the header, then a row per cluster.
-            lines = [line.split("\t") for line in Path(outfile).read_text().splitlines()]
             lines[4][lines[3].index("Weighted redundancy")] = "1.5"
-            Path(outfile).write_text("".join("\t".join(line) + "\n" for line in lines))
+        elif kept_whole:
+            for line in lines[4:]:
+                line[lines[3].index("Weighted completeness")] = "0.1"
+        Path(outfile).write_text("".join("\t".join(line) + "\n" for line in lines))
 
     return micomplete_quality
+
+
+def test_a_cluster_partitioned_again_but_kept_whole(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli):
+    """A contaminated cluster that the recursive step partitions again, into
+    clusters too incomplete to replace it, is kept whole: its contigs keep
+    the IDs of their recursive clusters in contig_data_final.txt, and are in
+    it, in binning.txt (which left them out) and in the map of the clusters
+    as in the round final, its FASTA file listing them."""
+    monkeypatch.setattr("metator.validation.micomplete_quality", _first_cluster_contaminated(metagenome, kept_whole=True))
+    metacool = _contig_map(metagenome_inputs, tmp_path / "contigs.metacool")
+    out = tmp_path / "out"
+    random.seed(0)
+    run_cli("pipeline", metacool, "-a", metagenome_inputs["assembly"], "-o", out, "-T", tmp_path / "tmp", "-s", "20000",
+            "-i", "10", "-j", "5")  # fmt: skip
+    final = pd.read_csv(_kept(out) / "contig_data_final.txt", sep="\t", dtype=str, keep_default_na=False)
+    kept_whole = final[(final.Recursive_cluster_ID != "00000") & (final.Final_cluster != "ND")]
+    assert len(kept_whole) and set(kept_whole.Final_cluster) == {"metator_00001_00000"}
+    binning = pd.read_csv(_kept(out) / "binning.txt", sep="\t", header=None, names=["Name", "Bin"], dtype=str)
+    assert list(binning.Name) == list(final.Name[final.Final_cluster != "ND"])
+    mc = metacooler.MetaCooler(str(metacool))
+    assert "recursive_1" in [entry["name"] for entry in mc.cluster_rounds]
+    members = mc.cluster_members("final")
+    in_cluster = set(members.contig[members.cluster == "metator_00001_00000"])
+    assert set(kept_whole.Name) <= in_cluster
+    listed = (out / "final_clusters" / "metator_00001_00000.fa").read_text().splitlines()
+    assert in_cluster == {line[1:].split()[0] for line in listed if line.startswith(">")}
 
 
 def test_steps_on_a_map_give_the_map_of_pipeline(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli):

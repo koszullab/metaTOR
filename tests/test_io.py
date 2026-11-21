@@ -177,12 +177,41 @@ def test_bin_summary_round_trip(tmp_path, shotgun):
     if shotgun:
         for i, values in enumerate(summary.values()):
             values["SG_abundance"] = 10.0 / (i + 1)
-    mio.write_bin_summary(summary, str(tmp_path / "cluster_summary.txt"))
+    layout = mio.write_bin_summary(summary, str(tmp_path / "cluster_summary.txt"))
     table = pd.read_csv(tmp_path / "cluster_summary.txt", sep="\t", index_col=0)
     assert list(table.index) == ["bin_1", "bin_2"]
     assert table.loc["bin_1", "Weighted completeness"] == 0.91
     assert table.loc["bin_1", "HiC_abundance"] == 1.2346
     assert ("SG_abundance" in table.columns) == shotgun
+    assert layout.rows == ["bin_1", "bin_2"] and layout.columns == list(table.columns)
+
+
+def test_bin_summary_layout_writes_it_again(tmp_path):
+    """The layout of the summary (its rows, columns and formats) writes it
+    again, byte for byte, from its values as they were (or as the genomes
+    table of the map gives them back: numbers, and text): two decimals for
+    the decimals, four for the abundances, the whole numbers as they are,
+    the text and the booleans as written, and an empty field for a missing
+    value."""
+    summary = {
+        "b_2": {"Length": 1500.0, "GC-content": 40.123, "recursive": True, "step": 1, "parent": "b_1",
+                "HiC_abundance": 1.234567, "SG_abundance": 2.5},
+        "b_1": {"Length": 3000.0, "GC-content": float("nan"), "recursive": False, "step": 0, "parent": None,
+                "HiC_abundance": 0.1, "SG_abundance": 0.0},
+    }  # fmt: skip
+    path = tmp_path / "cluster_summary.txt"
+    layout = mio.write_bin_summary(summary, str(path))
+    assert layout.rows == ["b_2", "b_1"]
+    assert layout.formats == {
+        "Length": "%.2f", "GC-content": "%.2f", "recursive": "%s", "step": "%d", "parent": "%s",
+        "HiC_abundance": "%.4f", "SG_abundance": "%.4f",
+    }  # fmt: skip
+    lines = ["\t".join(["", *layout.columns])]
+    for row in layout.rows:
+        values = [summary[row][column] for column in layout.columns]
+        lines.append("\t".join([row, *("" if pd.isna(value) else layout.formats[column] % value
+                                        for column, value in zip(layout.columns, values, strict=True))]))  # fmt: skip
+    assert path.read_text() == "\n".join(lines) + "\n"
 
 
 @pytest.mark.parametrize("with_tmp_column", [True, False])

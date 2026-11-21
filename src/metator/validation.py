@@ -120,8 +120,24 @@ def correct_final_bin(contigs_data, written, bin_summary):
     --------
     pandas.core.frame.DataFrame
         Dataframe with the contigs informations.
+
+    Raises:
+    -------
+    ValueError
+        If a contig written in the FASTA file of a final bin is not in
+        contigs_data.
     """
+    from metator.metacool import _shown
+
     contigs_data = contigs_data.set_index("Name", drop=False)
+    # A contig written that the table lacks would be added to it, with no
+    # other value (a name that the table read otherwise: 00123 as 123).
+    absent = [name for bin_name in bin_summary for name in written[bin_name] if name not in contigs_data.index]
+    if absent:
+        raise ValueError(
+            f"{len(absent)} contig(s) of the FASTA files of the final clusters are not in the contig data of the "
+            f"validation: {_shown(absent)}."
+        )
     for bin_name in bin_summary:
         for name in written[bin_name]:
             contigs_data.loc[name, "Final_cluster"] = bin_name
@@ -749,9 +765,9 @@ def recursive_decontamination(
         The contig data of the validation, with the final cluster of each
         contig (Final_cluster, ND for none), as contig_data_final.txt holds
         it.
-    list of str:
-        The columns of the summary of the final clusters
-        (cluster_summary.txt), in order.
+    metator.io.SummaryLayout:
+        How the summary of the final clusters (cluster_summary.txt) is
+        written: its rows, its columns and their format.
     """
 
     # No bin to validate: miComplete would write no result to read.
@@ -779,6 +795,9 @@ def recursive_decontamination(
         contig_data_file,
         sep="\t",
         header=0,
+        # Names as written: a contig named 00123 is not the number 123, nor
+        # one named 1e5 a number at all.
+        dtype={"Name": str},
         # As written: "00008", not 8.
         converters={"Overlapping_cluster_ID": str},
         # A contig named NA (or null, N/A...) is a name: only an empty field,
@@ -945,11 +964,11 @@ def recursive_decontamination(
     rounds.write(outdir)
 
     # Save bin information in final file
-    summary_columns = mio.write_bin_summary(bin_summary, join(outdir, "cluster_summary.txt"))
+    summary = mio.write_bin_summary(bin_summary, join(outdir, "cluster_summary.txt"))
 
     # Write the new file
     contigs_data.to_csv(join(outdir, "contig_data_final.txt"), sep="\t", header=True, index=True)
-    return contigs_data, summary_columns
+    return contigs_data, summary
 
 
 def name_recursive_clusters(bin_id, contigs_data, recursive_bins, size, parent_dict, prefix, groups):

@@ -18,6 +18,7 @@ import pytest
 from click.testing import CliRunner
 
 import metator.cli as mtcli
+import metator.io as mio
 import metator.metacool as mtmc
 from metator.version import __version__
 from tests.locks import described, held_lock, killed_lock, lock_file, refusal
@@ -356,7 +357,7 @@ def stub_pipeline(monkeypatch, tmp_path):
         calls["partition_table"] = pd.read_csv(args[2], sep="\t", dtype={"Core_cluster_ID": str})
         # No final cluster: every contig of the partition in none, and no
         # column of a summary.
-        return pd.DataFrame({"Name": calls["partition_table"]["Name"], "Final_cluster": "ND"}), []
+        return pd.DataFrame({"Name": calls["partition_table"]["Name"], "Final_cluster": "ND"}), mio.SummaryLayout([], [], {})
 
     def write_map(metacool, outfile, **stores):
         # The map of the clusters of a validation or pipeline run, recorded;
@@ -395,16 +396,20 @@ def _assembly(tmp_path):
 
 def _final_tables(monkeypatch, contig, final_bin="metator_00001_00000", summary=None):
     """Have the stub validation give the final clusters: the contig
-    ``contig`` in the bin ``final_bin`` (ND: in none) and c2 in none, and
-    write the bin summary (``summary``, if given) in the directory of its
-    tables, the temporary directory of the run."""
+    ``contig`` in the bin ``final_bin`` (ND: in none) and c2 in none, write
+    the FASTA file of the bin in the directory of the final clusters, and
+    the bin summary (``summary``, if given) in the directory of its tables,
+    the temporary directory of the run."""
     stub = mtcli.mtv.recursive_decontamination
 
     def recursive_decontamination(*args, **kwargs):
         stub(*args, **kwargs)
         rows = "" if final_bin == "ND" else f"{final_bin}\t0.9\n"
+        if final_bin != "ND":
+            Path(args[3], f"{final_bin}.fa").write_text(f">{contig}\nACGT\n")
         Path(args[7], "cluster_summary.txt").write_text(summary or f"\tCompleteness\n{rows}")
-        return pd.DataFrame({"Name": [contig, "c2"], "Final_cluster": [final_bin, "ND"]}), ["Completeness"]
+        layout = mio.SummaryLayout([] if final_bin == "ND" else [final_bin], ["Completeness"], {"Completeness": "%.2f"})
+        return pd.DataFrame({"Name": [contig, "c2"], "Final_cluster": [final_bin, "ND"]}), layout
 
     monkeypatch.setattr("metator.validation.recursive_decontamination", recursive_decontamination)
 
@@ -623,7 +628,8 @@ def test_pipeline_from_a_metacool(stub_pipeline, tmp_path, run_cli):
     # The stub validation clusters no contig, and writes no table.
     assert clusters.assignment == {} and clusters.rounds is None and clusters.summary == str(tables / "cluster_summary.txt")
     # No column was read from the map (the stub reads none).
-    assert "columns_from_map" not in network.entry
+    assert network.entry["read"] == {"contigs": []}
+    assert stores["partition"]["read"] == {"contigs": ["GC_content", "Hit"], "bins": ["metator_length"]}
     assert f"INFO :: {metacool} is the input map {metacool}: it is replaced once the map of the clusters is validated." in logged
 
 
@@ -811,7 +817,7 @@ def test_run_reads_the_columns_of_its_map(command, stub_pipeline, tmp_path, monk
 
         entry = metacooler.MetaCooler(str(metacool)).metadata["metator"]["network"]
         assert entry["normalization"] == "theoritical_hit"
-    assert entry["columns_from_map"] == ["Restriction_site", "Shotgun_coverage"]
+    assert entry["read"] == {"contigs": ["Restriction_site", "Shotgun_coverage"]}
 
 
 @pytest.mark.parametrize("command", ["network", "pipeline"])
@@ -2699,6 +2705,25 @@ def test_pipeline_refuses_earlier_bins_before_reading_the_assembly(tmp_path, mon
         run_cli("pipeline", _contig_map(tmp_path / "map.metacool"), "-a", assembly, "-o", out, "-T", tmp_path / "tmp")
     (log,) = out.glob("metator_pipeline_*.log")
     assert f"ERROR :: {out / 'final_clusters'} already existed." in log.read_text()
+
+
+def test_final_clusters_are_those_of_their_fasta_files(tmp_path, caplog):
+    """The final clusters of a validation are those of the FASTA files it
+    wrote: a file of a cluster without a contig, or a cluster without a
+    file, is refused, named, and the map is not written."""
+    directory = tmp_path / "final_clusters"
+    directory.mkdir()
+    for name in ["m_00001_00000", "m_00002_00000"]:
+        (directory / f"{name}.fa").write_text(">c\nACGT\n")
+    mtcli.check_final_clusters({"c1": "m_00001_00000", "c2": "m_00002_00000"}, str(directory))
+    with pytest.raises(ValueError) as refused:
+        mtcli.check_final_clusters({"c1": "m_00001_00000", "c3": "m_00003_00000"}, str(directory))
+    assert str(refused.value) == (
+        f"The final clusters of the run are not those of their FASTA files in {directory}: no contig in the final "
+        "cluster(s) 'm_00002_00000', and no FASTA file for the final cluster(s) 'm_00003_00000'. The map of the "
+        "clusters is not written."
+    )
+    assert caplog.records[-1].levelname == "ERROR" and caplog.records[-1].getMessage() == str(refused.value)
 
 
 def test_pipeline_leaves_the_directory_of_the_assembly_alone(stub_pipeline, tmp_path, run_cli):
