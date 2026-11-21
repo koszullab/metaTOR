@@ -643,8 +643,8 @@ def test_pipeline_map_is_the_map_of_the_pairs(metagenome, metagenome_inputs, tmp
     # map of the pairs does not hold.
     assert "metator_empirical_hit" in bins.columns
     pd.testing.assert_frame_equal(bins.drop(columns="metator_empirical_hit", errors="ignore"), ref.bins()[:])
-    pd.testing.assert_frame_equal(clr.pixels()[:], ref.pixels()[:])
-    pd.testing.assert_frame_equal(clr.chroms()[:], ref.chroms()[:])
+    for table in ["pixels", "chroms"]:
+        pd.testing.assert_frame_equal(getattr(clr, table)()[:], getattr(ref, table)()[:])
     _assert_normalized_as_the_network(written, tmp_path)
     genomes = metacooler.MetaCooler(str(written)).genomes
     pd.testing.assert_frame_equal(genomes, metacooler.MetaCooler(str(expected)).genomes)
@@ -882,8 +882,8 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, tmp_path, monke
     run_map = cooler.Cooler(str(written))
     # But the normalization of the network, which the run stores in its map.
     pd.testing.assert_frame_equal(clr.bins()[:], run_map.bins()[:].drop(columns="metator_empirical_hit", errors="ignore"))
-    pd.testing.assert_frame_equal(clr.pixels()[:], run_map.pixels()[:])
-    pd.testing.assert_frame_equal(clr.chroms()[:], run_map.chroms()[:])
+    for table in ["pixels", "chroms"]:
+        pd.testing.assert_frame_equal(getattr(clr, table)()[:], getattr(run_map, table)()[:])
     pd.testing.assert_frame_equal(metacooler.MetaCooler(str(command)).genomes, genomes)
     assert clr.info["metadata"]["qc"] == metadata["qc"]
 
