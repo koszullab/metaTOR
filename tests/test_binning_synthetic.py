@@ -44,13 +44,6 @@ def _keep_the_tables(monkeypatch):
     monkeypatch.setattr(mtcli, "private_tmp_dir", lambda tmpdir, clean_up=True: private_tmp_dir(tmpdir, clean_up=False))
 
 
-def _columns_sorted(frame):
-    """A table with its columns in alphabetical order: the contigs table of
-    a map, whose columns come in the order they were written (see
-    metator.metacool.write_map)."""
-    return frame[sorted(frame.columns)]
-
-
 def _kept(out):
     """The directory of the tables of the latest validation or pipeline run
     whose output directory is out: the temporary directory of the run (in
@@ -650,8 +643,8 @@ def test_pipeline_map_is_the_map_of_the_pairs(metagenome, metagenome_inputs, tmp
     # map of the pairs does not hold.
     assert "metator_empirical_hit" in bins.columns
     pd.testing.assert_frame_equal(bins.drop(columns="metator_empirical_hit", errors="ignore"), ref.bins()[:])
-    pd.testing.assert_frame_equal(_columns_sorted(clr.pixels()[:]), _columns_sorted(ref.pixels()[:]))
-    pd.testing.assert_frame_equal(_columns_sorted(clr.chroms()[:]), _columns_sorted(ref.chroms()[:]))
+    pd.testing.assert_frame_equal(clr.pixels()[:], ref.pixels()[:])
+    pd.testing.assert_frame_equal(clr.chroms()[:], ref.chroms()[:])
     _assert_normalized_as_the_network(written, tmp_path)
     genomes = metacooler.MetaCooler(str(written)).genomes
     pd.testing.assert_frame_equal(genomes, metacooler.MetaCooler(str(expected)).genomes)
@@ -889,8 +882,8 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, tmp_path, monke
     run_map = cooler.Cooler(str(written))
     # But the normalization of the network, which the run stores in its map.
     pd.testing.assert_frame_equal(clr.bins()[:], run_map.bins()[:].drop(columns="metator_empirical_hit", errors="ignore"))
-    pd.testing.assert_frame_equal(_columns_sorted(clr.pixels()[:]), _columns_sorted(run_map.pixels()[:]))
-    pd.testing.assert_frame_equal(_columns_sorted(clr.chroms()[:]), _columns_sorted(run_map.chroms()[:]))
+    pd.testing.assert_frame_equal(clr.pixels()[:], run_map.pixels()[:])
+    pd.testing.assert_frame_equal(clr.chroms()[:], run_map.chroms()[:])
     pd.testing.assert_frame_equal(metacooler.MetaCooler(str(command)).genomes, genomes)
     assert clr.info["metadata"]["qc"] == metadata["qc"]
 

@@ -379,11 +379,7 @@ def assert_same_map(path, expected):
     clr, ref = cooler.Cooler(str(path)), cooler.Cooler(str(expected))
     pd.testing.assert_frame_equal(clr.bins()[:], ref.bins()[:])
     pd.testing.assert_frame_equal(clr.pixels()[:], ref.pixels()[:])
-    # The columns of the contigs table in any order: the oracle stores its
-    # columns after the QC counts, which the map of a run carries before
-    # them (see assert_contig_columns).
-    chroms, ref_chroms = clr.chroms()[:], ref.chroms()[:]
-    pd.testing.assert_frame_equal(chroms.sort_index(axis=1), ref_chroms.sort_index(axis=1))
+    pd.testing.assert_frame_equal(clr.chroms()[:], ref.chroms()[:])
     pd.testing.assert_frame_equal(genomes_without_qc(path), genomes_without_qc(expected))
 
 
@@ -671,12 +667,11 @@ def test_map_of_the_bins_drops_the_columns_of_an_earlier_run(earlier, metagenome
 def test_map_of_the_bins_from_the_map_of_an_earlier_run(earlier_bins, metagenome, binning, tmp_path):
     """From the map of an earlier run, which carries metaTOR's contig
     columns: the map of the pairs (see pairs_map), contigs table
-    included, metaTOR's columns last, as there. metacooler reassign stores
-    the columns that it carries before the QC columns when it groups the
-    contigs again (other bins): the contigs table is then that of the map
-    of the pairs, column for column; and so it is when it relabels them in
-    place (the same bins), which keeps the order of the columns that
-    create writes, genome_id third (metacooler 0.4.0)."""
+    included, column for column, metaTOR's columns last, as there, whether
+    metacooler reassign groups the contigs again (other bins), which writes
+    the columns it carries before the QC columns, or relabels them (the same
+    bins): the network is stored again after it (see
+    metator.metacool.write_map)."""
     earlier = tmp_path / "earlier.metacool"
     if earlier_bins == "same":
         shutil.copyfile(mtmc_map(binning, tmp_path), earlier)
@@ -697,7 +692,7 @@ def test_map_of_the_bins_from_the_map_of_an_earlier_run(earlier_bins, metagenome
         pd.testing.assert_frame_equal(getattr(clr, table)()[:], getattr(ref, table)()[:])
     chroms, ref_chroms = clr.chroms()[:], ref.chroms()[:]
     assert list(ref_chroms.columns) == ["name", "length", "genome_id", *QC_CONTIG_COLUMNS, *CONTIG_COLUMNS]
-    pd.testing.assert_frame_equal(chroms.sort_index(axis=1), ref_chroms.sort_index(axis=1))
+    pd.testing.assert_frame_equal(chroms, ref_chroms)
     assert_contig_columns(out, binning["contig_data"])
     # The genomes, QC block and columns included, carried over to the bins.
     pd.testing.assert_frame_equal(metacooler.MetaCooler(str(out)).genomes, metacooler.MetaCooler(str(expected)).genomes)
@@ -1165,7 +1160,7 @@ def test_map_of_the_bins_from_the_map_of_the_contigs(final, metagenome, metageno
     chroms, ref_chroms = clr.chroms()[:], ref.chroms()[:]
     columns = ["GC_content", "Hit", "Shotgun_coverage", "Restriction_site"]
     assert list(ref_chroms.columns) == ["name", "length", "genome_id", *QC_CONTIG_COLUMNS, *columns]
-    pd.testing.assert_frame_equal(chroms.sort_index(axis=1), ref_chroms.sort_index(axis=1))
+    pd.testing.assert_frame_equal(chroms, ref_chroms)
     pd.testing.assert_frame_equal(metacooler.MetaCooler(str(outfile)).genomes, metacooler.MetaCooler(str(expected)).genomes)
     info, ref_info = dict(clr.info), dict(ref.info)
     metadata, ref_metadata = info.pop("metadata"), ref_info.pop("metadata")
