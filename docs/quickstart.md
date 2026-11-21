@@ -85,7 +85,6 @@ INFO :: Detect core clusters:
 INFO :: 429 core clusters were found.
 INFO :: Detect overlapping clusters:
 INFO :: 230 overlapping clusters were found.
-INFO :: Extract clusters:
 INFO :: 24 clusters have been extracted
 INFO :: Lauch miComplete quality check.
 INFO :: No more contaminated cluster has been found after 1 steps.

@@ -89,7 +89,7 @@ metacooler writes it (`metacooler.write_fasta`, stitched).
 `mge` writes no summary table: the round `mge` holds what
 `mges_bin_summary.tsv` held (`mges_cluster_summary.tsv` in a development
 build). An earlier run's, in the output directory, would pass for this run's:
-it is refused without `-F`, before any work, and `-F` removes it.
+it is refused, with or without `-F`, before any work, and never removed.
 
 ## In the contact map of the run
 

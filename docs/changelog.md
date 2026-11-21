@@ -37,8 +37,9 @@ each removed command.
     and `Restriction_site` when it has them), the normalization of the
     network as the weights `metator_<normalization>` of the bins (none for
     `None`), and its run under the `network` entry of the `metator` key of
-    the metadata. It writes no `network.txt` and no
-    `contig_data_network.txt`, and loses `-t/--threads`: the network is in
+    the metadata. It writes no `network.txt`, and writes
+    `contig_data_network.txt` in its temporary directory, which `-N` keeps,
+    not in the output directory; it loses `-t/--threads`: the network is in
     memory, and the external `sort` is no longer run.
   - `partition MAP` reads the network from the map, and stores its
     partition there: every core cluster (`core_00001`...) and every
@@ -63,10 +64,16 @@ each removed command.
     `cluster_members.txt` and miComplete's results) and `recursive_clusters/`
     are written in the temporary directory of the run, which
     `-N/--no-clean-up` keeps and the log names: `metator dump` writes them
-    from the map (see Added). An earlier run's tables and recursive clusters
-    in the output directory, under the names of 2.0 or of 1.x
-    (`bin_summary.txt`, `recursive_bin/`), are refused without `-F`, which
-    removes them: left there, they would pass for the run's.
+    from the map (see Added).
+  - **The results of an earlier run in the output directory are refused,
+    with or without `-F`, and never removed**: the tables and recursive
+    clusters of a development build of 2.0, and the outputs of 1.x (its
+    tables and networks, `bin_summary.txt`, `network.txt`, the clustering
+    matrices, `recursive_bin/`, `final_bin/`, `final_bin_unscaffold/`,
+    `overlapping_bin/`, `scaffold_bin/`, `plot/`). Left there, they would pass
+    for the results of the run; a file of one of these names, a user's own
+    too, is refused and left as it is. `-F` replaces only what a run writes
+    itself: `final_clusters/` and the `--output-map`.
   - `pipeline MAP` runs the three steps on the map, and writes it once, at
     its end: the steps run one by one on a map give the map of `pipeline`.
     It no longer writes `<outdir>/metator.metacool`, as 1.4.0 did: the map of
@@ -123,22 +130,24 @@ each removed command.
   0.4.0 or later); the size, GC content and hits of each contig are those
   that `metator network` stored. A map without those statistics, or without
   the network, is refused before anything is written, and an MGE contig that
-  the map lacks is left out, with a warning. Gone: its pairs files, `-c`,
-  `-b` and `--map`, and the dependencies on pypairix and pyfastx. It takes
+  the map lacks is left out, with a warning. Gone: its pairs files, `-c` and
+  `-b`, and the dependencies on pypairix and pyfastx. It takes
   the MGE contigs the longest first, ties by name, whatever the order of the
   map, which numbers some clusters otherwise and may break a tie of scores
   otherwise. It stores the MGE clusters in the map, as the round `mge` (and
   `--random`, the round `mge_random`), where it wrote
-  `mges_bin_summary.tsv`, which is refused without `-F` in the output
-  directory; `mges_binned.fa` is written by metacooler, its contigs joined by
+  `mges_bin_summary.tsv`, which is refused in the output directory, with or
+  without `-F`, and never removed; `mges_binned.fa` is written by metacooler, its contigs joined by
   200 `N`, in lines of 80 bases.
 - **Removed commands and features**, with what replaces them in
   [Other tools](other-tools.md): `metator qc`, `contactmap`, `metacool`,
   `scaffold` and `pairs`; `pipeline -v/--scaffold` and `-J/--junctions`; the
   plots of `validation` and `pipeline` (`plot/`); `-C/--cluster-matrix` of
   `partition`, `validation` and `pipeline`, and the clustering matrices it
-  wrote; `-s/--self-contacts` of `network`; and the module `metator.main`
-  (`python -m metator.main`): run `metator`, or `python -m metator`.
+  wrote; `-s/--self-contacts` of `network`; `pipeline --no-metacool` of
+  1.4.0, as the map of the clusters is what a run writes (over `MAP`, or to
+  `--output-map`); and the module `metator.main` (`python -m metator.main`):
+  run `metator`, or `python -m metator`.
 - **Seeded runs.** The temporary directory of a command is named from the
   random numbers of the system, not from Python's `random` module, which the
   partition draws from: a run seeded as before gives other clusters.
@@ -197,8 +206,9 @@ each removed command.
   (as after `metacooler merge`, which keeps the contigs table of its first
   map).
 - `--output-map FILE` on every command that writes the map (`network`,
-  `partition`, `validation`, `pipeline`, `mge`), and `-F` on `network`,
-  `partition` and `mge` to replace it.
+  `partition`, `validation`, `pipeline`, `mge`), and `-F` on `network` and
+  `mge` to replace it. `partition -F`, which replaced the outputs of an
+  earlier partition (it writes none now), replaces the `--output-map`.
 - Python API: `metator.dump`; `metator.metacool.write_map`, the one writer of
   the maps of the steps, and `map_rounds`, `read_partition`; `metator.network`
   `map_network`, `stored_network`, `contig_contacts`, `contig_hits`,
@@ -250,14 +260,20 @@ each removed command.
   weighted completeness of 33%, not 50%.
 - `pipeline` and `validation` check their arguments and their assembly before
   `-F` replaces the clusters of an earlier run; `-F` replaces a directory of
-  clusters that is a symbolic link, not its target; a `--tmpdir` in a
-  directory that `-F` removes is refused.
+  clusters that is a symbolic link, not its target; a `--tmpdir` in
+  `final_clusters/`, which `-F` replaces, or in a directory of the results of
+  an earlier run, which the run refuses, is refused as a usage error.
 - `pipeline` and `validation` stop with a clear error when no cluster of the
   partition reaches `--size`, where miComplete failed.
 - An output path that holds `::`, which metacooler reads as `file::group`, is
   refused; a map given as `file::/` is the file.
 - The validation leaves no pyfastx index (`.fxi`) next to the assembly or the
   FASTA files of the clusters.
+- The FASTA files of the recursive and final clusters (`validation`,
+  `pipeline`) and of the MGE clusters (`mge`) were written by the `pyfastx`
+  command through the shell (`pyfastx extract … >`): without `pyfastx` on the
+  `PATH` (a virtual environment used without activating it), every file came
+  out empty, without an error. metacooler writes them now.
 
 ## [1.4.0] - 2026-11-17
 

@@ -4,7 +4,7 @@
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/metator.svg)
 [![Build Status](https://github.com/koszullab/metator/actions/workflows/ci.yml/badge.svg)](https://github.com/koszullab/metator/actions)
 [![codecov](https://codecov.io/gh/koszullab/metator/branch/master/graph/badge.svg)](https://codecov.io/gh/koszullab/metator)
-[![License: GPLv3](https://img.shields.io/badge/License-GPL%203-0298c3.svg)](https://opensource.org/licenses/bo-3.0)
+[![License: GPLv3](https://img.shields.io/badge/License-GPL%203-0298c3.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 Metagenomic Tridimensional Organisation-based Reassembly: metaTOR clusters the
@@ -12,12 +12,12 @@ contigs of a metagenome assembly into metagenome-assembled genomes (MAGs) from
 the Hi-C contacts between them (metaHiC).
 
 <p align="center">
-  <img src="docs/images/metator_logo.png" width="200">
+  <img src="https://raw.githubusercontent.com/koszullab/metaTOR/master/docs/images/metator_logo.png" width="200">
 </p>
 
 The documentation is at <https://koszullab.github.io/metator/>: a
-[quickstart](docs/quickstart.md), the [concepts](docs/concepts.md), a guide per
-step, the [CLI reference](docs/cli.md) and the [file formats](docs/formats.md).
+[quickstart](https://koszullab.github.io/metator/quickstart/), the [concepts](https://koszullab.github.io/metator/concepts/), a guide per
+step, the [CLI reference](https://koszullab.github.io/metator/cli/) and the [file formats](https://koszullab.github.io/metator/formats/).
 
 1. [Installation](#installation)
 2. [Usage](#usage)
@@ -69,7 +69,7 @@ uv sync
 uv run metator --help
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) to run the tests and checks.
+See [CONTRIBUTING.md](https://github.com/koszullab/metaTOR/blob/master/CONTRIBUTING.md) to run the tests and checks.
 
 ## Usage
 
@@ -78,9 +78,10 @@ metaTOR starts from a `.metacool` contact map of the contigs: a
 contigs, which [hicstuff](https://github.com/koszullab/hicstuff) makes from the
 reads (`hicstuff pipeline -M metacool`) and
 [metacooler](https://github.com/js2264/metacooler) from pairs files
-(`metacooler create pairs`). Every step reads the map, its first argument, and
-stores what it finds in it: the map is what the steps share, and it becomes the
-contact map of the clusters.
+(`metacooler create pairs`). Every command takes the map as its first argument:
+the clustering steps and `mge` store what they find in it, so that the map is
+what the steps share, and it becomes the contact map of the clusters; `dump`
+only reads it.
 
 ```sh
 metator {network|partition|validation|pipeline|mge|dump} MAP [OPTIONS]
@@ -98,7 +99,7 @@ metator {network|partition|validation|pipeline|mge|dump} MAP [OPTIONS]
 `metator --help` lists the commands, `metator <command> --help` their options,
 and `metator --version` prints the version. The steps update the map in place,
 through metacooler, under its lock; `--output-map FILE` writes the map to FILE
-instead and leaves `MAP` as it was. [The contact map of the clusters](docs/guides/metacool.md)
+instead and leaves `MAP` as it was. [The contact map of the clusters](https://koszullab.github.io/metator/guides/metacool/)
 says what the map holds, how it is written, and what a run refuses.
 
 ### From the reads to the clusters
@@ -130,7 +131,7 @@ metacooler create pairs --pairs L1.pairs.gz --pairs L2.pairs.gz --bins 1000 --no
 ```
 
 The map can have any bin size, from one bin per contig to fixed bins.
-[Other tools](docs/other-tools.md#from-the-reads-to-the-map) gives the details.
+[Other tools](https://koszullab.github.io/metator/other-tools/#from-the-reads-to-the-map) gives the details.
 
 ### Step by step
 
@@ -146,7 +147,6 @@ metator partition sample.metacool -o binning
 metator validation sample.metacool -a assembly.fa -o binning
 ```
 
-![pipeline](docs/images/pipeline.png)
 
 ### Outputs
 
@@ -188,13 +188,13 @@ mc.contigs  # one row per contig: its GC content, hits... and its cluster
 **The tables of a run**, which `metator dump MAP -o DIR` writes from the map
 of the clusters: `contig_data_final.txt`, `cluster_summary.txt`,
 `binning.txt` (which anvi'o imports), `clusters.txt`, `cluster_members.txt`
-and `network.txt`. A run keeps them in its temporary directory, which
-`--no-clean-up` (`-N`) keeps, with miComplete's results and the FASTA files of
-the clusters it checked. [File formats](docs/formats.md) describes each one.
+and `network.txt`. A run keeps the first five in its temporary directory,
+which `--no-clean-up` (`-N`) keeps, with miComplete's results and the FASTA
+files of the clusters it checked; `network.txt` comes from the map only. [File formats](https://koszullab.github.io/metator/formats/) describes each one.
 
 ### Mobile genetic elements
 
-![mge](docs/images/metator_mge.png)
+![mge](https://raw.githubusercontent.com/koszullab/metaTOR/master/docs/images/metator_mge.png)
 
 `metator mge MAP -a assembly.fa -m mges.txt` clusters the contigs that the list
 `mges.txt` names as MGEs, from the contacts of the map between them, and those
@@ -204,22 +204,22 @@ reads the map after `metator network`, `pipeline` or `validation`, writes
 `mges_binned.fa`, one record per MGE cluster (`MetaTOR_MGE_00001`...), its
 contigs joined by 200 `N`, and stores the MGE clusters in the map, as the round
 `mge` of its clustering rounds. See
-[Clustering mobile genetic elements](docs/guides/mge.md).
+[Clustering mobile genetic elements](https://koszullab.github.io/metator/guides/mge/).
 
 ## Migrating from metaTOR 1.x
 
 metaTOR 2.0 reads no reads, alignments or pairs files: hicstuff and metacooler
 make the map. It removed the commands that did what hicstuff, metacooler,
 instaGRAAL or pairix do (`qc`, `contactmap`, `metacool`, `scaffold`, `pairs`)
-and the plots: [Other tools](docs/other-tools.md) says what replaces each one.
+and the plots: [Other tools](https://koszullab.github.io/metator/other-tools/) says what replaces each one.
 Its outputs are named after clusters, where 1.x named them after bins
-(`cluster_summary.txt` was `bin_summary.txt`). [Migrating to 2.0](docs/migration.md)
+(`cluster_summary.txt` was `bin_summary.txt`). [Migrating to 2.0](https://koszullab.github.io/metator/migration/)
 lists every change to the command line and the outputs, and the
-[changelog](docs/changelog.md) has the details.
+[changelog](https://koszullab.github.io/metator/changelog/) has the details.
 
 ## Contributions
 
-We welcome contributions to the project. Please refer to the [CONTRIBUTING.md](CONTRIBUTING.md) file for more information.
+We welcome contributions to the project. Please refer to the [CONTRIBUTING.md](https://github.com/koszullab/metaTOR/blob/master/CONTRIBUTING.md) file for more information.
 
 ## References
 

@@ -15,7 +15,7 @@ metator --version
 |---|---|
 | Several libraries | One map, which sums them: make the map of each library, then merge them with `metacooler merge` (see [Other tools](other-tools.md)). |
 | Several enzymes | Separated by commas: `DpnII,HinfI`. |
-| `-F, --force` | Replace the outputs of an earlier run, in the output directory and at `--output-map`. Without it, a command refuses to overwrite them. A run from a map updates that map in place without it, and warns, before any work, of the clusters and clustering rounds that it replaces there: `--output-map` writes the map of the run to another file instead, and leaves the map as it was. |
+| `-F, --force` | Replace what the command writes itself, when an earlier run left it: the final clusters (`final_clusters/`), the tables of a dump, the `--output-map`. Without it, a command refuses to overwrite them. The other results of an earlier run in the output directory (the tables of a development build of 2.0, the outputs of 1.x, an earlier summary of `mge`) are refused, with or without it, and never removed. A run from a map updates that map in place without it, and warns, before any work, of the clusters and clustering rounds that it replaces there: `--output-map` writes the map of the run to another file instead, and leaves the map as it was. |
 | Writing a map | Through metacooler: a run holds the lock of the map it writes, `<map>.lock` (FILE's with `--output-map`), from its checks to its end, and writes the map in an edit session, one staged copy next to it (`.<map>.<uuid>.<n>.d/`), validated, then renamed over it, so a run that stops leaves the map as it was. `MAP` given as a symbolic link is updated where the link points; a symbolic link at `--output-map` is replaced (`-F`), not its target, and a hard link of `MAP` there is refused. A map that another process holds, a map without write permission, or one whose directory is not writable (with room for a copy of the map and for the new map), is refused before any work: write a copy with `--output-map`. A run killed by SIGTERM (a job scheduler's time limit) or SIGKILL leaves its lock and its staged copy, which the next run that writes the map on the same host takes over and removes; on another host, delete the files that the error names. |
 | `-T, --tmpdir` | Each run works in a directory of its own inside it, removed at the end, unless `--no-clean-up` or the run fails: the log says which. |
 | `-N, --no-clean-up` | Keep the temporary directory of the run: that of a `validation` or `pipeline` run holds its tables. |
@@ -60,8 +60,8 @@ hicstuff's next release), or metacooler from pairs files
 | `-P, --rec-overlap` | `90` | The overlap threshold of the recursive partition, in percent. |
 | `-o, --outdir` | the current directory | The output directory. |
 | `-p, --prefix` | none | Name the clusters `<prefix>_metator_…`. Letters, digits, `_` and `-` only. |
-| `-F, --force` | off | Replace `final_clusters/` of an earlier run, remove the tables and `recursive_clusters/` that an earlier version wrote in the output directory, and replace an existing `--output-map` file. |
-| `-T, --tmpdir` | `./tmp` | The temporary directory, where the run works in a directory of its own: the FASTA files of the clusters that miComplete checks (at most the size of the assembly), miComplete's results, the tables of the validation, and, from a compressed assembly, its decompressed copy. Not in `final_clusters/`, which the run makes anew, nor in `recursive_clusters/`, which `-F` removes. |
+| `-F, --force` | off | Replace `final_clusters/` of an earlier run, and an existing `--output-map` file. The other results of an earlier run in the output directory (the tables and `recursive_clusters/` of a development build of 2.0, the outputs of 1.x) are refused, with or without `-F`, and never removed. |
+| `-T, --tmpdir` | `./tmp` | The temporary directory, where the run works in a directory of its own: the FASTA files of the clusters that miComplete checks (at most the size of the assembly), miComplete's results, the tables of the validation, and, from a compressed assembly, its decompressed copy. Not in `final_clusters/`, which the run makes anew, nor in a directory of the results of an earlier run (`recursive_clusters/`, `final_bin/`...), which the run refuses. |
 | `-t, --threads` | `1` | Threads for the partition and the validation (miComplete). |
 | `-N, --no-clean-up` | off | Keep the temporary directory of the run, which the log names: the tables of the validation (`cluster_summary.txt`, `contig_data_final.txt`, `binning.txt`, `clusters.txt`, `cluster_members.txt`), miComplete's results and the FASTA files of the clusters that it checked. |
 | `--output-map` | none | Write the contact map of the clusters to this file (replaced only with `-F`), and leave `MAP` as it was. By default, the run updates `MAP` in place. |
@@ -100,10 +100,12 @@ its partition too: when the run stores another network than the one the
 partition was made on, it says so with a warning, and `metator validation
 MAP` refuses the partition until `metator partition MAP` partitions the new
 network ([`metator dump MAP`](#dump) refuses the map too). The map is updated
-in place, or written to `--output-map`. It writes no table: `network.txt` and
-`contig_data_network.txt` are gone. [`metator dump`](#dump) writes the
-network, `network.txt`, from the map of the clusters of a run; metacooler
-writes it from any map that holds it (see
+in place, or written to `--output-map`. It writes no table in the output
+directory: `network.txt` is gone, and `contig_data_network.txt`, the contig
+data that it stores in the map, is written in its temporary directory, which
+`-N` keeps. [`metator dump`](#dump) writes the network, `network.txt`, from
+the map of the clusters of a run; metacooler writes it from any map that holds
+it, one that only `network` ran on included (see
 [The network](formats.md#the-network)).
 
 | Option | Default | Description |
@@ -174,8 +176,8 @@ of the validation (`cluster_summary.txt`, `contig_data_final.txt`,
 `binning.txt`, `clusters.txt`, `cluster_members.txt`, miComplete's results)
 and `recursive_clusters/` stay in its temporary directory, which `-N`
 keeps, and [`metator dump`](#dump) writes the tables from the map. An
-earlier version wrote them in the output directory: there, they are refused
-without `-F`, which removes them. **Guide:**
+earlier version wrote them in the output directory: there, they are refused,
+with or without `-F`, and never removed. **Guide:**
 [Partition and validation](guides/binning.md#validation).
 
 ```console
@@ -213,8 +215,8 @@ MAP` does at its end: in place, or to `--output-map`. See
 | `-s, --size` | `500000` | The size, in bp, that an overlapping cluster of the partition must reach to be checked, and that a cluster of the recursive partition must exceed. |
 | `-o, --outdir` | `./` | The output directory. |
 | `-p, --prefix` | none | Name the recursive clusters `<prefix>_metator_…`. |
-| `-F, --force` | off | Replace `final_clusters/`, remove the tables and `recursive_clusters/` that an earlier version wrote in the output directory, and replace an existing `--output-map` file. |
-| `-T, --tmpdir` | `./tmp` | The temporary directory, where the run writes, in a directory of its own, the clusters that miComplete checks (at most the size of the assembly), miComplete's results and the tables of the validation, and, from a compressed assembly, its decompressed copy. Not in `final_clusters/`, which the run makes anew, nor in `recursive_clusters/`, which `-F` removes. |
+| `-F, --force` | off | Replace `final_clusters/`, and an existing `--output-map` file. The other results of an earlier run in the output directory (the tables and `recursive_clusters/` of a development build of 2.0, the outputs of 1.x) are refused, with or without `-F`, and never removed. |
+| `-T, --tmpdir` | `./tmp` | The temporary directory, where the run writes, in a directory of its own, the clusters that miComplete checks (at most the size of the assembly), miComplete's results and the tables of the validation, and, from a compressed assembly, its decompressed copy. Not in `final_clusters/`, which the run makes anew, nor in a directory of the results of an earlier run (`recursive_clusters/`, `final_bin/`...), which the run refuses. |
 | `-t, --threads` | `1` | Threads for the partition and miComplete. |
 | `-N, --no-clean-up` | off | Keep the temporary directory of the run, which the log names: the tables of the validation (`cluster_summary.txt`, `contig_data_final.txt`, `binning.txt`, `clusters.txt`, `cluster_members.txt`), miComplete's results and the FASTA files of the clusters that it checked. |
 | `--output-map` | none | Write the map of the clusters to this file (replaced only with `-F`), and leave `MAP` as it was. By default, the run updates `MAP` in place. |
@@ -266,7 +268,7 @@ replaces them (a symbolic link there is replaced, not its target), and so is
 a directory where a table goes. Give the dump a directory of its own, not
 the output directory of a run: a `validation` or `pipeline` run there would
 take its tables for those that an earlier version wrote there, which it
-refuses without `-F`, and removes with it. The tables are written under
+refuses, with or without `-F`. The tables are written under
 temporary names, then renamed onto their own once all are written: a dump
 that fails leaves the output directory as it was.
 
@@ -279,9 +281,12 @@ that fails leaves the output directory as it was.
 | `network.txt` | The network of the contigs, without a header: `contig1`, `contig2` (their names) and the weight of their edge, the normalization that `metator network` stored (the count of their contacts for `None`); one row per pair of contigs in contact, in the order of the map, without the contacts within a contig (see [The network](formats.md#the-network)). |
 
 The values are those of the tables that the run kept in its temporary
-directory: `cluster_summary.txt` is the same file, and so is `clusters.txt`,
-but for the rounds that a later command stored in the map (`metator mge`),
-which it lists after those of the run, with `cluster_members.txt`.
+directory: `cluster_summary.txt` is the same file, and so is `clusters.txt`
+until a later command stores a round in the map. After `metator mge`,
+`clusters.txt` and `cluster_members.txt` list the rounds `mge` and
+`mge_random` after those of the run, and every row of `clusters.txt` gains
+their columns, `GC`, `Hit` and `BinningScore` (`NA` for the rounds of the
+run).
 The rows of `contig_data_final.txt`, `binning.txt` and `cluster_members.txt`
 come in the order of the map, which a validation regroups by cluster: the
 run's tables followed the map as it read it.
@@ -341,7 +346,7 @@ it, before any work; so is an assembly that is not a FASTA file, plain or
 compressed with gzip, as `validation` refuses it, and the summary of the MGE
 clusters that an earlier version wrote in the output directory
 (`mges_bin_summary.tsv`, or `mges_cluster_summary.tsv` of a development
-build), without `-F`, which removes it. `--random` stores the round `mge_random` and writes
+build), with or without `-F`: it is never removed. `--random` stores the round `mge_random` and writes
 `mges_binned_random.fa`, and leaves the round `mge` as it was. A run that
 replaces the clusters of the map (`partition`, `validation`, `pipeline`)
 drops the rounds `mge` and `mge_random`, and their entries, with a warning:
@@ -354,7 +359,7 @@ run `mge` again on its map.
 | `-s, --threshold-bin` | `0.8` | The score above which two contigs, or clusters, are merged. |
 | `-r, --random` | off | Shuffle the contigs between the clusters: a random clustering of the same shape, stored as the round `mge_random` and written to `mges_binned_random.fa`. |
 | `-o, --outdir` | the current directory | The output directory. |
-| `-F, --force` | off | Replace an existing `--output-map` file, and remove the summary of the MGE clusters that an earlier version wrote in the output directory (`mges_bin_summary.tsv` or `mges_cluster_summary.tsv`), which the round `mge` of the map replaces. |
+| `-F, --force` | off | Replace an existing `--output-map` file. A summary of the MGE clusters that an earlier version wrote in the output directory (`mges_bin_summary.tsv` or `mges_cluster_summary.tsv`) is refused, with or without `-F`, and never removed. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory, where metacooler copies a compressed assembly, plain, while it reads it. `mge` writes no temporary file of its own. |
 | `-N, --no-clean-up` | off | Keep the temporary directory of the run: `mge` leaves nothing in it. |
 | `--output-map` | none | Write the map with the MGE clusters to this file (replaced only with `-F`), and leave `MAP` as it was. |

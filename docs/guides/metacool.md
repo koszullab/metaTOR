@@ -99,13 +99,16 @@ metacooler network sample.metacool --level contig --balance metator_empirical_hi
 
 A run of an earlier version whose `partition` and `validation` were not given
 the map has no map of its clusters: `metacooler reassign` writes it from the map of its contigs,
-`contig_data_final.txt` and `cluster_summary.txt`, and `metacooler annotate`
-adds the columns that metaTOR measured on the contigs (see
-[Other tools](../other-tools.md)):
+`contig_data_final.txt` and the summary of the clusters, and `metacooler
+annotate` adds the columns that metaTOR measured on the contigs (see
+[Other tools](../other-tools.md)). For the tables of a run of 1.x, the summary
+is `bin_summary.txt`, and `--contigs-format metator` reads the cluster of each
+contig in `Final_cluster`, then in 1.x's `Final_bin` (the summary of a 2.0
+development build is `cluster_summary.txt`):
 
 ```bash
 metacooler reassign sample.metacool --contigs binning/contig_data_final.txt \
-    --contigs-format Name,Final_cluster --genomes binning/cluster_summary.txt \
+    --contigs-format metator --genomes binning/bin_summary.txt \
     --genomes-format 1 -o binning/clusters.metacool
 metacooler annotate binning/clusters.metacool --contigs binning/contig_data_final.txt \
     --contigs-format Name --inplace \

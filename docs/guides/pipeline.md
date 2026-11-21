@@ -89,8 +89,10 @@ map of the clusters (see [`dump`](../cli.md#dump)), in the order of that map,
 without the `ID`. [File formats](../formats.md) describes each table.
 
 A run refuses to overwrite the final clusters of an earlier one unless given
-`--force` (`-F`), and the tables and `recursive_clusters/` that an earlier
-version wrote in the output directory too, which `-F` removes.
+`--force` (`-F`). The other results of an earlier run in the output directory
+(the tables and `recursive_clusters/` of a development build of 2.0, the
+outputs of 1.x) are refused, with or without `-F`, and never removed: move
+them away, or give the run another `--outdir`.
 
 ## Choosing the options
 
@@ -104,7 +106,7 @@ version wrote in the output directory too, which `-F` removes.
 | `--size` | 500000 | The size, in base pairs, an overlapping cluster must reach to be checked with miComplete, and a recursive cluster must exceed |
 | `--prefix` | none | Names the clusters `<prefix>_metator_…` |
 | `--threads` | 1 | Threads for the partition and the validation |
-| `--tmpdir` | `./tmp` | Where the temporary files go; deleted at the end, unless `--no-clean-up`. It holds the tables of the run, the FASTA files of the clusters that miComplete checks (at most the size of the assembly) and, from a compressed assembly, its decompressed copy: give it room for both. Not in `final_clusters/` of `--outdir`, which the run makes anew, nor in `recursive_clusters/`, which `-F` removes |
+| `--tmpdir` | `./tmp` | Where the temporary files go; deleted at the end, unless `--no-clean-up`. It holds the tables of the run, the FASTA files of the clusters that miComplete checks (at most the size of the assembly) and, from a compressed assembly, its decompressed copy: give it room for both. Not in `final_clusters/` of `--outdir`, which the run makes anew, nor in a directory of the results of an earlier run there (`recursive_clusters/`, `final_bin/`...), which the run refuses |
 
 The validation is the step that needs the most memory and time: miComplete
 runs prodigal and hmmer on every cluster.

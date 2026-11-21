@@ -47,7 +47,10 @@ dependencies = [
     # stays >=0.3.0, which the commit pinned in [tool.uv.sources] satisfies
     # (its version is still 0.3.x). At the release: require metacooler>=0.4.0
     # here, delete [tool.uv.sources], then `uv lock --upgrade-package
-    # metacooler`.
+    # metacooler`. The bioconda recipe of metaTOR, which the docs recommend,
+    # then requires metacooler>=0.4.0 and drops hicstuff, pysam, pypairix and
+    # pyfastx: metacooler must be on bioconda or conda-forge first (submit its
+    # recipe if it is not), or the conda package of 2.0 cannot be built.
     "metacooler>=0.3.0",
 
     # NON PIP DEPENDENCIES (miComplete's)
