@@ -234,8 +234,8 @@ and the tools built on it read it as any `.cool` file, and `metacooler` adds the
   from the `Hit`, `Shotgun_coverage` and `Restriction_site` columns of the contigs table, which the
   column records, so that metacooler drops it when an edit changes one of them. A run whose map lacks
   a column that the normalization reads (`Restriction_site` without `--enzyme`) stores none, with a
-  warning, and so does `--normalization None`, without one. It needs `metacooler.store_weights`, from
-  metacooler's next release: with metacooler 0.3.0, the map stores none, which the log says;
+  warning, and so does `--normalization None`, without one; a normalization that metacooler fails to
+  store fails the map, which is then not written, with the reason;
 * the metadata of the file hold the version of metaTOR, the command line and its parameters, under
   the `metator` key.
 
@@ -332,30 +332,32 @@ included, but for its assembly name and its history. The new map is
 written through metacooler, in an edit session (`metacooler.staged_edit`): every
 edit of the step goes into one copy of the map, staged in a private directory
 next to it (`.<map>.<uuid>.<n>.d/`), which `metacooler` validates in full, then
-renames over the map, and copies once more into a fresh file, which holds none
-of the space that the edits left behind, so a map updated run after run does
-not grow. When the map cannot be written, the run stops with the reason, and the
+renames over the map through a fresh file, which holds none of the space that
+the edits left behind, so a map updated run after run does not grow. When the map cannot be written, the run stops with the reason, and the
 map is left as it was, as it is when the run stops for any other reason (Ctrl-C
 included). A map given through a symbolic link is updated where the link
 points (the link keeps pointing at it), and its lock and its staged copy are
-next to that file; `--output-map` replaces a symbolic link, not its target.
+next to that file. `--output-map FILE` is a map of its own unless it names that
+file: a symbolic link there is replaced, not its target, and a hard link of
+the input map (the same file under another name) is refused before any work.
 The map keeps its mode, owner, group and extended attributes, where the run
 may set them (a warning names those it cannot keep). The directory of the map
-must be writable, with room for a copy of the map, and a map without write
-permission is refused before any work. A run from an entry of a `.mmetacool`
-collection needs `--output-map`, and a FILE that exists is replaced only with
-`-F`. A run that updates a map in place warns, before any work, of the
+must be writable, with room for two copies of the map at most, plus cooler's
+temporary files, and a map without write permission is refused before any
+work. A run from an entry of a `.mmetacool` collection needs `--output-map`,
+and a FILE that exists, a symbolic link too, is replaced only with `-F`. A run that updates a map in place warns, before any work, of the
 clusters and the clustering rounds of an earlier run (or of another binner)
 that it replaces there: `--output-map` keeps them, as it leaves the map as it
 was. A run holds metacooler's lock, `<map>.lock`, of the map it writes, from
-its checks to its end: a second run, or a metacooler command, that would write
-the same map stops before any work, naming the process that holds it. With
+its checks to its end, and reads the map under it: a second run, or a
+metacooler command that writes the map in place (`annotate --inplace`,
+`normalize`...), stops before any work, naming the process that holds it. With
 `--output-map`, that is FILE, so runs from one map, each with its own
-`--output-map`, run side by side. A map that changed since the run read it, at
-its start (another run replaced it, or a program that takes no metacooler lock,
-`cooler balance` or a script, wrote it), is refused when the run writes its
-map, rather than mixed with it: the run stops with the reason, and the map
-keeps that change. A command that reads a map (`network MAP`, the input map of
+`--output-map`, run side by side. A map that changed since the run read it
+(another run replaced it, or a program that takes no metacooler lock, `cooler
+balance` or a script, wrote it) is refused when the run writes its map, rather
+than mixed with it: the run stops with the reason, and the map keeps that
+change. A command that reads a map (`network MAP`, the input map of
 a run with `--output-map`) stops with an error when another run replaces it as
 it reads it, rather than mix the two maps; run it again once that run has
 ended. Neither metaTOR nor metacooler handles signals: a run stopped by Ctrl-C

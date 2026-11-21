@@ -17,12 +17,11 @@ All notable changes to this project will be documented in this file.
   an edit changes one of them. A map without a column that the
   normalization reads (`Restriction_site` without `--enzyme`) stores none,
   with a warning; a run from the map of an earlier run replaces the
-  normalization of that run. It needs `metacooler.store_weights`, from
-  metacooler's next release: with metacooler 0.3.0, the map stores none,
-  which the log says. Python API:
+  normalization of that run. A normalization that metacooler fails to store
+  fails the map, which is then not written, with the reason. Python API:
   `metator.metacool.store_normalization`,
-  `metator.network.normalization_weights`, `metator.metacool.stores_weights`,
-  and `normalization` of `metator.metacool.reassign_metacool`.
+  `metator.network.normalization_weights`, and `normalization` of
+  `metator.metacool.reassign_metacool`.
 - The clustering rounds of a run: the validation writes `clusters.txt`,
   every cluster of every round (`overlapping`, `recursive_<k>`, `final`)
   with the round and name of its parent and miComplete's columns, and
@@ -163,25 +162,36 @@ All notable changes to this project will be documented in this file.
   the edits of a step go into one copy of the map, staged in a private
   directory next to it (`.<map>.<uuid>.<n>.d/`), which metacooler validates
   in full, then renames over the map, so a run that stops, for any reason,
-  leaves it as it was; the map is then copied into a fresh file, so a map
+  leaves it as it was; it installs it through a fresh file, so a map
   updated run after run does not grow. A map given through a symbolic link
   is updated where the link points, and the link keeps pointing at it. The
   map keeps its mode, owner, group and extended attributes where the run may
   set them, and a warning names those it cannot keep. `--output-map FILE`
-  writes it elsewhere and leaves the input map alone (a symbolic link at
-  FILE is replaced, not its target); a run from an entry of a `.mmetacool`
-  collection needs it. A run holds metacooler's lock of the map it writes,
-  `<map>.lock` (FILE's, with `--output-map`), from its checks to its end: a
-  second run, or a metacooler command, that would write the same map stops
-  before any work, naming the process that holds it; runs from one map, each
-  with its own `--output-map`, run side by side. So the directory of the map
-  must be writable, with room for a copy of the map, and a map whose
-  directory is not, or a map without write permission, is refused before
-  any work: write it elsewhere with `--output-map`. A map that changed since
-  the run read it, at its start (another run replaced it, or a program that
-  takes no metacooler lock, `cooler balance` or a script, wrote it), is
-  refused when the run writes its map, rather than mixed with it: the run
-  stops with the reason. A run that updates a map in
+  writes it elsewhere and leaves the input map alone, unless FILE names the
+  file of the input map, which the run then updates in place: a symbolic
+  link at FILE is replaced (with `-F`, as any FILE that exists), not its
+  target, and a hard link of the input map there (the same file under
+  another name) is refused before any work. A run from an entry of a
+  `.mmetacool` collection needs `--output-map`. A run holds metacooler's
+  lock of the map it writes, `<map>.lock` (FILE's own, with
+  `--output-map`), from its checks to its end, and reads the map under it:
+  a second run, or a metacooler command that writes the map in place
+  (`annotate --inplace`, `normalize`...), stops before any work, naming the
+  process that holds it; runs from one map, each with its own
+  `--output-map`, run side by side. So the directory of the map must be
+  writable, with room for two copies of the map at most, plus cooler's
+  temporary files, and a map whose directory is not, or a map without write
+  permission, is refused before any work: write it elsewhere with
+  `--output-map`. A map that changed since the run read it (another run
+  replaced it, or a program that takes no metacooler lock, `cooler balance`
+  or a script, wrote it) is refused when the run writes its map, rather
+  than mixed with it: the run stops with the reason. Python API:
+  `reassign_metacool`, `write_rounds` and `write_round` of
+  `metator.metacool` take `planned=`, the map as the run read it, which
+  they refuse to write from if it changed since; `is_input_map` says
+  whether a write updates the map in place, `is_hard_link_of` refuses the
+  other names of its file, and `make_map_directory` makes the directory of
+  a map. A run that updates a map in
   place (`pipeline MAP`, `partition MAP`, `validation MAP`, `mge --map`)
   warns, before any work, of the clusters and the clustering rounds of an
   earlier run (or of another binner) that it replaces there, of which the
@@ -189,10 +199,13 @@ All notable changes to this project will be documented in this file.
   `--no-metacool`, which writes no map; an entry of a collection, a
   directory, and the collection of an input entry. Only the runs that write
   a map take its lock: a read of a map (`network MAP`, the input map of a
-  run with `--output-map`) stops with an error when another run replaces
-  it, or writes it, as it reads it: metacooler reads a map one chunk of
-  pixels at a time, and checks its file before and after each, as such a
-  read would mix the bins of one map with the pixels of the other.
+  run with `--output-map`, and the checks of a run that read its contigs
+  and its columns) stops with an error, logged as one, when another run
+  replaces it, or writes it, as it reads it: metacooler reads a map one
+  chunk of pixels at a time, and checks its file before and after each, as
+  such a read would mix the bins of one map with the pixels of the other.
+  Python API: `metator.metacool.read_errors` raises metacooler's refusal of
+  such a read (`MapChangedError`) as a `MetacoolError`.
 - Neither metaTOR nor metacooler handles signals. A run stopped by Ctrl-C
   removes its staged copy and its lock, and leaves the map as it was; its
   temporary directory stays, as after any failure. A run killed by SIGTERM
