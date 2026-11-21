@@ -65,7 +65,6 @@ hicstuff's next release), or metacooler from pairs files
 | `-T, --tmpdir` | `./tmp` | The temporary directory. |
 | `-t, --threads` | `1` | Threads for the partition and the validation (miComplete). |
 | `-N, --no-clean-up` | off | Keep the temporary files. |
-| `--no-metacool` | off | Do not write the contact map of the clusters: the map of the run is left as it was. |
 | `--output-map` | none | Write the contact map of the clusters to this file (replaced only with `-F`), and leave `MAP` as it was. By default, the run updates `MAP` in place. |
 
 The validation is the step that needs the most memory: miComplete runs
@@ -168,8 +167,12 @@ metator partition sample.metacool -t 16 -o binning
 ### `validation` { #validation }
 
 Check the clusters with miComplete, and partition the contaminated ones
-again: the third step. Writes `final_clusters/`, `recursive_clusters/`,
-`cluster_summary.txt`, `contig_data_final.txt` and `binning.txt`. **Guide:**
+again: the third step. Writes `final_clusters/`, and stores the final
+clusters, their summary and every clustering round in the map; the tables
+of the validation (`cluster_summary.txt`, `contig_data_final.txt`,
+`binning.txt`, `clusters.txt`, `cluster_members.txt`, miComplete's results)
+and `recursive_clusters/` stay in its temporary directory, which `-N`
+keeps. **Guide:**
 [Partition and validation](guides/binning.md#validation).
 
 ```console
@@ -203,7 +206,7 @@ MAP` does at its end: in place, or to `--output-map`. See
 | `-s, --size` | `500000` | The size, in bp, that an overlapping cluster of the partition must reach to be checked, and that a cluster of the recursive partition must exceed. |
 | `-o, --outdir` | `./` | The output directory. |
 | `-p, --prefix` | none | Name the recursive clusters `<prefix>_metator_…`. |
-| `-F, --force` | off | Replace `recursive_clusters/` and `final_clusters/`, and an existing `--output-map` file. |
+| `-F, --force` | off | Replace `final_clusters/`, and an existing `--output-map` file. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory, where the run writes the clusters it checks. |
 | `-t, --threads` | `1` | Threads for the partition and miComplete. |
 | `-N, --no-clean-up` | off | Keep the temporary files. |

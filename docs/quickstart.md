@@ -106,25 +106,22 @@ not always the same.
 
 ```console
 $ ls binning
-binning.txt
-cluster_members.txt
-cluster_summary.txt
-clusters.txt
-contig_data_final.txt
 final_clusters
 metator_pipeline_20261121023231.log
-overlapping_micomplete_results.txt
-recursive_clusters
 ```
+
+The run stored everything else in the map: its network, its clusters and
+their summary. Its tables stay in its temporary directory, which `-N` keeps
+(`ls tmp/*/`), and `metator dump` writes them from the map.
 
 | File | What it holds |
 |---|---|
 | `final_clusters/` | One FASTA file per final cluster: the result |
-| `cluster_summary.txt` | One row per final cluster: size, GC content, completeness, redundancy, N50, Hi-C abundance… |
-| `clusters.txt`, `cluster_members.txt` | Every cluster of every round (core, overlapping, recursive, final), with its parent and miComplete's columns, and the contigs of each |
-| `contig_data_final.txt` | One row per contig: its size, GC content, hits, and the clusters it went through |
-| `binning.txt` | The contigs of the final clusters and their cluster, as anvi'o imports a binning |
 | `metator_pipeline_<date>.log` | The log of the run |
+| `cluster_summary.txt` (`-N`, in `tmp/`) | One row per final cluster: size, GC content, completeness, redundancy, N50, Hi-C abundance… |
+| `clusters.txt`, `cluster_members.txt` (`-N`, in `tmp/`) | Every cluster of every round (core, overlapping, recursive, final), with its parent and miComplete's columns, and the contigs of each |
+| `contig_data_final.txt` (`-N`, in `tmp/`) | One row per contig: its size, GC content, hits, and the clusters it went through |
+| `binning.txt` (`-N`, in `tmp/`) | The contigs of the final clusters and their cluster, as anvi'o imports a binning |
 
 `sample.metacool`, next to them, is now the contact map of all the contigs,
 grouped by cluster, with the network of the run: what metaTOR measured on
