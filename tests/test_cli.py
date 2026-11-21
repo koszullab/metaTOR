@@ -501,6 +501,8 @@ def test_pipeline_from_reads(start, clean_up, libraries, stub_pipeline, tmp_path
     assert (source, existed, outfile) == (str(out / "metator.metacool"), True, str(out / "metator.metacool"))
     assert contig_data == str(out / "contig_data_final.txt")
     assert (kwargs["bin_summary"], kwargs["force"], kwargs["metadata"]) == (str(out / "cluster_summary.txt"), True, metadata)
+    # The map stores the normalization of the network of the run.
+    assert kwargs["normalization"] == "empirical_hit"
     # The bin summary goes to metacooler as it is: no temporary copy.
     assert "tmp_dir" not in kwargs
 
@@ -568,17 +570,18 @@ def _assembly(tmp_path):
     return assembly
 
 
-def _final_tables(monkeypatch, contig, final_bin="metator_00001_00000", summary=None):
+def _final_tables(monkeypatch, contig, final_bin="metator_00001_00000", summary=None, hits=("-", "-")):
     """Have the stub validation also write the final contig table, where the
     contig ``contig`` is in the bin ``final_bin`` (ND: in none) and c2 is in
-    none, and the bin summary (``summary``, if given)."""
+    none, with these hits (none counted, by default), and the bin summary
+    (``summary``, if given)."""
     stub = mtcli.mtv.recursive_decontamination
 
     def recursive_decontamination(*args, **kwargs):
         out_dir = args[8]
         Path(out_dir, "contig_data_final.txt").write_text(
             "\tID\tName\tSize\tGC_content\tHit\tFinal_cluster\n"
-            f"0\t1\t{contig}\t100\t40.5\t-\t{final_bin}\n1\t2\tc2\t50\t35.0\t-\tND\n"
+            f"0\t1\t{contig}\t100\t40.5\t{hits[0]}\t{final_bin}\n1\t2\tc2\t50\t35.0\t{hits[1]}\tND\n"
         )
         rows = "" if final_bin == "ND" else f"{final_bin}\t0.9\n"
         Path(out_dir, "cluster_summary.txt").write_text(summary or f"\tCompleteness\n{rows}")
@@ -1239,7 +1242,9 @@ def test_pipeline_metacool_written(no_metacool, stub_pipeline, tmp_path, monkeyp
     _final_tables(monkeypatch, "c1")
     out = tmp_path / "out"
     seen = _map_at_partition(monkeypatch, out / "metator.metacool")
-    options = ["--no-metacool"] if no_metacool else []
+    # The stub network counts no hit, which the default normalization reads
+    # (see test_pipeline_map_stores_the_normalization_of_the_network).
+    options = ["--no-metacool"] if no_metacool else ["--normalization", "None"]
     run_cli("pipeline", *_pair_run(tmp_path, out), *options)
     assert seen == [["__unbinned__"]]
     (log,) = out.glob("metator_pipeline_*.log")
@@ -1263,6 +1268,27 @@ def test_pipeline_metacool_written(no_metacool, stub_pipeline, tmp_path, monkeyp
     assert [column for column in contigs.columns if not column.startswith("qc_")] == ["length", "genome_id", "GC_content"]
     assert contigs.GC_content.to_dict() == {"c1": 40.5, "c2": 35.0}
     assert sorted(path.name for path in out.iterdir() if "metacool" in path.name) == ["metator.metacool"]
+
+
+@pytest.mark.skipif(not mtmc.stores_weights(), reason="metacooler.store_weights comes with metacooler's next release")
+def test_pipeline_map_stores_the_normalization_of_the_network(stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """With the real writers: the map of the clusters stores the normalization
+    of the network of the run, empirical_hit by default, as the weights
+    metator_empirical_hit of its bins, one bin per contig: 1/sqrt(hits)."""
+    monkeypatch.setattr("metator.metacool.write_contig_map", mtmc_write_contig_map)
+    monkeypatch.setattr("metator.metacool.reassign_metacool", mtmc_reassign_metacool)
+    _contig_data(monkeypatch, CONTIGS)
+    _final_tables(monkeypatch, "c1", hits=(4, 1))
+    out = tmp_path / "out"
+    run_cli("pipeline", *_pair_run(tmp_path, out))
+    (log,) = out.glob("metator_pipeline_*.log")
+    assert "WARNING" not in log.read_text()
+    import metacooler
+
+    path = str(out / "metator.metacool")
+    names = list(metacooler.MetaCooler(path).contigs.name)
+    weights = metacooler.read_weights(path, "metator_empirical_hit")
+    assert dict(zip(names, weights, strict=True)) == pytest.approx({"c1": 1 / 2, "c2": 1.0})
 
 
 def test_pipeline_map_of_the_clusters_failure_keeps_the_map_of_the_contigs(stub_pipeline, tmp_path, monkeypatch, run_cli):

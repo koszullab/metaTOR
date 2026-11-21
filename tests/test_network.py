@@ -224,6 +224,46 @@ def test_normalize_pair():
     assert TH_null == 0
 
 
+# Contig data with a contig that has no hit and one that has no coverage, for
+# which normalize_pair returns 0. The restriction sites are counted plus one,
+# as create_contig_data counts them: never 0.
+NORMALIZED_CONTIGS = {
+    "a": {"id": 1, "length": 5000, "hit": 120, "coverage": 12.5, "RS": 31},
+    "b": {"id": 2, "length": 1200, "hit": 7, "coverage": 3.0, "RS": 6},
+    "c": {"id": 3, "length": 800, "hit": 0, "coverage": 4.5, "RS": 2},
+    "d": {"id": 4, "length": 2500, "hit": 40, "coverage": 0, "RS": 14},
+}
+
+
+@pytest.mark.parametrize("normalization", ["abundance", "length", "RS", "empirical_hit", "theoritical_hit"])
+def test_normalization_weights_factorise_normalize_pair(normalization):
+    """One weight per contig, whose products times a contact count are the
+    contacts that normalize_pair normalizes: NaN where it gives 0, for a
+    contig without hits or without coverage."""
+    names = list(NORMALIZED_CONTIGS)
+    values = {
+        key: np.array([NORMALIZED_CONTIGS[name][key] for name in names], dtype=float)
+        for key in ("length", "hit", "coverage", "RS")
+    }
+    weights = mtn.normalization_weights(values["length"], values["hit"], values["coverage"], values["RS"], normalization)
+    for i, first in enumerate(names):
+        for j, second in enumerate(names):
+            if i == j:
+                continue
+            expected = mtn.normalize_pair(NORMALIZED_CONTIGS, (first, second), 2004, normalization)
+            normalized = 2004 * weights[i] * weights[j]
+            assert (0.0 if np.isnan(normalized) else normalized) == pytest.approx(expected, rel=1e-12, abs=0)
+    assert np.isnan(weights).any()
+
+
+def test_normalization_weights_refusals():
+    lengths = np.array([10.0, 20.0])
+    with pytest.raises(ValueError, match="No weights for the normalization 'None'"):
+        mtn.normalization_weights(lengths, lengths, lengths, lengths, "None")
+    with pytest.raises(ValueError, match='"abundance" normalization uses the shotgun coverage'):
+        mtn.normalization_weights(lengths, lengths, None, None, "abundance")
+
+
 def test_precompute_network():
     # Test precompute network.
     tmp_dir = "tmp_network"

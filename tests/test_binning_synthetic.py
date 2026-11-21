@@ -435,8 +435,16 @@ def test_pipeline_map_is_the_map_of_the_pairs(
     )
 
     ref = cooler.Cooler(str(expected))
-    for table in ["bins", "pixels", "chroms"]:
+    bins = clr.bins()[:]
+    # The run's map also stores the normalization of its network, which
+    # write_metacool does not compute: with metacooler.store_weights, from
+    # metacooler's next release.
+    assert ("metator_empirical_hit" in bins.columns) == mtmc.stores_weights()
+    pd.testing.assert_frame_equal(bins.drop(columns="metator_empirical_hit", errors="ignore"), ref.bins()[:])
+    for table in ["pixels", "chroms"]:
         pd.testing.assert_frame_equal(getattr(clr, table)()[:], getattr(ref, table)()[:])
+    if mtmc.stores_weights():
+        _assert_normalized_as_the_network(written, out, tmp_path)
     genomes = metacooler.MetaCooler(str(written)).genomes
     pd.testing.assert_frame_equal(genomes, metacooler.MetaCooler(str(expected)).genomes)
     assert {"Completeness", "qc_inter_genome"} <= set(genomes.columns)
@@ -448,6 +456,26 @@ def test_pipeline_map_is_the_map_of_the_pairs(
     assert differ == {"annotate", "reassign"}
     assert [entry["source"] for entry in metadata["reassign"]] == [str(written)]
     assert len(metadata["annotate"]) == 3 and len(ref_metadata["annotate"]) == 1
+
+
+def _assert_normalized_as_the_network(written, out, tmp_path):
+    """The contacts of the map of a run normalized by the weights it stores
+    and summed by pair of contigs are the edges of its network.txt (but
+    those of weight 0)."""
+    names = pd.read_csv(out / "contig_data_final.txt", sep="\t", usecols=["ID", "Name"]).set_index("ID").Name
+    network = pd.read_csv(out / "network.txt", sep="\t", header=None, names=["id1", "id2", "weight"])
+    expected_edges = {
+        tuple(sorted((names[id1], names[id2]))): weight for id1, id2, weight in network.itertuples(index=False) if weight
+    }
+    edges = tmp_path / "edges.tsv"
+    metacooler.network(str(written), level="contig", balance="metator_empirical_hit", out=str(edges), header=True)
+    normalized = {
+        tuple(sorted((first, second))): value
+        for first, second, value in pd.read_csv(edges, sep="\t").itertuples(index=False)
+        if first != second
+    }
+    assert normalized.keys() == expected_edges.keys()
+    assert all(normalized[pair] == pytest.approx(expected_edges[pair], rel=1e-9) for pair in normalized)
 
 
 def test_pipeline_restarts_from_the_map_of_a_stopped_run(
@@ -587,8 +615,11 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, metagenome_inde
     run_cli("metacool", "-c", mcool / "contig_data_final.txt", "-b", mcool / "cluster_summary.txt", "-o", command, expected)
     metacooler.validate(str(command), full=True)
     clr = cooler.Cooler(str(command))
-    for table in ["bins", "pixels", "chroms"]:
-        pd.testing.assert_frame_equal(getattr(clr, table)()[:], getattr(cooler.Cooler(str(written)), table)()[:])
+    run_map = cooler.Cooler(str(written))
+    # But the normalization of the network, which the run stores in its map.
+    pd.testing.assert_frame_equal(clr.bins()[:], run_map.bins()[:].drop(columns="metator_empirical_hit", errors="ignore"))
+    for table in ["pixels", "chroms"]:
+        pd.testing.assert_frame_equal(getattr(clr, table)()[:], getattr(run_map, table)()[:])
     pd.testing.assert_frame_equal(metacooler.MetaCooler(str(command)).genomes, genomes)
     assert clr.info["metadata"]["qc"] == metadata["qc"]
 
@@ -761,8 +792,9 @@ def test_steps_on_a_map_give_the_map_of_pipeline(metagenome, metagenome_inputs, 
     dataset (its dtype, shape, chunks, compression and values) and attribute
     of the HDF5 file, but the date it was written (creation-date) and the
     command line and parameters of the run that wrote it (the command and
-    parameters of the metator key of its metadata: pipeline's, validation's).
-    Each run is made in a directory of its own, with the same relative
+    parameters of the metator key of its metadata: pipeline's, validation's),
+    and the normalization of the network, which pipeline alone stores (see
+    metator.metacool.store_normalization). Each run is made in a directory of its own, with the same relative
     paths, which the history of the map records (the input map of
     metacooler reassign, the tables of metacooler annotate). The rounds are
     overlapping, recursive_1 (a cluster that the stub miComplete finds
@@ -827,6 +859,14 @@ def test_steps_on_a_map_give_the_map_of_pipeline(metagenome, metagenome_inputs, 
     for path in written.values():
         metacooler.validate(str(path), full=True)
     found = {name: walk(path) for name, path in written.items()}
+    # pipeline stores the normalization of its network in the map (#75):
+    # validation alone does not know it, as network does not store it in the
+    # map yet. Everything else is the same.
+    weights = "/bins/metator_empirical_hit"
+    assert weights in found["pipeline"] and weights not in found["steps"]
+    del found["pipeline"][weights]
+    kind, columns, attributes = found["pipeline"]["/bins"]
+    found["pipeline"]["/bins"] = (kind, [name for name in columns if name != "metator_empirical_hit"], attributes)
     assert _without_run(found["steps"]) == _without_run(found["pipeline"])
     # What differs: the command lines and their parameters, those of
     # pipeline and of validation.

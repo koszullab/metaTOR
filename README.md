@@ -270,6 +270,17 @@ and the tools built on it read it as any `.cool` file, and `metacooler` adds the
   from does not give them either), and the contact statistics that
   metacooler computes within each contig (`qc_intra_contig_short`, `qc_intra_contig_long`). The clusters
   of the contigs are not stored there: the genome of a contig is its final cluster;
+* the bins table of the map of a `pipeline` run holds the normalization of its network
+  (`--normalization`, `empirical_hit` by default) as the weights `metator_<normalization>` of its
+  bins, the way `cooler` stores balancing weights: the normalized contact of two bins is their raw
+  count times both weights, so the contacts normalized and summed by pair of contigs are the edges of
+  `network.txt`, but those of weight 0 (a contig without hits, or without coverage, has no weight). `cooler` reads them (`clr.matrix(balance="metator_empirical_hit")`), and so do
+  `metacooler show`, `dump` and `network` with `--balance metator_empirical_hit`. They are computed
+  from the `Hit`, `Shotgun_coverage` and `Restriction_site` columns of the contigs table, which the
+  column records, so that metacooler drops it when an edit changes one of them. A run whose map lacks
+  a column that the normalization reads (`Restriction_site` without `--enzyme`) stores none, with a
+  warning, and so does `--normalization None`, without one. It needs `metacooler.store_weights`, from
+  metacooler's next release: with metacooler 0.3.0, the map stores none, which the log says;
 * the metadata of the file hold the version of metaTOR, the command line and its parameters, under
   the `metator` key.
 

@@ -2325,3 +2325,197 @@ def test_rounds_written_to_a_map_refused(case, metagenome, binning, tmp_path):
         mtmc.write_rounds(str(source), str(outfile), _one_round(metacool))
     assert {path: path.read_bytes() for path in before} == before
     assert sorted(path.name for path in tmp_path.iterdir() if path.name.startswith(".")) == []
+
+
+# The normalization of the network, which the map of the bins stores, with
+# metacooler.store_weights: from metacooler's next release (js2264/metacooler
+# pull request #19).
+needs_store_weights = pytest.mark.skipif(
+    not mtmc.stores_weights(), reason="metacooler.store_weights comes with metacooler's next release"
+)
+
+
+def _contig_map_and_final_tables(metagenome, inputs, tmp_path, measured=True):
+    """The map of the contigs of a pipeline run, built from its pairs, and
+    its final contig data (the hits counted on the pairs, as the network
+    step counts them). Returns the map, the contig data file and the
+    contig data, whose hits are those of the file."""
+    contig_data = assembly_contig_data(inputs, measured)
+    outfile = tmp_path / "metator.metacool"
+    mtmc.write_contig_map(str(inputs["pairs"]), contig_data, str(outfile), assembly_name="synthetic")
+    contig_data_file = final_contig_data(
+        contig_data, metagenome.pairs, _bin_names(metagenome), tmp_path / "contig_data_final.txt"
+    )
+    return outfile, contig_data_file, contig_data
+
+
+def _weights(path):
+    """The weight columns of a map, by name: their method and attributes."""
+    from metacooler.io.weights import describe_weights
+
+    return {row["name"]: row for row in describe_weights(str(path))}
+
+
+def _normalized_contacts(path, name):
+    """The contacts between contigs of a map, normalized by its weights
+    ``name`` and summed by pair of contigs, as metacooler network --balance
+    writes them: the contacts of a contig with no weight are left out."""
+    edges = Path(path).parent / f"{name}.tsv"
+    metacooler.network(str(path), level="contig", balance=name, out=str(edges), header=True)
+    table = pd.read_csv(edges, sep="\t")
+    pairs = contig_pairs(table.node1, table.node2)
+    pairs["value"] = table.value.to_numpy()
+    return {(a, b): value for a, b, value in pairs.itertuples(index=False) if a != b}
+
+
+@needs_store_weights
+@pytest.mark.parametrize("normalization", ["empirical_hit", "length", "RS", "abundance", "theoritical_hit"])
+def test_map_of_the_bins_stores_the_normalization_of_the_network(normalization, metagenome, metagenome_inputs, tmp_path, logged):
+    """Written over the map of the contigs, as a pipeline run does at its
+    end, the map of the bins stores the normalization of the network, as
+    the weights metator_<normalization> of its bins, from the columns of its
+    contigs table that the normalization reads, which it records. The
+    contacts of the map normalized by them and summed by pair of contigs
+    are metaTOR's network: normalize_pair of the contact count of each pair
+    (none where it gives 0)."""
+    outfile, contig_data_file, contig_data = _contig_map_and_final_tables(metagenome, metagenome_inputs, tmp_path)
+    mtmc.reassign_metacool(str(outfile), str(contig_data_file), str(outfile), force=True, normalization=normalization)
+
+    metacooler.validate(str(outfile), full=True)
+    name = f"metator_{normalization}"
+    (row,) = _weights(outfile).values()
+    attrs = row["attrs"]
+    assert (row["name"], row["method"], attrs["mode"], attrs["metator_version"]) == (name, "metator", normalization, __version__)
+    columns = [f"contigs/{column}" for column in mtmc.NORMALIZATION_COLUMNS[normalization]]
+    assert attrs["depends_on"] == (["pixels"] if "contigs/Hit" in columns else []) + columns
+    expected = {
+        pair: mtn.normalize_pair(contig_data, pair, count, normalization)
+        for pair, count in contig_contacts(outfile).items()
+        if pair[0] != pair[1]
+    }
+    normalized = _normalized_contacts(outfile, name)
+    assert normalized.keys() == {pair for pair, value in expected.items() if value}
+    assert all(normalized[pair] == pytest.approx(expected[pair], rel=1e-9) for pair in normalized)
+    assert not [message for level, message in logged() if level == "WARNING"]
+
+
+@needs_store_weights
+def test_map_of_the_bins_at_1kb_stores_the_weight_of_each_contig_on_its_bins(metagenome, metagenome_inputs, tmp_path):
+    """From a map of the contigs at a fixed bin size, made before any
+    binning: every bin of a contig has the weight of its contig."""
+    contig_data = assembly_contig_data(metagenome_inputs)
+    metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, metagenome_inputs["pairs"], binsize=1000)
+    contig_data_file = final_contig_data(
+        contig_data, metagenome.pairs, _bin_names(metagenome), tmp_path / "contig_data_final.txt"
+    )
+    out = tmp_path / "bins.metacool"
+    mtmc.reassign_metacool(str(metacool), str(contig_data_file), str(out), normalization="empirical_hit")
+
+    weights = metacooler.read_weights(str(out), "metator_empirical_hit")
+    bins = cooler.Cooler(str(out)).bins()[:]
+    assert len(bins) > len(contig_data)
+    hits = bins.chrom.astype(str).map({name: data["hit"] for name, data in contig_data.items()}).to_numpy(dtype=float)
+    with np.errstate(divide="ignore"):
+        expected = 1 / np.sqrt(hits)
+    expected[~np.isfinite(expected)] = np.nan
+    np.testing.assert_allclose(weights, expected)
+
+
+@needs_store_weights
+def test_map_of_the_bins_without_a_column_that_the_normalization_reads(metagenome, metagenome_inputs, tmp_path, logged):
+    """A run without an enzyme has no restriction sites: the map of the bins
+    is written, without the RS normalization, and a warning says why."""
+    outfile, contig_data_file, _ = _contig_map_and_final_tables(metagenome, metagenome_inputs, tmp_path, measured=False)
+    mtmc.reassign_metacool(str(outfile), str(contig_data_file), str(outfile), force=True, normalization="RS")
+
+    metacooler.validate(str(outfile), full=True)
+    assert _weights(outfile) == {}
+    (warning,) = [message for level, message in logged() if level == "WARNING"]
+    assert warning == (
+        f"{outfile} stores no RS normalization of the network. The RS normalization of the network reads the "
+        "Restriction_site column(s) of the contigs table, which the map lacks."
+    )
+
+
+@needs_store_weights
+@pytest.mark.parametrize("normalization", ["abundance", "None"])
+def test_map_of_the_bins_replaces_the_normalization_of_an_earlier_run(
+    normalization, metagenome, metagenome_inputs, tmp_path, logged
+):
+    """From the map of an earlier run, which stores the normalization of its
+    network: the map of the bins stores this run's alone, or none with
+    "None", without a warning. A weight that another tool stored is kept."""
+    earlier, contig_data_file, _ = _contig_map_and_final_tables(metagenome, metagenome_inputs, tmp_path)
+    mtmc.reassign_metacool(str(earlier), str(contig_data_file), str(earlier), force=True, normalization="empirical_hit")
+    n_bins = len(cooler.Cooler(str(earlier)).bins()[:])
+    metacooler.store_weights(str(earlier), "other", np.ones(n_bins), method="other", depends_on=["pixels"])
+    out = tmp_path / "bins.metacool"
+    mtmc.reassign_metacool(str(earlier), str(contig_data_file), str(out), normalization=normalization)
+
+    weights = _weights(out)
+    assert sorted(weights) == sorted(["other", *([] if normalization == "None" else [f"metator_{normalization}"])])
+    assert weights["other"]["method"] == "other"
+    assert not [message for level, message in logged() if level == "WARNING"]
+    assert (
+        "INFO",
+        "Removed the normalization(s) of the network of an earlier run from the map: 'metator_empirical_hit'.",
+    ) in logged()
+
+
+def test_store_normalization_hands_its_weights_to_metacooler(metagenome, metagenome_inputs, tmp_path, monkeypatch):
+    """What store_normalization gives metacooler.store_weights, whatever the
+    version of metacooler: the weights of normalization_weights from the
+    columns of the map, on each bin of the contig, and what they depend on.
+    "None" and an unknown normalization have none."""
+    outfile, _, contig_data = _contig_map_and_final_tables(metagenome, metagenome_inputs, tmp_path)
+    # The map of the contigs has no Hit column: add the hits of the run.
+    hits = pd.DataFrame({"Name": list(contig_data), "Hit": [data["hit"] for data in contig_data.values()]})
+    hits.to_csv(tmp_path / "hits.tsv", sep="\t", index=False)
+    metacooler.annotate(str(outfile), contigs_table=str(tmp_path / "hits.tsv"), contigs_table_format="Name", inplace=True)
+    stored = {}
+
+    def store_weights(uri, name, weights, **kwargs):
+        stored.update(uri=uri, name=name, weights=weights, **kwargs)
+
+    monkeypatch.setattr(metacooler, "store_weights", store_weights, raising=False)
+    mtmc.store_normalization(str(outfile), "length")
+
+    names = cooler.Cooler(str(outfile)).bins()[:].chrom.astype(str)
+    with np.errstate(divide="ignore"):
+        expected = np.sqrt(names.map({name: data["length"] / data["hit"] for name, data in contig_data.items()}).to_numpy(float))
+    expected[~np.isfinite(expected)] = np.nan
+    np.testing.assert_allclose(stored.pop("weights"), expected)
+    assert stored == {
+        "uri": str(outfile),
+        "name": "metator_length",
+        "method": "metator",
+        "depends_on": ["pixels", "contigs/Hit"],
+        "parameters": {"mode": "length", "metator_version": __version__},
+        "force": True,
+    }
+    for normalization in ["None", "bogus"]:
+        with pytest.raises(mtmc.MetacoolError, match=f"No weights for the normalization '{normalization}'"):
+            mtmc.store_normalization(str(outfile), normalization)
+    metacooler.annotate(str(outfile), drop=["contigs.Shotgun_coverage", "contigs.Restriction_site"], inplace=True)
+    with pytest.raises(mtmc.MetacoolError, match="reads the Shotgun_coverage and Restriction_site column"):
+        mtmc.store_normalization(str(outfile), "theoritical_hit")
+
+
+def test_map_of_the_bins_with_a_metacooler_that_stores_no_weights(metagenome, metagenome_inputs, tmp_path, monkeypatch, logged):
+    """With metacooler 0.3.0, which has no store_weights: the map of the
+    bins is written as before, without the normalization, which the log
+    says, without a warning; store_normalization refuses."""
+    # metacooler exports store_weights lazily, through its __getattr__.
+    monkeypatch.setattr(mtmc, "stores_weights", lambda: False)
+    outfile, contig_data_file, _ = _contig_map_and_final_tables(metagenome, metagenome_inputs, tmp_path)
+    mtmc.reassign_metacool(str(outfile), str(contig_data_file), str(outfile), force=True, normalization="empirical_hit")
+
+    metacooler.validate(str(outfile), full=True)
+    assert list(cooler.Cooler(str(outfile)).bins()[:].columns) == ["chrom", "start", "end"]
+    assert not [message for level, message in logged() if level == "WARNING"]
+    assert any(
+        level == "INFO" and message.startswith(f"{outfile} stores no empirical_hit normalization of the network: metacooler")
+        for level, message in logged()
+    )
+    with pytest.raises(mtmc.MetacoolError, match="cannot store weights"):
+        mtmc.store_normalization(str(outfile), "empirical_hit")
