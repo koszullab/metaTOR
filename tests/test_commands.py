@@ -473,14 +473,7 @@ def test_pipeline_refuses_existing_outputs(existing, a_map, tmp_path, run_cli, l
 
 
 def test_pipeline_force_replaces_outputs(a_map, network_from_a_map, tmp_path, run_cli, logged):
-    """With --force the output directories are emptied once the arguments
-    and the assembly are checked, then the run goes on (here up to the
-    partition, which network_from_a_map stops): final_clusters, which the
-    run writes, is replaced. A directory that no version of metaTOR writes in
-    the output directory any more, and that would pass for no result of this
-    run (the overlapping clusters of a development build), is left as it is;
-    the results of an earlier run are refused, with or without -F (see
-    test_cli's test_the_outputs_of_an_earlier_version)."""
+    """-F replaces final_clusters and leaves a directory that no version writes any more."""
     (tmp_path / "out" / "final_clusters").mkdir(parents=True)
     (tmp_path / "out" / "final_clusters" / "stale.fa").write_text(">old\nA\n")
     (tmp_path / "out" / "overlapping_clusters").mkdir(parents=True)

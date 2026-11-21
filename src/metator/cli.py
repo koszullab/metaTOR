@@ -87,15 +87,9 @@ def private_tmp_dir(tmpdir, clean_up=True):
 # log: final_clusters, which -F replaces.
 CLUSTER_DIRS = ("final_clusters",)
 
-# The results of a run of an earlier version of metaTOR in the output directory
-# of a validation or pipeline run, which a run of 2.0 does not write there and
-# does not replace: the tables and the recursive clusters of a validation of
-# 2.0's development builds, which a run now keeps in its temporary directory;
-# and the outputs of 1.x (its tables and networks, its directories of bins,
-# its plots and clustering matrices). Left next to this run's final_clusters,
-# they would pass for its results: refused, with or without -F, and never
-# removed (see refuse_earlier_outputs). A user's own file of one of these names
-# is refused too, and left as it is.
+# An earlier run's results in the output directory of a validation or pipeline
+# run (2.0 development builds' tables and recursive clusters, 1.x's outputs),
+# which would pass for this run's: refused with or without -F, never removed.
 EARLIER_OUTPUTS = (
     "contig_data_*.txt",
     "cluster_summary.txt",
@@ -116,11 +110,8 @@ EARLIER_OUTPUTS = (
     "plot",
 )
 
-# The summary of the MGE clusters that an mge run of an earlier version wrote
-# in its output directory (1.x's, and that of a development build of 2.0),
-# which a run now stores in the map, as the round mge: left next to this run's
-# mges_binned.fa, it would pass for this run's. Refused, with or without -F,
-# and never removed (see refuse_earlier_outputs).
+# An earlier mge run's summary (1.x's, a development build's), which the round
+# mge now holds: refused with or without -F, never removed.
 MGE_EARLIER_OUTPUTS = ("mges_bin_summary.tsv", "mges_cluster_summary.tsv")
 
 
@@ -167,14 +158,12 @@ def _is_or_holds(path, kept):
 
 
 def refuse_earlier_outputs(outdir, outputs=EARLIER_OUTPUTS, keep=()):
-    """Refuse, with or without -F, before any work, the results of a run of
-    an earlier version of metaTOR in outdir, which this run does not write
-    and does not replace (outputs: those of a validation or pipeline run,
-    EARLIER_OUTPUTS, or of an mge run, MGE_EARLIER_OUTPUTS): nothing is
-    removed. A symbolic link counts, even one to nothing; the maps of the run
-    (keep: its input map and its --output-map) never do, nor a directory that
-    holds one. The reason, which names them, is logged as an error, then
-    ValueError is raised."""
+    """Refuse, with or without -F, before any work, an earlier version's results
+    in outdir (outputs: EARLIER_OUTPUTS, or MGE_EARLIER_OUTPUTS for mge), which
+    this run neither writes nor replaces: the reason, which names them, is logged
+    as an error, then ValueError is raised, and nothing is removed. A symbolic
+    link counts, even one to nothing; the maps of the run (keep) never do, nor a
+    directory that holds one."""
     kept = [mtmc.map_file(path) if path else None for path in keep]
     found = sorted(
         path

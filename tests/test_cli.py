@@ -2082,12 +2082,9 @@ EARLIER_OUTPUTS = sorted([*EARLIER_FILES, *EARLIER_DIRECTORIES])
 @pytest.mark.parametrize("command", ["validation", "pipeline"])
 @pytest.mark.parametrize("force", [False, True], ids=["refused", "-F"])
 def test_the_outputs_of_an_earlier_version(command, force, stub_pipeline, tmp_path, run_cli):
-    """The results of a run of an earlier version in the output directory
-    (the tables of a 2.0 development build, the outputs of 1.x, a symbolic
-    link of them too), or a user's own files of those names, are refused
-    before any work, with or without -F, named, and the log says why: the run
-    does not write them and does not replace them, and removes nothing, a
-    link's target included. A file of another name is left alone."""
+    """An earlier run's results in the output directory, or a user's own files
+    of those names, are refused with or without -F, before any work, and
+    nothing is removed, a link's target included."""
     metacool = _contig_map(tmp_path / "network.metacool", network=True, partition=True)
     out = tmp_path / "out"
     for directory in EARLIER_DIRECTORIES:
@@ -2120,9 +2117,7 @@ def test_the_outputs_of_an_earlier_version(command, force, stub_pipeline, tmp_pa
 
 @pytest.mark.parametrize("command", ["validation", "pipeline"])
 def test_the_map_of_the_run_is_no_earlier_output(command, stub_pipeline, tmp_path, run_cli):
-    """The map of the run is never refused for its name, nor the directory
-    that holds it: a map in a directory named as a 1.x output (final_bin) in
-    the output directory, which the run updates in place, does not stop it."""
+    """The map of the run, in a directory named as a 1.x output, is no earlier result."""
     out = tmp_path / "out"
     (out / "final_bin").mkdir(parents=True)
     metacool = _contig_map(out / "final_bin" / "network.metacool", network=True, partition=True)
@@ -2146,16 +2141,9 @@ def test_the_map_of_the_run_is_no_earlier_output(command, stub_pipeline, tmp_pat
     ],
 )
 def test_tmpdir_in_the_clusters_refused(command, where, stub_pipeline, tmp_path, run_cli):
-    """A --tmpdir in a directory of the clusters that a validation or
-    pipeline run writes, which it makes anew (-F removes it, and the
-    temporary directory of the run with it), or in a directory of the results
-    of an earlier run, which the run refuses (recursive_clusters, 1.x's
-    recursive_bin), is refused as a usage error before the run creates or
-    removes anything: the clusters of an earlier
-    run stay, and no temporary directory is made. It is in it as written, or
-    once the symbolic links are resolved (an output directory given through
-    a link), or through a directory of the clusters that is a link, which -F
-    removes, not its target."""
+    """A --tmpdir in final_clusters or in a directory of an earlier run's results,
+    as written or through links, is refused as a usage error before anything is
+    created or removed."""
     metacool = _contig_map(tmp_path / "network.metacool", network=True, partition=True)
     earlier = _earlier_run("validation", tmp_path)
     out = tmp_path / "out"
