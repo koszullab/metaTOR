@@ -28,13 +28,7 @@ contigs_data = contigs_data.set_index("index")
 contigs_data["Recursive_cluster_ID"] = f"{0:05d}"
 contigs_data["Recursive_cluster_contigs"] = pd.Series("-", index=contigs_data.index, dtype=object)
 contigs_data["Recursive_cluster_size"] = pd.Series("-", index=contigs_data.index, dtype=object)
-network = pd.read_csv(
-    "tests_data/outdir_validation/network.txt",
-    sep="\t",
-    header=None,
-    names=["contig1", "contig2", "weight"],
-    dtype={"weight": str},
-)
+network = pd.read_csv("tests_data/outdir_validation/network.txt", sep="\t", header=None, names=["contig1", "contig2", "weight"])
 fileObj = open("tests_data/outdir_validation/recursive_bins.obj", "rb")
 recursive_bins = pickle.load(fileObj)
 fileObj.close()
@@ -148,11 +142,8 @@ def test_micomplete_failure_is_an_error(tmp_path, monkeypatch):
 
 
 def test_recursive_clustering_worker():
-    tmp_dir = "tmp_partition_validation_1"
-    os.makedirs(tmp_dir, exist_ok=True)
     partition = mtv.recursive_clustering_worker(
         "MetaTOR_00002_00000",
-        tmp_dir,
         network,
         "louvain",
         iterations,
@@ -162,25 +153,31 @@ def test_recursive_clustering_worker():
     _val = int(partition[716].split(";")[0])
     assert len(partition) == 192
     assert len(partition[716].split(";")) == iterations
-    shutil.rmtree(tmp_dir)
 
 
-def test_recursive_clustering_worker_subnetwork(tmp_path):
+def test_recursive_clustering_worker_subnetwork(monkeypatch):
     """The subnetwork of a bin is the network rows between two of its
-    contigs, verbatim and in the order of the network: an edge listed in
-    two rows (network.txt of 1.3.10 from two libraries) keeps both, as in
-    partition."""
-    rows = ["5\t2\t1.5", "1\t2\t0.25", "2\t9\t3.0", "3\t3\t2", "1\t3\t1e-05", "9\t8\t1.0", "2\t5\t0.5"]
-    (tmp_path / "network.txt").write_text("\n".join(rows) + "\n")
-    network = pd.read_csv(
-        tmp_path / "network.txt", sep="\t", header=None, names=["contig1", "contig2", "weight"], dtype={"weight": str}
+    contigs, in the order of the network, which the partition reads in
+    memory: an edge listed in two rows (network.txt of 1.3.10 from two
+    libraries) keeps both, as in partition. No file is written."""
+    network = pd.DataFrame(
+        [(5, 2, 1.5), (1, 2, 0.25), (2, 9, 3.0), (3, 3, 2.0), (1, 3, 1e-05), (9, 8, 1.0), (2, 5, 0.5)],
+        columns=["contig1", "contig2", "weight"],
     )
     data = pd.DataFrame(
         {"ID": [1, 2, 3, 5, 8, 9], "Overlapping_cluster_ID": ["00001"] * 4 + ["00002"] * 2, "Recursive_cluster_ID": "00000"}
     )
-    partition = mtv.recursive_clustering_worker("bin_00001_00000", str(tmp_path), network, "louvain", 2, 1.0, data)
-    subnetwork = tmp_path / "recursive_clusters" / "bin_00001_00000" / "subnetwork_bin_00001_00000.txt"
-    assert subnetwork.read_text().splitlines() == [rows[0], rows[1], rows[3], rows[4], rows[6]]
+    partitioned = []
+    algo_partition = mtv.mtp.algo_partition
+
+    def recorded(algorithm, subnetwork, *args):
+        partitioned.append(subnetwork)
+        return algo_partition(algorithm, subnetwork, *args)
+
+    monkeypatch.setattr(mtv.mtp, "algo_partition", recorded)
+    partition = mtv.recursive_clustering_worker("bin_00001_00000", network, "louvain", 2, 1.0, data)
+    (subnetwork,) = partitioned
+    pd.testing.assert_frame_equal(subnetwork, network.iloc[[0, 1, 3, 4, 6]])
     assert sorted(partition) == [1, 2, 3, 5]
 
 

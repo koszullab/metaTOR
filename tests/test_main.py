@@ -73,17 +73,21 @@ def test_command_help(monkeypatch, capsys):
         _run(monkeypatch, "partition", "--help")
     assert not exit.value.code
     out = plain(capsys.readouterr().out)
-    for option in ["--force", "--network", "--threads"]:
+    for option in ["--force", "--output-map", "--threads"]:
         assert option in out
-    assert "map" in out.lower()
+    assert "map" in out.lower() and "--network" not in out
 
 
-def test_command_runs(monkeypatch, tmp_path, private_link):
+def test_command_runs(monkeypatch, tmp_path, private_link, metagenome_network, metagenome_files):
+    """partition MAP, on a map whose network metator network stored (see
+    metagenome_network)."""
+    import shutil
+
     out = tmp_path / "out"
+    metacool = shutil.copyfile(metagenome_network["map"], tmp_path / "network.metacool")
     with pytest.raises(SystemExit) as exit:
-        _run(monkeypatch, "partition", "-a", private_link("tests_data/subset.assembly.fa"), "-c",
-             "tests_data/contig_data_network.txt", "-n", "tests_data/network.txt", "-i", "2", "-s", "30000", "-o",
-             str(out), "-T", str(tmp_path / "tmp"))  # fmt: skip
+        _run(monkeypatch, "partition", str(metacool), "-a", private_link(str(metagenome_files["assembly"])), "-i", "2",
+             "-s", "30000", "-o", str(out), "-T", str(tmp_path / "tmp"))  # fmt: skip
     assert not exit.value.code
     assert (out / "contig_data_partition.txt").exists()
     assert any((out / "overlapping_clusters").iterdir())

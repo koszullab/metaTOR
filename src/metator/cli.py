@@ -250,6 +250,7 @@ def refuse_an_input_as_the_map(output_map, inputs, assembly=None):
 # already (see warn_of_what_is_replaced): its clusters (whether it does), and
 # its clustering rounds made by these steps.
 REPLACED_IN_PLACE = {
+    "network": (False, ()),
     "pipeline": (True, ("partition", "validation")),
     "partition": (False, ("partition", "validation")),
     "validation": (True, ("validation",)),
@@ -325,7 +326,7 @@ def step_map(command, input_map, output_map, force, held, contigs=None, inputs=(
             f"the map of the contigs of the run as the first argument of {command}",
         )
     else:
-        updates, given, map_of = f"{command} {option} MAP", f"with {option}", f"the map of the run with {option}"
+        updates, given, map_of = f"{command} {option} MAP", f"with {option}", f"the map of the run with {option}, or leave it out"
     if input_map is None:
         if output_map is not None:
             reason = f"--output-map writes the map that {updates} updates: give the map {given}, or drop --output-map."
@@ -334,7 +335,7 @@ def step_map(command, input_map, output_map, force, held, contigs=None, inputs=(
         return None, None
     path = refuse_missing_map(input_map)
     if not mtmc.is_map(input_map):
-        reason = f"{input_map} is not a .metacool contact map: give {map_of}, or leave it out."
+        reason = f"{input_map} is not a .metacool contact map: give {map_of}."
         logger.error(reason)
         raise mtmc.MetacoolError(reason)
     refuse_a_map_named_as_a_uri(input_map, path)
@@ -390,49 +391,96 @@ def start_step(
     """Start a partition or validation run (command) in outdir: its log file,
     the map that it writes (see step_map) and its directories of clusters
     (cluster_dirs, see make_output_dir), refused without force when an
-    earlier run left them. A run with a map (input_map, or output_map, which
-    needs it) checks it, in its log file, before it replaces the
-    directories of an earlier run (-F): against contigs, the contig data
-    file of the run, whose contigs it must be a map of, and against
-    inputs, the other input files, which output_map must not be (see
-    step_map). A run without one replaces them first, then starts its log
-    file, as before a run took a map. Either checks the prefix of the
-    clusters (--prefix, see bin_prefix) before it replaces them. Returns the
-    log file, the map to write (None without one), the prefix, and the
-    input map as the run read it at its start (None without one: see
-    step_map)."""
-    with_a_map = input_map is not None or output_map is not None
-
-    def replace_outputs():
-        for path in cluster_dirs:
-            make_output_dir(path, force)
-
-    if not with_a_map:
-        # The prefix of the clusters first: a refused run keeps them.
-        bins_prefix = bin_prefix(prefix)
-        replace_outputs()
+    earlier run left them. The run checks its map, in its log file, before
+    it replaces the directories of an earlier run (-F): against contigs,
+    the contig data file of the run, whose contigs it must be a map of, and
+    against inputs, the other input files, which output_map must not be (see
+    step_map); and for the network of its contigs, which metator network
+    stores in it and the run reads (see map_network_check). It checks the
+    prefix of the clusters (--prefix, see bin_prefix) before it replaces
+    them. Returns the log file, the map to write, the prefix, the input map
+    as the run read it at its start (see step_map), and the normalization of
+    the network of the map."""
     log_file = log_file_name(outdir, command)
     generate_log_header(log_file)
     metacool_file, planned = step_map(command, input_map, output_map, force, held, contigs, inputs, assembly=assembly)
-    if with_a_map:
-        bins_prefix = bin_prefix(prefix)
-        replace_outputs()
-    return log_file, metacool_file, bins_prefix, planned
+    normalization = map_network_check(input_map, planned)
+    bins_prefix = bin_prefix(prefix)
+    for path in cluster_dirs:
+        make_output_dir(path, force)
+    return log_file, metacool_file, bins_prefix, planned, normalization
 
 
-def contig_network(metacool, contig_data, outdir, tmp_dir, threads, normalization):
-    """network.txt and contig_data_network.txt of a run, normalized
-    (normalization), from the .metacool map metacool, its first argument
-    (see metator.network.metacool_to_contacts). A map that cannot give them
-    stops the run, as metaTOR stops on an input it cannot use: the reason is
-    logged as an error, in the log file of the run, and its MetacoolError is
-    raised."""
-    files = ("network.txt", "contig_data_network.txt")
+def map_network_check(metacool, planned):
+    """The normalization of the network that metator network stored in the
+    map of a partition or validation run, metacool, opened as planned (see
+    metator.network.check_network). A map without it is refused before any
+    work: the reason, which names the step to run, is logged as an error,
+    then its MetacoolError is raised."""
     try:
-        return mtn.metacool_to_contacts(metacool, contig_data, outdir, *files, tmp_dir, threads, normalization)
+        return mtn.check_network(metacool, planned)
     except mtmc.MetacoolError as error:
         logger.error(str(error))
         raise
+
+
+def map_contacts(metacool):
+    """The contacts of the map of a network or pipeline run, metacool,
+    summed by pair of contigs (see metator.network.contig_contacts), and
+    counted in its log. A map that cannot give them, or holds no contact,
+    stops the run, as metaTOR stops on an input it cannot use: the reason is
+    logged as an error, in the log file of the run, and its MetacoolError is
+    raised."""
+    try:
+        contacts = mtn.contig_contacts(metacool)
+        mtn.log_contacts(metacool, contacts)
+    except mtmc.MetacoolError as error:
+        logger.error(str(error))
+        raise
+    return contacts
+
+
+def map_network(metacool, contig_data=False):
+    """The network that metator network stored in the map of a partition or
+    validation run, metacool (see metator.network.map_network), and, with
+    contig_data, first the contig data of its contigs (see
+    metator.network.map_contig_table). A map that cannot give them stops the
+    run: the reason is logged as an error, then its MetacoolError is
+    raised."""
+    try:
+        network = mtn.map_network(metacool)
+        return (mtn.map_contig_table(metacool), network) if contig_data else network
+    except mtmc.MetacoolError as error:
+        logger.error(str(error))
+        raise
+
+
+def validation_network(metacool, names, contig_data_file):
+    """The network that metator network stored in the map of a validation run
+    (see map_network), with the IDs of the contigs in the contig data of its
+    partition (contig_data_file, contig_data_partition.txt, by contig name:
+    see metator.network.relabel_network). The IDs of the network are the
+    positions of the contigs in the map (names: their names, in its order),
+    those of the table the positions they had when partition wrote it, which
+    differ once a validation or pipeline run has written the map of its
+    clusters, grouped by cluster: a validation run again from the same
+    partition reads the same network. A table without the columns of a
+    partition is refused before any work (see
+    metator.validation.check_partition_table)."""
+    import pandas as pd
+
+    mtv.check_partition_table(contig_data_file)
+    table = pd.read_csv(contig_data_file, sep="\t", usecols=["ID", "Name"], dtype={"Name": str}, keep_default_na=False)
+    return mtn.relabel_network(map_network(metacool), names, dict(zip(table["Name"], table["ID"], strict=True)))
+
+
+def network_entry(columns_from_map=()):
+    """What a map records of the run that stores the network of its contigs
+    in it, under the network key of its metator metadata (see
+    metator.metacool.Network): the version of metaTOR, the command line and
+    the parameters of the run, and the columns of the map that it read
+    (columns_from_map, see run_metadata)."""
+    return {"version": __version__, **run_metadata(columns_from_map)}
 
 
 def check_assembly(assembly):
@@ -680,18 +728,19 @@ def writing_map(metacool, outfile, what="the map of the clusters"):
         raise mtmc.MetacoolError(message) from error
 
 
-def pipeline_metacool(metacool, outdir, outfile, columns_from_map=(), normalization=None, planned=None):
+def pipeline_metacool(metacool, outdir, outfile, normalization=None, planned=None, network=None):
     """Write the contact map of the clusters of a pipeline or validation run
     at outfile (see writing_map), from the .metacool map of its contigs, its
     input map, which outfile is by default, and the final tables of the run
     (see metator.metacool.reassign_metacool), with its clustering rounds
-    (see metator.clusters), and the columns that it read from the map
-    (columns_from_map: stored in the metadata of the new map). The
-    normalization of the network of a pipeline run is stored in the map, as
-    the weights metator_<normalization> of its bins (see
-    metator.metacool.store_normalization). The map is refused if it changed
-    since planned, the input map as the run read it at its start, was
-    opened.
+    (see metator.clusters). The normalization of the network of the run is
+    stored in the map, as the weights metator_<normalization> of its bins
+    (see metator.metacool.store_normalization): that of the network that
+    metator network stored in the map, for a validation run. A pipeline run
+    stores the network of its contigs too (network, see
+    metator.metacool.Network), as metator network does. The map is refused
+    if it changed since planned, the input map as the run read it at its
+    start, was opened.
 
     Raises
     ------
@@ -706,11 +755,30 @@ def pipeline_metacool(metacool, outdir, outfile, columns_from_map=(), normalizat
             outfile,
             bin_summary=join(outdir, "cluster_summary.txt"),
             force=True,
-            metadata=run_metadata(columns_from_map),
+            metadata=run_metadata(),
             rounds=mtcl.read_rounds(outdir),
             normalization=normalization,
             planned=planned,
+            network=network,
         )
+
+
+def network_metacool(metacool, outfile, network, planned=None):
+    """Store the network of the contigs of a network run in the map at
+    outfile (see writing_map): what it measured on the contigs, in its
+    contigs table, and the weights of the normalization of the network,
+    with what the run was (see metator.metacool.store_network). Everything
+    else is left as it was. The map is refused if it changed since planned,
+    the input map as the run read it at its start, was opened.
+
+    Raises
+    ------
+    MetacoolError
+        If the map cannot be written: the reason, and what is kept, is
+        logged as an error first.
+    """
+    with writing_map(metacool, outfile, what="the map with the network of its contigs"):
+        mtmc.store_network(metacool, outfile, network, force=True, planned=planned)
 
 
 def partition_metacool(metacool, outfile, contig_data_file, size, prefix, planned=None):
@@ -970,13 +1038,20 @@ def cli():
 # ---------------------------------------------------------------------------
 
 
-@cli.command(short_help="Generate the metaHiC contig network from a .metacool map and normalize it.")
-@map_argument(required=True)
+@cli.command(short_help="Build the metaHiC network of the contigs of a .metacool map, and store it in the map.")
+@map_argument(
+    required=True,
+    help=MAP_HELP + " The network of the run is stored in it, in place, or in --output-map, which an entry needs.",
+)
 @network_options("-n")
-@outdir_option(help="The output directory to write the network and contig data into. Default: current directory.")
+@outdir_option(help="The output directory, of the log of the run. Default: current directory.")
+@force_option("Replace an existing --output-map.")
 @tmpdir_option()
-@threads_option(help="Number of parallel threads allocated to sort the network.")
 @no_clean_up_option()
+@output_map_option(
+    help="Store the network in a copy of MAP written to FILE (replaced only with -F), and leave MAP as it was. By "
+    "default, the run updates MAP in place.",
+)
 def network(
     map,  # the argument MAP
     assembly,
@@ -984,11 +1059,12 @@ def network(
     enzyme,
     normalization,
     outdir,
+    force,
     tmpdir,
-    threads,
     no_clean_up,
+    output_map,
 ):
-    """Generate the metaHiC contig network.
+    """Build the metaHiC network of the contigs, and store it in the map.
 
     [cyan]metator network MAP -a ASSEMBLY[/] builds the network from a
     .metacool contact map of the contigs, whose libraries are summed (see
@@ -1002,18 +1078,22 @@ def network(
     of the contigs that --enzyme and --depth would measure; given, these
     options replace them.
 
-    In the output network, contigs are the network nodes and the edges are
-    the contact counts between two contigs: every pair counts, as in a
-    contact map, but the pairs within a contig.
-
-    Note: the network is in a strict barebone form so that it can be reused
-    and imported quickly into other applications etc. Verbose information
-    about every single node in the network is written on a 'contig data'
-    file.
+    In the network, contigs are the nodes and the edges are the contact
+    counts between two contigs: every pair counts, as in a contact map, but
+    the pairs within a contig. The run stores it in the map, for
+    [cyan]metator partition MAP[/] and [cyan]metator validation MAP[/] to
+    read: what it measured on each contig (GC_content, Hit, and
+    Shotgun_coverage and Restriction_site when it has them) in its contigs
+    table, and the normalization of the network as the weights
+    metator_<normalization> of its bins, which replace those of an earlier
+    network. The map is updated in place (or written to --output-map), and
+    locked while the run writes it. [cyan]metacooler network MAP --level
+    contig --balance metator_<normalization>[/] writes the network.
     """
-    # Private temporary directory inside --tmpdir.
-    with private_tmp_dir(tmpdir, clean_up=not no_clean_up) as tmp_dir:
-        # Defined the output directory and output file names.
+    # Private temporary directory inside --tmpdir, and the lock of the map
+    # the run writes, held until its end.
+    with private_tmp_dir(tmpdir, clean_up=not no_clean_up) as tmp_dir, ExitStack() as held:
+        # Defined the output directory.
         outdir = outdir or "."
         os.makedirs(outdir, exist_ok=True)
 
@@ -1021,9 +1101,17 @@ def network(
         log_file = log_file_name(outdir, "network")
         generate_log_header(log_file)
 
-        # The map, the normalization against its columns, and the assembly.
+        # The map, the map that the run writes (the map itself, by default),
+        # the normalization against its columns, and the assembly, checked
+        # before any work. The run holds the lock of the map it writes from
+        # now on: a second run on the same map is refused. It reads its map
+        # under that lock (planned): the map its network is written from,
+        # which is refused if it changed since.
         run_input(map)
+        metacool_file, in_place = run_map_path(map, output_map, force)
+        refuse_an_input_as_the_map(output_map, [assembly, depth])
         check_normalization(normalization, enzyme, depth, map)
+        planned = hold_map(held, "network", map, metacool_file, in_place)
         check_assembly(assembly)
 
         # Print information of the workflow:
@@ -1031,10 +1119,19 @@ def network(
         logger.info("Normalization: %s", normalization)
 
         # The contig data, measured on the assembly and read from the map,
-        # then the network of the map.
+        # the hits of the contigs of the map, counted on its contacts, then
+        # the network, stored in the map.
         contig_data = mtn.create_contig_data(assembly, depth, enzyme)
-        contig_data_from_map(map, contig_data, normalization, enzyme, depth)
-        contig_network(map, contig_data, outdir, tmp_dir, threads, normalization)
+        columns_from_map = contig_data_from_map(map, contig_data, normalization, enzyme, depth)
+        contacts = map_contacts(map)
+        names = planned.contigs["name"]
+        table = mtn.contig_data_table(contig_data, names, mtn.contig_hits(contacts, len(names)), map)
+        network_metacool(
+            map,
+            metacool_file,
+            mtmc.Network(table, normalization, network_entry(columns_from_map), tmp_dir),
+            planned,
+        )
 
     generate_log_footer(log_file)
 
@@ -1044,30 +1141,14 @@ def network(
 # ---------------------------------------------------------------------------
 
 
-@cli.command(short_help="Partition the metaHiC network with the Louvain or Leiden algorithm.")
+@cli.command(short_help="Partition the metaHiC network of a .metacool map with the Louvain or Leiden algorithm.")
 @map_argument(
-    help="The .metacool contact map of the contigs of the run (that of network MAP), or an entry of a .mmetacool "
-    "collection (file.mmetacool::entries/NAME): the overlapping clusters of the run are stored in its clustering "
-    "rounds, in place, or in --output-map, which an entry needs.",
+    required=True,
+    help="The .metacool contact map of the contigs of the run, which metator network stored the network in, or an "
+    "entry of a .mmetacool collection (file.mmetacool::entries/NAME): the overlapping clusters of the run are stored in "
+    "its clustering rounds, in place, or in --output-map, which an entry needs.",
 )
 @assembly_option(ASSEMBLY_PARTITION_HELP)
-@_option(
-    "-c",
-    "--contigs",
-    required=True,
-    metavar="FILE",
-    panel="Input",
-    help="The path to the tsv file containing the data of the contigs (ID, Name, Length, GC content, Hit, Coverage, "
-    "Restriction Site).",
-)
-@_option(
-    "-n",
-    "--network",
-    required=True,
-    metavar="FILE",
-    panel="Input",
-    help="Path to the file containing the network information from the meta HiC experiment computed by the network command.",
-)
 @partition_options(
     iterations=100,
     overlap=80,
@@ -1085,13 +1166,11 @@ def network(
 @no_clean_up_option()
 @output_map_option(
     help="Store the overlapping clusters of the run in a copy of MAP written to FILE (replaced only with -F), and "
-    "leave MAP as it was. Only with MAP, which is updated in place by default.",
+    "leave MAP as it was. By default, the run updates MAP in place.",
 )
 def partition(
     map,  # the argument MAP
     assembly,
-    contigs,
-    network,
     algorithm,
     iterations,
     overlap,
@@ -1107,14 +1186,16 @@ def partition(
 ):
     """Partition the network using the Louvain or Leiden algorithm.
 
-    Partition the network file using iteratively the Louvain or Leiden
-    algorithm. Then looks for 'core' clusters that are constituted by the
-    contigs which are always in the same community at each iterations. Then
-    using the Hamming distance from these core clusters, merge the clusters
-    with a small Hamming distance (close to 1), bigger than the percentage
-    (overlapping parameter) given.
+    Partition the network of the contigs that [cyan]metator network MAP[/]
+    stored in the map iteratively with the Louvain or Leiden algorithm. Then
+    looks for 'core' clusters that are constituted by the contigs which are
+    always in the same community at each iterations. Then using the Hamming
+    distance from these core clusters, merge the clusters with a small
+    Hamming distance (close to 1), bigger than the percentage (overlapping
+    parameter) given.
 
-    It will also update the file to integrate the clusters of the contigs.
+    It will also write the data of the contigs, with their clusters
+    (contig_data_partition.txt).
 
     Furthermore, both Leiden and Louvain algorithm are available here.
     However, the benchmark made show that here the Louvain algorithm have
@@ -1137,9 +1218,10 @@ def partition(
         os.makedirs(outdir, exist_ok=True)
         fasta_dir = join(outdir, "overlapping_clusters")
 
-        # Enable file logging, the map of a run from a map checked and
-        # locked, and the directory of the clusters made (see start_step).
-        log_file, metacool_file, bins_prefix, planned = start_step(
+        # Enable file logging, the map of the run checked, for its network
+        # too, and locked, and the directory of the clusters made (see
+        # start_step).
+        log_file, metacool_file, bins_prefix, planned, _ = start_step(
             "partition",
             outdir,
             [fasta_dir],
@@ -1148,16 +1230,19 @@ def partition(
             force,
             held,
             prefix,
-            contigs,
-            [assembly, network],
-            assembly,
+            inputs=[assembly],
+            assembly=assembly,
         )
+
+        # The network that metator network stored in the map, and the data
+        # of its contigs.
+        contig_data, network = map_network(map, contig_data=True)
 
         # Partition the network
         contig_data_file = mtp.partition(
             algorithm,
             assembly,
-            contigs,
+            contig_data,
             iterations,
             network,
             outdir,
@@ -1172,9 +1257,8 @@ def partition(
         # Delete pyfastx index (only made if a bin passed the size threshold):
         mio.remove_pyfastx_index(assembly)
 
-        # The overlapping clusters, stored in the map of a run from a map.
-        if metacool_file is not None:
-            partition_metacool(map, metacool_file, contig_data_file, size, bins_prefix, planned)
+        # The overlapping clusters, stored in the map.
+        partition_metacool(map, metacool_file, contig_data_file, size, bins_prefix, planned)
 
     generate_log_footer(log_file)
 
@@ -1186,9 +1270,10 @@ def partition(
 
 @cli.command(short_help="Validate the clusters with miComplete and decontaminate them with a recursive partition.")
 @map_argument(
-    help="The .metacool contact map of the contigs of the run (that of network MAP and partition MAP), or an entry "
-    "of a .mmetacool collection (file.mmetacool::entries/NAME): it becomes the map of the clusters of the run, as "
-    "pipeline MAP writes it, in place, or in --output-map, which an entry needs.",
+    required=True,
+    help="The .metacool contact map of the contigs of the run (that of network MAP and partition MAP), which metator "
+    "network stored the network in, or an entry of a .mmetacool collection (file.mmetacool::entries/NAME): it becomes "
+    "the map of the clusters of the run, as pipeline MAP writes it, in place, or in --output-map, which an entry needs.",
 )
 @assembly_option(ASSEMBLY_PARTITION_HELP)
 @_option(
@@ -1207,14 +1292,6 @@ def partition(
     panel="Input",
     help="Path to the directory containing the input fasta files of the clusters to decontaminate.",
 )
-@_option(
-    "-n",
-    "--network",
-    required=True,
-    metavar="FILE",
-    panel="Input",
-    help="Path to the file containing the network information from the meta HiC experiment computed by the network command.",
-)
 @partition_options(
     iterations=10,
     overlap=90,
@@ -1231,15 +1308,14 @@ def partition(
 @threads_option(help="Number of parallel threads allocated for the partition.")
 @no_clean_up_option()
 @output_map_option(
-    help="Write the contact map of the clusters to FILE (replaced only with -F), and leave MAP as it was. Only with "
-    "MAP, which is updated in place by default.",
+    help="Write the contact map of the clusters to FILE (replaced only with -F), and leave MAP as it was. By default, "
+    "the run updates MAP in place.",
 )
 def validation(
     map,  # the argument MAP
     assembly,
     contigs,
     fasta,
-    network,
     algorithm,
     iterations,
     overlap,
@@ -1267,9 +1343,10 @@ def validation(
 
     [cyan]metator validation MAP ...[/] runs on the map of the contigs of a
     run step by step ([cyan]metator network MAP[/], partition MAP,
-    validation): at its end, it writes the map of the clusters of the run,
-    with all its clustering rounds, as [cyan]metator pipeline MAP[/] does,
-    in place of the map (or to --output-map).
+    validation), whose network it partitions again: at its end, it writes
+    the map of the clusters of the run, with all its clustering rounds and
+    the normalization of its network, as [cyan]metator pipeline MAP[/]
+    does, in place of the map (or to --output-map).
     """
     # Launch miComplete to evaluate the completion and the contamination. If
     # asked rerun Louvain to try to reduce the contamination, rerun miComplete
@@ -1278,7 +1355,7 @@ def validation(
 
     # Private temporary directory inside --tmpdir, and the lock of the map
     # the run writes, held until its end.
-    with private_tmp_dir(tmpdir, clean_up=not no_clean_up) as tmp_dir, ExitStack() as held:
+    with private_tmp_dir(tmpdir, clean_up=not no_clean_up), ExitStack() as held:
         # Defined the output directory and output file names.
         outdir = outdir or "."
         os.makedirs(outdir, exist_ok=True)
@@ -1288,9 +1365,10 @@ def validation(
         # before anything is removed.
         refuse_an_input_in_the_outputs(fasta, [recursive_fasta_dir, final_fasta_dir], force, "-f")
 
-        # Enable file logging, the map of a run from a map checked and
-        # locked, and the directories of the clusters made (see start_step).
-        log_file, metacool_file, bins_prefix, planned = start_step(
+        # Enable file logging, the map of the run checked, for its network
+        # too, and locked, and the directories of the clusters made (see
+        # start_step).
+        log_file, metacool_file, bins_prefix, planned, normalization = start_step(
             "validation",
             outdir,
             [recursive_fasta_dir, final_fasta_dir],
@@ -1300,7 +1378,7 @@ def validation(
             held,
             prefix,
             contigs,
-            [assembly, network],
+            [assembly],
             assembly,
         )
 
@@ -1311,13 +1389,14 @@ def validation(
             final_fasta_dir,
             fasta,
             iterations,
-            network,
+            # The network that metator network stored in the map, in the IDs
+            # of the contigs of the partition.
+            validation_network(map, planned.contigs["name"], contigs),
             outdir,
             overlap / 100,
             recursive_fasta_dir,
             res_param,
             size,
-            tmp_dir,
             threads,
             bins_prefix,
         )
@@ -1325,9 +1404,9 @@ def validation(
         # Delete pyfastx index (only made if a bin was re-partitioned):
         mio.remove_pyfastx_index(assembly)
 
-        # The map of the clusters, written last, as pipeline MAP writes it.
-        if metacool_file is not None:
-            pipeline_metacool(map, outdir, metacool_file, planned=planned)
+        # The map of the clusters, written last, as pipeline MAP writes it,
+        # with the normalization of the network of the map.
+        pipeline_metacool(map, outdir, metacool_file, normalization=normalization, planned=planned)
 
     generate_log_footer(log_file)
 
@@ -1370,7 +1449,7 @@ def validation(
 @prefix_option()
 @force_option("Replace the directories of clusters of an earlier run in the output directory, and an existing --output-map.")
 @tmpdir_option()
-@threads_option(help="Number of parallel threads allocated to sort the network, and for the partition and the validation.")
+@threads_option(help="Number of parallel threads allocated for the partition and the validation.")
 @no_clean_up_option()
 @_option(
     "--no-metacool",
@@ -1473,16 +1552,21 @@ def pipeline(
         for path in bin_dirs:
             make_output_dir(path, force)
 
-        # Build the network, from the map.
-        network_file, contigs_data_file = contig_network(map, contig_data, outdir, tmp_dir, threads, normalization)
+        # The network, from the map: the contacts of its contigs, weighed with
+        # the normalization (that metator network stores), and the data of
+        # its contigs, with their hits.
+        contacts = map_contacts(map)
+        names = (planned if planned is not None else open_input_map(map)).contigs["name"]
+        table = mtn.contig_data_table(contig_data, names, mtn.contig_hits(contacts, len(names)), map)
+        network = mtn.map_network(map, mtn.network_weights(table, normalization), contacts)
 
         # Partition the network
         contigs_data_file = mtp.partition(
             algorithm,
             assembly,
-            contigs_data_file,
+            table,
             iterations,
-            network_file,
+            network,
             outdir,
             overlapping_fasta_dir,
             overlapping_parameter,
@@ -1500,13 +1584,12 @@ def pipeline(
             final_fasta_dir,
             overlapping_fasta_dir,
             rec_iter,
-            network_file,
+            network,
             outdir,
             recursive_overlapping_parameter,
             recursive_fasta_dir,
             res_param,
             size,
-            tmp_dir,
             threads,
             bins_prefix,
         )
@@ -1517,15 +1600,16 @@ def pipeline(
         # Delete pyfastx index:
         mio.remove_pyfastx_index(assembly)
 
-        # The map of the clusters, written last, from the input map.
+        # The map of the clusters, written last, from the input map, with the
+        # network of its contigs, as metator network stores it.
         if not no_metacool:
             pipeline_metacool(
                 map,
                 outdir,
                 metacool_file,
-                columns_from_map=columns_from_map,
                 normalization=normalization,
                 planned=planned,
+                network=mtmc.Network(table, normalization, network_entry(columns_from_map), tmp_dir),
             )
 
     generate_log_footer(log_file)

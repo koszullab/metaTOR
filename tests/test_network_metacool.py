@@ -1,7 +1,8 @@
 # Tests of the network built from a .metacool contact map
-# (metator.network.metacool_to_contacts), against the network of the pairs
-# the map is made of, counted straight from the pairs file (pairs_network),
-# on the mock metagenome of tests/synthetic.py and on tests_data.
+# (metator.network.contig_contacts and map_network), against the network of
+# the pairs the map is made of, counted straight from the pairs file
+# (pairs_network), on the mock metagenome of tests/synthetic.py and on
+# tests_data.
 
 import collections
 import gzip
@@ -118,18 +119,15 @@ def outside_contacts(pairs_file, contig_data):
     return last_base, position_0
 
 
-def pairs_network(data, out, normalization="None"):
-    """network.txt and contig_data_network.txt of the pairs themselves,
-    written in out: the oracle of the network of a map of the pairs. The
-    contacts and the hits are counted in Python, from the pairs file: each
-    pair whose two reads lie on contigs of the assembly, within their
-    length (at position 0 too, where metacooler puts the read on the first
-    base), counts once, and once in the hits of each of its two contigs (a
-    pair within a contig, twice in its hits). The edges are written by the
-    writer of the network of a map (metator.network._write_map_network),
-    whose order, normalization and format the test does not check: what it
-    checks is that the pixels of the map give the contacts and the hits of
-    its pairs."""
+def pairs_network(data):
+    """The contacts and the hits of the pairs themselves, by contig name: the
+    oracle of the network of a map of the pairs. Counted in Python, from the
+    pairs file: each pair whose two reads lie on contigs of the assembly,
+    within their length (at position 0 too, where metacooler puts the read
+    on the first base), counts once, and once in the hits of each of its two
+    contigs (a pair within a contig, twice in its hits). Returns the
+    contacts, by pair of contig names (sorted, a contig with itself
+    included), and the hits, by contig name."""
     contig_data = mtn.create_contig_data(str(data["assembly"]), data["depth"], data["enzyme"])
     contacts, hits = collections.Counter(), collections.Counter()
     for contig1, pos1, contig2, pos2 in read_pairs(data["pairs"]):
@@ -137,46 +135,38 @@ def pairs_network(data, out, normalization="None"):
             continue
         if pos1 > contig_data[contig1]["length"] or pos2 > contig_data[contig2]["length"]:
             continue
-        id1, id2 = contig_data[contig1]["id"], contig_data[contig2]["id"]
-        contacts[(min(id1, id2), max(id1, id2))] += 1
-        hits[id1] += 1
-        hits[id2] += 1
-    names = np.empty(len(contig_data) + 1, dtype=object)
-    for name, contig in contig_data.items():
-        contig["hit"] = hits[contig["id"]]
-        names[contig["id"]] = name
-    edges = sorted(contacts.items())
-    table = pd.DataFrame(
-        {"id1": [edge[0] for edge, _ in edges], "id2": [edge[1] for edge, _ in edges], "count": [n for _, n in edges]}
-    )
-    out.mkdir(parents=True)
-    network, contigs = out / "network.txt", out / "contig_data_network.txt"
-    mtn._write_map_network(table, names, contig_data, str(network), str(out / "pre.txt"), str(out / "sorted.txt"),
-                           str(out), 1, normalization, mtn.METACOOL_CHUNKSIZE)  # fmt: skip
-    mtn.write_contig_data(contig_data, str(contigs))
-    return {"network": network, "contig_data": contigs, "dir": out}
+        contacts[tuple(sorted((contig1, contig2)))] += 1
+        hits[contig1] += 1
+        hits[contig2] += 1
+    return contacts, hits
 
 
-def both_networks(data, metacool, out, normalization="None"):
-    """network.txt and contig_data_network.txt of the pairs (see
-    pairs_network) and of the metacool, written in out/pairs and
-    out/metacool."""
-    from_pairs = pairs_network(data, out / "pairs", normalization)
-    directory = out / "metacool"
-    directory.mkdir(parents=True)
-    contig_data = mtn.create_contig_data(str(data["assembly"]), data["depth"], data["enzyme"])
-    network, contigs = mtn.metacool_to_contacts(
-        str(metacool), contig_data, str(directory), "network.txt", "contig_data_network.txt", str(directory), 1,
-        normalization,
-    )  # fmt: skip
-    return from_pairs, {"network": Path(network), "contig_data": Path(contigs), "dir": directory}
+def map_contacts(metacool, **kwargs):
+    """The contacts and the hits of a map (metator.network.contig_contacts
+    and contig_hits), by contig names as pairs_network gives them, with the
+    names of its contigs, in its order."""
+    names = [str(name) for name in metacooler.MetaCooler(str(metacool)).contigs["name"]]
+    table = mtn.contig_contacts(str(metacool), **kwargs)
+    contacts = {
+        tuple(sorted((names[i], names[j]))): count for i, j, count in zip(table["id1"], table["id2"], table["count"], strict=True)
+    }
+    hits = dict(zip(names, mtn.contig_hits(table, len(names)), strict=True))
+    return contacts, hits, names
+
+
+def edges_by_name(network, names):
+    """The edges of a network (metator.network.map_network), by pair of contig
+    names, sorted: their weights."""
+    return {
+        tuple(sorted((names[i - 1], names[j - 1]))): weight
+        for i, j, weight in zip(network["contig1"], network["contig2"], network["weight"], strict=True)
+    }
 
 
 @pytest.fixture(params=["synthetic", "alignment"])
 def dataset(request, metagenome_files):
     """Pairs, assembly, depth file and enzyme of a data set. The pairs of
-    subset.pairs.gz, the largest, go through test_commands.py
-    (test_network_from_a_metacool) and the tests by chunk."""
+    subset.pairs.gz, the largest, go through the tests by chunk."""
     if request.param == "synthetic":
         files = metagenome_files
         return {
@@ -192,27 +182,46 @@ def dataset(request, metagenome_files):
 
 @pytest.mark.parametrize("binsize", BIN_SIZES)
 def test_network_of_a_metacool(dataset, binsize, tmp_path):
-    """The network of a metacool is that of its pairs, byte for byte, with
-    the same contig data: the pairs with a read on the last base of a contig
-    (the mock metagenome) or at position 0 (alignment.pairs) count. A
-    metacool sums its libraries: no network per library."""
+    """The contacts and the hits of a metacool are those of its pairs: the
+    pairs with a read on the last base of a contig (the mock metagenome) or
+    at position 0 (alignment.pairs) count. A metacool sums its libraries:
+    no network per library. Its network is its contacts between two
+    contigs, raw without weights."""
     metacool = make_metacool(tmp_path / "map.metacool", dataset["pairs"], dataset["assembly"], binsize)
-    from_pairs, from_map = both_networks(dataset, metacool, tmp_path / "raw")
-    assert from_map["network"].read_text() == from_pairs["network"].read_text()
-    assert from_map["contig_data"].read_text() == from_pairs["contig_data"].read_text()
+    expected_contacts, expected_hits = pairs_network(dataset)
+    contacts, hits, names = map_contacts(metacool)
+    assert contacts == expected_contacts
+    assert hits == {name: expected_hits[name] for name in names}
+    network = mtn.map_network(str(metacool), weights=None)
+    assert edges_by_name(network, names) == {pair: n for pair, n in expected_contacts.items() if pair[0] != pair[1]}
+    assert (network["contig1"] < network["contig2"]).all()
     # What each data set holds: the contacts on the edges of the contigs.
     contig_data = mtn.create_contig_data(str(dataset["assembly"]))
     last_base, position_0 = outside_contacts(dataset["pairs"], contig_data)
     assert (bool(last_base), bool(position_0)) == ((True, False) if dataset["name"] == "synthetic" else (False, True))
-    assert sorted(path.name for path in from_map["dir"].glob("network*.txt")) == ["network.txt"]
 
 
 def test_normalized_network_of_a_metacool(dataset, tmp_path):
-    """Normalized (empirical_hit, the default): the same network, byte for
-    byte."""
-    metacool = make_metacool(tmp_path / "map.metacool", dataset["pairs"], dataset["assembly"], 1000)
-    from_pairs, from_map = both_networks(dataset, metacool, tmp_path / "norm", normalization="empirical_hit")
-    assert from_map["network"].read_text() == from_pairs["network"].read_text()
+    """Normalized (empirical_hit, the default): each edge is its count times
+    the weights of its two contigs, from their hits, whatever the bin size:
+    the network of the pairs normalized so."""
+    expected_contacts, expected_hits = pairs_network(dataset)
+    networks = []
+    for binsize in BIN_SIZES:
+        metacool = make_metacool(tmp_path / f"map_{binsize}.metacool", dataset["pairs"], dataset["assembly"], binsize)
+        _, hits, names = map_contacts(metacool)
+        weights = mtn.normalization_weights(None, np.array([hits[name] for name in names]), None, None, "empirical_hit")
+        network = edges_by_name(mtn.map_network(str(metacool), weights=weights), names)
+        expected = {
+            (first, second): n / np.sqrt(expected_hits[first]) / np.sqrt(expected_hits[second])
+            for (first, second), n in expected_contacts.items()
+            if first != second
+        }
+        assert network.keys() == expected.keys()
+        for pair, weight in network.items():
+            assert weight == pytest.approx(expected[pair], rel=1e-12, abs=0)
+        networks.append(network)
+    assert networks[0] == networks[1]
 
 
 @pytest.mark.parametrize("binsize", BIN_SIZES)
@@ -222,10 +231,10 @@ def test_normalized_network_of_a_metacool(dataset, tmp_path):
 def test_network_of_a_filtered_metacool(dataset, how, binsize, tmp_path):
     """A map that lacks contigs of the assembly, made with a contig filter,
     which leaves out the pairs with a read on the contigs it drops: its
-    network is that of the pairs it holds, whose two reads lie on the
-    contigs it keeps, and the contigs it lacks get no hits and no edges, as
-    contigs that no read maps to: the same contig data and network, byte for
-    byte."""
+    contacts and hits are those of the pairs it holds, whose two reads lie
+    on the contigs it keeps. The contigs it lacks are no node of its
+    network, and no row of the contig data of a run (see
+    test_contig_data_table_of_a_map_lacking_contigs)."""
     contig_data = mtn.create_contig_data(str(dataset["assembly"]))
     lengths = {name: data["length"] for name, data in contig_data.items()}
     shortest = int(np.median(list(lengths.values())))
@@ -235,52 +244,41 @@ def test_network_of_a_filtered_metacool(dataset, how, binsize, tmp_path):
     assert 0 < len(kept) < len(lengths)
     pairs = {**dataset, "pairs": kept_pairs(dataset["pairs"], kept, tmp_path / "kept.pairs")}
 
-    from_pairs, from_map = both_networks(pairs, metacool, tmp_path / "raw")
-    assert from_map["network"].read_text() == from_pairs["network"].read_text()
-    assert from_map["contig_data"].read_text() == from_pairs["contig_data"].read_text()
-    table = pd.read_csv(from_map["contig_data"], sep="\t")
-    assert (table.Hit[~table.Name.isin(kept)] == 0).all()
-    assert table.Hit[table.Name.isin(kept)].sum() > 0
+    expected_contacts, expected_hits = pairs_network(pairs)
+    contacts, hits, names = map_contacts(metacool)
+    assert contacts == expected_contacts
+    assert hits == {name: expected_hits[name] for name in names} and sum(hits.values()) > 0
+    assert set(names) == kept
 
 
 def test_contacts_by_chunk(tmp_path):
-    """The contacts do not depend on the number of pixels read at a time
-    (a pixel at a time with 1)."""
+    """The contacts do not depend on the number of pixels read at a time (a
+    pixel at a time with 1), and nor does the network."""
     pairs, assembly = TESTS_DATA_PAIRS["alignment"]
     metacool = make_metacool(tmp_path / "map.metacool", pairs, assembly)
-    contig_data = mtn.create_contig_data(str(assembly))
-    hits, contacts = mtn.read_metacool_contacts(str(metacool), contig_data)
+    contacts = mtn.contig_contacts(str(metacool))
     for chunksize in [1, 997]:
-        chunk_hits, chunk_contacts = mtn.read_metacool_contacts(str(metacool), contig_data, chunksize=chunksize)
-        assert (chunk_hits == hits).all()
-        pd.testing.assert_frame_equal(chunk_contacts, contacts)
+        pd.testing.assert_frame_equal(mtn.contig_contacts(str(metacool), chunksize=chunksize), contacts)
     # Sorted, one row per contig pair, the upper triangle.
     assert (contacts.id1 <= contacts.id2).all()
     assert not contacts.duplicated(["id1", "id2"]).any()
     assert contacts.equals(contacts.sort_values(["id1", "id2"]))
     # Every pair counts twice in the hits.
-    assert hits[0] == 0 and hits.sum() == 2 * contacts["count"].sum()
+    n_contigs = len(metacooler.MetaCooler(str(metacool)).contigs)
+    hits = mtn.contig_hits(contacts, n_contigs)
+    assert len(hits) == n_contigs and hits.sum() == 2 * contacts["count"].sum()
 
 
 def test_network_by_chunk(tmp_path):
-    """Nor does the network, whose edges are written a block at a time.
-
-    An equivalence guard: it passes without the change that writes the
-    edges a block at a time, which keeps the network as it was."""
+    """Nor does the network of a map of 1 kb bins, summed by contig pair in
+    chunks of pixels. An equivalence guard."""
     pairs, assembly = TESTS_DATA_PAIRS["subset"]
     metacool = make_metacool(tmp_path / "map.metacool", pairs, assembly, 1000)
-    networks = []
-    for chunksize in [mtn.METACOOL_CHUNKSIZE, 9973]:
-        contig_data = mtn.create_contig_data(str(assembly))
-        out = tmp_path / str(chunksize)
-        out.mkdir()
-        network, contigs = mtn.metacool_to_contacts(
-            str(metacool), contig_data, str(out), "network.txt", "contigs.txt", str(out), 1, "empirical_hit",
-            chunksize=chunksize
-        )  # fmt: skip
-        networks.append((Path(network).read_text(), Path(contigs).read_text()))
-    assert networks[0] == networks[1]
-    assert len(networks[0][0].splitlines()) > 2 * 9973
+    tables = [mtn.contig_contacts(str(metacool), chunksize=chunksize) for chunksize in [mtn.METACOOL_CHUNKSIZE, 9973]]
+    pd.testing.assert_frame_equal(tables[0], tables[1])
+    networks = [mtn.map_network(str(metacool), weights=None, contacts=table) for table in tables]
+    pd.testing.assert_frame_equal(networks[0], networks[1])
+    assert len(networks[0]) > 2 * 9973
 
 
 def test_network_of_an_mmetacool_entry(tmp_path):
@@ -289,15 +287,9 @@ def test_network_of_an_mmetacool_entry(tmp_path):
     metacool = make_metacool(tmp_path / "map.metacool", pairs, assembly, 1000)
     collection = tmp_path / "maps.mmetacool"
     metacooler.create_mmetacool(collection, {"lib1": metacool})
-    networks = []
-    for i, uri in enumerate([str(metacool), f"{collection}::entries/lib1"]):
-        contig_data = mtn.create_contig_data(str(assembly))
-        out = tmp_path / f"out_{i}"
-        out.mkdir()
-        network, _ = mtn.metacool_to_contacts(uri, contig_data, str(out), "network.txt", "contig_data_network.txt",
-                                              str(out), 1, "empirical_hit")  # fmt: skip
-        networks.append(Path(network).read_text())
-    assert networks[0] == networks[1] and networks[0]
+    networks = [mtn.map_network(uri, weights=None) for uri in [str(metacool), f"{collection}::entries/lib1"]]
+    pd.testing.assert_frame_equal(networks[0], networks[1])
+    assert len(networks[0])
 
 
 # Maps that cannot give the network of an assembly.
@@ -308,14 +300,21 @@ def _write_fasta(path, contigs):
     return path
 
 
-def _small_map(tmp_path, contigs, pairs):
-    """A one-bin-per-contig map of the given contigs and pairs."""
+def _small_map(tmp_path, contigs, pairs, ordering="fasta"):
+    """A one-bin-per-contig map of the given contigs and pairs, its contigs in
+    their order (ordering fasta), or longest first (genome-then-length, the
+    order of metacooler create pairs and hicstuff)."""
     fasta = _write_fasta(tmp_path / "contigs.fa", contigs)
     pairs_file = tmp_path / "map.pairs"
     pairs_file.write_text(
         PAIRS_HEADER + "".join(f"r{i}\t{c1}\t{p1}\t{c2}\t{p2}\t+\t-\n" for i, (c1, p1, c2, p2) in enumerate(pairs))
     )
-    return make_metacool(tmp_path / "map.metacool", pairs_file, fasta)
+    if ordering == "fasta":
+        return make_metacool(tmp_path / "map.metacool", pairs_file, fasta)
+    path = tmp_path / "map.metacool"
+    bins = pd.DataFrame({"chrom": list(contigs), "start": 0, "end": list(contigs.values())})
+    metacooler.from_pairs(str(path), pairs=str(pairs_file), bins=bins, contig_genome_map=None, ps=False)
+    return path
 
 
 def _contig_data(tmp_path, contigs):
@@ -350,52 +349,56 @@ PAIRS = [("a", 10, "b", 20), ("b", 30, "c", 5), ("a", 4, "a", 40)]
 def test_map_of_other_contigs(assembly, message, tmp_path):
     metacool = _small_map(tmp_path, {"a": 100, "b": 200, "c": 300}, PAIRS)
     with pytest.raises(mtmc.MetacoolError) as error:
-        mtn.read_metacool_contacts(str(metacool), _contig_data(tmp_path, assembly))
+        mtn.contig_data_from_map(str(metacool), _contig_data(tmp_path, assembly))
     assert message in str(error.value)
     assert str(error.value).startswith(f"{metacool} is not a contact map")
     # The contigs of the assembly that the map lacks are not a reason.
     assert "of the assembly are not in" not in str(error.value)
 
 
-def test_map_lacking_contigs(tmp_path, logged):
+def test_contig_data_table_of_a_map_lacking_contigs(tmp_path, logged):
     """A map may lack contigs of the assembly (a map made with a contig
-    filter, for example): they get no contacts and no hits, as contigs that
-    no read maps to, which an INFO message says. The ids are those of the
-    assembly."""
+    filter, for example): they are no row of the contig data of the run, nor
+    nodes of its network, which an INFO message says. The IDs are the
+    positions of the contigs in the map."""
     metacool = _small_map(tmp_path, {"a": 100, "b": 200, "c": 300}, PAIRS)
-    # Ids: z 1, a 2, b 3, y 4, c 5.
     contig_data = _contig_data(tmp_path, {"z": 8, "a": 100, "b": 200, "y": 12, "c": 300})
-    hits, contacts = mtn.read_metacool_contacts(str(metacool), contig_data)
-    assert list(hits) == [0, 0, 3, 2, 0, 1]
-    assert contacts.to_dict("list") == {"id1": [2, 2, 3], "id2": [2, 3, 5], "count": [1, 1, 1]}
-    message = (
-        f"2 contig(s) of the assembly are not in {metacool}: they get no contacts, as contigs that no read maps to: 'z', 'y'."
-    )
-    assert logged() == [("INFO", message)]
-    network, contigs = mtn.metacool_to_contacts(str(metacool), contig_data, str(tmp_path), "network.txt",
-                                                "contigs.txt", str(tmp_path), 1, "None")  # fmt: skip
+    contacts = mtn.contig_contacts(str(metacool))
+    assert contacts.to_dict("list") == {"id1": [0, 0, 1], "id2": [0, 1, 2], "count": [1, 1, 1]}
+    names = ["a", "b", "c"]
+    table = mtn.contig_data_table(contig_data, names, mtn.contig_hits(contacts, 3), metacool=str(metacool))
+    assert list(table.Name) == names and list(table.ID) == [1, 2, 3] and list(table.Hit) == [3, 2, 1]
+    assert logged() == [
+        (
+            "INFO",
+            f"2 contig(s) of the assembly are not in {metacool}: they get no contacts, as contigs that no read maps "
+            "to, and are in no table of the run: 'z', 'y'.",
+        )
+    ]
     # The contact of a with itself is no edge.
-    assert Path(network).read_text() == "2\t3\t1\n3\t5\t1\n"
-    table = pd.read_csv(contigs, sep="\t")
-    assert list(table.Name) == ["z", "a", "b", "y", "c"] and list(table.Hit) == [0, 3, 2, 0, 1]
-    assert [entry for entry in logged() if "of the assembly are not in" in entry[1]] == [("INFO", message)] * 2
+    network = mtn.map_network(str(metacool), weights=None, contacts=contacts)
+    assert network.to_dict("list") == {"contig1": [1, 2], "contig2": [2, 3], "weight": [1, 1]}
 
 
 def test_complete_map_lacks_no_contig(tmp_path, logged):
     metacool = _small_map(tmp_path, {"a": 100, "b": 200, "c": 300}, PAIRS)
-    mtn.read_metacool_contacts(str(metacool), _contig_data(tmp_path, {"c": 300, "a": 100, "b": 200}))
+    contacts = mtn.contig_contacts(str(metacool))
+    mtn.contig_data_table(
+        _contig_data(tmp_path, {"c": 300, "a": 100, "b": 200}), "abc", mtn.contig_hits(contacts, 3), metacool=str(metacool)
+    )
     assert logged() == []
 
 
 def test_many_contigs_are_cut_short(tmp_path, logged):
     metacool = _small_map(tmp_path, {"a": 100, "b": 200, "c": 300}, PAIRS)
     assembly = {"a": 100, "b": 200, "c": 300, **{f"x{i}": 8 for i in range(7)}}
-    mtn.read_metacool_contacts(str(metacool), _contig_data(tmp_path, assembly))
+    contacts = mtn.contig_contacts(str(metacool))
+    mtn.contig_data_table(_contig_data(tmp_path, assembly), "abc", mtn.contig_hits(contacts, 3), metacool=str(metacool))
     assert logged() == [
         (
             "INFO",
             f"7 contig(s) of the assembly are not in {metacool}: they get no contacts, as contigs that no read maps "
-            "to: 'x0', 'x1', 'x2', 'x3', 'x4', ... (+2 more).",
+            "to, and are in no table of the run: 'x0', 'x1', 'x2', 'x3', 'x4', ... (+2 more).",
         )
     ]
     lengths = {"a": 104, "b": 204, "c": 304, **{f"x{i}": 8 for i in range(7)}}
@@ -404,26 +407,125 @@ def test_many_contigs_are_cut_short(tmp_path, logged):
     with pytest.raises(
         mtmc.MetacoolError, match=r"10 contig\(s\) have another length in it: .*bp in the assembly\), \.\.\. \(\+5 more\)\.$"
     ):
-        mtn.read_metacool_contacts(str(small), _contig_data(tmp_path, lengths))
+        mtn.contig_data_from_map(str(small), _contig_data(tmp_path, lengths))
     foreign = r"7 of its contig\(s\) are not in the assembly: 'x0', 'x1', 'x2', 'x3', 'x4', \.\.\. \(\+2 more\)\. Build it "
     with pytest.raises(mtmc.MetacoolError, match=foreign):
-        mtn.read_metacool_contacts(str(small), _contig_data(tmp_path, {"a": 100, "b": 200, "c": 300}))
+        mtn.contig_data_from_map(str(small), _contig_data(tmp_path, {"a": 100, "b": 200, "c": 300}))
 
 
 def test_small_map_network(tmp_path):
     """Hits and network of a map whose contigs are not in the order of the
-    assembly: ids are those of the assembly."""
-    metacool = _small_map(tmp_path, {"a": 100, "b": 200, "c": 300}, [*PAIRS, ("c", 300, "a", 100)])
-    contig_data = _contig_data(tmp_path, {"c": 300, "b": 200, "a": 100})
-    hits, contacts = mtn.read_metacool_contacts(str(metacool), contig_data)
-    # Ids: c 1, b 2, a 3.
-    assert list(hits) == [0, 2, 2, 4]
-    assert contacts.to_dict("list") == {"id1": [1, 1, 2, 3], "id2": [2, 3, 3, 3], "count": [1, 1, 1, 1]}
-    network, _ = mtn.metacool_to_contacts(str(metacool), contig_data, str(tmp_path), "network.txt", "contigs.txt",
-                                          str(tmp_path), 1, "None")  # fmt: skip
-    # In the order of the contig names, as from pairs.
-    assert Path(network).read_text() == "2\t3\t1\n1\t3\t1\n1\t2\t1\n"
-    assert [contig_data[name]["hit"] for name in "abc"] == [4, 2, 2]
+    assembly, longest first, as metacooler create pairs and hicstuff order
+    them: the IDs are the positions of the contigs in the map, whatever the
+    order of the assembly."""
+    metacool = _small_map(tmp_path, {"a": 100, "b": 200, "c": 300}, [*PAIRS, ("c", 300, "a", 100)], ordering="length")
+    names = [str(name) for name in metacooler.MetaCooler(str(metacool)).contigs["name"]]
+    assert names == ["c", "b", "a"]
+    contacts = mtn.contig_contacts(str(metacool))
+    # c 0, b 1, a 2.
+    assert contacts.to_dict("list") == {"id1": [0, 0, 1, 2], "id2": [1, 2, 2, 2], "count": [1, 1, 1, 1]}
+    assert list(mtn.contig_hits(contacts, 3)) == [2, 2, 4]
+    table = mtn.contig_data_table(_contig_data(tmp_path, {"a": 100, "b": 200, "c": 300}), names, [2, 2, 4])
+    assert list(table.Name) == ["c", "b", "a"] and list(table.ID) == [1, 2, 3] and list(table.Size) == [300, 200, 100]
+    network = mtn.map_network(str(metacool), weights=None, contacts=contacts)
+    assert network.to_dict("list") == {"contig1": [1, 1, 2], "contig2": [2, 3, 3], "weight": [1, 1, 1]}
+
+
+def _stored_network(tmp_path, halves=False):
+    """A map of the contigs a, b and c, with the network (normalization
+    length) that metator network stores in it (see
+    metator.metacool.store_network): one bin per contig, or two (halves)."""
+    contigs = {"a": 100, "b": 200, "c": 300}
+    if halves:
+        pairs_file = tmp_path / "map.pairs"
+        pairs_file.write_text(
+            PAIRS_HEADER + "".join(f"r{i}\t{c1}\t{p1}\t{c2}\t{p2}\t+\t-\n" for i, (c1, p1, c2, p2) in enumerate(PAIRS))
+        )
+        bins = pd.DataFrame(
+            {
+                "chrom": [name for name in contigs for _ in range(2)],
+                "start": [start for length in contigs.values() for start in (0, length // 2)],
+                "end": [end for length in contigs.values() for end in (length // 2, length)],
+            }
+        )
+        metacool = tmp_path / "map.metacool"
+        metacooler.from_pairs(str(metacool), pairs=str(pairs_file), bins=bins, contig_genome_map=None, ps=False)
+    else:
+        metacool = _small_map(tmp_path, contigs, PAIRS)
+    names = [str(name) for name in metacooler.MetaCooler(str(metacool)).contigs["name"]]
+    hits = mtn.contig_hits(mtn.contig_contacts(str(metacool)), len(names))
+    table = mtn.contig_data_table(_contig_data(tmp_path, contigs), names, hits)
+    mtmc.store_network(str(metacool), str(metacool), mtmc.Network(table, "length"), force=True)
+    return str(metacool)
+
+
+def test_network_stored_in_a_map(tmp_path):
+    """A map that metator network stored the network in gives it to the
+    steps after it: the network of its contacts, weighed with the stored
+    weights, and its contig data."""
+    metacool = _stored_network(tmp_path)
+    assert mtn.check_network(metacool) == "length"
+    weights = mtn.stored_weights(metacool)
+    network = mtn.map_network(metacool)
+    contacts = mtn.contig_contacts(metacool)
+    pd.testing.assert_frame_equal(network, mtn.map_network(metacool, weights, contacts))
+    # a: one contact with b, and one within a, counted twice.
+    assert list(mtn.map_contig_table(metacool).Hit) == [3, 2, 1]
+
+
+def test_map_whose_network_column_was_dropped(tmp_path):
+    """A map whose Hit column an edit dropped since metator network stored
+    it is refused, with the step to run again."""
+    metacool = _stored_network(tmp_path)
+    metacooler.annotate(metacool, drop=["contigs.Hit"], inplace=True)
+    message = (
+        f"{metacool} has no Hit column in its contigs table, which metator network stores (an edit of the map dropped "
+        "it since): run metator network on the map again."
+    )
+    for read in (mtn.check_network, mtn.map_contig_table):
+        with pytest.raises(mtmc.MetacoolError) as error:
+            read(metacool)
+        assert str(error.value) == message
+
+
+def test_map_whose_network_weights_were_dropped(tmp_path):
+    """A map that lacks the weights of the normalization of its network is
+    refused, with the step to run again."""
+    metacool = _stored_network(tmp_path)
+    with h5py.File(metacool, "r+") as group:
+        del group["bins/metator_length"]
+    message = (
+        f"{metacool} lacks the weights metator_length of the length normalization of its network, which an edit of "
+        "the map dropped since metator network stored them: run metator network on the map again."
+    )
+    for read in (mtn.check_network, mtn.map_network):
+        with pytest.raises(mtmc.MetacoolError) as error:
+            read(metacool)
+        assert str(error.value) == message
+
+
+def test_weights_of_a_contig_that_differ_between_its_bins(tmp_path):
+    """The weights of a map with several bins per contig are those of its
+    contigs, the weight of each of their bins: weights that differ between
+    the bins of a contig are not those that metator network stores."""
+    metacool = _stored_network(tmp_path, halves=True)
+    weights = mtn.stored_weights(metacool)
+    assert len(weights) == 3
+    with h5py.File(metacool, "r+") as group:
+        group["bins/metator_length"][0] = 2 * group["bins/metator_length"][0]
+    with pytest.raises(mtmc.MetacoolError, match=r"metator_length of .* differ between the bins of a contig"):
+        mtn.stored_weights(metacool)
+
+
+def test_contigs_table_with_text_in_a_network_column(tmp_path):
+    """A contigs table whose GC_content holds text, which metator network
+    stores numbers in, is refused."""
+    metacool = _stored_network(tmp_path)
+    with h5py.File(metacool, "r+") as group:
+        del group["contigs/GC_content"]
+        group["contigs/GC_content"] = np.array([b"high", b"low", b"low"])
+    with pytest.raises(mtmc.MetacoolError, match=r"holds a value that is not a number in a column that metator network"):
+        mtn.map_contig_table(metacool)
 
 
 @pytest.mark.parametrize(
@@ -446,16 +548,27 @@ def test_unreadable_map(uri, message, tmp_path):
         pd.DataFrame({"bin1_id": [0], "bin2_id": [0], "count": [1]}),
     )
     with pytest.raises(mtmc.MetacoolError) as error:
-        mtn.read_metacool_contacts(uri, _contig_data(tmp_path, {"a": 100, "b": 200, "c": 300}))
+        mtn.contig_contacts(uri)
     assert str(error.value).startswith(message)
 
 
 def test_map_without_contacts(tmp_path):
     metacool = _small_map(tmp_path, {"a": 100, "b": 200, "c": 300}, [])
-    contig_data = _contig_data(tmp_path, {"a": 100, "b": 200, "c": 300})
+    contacts = mtn.contig_contacts(str(metacool))
+    assert contacts.empty and list(mtn.contig_hits(contacts, 3)) == [0, 0, 0]
     with pytest.raises(mtmc.MetacoolError, match=r"map\.metacool holds no contact: there is no network to build\."):
-        mtn.metacool_to_contacts(str(metacool), contig_data, str(tmp_path), "network.txt", "contigs.txt", str(tmp_path),
-                                 1, "None")  # fmt: skip
+        mtn.log_contacts(str(metacool), contacts)
+
+
+def test_contacts_are_logged(tmp_path, logged):
+    metacool = _small_map(tmp_path, {"a": 100, "b": 200, "c": 300}, PAIRS)
+    mtn.log_contacts("map.metacool", mtn.contig_contacts(str(metacool)))
+    assert [message for _, message in logged()] == [
+        "Information of map.metacool:",
+        "3 contacts in the library.",
+        "2 contacts inter-contigs in the library.",
+        f"3D ratio : {2 / 3}\n",
+    ]
 
 
 def test_map_of_a_square_matrix(tmp_path):
@@ -470,7 +583,7 @@ def test_map_of_a_square_matrix(tmp_path):
         match=r"map\.metacool stores its contacts with storage-mode 'square': a network is built from a map that stores "
         r"each contact once, in the upper triangle \(storage-mode 'symmetric-upper'\), as metacooler writes them\.$",
     ):
-        mtn.read_metacool_contacts(str(metacool), _contig_data(tmp_path, {"a": 100, "b": 200, "c": 300}))
+        mtn.contig_contacts(str(metacool))
 
 
 def test_map_of_float_counts(tmp_path):
@@ -480,7 +593,7 @@ def test_map_of_float_counts(tmp_path):
         del group["pixels"]["count"]
         group["pixels"].create_dataset("count", data=counts.astype(float))
     with pytest.raises(mtmc.MetacoolError, match="holds contact counts of type float64: a network is built from counts"):
-        mtn.read_metacool_contacts(str(metacool), _contig_data(tmp_path, {"a": 100, "b": 200, "c": 300}))
+        mtn.contig_contacts(str(metacool))
 
 
 # The restriction sites and the coverage of the contigs, read from the
@@ -532,25 +645,25 @@ def _sites_and_coverage(contig_data):
 @pytest.mark.parametrize("normalization", NORMALIZATIONS)
 def test_network_from_the_columns_of_a_map(metagenome_files, normalization, tmp_path):
     """A map that holds the restriction sites and the coverage of its
-    contigs gives, without --enzyme and --depth, the network that they
-    give, byte for byte, and the same contig data."""
+    contigs gives, without --enzyme and --depth, the contig data and the
+    network that they give."""
     data = _synthetic(metagenome_files)
     metacool = _map_with_columns(tmp_path / "columns.metacool", data)
-    outputs = {}
+    names = [str(name) for name in metacooler.MetaCooler(str(metacool)).contigs["name"]]
+    contacts = mtn.contig_contacts(str(metacool))
+    hits = mtn.contig_hits(contacts, len(names))
+    tables = {}
     for how in ["options", "map"]:
-        directory = tmp_path / how
-        directory.mkdir()
         if how == "options":
             contig_data = mtn.create_contig_data(str(data["assembly"]), data["depth"], data["enzyme"])
         else:
             contig_data = mtn.create_contig_data(str(data["assembly"]))
             assert mtn.contig_data_from_map(str(metacool), contig_data) == ["Restriction_site", "Shotgun_coverage"]
-        outputs[how] = mtn.metacool_to_contacts(str(metacool), contig_data, str(directory), "network.txt",
-                                                "contig_data_network.txt", str(directory), 1, normalization)  # fmt: skip
-    for by_options, by_map in zip(outputs["options"], outputs["map"], strict=True):
-        assert Path(by_map).read_bytes() == Path(by_options).read_bytes()
-    table = pd.read_csv(outputs["map"][1], sep="\t")
-    assert (table.Restriction_site >= 1).all() and (table.Shotgun_coverage > 0).all()
+        tables[how] = mtn.contig_data_table(contig_data, names, hits)
+    pd.testing.assert_frame_equal(tables["map"], tables["options"])
+    assert (tables["map"].Restriction_site >= 1).all() and (tables["map"].Shotgun_coverage > 0).all()
+    networks = [mtn.map_network(str(metacool), mtn.network_weights(table, normalization), contacts) for table in tables.values()]
+    pd.testing.assert_frame_equal(networks[0], networks[1])
 
 
 def test_columns_of_a_map_read(tmp_path, logged):

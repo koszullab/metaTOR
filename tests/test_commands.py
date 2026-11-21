@@ -3,6 +3,7 @@
 
 
 from pathlib import Path
+import pandas as pd
 import metator.cli as mtc
 import metator.metacool as mtmc
 import metator.network as mtn
@@ -60,6 +61,38 @@ def tests_data_maps(tmp_path_factory):
     return maps
 
 
+@pytest.fixture(scope="session")
+def tests_data_network_maps(tests_data_maps, tmp_path_factory):
+    """The maps of tests_data (see tests_data_maps) with their network stored
+    in them, as metator network -e HindIII,DpnII stores it (empirical_hit):
+    what partition and validation read. Shared by the session: a test
+    takes a copy of its own (see a_network_map)."""
+    directory = tmp_path_factory.mktemp("tests_data_network_maps")
+    maps = {}
+    for name, assembly in [("full", "FASTA"), ("subset", "SUBSET_FASTA")]:
+        path = Path(shutil.copyfile(tests_data_maps[name], directory / f"{name}.metacool"))
+        contig_data = mtn.create_contig_data(global_args[assembly], None, "HindIII,DpnII")
+        contacts = mtn.contig_contacts(str(path))
+        names = metacooler.MetaCooler(str(path)).contigs["name"]
+        table = mtn.contig_data_table(contig_data, names, mtn.contig_hits(contacts, len(names)))
+        mtmc.store_network(str(path), str(path), mtmc.Network(table, "empirical_hit"), force=True)
+        maps[name] = path
+    return maps
+
+
+@pytest.fixture
+def a_network_map(tests_data_network_maps, tmp_path):
+    """A copy of a map of tests_data with its network (see
+    tests_data_network_maps), its own: runs update their map in place."""
+
+    def copy(name="subset"):
+        path = tmp_path / "network_maps" / f"{name}.metacool"
+        path.parent.mkdir(exist_ok=True)
+        return shutil.copyfile(tests_data_network_maps[name], path)
+
+    return copy
+
+
 @pytest.fixture
 def a_map(tests_data_maps, tmp_path):
     """A copy of a map of tests_data (see tests_data_maps), its own: runs
@@ -93,11 +126,10 @@ def test_network_normalizations(norm, a_map, tmp_path, run_cli):
 
 
 @pytest.mark.parametrize(*ALGORITHM)
-def test_partition(alg, tmp_path, run_cli):
-    args = (
-        "-a {SUBSET_FASTA} -c {CONTIGS} -i 5 -n {NETWORK} -o {OUT_TEST} -s 30000 -t 8 -T {TMP} -A {0} -F --no-clean-up"
-    ).format(
+def test_partition(alg, a_network_map, tmp_path, run_cli):
+    args = ("{MAP} -a {SUBSET_FASTA} -i 5 -o {OUT_TEST} -s 30000 -t 8 -T {TMP} -A {0} -F --no-clean-up").format(
         alg,
+        MAP=a_network_map(),
         TMP=Path(tmp_path, "tmp"),
         OUT_TEST=Path(tmp_path, "out_test"),
         **global_args,
@@ -106,10 +138,15 @@ def test_partition(alg, tmp_path, run_cli):
     run_cli("partition", *args.split(" "))
 
 
-def test_validation(tmp_path, run_cli):
+def test_validation(a_network_map, tmp_path, run_cli):
+    """From the tables of a partition of the map of the subset: their IDs,
+    those of the assembly, are not the positions of the contigs in the map,
+    which the validation reads its network in (see
+    metator.network.relabel_network)."""
     args = (
-        "-a {SUBSET_FASTA} -c {CONTIGS_PARTITION} -f {OVERLAPPING_BINS} -i 5 -n {NETWORK} -o {OUT_TEST} -t 8 -T {TMP} -F --no-clean-up"
+        "{MAP} -a {SUBSET_FASTA} -c {CONTIGS_PARTITION} -f {OVERLAPPING_BINS} -i 5 -o {OUT_TEST} -t 8 -T {TMP} -F --no-clean-up"
     ).format(
+        MAP=a_network_map(),
         TMP=Path(tmp_path, "tmp"),
         OUT_TEST=Path(tmp_path, "out_test"),
         **global_args,
@@ -121,8 +158,9 @@ def test_validation(tmp_path, run_cli):
 def test_network_partition_validation(tmp_dir, a_map, run_cli):
     tmp = Path(tmp_dir, "tmp")
     out = Path(tmp_dir, "out_test")
+    metacool = a_map()
     args = "{MAP} -a {SUBSET_FASTA} -o {OUT_TEST} -T {TMP} -e HindIII,DpnII --no-clean-up".format(
-        MAP=a_map(),
+        MAP=metacool,
         TMP=tmp,
         OUT_TEST=out,
         **global_args,
@@ -130,9 +168,8 @@ def test_network_partition_validation(tmp_dir, a_map, run_cli):
     print("CLI command:\nmetator network", *args.split(" "))
     run_cli("network", *args.split(" "))
 
-    args = (
-        "-a {SUBSET_FASTA} -c {OUT_TEST}/contig_data_network.txt -i 5 -n {OUT_TEST}/network.txt -o {OUT_TEST} -s 30000 -t 8 -T {TMP} -F --no-clean-up"
-    ).format(
+    args = ("{MAP} -a {SUBSET_FASTA} -i 5 -o {OUT_TEST} -s 30000 -t 8 -T {TMP} -F --no-clean-up").format(
+        MAP=metacool,
         TMP=tmp,
         OUT_TEST=out,
         **global_args,
@@ -141,14 +178,20 @@ def test_network_partition_validation(tmp_dir, a_map, run_cli):
     run_cli("partition", *args.split(" "))
 
     args = (
-        "-a {SUBSET_FASTA} -c {OUT_TEST}/contig_data_partition.txt -f {OUT_TEST}/overlapping_clusters/ -i 5 -n {OUT_TEST}/network.txt -o {OUT_TEST} -t 8 -T {TMP} -F --no-clean-up"
+        "{MAP} -a {SUBSET_FASTA} -c {OUT_TEST}/contig_data_partition.txt -f {OUT_TEST}/overlapping_clusters/ -i 5 "
+        "-o {OUT_TEST} -t 8 -T {TMP} -F --no-clean-up"
     ).format(
+        MAP=metacool,
         TMP=tmp,
         OUT_TEST=out,
         **global_args,
     )
     print("CLI command:\nmetator validation", *args.split(" "))
     run_cli("validation", *args.split(" "))
+    # The network stored in the map by network, which the map of the
+    # clusters keeps: no table of it.
+    assert mtn.network_normalization(str(metacool)) == "empirical_hit"
+    assert not list(out.glob("*network*.txt"))
 
 
 def test_pipeline(a_map, tmp_path, run_cli):
@@ -184,15 +227,24 @@ def test_network_from_a_metacool(a_map, tmp_path, run_cli):
     metacool = tmp_path / "subset.metacool"
     metacooler.from_pairs(str(metacool), pairs=global_args["SUBSET_PAIRS"], fasta=str(assembly), binsize=1000,
                           contig_genome_map=None, contig_ordering="fasta", ps=False)  # fmt: skip
-    outputs = {}
+    networks, tables = {}, {}
     for binned, given in [("contig", a_map()), ("1kb", metacool)]:
         out = tmp_path / binned
         run_cli("network", given, "-a", assembly, "-e", "HindIII,DpnII", "-o", out, "-T", tmp_path / "tmp")
-        outputs[binned] = out
-    for name in ["network.txt", "contig_data_network.txt"]:
-        assert (outputs["1kb"] / name).read_text() == (outputs["contig"] / name).read_text()
-    assert sorted(path.name for path in outputs["1kb"].glob("network*.txt")) == ["network.txt"]
-    (log,) = outputs["1kb"].glob("metator_network_*.log")
+        names = [str(name) for name in metacooler.MetaCooler(str(given)).contigs["name"]]
+        network = mtn.map_network(str(given))
+        networks[binned] = {
+            tuple(sorted((names[a - 1], names[b - 1]))): weight for a, b, weight in network.itertuples(index=False)
+        }
+        tables[binned] = mtn.map_contig_table(str(given)).drop(columns="ID").set_index("Name").sort_index()
+        assert not list(out.glob("*network*.txt"))
+    # The same network and contig data, by contig name: the maps hold their
+    # contigs in other orders.
+    assert networks["1kb"].keys() == networks["contig"].keys()
+    for pair, weight in networks["1kb"].items():
+        assert weight == pytest.approx(networks["contig"][pair], rel=1e-12)
+    pd.testing.assert_frame_equal(tables["1kb"], tables["contig"])
+    (log,) = (tmp_path / "1kb").glob("metator_network_*.log")
     assert f"INFO :: Information of {metacool}:" in log.read_text()
 
 
@@ -204,11 +256,15 @@ def test_network_from_the_columns_of_a_metacool(tmp_path, run_cli):
     both), byte for byte."""
     contig_data = mtn.create_contig_data(global_args["FASTA"], global_args["DEPTH"], "HindIII,DpnII")
     metacool = contig_map(global_args["PAIRS"], contig_data, tmp_path / "contigs.metacool")
-    common = [metacool, "-a", global_args["FASTA"], "-n", "theoritical_hit", "-T", tmp_path / "tmp"]
-    run_cli("network", *common, "-d", global_args["DEPTH"], "-e", "HindIII,DpnII", "-o", tmp_path / "options")
-    run_cli("network", *common, "-o", tmp_path / "map")
-    for name in ["network.txt", "contig_data_network.txt"]:
-        assert (tmp_path / "map" / name).read_bytes() == (tmp_path / "options" / name).read_bytes(), name
+    maps = {how: shutil.copyfile(metacool, tmp_path / f"{how}.metacool") for how in ["options", "map"]}
+    common = ["-a", global_args["FASTA"], "-n", "theoritical_hit", "-T", tmp_path / "tmp"]
+    run_cli("network", maps["options"], *common, "-d", global_args["DEPTH"], "-e", "HindIII,DpnII", "-o", tmp_path / "options")
+    run_cli("network", metacool, *common, "-o", tmp_path / "map", "--output-map", maps["map"], "-F")
+    pd.testing.assert_frame_equal(mtn.map_network(str(maps["map"])), mtn.map_network(str(maps["options"])))
+    pd.testing.assert_frame_equal(mtn.map_contig_table(str(maps["map"])), mtn.map_contig_table(str(maps["options"])))
+    for path in maps.values():
+        stored = metacooler.MetaCooler(str(path)).metadata["metator"]["network"]
+        assert stored.get("columns_from_map", []) == (["Restriction_site", "Shotgun_coverage"] if path == maps["map"] else [])
     (log,) = (tmp_path / "map").glob("metator_network_*.log")
     logged = log.read_text()
     for what, column in [("restriction sites", "Restriction_site"), ("shotgun coverage", "Shotgun_coverage")]:
@@ -218,22 +274,26 @@ def test_network_from_the_columns_of_a_metacool(tmp_path, run_cli):
 @pytest.mark.parametrize("data", ["full", "subset"])
 def test_pipeline_network_is_that_of_network(data, a_map, network_from_a_map, tmp_path, run_cli):
     """A pipeline run reads its network from its map, as metator network
-    does: network.txt and contig_data_network.txt are those of network MAP,
-    byte for byte, on the map of the pairs of tests_data (alignment.pairs
-    holds reads at position 0) and on the map of the subset. The run stops
-    at the partition (see network_from_a_map)."""
+    does: the network and the contig data that its partition gets are those
+    that network MAP stores and the partition of a run step by step reads
+    (see metator.network.map_network and map_contig_table), on the map of
+    the pairs of tests_data (alignment.pairs holds reads at position 0) and
+    on the map of the subset. The run stops at the partition (see
+    network_from_a_map)."""
     assembly = global_args["FASTA" if data == "full" else "SUBSET_FASTA"]
     depth = ["-d", global_args["DEPTH"]] if data == "full" else []
     common = ["-a", assembly, *depth, "-e", "HindIII,DpnII", "-T", tmp_path / "tmp"]
     metacool = a_map(data)
-    run_cli("network", metacool, *common, "-o", tmp_path / "network")
+    stored = tmp_path / "network.metacool"
+    run_cli("network", metacool, *common, "-o", tmp_path / "network", "--output-map", stored)
     with pytest.raises(RuntimeError, match=r"^network built$"):
         run_cli("pipeline", metacool, *common, "-o", tmp_path / "pipeline")
     # Read by metator network, then by pipeline.
     assert network_from_a_map == [str(metacool), str(metacool)]
-    for name in ["network.txt", "contig_data_network.txt"]:
-        assert (tmp_path / "pipeline" / name).read_bytes() == (tmp_path / "network" / name).read_bytes(), name
-    assert sorted(path.name for path in (tmp_path / "pipeline").glob("network*.txt")) == ["network.txt"]
+    contig_data, network = network_from_a_map.partitioned
+    pd.testing.assert_frame_equal(network, mtn.map_network(str(stored)))
+    pd.testing.assert_frame_equal(contig_data, mtn.map_contig_table(str(stored)))
+    assert not list((tmp_path / "pipeline").glob("*network*.txt"))
 
 
 @pytest.mark.parametrize("command", ["network", "pipeline"])
@@ -292,24 +352,24 @@ def test_default_tmpdir_is_tidied(a_map, tmp_path, monkeypatch, run_cli):
 
 
 def test_network_default_outdir(a_map, tmp_path, monkeypatch, run_cli):
-    """Without -o, the network is written to the current directory, with the
-    log of the run."""
+    """Without -o, the log of the run is written to the current directory: the
+    network goes to the map, and no table of it anywhere."""
     args = [
         str(a_map()),
         "-a", str(Path(global_args["SUBSET_FASTA"]).resolve()),
     ]  # fmt: skip
     monkeypatch.chdir(tmp_path)
     run_cli("network", *args)
-    assert (tmp_path / "network.txt").stat().st_size > 0
-    assert (tmp_path / "contig_data_network.txt").stat().st_size > 0
+    assert mtn.network_normalization(args[0]) == "empirical_hit"
+    assert not list(tmp_path.rglob("*network*.txt"))
     (log,) = tmp_path.glob("metator_network_*.log")
     assert f"## Command used: metator network {args[0]} -a {args[2]}\n" in log.read_text()
 
 
-def test_invalid_prefix_is_rejected(tmp_path, run_cli):
+def test_invalid_prefix_is_rejected(a_network_map, tmp_path, run_cli):
     """miComplete drops dots from bin names, so a dotted --prefix is refused."""
-    args = ("-a {SUBSET_FASTA} -c {CONTIGS} -n {NETWORK} -o {OUT} -T {TMP} -p my.sample").format(
-        OUT=tmp_path / "out", TMP=tmp_path / "tmp", **global_args
+    args = ("{MAP} -a {SUBSET_FASTA} -o {OUT} -T {TMP} -p my.sample").format(
+        MAP=a_network_map(), OUT=tmp_path / "out", TMP=tmp_path / "tmp", **global_args
     )
     with pytest.raises(ValueError, match="Invalid --prefix"):
         run_cli("partition", *args.split(" "))
@@ -322,7 +382,7 @@ def test_spinglass_is_rejected_before_any_work(tmp_path, monkeypatch, run_cli):
         raise AssertionError("recursive decontamination should not start")
 
     monkeypatch.setattr(mtc.mtv, "recursive_decontamination", not_reached)
-    args = ("-a {SUBSET_FASTA} -c {CONTIGS_PARTITION} -f {OVERLAPPING_BINS} -n {NETWORK} -o {OUT} -T {TMP} -A spinglass").format(
+    args = ("map.metacool -a {SUBSET_FASTA} -c {CONTIGS_PARTITION} -f {OVERLAPPING_BINS} -o {OUT} -T {TMP} -A spinglass").format(
         OUT=tmp_path / "out", TMP=tmp_path / "tmp", **global_args
     )
     result = run_cli("validation", *args.split(" "), exit_code=2)
@@ -434,7 +494,7 @@ def test_pipeline_force_replaces_outputs(a_map, network_from_a_map, tmp_path, ru
     assert not [message for _, message in logged() if message.startswith("Removed ")]
 
 
-def test_validation_refuses_a_table_without_the_columns_of_a_partition(tmp_path, monkeypatch, run_cli):
+def test_validation_refuses_a_table_without_the_columns_of_a_partition(a_network_map, tmp_path, monkeypatch, run_cli):
     """A contig data table that lacks a column the validation reads, here a
     table of metaTOR 1.x (its columns named after bins), is refused before
     miComplete runs on any cluster, the missing columns named in the log of
@@ -449,8 +509,8 @@ def test_validation_refuses_a_table_without_the_columns_of_a_partition(tmp_path,
     table = synthetic.as_1x(global_args["CONTIGS_PARTITION"], tmp_path / "contig_data_partition_1x.txt")
     out = tmp_path / "out"
     with pytest.raises(ValueError):
-        run_cli("validation", "-a", global_args["SUBSET_FASTA"], "-c", table, "-f", global_args["OVERLAPPING_BINS"],
-                "-n", global_args["NETWORK"], "-o", out, "-T", tmp_path / "tmp")  # fmt: skip
+        run_cli("validation", a_network_map(), "-a", global_args["SUBSET_FASTA"], "-c", table, "-f",
+                global_args["OVERLAPPING_BINS"], "-o", out, "-T", tmp_path / "tmp")  # fmt: skip
     (log,) = out.glob("metator_validation_*.log")
     message = (
         f"{table} has no Overlapping_cluster_ID column: give the contig data table of a partition (contig_data_partition.txt)."
@@ -459,10 +519,10 @@ def test_validation_refuses_a_table_without_the_columns_of_a_partition(tmp_path,
 
 
 @pytest.mark.parametrize("existing", ["recursive_clusters", "final_clusters"])
-def test_validation_refuses_existing_outputs(existing, tmp_path, run_cli):
+def test_validation_refuses_existing_outputs(existing, a_network_map, tmp_path, run_cli):
     (tmp_path / "out" / existing).mkdir(parents=True)
-    args = ("-a {SUBSET_FASTA} -c {CONTIGS_PARTITION} -f {OVERLAPPING_BINS} -n {NETWORK} -o {OUT} -T {TMP}").format(
-        OUT=tmp_path / "out", TMP=tmp_path / "tmp", **global_args
+    args = ("{MAP} -a {SUBSET_FASTA} -c {CONTIGS_PARTITION} -f {OVERLAPPING_BINS} -o {OUT} -T {TMP}").format(
+        MAP=a_network_map(), OUT=tmp_path / "out", TMP=tmp_path / "tmp", **global_args
     )
     with pytest.raises(ValueError):
         run_cli("validation", *args.split(" "))
@@ -474,9 +534,9 @@ def test_partition_existing_outputs(metagenome_inputs, metagenome_network, tmp_p
     fasta_dir = tmp_path / "out" / "overlapping_clusters"
     fasta_dir.mkdir(parents=True)
     (fasta_dir / "stale.fa").write_text(">old\nA\n")
-    args = ["-a", str(metagenome_inputs["assembly"]), "-c", str(metagenome_network["contig_data"]),
-            "-n", str(metagenome_network["network"]), "-o", str(tmp_path / "out"), "-T", str(tmp_path / "tmp"),
-            "-i", "5", "-s", "50000", "-p", "sample-1"]  # fmt: skip
+    metacool = shutil.copyfile(metagenome_network["map"], tmp_path / "network.metacool")
+    args = [str(metacool), "-a", str(metagenome_inputs["assembly"]), "-o", str(tmp_path / "out"),
+            "-T", str(tmp_path / "tmp"), "-i", "5", "-s", "50000", "-p", "sample-1"]  # fmt: skip
     with pytest.raises(ValueError):
         run_cli("partition", *args)
     # An unknown algorithm is refused before anything is replaced.

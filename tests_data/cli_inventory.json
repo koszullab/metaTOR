@@ -53,6 +53,14 @@
       "required": false
      },
      {
+      "short": "-F",
+      "long": "--force",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
       "short": "-N",
       "long": "--no-clean-up",
       "takes_value": false,
@@ -77,11 +85,11 @@
       "required": false
      },
      {
-      "short": "-t",
-      "long": "--threads",
+      "short": null,
+      "long": "--output-map",
       "takes_value": true,
-      "metavar": "INT",
-      "default": "1",
+      "metavar": "FILE",
+      "default": null,
       "required": false
      },
      {
@@ -98,7 +106,7 @@
     "positional": [
      {
       "name": "map",
-      "required": false,
+      "required": true,
       "repeatable": false
      }
     ],
@@ -120,14 +128,6 @@
       "required": true
      },
      {
-      "short": "-c",
-      "long": "--contigs",
-      "takes_value": true,
-      "metavar": "FILE",
-      "default": null,
-      "required": true
-     },
-     {
       "short": "-F",
       "long": "--force",
       "takes_value": false,
@@ -142,14 +142,6 @@
       "metavar": "INT",
       "default": "100",
       "required": false
-     },
-     {
-      "short": "-n",
-      "long": "--network",
-      "takes_value": true,
-      "metavar": "FILE",
-      "default": null,
-      "required": true
      },
      {
       "short": "-N",
@@ -229,7 +221,7 @@
     "positional": [
      {
       "name": "map",
-      "required": false,
+      "required": true,
       "repeatable": false
      }
     ],
@@ -281,14 +273,6 @@
       "metavar": "INT",
       "default": "10",
       "required": false
-     },
-     {
-      "short": "-n",
-      "long": "--network",
-      "takes_value": true,
-      "metavar": "FILE",
-      "default": null,
-      "required": true
      },
      {
       "short": "-N",
