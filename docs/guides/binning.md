@@ -71,6 +71,11 @@ parts are left out of the final clusters (`ND`).
 
 ## Outputs
 
+`validation` and `pipeline` write the FASTA files of the final clusters in
+the output directory, and store the clusters in the map. The other files
+below are written in the temporary directory of the run (`-T`), which `-N`
+keeps; `metator dump` writes the tables from the map.
+
 | File | What it holds |
 |---|---|
 | `final_clusters/` | One FASTA file per final cluster |

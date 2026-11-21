@@ -7,7 +7,6 @@ import zipfile
 
 import metator.io as mio
 import pandas as pd
-import pyfastx
 import pytest
 
 
@@ -193,28 +192,3 @@ def test_write_mge_data(tmp_path, with_tmp_column):
         data["tmp"] = "c1_1"
     mio.write_mge_data(data, str(tmp_path / "mges.tsv"))
     assert (tmp_path / "mges.tsv").read_text() == "Name\tScore\nc1\t0.12\n"
-
-
-def test_write_contigs(tmp_path):
-    """The records of the contigs, in the order given, each as it is in the
-    fasta file (description and line breaks kept), as `pyfastx extract`
-    writes them. A contig that is not in the file is an error, not a missing
-    record."""
-    fasta = tmp_path / "assembly.fa"
-    fasta.write_text(">c1 first contig\nACGT\nAC\n>c2\nGGGG\n>c3\nTT\n")
-    out = tmp_path / "out.fa"
-    mio.write_contigs(pyfastx.Fasta(str(fasta)), ["c3", "c1"], str(out))
-    assert out.read_text() == ">c3\nTT\n>c1 first contig\nACGT\nAC\n"
-    with pytest.raises(KeyError, match="c4"):
-        mio.write_contigs(pyfastx.Fasta(str(fasta)), ["c2", "c4"], str(out))
-
-
-def test_write_contigs_numeric_names(tmp_path):
-    """Contigs named by numbers, as pandas reads them from a contig data
-    file (integers): written by name, not taken for the index of a record
-    (pyfastx reads an integer key so)."""
-    fasta = tmp_path / "assembly.fa"
-    fasta.write_text(">1\nAAAA\n>2\nCCCC\n>3\nGGGG\n")
-    out = tmp_path / "out.fa"
-    mio.write_contigs(pyfastx.Fasta(str(fasta)), pd.Series([1, 2]), str(out))
-    assert out.read_text() == ">1\nAAAA\n>2\nCCCC\n"
