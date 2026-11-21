@@ -123,8 +123,11 @@ import metator.validation as mtv
 import pandas as pd
 import pyfastx
 
-# The collection exported by anvi'o: each contig and its cluster.
-binning = pd.Series(mio.import_anvio_binning("anvio/curated.txt"))
+# The collection exported by anvi'o: each split and its cluster, a split read
+# as its contig (NODE_1_split_00001 is NODE_1).
+collection = pd.read_csv("anvio/curated.txt", sep="\t", header=None, names=["split", "cluster"], dtype=str)
+binning = collection.set_index(collection["split"].str.split("_split").str[0])["cluster"]
+binning = binning[~binning.index.duplicated(keep="last")]
 
 # One FASTA file per curated cluster.
 assembly = pyfastx.Fasta("assembly.fa")
@@ -147,7 +150,7 @@ contig data table as a column, give them to the contact map of the run with
 [Other tools](../other-tools.md)):
 
 ```python
-binning = mio.import_anvio_binning("anvio/curated.txt")
+# binning: the curated cluster of each contig, read from the collection as above.
 contigs = pd.read_csv("binning/contig_data_final.txt", sep="\t", index_col=0)
 contigs["Anvio"] = contigs["Name"].map(binning).fillna("ND")
 contigs.to_csv("binning/contig_data_anvio.txt", sep="\t")

@@ -27,8 +27,8 @@ error.
 
 ### Pairs
 
-The pairs files that `metator mge` reads, those that hicstuff writes with the
-map (`<prefix>.valid_idx.pairs.gz`), follow the
+The pairs files that the map is made from, those that hicstuff writes with
+the map (`<prefix>.valid_idx.pairs.gz`), follow the
 [pairs format](https://github.com/4dn-dcic/pairix/blob/master/pairs_format_specification.md)
 of the 4D Nucleome, with 7 columns: read name, contig and position of the
 first mate, contig and position of the second, and the strand of each.
@@ -44,17 +44,17 @@ H9:1:HGJYYBBXY:8:1102:3792:13693	NODE_100063	161	NODE_100063	402	-	-
 ```
 
 hicstuff writes them sorted by position and compressed with bgzip, with two
-more columns (the restriction fragment of each mate); `pairix -p pairs` indexes
-them (`.px2`), which `metator mge` needs to read a compressed pairs file.
-`metacooler create pairs` makes a contact map from them, or from the pairs
-files of another aligner.
+more columns (the restriction fragment of each mate). `metacooler create
+pairs` makes a contact map from them, or from the pairs files of another
+aligner, with the contact statistics of the reads of each contig that
+`metator mge` reads (see
+[Clustering mobile genetic elements](guides/mge.md#running-it)). metaTOR
+reads no pairs file itself.
 
 ### Lists of contigs
 
-The MGE contigs of `metator mge --mges`: one contig name per line.
-
-The clusters of `metator mge --binning`: a contig and its cluster per line,
-without header, as `binning.txt` or the collection exported by anvi'o.
+The MGE contigs of `metator mge --mges`: one contig name per line (the first
+word of each line).
 
 ## The contig data tables
 
@@ -199,30 +199,23 @@ cooler whose contigs are grouped into genomes, one per final cluster in the
 map of the clusters, which keeps the bins of the map. See
 [The contact map of the clusters](guides/metacool.md).
 
-## MGE cluster summary
+## MGE clusters
 
-`mges_cluster_summary.tsv` holds one row per MGE cluster, with a header:
+`metator mge` stores its MGE clusters in the map, as the round `mge` of its
+clustering rounds (`mge_random` for `--random`), one cluster per MGE cluster
+(see
+[Clustering mobile genetic elements](guides/mge.md#in-the-contact-map-of-the-run)):
 
 | Column | What it holds |
 |---|---|
-| `BinName` | `MetaTOR_MGE_00001` and on |
-| `BinLength`, `GC`, `Hit` | The size, GC content and hits of the cluster |
-| `BinningScore` | The lowest score at which its contigs were merged, `NA` for a single contig |
-| `ContigsNumber`, `Contigs` | Its number of contigs, and their names, separated by commas |
-| `MetagenomicBin`, `AssociationScore`, `AssociatedBins` | For its host MAGs: `None`, `NA` and `NA`, as `metator mge` does not look for them |
+| `name` | `MetaTOR_MGE_00001` and on, the name of its record in `mges_binned.fa` |
+| `length`, `n_contigs` | The size of the cluster and its number of contigs, which metacooler computes from its contigs |
+| `GC`, `Hit` | The GC content and the hits of the cluster |
+| `BinningScore` | The lowest score at which its contigs were merged, missing for a single contig |
 
-```text
-BinName	BinLength	GC	Hit	BinningScore	ContigsNumber	Contigs	MetagenomicBin	AssociationScore	AssociatedBins
-MetaTOR_MGE_00064	30610.00	68.93	18383.00	1.20	2.00	NODE_8199_len_17842,NODE_10116_len_12768	None	NA	NA
-MetaTOR_MGE_00105	23587.00	37.36	2662.00	NA	1.00	NODE_10949_len_23587	None	NA	NA
-```
-
-With `--map`, the map of the run stores these rows as the round `mge` of its
-clustering rounds (see
-[Clustering mobile genetic elements](guides/mge.md#in-the-contact-map-of-the-run)):
-one cluster per row, named `BinName`, with the contigs of `Contigs` and the
-other columns as written, but `BinLength` and `ContigsNumber`, which are the
-`length` and `n_contigs` that metacooler computes from the contigs.
+Its contigs are the members of the round (`mc.cluster_members("mge")`), the
+longest first. The round has no column for the hosts of the MGE clusters,
+which `metator mge` does not look for.
 
 ## Logs
 
