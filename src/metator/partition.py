@@ -3,10 +3,10 @@
 
 """Partition metaHiC network using Louvain or Leiden algorithm.
 
-General utility function for generating bins from the network file using Louvain
-algorithm. If an overlapping threshold is given, it will use the Hamming
-distance to group together bins relatively closed (to avaoid to split genomes in
-different bins).
+General utility function for generating bins from the network of the contigs
+of a map (see metator.network.map_network) using Louvain algorithm. If an
+overlapping threshold is given, it will use the Hamming distance to group
+together bins relatively closed (to avaoid to split genomes in different bins).
 
 Core functions to partition the network are:
     - algo_partition
@@ -18,8 +18,8 @@ Core functions to partition the network are:
     - leiden_iterations
     - louvain_iterations
     - merge_iterations
+    - network_graph
     - partition
-    - read_network
     - update_contigs_data
 
 """
@@ -40,7 +40,7 @@ from scipy.spatial.distance import cdist
 
 def algo_partition(
     algorithm="louvain",
-    network_file=None,
+    network=None,
     iterations=10,
     resolution_parameter=1.0,
 ):
@@ -50,10 +50,10 @@ def algo_partition(
     -----------
     algorithm : str
         Algorithm to use to partition network. [Default: louvain]
-    network_file : str
-        Path to the network computed previously. The file is 3 columns table
-        separated by a tabulation with the id of the first contigs the id of the
-        second one and the weights of the edge normalized or not.
+    network : pandas.DataFrame
+        The network: one row per edge, with the ids of its two contigs and
+        its weight, normalized or not (columns contig1, contig2 and weight,
+        see metator.network.map_network).
     iterations : int
         Number of iterations of the algorithm of Leiden or Louvain.
         [Default: 10]
@@ -67,9 +67,9 @@ def algo_partition(
         of each iterations separated by a semicolon as values.
     """
     if algorithm == "leiden":
-        output_partition = leiden_iterations(network_file, iterations, resolution_parameter)
+        output_partition = leiden_iterations(network, iterations, resolution_parameter)
     elif algorithm == "louvain":
-        output_partition = louvain_iterations(network_file, iterations)
+        output_partition = louvain_iterations(network, iterations)
     else:
         logger.error('algorithm should be either "louvain" or "leiden"')
         raise ValueError
@@ -300,15 +300,13 @@ def get_hamming_distance(core_bins_iterations, threads):
     return res.tocsr()
 
 
-def leiden_iterations(network_file, iterations, resolution_parameter):
+def leiden_iterations(network, iterations, resolution_parameter):
     """Partition the network with the igraph implementation of Leiden.
 
     Parameters:
     -----------
-    network_file : str
-        Path to the network computed previously. The file is 3 columns table
-        separated by a tabulation with the id of the first contigs the id of the
-        second one and the weights of the edge normalized or not.
+    network : pandas.DataFrame
+        The network (see network_graph).
     iterations : int
         Number of iterations of the algorithm of Leiden.
     resolution_parameter : float
@@ -320,9 +318,9 @@ def leiden_iterations(network_file, iterations, resolution_parameter):
         Dictionnary with the id of the contig as key and the list of the results
         of each iterations separated by a semicolon as values.
     """
-    network, contigs = read_network(network_file)
+    graph, contigs = network_graph(network)
     memberships = [
-        network.community_leiden(
+        graph.community_leiden(
             objective_function="modularity",
             weights="weight",
             resolution=resolution_parameter,
@@ -333,15 +331,13 @@ def leiden_iterations(network_file, iterations, resolution_parameter):
     return merge_iterations(contigs, memberships)
 
 
-def louvain_iterations(network_file, iterations):
+def louvain_iterations(network, iterations):
     """Partition the network with the igraph implementation of Louvain.
 
     Parameters:
     -----------
-    network_file : str
-        Path to the network computed previously. The file is 3 columns table
-        separated by a tabulation with the id of the first contigs the id of the
-        second one and the weights of the edge normalized or not.
+    network : pandas.DataFrame
+        The network (see network_graph).
     iterations : int
         Number of iterations of the algorithm of Louvain.
 
@@ -351,8 +347,8 @@ def louvain_iterations(network_file, iterations):
         Dictionnary with the id of the contig as key and the list of the results
         of each iterations separated by a semicolon as values.
     """
-    network, contigs = read_network(network_file)
-    memberships = [network.community_multilevel(weights="weight").membership for _ in range(iterations)]
+    graph, contigs = network_graph(network)
+    memberships = [graph.community_multilevel(weights="weight").membership for _ in range(iterations)]
     return merge_iterations(contigs, memberships)
 
 
@@ -379,9 +375,9 @@ def merge_iterations(contigs, memberships):
 def partition(
     algorithm,
     assembly,
-    contig_data_file,
+    contig_data,
     iterations,
-    network_file,
+    network,
     outdir,
     fasta_dir,
     overlapping_parameter,
@@ -398,12 +394,14 @@ def partition(
         Algorithm to use to partition the network. Either leiden or louvain.
     assembly : str
         Path to the assembly file used for the partition.
-    contig_data_file : str
-        Path to the contig data table to update.
+    contig_data : pandas.DataFrame
+        The contig data of the contigs of the map, in its order (see
+        metator.network.contig_table), to add the clusters to.
     iterations : int
         Number of iterations to use for the partition.
-    network_file : str
-        Path to the network file.
+    network : pandas.DataFrame
+        The network of the contigs of the map (see
+        metator.network.map_network).
     outdir : str
         Path to the output directory where to write the output files.
     fasta_dir : str
@@ -430,7 +428,7 @@ def partition(
 
     # Perform the iterations of Louvain or Leiden to partition the network.
     logger.info("Start iterations:")
-    output_partition = algo_partition(algorithm, network_file, iterations, resolution_parameter)
+    output_partition = algo_partition(algorithm, network, iterations, resolution_parameter)
 
     # Detect core bins
     logger.info("Detect core clusters:")
@@ -456,7 +454,7 @@ def partition(
     # Update the contigs_data_file.
     logger.info("Extract clusters:")
     contigs_data, contigs_data_file = update_contigs_data(
-        contig_data_file,
+        contig_data,
         core_bins_contigs,
         overlapping_bins,
         outdir,
@@ -475,15 +473,17 @@ def partition(
     return contigs_data_file
 
 
-def read_network(network_file):
-    """Read the network file as an igraph graph.
+def network_graph(network):
+    """The network as an igraph graph: its vertices are the contigs of its
+    edges, in the order of their ids, and its edges are in the order of its
+    rows.
 
     Parameters:
     -----------
-    network_file : str
-        Path to the network computed previously. The file is 3 columns table
-        separated by a tabulation with the id of the first contigs the id of the
-        second one and the weights of the edge normalized or not.
+    network : pandas.DataFrame
+        One row per edge: the ids of its two contigs (columns contig1 and
+        contig2) and its weight, normalized or not (column weight), as
+        metator.network.map_network gives them.
 
     Returns:
     --------
@@ -492,30 +492,30 @@ def read_network(network_file):
     numpy.ndarray:
         Contig ids of the vertices.
     """
-    edges = pd.read_csv(network_file, sep="\t", header=None, names=["contig1", "contig2", "weight"])
-    contigs, vertices = np.unique(edges[["contig1", "contig2"]].to_numpy().ravel(), return_inverse=True)
-    network = ig.Graph(
+    contigs, vertices = np.unique(network[["contig1", "contig2"]].to_numpy().ravel(), return_inverse=True)
+    graph = ig.Graph(
         n=len(contigs),
         edges=vertices.reshape(-1, 2).tolist(),
-        edge_attrs={"weight": edges["weight"].tolist()},
+        edge_attrs={"weight": network["weight"].tolist()},
     )
-    return network, contigs
+    return graph, contigs
 
 
-def update_contigs_data(contig_data_file, core_bins_contigs, overlapping_bins, outdir):
-    """Add bin information in the contigs data file.
+def update_contigs_data(contig_data, core_bins_contigs, overlapping_bins, outdir):
+    """Add bin information in the contigs data, and write it in
+    contig_data_partition.txt.
 
-    This function allow to update the contigs data file which were created
-    previously in the network functions with the columns: contig id, contig
-    name, contig length, GC content, hit, coverage, restriction site. The
+    The contig data of the contigs of the map (see
+    metator.network.contig_table) has the columns: contig id, contig name,
+    contig length, GC content, hit, coverage, restriction site. The
     function will add six columns: core bin id, core bin number of contigs, core
     bin length, overlapping bin id, overlapping bin number of contigs,
     overlapping bin length.
 
     Parameters:
     -----------
-    contig_data_file : str
-        Path to the contigs data file.
+    contig_data : pandas.DataFrame
+        The contig data, which is left as it is.
     core_bins_contigs : dict
         Dictionnary which has as keys the core bins id and as value the id of
         the contigs of the core bin.
@@ -532,8 +532,8 @@ def update_contigs_data(contig_data_file, core_bins_contigs, overlapping_bins, o
         appartenance to the bins.
     """
 
-    # Read the table
-    contigs_data = pd.read_csv(contig_data_file, sep="\t", header=0, index_col=False)
+    # A copy of the table, from 0 to n - 1: the contig of ID i is row i - 1.
+    contigs_data = contig_data.reset_index(drop=True).copy()
 
     # Add new empty columns. Use object dtype as they will mix "-" and ints.
     for col in [

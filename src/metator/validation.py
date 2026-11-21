@@ -384,7 +384,6 @@ def recursive_clustering(
     outdir,
     recursive_fasta_dir,
     algorithm,
-    tmpdir,
     bin_summary,
     contigs_data,
     network,
@@ -412,15 +411,14 @@ def recursive_clustering(
         Path to the directory where to write the decontaminated fasta.
     algorithm : str
         Algorithm to use, either louvain or leiden.
-    tmpdir : str
-        Path the temp directory.
     bin_summary : dict
         Dictionary containing information about the bins.
     contigs_data : pandas.DataFrame
         Table with all the data from the contigs.
     network : pandas.DataFrame
-        Metator full network: one row per edge, with the columns contig1,
-        contig2 and weight.
+        The network of the contigs of the map: one row per edge, with the
+        columns contig1, contig2 and weight (see
+        metator.network.map_network).
     size : int
         Size threshold in base pairs of the bins.
     threads : int
@@ -469,7 +467,6 @@ def recursive_clustering(
         map(
             partial(
                 recursive_clustering_worker,
-                tmpdir=tmpdir,
                 network=network,
                 algorithm=algorithm,
                 iterations=iterations,
@@ -558,38 +555,33 @@ def bin_contig_ids(bin_id, contigs_data):
 
 def recursive_clustering_worker(
     bin_id,
-    tmpdir,
     network,
     algorithm,
     iterations,
     resolution_parameter,
     contigs_data,
 ):
-    """Worker to partition one bin if it's contaminated.
+    """Worker to partition one bin if it's contaminated: its subnetwork, the
+    edges of the network between two of its contigs, in their order.
 
     Parameters:
     -----------
-    tmpdir : str
-        Path the temp directory.
-    algorithm : str
-        Algorithm to use, either louvain or leiden.
+    bin_id : str
+        Name of the bin.
     network : pandas.DataFrame
         Network of contigs from HiC librairies: one row per edge, with the
         columns contig1, contig2 and weight.
+    algorithm : str
+        Algorithm to use, either louvain or leiden.
     iterations : int
         Number of iterations to use for recursive iterations of Louvain or
         Leiden.
     resolution parameter : float
         Resolution parameter of Leiden algorithm.
-    contigs_data_file : str
-        Path to the contigs data file from metator partition.
+    contigs_data : pandas.DataFrame
+        The contig data of the partition, with the recursive bins so far.
     """
-    # Create temporary folders.
-    tmpdir_subnetwork = join(tmpdir, "recursive_clusters", bin_id)
-    os.makedirs(tmpdir_subnetwork, exist_ok=True)
-
     logger.info("Cluster in progress: {0}".format(bin_id))
-    subnetwork_file = join(tmpdir_subnetwork, "subnetwork_" + bin_id + ".txt")
 
     # Extract contigs
     list_contigs = bin_contig_ids(bin_id, contigs_data)
@@ -597,13 +589,10 @@ def recursive_clustering_worker(
     # Extract subnetwork: the edges between two contigs of the bin.
     subnetwork = network[network["contig1"].isin(list_contigs) & network["contig2"].isin(list_contigs)]
 
-    # Write the new subnetwork
-    subnetwork.to_csv(subnetwork_file, sep="\t", header=False, index=False)
-
     # Partition the subnetwork.
     output_partition = mtp.algo_partition(
         algorithm,
-        subnetwork_file,
+        subnetwork,
         iterations,
         resolution_parameter,
     )
@@ -619,13 +608,12 @@ def recursive_decontamination(
     final_fasta_dir,
     input_fasta_dir,
     iterations,
-    network_file,
+    network,
     outdir,
     overlapping_parameter,
     recursive_fasta_dir,
     resolution_parameter,
     size,
-    temp_directory,
     threads,
     prefix,
 ):
@@ -647,8 +635,12 @@ def recursive_decontamination(
         Path to the directory where the fasta bin from the partition are.
     iterations : int
         Number of iterations to use for the recursive partition.
-    network_file : str
-        Path to the network file.
+    network : pandas.DataFrame
+        The network of the contigs of the map, in the IDs of the contigs in
+        contig_data_file (see metator.network.relabel_network). The IDs of
+        metator.network.map_network are the positions of the contigs in the
+        map as it is read, which a run that regroups the map (validation,
+        pipeline) moves: join by contig name.
     outdir : str
         Path to the output directory where to write the output files.
     overlapping_parameter : int
@@ -663,8 +655,6 @@ def recursive_decontamination(
         parameters, smaller the bins will be in the output.
     size : int
         Threshold size in base pair of the output bins.
-    temp_directory : str
-        Path to the directory used to write temporary files.
     threads : int
         Number of threads to use.
     prefix : str
@@ -683,10 +673,6 @@ def recursive_decontamination(
         )
         raise ValueError
 
-    # Create folders in the temporary directory
-    tmpdir_recursive_clustering = join(temp_directory, "recursive_clustering")
-    os.makedirs(tmpdir_recursive_clustering, exist_ok=True)
-
     # Defined miComplete output file path
     overlapping_micomplete_file = join(outdir, "overlapping_micomplete_results.txt")
 
@@ -697,16 +683,6 @@ def recursive_decontamination(
         input_fasta_dir,
         overlapping_micomplete_file,
         threads,
-    )
-
-    # Load network: the weights stay as text, so that the subnetwork of a bin
-    # repeats its rows verbatim.
-    network = pd.read_csv(
-        network_file,
-        sep="\t",
-        header=None,
-        names=["contig1", "contig2", "weight"],
-        dtype={"weight": str},
     )
 
     # Load contigs data:
@@ -770,7 +746,6 @@ def recursive_decontamination(
             outdir,
             recursive_fasta_dir_step,
             algorithm,
-            tmpdir_recursive_clustering,
             bin_summary,
             contigs_data,
             network,

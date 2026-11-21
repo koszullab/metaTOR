@@ -8,7 +8,8 @@ import pytest
 import shutil
 
 assembly = "tests_data/assembly.fa"
-network_file = "tests_data/outdir/network.txt"
+# The network of a run, as metator.network.map_network gives it.
+network = pd.read_csv("tests_data/outdir/network.txt", sep="\t", header=None, names=["contig1", "contig2", "weight"])
 iterations = 5
 resolution_parameter = 0.9
 spins = 2
@@ -81,7 +82,7 @@ def test_algo_partition():
     # Test algo partition choice.
     for algorithm in ["louvain", "leiden", "error"]:
         try:
-            partition = mtp.algo_partition(algorithm, network_file, iterations, resolution_parameter)
+            partition = mtp.algo_partition(algorithm, network, iterations, resolution_parameter)
             assert len(partition) == 1058
         except ValueError:
             assert algorithm == "error"
@@ -169,7 +170,7 @@ def test_get_hamming_distance():
 
 def test_leiden_iterations():
     # Test leiden partition.
-    partition = mtp.leiden_iterations(network_file, iterations, resolution_parameter)
+    partition = mtp.leiden_iterations(network, iterations, resolution_parameter)
     _val = int(partition[1].split(";")[0])
     assert len(partition) == 1058
     assert len(partition[1].split(";")) == iterations
@@ -177,29 +178,40 @@ def test_leiden_iterations():
 
 def test_louvain_iterations():
     # Test louvain partition.
-    partition = mtp.louvain_iterations(network_file, iterations)
+    partition = mtp.louvain_iterations(network, iterations)
     _val = int(partition[1].split(";")[0])
     assert len(partition) == 1058
     assert len(partition[1].split(";")) == iterations
 
 
-def test_read_network():
-    network, contigs = mtp.read_network(network_file)
-    assert network.vcount() == len(contigs) == 1058
-    assert network.ecount() == 13415
-    assert network.is_weighted()
+def test_network_graph():
+    """The vertices are the contigs of the edges, in the order of their IDs;
+    the edges are the rows, in their order."""
+    graph, contigs = mtp.network_graph(network)
+    assert graph.vcount() == len(contigs) == 1058
+    assert graph.ecount() == 13415
+    assert graph.is_weighted()
+    assert list(contigs) == sorted(set(network.contig1) | set(network.contig2))
+    first = graph.es[0]
+    assert (contigs[first.source], contigs[first.target]) == (network.contig1[0], network.contig2[0])
+    assert graph.es["weight"] == list(network.weight)
 
 
 def test_update_contigs_data():
     # Updating contigs data with partition values.
     tmp_dir = "tmp_partition_contigs"
     os.makedirs(tmp_dir, exist_ok=True)
-    contigs_data, _ = mtp.update_contigs_data(
-        "tests_data/outdir/contig_data_network.txt",
+    contig_data = pd.read_csv("tests_data/outdir/contig_data_network.txt", sep="\t")
+    before = contig_data.copy()
+    contigs_data, path = mtp.update_contigs_data(
+        contig_data,
         core_bins_contigs,
         overlapping_bins,
         tmp_dir,
     )
+    # The contig data given is left as it is; the one returned is written.
+    pd.testing.assert_frame_equal(contig_data, before)
+    pd.testing.assert_frame_equal(pd.read_csv(path, sep="\t", dtype=str), contigs_data.astype(str))
     assert list(contigs_data.columns) == cols
     assert contigs_data.loc[3, "Overlapping_cluster_ID"] == "00002"
     assert contigs_data.loc[0, "Overlapping_cluster_contigs"] == 2

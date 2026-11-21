@@ -55,6 +55,26 @@ def test_mge(tmp_dir, run_cli):
     run_cli("mge", *args.split(" "))
 
 
+def test_mge_contig_that_the_contig_data_lacks(tmp_path, run_cli, logged):
+    """An MGE contig that the contig data lacks (the contig data of a run
+    lists the contigs of its map only) is left out of the MGE clusters, with
+    a warning that names it."""
+    mges = tmp_path / "mges.txt"
+    mges.write_text(Path(global_args["SUBSET_MGES"]).read_text() + "absent_contig\n")
+    args = ("-c {CONTIGS} -a {SUBSET_FASTA} -b {BINNING} -m {MGES} -o {OUT_TEST} --threshold-bin 0.5 {SUBSET_PAIRS}").format(
+        OUT_TEST=tmp_path / "out", MGES=mges, **global_args
+    )
+    run_cli("mge", *args.split(" "))
+    message = (
+        f"1 MGE contig(s) are not in the contig data {global_args['CONTIGS']}, which lists the contigs of the map of "
+        "the run only (a map made with a contig filter lacks some): they are left out of the MGE clusters: "
+        "'absent_contig'."
+    )
+    assert ("WARNING", message) in logged()
+    summary = pd.read_csv(tmp_path / "out" / "mges_cluster_summary.tsv", sep="\t")
+    assert "absent_contig" not in {contig for contigs in summary.Contigs for contig in str(contigs).split(",")}
+
+
 def test_mge_random(tmp_path, run_cli):
     """--random shuffles the MGE bins and still writes the bins and summary."""
     args = (

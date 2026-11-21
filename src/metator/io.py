@@ -15,7 +15,6 @@ This mdoule contains all core I/O functions:
     - read_compressed
     - remove_pyfastx_index
     - rename_1x_columns
-    - sort_pairs
     - write_bin_summary
     - write_contigs
     - write_mge_data
@@ -26,7 +25,6 @@ import gzip
 import io
 import os
 import pandas as pd
-import subprocess as sp
 import zipfile
 from Bio import SeqIO
 from Bio.Restriction import RestrictionBatch
@@ -190,6 +188,11 @@ def import_anvio_binning(binning_file):
 def import_contig_data_mges(contig_data_file, binning_result, mges_list):
     """Import contigs data.
 
+    The contig data tables of metaTOR list the contigs of the map of the run
+    only: an MGE contig that the map lacks (a map made with a contig filter)
+    is not in them. Such contigs are left out, with a warning that says how
+    many and names the first.
+
     Parameters:
     -----------
     contig_data_file : str
@@ -207,7 +210,17 @@ def import_contig_data_mges(contig_data_file, binning_result, mges_list):
     list
         List of the mge contigs ID.
     """
+    from metator.metacool import _shown
+
     contig_data = pd.read_csv(contig_data_file, sep="\t")
+    listed = set(contig_data["Name"].astype(str))
+    missing = [name for name in dict.fromkeys(mges_list) if name not in listed]
+    if missing:
+        logger.warning(
+            f"{len(missing)} MGE contig(s) are not in the contig data {contig_data_file}, which lists the contigs of "
+            f"the map of the run only (a map made with a contig filter lacks some): they are left out of the MGE "
+            f"clusters: {_shown(missing)}."
+        )
     contig_data["Binned"] = False
     contig_data["Final_cluster"] = "ND"
     contig_data["MGE"] = False
@@ -400,64 +413,6 @@ def write_contigs(fasta, names, out_file):
     with open(out_file, "w") as out:
         for name in names:
             out.write(fasta[str(name)].raw)
-
-
-def sort_pairs(in_file, out_file, tmp_dir=None, threads=1, buffer="2G"):
-    """
-    Adapted function from hicstuff.io (https://github.com/koszullab/hicstuff/)
-    Sort a pairs file in batches using UNIX sort.
-
-    Parameters:
-    -----------
-    in_file : str
-        Path to the unsorted input file
-    out_file : str
-        Path to the sorted output file.
-    keys : list of str
-        list of columns to use as sort keys. Each column can be one of readID,
-        chr1, pos1, chr2, pos2, frag1, frag2. Key priorities are according to
-        the order in the list.
-    tmp_dir : str
-        Path to the directory where temporary files will be created. Defaults
-        to current directory.
-    threads : int
-        Number of parallel sorting threads.
-    buffer : str
-        Buffer size used for sorting. Consists of a number and a unit.
-    """
-    # TODO: Write a pure python implementation to drop GNU coreutils depencency,
-    # could be inspired from: https://stackoverflow.com/q/14465154/8440675
-
-    # Check if UNIX sort version supports parallelism
-    parallel_ok = True
-    sort_ver = sp.Popen(["sort", "--version"], stdout=sp.PIPE)
-    sort_ver = sort_ver.communicate()[0].decode().split("\n")[0].split(" ")[-1].split(".")
-    # If so, specify threads, otherwise don't mention it in the command line
-    try:
-        sort_ver = list(map(int, sort_ver))
-        if sort_ver[0] < 8 or (sort_ver[0] == 8 and sort_ver[1] < 23):
-            logger.warning(
-                "GNU sort version is {0} but >8.23 is required for parallel sort. Sorting on a single thread.".format(
-                    ".".join(map(str, sort_ver))
-                )
-            )
-            parallel_ok = False
-    # BSD sort has a different format and will throw error upon parsing. It does
-    # not support parallel processes anyway.
-    except ValueError:
-        logger.warning("Using BSD sort instead of GNU sort, sorting on a single thread.")
-        parallel_ok = False
-
-    # Sort pairs into a fresh output file.
-    with open(out_file, "w") as output:
-        grep_proc = sp.Popen(["grep", "-v", "^#", in_file], stdout=sp.PIPE)
-        sort_cmd = ["sort", "-S %s" % buffer, "-k1,1V", "-k2,2V"]
-        if tmp_dir is not None:
-            sort_cmd.append("--temporary-directory={0}".format(tmp_dir))
-        if parallel_ok:
-            sort_cmd.append("--parallel={0}".format(threads))
-        sort_proc = sp.Popen(sort_cmd, stdin=grep_proc.stdout, stdout=output)
-        sort_proc.communicate()
 
 
 def write_bin_summary(bin_summary, bin_summary_file):

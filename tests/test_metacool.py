@@ -27,6 +27,7 @@ from metator.version import __version__
 from tests import synthetic
 from tests.hdf5 import walk
 from tests.maps import contig_map, pairs_map
+from tests.oracles import normalize_pair
 
 PAIRS_HEADER = "## pairs format v1.0\n#columns: readID chr1 pos1 chr2 pos2 strand1 strand2\n"
 
@@ -1175,7 +1176,8 @@ def _replaced_while_read(monkeypatch, path, by):
     """Have the map at path replaced by the map by, as a run that updates a
     map in place replaces it (os.replace): once the first chunk of its
     pixels is read (MetaCooler.iter_pixels), or once metacooler reassign
-    has read it."""
+    has read it, or once metacooler.network has summed the first chunk of
+    its pixels."""
 
     def replace():
         copy = f"{path}.copy"
@@ -1198,7 +1200,21 @@ def _replaced_while_read(monkeypatch, path, by):
 
         return replaced
 
+    # metacooler.network, which metator.network.contig_contacts reads the map
+    # with: once the first chunk of its pixels is summed.
+    import metacooler.io.network as network_module
+
+    aggregate_pixels, replaced = network_module.aggregate_pixels, []
+
+    def aggregate_then_replace(*args, **kwargs):
+        summed = aggregate_pixels(*args, **kwargs)
+        if not replaced:
+            replaced.append(True)
+            replace()
+        return summed
+
     monkeypatch.setattr(metacooler.MetaCooler, "iter_pixels", read_then_replace)
+    monkeypatch.setattr(network_module, "aggregate_pixels", aggregate_then_replace)
     monkeypatch.setattr(metacooler, "reassign", then_replace(metacooler.reassign))
 
 
@@ -1211,7 +1227,7 @@ def _map_and_its_clusters(metagenome, binning, tmp_path):
     return unbinned, clusters
 
 
-@pytest.mark.parametrize("reader", ["read_metacool_contacts", "reassign_metacool"])
+@pytest.mark.parametrize("reader", ["contig_contacts", "reassign_metacool"])
 def test_a_map_replaced_while_read_is_refused(reader, metagenome, metagenome_files, binning, tmp_path, monkeypatch):
     """A map replaced while it is read, as a run that updates it in place
     replaces it (here by the map of its clusters), is refused: the map that
@@ -1223,12 +1239,8 @@ def test_a_map_replaced_while_read_is_refused(reader, metagenome, metagenome_fil
     unbinned, clusters = _map_and_its_clusters(metagenome, binning, tmp_path)
     output = tmp_path / "output"
     output.write_text("an earlier output")
-    if reader == "read_metacool_contacts":
-        # pyfastx indexes the assembly: a private copy.
-        assembly = shutil.copyfile(metagenome_files["assembly"], tmp_path / "assembly.fa")
-        contig_data = mtn.create_contig_data(str(assembly))
     reads = {
-        "read_metacool_contacts": lambda: mtn.read_metacool_contacts(str(unbinned), contig_data, chunksize=100),
+        "contig_contacts": lambda: mtn.contig_contacts(str(unbinned), chunksize=100),
         "reassign_metacool": lambda: mtmc.reassign_metacool(
             str(unbinned), str(binning["contig_data"]), str(output), bin_summary=str(binning["bin_summary"]), force=True
         ),
@@ -1252,12 +1264,9 @@ def test_a_read_that_fails_on_a_replaced_map_says_why(metagenome, metagenome_fil
     unbinned = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
     not_a_map = tmp_path / "not_a_map.txt"
     not_a_map.write_text("no map")
-    # pyfastx indexes the assembly: a private copy.
-    assembly = shutil.copyfile(metagenome_files["assembly"], tmp_path / "assembly.fa")
-    contig_data = mtn.create_contig_data(str(assembly))
     _replaced_while_read(monkeypatch, unbinned, not_a_map)
     with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(str(unbinned))} was replaced or written") as raised:
-        mtn.read_metacool_contacts(str(unbinned), contig_data, chunksize=100)
+        mtn.contig_contacts(str(unbinned), chunksize=100)
     assert isinstance(raised.value.__cause__, OSError)
 
 
@@ -1416,12 +1425,15 @@ def assembly_contig_data(inputs, measured=True):
 def final_contig_data(contig_data, pairs, final_bin, path):
     """The contig_data_final.txt file of a run with this contig data, laid
     out as validation writes it (an unnamed index first, Final_cluster last):
-    its columns as write_contig_data writes them, the hits of each contig
-    counted on the pairs, as the network step counts them."""
+    its columns as contig_data_network.txt held them, the hits of each
+    contig counted on the pairs, as the network step counts them."""
     hits = pd.concat([pairs.chr1, pairs.chr2]).value_counts()
-    for name, data in contig_data.items():
-        data["hit"] = int(hits.get(name, 0))
-    mtn.write_contig_data(contig_data, str(path))
+    with open(path, "w") as table:
+        table.write("ID\tName\tSize\tGC_content\tHit\tShotgun_coverage\tRestriction_site\n")
+        for i, (name, data) in enumerate(contig_data.items(), start=1):
+            data["hit"] = int(hits.get(name, 0))
+            values = [i, name, data["length"], data["GC"], data["hit"], data["coverage"], data["RS"]]
+            table.write("\t".join(map(str, values)) + "\n")
     table = pd.read_csv(path, sep="\t", dtype=str, keep_default_na=False)
     table["Final_cluster"] = table.Name.map(final_bin)
     table.to_csv(path, sep="\t", index=True)
@@ -1517,6 +1529,28 @@ def test_a_map_updated_again_and_again_does_not_grow(metagenome, binning, tmp_pa
         )
         sizes.append(metacool.stat().st_size)
     assert max(sizes[1:]) - sizes[1] < 8_000, sizes
+    metacooler.validate(str(metacool), full=True)
+
+
+def test_a_network_stored_again_and_again_stays_bounded(metagenome, metagenome_inputs, tmp_path):
+    """The network stored in place run after run (metator network) stays
+    bounded as the map of the clusters does: each edit session starts from a
+    fresh copy of the map, so the map holds at most the space that the edits
+    of one run left behind (about 28 kB here, which the second run adds).
+    From the second run on, it keeps its size, but for the history of the
+    runs that its metadata gains (two annotate entries a run: the columns of
+    the network dropped, then added again), which the edits of a run
+    rewrite: two pages in six runs."""
+    metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, metagenome_inputs["pairs"])
+    names = metacooler.MetaCooler(str(metacool)).contigs["name"]
+    hits = mtn.contig_hits(mtn.contig_contacts(str(metacool)), len(names))
+    table = mtn.contig_data_table(assembly_contig_data(metagenome_inputs), names, hits)
+    sizes = []
+    for _ in range(6):
+        mtmc.store_network(str(metacool), str(metacool), mtmc.Network(table, "empirical_hit"), force=True)
+        sizes.append(metacool.stat().st_size)
+    assert max(sizes[1:]) - sizes[1] < 12_000, sizes
+    assert len(metacooler.MetaCooler(str(metacool)).metadata["annotate"]) == 1 + 2 * 5
     metacooler.validate(str(metacool), full=True)
 
 
@@ -1691,8 +1725,9 @@ def test_map_of_the_bins_stores_the_normalization_of_the_network(normalization, 
     the weights metator_<normalization> of its bins, from the columns of its
     contigs table that the normalization reads, which it records. The
     contacts of the map normalized by them and summed by pair of contigs
-    are metaTOR's network: normalize_pair of the contact count of each pair
-    (none where it gives 0)."""
+    are metaTOR's network: the normalization of metaTOR 1.x of the contact
+    count of each pair (see tests.oracles.normalize_pair; none where it gives
+    0)."""
     outfile, contig_data_file, contig_data = _contig_map_and_final_tables(metagenome, metagenome_inputs, tmp_path)
     mtmc.reassign_metacool(str(outfile), str(contig_data_file), str(outfile), force=True, normalization=normalization)
 
@@ -1704,7 +1739,7 @@ def test_map_of_the_bins_stores_the_normalization_of_the_network(normalization, 
     columns = [f"contigs/{column}" for column in mtmc.NORMALIZATION_COLUMNS[normalization]]
     assert attrs["depends_on"] == (["pixels"] if "contigs/Hit" in columns else []) + columns
     expected = {
-        pair: mtn.normalize_pair(contig_data, pair, count, normalization)
+        pair: normalize_pair(contig_data, pair, count, normalization)
         for pair, count in contig_contacts(outfile).items()
         if pair[0] != pair[1]
     }

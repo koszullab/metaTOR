@@ -3,7 +3,6 @@
 import bz2
 import gzip
 import os
-import subprocess as sp
 import zipfile
 
 import metator.io as mio
@@ -110,31 +109,6 @@ def test_remove_pyfastx_index(tmp_path):
     assert fasta.exists()
 
 
-@pytest.mark.parametrize(
-    "version, parallel",
-    [("sort (GNU coreutils) 9.4", True), ("sort (GNU coreutils) 8.4", False), ("2.3-Apple (154)", False)],
-)
-def test_sort_pairs(tmp_path, monkeypatch, version, parallel):
-    """Pairs sorted by contig names whatever the sort flavour; --parallel only
-    for GNU sort >= 8.23."""
-    real_popen = sp.Popen
-    commands = []
-
-    def popen(cmd, *args, **kwargs):
-        commands.append(cmd)
-        if cmd == ["sort", "--version"]:
-            return real_popen(["echo", version], *args, **kwargs)
-        return real_popen(cmd, *args, **kwargs)
-
-    monkeypatch.setattr(mio.sp, "Popen", popen)
-    (tmp_path / "in.txt").write_text("#header\ncontig_10\tcontig_2\ncontig_2\tcontig_3\ncontig_1\tcontig_9\n")
-    mio.sort_pairs(str(tmp_path / "in.txt"), str(tmp_path / "out.txt"), tmp_dir=str(tmp_path), threads=2)
-    assert (tmp_path / "out.txt").read_text() == "contig_1\tcontig_9\ncontig_2\tcontig_3\ncontig_10\tcontig_2\n"
-    sort_cmd = commands[-1]
-    assert ("--parallel=2" in sort_cmd) == parallel
-    assert f"--temporary-directory={tmp_path}" in sort_cmd
-
-
 def test_rename_1x_columns(logged):
     """The columns of the contig data that metaTOR 1.x named after bins get
     their 2.0 names (for host.py, which reads the tables of 1.x). A table of
@@ -175,6 +149,24 @@ def test_import_mges_tables(tmp_path):
     assert list(data.Final_cluster) == ["bin_1", "bin_2", "ND"]
     assert list(data.Binned) == [True, True, False]
     assert list(data.MGE) == [False, True, True]
+
+
+def test_mge_contigs_that_the_contig_data_lacks(tmp_path, logged):
+    """The contig data tables list the contigs of the map of the run only:
+    the MGE contigs that a map made with a contig filter lacks are left out,
+    with a warning that says how many and names the first."""
+    pd.DataFrame({"ID": [1, 2], "Name": ["c1", "c2"], "Size": [10, 20]}).to_csv(tmp_path / "contigs.txt", sep="\t", index=False)
+    mges = ["c2", *(f"short_{i}" for i in range(7)), "short_0"]
+    data, mges_ids = mio.import_contig_data_mges(str(tmp_path / "contigs.txt"), {}, mges)
+    assert mges_ids == [1] and list(data.MGE) == [False, True]
+    assert logged() == [
+        (
+            "WARNING",
+            f"7 MGE contig(s) are not in the contig data {tmp_path / 'contigs.txt'}, which lists the contigs of the map "
+            "of the run only (a map made with a contig filter lacks some): they are left out of the MGE clusters: "
+            "'short_0', 'short_1', 'short_2', 'short_3', 'short_4', ... (+2 more).",
+        )
+    ]
 
 
 @pytest.mark.parametrize("shotgun", [True, False])

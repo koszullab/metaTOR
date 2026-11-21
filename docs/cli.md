@@ -47,7 +47,7 @@ hicstuff's next release), or metacooler from pairs files
 
 | Option | Default | Description |
 |---|---|---|
-| `MAP` | *required* | A `.metacool` contact map of the contigs, or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`): the run reads its network from it, and writes the map of its clusters over it. See [Starting from a contact map](guides/metacool.md#starting-from-a-contact-map). |
+| `MAP` | *required* | A `.metacool` contact map of the contigs, or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`): the run reads its network from it, and writes the map of its clusters over it, with the network of its contigs, as `network` stores it. See [Starting from a contact map](guides/metacool.md#starting-from-a-contact-map). |
 | `-a, --assembly` | *required* | The assembly that the map was made from: a FASTA file, plain or compressed with gzip. |
 | `-d, --depth` | none | The coverage of the contigs, from `jgi_summarize_bam_contig_depths` of MetaBAT2. The `Shotgun_coverage` column of the map gives it without `--depth`, which replaces it: see [Starting from a contact map](guides/metacool.md#starting-from-a-contact-map). |
 | `-e, --enzyme` | none | The restriction enzymes of the library. The `Restriction_site` column of the map gives the restriction sites without `--enzyme`, which replaces it. |
@@ -63,7 +63,7 @@ hicstuff's next release), or metacooler from pairs files
 | `-p, --prefix` | none | Name the clusters `<prefix>_metator_…`. Letters, digits, `_` and `-` only. |
 | `-F, --force` | off | Replace the directories of clusters of an earlier run, and an existing `--output-map` file. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory. |
-| `-t, --threads` | `1` | Threads to sort the network, and for the partition and the validation (miComplete). |
+| `-t, --threads` | `1` | Threads for the partition and the validation (miComplete). |
 | `-N, --no-clean-up` | off | Keep the temporary files. |
 | `--no-metacool` | off | Do not write the contact map of the clusters: the map of the run is left as it was. |
 | `--output-map` | none | Write the contact map of the clusters to this file (replaced only with `-F`), and leave `MAP` as it was. By default, the run updates `MAP` in place. |
@@ -84,54 +84,70 @@ metator pipeline hicstuff/sample.metacool -a assembly.fa -e DpnII -o binning --o
 
 ### `network` { #network }
 
-Build the network of contigs from the map: the first step of the pipeline.
-Writes `network.txt` and `contig_data_network.txt`. **Guide:**
-[Building the network](guides/network.md).
+Build the network of contigs from the map, and store it in the map: the first
+step of the pipeline, whose network `partition` and `validation` read from the
+map. **Guide:** [Building the network](guides/network.md).
 
 ```console
 metator network [OPTIONS] MAP
 ```
 
+The run stores in the map what it measured on each contig, in its contigs
+table (`GC_content`, `Hit`, and `Shotgun_coverage` and `Restriction_site` when
+it has them), and the normalization of the network, as the weights
+`metator_<normalization>` of its bins (none for `None`), which replace those of
+an earlier network; and its command line, under the `network` entry of the
+`metator` key of the metadata of the map. The map is updated in place, or
+written to `--output-map`. It writes no table: `network.txt` and
+`contig_data_network.txt` are gone. To export the network, by contig names,
+run `metacooler network MAP --level contig --balance metator_<normalization>
+--header`, piped to `awk -F '\t' '$1 != $2 && $3 != 0'`, which drops the
+contacts within each contig that metacooler writes too (columns `node1`,
+`node2` and `value`; the raw counts without `--balance`): see
+[The network](formats.md#the-network). `metator dump` will write
+`network.txt`.
+
 | Option | Default | Description |
 |---|---|---|
-| `MAP` | *required* | As in `pipeline`: the map is only read. |
+| `MAP` | *required* | As in `pipeline`: the network is stored in it, in place, or in `--output-map`, which an entry of a collection needs. |
 | `-a, --assembly` | *required* | As in `pipeline`. |
 | `-d, --depth` | none | As in `pipeline`. |
 | `-e, --enzyme` | none | As in `pipeline`. |
 | `-n, --normalization` | `empirical_hit` | As `--normalization` (`-m`) in `pipeline`. |
-| `-o, --outdir` | the current directory | The output directory. |
+| `-o, --outdir` | the current directory | The output directory, of the log of the run. |
+| `-F, --force` | off | Replace an existing `--output-map` file. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory. |
-| `-t, --threads` | `1` | Threads to sort the network. |
-| `-N, --no-clean-up` | off | Keep the temporary files. |
+| `-N, --no-clean-up` | off | Keep the temporary files: the contig data that the run stores in the map, `contig_data_network.txt`. |
+| `--output-map` | none | Store the network in a copy of `MAP` written to this file (replaced only with `-F`), and leave `MAP` as it was. By default, the run updates `MAP` in place. |
 
 ```bash
-metator network sample.metacool -a assembly.fa -e DpnII -t 16 -o binning
+metator network sample.metacool -a assembly.fa -e DpnII -o binning
 ```
 
 ### `partition` { #partition }
 
-Partition the network, many times, into core and overlapping clusters: the
-second step. Writes `overlapping_clusters/` and `contig_data_partition.txt`.
-**Guide:** [Partition and validation](guides/binning.md).
+Partition the network that `network` stored in the map, many times, into core
+and overlapping clusters: the second step. Writes `overlapping_clusters/` and
+`contig_data_partition.txt`. **Guide:**
+[Partition and validation](guides/binning.md).
 
 ```console
-metator partition [OPTIONS] [MAP]
+metator partition [OPTIONS] MAP
 ```
 
-With `MAP`, the map of the contigs of a run step by step (that of
-`metator network MAP`), the run also stores its overlapping clusters that
-reach `--size`, those of `overlapping_clusters/`, with their contigs, in the
-clustering rounds of the map, in place of those it held: the map is updated
-in place, or written to `--output-map`. Its genomes and contigs tables are
-left as they were. See
-[Step by step](guides/metacool.md#step-by-step).
+The run reads the network and the data of the contigs from the map, which
+`metator network MAP` stored there, and refuses a map without them. It stores
+its overlapping clusters that reach `--size`, those of
+`overlapping_clusters/`, with their contigs, in the clustering rounds of the
+map, in place of those it held: the map is updated in place, or written to
+`--output-map`. Its genomes and contigs tables are left as they were. The IDs
+of the contigs in `contig_data_partition.txt` are their positions in the map.
+See [Step by step](guides/metacool.md#step-by-step).
 
 | Option | Default | Description |
 |---|---|---|
-| `MAP` | none | A `.metacool` contact map of the contigs of the run, which the run stores its overlapping clusters in; or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`), with `--output-map`, the map it writes them to. |
+| `MAP` | *required* | The `.metacool` contact map of the contigs of the run, which `metator network` stored the network in, and which the run stores its overlapping clusters in; or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`), with `--output-map`, the map it writes them to. |
 | `-a, --assembly` | *required* | The assembly, as a FASTA file. |
-| `-c, --contigs` | *required* | The contig data table of the network step, `contig_data_network.txt`. |
-| `-n, --network` | *required* | The network, `network.txt`. |
 | `-A, --algorithm` | `louvain` | `louvain` or `leiden`. |
 | `-i, --iterations` | `100` | The iterations of the partition. |
 | `-O, --overlap` | `80` | The overlap threshold, in percent. |
@@ -143,15 +159,10 @@ left as they were. See
 | `-T, --tmpdir` | `./tmp` | The temporary directory. |
 | `-t, --threads` | `1` | Threads for the partition. |
 | `-N, --no-clean-up` | off | Keep the temporary files. |
-| `--output-map` | none | With `MAP`: write the map with the overlapping clusters to this file (replaced only with `-F`), and leave `MAP` as it was. |
+| `--output-map` | none | Write the map with the overlapping clusters to this file (replaced only with `-F`), and leave `MAP` as it was. By default, the run updates `MAP` in place. |
 
 ```bash
-metator partition -a assembly.fa -c binning/contig_data_network.txt -n binning/network.txt \
-    -t 16 -o binning
-
-# On the map of a run step by step
-metator partition sample.metacool -a assembly.fa -c binning/contig_data_network.txt \
-    -n binning/network.txt -t 16 -o binning
+metator partition sample.metacool -a assembly.fa -t 16 -o binning
 ```
 
 ### `validation` { #validation }
@@ -162,7 +173,7 @@ again: the third step. Writes `final_clusters/`, `recursive_clusters/`,
 [Partition and validation](guides/binning.md#validation).
 
 ```console
-metator validation [OPTIONS] [MAP]
+metator validation [OPTIONS] MAP
 ```
 
 A cluster is partitioned again when its weighted completeness reaches 33% and
@@ -170,19 +181,19 @@ its contamination, (weighted redundancy − 1) / weighted completeness, reaches
 5%. Its parts replace it when the most complete of them keeps enough of its
 completeness.
 
-With `MAP`, the map of the contigs of a run step by step (that of
-`metator network MAP` and `metator partition MAP`), the run then writes the
-map of its clusters, with all its clustering rounds, as `metator pipeline MAP`
-does at its end: in place, or to `--output-map`. See
+The run partitions the network that `metator network MAP` stored in the map
+(refused without it), its contigs named in `contig_data_partition.txt` by
+their IDs, then writes the map of its clusters, with all its clustering
+rounds and the normalization of its network, as `metator pipeline MAP` does
+at its end: in place, or to `--output-map`. See
 [Step by step](guides/metacool.md#step-by-step).
 
 | Option | Default | Description |
 |---|---|---|
-| `MAP` | none | A `.metacool` contact map of the contigs of the run, which becomes the map of its clusters; or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`), with `--output-map`, the map it writes them to. |
+| `MAP` | *required* | The `.metacool` contact map of the contigs of the run, which `metator network` stored the network in, and which becomes the map of its clusters; or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`), with `--output-map`, the map it writes them to. |
 | `-a, --assembly` | *required* | The assembly, as a FASTA file. |
 | `-c, --contigs` | *required* | The contig data table of the partition, `contig_data_partition.txt`. |
 | `-f, --fasta` | *required* | The directory of the clusters to check, `overlapping_clusters/`. |
-| `-n, --network` | *required* | The network, `network.txt`. |
 | `-A, --algorithm` | `louvain` | `louvain` or `leiden`. |
 | `-i, --iterations` | `10` | The iterations of the recursive partition. |
 | `-O, --overlap` | `90` | The overlap threshold of the recursive partition, in percent. |
@@ -194,15 +205,12 @@ does at its end: in place, or to `--output-map`. See
 | `-T, --tmpdir` | `./tmp` | The temporary directory. |
 | `-t, --threads` | `1` | Threads for the partition and miComplete. |
 | `-N, --no-clean-up` | off | Keep the temporary files. |
-| `--output-map` | none | With `MAP`: write the map of the clusters to this file (replaced only with `-F`), and leave `MAP` as it was. |
+| `--output-map` | none | Write the map of the clusters to this file (replaced only with `-F`), and leave `MAP` as it was. By default, the run updates `MAP` in place. |
 
 ```bash
-metator validation -a assembly.fa -c binning/contig_data_partition.txt -n binning/network.txt \
-    -f binning/overlapping_clusters -t 16 -o binning
-
-# On the map of a run step by step: it becomes the map of the clusters
+# The map of a run step by step: it becomes the map of the clusters
 metator validation sample.metacool -a assembly.fa -c binning/contig_data_partition.txt \
-    -n binning/network.txt -f binning/overlapping_clusters -t 16 -o binning
+    -f binning/overlapping_clusters -t 16 -o binning
 ```
 
 ## After the clustering
