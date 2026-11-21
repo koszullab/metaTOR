@@ -93,7 +93,8 @@ def private_tmp_dir(tmpdir, clean_up=True):
     it and nothing else is left in it.
 
     Nothing is removed without clean_up (--no-clean-up), nor when the run
-    fails: its files are left for inspection.
+    fails: its files are left for inspection. An empty --tmpdir (-T '') is
+    the default, ./tmp.
     """
     base = tmpdir or "./tmp"
     base_created = not exists(base)
@@ -128,34 +129,37 @@ def make_output_dir(path, force):
 
 
 #: The outputs of the clusters of a run that metaTOR 1.x named after bins,
-#: with their names since 2.0. A run that replaces the clusters of an
-#: earlier one refuses those it would write, under the names of 1.x too,
-#: and removes them with --force: no output of the earlier run is left next
-#: to its own.
+#: with their names since 2.0, and its plots (plot), which 2.0 no longer
+#: draws (None). A run that replaces the clusters of an earlier one refuses
+#: those it would write, under the names of 1.x too, and the plots, and
+#: removes them with --force: no output of the earlier run is left next to
+#: its own.
 OUTPUTS_OF_1X = {
     "overlapping_bin": "overlapping_clusters",
     "recursive_bin": "recursive_clusters",
     "final_bin": "final_clusters",
     "final_bin_unscaffold": "final_clusters",
     "bin_summary.txt": "cluster_summary.txt",
+    "plot": None,
 }
 
 
 def remove_output_of_1x(path, force, remove=True):
-    """Refuse an output of an earlier run named as metaTOR 1.x names it (a
-    directory or a file of OUTPUTS_OF_1X), unless --force removes it, and
-    then remove it, unless remove is False (a check that comes before the
-    run removes anything)."""
+    """Refuse an output of an earlier run that metaTOR 2.0 does not write (a
+    directory or a file of OUTPUTS_OF_1X: one named as metaTOR 1.x names
+    it, or the plots), unless --force removes it, and then remove it,
+    unless remove is False (a check that comes before the run removes
+    anything)."""
     if not os.path.lexists(path):
         return
-    name = os.path.basename(path)
+    now = OUTPUTS_OF_1X[os.path.basename(path)]
+    if now is None:
+        refused = removed = "the plots of an earlier run, which metaTOR 2.0 no longer draws"
+    else:
+        refused = f"an output of an earlier run, named as metaTOR 1.x names it ({now} now)"
+        removed = f"an output of an earlier run named as metaTOR 1.x names it ({now} now)"
     if not force:
-        logger.error(
-            "%s already existed: an output of an earlier run, named as metaTOR 1.x names it (%s now). Remove it or "
-            "use -F argument to remove it.",
-            path,
-            OUTPUTS_OF_1X[name],
-        )
+        logger.error("%s already existed: %s. Remove it or use -F argument to remove it.", path, refused)
         raise ValueError
     if not remove:
         return
@@ -163,7 +167,7 @@ def remove_output_of_1x(path, force, remove=True):
         shutil.rmtree(path)
     else:
         os.remove(path)
-    logger.info("Removed %s, an output of an earlier run named as metaTOR 1.x names it (%s now).", path, OUTPUTS_OF_1X[name])
+    logger.info("Removed %s, %s.", path, removed)
 
 
 def check_normalization(normalization, enzyme, depth, metacool=None, read=None):
@@ -1181,7 +1185,7 @@ def _options(*decorators):
     return decorate
 
 
-def pairsfile_argument(help="File(s) containing pairs information."):
+def pairsfile_argument(help):
     return click.argument("pairsfile", nargs=-1, required=True, help=help, panel="Input")
 
 
@@ -1212,8 +1216,10 @@ class StartChoice(click.Choice):
         return super().convert(value, param, ctx)
 
 
-# Options of metaTOR 1 that 2.0 removed, by name, with what replaced them: a
-# command line that still gives one is refused with it (see Command).
+# --edge, which metaTOR 2.0 removed, by name, with why: a command line that
+# still gives it is refused with it (see Command). The other options that
+# 2.0 removed (--scaffold, --junctions...) are unknown options, refused by
+# click with no hint.
 REMOVED_OPTIONS = dict.fromkeys(
     ["-E", "--edge"],
     "--edge is gone in metaTOR 2.0: the network counts every pair, as its contact map does, which holds no read positions.",
@@ -1221,8 +1227,8 @@ REMOVED_OPTIONS = dict.fromkeys(
 
 
 class Command(click.RichCommand):
-    """A command that refuses an option that metaTOR 2.0 removed with what
-    replaced it (REMOVED_OPTIONS), rather than as an option it never had.
+    """A command that refuses --edge, which metaTOR 2.0 removed, with why
+    (REMOVED_OPTIONS), rather than as an option it never had.
     In a command that takes a map as its first argument (network,
     pipeline), a first argument that is no map, given with -1/--forward,
     is one argument too many (the reverse reads given without -2, for
@@ -1460,16 +1466,16 @@ def force_option(help):
     return _option("-F", "--force", is_flag=True, help=help)
 
 
-def tmpdir_option(default="./tmp", help="Temporary directory."):
-    return _option("-T", "--tmpdir", default=default, show_default=default is not None, metavar="DIR", help=help)
+def tmpdir_option(help="Temporary directory."):
+    return _option("-T", "--tmpdir", default="./tmp", show_default=True, metavar="DIR", help=help)
 
 
 def threads_option(help):
     return _option("-t", "--threads", type=click.INT, default=1, show_default=True, metavar="INT", help=help)
 
 
-def no_clean_up_option(short="-N", help="Do not remove temporary files."):
-    return _option(short, "--no-clean-up", is_flag=True, help=help)
+def no_clean_up_option(help="Do not remove temporary files."):
+    return _option("-N", "--no-clean-up", is_flag=True, help=help)
 
 
 # ---------------------------------------------------------------------------
@@ -1813,7 +1819,8 @@ def partition(
 @force_option(
     "Replace the directories of recursive and final clusters of an earlier run in the output directory "
     "(recursive_clusters, final_clusters), and an existing --output-map. Removes those of a run of metaTOR 1.x "
-    "(recursive_bin, final_bin, final_bin_unscaffold, bin_summary.txt)."
+    "(recursive_bin, final_bin, final_bin_unscaffold, bin_summary.txt), and the plots of an earlier run (plot), which "
+    "metaTOR 2.0 no longer draws."
 )
 @tmpdir_option()
 @threads_option(help="Number of parallel threads allocated for the partition.")
@@ -1874,8 +1881,11 @@ def validation(
         recursive_fasta_dir = join(outdir, "recursive_clusters")
         final_fasta_dir = join(outdir, "final_clusters")
         # The final clusters of 1.x: final_bin of validation, and
-        # final_bin_unscaffold of pipeline, both final_clusters now.
-        outputs_of_1x = [join(outdir, name) for name in ["recursive_bin", "final_bin", "final_bin_unscaffold", "bin_summary.txt"]]
+        # final_bin_unscaffold of pipeline, both final_clusters now; and the
+        # plots, which 2.0 no longer draws.
+        outputs_of_1x = [
+            join(outdir, name) for name in ["recursive_bin", "final_bin", "final_bin_unscaffold", "bin_summary.txt", "plot"]
+        ]
         # The clusters to validate in a directory that -F removes: refused
         # before anything is removed.
         refuse_an_input_in_the_outputs(fasta, [recursive_fasta_dir, final_fasta_dir, *outputs_of_1x], force, "-f")
@@ -1966,7 +1976,7 @@ def validation(
 @force_option(
     "Replace the directories of clusters of an earlier run in the output directory, and an existing --output-map. "
     "Removes those of a run of metaTOR 1.x (overlapping_bin, recursive_bin, final_bin, final_bin_unscaffold, "
-    "bin_summary.txt)."
+    "bin_summary.txt), and the plots of an earlier run (plot), which metaTOR 2.0 no longer draws."
 )
 @tmpdir_option(help="Temporary directory, where the pairs files made from reads or alignments go, unsorted, but with -N.")
 @threads_option(help="Number of parallel threads allocated for the alignment.")
@@ -2028,8 +2038,8 @@ def pipeline(
     the fastq, bam ([cyan]-S bam[/]) or pairs ([cyan]-S pair[/], -1 only)
     files. As soon as it has the pairs files, the run builds the contact map
     of the contigs, in no cluster yet, as a .metacool file (see the
-    README): a map that cannot be built
-    stops the run. The run reads its network from it; with several
+    README): a map that cannot be built stops the run. The run reads its
+    network from it; with several
     libraries, the map of each library (<prefix>.mmetacool) gives the
     network of each. At the end, the map of the clusters (the contigs
     grouped by cluster) is written over it or, with --no-metacool, it is
@@ -2102,10 +2112,11 @@ def pipeline(
         final_fasta_dir = join(outdir, "final_clusters")
         bin_dirs = [overlapping_fasta_dir, recursive_fasta_dir, final_fasta_dir]
         # Those of a run of metaTOR 1.x, or one made before 2.0, named as 1.x
-        # names them: refused too, and removed with --force.
+        # names them, and the plots, which 2.0 no longer draws: refused too,
+        # and removed with --force.
         outputs_of_1x = [
             join(outdir, name)
-            for name in ["overlapping_bin", "recursive_bin", "final_bin", "final_bin_unscaffold", "bin_summary.txt"]
+            for name in ["overlapping_bin", "recursive_bin", "final_bin", "final_bin_unscaffold", "bin_summary.txt", "plot"]
         ]
         for path in bin_dirs:
             refuse_output_dir(path, force)

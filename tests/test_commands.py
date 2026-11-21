@@ -393,8 +393,7 @@ def test_pipeline_network_of_zstd_pairs(network_from_a_map, tmp_path, run_cli):
 @pytest.mark.parametrize("command", ["network", "pipeline"])
 def test_metacool_of_other_contigs(command, tmp_path, run_cli):
     """A map that cannot give the network of the assembly stops the run with
-    its MetacoolError, the reason logged as an error in the log file, as
-    metator metacool does."""
+    its MetacoolError, the reason logged as an error in the log file."""
     other = tmp_path / "other.fa"
     other.write_text(">a\n" + "ACGT" * 100 + "\n")
     pairs = tmp_path / "other.pairs"
@@ -611,15 +610,35 @@ def test_pipeline_refuses_the_outputs_of_1x(existing, now, tmp_path, run_cli, lo
     assert ("ERROR", message) in logged() and path.exists()
 
 
-def test_pipeline_force_replaces_outputs(tmp_path, run_cli):
+def test_pipeline_refuses_the_plots_of_an_earlier_run(tmp_path, run_cli, logged):
+    """The plots of an earlier run (plot/, of metaTOR 1.x or of a run made
+    before 2.0), which 2.0 no longer draws, are refused without -F, as the
+    other outputs of an earlier run are: the run would leave them next to
+    its own (they were left behind)."""
+    path = tmp_path / "out" / "plot"
+    path.mkdir(parents=True)
+    (path / "bins_distribution.png").write_bytes(b"png")
+    args = ["-a", global_args["FASTA"], "-1", "x.pairs", "-S", "pair", "-o", str(tmp_path / "out"),
+            "-T", str(tmp_path / "tmp")]  # fmt: skip
+    with pytest.raises(ValueError):
+        run_cli("pipeline", *args)
+    message = (
+        f"{path} already existed: the plots of an earlier run, which metaTOR 2.0 no longer draws. Remove it or use -F "
+        "argument to remove it."
+    )
+    assert ("ERROR", message) in logged() and (path / "bins_distribution.png").exists()
+
+
+def test_pipeline_force_replaces_outputs(tmp_path, run_cli, logged):
     """With --force the output directories are emptied once the arguments
     and the assembly are checked, then the run goes on (here up to the map
     of the contigs, which the missing pairs file stops)."""
     for existing in ["overlapping_clusters", "recursive_clusters", "final_clusters"]:
         (tmp_path / "out" / existing).mkdir(parents=True)
         (tmp_path / "out" / existing / "stale.fa").write_text(">old\nA\n")
-    # Those of a run of metaTOR 1.x, named after bins, are removed.
-    outputs_of_1x = ["overlapping_bin", "recursive_bin", "final_bin", "final_bin_unscaffold"]
+    # Those of a run of metaTOR 1.x, named after bins, and the plots, which
+    # 2.0 no longer draws, are removed.
+    outputs_of_1x = ["overlapping_bin", "recursive_bin", "final_bin", "final_bin_unscaffold", "plot"]
     for existing in outputs_of_1x:
         (tmp_path / "out" / existing).mkdir(parents=True)
         (tmp_path / "out" / existing / "stale.fa").write_text(">old\nA\n")
@@ -630,6 +649,8 @@ def test_pipeline_force_replaces_outputs(tmp_path, run_cli):
         run_cli("pipeline", *args)
     assert not list((tmp_path / "out").glob("*/stale.fa"))
     assert not [name for name in [*outputs_of_1x, "bin_summary.txt"] if (tmp_path / "out" / name).exists()]
+    plots = tmp_path / "out" / "plot"
+    assert ("INFO", f"Removed {plots}, the plots of an earlier run, which metaTOR 2.0 no longer draws.") in logged()
 
 
 @pytest.mark.parametrize("existing", ["recursive_clusters", "final_clusters"])

@@ -95,9 +95,19 @@ metacooler network binning/metator.metacool --level contig --balance metator_emp
 ## The map of a run made without it
 
 A run whose `partition` and `validation` were not given the map has no map of
-its clusters: `metacooler reassign` writes it from the map of its contigs and
-`contig_data_final.txt`, and `metacooler annotate` adds the columns of its
-tables (see [Other tools](../other-tools.md)).
+its clusters: `metacooler reassign` writes it from the map of its contigs,
+`contig_data_final.txt` and `cluster_summary.txt`, and `metacooler annotate`
+adds the columns that metaTOR measured on the contigs (see
+[Other tools](../other-tools.md)):
+
+```bash
+metacooler reassign sample.metacool --contigs binning/contig_data_final.txt \
+    --contigs-format Name,Final_cluster --genomes binning/cluster_summary.txt \
+    --genomes-format 1 -o binning/clusters.metacool
+metacooler annotate binning/clusters.metacool --contigs binning/contig_data_final.txt \
+    --contigs-format Name --inplace \
+    --columns contigs.GC_content,contigs.Hit,contigs.Shotgun_coverage,contigs.Restriction_site
+```
 
 ## Names and failures
 

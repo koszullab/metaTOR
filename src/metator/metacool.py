@@ -16,21 +16,19 @@ contamination, abundances...) are stored in the genomes table, and what
 metaTOR measured on each contig (GC content and Hi-C hits, plus shotgun
 coverage and restriction sites when it measured them) in the contigs table.
 
-Each pairs file row whose two ends lie on contigs of the contig data file
-(within their length) is one contact between the two contigs, an
-intra-contig contact when both ends are on one contig: the map holds the
-raw contacts, without the filters and normalization of the network. The
-pairs files of several libraries are summed into one map.
-
-A run that started from a .metacool map of the contigs (made before any
-binning) has no pairs files: its map is written from that map instead, with
-its bins and contacts, grouped by final bin in the same way. A pipeline run
-from reads or pairs builds such a map itself, from its pairs files, as soon
-as it has them, reads its network from it (with several libraries, from one
-map per library and the map of their sum, see write_library_maps), and
-writes the map of its bins from it at the end. A run step by step from a
-map stores the overlapping clusters of its partition in the map first, as a
-clustering round, then its validation writes the map of the clusters.
+The map of the bins is written from a .metacool map of the contigs, made
+before any binning, with its bins and contacts, grouped by final bin: the
+map that a run started from, or the map that a pipeline run from reads or
+pairs builds from its pairs files, as soon as it has them, and reads its
+network from (with several libraries, from one map per library and the map
+of their sum, see write_library_maps). There, each pairs file row whose two
+ends lie on contigs of the assembly (within their length) is one contact
+between the two contigs, an intra-contig contact when both ends are on one
+contig: the map holds the raw contacts, without the filters and
+normalization of the network. The pairs files of several libraries are
+summed into one map. A run step by step from a map stores the overlapping
+clusters of its partition in the map first, as a clustering round, then its
+validation writes the map of the clusters.
 
 The map of the clusters of a pipeline run also stores the normalization of
 its network, as a weight column of its bins table (see
@@ -463,9 +461,10 @@ def _check_paths(outfile, force, inputs):
 
 
 def _checked_inputs(contig_data, outfile, force, inputs):
-    """What both writers of the map of the bins check before any work, in
-    this order: the outfile and the input files (see _check_paths), then
-    the contig data and its names. Returns what read_contig_data reads."""
+    """What the writer of the map of the bins (reassign_metacool) checks
+    before any work, in this order: the outfile and the input files (see
+    _check_paths), then the contig data and its names. Returns what
+    read_contig_data reads."""
     _check_paths(outfile, force, inputs)
     bins, contig_bin, contig_columns, header = read_contig_data(contig_data)
     check_ascii_names(bins["chrom"], contig_bin.values())
@@ -749,10 +748,9 @@ def reassign_metacool(
     from the longest (metacooler reassign, layout genome-then-length). The
     genomes table holds the columns of the bin summary, and the contigs
     table the columns of the contig data that metaTOR measured (see
-    read_contig_data), last: they
-    replace those that the input map carried, metaTOR's own as those of the
-    bins of an earlier run. Its other columns of the contigs table are
-    kept. The QC block of the input map, when it has one, is carried over
+    read_contig_data), last: they replace those that the input map carried,
+    metaTOR's own as those of the bins of an earlier run. Its other columns
+    of the contigs table are kept. The QC block of the input map, when it has one, is carried over
     to the bins: metacooler keeps the counts within each contig (measured
     on the reads, for a map made from pairs files) and counts the contacts
     between contigs again. A map written by metacooler 0.2.0, with no count
@@ -1160,8 +1158,8 @@ def _write_back_columns(path, contig_data, contig_columns, header):
     those of this run are added. metacooler reassign stores the columns
     that it carries from its input map before genome_id or before the QC
     columns of the contigs: replaced where they were, they would come in
-    another order in each map, as the input map had them. The dropped columns are also those that this run does not
-    store: the bins of each step, the contig ids, Size..., which a map made
+    another order in each map, as the input map had them. The dropped
+    columns are also those that this run does not store: the bins of each step, the contig ids, Size..., which a map made
     with the contig data of an earlier run as its contigs table holds
     (metacooler create pairs --contigs-format Name,Final_cluster), and one of
     CONTIG_COLUMNS that this run had no values for (Shotgun_coverage

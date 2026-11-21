@@ -22,7 +22,9 @@ metator --version
 | Log files | Each command writes its log, `metator_<command>_<date>.log`, into its output directory; `mge`, into the current directory. |
 
 New to metaTOR? Start with the [Quickstart](quickstart.md); for hits, core,
-overlapping and recursive clusters, see [Concepts](concepts.md).
+overlapping and recursive clusters, see [Concepts](concepts.md). metaTOR 2.0
+removed `qc`, `contactmap`, `metacool`, `scaffold` and `pairs`, and the plots:
+[Other tools](other-tools.md) says what replaces each one.
 
 ## Clustering
 
@@ -65,7 +67,7 @@ the reads, alignments or pairs of `-1` (and `-2`, `--start`): one or the other.
 | `-P, --rec-overlap` | `90` | The overlap threshold of the recursive partition, in percent. |
 | `-o, --outdir` | the current directory | The output directory. |
 | `-p, --prefix` | none | Name the clusters `<prefix>_metator_…`, the map `<prefix>.metacool` and, with several libraries, the maps of the libraries `<prefix>.mmetacool`. Letters, digits, `_` and `-` only. |
-| `-F, --force` | off | Replace the directories of clusters of an earlier run, and an existing `--output-map` file. Removes the outputs of a run of metaTOR 1.x: `overlapping_bin/`, `recursive_bin/`, `final_bin/`, `final_bin_unscaffold/` and `bin_summary.txt`. |
+| `-F, --force` | off | Replace the directories of clusters of an earlier run, and an existing `--output-map` file. Removes the outputs of a run of metaTOR 1.x: `overlapping_bin/`, `recursive_bin/`, `final_bin/`, `final_bin_unscaffold/` and `bin_summary.txt`, and the plots of an earlier run, `plot/`, which metaTOR 2.0 no longer draws. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory, where the index of the assembly is built, and the pairs files written (see `-N`). |
 | `-t, --threads` | `1` | Threads for the alignment, the partition and miComplete. |
 | `-N, --no-clean-up` | off | Keep the temporary files, and the pairs files of the run, sorted, compressed and indexed in the output directory (`alignment_<i>_sorted.pairs.gz`). Without `-N`, the run writes them to its temporary directory as they are made, and removes them once its network is built. |
@@ -206,7 +208,7 @@ does at its end: in place, or to `--output-map`. See
 | `-C, --cluster-matrix` | off | Write `clustering_matrix_recursive.npz`. |
 | `-o, --outdir` | `./` | The output directory. |
 | `-p, --prefix` | none | Name the clusters `<prefix>_metator_…`. |
-| `-F, --force` | off | Replace `recursive_clusters/` and `final_clusters/`, and an existing `--output-map` file. Removes the outputs of a run of metaTOR 1.x: `recursive_bin/`, `final_bin/`, `final_bin_unscaffold/` and `bin_summary.txt`. Refused when `--fasta` is in one of these directories. |
+| `-F, --force` | off | Replace `recursive_clusters/` and `final_clusters/`, and an existing `--output-map` file. Removes the outputs of a run of metaTOR 1.x: `recursive_bin/`, `final_bin/`, `final_bin_unscaffold/` and `bin_summary.txt`, and the plots of an earlier run, `plot/`, which metaTOR 2.0 no longer draws. Refused when `--fasta` is in one of these directories. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory. |
 | `-t, --threads` | `1` | Threads for the partition and miComplete. |
 | `-N, --no-clean-up` | off | Keep the temporary files. |

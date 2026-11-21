@@ -252,9 +252,10 @@ def test_private_tmp_dir(tmp_path):
 
 
 def test_private_tmp_dir_kept(tmp_path, monkeypatch):
-    """Kept with --no-clean-up, and when the run fails."""
+    """Kept with --no-clean-up, and when the run fails. An empty --tmpdir
+    is ./tmp."""
     monkeypatch.chdir(tmp_path)
-    with mtcli.private_tmp_dir(None, clean_up=False) as tmp_dir:
+    with mtcli.private_tmp_dir("", clean_up=False) as tmp_dir:
         assert Path(tmp_dir).parent == Path("tmp")
     assert Path(tmp_dir).is_dir()
 
@@ -818,8 +819,8 @@ def test_pipeline_pairs_files_metacooler_reads(name, codec, stub_pipeline, tmp_p
     contigs, whatever its name: metacooler finds its compression from its
     first bytes, as metaTOR does (a gzip file without .gz, a plain file
     named .gz were refused, as metacooler went by the name). zstd and lz4
-    go on too. A missing file is left to the map, which stops on it. zstd without .zst
-    is a guard: it went on before too."""
+    go on too. A missing file is left to the map, which stops on it. zstd
+    without .zst is a guard: it went on before too."""
     pairs = _write_pairs(tmp_path / name, codec) if codec else tmp_path / name
     run_cli("pipeline", "-1", pairs, "-a", _assembly(tmp_path), "-S", "pair", "-o", tmp_path / "out", "-T", tmp_path / "tmp")
     assert stub_pipeline["write_contig_map"][0] == [str(pairs)]
@@ -3194,6 +3195,26 @@ def test_a_step_refuses_the_outputs_of_1x(command, name, stub_pipeline, tmp_path
     assert ("INFO", f"Removed {path}, an output of an earlier run named as metaTOR 1.x names it ({new} now).") in logged()
 
 
+def test_validation_refuses_the_plots_of_an_earlier_run(stub_pipeline, tmp_path, run_cli, logged):
+    """The plots of an earlier run (plot/), which metaTOR 2.0 no longer
+    draws, are refused without -F, as the outputs that 1.x named after bins
+    are: the run would leave them next to its own. -F removes them."""
+    path = tmp_path / "out" / "plot"
+    path.mkdir(parents=True)
+    (path / "network_heatmap.png").write_bytes(b"png")
+    with pytest.raises(ValueError):
+        run_cli("validation", *_step_run("validation", None, tmp_path))
+    assert path.exists() and not stub_pipeline
+    message = (
+        f"{path} already existed: the plots of an earlier run, which metaTOR 2.0 no longer draws. Remove it or use -F "
+        "argument to remove it."
+    )
+    assert ("ERROR", message) in logged()
+    run_cli("validation", *_step_run("validation", None, tmp_path, "-F"))
+    assert not path.exists() and stub_pipeline
+    assert ("INFO", f"Removed {path}, the plots of an earlier run, which metaTOR 2.0 no longer draws.") in logged()
+
+
 @pytest.mark.parametrize("dangling", [False, True], ids=["link", "dangling link"])
 def test_force_removes_a_link_of_1x_not_its_target(dangling, stub_pipeline, tmp_path, run_cli):
     """An output of 1.x that is a symbolic link, to a directory elsewhere or
@@ -3379,8 +3400,9 @@ def test_pipeline_refused_keeps_the_bins_of_an_earlier_run(args, tmp_path, run_c
     }
     args = [arg.format(**names) for arg in args]
     out = tmp_path / "out"
-    # The outputs of a run of 2.0, and of 1.x, named after bins.
-    names = ["overlapping_clusters", "recursive_clusters", "final_clusters", "overlapping_bin", "final_bin_unscaffold"]
+    # The outputs of a run of 2.0, and of 1.x, named after bins, and its plots.
+    names = ["overlapping_clusters", "recursive_clusters", "final_clusters", "overlapping_bin", "final_bin_unscaffold",
+             "plot"]  # fmt: skip
     bins = [out / name / "bin.fa" for name in names]
     for path in bins:
         path.parent.mkdir(parents=True)

@@ -596,8 +596,8 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, metagenome_inde
     assert all(genome_of[contig] == cluster for cluster, contig in zip(final_members.cluster, final_members.contig, strict=True))
 
     # The same map, written from the map and the tables of the run, without
-    # rounds (metator.metacool.reassign_metacool, as metator metacool wrote
-    # it before 2.0).
+    # rounds (metator.metacool.reassign_metacool, as metator metacool of
+    # metaTOR 1.4.0 wrote it from a map).
     command = tmp_path / "command.metacool"
     mtmc.reassign_metacool(
         str(expected), str(mcool / "contig_data_final.txt"), str(command), bin_summary=str(mcool / "cluster_summary.txt")

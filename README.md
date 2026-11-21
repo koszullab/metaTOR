@@ -112,9 +112,10 @@ There are a number of other, optional, miscellaneous actions:
 * `mge` : Perform the clustering over mge contigs. A specific section is
   dedicated to this tool below.
 
-metaTOR 2.0 removed the commands that did what hicstuff, metacooler or
-instaGRAAL do: `qc`, `contactmap`, `metacool`, `scaffold` and `pairs`, and the
-plots. [Other tools](docs/other-tools.md) says what replaces each one.
+metaTOR 2.0 removed the commands that did what hicstuff, metacooler,
+instaGRAAL or pairix do: `qc`, `contactmap`, `metacool`, `scaffold` and
+`pairs`, and the plots. [Other tools](docs/other-tools.md) says what replaces
+each one.
 
 
 ### Principle of MetaTOR pipeline

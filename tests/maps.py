@@ -8,8 +8,8 @@ from metator.version import __version__
 
 
 def pairs_map(pairs, contig_data, outfile, bin_summary=None, assembly_name=None, metadata=None):
-    """The map of a binning written from its pairs, as metator metacool wrote
-    it before 2.0 (metator.metacool.write_metacool): metacooler create pairs
+    """The map of a binning written from its pairs, as metator metacool of
+    metaTOR 1.4.0 wrote it (metator.metacool.write_metacool): metacooler create pairs
     with the final clusters, then the contig columns stored as metaTOR
     stores them. The oracle of the map that metaTOR writes from a map of the
     contigs (metator.metacool.reassign_metacool): the same bins, contacts

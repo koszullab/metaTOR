@@ -29,8 +29,6 @@ from tests import synthetic
 from tests.hdf5 import walk
 from tests.maps import pairs_map
 
-TESTS_DATA = Path(__file__).resolve().parents[1] / "tests_data"
-
 PAIRS_HEADER = "## pairs format v1.0\n#columns: readID chr1 pos1 chr2 pos2 strand1 strand2\n"
 
 
@@ -115,13 +113,6 @@ def write_bin_summary(metagenome, path):
             "SG_abundance": 20.0 + i / 7,
         }
     mio.write_bin_summary(summary, path)
-    return path
-
-
-def write_pairs(pairs, path):
-    with open(path, "w") as out:
-        out.write(PAIRS_HEADER)
-        pairs.to_csv(out, sep="\t", header=False, index=False)
     return path
 
 
@@ -293,6 +284,27 @@ def test_contig_column_metacooler_refuses(force, metagenome, binning, tmp_path):
         assert out.read_text() == "old"
     else:
         assert not out.exists()
+
+
+def test_misaligned_bin_summary(metagenome, binning, tmp_path):
+    """A bin summary whose header has more fields than its rows (the names
+    of miComplete's columns split at their spaces, as an old
+    cluster_summary.txt had them: 18 and 15): metacooler cannot tell which
+    column each value belongs to. Its reason is raised as a MetacoolError,
+    and no map is left."""
+    metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
+    columns = ["Length", "GC-content", "Present Markers", "Completeness", "Redundancy", "Weighted completeness",
+               "Weighted redundancy", "Contigs", "N50", "L50", "N90", "L90", "CDs", "HiC_abundance"]  # fmt: skip
+    clusters = sorted(set(_bin_names(metagenome).values()) - {"ND"})
+    header = "\t" + "\t".join(" ".join(columns).split(" ")) + "\n"
+    summary = tmp_path / "cluster_summary.txt"
+    summary.write_text(header + "".join(name + "\t1" * len(columns) + "\n" for name in clusters))
+    out = tmp_path / "map.metacool"
+    with pytest.raises(mtmc.MetacoolError, match=r"^Genomes table is misaligned: .*cluster_summary\.txt\n") as error:
+        mtmc.reassign_metacool(str(metacool), str(binning["contig_data"]), str(out), bin_summary=str(summary))
+    assert "header names 18 column(s), but no data row has more than 15" in str(error.value)
+    assert isinstance(error.value.__cause__, ValueError)
+    assert not out.exists()
 
 
 @pytest.mark.parametrize("suffix", [".gz", ".bz2"])
@@ -1828,8 +1840,7 @@ def _one_round(metacool):
 @pytest.mark.parametrize("umask", [0o022, 0o077])
 @pytest.mark.parametrize("writer", ["reassign_metacool", "write_rounds"])
 def test_a_new_map_has_the_mode_of_a_new_file(metagenome, binning, tmp_path, writer, umask):
-    """A map written to a new file (--output-map, or metator metacool -o
-    from a map) gets the mode of any new file, from the umask, not the
+    """A map written to a new file (--output-map) gets the mode of any new file, from the umask, not the
     private mode of the file staged for it (mkstemp's 0600): write_rounds,
     which copies the map into that file, wrote it private. reassign_metacool
     is a guard: metacooler writes its map next to the staged file and
