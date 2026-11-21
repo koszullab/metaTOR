@@ -78,16 +78,16 @@ clusters = mtp.partition(
 )
 # The core and the overlapping clusters, by number, each the IDs of its
 # contigs: metator partition stores them in the map
-# (metator.clusters.partition_rounds, metator.metacool.write_rounds), and
+# (metator.clusters.partition_rounds, metator.metacool.write_map), and
 # the validation reads them back (metator.metacool.read_partition).
 clusters.core, clusters.overlapping, clusters.names
 ```
 
 | Command | Function |
 |---|---|
-| `metator network` | `metator.network.create_contig_data` and `contig_data_from_map`, `contig_contacts` and `contig_data_table`, then `metator.metacool.store_network` |
-| `metator partition` | `metator.partition.partition`, then `metator.metacool.write_rounds` |
-| `metator validation` | `metator.metacool.read_partition`, `metator.validation.write_overlapping_fasta`, then `metator.validation.recursive_decontamination` |
+| `metator network` | `metator.network.create_contig_data` and `contig_data_from_map`, `contig_contacts` and `contig_data_table`, then `metator.metacool.write_map` (`network=`) |
+| `metator partition` | `metator.partition.partition`, then `metator.metacool.write_map` (`partition=`, `rounds=`) |
+| `metator validation` | `metator.metacool.read_partition`, `metator.validation.write_overlapping_fasta` and `recursive_decontamination`, then `metator.metacool.write_map` (`clusters=`, a `FinalClusters`, and `network=`) |
 | `metator mge` | `metator.mge.mge_binning` |
 
 The commands also check their inputs, write their log file and clean up

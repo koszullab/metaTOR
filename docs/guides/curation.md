@@ -121,21 +121,18 @@ cluster, checks the clusters with miComplete as `metator validation` does, and
 counts them in the quality classes of its log:
 
 ```python
-import os
-
+import metacooler
 import metator.io as mio
 import metator.validation as mtv
 import pandas as pd
-import pyfastx
 
 # The collection exported by anvi'o: each contig and its cluster.
 binning = pd.Series(mio.import_anvio_binning("anvio/curated.txt"))
 
-# One FASTA file per curated cluster.
-assembly = pyfastx.Fasta("assembly.fa")
-os.makedirs("anvio/fasta", exist_ok=True)
-for bin_name, contigs in binning.groupby(binning):
-    mio.write_contigs(assembly, contigs.index, f"anvio/fasta/{bin_name}.fa")
+# One FASTA file per curated cluster, the records of its contigs as they are
+# in the assembly, written by metacooler from the contact map of the run.
+groups = {bin_name: list(contigs.index) for bin_name, contigs in binning.groupby(binning)}
+metacooler.write_fasta("sample.metacool", "assembly.fa", "anvio/fasta", groups=groups)
 
 # miComplete on every cluster, with the bacterial and the archaeal markers.
 mtv.micomplete_quality("anvio/fasta", "anvio/micomplete.txt", threads=16)
