@@ -3,7 +3,6 @@
 import bz2
 import gzip
 import os
-import subprocess as sp
 import zipfile
 
 import metator.io as mio
@@ -108,31 +107,6 @@ def test_remove_pyfastx_index(tmp_path):
     # No index: nothing to remove.
     mio.remove_pyfastx_index(str(fasta))
     assert fasta.exists()
-
-
-@pytest.mark.parametrize(
-    "version, parallel",
-    [("sort (GNU coreutils) 9.4", True), ("sort (GNU coreutils) 8.4", False), ("2.3-Apple (154)", False)],
-)
-def test_sort_pairs(tmp_path, monkeypatch, version, parallel):
-    """Pairs sorted by contig names whatever the sort flavour; --parallel only
-    for GNU sort >= 8.23."""
-    real_popen = sp.Popen
-    commands = []
-
-    def popen(cmd, *args, **kwargs):
-        commands.append(cmd)
-        if cmd == ["sort", "--version"]:
-            return real_popen(["echo", version], *args, **kwargs)
-        return real_popen(cmd, *args, **kwargs)
-
-    monkeypatch.setattr(mio.sp, "Popen", popen)
-    (tmp_path / "in.txt").write_text("#header\ncontig_10\tcontig_2\ncontig_2\tcontig_3\ncontig_1\tcontig_9\n")
-    mio.sort_pairs(str(tmp_path / "in.txt"), str(tmp_path / "out.txt"), tmp_dir=str(tmp_path), threads=2)
-    assert (tmp_path / "out.txt").read_text() == "contig_1\tcontig_9\ncontig_2\tcontig_3\ncontig_10\tcontig_2\n"
-    sort_cmd = commands[-1]
-    assert ("--parallel=2" in sort_cmd) == parallel
-    assert f"--temporary-directory={tmp_path}" in sort_cmd
 
 
 def test_rename_1x_columns(logged):

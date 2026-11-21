@@ -1,11 +1,12 @@
 # Test for network module
 
 import gzip
+import io
 import pandas as pd
 import numpy as np
 import metator.network as mtn
 import pytest
-import os
+from tests.oracles import normalize_pair
 import shutil
 from pathlib import Path
 
@@ -78,15 +79,28 @@ def test_create_contig_data():
     }
 
 
-def test_normalize_pair():
-    # Test for edges normalisation methods.
-    length = mtn.normalize_pair(contigs_data, ("NODE_1", "NODE_6"), 52, "length")
-    abundance = mtn.normalize_pair(contigs_data, ("NODE_1", "NODE_8"), 2004, "abundance")
-    abundance_null = mtn.normalize_pair(contigs_data, ("NODE_1", "NODE_10"), 275, "abundance")
-    RS = mtn.normalize_pair(contigs_data, ("NODE_6", "NODE_8"), 800, "RS")
-    EH = mtn.normalize_pair(contigs_data, ("NODE_8", "NODE_1"), 2022, "empirical_hit")
-    TH = mtn.normalize_pair(contigs_data, ("NODE_6", "NODE_8"), 3333, "theoritical_hit")
-    TH_null = mtn.normalize_pair(contigs_data, ("NODE_1", "NODE_8"), 2004, "theoritical_hit")
+def _normalized(contigs, pair, n_occ, normalization):
+    """The normalized contact of a pair of contigs (by name, in contigs:
+    their data, as create_contig_data gives it) through the weights of
+    normalization_weights: n_occ * w[i] * w[j], 0 for a contig without a
+    weight (NaN), whose contacts are no edge."""
+    names = list(contigs)
+    values = {key: np.array([contigs[name][key] for name in names], dtype=float) for key in ("length", "hit", "coverage", "RS")}
+    weights = mtn.normalization_weights(values["length"], values["hit"], values["coverage"], values["RS"], normalization)
+    normalized = n_occ * weights[names.index(pair[0])] * weights[names.index(pair[1])]
+    return 0.0 if np.isnan(normalized) else normalized
+
+
+def test_normalized_contacts():
+    # The normalizations of the contacts of metaTOR 1.x (its normalize_pair),
+    # through the weights of the contigs.
+    length = _normalized(contigs_data, ("NODE_1", "NODE_6"), 52, "length")
+    abundance = _normalized(contigs_data, ("NODE_1", "NODE_8"), 2004, "abundance")
+    abundance_null = _normalized(contigs_data, ("NODE_1", "NODE_10"), 275, "abundance")
+    RS = _normalized(contigs_data, ("NODE_6", "NODE_8"), 800, "RS")
+    EH = _normalized(contigs_data, ("NODE_8", "NODE_1"), 2022, "empirical_hit")
+    TH = _normalized(contigs_data, ("NODE_6", "NODE_8"), 3333, "theoritical_hit")
+    TH_null = _normalized(contigs_data, ("NODE_1", "NODE_8"), 2004, "theoritical_hit")
     assert length == pytest.approx(71.77, abs=1e-2)
     assert abundance == pytest.approx(31.61, abs=1e-2)
     assert abundance_null == 0
@@ -97,8 +111,8 @@ def test_normalize_pair():
 
 
 # Contig data with a contig that has no hit and one that has no coverage, for
-# which normalize_pair returns 0. The restriction sites are counted plus one,
-# as create_contig_data counts them: never 0.
+# which the normalization of metaTOR 1.x gives 0. The restriction sites are
+# counted plus one, as create_contig_data counts them: never 0.
 NORMALIZED_CONTIGS = {
     "a": {"id": 1, "length": 5000, "hit": 120, "coverage": 12.5, "RS": 31},
     "b": {"id": 2, "length": 1200, "hit": 7, "coverage": 3.0, "RS": 6},
@@ -108,10 +122,10 @@ NORMALIZED_CONTIGS = {
 
 
 @pytest.mark.parametrize("normalization", ["abundance", "length", "RS", "empirical_hit", "theoritical_hit"])
-def test_normalization_weights_factorise_normalize_pair(normalization):
+def test_normalization_weights_factorise_the_normalizations_of_1x(normalization):
     """One weight per contig, whose products times a contact count are the
-    contacts that normalize_pair normalizes: NaN where it gives 0, for a
-    contig without hits or without coverage."""
+    contacts that metaTOR 1.x normalized edge by edge: NaN where it gave 0,
+    for a contig without hits or without coverage."""
     names = list(NORMALIZED_CONTIGS)
     values = {
         key: np.array([NORMALIZED_CONTIGS[name][key] for name in names], dtype=float)
@@ -122,7 +136,7 @@ def test_normalization_weights_factorise_normalize_pair(normalization):
         for j, second in enumerate(names):
             if i == j:
                 continue
-            expected = mtn.normalize_pair(NORMALIZED_CONTIGS, (first, second), 2004, normalization)
+            expected = normalize_pair(NORMALIZED_CONTIGS, (first, second), 2004, normalization)
             normalized = 2004 * weights[i] * weights[j]
             assert (0.0 if np.isnan(normalized) else normalized) == pytest.approx(expected, rel=1e-12, abs=0)
     assert np.isnan(weights).any()
@@ -176,12 +190,46 @@ def test_create_contig_data_from_a_compressed_assembly(tmp_path):
     assert mtn.create_contig_data(str(compressed), depth_file, "DpnII") == mtn.create_contig_data(assembly, depth_file, "DpnII")
 
 
-def test_write_contig_data():
-    # Test contig data writer.
-    tmp_file = "tmp_contig_data_test.tsv"
-    mtn.write_contig_data(contigs_data, tmp_file)
-    data = pd.read_csv(tmp_file, sep="\t").set_index("Name", drop=False)
-    assert data.loc["NODE_1", "Size"] == 642311
-    assert data.loc["NODE_8", "Hit"] == 206333
-    assert data.loc["NODE_6", "Restriction_site"] == 2505
-    os.remove(tmp_file)
+def test_contig_data_table():
+    """The contig data of the contigs of a map, in its order: their IDs
+    are their positions in the map, from 1, and what was measured on them
+    their columns, as contig_data_network.txt held them; a column that the
+    run did not measure is "-"."""
+    names = ["NODE_8", "NODE_1", "NODE_6"]
+    table = mtn.contig_data_table(contigs_data, names, [206333, 30795, 5533054])
+    assert list(table.columns) == mtn.CONTIG_TABLE_COLUMNS
+    assert list(table.ID) == [1, 2, 3] and list(table.Name) == names
+    assert list(table.Size) == [416773, 642311, 505338] and list(table.Hit) == [206333, 30795, 5533054]
+    assert list(table.Restriction_site) == [3496, 0, 2505] and table.Shotgun_coverage[1] == 41.1565
+    numeric = [pd.api.types.is_numeric_dtype(dtype) for dtype in table.dtypes]
+    assert numeric == [True, False, True, True, True, True, True]
+    unmeasured = {name: {**data, "coverage": "-", "RS": "-"} for name, data in contigs_data.items()}
+    table = mtn.contig_data_table(unmeasured, names, [0, 0, 0])
+    assert set(table.Shotgun_coverage) == set(table.Restriction_site) == {"-"}
+    # As partition writes it, and reads it back.
+    assert pd.read_csv(io.StringIO(table.to_csv(sep="\t", index=False)), sep="\t").equals(table)
+
+
+@pytest.mark.parametrize("normalization", ["None", "abundance", "length", "RS", "empirical_hit", "theoritical_hit"])
+def test_network_weights(normalization):
+    """The weights of a contig data table: those of normalization_weights,
+    none for None."""
+    names = list(contigs_data)
+    table = mtn.contig_data_table(contigs_data, names, [contigs_data[name]["hit"] for name in names])
+    weights = mtn.network_weights(table, normalization)
+    if normalization == "None":
+        assert weights is None
+        return
+    values = {
+        key: np.array([contigs_data[name][key] for name in names], dtype=float) for key in ("length", "hit", "coverage", "RS")
+    }
+    expected = mtn.normalization_weights(values["length"], values["hit"], values["coverage"], values["RS"], normalization)
+    np.testing.assert_array_equal(weights, expected)
+
+
+def test_network_weights_without_a_column():
+    """A normalization that needs a column that the run did not measure."""
+    unmeasured = {name: {**data, "coverage": "-"} for name, data in contigs_data.items()}
+    table = mtn.contig_data_table(unmeasured, list(contigs_data), [1, 2, 3, 4])
+    with pytest.raises(ValueError, match='"abundance" normalization uses the shotgun coverage'):
+        mtn.network_weights(table, "abundance")

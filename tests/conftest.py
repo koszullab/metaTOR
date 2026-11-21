@@ -133,24 +133,34 @@ def run_cli(monkeypatch):
     return run
 
 
+class _Read(list):
+    """The maps that a run read the contacts of, in order, and what its
+    partition was given (see network_from_a_map)."""
+
+    partitioned = None
+
+
 @pytest.fixture
 def network_from_a_map(monkeypatch):
     """Have a pipeline run stop once its network is built from its .metacool
     map: the partition raises RuntimeError("network built"). Returns the
-    maps that metacool_to_contacts read, in order."""
+    maps whose contacts were read (metator.network.contig_contacts), in
+    order, with the contig data and the network that the partition was
+    given (their attribute partitioned)."""
     import metator.network as mtn
 
-    read = []
-    metacool_to_contacts = mtn.metacool_to_contacts
+    read = _Read()
+    contig_contacts = mtn.contig_contacts
 
     def from_the_map(metacool, *args, **kwargs):
         read.append(metacool)
-        return metacool_to_contacts(metacool, *args, **kwargs)
+        return contig_contacts(metacool, *args, **kwargs)
 
-    def partition(*args):
+    def partition(algorithm, assembly, contig_data, iterations, network, *args):
+        read.partitioned = (contig_data, network)
         raise RuntimeError("network built")
 
-    monkeypatch.setattr("metator.network.metacool_to_contacts", from_the_map)
+    monkeypatch.setattr("metator.network.contig_contacts", from_the_map)
     monkeypatch.setattr("metator.partition.partition", partition)
     return read
 
@@ -208,27 +218,39 @@ def metagenome_indexed_pairs(metagenome_files, tmp_path_factory):
 
 @pytest.fixture(scope="session")
 def metagenome_network(metagenome_files, tmp_path_factory):
-    """Network (empirical_hit) and contig data of the mock community, read
-    from the map of its pairs (see tests.maps.contig_map)."""
+    """The network (empirical_hit) of the mock community, and the data of its
+    contigs, as metator network stores them in the map of its pairs (see
+    tests.maps.contig_map and metator.metacool.store_network): the map
+    (map, which a test copies before it writes it), the network and the
+    contig data as the steps read them from the map (network_table, see
+    metator.network.map_network, and contig_table, see
+    metator.network.map_contig_table), and both written as tables
+    (network.txt and contig_data_network.txt: network and contig_data), for
+    the tests of the steps that read tables. The IDs are the positions of
+    the contigs in the map."""
+    import metacooler
+
+    import metator.metacool as mtmc
     import metator.network as mtn
     from tests.maps import contig_map
 
     directory = tmp_path_factory.mktemp("metagenome_network")
-    tmp_dir = directory / "tmp"
-    tmp_dir.mkdir()
     contig_data = mtn.create_contig_data(str(metagenome_files["assembly"]), str(metagenome_files["depth"]), "DpnII")
     metacool = contig_map(metagenome_files["pairs"], contig_data, directory / "contigs.metacool", columns=False)
-    network, contig_data_file = mtn.metacool_to_contacts(
-        str(metacool),
-        contig_data,
-        str(directory),
-        "network.txt",
-        "contig_data_network.txt",
-        str(tmp_dir),
-        1,
-        "empirical_hit",
-    )
-    return {"network": Path(network), "contig_data": Path(contig_data_file)}
+    contacts = mtn.contig_contacts(str(metacool))
+    names = metacooler.MetaCooler(str(metacool)).contigs["name"]
+    table = mtn.contig_data_table(contig_data, names, mtn.contig_hits(contacts, len(names)))
+    mtmc.store_network(str(metacool), str(metacool), mtmc.Network(table, "empirical_hit"), force=True)
+    network, contig_table = mtn.map_network(str(metacool)), mtn.map_contig_table(str(metacool))
+    network.to_csv(directory / "network.txt", sep="\t", header=False, index=False)
+    contig_table.to_csv(directory / "contig_data_network.txt", sep="\t", index=False)
+    return {
+        "map": metacool,
+        "network": directory / "network.txt",
+        "contig_data": directory / "contig_data_network.txt",
+        "network_table": network,
+        "contig_table": contig_table,
+    }
 
 
 @pytest.fixture
