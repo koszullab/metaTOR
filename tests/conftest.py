@@ -228,7 +228,7 @@ def metagenome_indexed_pairs(metagenome_files, tmp_path_factory):
 def metagenome_network(metagenome_files, tmp_path_factory):
     """The network (empirical_hit) of the mock community, and the data of its
     contigs, as metator network stores them in the map of its pairs (see
-    tests.maps.contig_map and metator.metacool.store_network): the map
+    tests.maps.contig_map and metator.metacool.write_map): the map
     (map, which a test copies before it writes it), the network and the
     contig data as the steps read them from the map (network_table, see
     metator.network.map_network, and contig_table, see
@@ -248,7 +248,7 @@ def metagenome_network(metagenome_files, tmp_path_factory):
     contacts = mtn.contig_contacts(str(metacool))
     names = metacooler.MetaCooler(str(metacool)).contigs["name"]
     table = mtn.contig_data_table(contig_data, names, mtn.contig_hits(contacts, len(names)))
-    mtmc.store_network(str(metacool), str(metacool), mtmc.Network(table, "empirical_hit"), force=True)
+    mtmc.write_map(str(metacool), str(metacool), network=mtmc.Network(table, "empirical_hit"), force=True)
     network, contig_table = mtn.map_network(str(metacool)), mtn.map_contig_table(str(metacool))
     network.to_csv(directory / "network.txt", sep="\t", header=False, index=False)
     contig_table.to_csv(directory / "contig_data_network.txt", sep="\t", index=False)
