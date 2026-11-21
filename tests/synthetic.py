@@ -601,6 +601,29 @@ def fake_micomplete(metagenome: Metagenome, calls: Optional[list] = None) -> Cal
     return micomplete_quality
 
 
+def first_cluster_contaminated(metagenome: Metagenome, kept_whole: bool = False) -> Callable:
+    """A stub miComplete (see :func:`fake_micomplete`) that finds the first
+    overlapping cluster contaminated (a weighted redundancy of 1.5): the
+    validation partitions it again, which makes the round recursive_1, whose
+    clusters replace it; with kept_whole, they are too incomplete for that
+    (a weighted completeness of 0.1), and the cluster is kept whole."""
+
+    def micomplete_quality(fasta_dir, outfile, threads):
+        write_micomplete_summary(fasta_dir, outfile, metagenome)
+        # Three comment lines, the header, then a row per cluster.
+        with open(outfile) as summary:
+            lines = [line.split("\t") for line in summary.read().splitlines()]
+        if os.path.basename(os.path.normpath(fasta_dir)) == "overlapping_clusters":
+            lines[4][lines[3].index("Weighted redundancy")] = "1.5"
+        elif kept_whole:
+            for line in lines[4:]:
+                line[lines[3].index("Weighted completeness")] = "0.1"
+        with open(outfile, "w") as summary:
+            summary.write("".join("\t".join(line) + "\n" for line in lines))
+
+    return micomplete_quality
+
+
 # -- Comparing a binning with the truth -------------------------------------
 
 

@@ -1049,34 +1049,13 @@ def _metator_metadata(objects):
     return json.loads(metadata)["metator"]
 
 
-def _first_cluster_contaminated(metagenome, kept_whole=False):
-    """A stub miComplete (see synthetic.fake_micomplete) that finds the first
-    overlapping cluster contaminated (a weighted redundancy of 1.5): the
-    validation partitions it again, which makes the round recursive_1, whose
-    clusters replace it; with kept_whole, they are too incomplete for that
-    (a weighted completeness of 0.1), and the cluster is kept whole."""
-
-    def micomplete_quality(fasta_dir, outfile, threads):
-        synthetic.write_micomplete_summary(fasta_dir, outfile, metagenome)
-        # Three comment lines, the header, then a row per cluster.
-        lines = [line.split("\t") for line in Path(outfile).read_text().splitlines()]
-        if Path(fasta_dir).name == "overlapping_clusters":
-            lines[4][lines[3].index("Weighted redundancy")] = "1.5"
-        elif kept_whole:
-            for line in lines[4:]:
-                line[lines[3].index("Weighted completeness")] = "0.1"
-        Path(outfile).write_text("".join("\t".join(line) + "\n" for line in lines))
-
-    return micomplete_quality
-
-
 def test_a_cluster_partitioned_again_but_kept_whole(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli):
     """A contaminated cluster that the recursive step partitions again, into
     clusters too incomplete to replace it, is kept whole: its contigs keep
     the IDs of their recursive clusters in contig_data_final.txt, and are in
     it, in binning.txt (which left them out) and in the map of the clusters
     as in the round final, its FASTA file listing them."""
-    monkeypatch.setattr("metator.validation.micomplete_quality", _first_cluster_contaminated(metagenome, kept_whole=True))
+    monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.first_cluster_contaminated(metagenome, kept_whole=True))
     metacool = _contig_map(metagenome_inputs, tmp_path / "contigs.metacool")
     out = tmp_path / "out"
     random.seed(0)
@@ -1131,7 +1110,7 @@ def test_steps_on_a_map_give_the_map_of_pipeline(metagenome, metagenome_inputs, 
     the overlapping clusters that it checks), and the entry partition of
     the metadata, and changes nothing else; validation MAP writes the map
     of the clusters, as pipeline MAP does at its end."""
-    monkeypatch.setattr("metator.validation.micomplete_quality", _first_cluster_contaminated(metagenome))
+    monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.first_cluster_contaminated(metagenome))
     assembly = str(metagenome_inputs["assembly"])
     contig_map = _contig_map(metagenome_inputs, tmp_path / "contigs.metacool")
     runs = {name: tmp_path / name for name in ["pipeline", "steps"]}
@@ -1236,6 +1215,18 @@ def test_steps_on_a_map_give_the_map_of_pipeline(metagenome, metagenome_inputs, 
     assert [entry["name"] for entry in mc.cluster_rounds] == ["core", "overlapping", "recursive_1", "final"]
     assert set(mc.cluster_members("final").cluster) == set(mc.genomes.name) - {"__unbinned__"}
     assert not list(tmp_path.rglob("*.lock")) and not list(tmp_path.rglob(".input.metacool.*"))
+    # The tables that metator dump writes from the two maps are the same.
+    for name, path in written.items():
+        run_cli("dump", path, "-o", tmp_path / f"dump_{name}")
+    for table in [
+        "contig_data_final.txt",
+        "cluster_summary.txt",
+        "binning.txt",
+        "clusters.txt",
+        "cluster_members.txt",
+        "network.txt",
+    ]:
+        assert (tmp_path / "dump_steps" / table).read_bytes() == (tmp_path / "dump_pipeline" / table).read_bytes(), table
 
 
 def _members(mc):
