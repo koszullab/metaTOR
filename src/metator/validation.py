@@ -448,7 +448,7 @@ def recursive_clustering(
         Leiden.
     overlapping_parameter : float
         Hamming distance threshold to consider two bins as the same bin.
-    resolution parameter : float
+    resolution_parameter : float
         Resolution parameter of Leiden algorithm.
     algorithm : str
         Algorithm to use, either louvain or leiden.
@@ -615,7 +615,7 @@ def recursive_clustering_worker(
     iterations : int
         Number of iterations to use for recursive iterations of Louvain or
         Leiden.
-    resolution parameter : float
+    resolution_parameter : float
         Resolution parameter of Leiden algorithm.
     contigs_data : pandas.DataFrame
         The contig data of the partition, with the recursive bins so far."""
