@@ -39,9 +39,11 @@ def private_link(tmp_path):
     """Make links to files of tests_data, each test its own, and check at
     teardown that no file was written to through them.
 
-    pyfastx writes its index (.fxi) next to the path it is given, and the
-    commands remove it at the end, so two test sessions reading one
-    assembly of tests_data removed it from under each other. The links are
+    pyfastx, which metaTOR read the assemblies with, wrote its index (.fxi)
+    next to the path it was given, and the commands removed it at the end,
+    so two test sessions reading one assembly of tests_data removed it from
+    under each other; no command writes beside an assembly now, which the
+    check at teardown keeps so. The links are
     in a directory of their own: in tmp_path itself, a link would take the
     name of a file the test writes there (a copy named assembly.fa), which
     would then be written through the link, into tests_data."""
@@ -192,36 +194,6 @@ def metagenome_files(metagenome, tmp_path_factory):
     yield files
     written = sorted(set(os.listdir(directory)) - {path.name for path in files.values()})
     assert not written, f"tests wrote next to the shared mock metagenome: {written}"
-
-
-@pytest.fixture(scope="session")
-def metagenome_indexed_pairs(metagenome_files, tmp_path_factory):
-    """The pairs sorted, compressed and indexed for pypairix, as metator mge
-    reads them: by chr1, chr2, pos1 and pos2 (the contig names byte by
-    byte, as pairtools sorts them, so that each forms one block; the
-    positions as numbers), with "#sorted: chr1-chr2-pos1-pos2" after the
-    "## pairs format" line, compressed with BGZF (Biopython) and indexed
-    with pypairix."""
-    import pypairix
-    from Bio import bgzf
-
-    header, rows = [], []
-    with open(metagenome_files["pairs"]) as pairs:
-        for line in pairs:
-            (header if line.startswith("#") else rows).append(line)
-
-    def key(line):
-        fields = line.split("\t")
-        return fields[1].encode(), fields[3].encode(), int(fields[2]), int(fields[4])
-
-    rows.sort(key=key)
-    header = [line for line in header if not line.startswith("#sorted")]
-    header.insert(1 if header and header[0].startswith("##") else 0, "#sorted: chr1-chr2-pos1-pos2\n")
-    path = tmp_path_factory.mktemp("metagenome_pairs") / "synthetic_sorted.pairs.gz"
-    with bgzf.BgzfWriter(str(path), "wb") as out:
-        out.write("".join(header + rows).encode())
-    pypairix.build_index(str(path), force=1)
-    return path
 
 
 @pytest.fixture(scope="session")

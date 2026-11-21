@@ -31,7 +31,9 @@ per contig of a cluster. The map of the clusters stores both
 
 ``metator mge`` makes one more round after them, ``mge``: its MGE clusters,
 which it stores in the map next to those of the run (:func:`mge_round`,
-:func:`metator.metacool.write_round`).
+:func:`metator.metacool.write_map`); ``mge_random`` with ``--random``, a
+random clustering of the same shape, which never replaces the round
+``mge``.
 """
 
 import csv
@@ -62,11 +64,13 @@ CORE = "core"
 OVERLAPPING = "overlapping"
 FINAL = "final"
 MGE = "mge"
+MGE_RANDOM = "mge_random"
 
-#: The columns of the summary of metator mge (mges_cluster_summary.tsv) that the
-#: round mge does not store as columns of its own: the name of each MGE
-#: cluster, and what metacooler computes from its contigs (their total length
-#: and their number) or stores as its members.
+#: The columns of the summary of the MGE clusters of metator mge (see
+#: metator.mge.generate_bin_summary) that the round mge does not store as
+#: columns of its own: the name of each MGE cluster, and what metacooler
+#: computes from its contigs (their total length and their number) or stores
+#: as its members.
 MGE_SUMMARY_KEYS = {"BinName": "name", "BinLength": "length", "ContigsNumber": "n_contigs", "Contigs": "members"}
 
 
@@ -306,49 +310,40 @@ def read_rounds(outdir):
     return clusters, members
 
 
-def mge_round(summary_file):
-    """The round ``mge``: the MGE clusters of a run of ``metator mge``, from
-    the summary that it wrote (``mges_cluster_summary.tsv``), in its order: each
-    named as its record (``MetaTOR_MGE_<ID>``), with its contigs (the
+def mge_round(summary, name=MGE):
+    """The round ``mge`` (or ``mge_random``: name): the MGE clusters of a run
+    of ``metator mge``, from their summary (see
+    metator.mge.generate_bin_summary), in its order: each named as its
+    record of ``mges_binned.fa`` (``MetaTOR_MGE_<ID>``), with its contigs (the
     ``Contigs`` column) and no parent. Its other columns are those of the
-    summary, as written (GC, Hit, BinningScore, MetagenomicBin,
-    AssociationScore, AssociatedBins), but those that the map computes from
+    summary (GC, Hit, BinningScore), but those that the map computes from
     the contigs (see :data:`MGE_SUMMARY_KEYS`): ``BinLength`` is the length
-    of the cluster, and ``ContigsNumber`` its number of contigs. ``NA`` is a
-    missing value: no number, or an empty text in the map.
+    of the cluster, and ``ContigsNumber`` its number of contigs. A missing
+    value is no number in the map (the score of a cluster of one contig).
 
     Parameters
     ----------
-    summary_file : str
-        Path to ``mges_cluster_summary.tsv``.
+    summary : pandas.DataFrame
+        The summary of the MGE clusters.
+    name : str
+        The name of the round: ``mge``, or ``mge_random`` for a random
+        clustering.
 
     Returns
     -------
     tuple of pandas.DataFrame
         The clusters and their contigs (see :meth:`Rounds.tables`).
     """
-    # Names as written: a contig called NA, None or nan is one. None, which
-    # mge writes for a host it does not know, is a text; NA, in the other
-    # columns, a missing value.
-    text = ["BinName", "Contigs", "MetagenomicBin", "AssociatedBins"]
-    missing = ["BinLength", "GC", "Hit", "BinningScore", "ContigsNumber", "MetagenomicBin", "AssociationScore", "AssociatedBins"]
-    summary = pd.read_csv(
-        summary_file,
-        sep="\t",
-        dtype=dict.fromkeys(text, str),
-        keep_default_na=False,
-        na_values={column: ["NA"] for column in missing},
-        **EXACT_FLOATS,
-    )
-    clusters = pd.DataFrame({"round": MGE, "name": summary["BinName"], "parent_round": None, "parent": None})
+    summary = summary.reset_index(drop=True)
+    clusters = pd.DataFrame({"round": name, "name": summary["BinName"].astype(str), "parent_round": None, "parent": None})
     for column in summary.columns:
         if column not in MGE_SUMMARY_KEYS:
-            clusters[column] = summary[column].astype(object) if column in text else summary[column]
+            clusters[column] = summary[column]
     members = pd.DataFrame(
         [
-            (MGE, name, contig)
-            for name, contigs in zip(summary["BinName"], summary["Contigs"], strict=True)
-            for contig in contigs.split(",")
+            (name, cluster, contig)
+            for cluster, contigs in zip(summary["BinName"], summary["Contigs"], strict=True)
+            for contig in str(contigs).split(",")
         ],
         columns=["round", "cluster", "contig"],
     )

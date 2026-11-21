@@ -56,9 +56,8 @@ jobs:
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         include:
           # The next Python release, allowed to fail. h5py (for cooler,
-          # through metacooler) and pyfastx have no cp315 wheels yet: h5py is
-          # built against the system HDF5, and pyfastx downloads the zlib,
-          # sqlite and indexed_gzip sources it builds in.
+          # through metacooler) has no cp315 wheels yet: it is built against
+          # the system HDF5.
           - python-version: "3.15"
             experimental: true
             extra-apt-packages: libhdf5-dev pkg-config

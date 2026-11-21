@@ -31,7 +31,6 @@ global_args = {
     "CONTIGS": "tests_data/contig_data_network.txt",
     "SUBSET_FASTA": "tests_data/subset.assembly.fa",
     "SUBSET_PAIRS": "tests_data/subset.pairs.gz",
-    "SUBSET_MGES": "tests_data/subset.mges.txt",
 }
 
 
@@ -39,7 +38,8 @@ global_args = {
 def private_assemblies(private_link, monkeypatch):
     """Each test reads the assemblies of tests_data through links of its
     own (see private_link): two test sessions sharing tests_data removed
-    each other's pyfastx index (FileNotFoundError)."""
+    each other's pyfastx index (FileNotFoundError), when metaTOR read them
+    with pyfastx."""
     for key in ["FASTA", "SUBSET_FASTA"]:
         monkeypatch.setitem(global_args, key, private_link(global_args[key]))
 

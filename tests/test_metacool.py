@@ -1263,18 +1263,6 @@ def test_a_new_map_has_the_mode_of_a_new_file(metagenome, binning, tmp_path, wri
     assert outfile.stat().st_mode & 0o777 == 0o666 & ~umask
 
 
-@pytest.mark.parametrize("table", ["no Size column", "no file"])
-def test_the_contigs_of_a_map_against_a_table_that_cannot_be_read(metagenome, binning, tmp_path, table):
-    """A contig data file without a Name or a Size column, or that is not
-    there, is refused by name: the map cannot be checked against it."""
-    metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
-    contig_data = tmp_path / "contig_data.txt"
-    if table == "no Size column":
-        contig_data.write_text("ID\tName\n1\tc1\n")
-    with pytest.raises(mtmc.MetacoolError, match=f"^Cannot read the contigs of {re.escape(str(contig_data))}: "):
-        mtmc.check_map_of_contigs(str(metacool), str(contig_data))
-
-
 def test_rounds_name_the_map_that_lacks_their_contigs(metagenome, binning, tmp_path, caplog):
     """The contigs of the rounds that the map lacks are left out, with a
     warning that names the map, not the file staged for it."""
