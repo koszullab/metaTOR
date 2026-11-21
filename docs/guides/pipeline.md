@@ -58,15 +58,17 @@ The pipeline writes into `--outdir` (`-o`, the current directory by default):
 | `cluster_summary.txt` | One row per final cluster: size, GC content, miComplete's completeness and redundancy, N50, abundance… |
 | `contig_data_final.txt` | One row per contig: its measures, and the core, overlapping, recursive and final clusters it belongs to |
 | `binning.txt` | The contigs of the final clusters and their cluster |
-| `overlapping_clusters/` | The FASTA files of the overlapping clusters, before validation |
 | `recursive_clusters/` | The FASTA files of the recursive clusters, in `step_<n>/` for step `n` |
 | `overlapping_micomplete_results.txt` | miComplete's results on the overlapping clusters |
 | `recursive_micomplete_step_<n>.txt` | miComplete's results on the recursive clusters of step `n` |
-| `clusters.txt`, `cluster_members.txt` | Every cluster of every round (overlapping, recursive, final), with its parent and miComplete's columns, and the contigs of each: see [Clustering rounds](metacool.md#clustering-rounds) |
+| `clusters.txt`, `cluster_members.txt` | Every cluster of every round (core, overlapping, recursive, final), with its parent and miComplete's columns, and the contigs of each: see [Clustering rounds](metacool.md#clustering-rounds) |
 | `metator_pipeline_<date>.log` | The log of the run |
 
 The network is no table: the run stores it in its map, as `metator network`
-does (see [Building the network](network.md#building-the-network)). The tables
+does (see [Building the network](network.md#building-the-network)), and so
+is the partition, as `metator partition` stores it. The FASTA files of the
+overlapping clusters that miComplete checks, and the contig data of the
+partition, go to the temporary directory (`--no-clean-up` keeps them). The tables
 list the contigs of the map, in its order, by their position in it (`ID`).
 At its end, the run writes the contact map of all the contigs, grouped by
 cluster, over `MAP` (see [The contact map of the clusters](metacool.md)):
@@ -87,7 +89,7 @@ A run refuses to overwrite the clusters of an earlier one unless given
 | `--normalization` | `empirical_hit` | See [Normalising the network](network.md#normalising-the-network) |
 | `--iterations`, `--overlap` | 100, 80 | See [Partition](binning.md#partition) |
 | `--rec-iter`, `--rec-overlap` | 10, 90 | See [Validation](binning.md#validation) |
-| `--size` | 500000 | The size, in base pairs, a cluster must reach to be kept |
+| `--size` | 500000 | The size, in base pairs, an overlapping cluster must reach to be checked with miComplete, and a recursive cluster must exceed |
 | `--prefix` | none | Names the clusters `<prefix>_metator_…` |
 | `--threads` | 1 | Threads for the partition and the validation |
 | `--tmpdir` | `./tmp` | Where the temporary files go; deleted at the end, unless `--no-clean-up` |
@@ -105,23 +107,25 @@ building the network again:
 # 1. Build the network from the map, and store it in the map
 metator network sample.metacool -a assembly.fa -e DpnII -d depth.txt -o binning
 
-# 2. Partition it: overlapping_clusters/, contig_data_partition.txt
-metator partition sample.metacool -a assembly.fa -t 16 -o binning
+# 2. Partition it: the map stores its core and overlapping clusters
+metator partition sample.metacool -t 16 -o binning
 
 # 3. Validate the clusters: final_clusters/, cluster_summary.txt, contig_data_final.txt
-metator validation sample.metacool -a assembly.fa -c binning/contig_data_partition.txt \
-    -f binning/overlapping_clusters -t 16 -o binning
+metator validation sample.metacool -a assembly.fa -t 16 -o binning
 ```
 
-Run step by step, the final clusters go to `final_clusters/`, and the
-intermediate tables stay. The map is the network that the steps share:
-`metator network` stores it in the map, which `partition` and `validation`
-read, and they write the map that `metator pipeline MAP` writes from the same
-clusters: see [Step by step](metacool.md#step-by-step).
+Run step by step, the final clusters go to `final_clusters/`. The map is
+what the steps share: `metator network` stores the network in the map,
+which `partition` and `validation` read, `partition` stores its partition
+there, which `validation` reads, and they write the map that
+`metator pipeline MAP` writes from the same clusters: see
+[Step by step](metacool.md#step-by-step).
 
 To cluster without validating, run the first two steps alone: the clusters
-are then the overlapping clusters of `overlapping_clusters/`, and
-`contig_data_partition.txt` gives the cluster of each contig.
+are then the overlapping clusters of the map, its round `overlapping`, which
+`metacooler dump -t members` lists with their contigs, and
+`metacooler fasta MAP --fasta assembly.fa --round overlapping -o DIR` writes
+as FASTA files.
 
 ## The log
 

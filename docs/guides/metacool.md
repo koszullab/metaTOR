@@ -272,7 +272,7 @@ map as their first argument too: the map is the network that they share.
 Run one after the other on one map, they read and update it as
 `pipeline MAP` does, and write the map that it writes from the same clusters,
 but for the date the map was written and the command lines and parameters
-that it stores (those of `network` and `validation`). Louvain draws
+that it stores (those of `network`, `partition` and `validation`). Louvain draws
 random numbers: two runs give the same clusters only from the same random
 stream, as the tests check in one process, so steps run as separate commands
 differ from `pipeline` as two `pipeline` runs do. `partition MAP` on a map
@@ -285,13 +285,12 @@ ones:
 # 1. The network, stored in the map.
 metator network sample.metacool -a assembly.fa -d depth.txt -e DpnII -o binning
 
-# 2. The partition of the network of the map: overlapping_clusters/ and
-#    contig_data_partition.txt. The map stores the overlapping clusters.
-metator partition sample.metacool -a assembly.fa -o binning
+# 2. The partition of the network of the map: the map stores its core and
+#    overlapping clusters.
+metator partition sample.metacool -o binning
 
 # 3. The validation: the final clusters. The map becomes the map of the clusters.
-metator validation sample.metacool -a assembly.fa -c binning/contig_data_partition.txt \
-    -f binning/overlapping_clusters -o binning
+metator validation sample.metacool -a assembly.fa -o binning
 ```
 
 - `network MAP` stores the network of the contigs in the map: the
@@ -299,19 +298,23 @@ metator validation sample.metacool -a assembly.fa -c binning/contig_data_partiti
   its contigs table, the weights of its normalization, and the `network`
   entry of the `metator` key of its metadata, in place of those of an earlier
   network. Its clusters and genomes are left as they were.
-- `partition MAP` stores its overlapping clusters that reach `--size`, those
-  of `overlapping_clusters/`, with their contigs, as the round `overlapping` of the
-  clustering rounds of the map (see [Clustering rounds](#clustering-rounds)),
-  in place of the rounds that it held, without the columns of miComplete,
-  which the validation runs. The genomes and contigs tables of the map are
-  left as they were.
-- `validation MAP` writes the map of the clusters, as `pipeline MAP` does at
-  its end: the final clusters are its genomes, and it holds every round
-  (`overlapping`, `recursive_<k>`, `final`) and the normalization of the
-  network. It reads the contigs of `contig_data_partition.txt` by their IDs,
-  their positions in the map when `partition` wrote it: a validation run again
-  on the map of the clusters, whose contigs are grouped by cluster, reads the
-  same network.
+- `partition MAP` stores its partition: every core and overlapping cluster,
+  with its contigs, as the rounds `core` and `overlapping` of the clustering
+  rounds of the map (see [Clustering rounds](#clustering-rounds)), in place
+  of the rounds that it held, without the columns of miComplete, which the
+  validation runs, and what the run was, as the `partition` entry of the
+  `metator` key of its metadata. It writes no table and no FASTA file. The
+  genomes and contigs tables of the map are left as they were.
+- `validation MAP` reads the partition from the map, writes the FASTA files
+  of the overlapping clusters that reach its `--size` from the assembly, in
+  its temporary directory, for miComplete, and writes the map of the
+  clusters, as `pipeline MAP` does at its end: the final clusters are its
+  genomes, and it holds every round (`core`, `overlapping`, `recursive_<k>`,
+  `final`), the overlapping clusters that miComplete checked with its
+  columns, and the normalization of the network. The IDs of the contigs are
+  their positions in the map as the validation reads it: a validation run
+  again on the map of the clusters, whose contigs are grouped by cluster,
+  numbers them in that order.
 
 `network MAP`, `partition MAP` and `validation MAP` write the map as
 `pipeline MAP` does: in place, through a map written next to it and validated
@@ -324,18 +327,23 @@ a map that is not there or that metacooler cannot open, a lock that another
 run holds, an entry of a collection without `--output-map`, and a FILE that
 exists, without `-F`. `partition` and `validation` refuse a map without the
 network that `metator network` stores (or one whose weights or columns an
-edit dropped since), and `validation` a map that is no map of the contigs of
-its contig data (`-c`: other contigs or lengths); they refuse an
-`--output-map` that is one of their inputs, and an invalid `--prefix`. Both
-need the map: metaTOR 2.0 removed their runs from the tables of the network
-(`-n`, `-c`).
+edit dropped since), and `validation` a map without the partition that
+`metator partition` stores (the rounds `core` and `overlapping`, their
+clusters named as `partition` names them); they refuse an `--output-map`
+that is one of their inputs, and an invalid `--prefix`. Both need the map:
+metaTOR 2.0 removed their runs from the tables of the network and of the
+partition (`-n`, `-c`, `-f`).
 
 ## Clustering rounds
 
 A run reaches its final clusters in rounds:
 
-- `overlapping`: the overlapping clusters of the partition that reach
-  `--size`, which miComplete checks;
+- `core`: the core clusters of the partition, `core_00001`..., the contigs
+  that fall together at every iteration of Louvain or Leiden, with no parent:
+  an overlapping cluster merges several of them;
+- `overlapping`: every overlapping cluster of the partition,
+  `metator_00001_00000`...; miComplete checks those that reach `--size`, which
+  hold its columns;
 - `recursive_1`, `recursive_2`...: the clusters that each step of the
   validation makes by partitioning a contaminated cluster again, its parent;
 - `final`: the final clusters, each the cluster of the same name of the round
@@ -355,8 +363,9 @@ The map of the clusters stores both in its `/clusters` group (metacooler
 `metacooler dump -t clusters` and `-t members` write them out, and
 `MetaCooler.clusters` and `MetaCooler.cluster_members()` read them. A map
 holds the rounds of the run that wrote it, and those only: `metator
-partition MAP` stores the round `overlapping` alone, until
-`metator validation MAP` stores every round (see [Step by step](#step-by-step)).
+partition MAP` stores the rounds `core` and `overlapping` alone, which
+`metator validation MAP` reads, until it stores every round (see
+[Step by step](#step-by-step)).
 `metator mge --map` then adds the round `mge`, or replaces the one of an
 earlier `mge` run, and keeps the others.
 

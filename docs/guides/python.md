@@ -56,36 +56,33 @@ partition of the network that `metator network` stored in a map, as
 `metator partition` runs it:
 
 ```python
-import os
-
 import metator.network as mtn
 import metator.partition as mtp
 
-os.makedirs("binning/overlapping_clusters", exist_ok=True)
-contig_data_file = mtp.partition(
+clusters = mtp.partition(
     algorithm="louvain",
-    assembly="assembly.fa",
-    # The contig data and the network of the map (one edge per pair of
-    # contigs in contact, by their positions in the map, weighed by the
-    # normalization that metator network stored).
-    contig_data=mtn.map_contig_table("sample.metacool"),
-    iterations=100,
+    # The network of the map: one edge per pair of contigs in contact, by
+    # their positions in the map, weighed by the normalization that metator
+    # network stored.
     network=mtn.map_network("sample.metacool"),
-    outdir="binning",
-    fasta_dir="binning/overlapping_clusters",
+    iterations=100,
     overlapping_parameter=0.8,  # --overlap 80
     resolution_parameter=1.0,
-    size=500000,
     threads=4,
     prefix="metator",  # "<prefix>_metator" for --prefix <prefix>
 )
+# The core and the overlapping clusters, by number, each the IDs of its
+# contigs: metator partition stores them in the map
+# (metator.clusters.partition_rounds, metator.metacool.write_rounds), and
+# the validation reads them back (metator.metacool.read_partition).
+clusters.core, clusters.overlapping, clusters.names
 ```
 
 | Command | Function |
 |---|---|
 | `metator network` | `metator.network.create_contig_data` and `contig_data_from_map`, `contig_contacts` and `contig_data_table`, then `metator.metacool.store_network` |
-| `metator partition` | `metator.partition.partition` |
-| `metator validation` | `metator.validation.recursive_decontamination` |
+| `metator partition` | `metator.partition.partition`, then `metator.metacool.write_rounds` |
+| `metator validation` | `metator.metacool.read_partition`, `metator.validation.write_overlapping_fasta`, then `metator.validation.recursive_decontamination` |
 | `metator mge` | `metator.mge.mge_binning` |
 
 The commands also check their inputs, write their log file and clean up

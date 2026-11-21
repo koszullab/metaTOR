@@ -58,10 +58,13 @@ without header, as `binning.txt` or the collection exported by anvi'o.
 
 ## The contig data tables
 
-`contig_data_partition.txt` and `contig_data_final.txt` hold one row per
-contig of the map, in its order, with a header. Each step adds its columns to
-those of the step before; the first come from the network, which
-`metator network` stores in the contigs table of the map:
+`contig_data_final.txt` holds one row per contig of the map, in its order,
+with a header. Each step adds its columns to those of the step before; the
+first come from the network, which `metator network` stores in the contigs
+table of the map, then the core and overlapping clusters, which
+`metator partition` stores as the clustering rounds of the map (the
+validation writes the table of the partition, `contig_data_partition.txt`, in
+its temporary directory):
 
 | Column | Written by | What it holds |
 |---|---|---|
@@ -185,9 +188,12 @@ clusters stores both (see
 
 ### FASTA files of the clusters
 
-`overlapping_clusters/`, `recursive_clusters/step_<n>/` (the recursive
-clusters of step `n`) and `final_clusters/` hold one FASTA file per cluster,
-`<cluster>.fa`, with the records of its contigs as they are in the assembly.
+`recursive_clusters/step_<n>/` (the recursive clusters of step `n`) and
+`final_clusters/` hold one FASTA file per cluster, `<cluster>.fa`, with the
+records of its contigs as they are in the assembly. The overlapping clusters
+that the validation checks are written so, by metacooler
+(`metacooler.write_fasta`), in `overlapping_clusters/` of its temporary
+directory (`-N` keeps it).
 The final clusters also hold the pyfastx index of each, `<cluster>.fa.fxi`,
 which the validation leaves there.
 

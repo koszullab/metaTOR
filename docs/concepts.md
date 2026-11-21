@@ -80,9 +80,11 @@ default) and combines the runs:
 - **Overlapping clusters** merge the core clusters that fall together at most
   iterations: in at least `--overlap` percent of them (80% by default).
 
-The overlapping clusters of at least `--size` base pairs (500 kb by default) are
-written as FASTA files, in `overlapping_clusters/`: they are the clusters to
-validate.
+`metator partition` stores every core and overlapping cluster in the map, as
+its clustering rounds `core` and `overlapping`. The overlapping clusters of at
+least `--size` base pairs (500 kb by default) are the clusters to validate:
+the validation writes them as FASTA files, in its temporary directory, for
+miComplete.
 
 ## Validation and recursive clusters
 
