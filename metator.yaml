@@ -4,8 +4,6 @@ channels:
   - bioconda
   - nodefaults
 dependencies:
-  - gcc
-  - zlib
   - python>=3.10
   # miComplete is installed from PyPI with metator: the bioconda package
   # requires Python < 3.12 and Biopython <= 1.80.

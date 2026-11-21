@@ -43,6 +43,11 @@ dependencies = [
     "scipy",
     "micomplete",
     "rich-click>=1.9",
+    # metaTOR 2.0 needs metacooler 0.4.0. Until 0.4.0 is on PyPI, the bound
+    # stays >=0.3.0, which the commit pinned in [tool.uv.sources] satisfies
+    # (its version is still 0.3.x). At the release: require metacooler>=0.4.0
+    # here, delete [tool.uv.sources], then `uv lock --upgrade-package
+    # metacooler`.
     "metacooler>=0.3.0",
 
     # NON PIP DEPENDENCIES (miComplete's)
