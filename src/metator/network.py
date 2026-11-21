@@ -62,40 +62,29 @@ CONTIG_TABLE_COLUMNS = ["ID", "Name", "Size", "GC_content", "Hit", "Shotgun_cove
 def contig_contacts(metacool, chunksize=METACOOL_CHUNKSIZE):
     """Contacts of a .metacool contact map summed by pair of contigs.
 
-    metacooler sums the pixels of the map between the bins of each two
-    contigs (metacooler.network at the contig level, by contig id: the row
-    of each contig in the contigs table of the map), whatever the bin size
-    of the map, at most chunksize pixels read at a time: the memory used
-    grows with the number of contig pairs in contact, not with the pixels.
-    The contacts of two contigs are those of the pairs that the map was made
-    of, each counted once: a pair with a read on the first or the last base
-    of a contig too. The map holds the contacts of all its libraries,
-    summed.
-
-    Parameters:
-    -----------
+    Parameters
+    ----------
     metacool : str
         Path to the .metacool file, or URI of an entry of a .mmetacool
         collection: ``file.mmetacool::entries/<name>``.
     chunksize : int
         Number of pixels read at a time.
 
-    Returns:
-    --------
+    Returns
+    -------
     pandas.DataFrame:
         One row per pair of contigs in contact, in the order of the map:
         columns id1 and id2, the positions of the two contigs in the contigs
-        table of the map, from 0 (id1 <= id2: a contact within a contig has
-        id1 == id2), and count.
+        table of the map, from 0 (id1 <= id2: a contact within a contig has id1
+        == id2), and count.
 
-    Raises:
-    -------
+    Raises
+    ------
     metator.metacool.MetacoolError
         If the map cannot be read (a missing file, a file that is not a
-        .metacool one, a .mmetacool without the entry), stores both
-        triangles of the matrix (storage-mode square), or holds counts that
-        are not integers.
-    """
+        .metacool one, a .mmetacool without the entry), stores both triangles
+        of the matrix (storage-mode square), or holds counts that are not
+        integers."""
     import metacooler
 
     # metacooler's warnings go to the log of the run; its count of the edges
@@ -132,10 +121,10 @@ def contig_contacts(metacool, chunksize=METACOOL_CHUNKSIZE):
 
 
 def contig_hits(contacts, n_contigs):
-    """Hits of each contig of a map, by its position in the map: the sum of
-    its contacts (see contig_contacts), a contact within the contig counted
-    twice, as a pair with both reads on the contig counts twice in the pairs
-    file that the map was made of. A contig in no contact has 0."""
+    """Hits of each contig of a map, by its position in the map: the sum of its
+    contacts (see contig_contacts), a contact within the contig counted twice,
+    as a pair with both reads on the contig counts twice in the pairs file that
+    the map was made of. A contig in no contact has 0."""
     count = contacts["count"].to_numpy(dtype=np.float64)
     hits = np.bincount(contacts["id1"], weights=count, minlength=n_contigs)
     hits += np.bincount(contacts["id2"], weights=count, minlength=n_contigs)
@@ -157,58 +146,38 @@ def log_contacts(source, contacts):
 
 
 def map_network(metacool, weights="stored", contacts=None):
-    """The network of the contigs of a .metacool contact map: one edge
-    between each two contigs of the map in contact, weighed with the
-    normalization of the network.
+    """The network of the contigs of a .metacool contact map: one edge between
+    each two contigs of the map in contact, weighed with the normalization of
+    the network.
 
-    The weight of an edge is the count of the contacts of its two contigs
-    (see contig_contacts) times the weight of each: ``count * w[i] * w[j]``, as
-    cooler applies balancing weights. The weights are those that metator
-    network stored in the map (see stored_weights), by default, or those
-    given (one per contig of the map, in its order: those of a pipeline run,
-    see network_weights); without weights (the normalization None), the
-    edges are the counts. Weighing the contacts of two contigs, rather than
-    each of their pixels, gives the same network whatever the bin size of
-    the map.
-
-    The contacts within a contig are no edge, nor is a pair of contigs whose
-    weight is 0, or that has none: a contig that the normalization gives no
-    weight (NaN: one without a hit, or without shotgun coverage).
-
-    Parameters:
-    -----------
+    Parameters
+    ----------
     metacool : str
         Path to the .metacool file, or URI of an entry of a .mmetacool
         collection: ``file.mmetacool::entries/<name>``.
     weights : "stored", numpy.ndarray or None
-        "stored" (the default): the weights that metator network stored in
-        the map. Else one weight per contig of the map, in its order, or
-        None for the counts. Any other string is refused (ValueError): the
-        name of a normalization is no weights.
+        "stored" (the default): the weights that metator network stored in the
+        map.
     contacts : pandas.DataFrame, optional
         The contacts of the map (see contig_contacts), when they are read
         already: the map is not read again.
 
-    Returns:
-    --------
-    pandas.DataFrame:
-        One row per edge, in the order of the map: columns contig1 and
-        contig2, the IDs of the two contigs (their positions in the map as
-        it is read, from 1: the ID column of the contig data that a run
-        writes from it, see contig_table; contig1 < contig2), and weight. A
-        run that regroups the map (validation, pipeline) moves its contigs:
-        join the network of the map it wrote to its tables by contig name
-        (see relabel_network).
-
-    Raises:
+    Returns
     -------
+    pandas.DataFrame:
+        One row per edge, in the order of the map: columns contig1 and contig2,
+        the IDs of the two contigs (their positions in the map as it is read,
+        from 1: the ID column of the contig data that a run writes from it, see
+        contig_table; contig1 < contig2), and weight.
+
+    Raises
+    ------
     ValueError
         If weights is a string other than "stored".
     metator.metacool.MetacoolError
-        If the map cannot be read or give its contacts (see
-        contig_contacts), or, for its stored weights, holds no network, or
-        not the weights of its normalization (see stored_weights).
-    """
+        If the map cannot be read or give its contacts (see contig_contacts),
+        or, for its stored weights, holds no network, or not the weights of its
+        normalization (see stored_weights)."""
     if isinstance(weights, str):
         if weights != "stored":
             raise ValueError(
@@ -229,16 +198,16 @@ def map_network(metacool, weights="stored", contacts=None):
 
 
 def relabel_network(network, names, ids):
-    """The network of a map (see map_network) with other IDs for its
-    contigs, those of a contig data table of the map: the IDs of the network
-    are the positions of the contigs in the map now, and those of the table
-    the positions they had when it was written (by partition), which differ
-    once a run has written the map of its clusters (grouped by cluster). The
-    edges stay those of the network, listed as map_network lists them: each
-    from the contig of the lower ID, in the order of their IDs.
+    """The network of a map (see map_network) with other IDs for its contigs,
+    those of a contig data table of the map: the IDs of the network are the
+    positions of the contigs in the map now, and those of the table the
+    positions they had when it was written (by partition), which differ once a
+    run has written the map of its clusters (grouped by cluster). The edges
+    stay those of the network, listed as map_network lists them: each from the
+    contig of the lower ID, in the order of their IDs.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     network : pandas.DataFrame
         The network (columns contig1, contig2 and weight).
     names : sequence of str
@@ -246,11 +215,10 @@ def relabel_network(network, names, ids):
     ids : dict
         The ID of each contig of the map in the table, by name.
 
-    Returns:
-    --------
+    Returns
+    -------
     pandas.DataFrame:
-        The network, with the IDs of the table.
-    """
+        The network, with the IDs of the table."""
     new_ids = np.array([ids[str(name)] for name in names], dtype=np.int64)
     first, second = new_ids[network["contig1"].to_numpy() - 1], new_ids[network["contig2"].to_numpy() - 1]
     relabeled = pd.DataFrame(
@@ -260,24 +228,23 @@ def relabel_network(network, names, ids):
 
 
 def network_normalization(metacool, mc=None):
-    """The normalization of the network that metator network stored in a map
-    (see metator.metacool.store_network): that of the entry network of the
-    metator key of its metadata, which a pipeline run writes too. "None" for
-    the raw counts.
+    """The normalization of the network that metator network stored in a map (see
+    metator.metacool.store_network): that of the entry network of the metator
+    key of its metadata, which a pipeline run writes too. "None" for the raw
+    counts.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     metacool : str
         Path to the .metacool file, or URI of an entry of a .mmetacool
         collection, for the message.
     mc : metacooler.MetaCooler, optional
         The map, opened: by default, metacool is opened.
 
-    Raises:
-    -------
+    Raises
+    ------
     metator.metacool.MetacoolError
-        If the map holds no network: metator network has not run on it.
-    """
+        If the map holds no network: metator network has not run on it."""
     if mc is None:
         mc = mtmc.open_map(metacool)
     metator = mc.metadata.get("metator")
@@ -291,9 +258,9 @@ def network_normalization(metacool, mc=None):
 
 
 class StoredNetwork(NamedTuple):
-    """The network that metator network stored in a map, as the steps after
-    it read it (see stored_network): the contig data of the contigs of the
-    map (table, see map_contig_table), the network (see map_network), its
+    """The network that metator network stored in a map, as the steps after it
+    read it (see stored_network): the contig data of the contigs of the map
+    (table, see map_contig_table), the network (see map_network), its
     normalization, and its identity (digest, see network_digest)."""
 
     table: pd.DataFrame
@@ -308,45 +275,29 @@ def stored_network(metacool, mc=None):
     map_contig_table), the network of its contacts weighed with the stored
     weights (see map_network and stored_weights), its normalization (see
     network_normalization), and its identity (see network_digest), which
-    partition records with the partition that it stores, and validation
-    checks.
+    partition records with the partition that it stores, and validation checks.
 
-    Given mc, the map opened, every table is read through it, and the
-    contacts, which metacooler reads by path, are checked against it: a map
-    replaced since mc was opened is refused as replaced (see
-    metator.metacool.read_errors), before its Hit column is checked against
-    contacts that would be another map's.
-
-    The Hit column of the map must still be the hits of its contacts (see
-    contig_hits): an edit that changed the contacts since metator network
-    stored them (metacooler merge, which sums the maps of several libraries,
-    keeps the contigs table of the first) leaves it stale, and the weights
-    of a normalization by the hits with it, but for the normalization None,
-    which stores no weights for metacooler to drop.
-
-    Parameters:
-    -----------
+    Parameters
+    ----------
     metacool : str
         Path to the .metacool file, or URI of an entry of a .mmetacool
         collection: ``file.mmetacool::entries/<name>``.
     mc : metacooler.MetaCooler, optional
         The map, opened: by default, metacool is opened.
 
-    Returns:
-    --------
+    Returns
+    -------
     StoredNetwork:
         The contig data, the network, its normalization and its digest.
 
-    Raises:
-    -------
+    Raises
+    ------
     metator.metacool.MetacoolError
         If the map cannot be read, holds no network, lacks a column or the
-        weights that metator network stores (an edit of the map dropped
-        them since), holds a value that is not a number in one of these
-        columns, or weights that differ between the bins of a contig, or
-        hits that are not those of its contacts: each time, with the step
-        to run again.
-    """
+        weights that metator network stores (an edit of the map dropped them
+        since), holds a value that is not a number in one of these columns, or
+        weights that differ between the bins of a contig, or hits that are not
+        those of its contacts: each time, with the step to run again."""
     with mtmc._metacooler_logging(), mtmc.read_errors(metacool):
         if mc is None:
             mc = mtmc.open_map(metacool)
@@ -376,8 +327,8 @@ def stored_network(metacool, mc=None):
 
 
 def _check_network_columns(metacool, columns):
-    """Refuse a map whose contigs table (its columns) lacks the GC_content or
-    Hit column, which metator network stores."""
+    """Refuse a map whose contigs table (its columns) lacks the GC_content or Hit
+    column, which metator network stores."""
     missing = [column for column in ("GC_content", "Hit") if column not in columns]
     if missing:
         raise mtmc.MetacoolError(
@@ -387,22 +338,19 @@ def _check_network_columns(metacool, columns):
 
 
 def stored_weights(metacool, mc=None):
-    """The weights of the contigs of a map for the normalization of its
-    network, which metator network stored in it as the weights
-    metator_<normalization> of its bins (see network_normalization and
-    metator.metacool.store_network): one per contig, in the order of the
-    map, the weight of each of its bins. None for the normalization None,
-    whose network is the counts. Given mc, the map opened, it is read
-    through it.
+    """The weights of the contigs of a map for the normalization of its network,
+    which metator network stored in it as the weights metator_<normalization>
+    of its bins (see network_normalization and metator.metacool.store_network):
+    one per contig, in the order of the map, the weight of each of its bins.
+    None for the normalization None, whose network is the counts.
 
-    Raises:
-    -------
+    Raises
+    ------
     metator.metacool.MetacoolError
-        If the map cannot be read, holds no network, lacks the weights of
-        its normalization (an edit of the map dropped them since metator
-        network stored them, as metacooler drops weights whose columns it
-        changes), or holds weights that differ between the bins of a contig.
-    """
+        If the map cannot be read, holds no network, lacks the weights of its
+        normalization (an edit of the map dropped them since metator network
+        stored them, as metacooler drops weights whose columns it changes), or
+        holds weights that differ between the bins of a contig."""
     import metacooler
 
     with mtmc._metacooler_logging(), mtmc.read_errors(metacool):
@@ -431,25 +379,22 @@ def stored_weights(metacool, mc=None):
 
 
 def contig_table(names, lengths, gc, hits, coverage=None, sites=None):
-    """The contig data of the contigs of a map, in its order: one row per
-    contig, with the columns of CONTIG_TABLE_COLUMNS. ID is the position of
-    the contig in the map, from 1. The shotgun coverage and the restriction
-    sites are ``-`` when the run has none (no --depth, no --enzyme, nor a
-    column of the map that gives them).
+    """The contig data of the contigs of a map, in its order: one row per contig,
+    with the columns of CONTIG_TABLE_COLUMNS. ID is the position of the contig
+    in the map, from 1.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     names, lengths, gc, hits : sequences
         The name, length, GC content and Hi-C hits of each contig.
     coverage, sites : sequences, optional
         The shotgun coverage and the restriction sites (plus one, as
         create_contig_data counts them) of each contig.
 
-    Returns:
-    --------
+    Returns
+    -------
     pandas.DataFrame:
-        The contig data.
-    """
+        The contig data."""
     n_contigs = len(names)
     # The text columns of the type that pandas reads text as (that of
     # contig_data_partition.txt, which the validation reads).
@@ -468,17 +413,16 @@ def contig_table(names, lengths, gc, hits, coverage=None, sites=None):
 
 
 def contig_data_table(contig_data, names, hits, metacool=None):
-    """The contig data of the contigs of a map, in its order (see
-    contig_table), from what a run measured on the assembly and read from
-    the map (contig_data, by contig name: see create_contig_data and
+    """The contig data of the contigs of a map, in its order (see contig_table),
+    from what a run measured on the assembly and read from the map
+    (contig_data, by contig name: see create_contig_data and
     contig_data_from_map) and the hits of the contigs of the map (see
-    contig_hits). The contigs of the assembly that the map lacks (a map
-    made with a contig filter, for example) are left out: they have no
-    contact, and no node in the network. An INFO message says how many, and
-    names the first, when metacool, the map, is given.
+    contig_hits). The contigs of the assembly that the map lacks (a map made
+    with a contig filter, for example) are left out: they have no contact, and
+    no node in the network.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     contig_data : dict
         The data of each contig of the assembly, by name.
     names : sequence of str
@@ -488,11 +432,10 @@ def contig_data_table(contig_data, names, hits, metacool=None):
     metacool : str, optional
         The map, for the message.
 
-    Returns:
-    --------
+    Returns
+    -------
     pandas.DataFrame:
-        The contig data.
-    """
+        The contig data."""
     names = [str(name) for name in names]
     if metacool is not None:
         in_map = set(names)
@@ -519,19 +462,18 @@ def contig_data_table(contig_data, names, hits, metacool=None):
 
 
 def map_contig_table(metacool, mc=None):
-    """The contig data of the contigs of a map, in its order (see
-    contig_table), as metator network stored them in its contigs table (see
-    metator.metacool.store_network): GC_content and Hit, and
-    Shotgun_coverage and Restriction_site when the run measured them. Given
-    mc, the map opened, it is read through it.
+    """The contig data of the contigs of a map, in its order (see contig_table),
+    as metator network stored them in its contigs table (see
+    metator.metacool.store_network): GC_content and Hit, and Shotgun_coverage
+    and Restriction_site when the run measured them. Given mc, the map opened,
+    it is read through it.
 
-    Raises:
-    -------
+    Raises
+    ------
     metator.metacool.MetacoolError
         If the map cannot be read, holds no network (see
-        network_normalization), or lacks the GC_content or Hit column (an
-        edit of the map dropped it since metator network stored it).
-    """
+        network_normalization), or lacks the GC_content or Hit column (an edit
+        of the map dropped it since metator network stored it)."""
     with mtmc._metacooler_logging(), mtmc.read_errors(metacool):
         if mc is None:
             mc = mtmc.open_map(metacool)
@@ -555,11 +497,11 @@ def map_contig_table(metacool, mc=None):
 
 
 def network_weights(table, normalization):
-    """The weights of the contigs of a contig data table (see contig_table)
-    for a normalization of the network: those of normalization_weights,
-    from its sizes, hits, shotgun coverage and restriction sites, which
-    metator network computes from the columns it stores in the map. None for
-    the normalization None, whose network is the counts."""
+    """The weights of the contigs of a contig data table (see contig_table) for a
+    normalization of the network: those of normalization_weights, from its
+    sizes, hits, shotgun coverage and restriction sites, which metator network
+    computes from the columns it stores in the map. None for the normalization
+    None, whose network is the counts."""
     if normalization == "None":
         return None
 
@@ -573,17 +515,15 @@ def network_weights(table, normalization):
 
 
 def check_map_contigs(metacool, contigs, contig_data):
-    """Refuse a .metacool map that is not a map of the contigs of the
-    assembly: one that holds contigs that the assembly lacks, or that gives
-    them other lengths. It may lack contigs of the assembly. Returns the
-    names of its contigs, in its order.
+    """Refuse a .metacool map that is not a map of the contigs of the assembly:
+    one that holds contigs that the assembly lacks, or that gives them other
+    lengths. It may lack contigs of the assembly.
 
-    Raises:
-    -------
+    Raises
+    ------
     metator.metacool.MetacoolError
         With the contigs that are not in the assembly, or that have another
-        length in it.
-    """
+        length in it."""
     names = [str(name) for name in contigs["name"]]
     extra = [name for name in names if name not in contig_data]
     if extra:
@@ -600,17 +540,16 @@ def read_depth(depth_file):
     """Read the depth file of jgi_summarize_bam_contig_depths (MetaBAT2): the
     length and the mean coverage of each contig, by name.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     depth_file : str
         Path to the depth file: a header line, then one line per contig, with
         its name, length and mean coverage in its first three columns.
 
-    Returns:
-    --------
+    Returns
+    -------
     dict:
-        The length (int) and the coverage (float) of each contig, by name.
-    """
+        The length (int) and the coverage (float) of each contig, by name."""
     depths = {}
     with open(depth_file, "r") as depth:
         next(depth, None)
@@ -623,28 +562,23 @@ def read_depth(depth_file):
 def create_contig_data(assembly, depth_file=None, enzyme=None):
     """Create a dictionnary with data on each Contig.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     assembly : str
         Path to the assembly fasta file, plain or compressed.
     depth_file : str or None
         Path to the depth.txt file from jgi_summarize_bam_contig_depths from
         Metabat2 Software, read by contig name: it must hold every contig of
-        the assembly, with its length. [Default: None]
+        the assembly, with its length.
     enzyme : str or None
         String that contains the names of the enzyme separated by a comma.
-        [Default: None]
 
-    Returns:
-    --------
+    Returns
+    -------
     dict:
-        The data of each contig of the assembly, by name, in the order of
-        the assembly: "length", "GC", "coverage" (``-`` without a depth
-        file) and "RS" (the restriction sites plus one; ``-`` without an
-        enzyme). The hits of the contigs are counted on the contacts of the
-        map (see contig_hits), and their IDs are their positions in the map
-        (see contig_table).
-    """
+        The data of each contig of the assembly, by name, in the order of the
+        assembly: "length", "GC", "coverage" (``-`` without a depth file) and
+        "RS" (the restriction sites plus one; ``-`` without an enzyme)."""
 
     # Create a contig data dictionnary from the assembly file
     contig_data = dict()
@@ -700,27 +634,26 @@ MAP_COLUMNS = {
 
 
 def map_columns(metacool):
-    """The columns of MAP_COLUMNS that the contigs table of a .metacool map
-    gives values in, in that order (see _map_values: a column of ``-``, as
-    metaTOR writes what it did not measure, gives none).
+    """The columns of MAP_COLUMNS that the contigs table of a .metacool map gives
+    values in, in that order (see _map_values: a column of ``-``, as metaTOR
+    writes what it did not measure, gives none).
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     metacool : str
         Path to the .metacool file, or URI of an entry of a .mmetacool
         collection: ``file.mmetacool::entries/<name>``.
 
-    Returns:
-    --------
-    list of str:
-        The columns of MAP_COLUMNS that give values in the contigs table of
-        the map.
-
-    Raises:
+    Returns
     -------
+    list of str:
+        The columns of MAP_COLUMNS that give values in the contigs table of the
+        map.
+
+    Raises
+    ------
     metator.metacool.MetacoolError
-        If the map cannot be read, or is replaced or written as it is read.
-    """
+        If the map cannot be read, or is replaced or written as it is read."""
     with mtmc.read_errors(metacool):
         contigs = mtmc.open_map(metacool).contigs
     return [column for column in MAP_COLUMNS if column in contigs.columns and _map_values(contigs, column)]
@@ -728,10 +661,9 @@ def map_columns(metacool):
 
 def _map_values(contigs, column):
     """The values of a column of MAP_COLUMNS in the contigs table of a map, by
-    contig name, as create_contig_data measures them: an int of at least 1
-    for the restriction sites (the sites of a contig plus one), a float of
-    at least 0 for the coverage. A missing value, or one that is not such a
-    number, is left out."""
+    contig name, as create_contig_data measures them: an int of at least 1 for
+    the restriction sites (the sites of a contig plus one), a float of at least
+    0 for the coverage."""
     values = pd.to_numeric(contigs[column], errors="coerce").to_numpy(dtype=float)
     names = contigs["name"].astype(str).to_numpy()
     if column == "Restriction_site":
@@ -742,31 +674,16 @@ def _map_values(contigs, column):
 
 
 def contig_data_from_map(metacool, contig_data, enzyme=None, depth=None):
-    """Read the restriction sites and the shotgun coverage of the contigs from
-    a .metacool map that a run starts from, where it measures none: the
+    """Read the restriction sites and the shotgun coverage of the contigs from a
+    .metacool map that a run starts from, where it measures none: the
     Restriction_site and Shotgun_coverage columns of its contigs table
     (MAP_COLUMNS), which metaTOR stores in the maps it writes. --enzyme and
     --depth measure them on the assembly instead (create_contig_data): they
-    fill in a column that the map lacks, and replace one that it has, with
-    a warning that counts the contigs whose value is not the map's.
+    fill in a column that the map lacks, and replace one that it has, with a
+    warning that counts the contigs whose value is not the map's.
 
-    A map of other contigs than those of the assembly is refused first,
-    for what it is (see check_map_contigs). A column is read only if it
-    gives every contig of the assembly a value: an integer of at least 1
-    for the restriction sites (metaTOR counts the sites of a contig plus
-    one), a number of at least 0 for the coverage; but a contig of no
-    length, which no map holds (metacooler leaves it out), gets the value
-    that the option would give it (no site, so a Restriction_site of 1,
-    and a coverage of 0). A column that
-    gives no valid value (``-``, as metaTOR writes what it did not
-    measure) is as no column. One that gives some but not all is not read
-    either, and a warning says which contigs it lacks. The run then does
-    without it, as without the option: a normalization that needs it is
-    refused (see metator.cli.check_normalization), and the map of the bins
-    carries the column no more.
-
-    Parameters:
-    -----------
+    Parameters
+    ----------
     metacool : str
         Path to the .metacool file, or URI of an entry of a .mmetacool
         collection: ``file.mmetacool::entries/<name>``.
@@ -779,17 +696,16 @@ def contig_data_from_map(metacool, contig_data, enzyme=None, depth=None):
     depth : str or None
         The depth file given to --depth, if any.
 
-    Returns:
-    --------
+    Returns
+    -------
     list of str:
         The columns of MAP_COLUMNS read from the map, in that order.
 
-    Raises:
-    -------
+    Raises
+    ------
     metator.metacool.MetacoolError
         If the map cannot be read, or is not a map of the contigs of the
-        assembly.
-    """
+        assembly."""
     with mtmc.read_errors(metacool):
         contigs = mtmc.open_map(metacool).contigs
     check_map_contigs(metacool, contigs, contig_data)
@@ -828,32 +744,18 @@ def contig_data_from_map(metacool, contig_data, enzyme=None, depth=None):
 
 
 def normalization_weights(lengths, hits, coverage, sites, normalization):
-    """One weight per contig whose products give the normalization of the
-    network.
+    """One weight per contig whose products give the normalization of the network.
 
-    Each normalization divides the contacts of two contigs by the geometric
-    mean of one value per contig: their shotgun coverage (abundance), their
-    hits per bp (length), their hits per restriction site, times 0.01 (RS),
-    their hits (empirical_hit), or ten times their coverage times the
-    geometric mean of their length and their restriction sites
-    (theoritical_hit). So the normalized contact of two contigs is their
-    contact count times one weight per contig, ``n * w[i] * w[j]``: that is
-    how a .metacool map stores the normalization of the network, the way
-    cooler stores its balancing weights (see
-    metator.metacool.store_normalization). A contig whose value is 0 has no
-    weight (NaN): a contig with no hit, or no shotgun coverage, whose
-    contacts are no edge of the network (see map_network).
-
-    Parameters:
-    -----------
+    Parameters
+    ----------
     lengths : numpy.ndarray
         Length of each contig.
     hits : numpy.ndarray or None
         Hi-C hits of each contig (contig data "hit"), for length, RS and
         empirical_hit.
     coverage : numpy.ndarray or None
-        Shotgun coverage of each contig (contig data "coverage"), for
-        abundance and theoritical_hit.
+        Shotgun coverage of each contig (contig data "coverage"), for abundance
+        and theoritical_hit.
     sites : numpy.ndarray or None
         Restriction sites of each contig, plus one, as create_contig_data
         counts them (contig data "RS"), for RS and theoritical_hit.
@@ -861,17 +763,16 @@ def normalization_weights(lengths, hits, coverage, sites, normalization):
         Mode of normalization: abundance, length, RS, empirical_hit or
         theoritical_hit.
 
-    Returns:
-    --------
+    Returns
+    -------
     numpy.ndarray:
         One weight per contig, NaN for a contig that has none.
 
-    Raises:
-    -------
+    Raises
+    ------
     ValueError
-        If the normalization is unknown ("None" among them: it has no
-        weight), or a value it uses is not given.
-    """
+        If the normalization is unknown ("None" among them: it has no weight),
+        or a value it uses is not given."""
 
     def need(values, what):
         if values is None:
@@ -900,42 +801,31 @@ def normalization_weights(lengths, hits, coverage, sites, normalization):
 
 def network_digest(contacts, weights, names, normalization):
     """The identity of a network: the SHA-256 of what map_network computes it
-    from, by the names of the contigs. It is that of the network, not of a
-    run: two runs that store the same network give the same digest, and a run
-    that regroups the map (validation, pipeline), which moves the contigs but
-    keeps their names, their contacts and their weights, leaves it as it was.
-    metator partition records the digest of the network that it partitioned,
-    which validation checks against the network stored in the map (see
-    metator.metacool.read_partition), and metator network against the
-    network that it stores.
+    from, by the names of the contigs. It is that of the network, not of a run:
+    two runs that store the same network give the same digest, and a run that
+    regroups the map (validation, pipeline), which moves the contigs but keeps
+    their names, their contacts and their weights, leaves it as it was. metator
+    partition records the digest of the network that it partitioned, which
+    validation checks against the network stored in the map (see
+    metator.metacool.read_partition), and metator network against the network
+    that it stores.
 
-    The digest covers the normalization, the names of the contigs of the map,
-    the weight of each (none for the normalization None; NaN for a contig
-    without one), and the contact count of every two contigs in contact (see
-    contig_contacts), each by the names of its two contigs, in the order of
-    the names. The weights of the edges are not hashed as map_network
-    computes them: it multiplies the count by the weight of the contig that
-    comes first in the map, then by the other, and a regroup that swaps the
-    two contigs can change the last bit of the product.
-
-    Parameters:
-    -----------
+    Parameters
+    ----------
     contacts : pandas.DataFrame
         The contacts of the map (see contig_contacts).
     weights : numpy.ndarray or None
-        The weight of each contig of the map, in its order (see
-        stored_weights and network_weights), or None for the normalization
-        None.
+        The weight of each contig of the map, in its order (see stored_weights
+        and network_weights), or None for the normalization None.
     names : sequence of str
         The names of the contigs of the map, in its order.
     normalization : str
         The normalization of the network ("None" for the counts).
 
-    Returns:
-    --------
+    Returns
+    -------
     str:
-        The SHA-256, in hexadecimal.
-    """
+        The SHA-256, in hexadecimal."""
     import hashlib
 
     names = np.asarray(names, dtype=str)

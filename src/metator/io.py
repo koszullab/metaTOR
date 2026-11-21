@@ -31,20 +31,18 @@ from typing import NamedTuple
 
 
 def check_is_fasta(in_file):
-    """
-    Function from hicstuff.io (https://github.com/koszullab/hicstuff/)
-    Checks whether input file is in fasta format.
+    """Function from hicstuff.io (https://github.com/koszullab/hicstuff/) Checks
+    whether input file is in fasta format.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     in_file : str
         Path to the input file.
 
-    Returns:
-    --------
+    Returns
+    -------
     bool :
-        True if the input is in fasta format, False otherwise
-    """
+        True if the input is in fasta format, False otherwise"""
     try:
         with read_compressed(in_file) as handle:
             test = any(SeqIO.parse(handle, "fasta"))
@@ -66,12 +64,9 @@ COMPRESSION_MAGIC = {
 
 
 def file_compression(filename):
-    """The compression of a file, found from its first bytes, whatever its
-    name, as read_compressed opens it: "gz", "bz2", "zip", or
-    "uncompressed" for any other file.
-
-    Function from hicstuff.io (https://github.com/koszullab/hicstuff/)
-    """
+    """The compression of a file, found from its first bytes, whatever its name,
+    as read_compressed opens it: "gz", "bz2", "zip", or "uncompressed" for any
+    other file."""
     with open(filename, "rb") as f:
         file_start = f.read(max(len(magic) for magic in COMPRESSION_MAGIC))
     for magic, filetype in COMPRESSION_MAGIC.items():
@@ -83,25 +78,15 @@ def file_compression(filename):
 def generate_temp_dir(path):
     """Temporary directory generation
 
-    Function from hicstuff.io (https://github.com/koszullab/hicstuff/)
-    Generates a temporary file with a random name at the input path.
-
-    The name is drawn from the random numbers of the system, not from
-    Python's random module, which igraph draws from too: the partition of a
-    run does not depend on how many of these directories it made (one per
-    command), so that the steps run one by one in one process, after one
-    seed, draw the stream of pipeline.
-
-    Parameters:
-    -----------
+    Parameters
+    ----------
     path : str
         The path at which the temporary directory will be created.
 
-    Returns:
-    --------
+    Returns
+    -------
     str
-        The path of the newly created temporary directory.
-    """
+        The path of the newly created temporary directory."""
     exist = True
     while exist:
         # Keep trying random directory names if they already exist
@@ -122,24 +107,23 @@ def get_restriction_site(enzyme):
     """Function to return a regex which corresponds to all possible restriction
     sites given a set of enzyme.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     enzyme : str
         String that contains the names of the enzyme separated by a comma.
 
-    Returns:
-    --------
+    Returns
+    -------
     str :
         Regex that corresponds to all possible restriction sites given a set of
         enzyme.
 
-    Examples:
-    ---------
+    Examples
+    --------
     >>> get_restriction_site('DpnII')
     'GATC'
     >>> get_restriction_site('DpnII,HinfI')
-    'GA.TC|GATC'
-    """
+    'GA.TC|GATC'"""
 
     # Split the str on the comma to separate the different enzymes.
     enzyme = enzyme.split(",")
@@ -163,17 +147,15 @@ def get_restriction_site(enzyme):
 def import_mges_contigs(mges_file):
     """Import list of mges contigs.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     mges_file : str
-        Path to the mges file which contains the list of mges contigs. One
-        contig per line.
+        Path to the mges file which contains the list of mges contigs.
 
-    Returns:
-    --------
+    Returns
+    -------
     list:
-        List of the mges contigs names.
-    """
+        List of the mges contigs names."""
     mges_list = []
     with open(mges_file, "r") as mges:
         for contig in mges:
@@ -182,8 +164,8 @@ def import_mges_contigs(mges_file):
 
 
 def micomplete_results_to_dict(micomplete_file):
-    """Read micomplte output file and transfrom it as a dictionnary with the
-    bin name as keys and bin information as values.
+    """Read micomplte output file and transfrom it as a dictionnary with the bin
+    name as keys and bin information as values.
 
     Parameters
     ----------
@@ -194,8 +176,7 @@ def micomplete_results_to_dict(micomplete_file):
     -------
     dict
         Dictionnary of the output of miComplete as values and the bin id as
-        keys.
-    """
+        keys."""
     # Read table.
     micomplete_summary = pd.read_csv(
         micomplete_file,
@@ -214,19 +195,15 @@ def micomplete_results_to_dict(micomplete_file):
 def read_compressed(filename):
     """Read compressed file
 
-    Function from hicstuff.io (https://github.com/koszullab/hicstuff/)
-    Opens the file in read mode with appropriate decompression algorithm.
-
-    Parameters:
-    -----------
+    Parameters
+    ----------
     filename : str
         The path to the input file
 
-    Returns:
-    --------
+    Returns
+    -------
     file-like object
-        The handle to access the input file's content
-    """
+        The handle to access the input file's content"""
 
     # Open file with appropriate function
     comp = file_compression(filename)
@@ -269,10 +246,8 @@ CONTIG_DATA_1X_COLUMNS = {
 def rename_1x_columns(contig_data):
     """The table of contig data contig_data, its columns named after bins by
     metaTOR 1.x renamed as metaTOR 2.0 names them (CONTIG_DATA_1X_COLUMNS).
-    Kept for host.py, which calls it to read the contig data files of a 1.x
-    run as those of a 2.0 run: no command reads the tables of 1.x anymore. A
-    column already named as in 2.0 is kept, and the 1.x column of the same
-    meaning then left as it is.
+    Kept for host.py, which calls it to read the contig data files of a 1.x run
+    as those of a 2.0 run: no command reads the tables of 1.x anymore.
 
     Parameters
     ----------
@@ -282,9 +257,7 @@ def rename_1x_columns(contig_data):
     Returns
     -------
     pandas.DataFrame
-        The table, its 1.x columns renamed, or the table itself if it has
-        none.
-    """
+        The table, its 1.x columns renamed, or the table itself if it has none."""
     renamed = {
         old: new for old, new in CONTIG_DATA_1X_COLUMNS.items() if old in contig_data.columns and new not in contig_data.columns
     }
@@ -308,8 +281,8 @@ class SummaryLayout(NamedTuple):
     """How write_bin_summary wrote the summary of the final clusters
     (cluster_summary.txt), which the map of the clusters records with its
     values (see metator.cli.validation_entry), to write it again: a header
-    line, an empty field then the columns, then a line per row, its name
-    then a field per column, tab-separated.
+    line, an empty field then the columns, then a line per row, its name then a
+    field per column, tab-separated.
 
     Attributes
     ----------
@@ -319,10 +292,8 @@ class SummaryLayout(NamedTuple):
         The columns, in order, after the name of the cluster.
     formats : dict
         The format of each column, by name, as printf writes it: "%.2f" (a
-        number with two decimals), "%.4f" (four: the abundances), "%d" (a
-        whole number) or "%s" (text as it is: True or False for a boolean).
-        A missing value is an empty field.
-    """
+        number with two decimals), "%.4f" (four: the abundances), "%d" (a whole
+        number) or "%s" (text as it is: True or False for a boolean)."""
 
     rows: list
     columns: list
@@ -330,9 +301,8 @@ class SummaryLayout(NamedTuple):
 
 
 def _summary_format(column, values):
-    """The format of a column of the summary of the clusters, as
-    write_bin_summary writes it (see SummaryLayout): values, the column
-    before it is written."""
+    """The format of a column of the summary of the clusters, as write_bin_summary
+    writes it (see SummaryLayout): values, the column before it is written."""
     if column in ABUNDANCE_COLUMNS:
         return "%.4f"
     if pd.api.types.is_bool_dtype(values):
@@ -347,8 +317,8 @@ def _summary_format(column, values):
 def write_bin_summary(bin_summary, bin_summary_file):
     """Function to write the bin summary from dictionnary to table text file.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     bin_summary : dict
         Dictionnary with the output of the miComplete of the bins.
     bin_summary_file : str
@@ -358,8 +328,8 @@ def write_bin_summary(bin_summary, bin_summary_file):
     -------
     SummaryLayout
         How the summary is written: its rows, its columns and their format,
-        which the map of the clusters records (see metator.cli.validation_entry).
-    """
+        which the map of the clusters records (see
+        metator.cli.validation_entry)."""
 
     # Transform dictionnary to pandas DataFrame.
     bin_summary = pd.DataFrame.from_dict(bin_summary, orient="index")

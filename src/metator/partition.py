@@ -48,26 +48,24 @@ def algo_partition(
 ):
     """Function to partition the network depednding on the used algorithm.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     algorithm : str
-        Algorithm to use to partition network. [Default: louvain]
+        Algorithm to use to partition network.
     network : pandas.DataFrame
-        The network: one row per edge, with the ids of its two contigs and
-        its weight, normalized or not (columns contig1, contig2 and weight,
-        see metator.network.map_network).
+        The network: one row per edge, with the ids of its two contigs and its
+        weight, normalized or not (columns contig1, contig2 and weight, see
+        metator.network.map_network).
     iterations : int
         Number of iterations of the algorithm of Leiden or Louvain.
-        [Default: 10]
     resolution_parameter : float
-        Resolution parameter for Leiden clustering. [Default: 1.0]
+        Resolution parameter for Leiden clustering.
 
-    Returns:
-    --------
+    Returns
+    -------
     dict:
-        Dictionnary with the id of the contig as key and the list of the results
-        of each iterations separated by a semicolon as values.
-    """
+        Dictionnary with the id of the contig as key and the list of the
+        results of each iterations separated by a semicolon as values."""
     if algorithm == "leiden":
         output_partition = leiden_iterations(network, iterations, resolution_parameter)
     elif algorithm == "louvain":
@@ -85,15 +83,8 @@ def defined_overlapping_bins(
 ):
     """This function extract the overlapped bins
 
-    From the hamming distances between the core bins, the function identifies
-    the overlapping bins and create a dictionnary with the list of the contigs
-    ID for each core bin.
-
-    Two core bins are considered overlapping if there have a percentage of
-    identity superior or equal to the threshold given.
-
-    Parameters:
-    -----------
+    Parameters
+    ----------
     overlap : float
         hamming distance threshold use to consider that two bins are
         overlapping.
@@ -104,12 +95,11 @@ def defined_overlapping_bins(
         Dictionnary which has as keys the core bins id and as value the id of
         the contigs of the core bin.
 
-    Returns:
-    --------
+    Returns
+    -------
     dict:
         A dictionnary with the id of the overlapping bins as keys and the list
-        of id of their contigs as values.
-    """
+        of id of their contigs as values."""
     # Extract bins which are connected, i.e. bins with an hamming distance
     # superior than the threshold given. The small variation is necessary as
     # python give a float not really equal to the true value
@@ -140,26 +130,21 @@ def defined_overlapping_bins(
 def detect_core_bins(output_partition, iterations):
     """Detect core bins from the output of the partition algorithm.
 
-    The function search for duplicated values in the output of Louvain or Leiden
-    algorithm in order to find contigs which are always in the same bin. The
-    bins find with this method are called the core bins.
-
-    Parameters:
-    -----------
+    Parameters
+    ----------
     output_partition : dict
-        Dictionnary with the id of the contig as key and the list of the results
-        of each iterations separated by a semicolon as values.
+        Dictionnary with the id of the contig as key and the list of the
+        results of each iterations separated by a semicolon as values.
     iterations : int
         Number of iterations made previously with the partition algorithm.
 
-    Returns:
-    --------
+    Returns
+    -------
     dict:
         Dictionnary which has as keys the core bins id and as value the id of
         the contigs of the core bin.
     pandas.core.frame.DataFrame:
-        Table with the id of the core bin and their values for each iterations.
-    """
+        Table with the id of the core bin and their values for each iterations."""
     # finding duplicate values in the output of louvain or leiden using a
     # flipped dictionary.
 
@@ -198,23 +183,19 @@ def get_distances_splitmat(bins, core_bins_iterations):
     computes, for each index (i.e. contig), the hamming distance to each of the
     other indices.
 
-    The values are one minus the normalized Hamming distance, i.e. the fraction
-    of the iterations in which both core bins fell in the same community.
-
-    Parameters:
-    -----------
+    Parameters
+    ----------
     bins : pandas.core.frame.DataFrame
-        Slice of the table with the id of the core bin and their values for each
-        iterations.
+        Slice of the table with the id of the core bin and their values for
+        each iterations.
     core_bins_iterations : pandas.core.frame.DataFrame
         Table with the id of the core bin and their values for each iterations.
 
-    Returns:
-    --------
+    Returns
+    -------
     scipy.sparse.csr.csr_matrix:
-        matrix of the distance of the possible pairs from the slice of the table
-        and the table itself.
-    """
+        matrix of the distance of the possible pairs from the slice of the
+        table and the table itself."""
     x = sparse.csr_matrix(1 - cdist(core_bins_iterations, bins.values, metric="hamming"))
     return x
 
@@ -222,20 +203,19 @@ def get_distances_splitmat(bins, core_bins_iterations):
 def get_hamming_distance(core_bins_iterations, threads):
     """Generate matrix of Hamming distances between all pairs of core bins.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     core_bins_iterations : pandas.core.frame.DataFrame
         Table with the id of the core bin as index and their values for each
         iterations.
     threads : int
         Number of cores to parallelize computation.
 
-    Returns:
-    --------
+    Returns
+    -------
     scipy.sparse.csr.csr_matrix:
         Matrix with all the previously computed hamming distance between two
-        core bins.
-    """
+        core bins."""
 
     # Compute Hamming distances in the core-bin-level iterative clustering
     # matrix, in parallel
@@ -258,8 +238,8 @@ def get_hamming_distance(core_bins_iterations, threads):
 def leiden_iterations(network, iterations, resolution_parameter):
     """Partition the network with the igraph implementation of Leiden.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     network : pandas.DataFrame
         The network (see network_graph).
     iterations : int
@@ -267,12 +247,11 @@ def leiden_iterations(network, iterations, resolution_parameter):
     resolution_parameter : float
         Resolution parameter for Leiden clustering.
 
-    Returns:
-    --------
+    Returns
+    -------
     dict:
-        Dictionnary with the id of the contig as key and the list of the results
-        of each iterations separated by a semicolon as values.
-    """
+        Dictionnary with the id of the contig as key and the list of the
+        results of each iterations separated by a semicolon as values."""
     graph, contigs = network_graph(network)
     memberships = [
         graph.community_leiden(
@@ -289,19 +268,18 @@ def leiden_iterations(network, iterations, resolution_parameter):
 def louvain_iterations(network, iterations):
     """Partition the network with the igraph implementation of Louvain.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     network : pandas.DataFrame
         The network (see network_graph).
     iterations : int
         Number of iterations of the algorithm of Louvain.
 
-    Returns:
-    --------
+    Returns
+    -------
     dict:
-        Dictionnary with the id of the contig as key and the list of the results
-        of each iterations separated by a semicolon as values.
-    """
+        Dictionnary with the id of the contig as key and the list of the
+        results of each iterations separated by a semicolon as values."""
     graph, contigs = network_graph(network)
     memberships = [graph.community_multilevel(weights="weight").membership for _ in range(iterations)]
     return merge_iterations(contigs, memberships)
@@ -310,19 +288,18 @@ def louvain_iterations(network, iterations):
 def merge_iterations(contigs, memberships):
     """Merge the clusters of each iteration in one dictionnary.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     contigs : numpy.ndarray
         Contig ids of the network vertices.
     memberships : list of list
         Cluster of each vertex, for each iteration.
 
-    Returns:
-    --------
+    Returns
+    -------
     dict:
-        Dictionnary with the id of the contig as key and the list of the results
-        of each iterations separated by a semicolon as values.
-    """
+        Dictionnary with the id of the contig as key and the list of the
+        results of each iterations separated by a semicolon as values."""
     memberships = np.array(memberships).T
     return {int(contig): ";".join(map(str, clusters)) for contig, clusters in zip(contigs, memberships, strict=True)}
 
@@ -336,13 +313,13 @@ def partition(
     threads,
     prefix,
 ):
-    """Partition the network of the contigs of a map: its core clusters, then
-    its overlapping clusters.
+    """Partition the network of the contigs of a map: its core clusters, then its
+    overlapping clusters.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     algorithm : str
-        Algorithm to use to partition the network. Either leiden or louvain.
+        Algorithm to use to partition the network.
     network : pandas.DataFrame
         The network of the contigs of the map (see
         metator.network.map_network).
@@ -351,22 +328,18 @@ def partition(
     overlapping_parameter : int
         Hamming distance threshold to use to merge bins (percentage).
     resolution_parameter : float
-        Resolution parameter to use if Leiden algorithm is chosen. It will be a
-        factor of the cost function used. A resolution parameter of 1 will be
-        equivalent as the modularity function used in Louvain. Higher these
-        parameters, smaller the bins will be in the output.
+        Resolution parameter to use if Leiden algorithm is chosen.
     threads : int
         Number of threads to use.
     prefix : str
         Sample prefix to use, which names the overlapping clusters (see
         metator.clusters.overlapping_name).
 
-    Returns:
-    --------
+    Returns
+    -------
     metator.clusters.Partition:
         The core and the overlapping clusters, numbered from 1, each with the
-        IDs of its contigs.
-    """
+        IDs of its contigs."""
 
     # Perform the iterations of Louvain or Leiden to partition the network.
     logger.info("Start iterations:")
@@ -403,24 +376,22 @@ def partition(
 
 
 def network_graph(network):
-    """The network as an igraph graph: its vertices are the contigs of its
-    edges, in the order of their ids, and its edges are in the order of its
-    rows.
+    """The network as an igraph graph: its vertices are the contigs of its edges,
+    in the order of their ids, and its edges are in the order of its rows.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     network : pandas.DataFrame
         One row per edge: the ids of its two contigs (columns contig1 and
         contig2) and its weight, normalized or not (column weight), as
         metator.network.map_network gives them.
 
-    Returns:
-    --------
+    Returns
+    -------
     igraph.Graph:
-        Weighted undirected network. Vertex i is the contig contigs[i].
+        Weighted undirected network.
     numpy.ndarray:
-        Contig ids of the vertices.
-    """
+        Contig ids of the vertices."""
     contigs, vertices = np.unique(network[["contig1", "contig2"]].to_numpy().ravel(), return_inverse=True)
     graph = ig.Graph(
         n=len(contigs),
@@ -431,31 +402,22 @@ def network_graph(network):
 
 
 def partition_table(contig_data, partition):
-    """The contig data table of a partition: the contig data with the core and
-    the overlapping cluster of each contig, as contig_data_partition.txt held
-    it, and as the validation reads it.
+    """The contig data table of a partition: the contig data with the core and the
+    overlapping cluster of each contig, as contig_data_partition.txt held it,
+    and as the validation reads it.
 
-    The contig data of the contigs of the map (see
-    metator.network.contig_table) has the columns: contig id, contig name,
-    contig length, GC content, hit, coverage, restriction site. The
-    function will add six columns: core bin id, core bin number of contigs, core
-    bin length, overlapping bin id, overlapping bin number of contigs,
-    overlapping bin length. A contig in no cluster (one with no edge in the
-    network) has ``-`` in them.
-
-    Parameters:
-    -----------
+    Parameters
+    ----------
     contig_data : pandas.DataFrame
         The contig data, which is left as it is.
     partition : metator.clusters.Partition
         The core and the overlapping clusters of the partition.
 
-    Returns:
-    --------
+    Returns
+    -------
     pandas.core.frame.DataFrame:
         Table with all the information on the contigs included their
-        appartenance to the bins.
-    """
+        appartenance to the bins."""
 
     # A copy of the table, from 0 to n - 1: the contig of ID i is row i - 1.
     contigs_data = contig_data.reset_index(drop=True).copy()
@@ -471,13 +433,11 @@ def partition_table(contig_data, partition):
 
 
 def _cluster_columns(clusters, sizes):
-    """The cluster of each contig of a contig data table (see
-    partition_table): its ID (the number of its cluster, with five digits),
-    its number of contigs and its size in bp (sizes: the size of each
-    contig, by ID - 1), ``-`` for a contig in none. clusters: the IDs of the
-    contigs of each cluster, by number. Three object arrays, one value per
-    contig, written cluster by cluster in the order of their numbers, each
-    with one assignment of numpy for all its contigs."""
+    """The cluster of each contig of a contig data table (see partition_table):
+    its ID (the number of its cluster, with five digits), its number of contigs
+    and its size in bp (sizes: the size of each contig, by ID - 1), ``-`` for a
+    contig in none. clusters: the IDs of the contigs of each cluster, by
+    number."""
     ids, counts, lengths = (np.full(len(sizes), "-", dtype=object) for _ in range(3))
     for number, contigs in clusters.items():
         rows = np.asarray(contigs, dtype=np.int64) - 1

@@ -96,11 +96,11 @@ def overlapping_name(prefix, number):
 
 
 def cluster_number(round_name, name):
-    """The number of a cluster of the round ``core`` or ``overlapping`` from
-    its name (see :func:`core_name` and :func:`overlapping_name`): the number
-    that the ``Core_cluster_ID`` or the ``Overlapping_cluster_ID`` of the
-    contig data tables gives it, as an int. None for a name of another form:
-    a cluster that metaTOR's partition did not name."""
+    """The number of a cluster of the round ``core`` or ``overlapping`` from its
+    name (see :func:`core_name` and :func:`overlapping_name`): the number that
+    the ``Core_cluster_ID`` or the ``Overlapping_cluster_ID`` of the contig
+    data tables gives it, as an int. None for a name of another form: a cluster
+    that metaTOR's partition did not name."""
     if round_name == CORE:
         number = name[len(CORE) + 1 :] if name.startswith(f"{CORE}_") else ""
     else:
@@ -113,38 +113,29 @@ def cluster_number(round_name, name):
 class Partition:
     """The clusters of a partition of the network of a map (see
     :func:`metator.partition.partition`): its core and its overlapping
-    clusters, by number (from 1), each the IDs of its contigs (their
-    positions in the map, from 1, as in the network: see
-    :func:`metator.network.map_network`), in the order that the partition
-    lists them, and the name of each overlapping cluster (see
-    :func:`overlapping_name`).
-
-    The order of the contigs of an overlapping cluster is that of its core
-    clusters, by number, then that of their contigs, by ID: the order of the
-    records of the FASTA file of the cluster that miComplete checks. A map
-    stores the partition as the rounds ``core`` and ``overlapping`` (see
-    :func:`partition_rounds`), which give it back
-    (:func:`metator.metacool.read_partition`).
-    """
+    clusters, by number (from 1), each the IDs of its contigs (their positions
+    in the map, from 1, as in the network: see
+    :func:`metator.network.map_network`), in the order that the partition lists
+    them, and the name of each overlapping cluster (see
+    :func:`overlapping_name`)."""
 
     core: dict
     overlapping: dict
     names: dict
 
     def sizes(self, lengths):
-        """The size in bp of each overlapping cluster, by number: the sum of
-        the lengths of its contigs (*lengths*, by contig ID - 1)."""
+        """The size in bp of each overlapping cluster, by number: the sum of the
+        lengths of its contigs (*lengths*, by contig ID - 1)."""
         return {number: int(sum(lengths[contig - 1] for contig in ids)) for number, ids in self.overlapping.items()}
 
 
 def record_partition(rounds, partition, names, quality=None):
-    """Record the rounds ``core`` and ``overlapping`` of a partition in
-    *rounds* (a :class:`Rounds`): every core cluster, named
-    :func:`core_name`, then every overlapping cluster, named as the
-    partition names it, each with its contigs and no parent, in the order of
-    their numbers. *names*: the name of each contig, by ID - 1. *quality*:
-    the columns of miComplete of each overlapping cluster that it checked,
-    by name (none for the others)."""
+    """Record the rounds ``core`` and ``overlapping`` of a partition in *rounds*
+    (a :class:`Rounds`): every core cluster, named :func:`core_name`, then
+    every overlapping cluster, named as the partition names it, each with its
+    contigs and no parent, in the order of their numbers. *names*: the name of
+    each contig, by ID - 1. *quality*: the columns of miComplete of each
+    overlapping cluster that it checked, by name (none for the others)."""
     quality = quality or {}
     for number, ids in sorted(partition.core.items()):
         rounds.add(CORE, core_name(number), [names[contig - 1] for contig in ids])
@@ -157,28 +148,20 @@ def record_partition(rounds, partition, names, quality=None):
 
 
 def partition_rounds(partition, names):
-    """The rounds ``core`` and ``overlapping`` of a partition, as
-    ``metator partition MAP`` stores them in the map: every cluster, with its
-    contigs (by name: *names*, the name of each contig by ID - 1), and no
-    column of miComplete (see :func:`record_partition`).
+    """The rounds ``core`` and ``overlapping`` of a partition, as ``metator
+    partition MAP`` stores them in the map: every cluster, with its contigs (by
+    name: *names*, the name of each contig by ID - 1), and no column of
+    miComplete (see :func:`record_partition`).
 
     Returns
     -------
     tuple of pandas.DataFrame
-        The clusters and their contigs (see :meth:`Rounds.tables`).
-    """
+        The clusters and their contigs (see :meth:`Rounds.tables`)."""
     return record_partition(Rounds(), partition, names).tables()
 
 
 class Rounds:
-    """The clustering rounds of a run, in the order they are made.
-
-    Each cluster is recorded once per round, with its contigs (by name), its
-    parent (a cluster of an earlier round, by name) and its columns (those of
-    miComplete). The parent of a cluster is looked up in the latest round
-    that holds a cluster of that name, as a recursive cluster replaces the
-    cluster it was split from.
-    """
+    """The clustering rounds of a run, in the order they are made."""
 
     def __init__(self):
         self.clusters = []
@@ -199,8 +182,7 @@ class Rounds:
         parent : str, optional
             The name of the cluster it was split from, in an earlier round.
         columns : dict, optional
-            Its other columns (those of miComplete).
-        """
+            Its other columns (those of miComplete)."""
         parent_round = self._latest.get(parent) if parent is not None else None
         if parent is not None and parent_round is None:
             raise ValueError(f"The parent of {name}, {parent}, is not a cluster of an earlier round.")
@@ -216,37 +198,34 @@ class Rounds:
         self.members.extend((round_name, name, contig) for contig in contigs)
 
     def close_round(self, round_name):
-        """Make the clusters of *round_name* the latest ones of their names,
-        once the round is recorded: its clusters' parents are of earlier
-        rounds."""
+        """Make the clusters of *round_name* the latest ones of their names, once
+        the round is recorded: its clusters' parents are of earlier rounds."""
         for cluster in self.clusters:
             if cluster["round"] == round_name:
                 self._latest[cluster["name"]] = round_name
 
     def tables(self):
-        """The two tables of the rounds: one row per cluster of every round,
-        with its parent (missing for none) and its columns, and one row per
-        contig of a cluster.
+        """The two tables of the rounds: one row per cluster of every round, with
+        its parent (missing for none) and its columns, and one row per contig
+        of a cluster.
 
         Returns
         -------
         tuple of pandas.DataFrame
-            The clusters and their contigs, with the columns of the tables
-            that :meth:`write` writes.
-        """
+            The clusters and their contigs, with the columns of the tables that
+            :meth:`write` writes."""
         clusters = pd.DataFrame(self.clusters, columns=_columns(self.clusters))
         members = pd.DataFrame(self.members, columns=["round", "cluster", "contig"])
         return clusters, members
 
     def write(self, outdir):
-        """Write the two tables of the rounds in *outdir*: one row per cluster
-        of every round, and one row per contig of a cluster.
+        """Write the two tables of the rounds in *outdir*: one row per cluster of
+        every round, and one row per contig of a cluster.
 
         Returns
         -------
         tuple of str
-            The paths of the two tables.
-        """
+            The paths of the two tables."""
         clusters_file = join(outdir, CLUSTERS_FILE)
         members_file = join(outdir, CLUSTER_MEMBERS_FILE)
         write_round_tables(*self.tables(), clusters_file, members_file)
@@ -254,10 +233,10 @@ class Rounds:
 
 
 def write_round_tables(clusters, members, clusters_file, members_file):
-    """Write the two tables of clustering rounds (see :meth:`Rounds.tables`):
-    the clusters to clusters_file, a missing value written NA, and their
-    contigs to members_file. :meth:`Rounds.write` writes those of a run so,
-    and ``metator dump`` those of a map (see :func:`metator.dump.dump`)."""
+    """Write the two tables of clustering rounds (see :meth:`Rounds.tables`): the
+    clusters to clusters_file, a missing value written NA, and their contigs to
+    members_file. :meth:`Rounds.write` writes those of a run so, and ``metator
+    dump`` those of a map (see :func:`metator.dump.dump`)."""
     clusters.to_csv(clusters_file, sep="\t", index=False, na_rep="NA", quoting=csv.QUOTE_NONE)
     members.to_csv(members_file, sep="\t", index=False, quoting=csv.QUOTE_NONE)
     logger.info(
@@ -286,8 +265,7 @@ def read_rounds(outdir):
     Raises
     ------
     ValueError
-        If only one of the two tables is there.
-    """
+        If only one of the two tables is there."""
     paths = [join(outdir, CLUSTERS_FILE), join(outdir, CLUSTER_MEMBERS_FILE)]
     found = [exists(path) for path in paths]
     if not any(found):
@@ -311,15 +289,14 @@ def read_rounds(outdir):
 
 
 def mge_round(summary, name=MGE):
-    """The round ``mge`` (or ``mge_random``: name): the MGE clusters of a run
-    of ``metator mge``, from their summary (see
-    metator.mge.generate_bin_summary), in its order: each named as its
-    record of ``mges_binned.fa`` (``MetaTOR_MGE_<ID>``), with its contigs (the
-    ``Contigs`` column) and no parent. Its other columns are those of the
-    summary (GC, Hit, BinningScore), but those that the map computes from
-    the contigs (see :data:`MGE_SUMMARY_KEYS`): ``BinLength`` is the length
-    of the cluster, and ``ContigsNumber`` its number of contigs. A missing
-    value is no number in the map (the score of a cluster of one contig).
+    """The round ``mge`` (or ``mge_random``: name): the MGE clusters of a run of
+    ``metator mge``, from their summary (see metator.mge.generate_bin_summary),
+    in its order: each named as its record of ``mges_binned.fa``
+    (``MetaTOR_MGE_<ID>``), with its contigs (the ``Contigs`` column) and no
+    parent. Its other columns are those of the summary (GC, Hit, BinningScore),
+    but those that the map computes from the contigs (see
+    :data:`MGE_SUMMARY_KEYS`): ``BinLength`` is the length of the cluster, and
+    ``ContigsNumber`` its number of contigs.
 
     Parameters
     ----------
@@ -332,8 +309,7 @@ def mge_round(summary, name=MGE):
     Returns
     -------
     tuple of pandas.DataFrame
-        The clusters and their contigs (see :meth:`Rounds.tables`).
-    """
+        The clusters and their contigs (see :meth:`Rounds.tables`)."""
     summary = summary.reset_index(drop=True)
     clusters = pd.DataFrame({"round": name, "name": summary["BinName"].astype(str), "parent_round": None, "parent": None})
     for column in summary.columns:
