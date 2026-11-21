@@ -188,6 +188,11 @@ def import_anvio_binning(binning_file):
 def import_contig_data_mges(contig_data_file, binning_result, mges_list):
     """Import contigs data.
 
+    The contig data tables of metaTOR list the contigs of the map of the run
+    only: an MGE contig that the map lacks (a map made with a contig filter)
+    is not in them. Such contigs are left out, with a warning that says how
+    many and names the first.
+
     Parameters:
     -----------
     contig_data_file : str
@@ -205,7 +210,17 @@ def import_contig_data_mges(contig_data_file, binning_result, mges_list):
     list
         List of the mge contigs ID.
     """
+    from metator.metacool import _shown
+
     contig_data = pd.read_csv(contig_data_file, sep="\t")
+    listed = set(contig_data["Name"].astype(str))
+    missing = [name for name in dict.fromkeys(mges_list) if name not in listed]
+    if missing:
+        logger.warning(
+            f"{len(missing)} MGE contig(s) are not in the contig data {contig_data_file}, which lists the contigs of "
+            f"the map of the run only (a map made with a contig filter lacks some): they are left out of the MGE "
+            f"clusters: {_shown(missing)}."
+        )
     contig_data["Binned"] = False
     contig_data["Final_cluster"] = "ND"
     contig_data["MGE"] = False

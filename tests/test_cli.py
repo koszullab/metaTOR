@@ -11,8 +11,11 @@ import sys
 from pathlib import Path
 
 import click
+import h5py
+import numpy as np
 import pandas as pd
 import pytest
+from click.testing import CliRunner
 
 import metator.cli as mtcli
 import metator.metacool as mtmc
@@ -299,13 +302,21 @@ def test_log_header_records_the_command_line(tmp_path, monkeypatch):
 CONTIG_CONTACTS = mtcli.mtn.contig_contacts
 
 
+def _no_step(calls):
+    """No step of the stub pipeline ran (see stub_pipeline): a partition or
+    validation run reads the contacts of its map as it reads the network
+    stored in it (see metator.network.stored_network), before anything
+    else."""
+    return not set(calls) - {"contig_contacts"}
+
+
 class _AnyContig(dict):
     """The contig data of the stub create_contig_data: every contig of the
     map, of 1000 bp, measured on nothing but its GC content (no depth file,
     no enzyme), as create_contig_data gives a contig."""
 
     def __missing__(self, name):
-        return {"id": 0, "length": 1000, "GC": 50.0, "hit": 0, "coverage": "-", "RS": "-"}
+        return {"length": 1000, "GC": 50.0, "coverage": "-", "RS": "-"}
 
 
 @pytest.fixture
@@ -390,10 +401,7 @@ def _contig_data(monkeypatch, contigs):
     measured (no depth file, no enzyme), as create_contig_data does."""
 
     def create_contig_data(*args):
-        return {
-            name: {"id": i, "length": length, "GC": gc, "hit": 0, "coverage": "-", "RS": "-"}
-            for i, (name, (length, gc)) in enumerate(contigs.items(), start=1)
-        }
+        return {name: {"length": length, "GC": gc, "coverage": "-", "RS": "-"} for name, (length, gc) in contigs.items()}
 
     monkeypatch.setattr("metator.network.create_contig_data", create_contig_data)
 
@@ -587,13 +595,14 @@ def test_pipeline_from_a_metacool(no_metacool, stub_pipeline, tmp_path, run_cli)
     assert f"INFO :: {metacool} is the input map {metacool}: it is replaced once the map of the clusters is validated." in logged
 
 
-def _contig_map(path, lengths=None, network=False):
+def _contig_map(path, lengths=None, network=False, normalization="empirical_hit"):
     """A .metacool map of the contigs c1 and c2 of the stub validation's
     tables (see _final_tables), made before any binning: every contig in
     __unbinned__, one bin per contig. With network, the network of its
     contigs stored in it, as metator network stores it (see
     metator.metacool.store_network), which partition and validation read:
-    the contacts of c1 and c2 normalized by their hits (empirical_hit)."""
+    the contacts of c1 and c2 normalized by their hits (empirical_hit, by
+    default)."""
     import metacooler
     import pandas as pd
 
@@ -607,7 +616,7 @@ def _contig_map(path, lengths=None, network=False):
         names = metacooler.MetaCooler(str(path)).contigs["name"]
         contacts = CONTIG_CONTACTS(str(path))
         table = mtcli.mtn.contig_data_table(_AnyContig(), names, mtcli.mtn.contig_hits(contacts, len(names)))
-        mtmc.store_network(str(path), str(path), mtmc.Network(table, "empirical_hit"), force=True)
+        mtmc.store_network(str(path), str(path), mtmc.Network(table, normalization), force=True)
     return path
 
 
@@ -722,8 +731,8 @@ def test_run_reads_the_columns_of_its_map(command, stub_pipeline, tmp_path, monk
     """A run from a map reads its columns once it has the contigs of the
     assembly (theoritical_hit needs both), and normalizes with them."""
     monkeypatch.setattr("metator.network.contig_data_from_map", mtn_contig_data_from_map)
-    contig_data = {name: {"id": i, "length": length, "GC": 50.0, "hit": 0, "coverage": "-", "RS": "-"}
-                   for i, (name, length) in enumerate([("c1", 100), ("c2", 50)], start=1)}  # fmt: skip
+    contig_data = {name: {"length": length, "GC": 50.0, "coverage": "-", "RS": "-"}
+                   for name, length in [("c1", 100), ("c2", 50)]}  # fmt: skip
     monkeypatch.setattr("metator.network.create_contig_data", lambda *args: contig_data)
     metacool = _map_with_columns(tmp_path, SITES_AND_COVERAGE)
     out = tmp_path / "out"
@@ -750,8 +759,8 @@ def test_run_refused_for_a_column_that_lacks_contigs(command, stub_pipeline, tmp
     the normalization what it needs: refused, with the warning that names
     the contig, before the network."""
     monkeypatch.setattr("metator.network.contig_data_from_map", mtn_contig_data_from_map)
-    contig_data = {name: {"id": i, "length": length, "GC": 50.0, "hit": 0, "coverage": "-", "RS": "-"}
-                   for i, (name, length) in enumerate([("c1", 100), ("c2", 50), ("c3", 30)], start=1)}  # fmt: skip
+    contig_data = {name: {"length": length, "GC": 50.0, "coverage": "-", "RS": "-"}
+                   for name, length in [("c1", 100), ("c2", 50), ("c3", 30)]}  # fmt: skip
     monkeypatch.setattr("metator.network.create_contig_data", lambda *args: contig_data)
     metacool = _map_with_columns(tmp_path, {"Restriction_site": [3, 2]})
     out = tmp_path / "out"
@@ -772,8 +781,8 @@ def test_pipeline_refused_for_a_column_that_lacks_contigs_keeps_the_clusters(stu
     the clusters of the earlier run: the contig data is read before they
     are replaced (they were removed, then the run refused)."""
     monkeypatch.setattr("metator.network.contig_data_from_map", mtn_contig_data_from_map)
-    contig_data = {name: {"id": i, "length": length, "GC": 50.0, "hit": 0, "coverage": "-", "RS": "-"}
-                   for i, (name, length) in enumerate([("c1", 100), ("c2", 50), ("c3", 30)], start=1)}  # fmt: skip
+    contig_data = {name: {"length": length, "GC": 50.0, "coverage": "-", "RS": "-"}
+                   for name, length in [("c1", 100), ("c2", 50), ("c3", 30)]}  # fmt: skip
     monkeypatch.setattr("metator.network.create_contig_data", lambda *args: contig_data)
     metacool = _map_with_columns(tmp_path, {"Restriction_site": [3, 2]})
     out = tmp_path / "out"
@@ -803,6 +812,23 @@ def test_run_from_a_map_unreadable_for_its_columns(command, stub_pipeline, tmp_p
         run_cli(command, metacool, "-a", _assembly(tmp_path), "-o", out, "-T", tmp_path / "tmp")
     (log,) = out.glob(f"metator_{command}_*.log")
     assert f"ERROR :: Cannot read the contact map {metacool}: gone.\n" in log.read_text()
+
+
+def _merged_map(tmp_path, normalization):
+    """The map of two libraries (two copies of _contig_map with the network
+    of their contigs, normalized by normalization) summed by metacooler
+    merge, which keeps the contigs table of the first, and the metadata of
+    both: the network that metator network stored in the first, whose Hit
+    is no longer that of the contacts. A normalization other than None
+    loses its weights in the merge; None stores none to lose."""
+    from metacooler.cli.main import cli as metacooler_cli
+
+    library = _contig_map(tmp_path / "library_1.metacool", network=True, normalization=normalization)
+    copy = shutil.copyfile(library, tmp_path / "library_2.metacool")
+    merged = tmp_path / "merged.metacool"
+    result = CliRunner().invoke(metacooler_cli, ["merge", str(library), str(copy), "-o", str(merged), "-q"])
+    assert result.exit_code == 0, result.output
+    return merged
 
 
 def _collection(path, *entries, network=False):
@@ -1650,8 +1676,7 @@ def test_a_map_replaced_as_its_columns_are_read(reader, tmp_path, monkeypatch):
     metacool = _contig_map(tmp_path / "input.metacool")
     _replaced_once_opened_by(monkeypatch, metacool, reader)
     contig_data = {
-        name: {"id": i, "length": length, "GC": 0.5, "hit": 0, "coverage": "-", "RS": "-"}
-        for i, (name, length) in enumerate({"c1": 100, "c2": 50}.items(), start=1)
+        name: {"length": length, "GC": 0.5, "coverage": "-", "RS": "-"} for name, length in {"c1": 100, "c2": 50}.items()
     }
     read = {"map_columns": lambda: mtn.map_columns(str(metacool)), "contig_data_from_map": lambda: mtn_contig_data_from_map(str(metacool), contig_data)}  # fmt: skip
     message = REPLACED_WHILE_READ.format(map=metacool)
@@ -1720,8 +1745,8 @@ def test_network_from_a_metacool(monkeypatch, tmp_path, run_cli):
     import metacooler
 
     calls = {}
-    contig_data = {name: {"id": i, "length": length, "GC": 50.0, "hit": 0, "coverage": "-", "RS": 2}
-                   for i, (name, length) in enumerate([("c1", 100), ("c2", 50)], start=1)}  # fmt: skip
+    contig_data = {name: {"length": length, "GC": 50.0, "coverage": "-", "RS": 2}
+                   for name, length in [("c1", 100), ("c2", 50)]}  # fmt: skip
 
     def create_contig_data(*args):
         calls["create_contig_data"] = args
@@ -2023,6 +2048,20 @@ STEP_MAP_ERRORS = {
         [],
         "{contig_map} holds no network of its contigs: run metator network on it first, which stores the network in the map.",
     ),
+    # A network that the run reads, then refuses, before -F replaces anything.
+    "a network with text in a column": (
+        "{text_map}",
+        [],
+        "The contigs table of {text_map} holds a value that is not a number in a column that metator network stores "
+        "(could not convert string to float: 'high'): run metator network on the map again.",
+    ),
+    "a network of other contacts": (
+        "{merged_map}",
+        [],
+        "The Hit column of {merged_map} is not the hits of its contacts for 2 contig(s): 'c1', 'c2'. Its contacts changed "
+        "since metator network stored the network (a merge of maps keeps the contigs table of the first): run metator "
+        "network on the map again.",
+    ),
     "a collection": ("{collection}", [], "Cannot read the contact map {collection}: "),
     "a map of other contigs": (
         "{other_map}",
@@ -2106,6 +2145,13 @@ def test_step_on_a_map_refused(command, case, stub_pipeline, tmp_path, run_cli):
     }
     names["contigs"].write_text("ID\tName\tSize\tHit\tShotgun_coverage\tOverlapping_cluster_ID\n1\tc1\t100\t3\t-\t00001\n"
                                 "2\tc2\t50\t1\t-\t00001\n")  # fmt: skip
+    if case == "a network with text in a column":
+        names["text_map"] = _contig_map(tmp_path / "text.metacool", network=True)
+        with h5py.File(names["text_map"], "r+") as group:
+            del group["contigs/GC_content"]
+            group["contigs/GC_content"] = np.array([b"high", b"low"])
+    if case == "a network of other contacts":
+        names["merged_map"] = _merged_map(tmp_path, "None")
     shutil.copyfile(names["map"], names["colon_map"])
     names["entry"] = f"{names['collection']}::entries/lib1"
     names["directory"].mkdir()
@@ -2122,7 +2168,7 @@ def test_step_on_a_map_refused(command, case, stub_pipeline, tmp_path, run_cli):
             run_cli(command, *_step_run(command, metacool, tmp_path, *[option.format(**names) for option in options], "-F"))
         if case == "a lock held by another run":
             assert json.loads(lock_file(names["map"]).read_text()) == holder
-    assert not stub_pipeline and all(path.exists() for path in earlier)
+    assert _no_step(stub_pipeline) and all(path.exists() for path in earlier)
     (log,) = (tmp_path / "out").glob(f"metator_{command}_*.log")
     assert f"ERROR :: {message}" in log.read_text()
     assert not (tmp_path / "copy.metacool").exists()
@@ -2371,7 +2417,7 @@ def test_a_step_refuses_a_bad_prefix_before_replacing_the_clusters(command, stub
     metacool = _contig_map(tmp_path / "input.metacool", network=True)
     with pytest.raises(ValueError, match="Invalid --prefix"):
         run_cli(command, *_step_run(command, metacool, tmp_path, "-F", "-p", "bad.prefix"))
-    assert all(path.exists() for path in earlier) and not stub_pipeline
+    assert all(path.exists() for path in earlier) and _no_step(stub_pipeline)
 
 
 def test_pipeline_replaces_an_earlier_map_named_after_its_assembly(stub_pipeline, tmp_path, run_cli):
@@ -2430,7 +2476,7 @@ def test_force_replaces_a_link_of_clusters_not_its_target(dangling, stub_pipelin
     link.symlink_to(target)
     with pytest.raises(ValueError):
         run_cli("validation", *_step_run("validation", None, tmp_path))
-    assert os.path.lexists(link) and not stub_pipeline
+    assert os.path.lexists(link) and _no_step(stub_pipeline)
     run_cli("validation", *_step_run("validation", None, tmp_path, "-F"))
     assert link.is_dir() and not link.is_symlink() and stub_pipeline
     assert dangling or (target / "earlier.fa").exists()

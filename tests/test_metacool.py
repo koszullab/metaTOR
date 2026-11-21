@@ -1430,9 +1430,9 @@ def final_contig_data(contig_data, pairs, final_bin, path):
     hits = pd.concat([pairs.chr1, pairs.chr2]).value_counts()
     with open(path, "w") as table:
         table.write("ID\tName\tSize\tGC_content\tHit\tShotgun_coverage\tRestriction_site\n")
-        for name, data in contig_data.items():
+        for i, (name, data) in enumerate(contig_data.items(), start=1):
             data["hit"] = int(hits.get(name, 0))
-            values = [data["id"], name, data["length"], data["GC"], data["hit"], data["coverage"], data["RS"]]
+            values = [i, name, data["length"], data["GC"], data["hit"], data["coverage"], data["RS"]]
             table.write("\t".join(map(str, values)) + "\n")
     table = pd.read_csv(path, sep="\t", dtype=str, keep_default_na=False)
     table["Final_cluster"] = table.Name.map(final_bin)

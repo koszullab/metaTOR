@@ -54,29 +54,18 @@ contigs_data = {
 
 
 def test_create_contig_data():
-    # Test contig data builder.
+    # Test contig data builder: what it measures on the assembly, by contig
+    # name, in the order of the assembly. The hits are counted on the map,
+    # and the IDs are positions in the map: neither is a key.
     # Case without depth file.
     contig_data = mtn.create_contig_data(assembly)
     assert len(contig_data) == 1219
-    assert contig_data["NODE_522"] == {
-        "id": 1,
-        "length": 22786,
-        "GC": 62.0775915035548,
-        "hit": 0,
-        "coverage": "-",
-        "RS": "-",
-    }
+    assert next(iter(contig_data)) == "NODE_522"
+    assert contig_data["NODE_522"] == {"length": 22786, "GC": 62.0775915035548, "coverage": "-", "RS": "-"}
     # Case with depth file.
     contig_data = mtn.create_contig_data(assembly, depth_file, "DpnII")
     assert len(contig_data) == 1219
-    assert contig_data["NODE_522"] == {
-        "id": 1,
-        "length": 22786,
-        "GC": 62.0775915035548,
-        "hit": 0,
-        "coverage": 4.76595,
-        "RS": 162,
-    }
+    assert contig_data["NODE_522"] == {"length": 22786, "GC": 62.0775915035548, "coverage": 4.76595, "RS": 162}
 
 
 def _normalized(contigs, pair, n_occ, normalization):
