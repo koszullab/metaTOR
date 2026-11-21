@@ -459,40 +459,29 @@ def partition_table(contig_data, partition):
 
     # A copy of the table, from 0 to n - 1: the contig of ID i is row i - 1.
     contigs_data = contig_data.reset_index(drop=True).copy()
-
-    # Add new empty columns. Use object dtype as they will mix "-" and ints.
-    for col in [
-        "Core_cluster_ID",
-        "Core_cluster_contigs",
-        "Core_cluster_size",
-        "Overlapping_cluster_ID",
-        "Overlapping_cluster_contigs",
-        "Overlapping_cluster_size",
-    ]:
-        contigs_data[col] = pd.Series("-", index=contigs_data.index, dtype=object)
-
-    # Add core bin information
-    for i, contigs in partition.core.items():
-        # Extract contigs of the bin
-        core_bin = [id - 1 for id in contigs]
-        core_bin_data = contigs_data.iloc[core_bin]
-        core_bin_contigs_number = len(core_bin)
-        core_bin_length = sum(core_bin_data.Size)
-        # Write the new information
-        contigs_data.loc[core_bin, "Core_cluster_ID"] = f"{i:05d}"
-        contigs_data.loc[core_bin, "Core_cluster_contigs"] = core_bin_contigs_number
-        contigs_data.loc[core_bin, "Core_cluster_size"] = core_bin_length
-
-    # Add overlapping information
-    for i, contigs in partition.overlapping.items():
-        # Extract contigs of the bin
-        overlapping_bin = [id - 1 for id in contigs]
-        overlapping_bin_data = contigs_data.iloc[overlapping_bin]
-        overlapping_bin_contigs_number = len(overlapping_bin)
-        overlapping_bin_length = sum(overlapping_bin_data.Size)
-        # Write the new information
-        contigs_data.loc[overlapping_bin, "Overlapping_cluster_ID"] = f"{i:05d}"
-        contigs_data.loc[overlapping_bin, "Overlapping_cluster_contigs"] = overlapping_bin_contigs_number
-        contigs_data.loc[overlapping_bin, "Overlapping_cluster_size"] = overlapping_bin_length
+    sizes = contigs_data["Size"].to_numpy()
+    for kind, clusters in (("Core", partition.core), ("Overlapping", partition.overlapping)):
+        ids, counts, lengths = _cluster_columns(clusters, sizes)
+        # Object columns, as they mix "-" and numbers.
+        contigs_data[f"{kind}_cluster_ID"] = pd.Series(ids, index=contigs_data.index, dtype=object)
+        contigs_data[f"{kind}_cluster_contigs"] = pd.Series(counts, index=contigs_data.index, dtype=object)
+        contigs_data[f"{kind}_cluster_size"] = pd.Series(lengths, index=contigs_data.index, dtype=object)
 
     return contigs_data
+
+
+def _cluster_columns(clusters, sizes):
+    """The cluster of each contig of a contig data table (see
+    partition_table): its ID (the number of its cluster, with five digits),
+    its number of contigs and its size in bp (sizes: the size of each
+    contig, by ID - 1), ``-`` for a contig in none. clusters: the IDs of the
+    contigs of each cluster, by number. Three object arrays, one value per
+    contig, written cluster by cluster in the order of their numbers, each
+    with one assignment of numpy for all its contigs."""
+    ids, counts, lengths = (np.full(len(sizes), "-", dtype=object) for _ in range(3))
+    for number, contigs in clusters.items():
+        rows = np.asarray(contigs, dtype=np.int64) - 1
+        ids[rows] = f"{number:05d}"
+        counts[rows] = len(rows)
+        lengths[rows] = sizes[rows].sum()
+    return ids, counts, lengths

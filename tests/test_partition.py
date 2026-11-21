@@ -201,6 +201,52 @@ def test_partition_table():
     assert (contigs_data.loc[10:, ["Core_cluster_ID", "Overlapping_cluster_ID"]] == "-").all().all()
 
 
+def _random_partition(rng, n_contigs):
+    """A partition of n_contigs contigs: some in no cluster, core clusters of
+    one to eight contigs (an empty one too), overlapping clusters of one to
+    four core clusters, numbered past 99999 (six digits)."""
+    clustered = rng.permutation(np.arange(1, n_contigs + 1))[: int(0.9 * n_contigs)]
+    core, start, number = {}, 0, 0
+    while start < len(clustered):
+        size = int(rng.integers(1, 9))
+        number += 1 if number != 3 else 99996
+        core[number] = sorted(int(contig) for contig in clustered[start : start + size])
+        start += size
+    core[number + 1] = []
+    overlapping, numbers = {}, list(core)
+    for overlapping_number, first in enumerate(range(0, len(numbers), 3), start=1):
+        overlapping[overlapping_number] = [contig for kept in numbers[first : first + 3] for contig in core[kept]]
+    names = {number: mtc.overlapping_name("metator", number) for number in overlapping}
+    return mtc.Partition(core=core, overlapping=overlapping, names=names)
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_partition_table_is_the_table_of_the_oracle(seed):
+    """partition_table, vectorised, writes the table that it wrote cluster by
+    cluster with pandas' .loc (tests.oracles.partition_table), byte for byte:
+    contigs in no cluster, an empty cluster, numbers of six digits."""
+    from tests import oracles
+
+    rng = np.random.default_rng(seed)
+    n_contigs = 400
+    contig_data = pd.DataFrame(
+        {
+            "ID": np.arange(1, n_contigs + 1),
+            "Name": [f"contig_{i}" for i in range(n_contigs)],
+            "Size": rng.integers(500, 100_000, n_contigs),
+            "GC_content": rng.uniform(30, 70, n_contigs),
+            "Hit": rng.integers(0, 1000, n_contigs),
+            "Shotgun_coverage": "-",
+            "Restriction_site": "-",
+        }
+    )
+    partition = _random_partition(rng, n_contigs)
+    table = mtp.partition_table(contig_data, partition)
+    expected = oracles.partition_table(contig_data, partition)
+    assert table.to_csv(sep="\t", index=False) == expected.to_csv(sep="\t", index=False)
+    assert (table["Core_cluster_ID"] == "-").any() and table["Core_cluster_ID"].str.len().max() == 6
+
+
 def test_partition():
     """The partition of the network: its core clusters, numbered from 1, and
     its overlapping clusters, each of the contigs of its core clusters in the
