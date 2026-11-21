@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
+- `metator dump MAP -o DIR` writes the tables of a run from the map of its
+  clusters, read only: `contig_data_final.txt` (one row per contig of the
+  map, in its order, without the `ID` column), `cluster_summary.txt` (the
+  genomes table of the map, with the columns that the validation recorded,
+  in their order), `binning.txt`, `clusters.txt` and `cluster_members.txt`
+  (every clustering round of the map, the round `mge` of `metator mge`
+  included), and `network.txt` (the network that `metator network` stored,
+  by contig names: 1.x wrote their IDs). The values are those of the tables
+  that the run keeps in its temporary directory with `-N`; the rows of
+  `contig_data_final.txt`, `binning.txt` and `cluster_members.txt` come in
+  the order of the map of the clusters. A map without the clusters of a
+  validation (the `validation` entry of its `metator` metadata, and the
+  round `final`), or that changes while it is read, is refused, and so is an
+  output directory that holds the tables of an earlier dump, without `-F`.
+  Python API: `metator.dump`; `metator.clusters.write_round_tables`, which
+  `Rounds.write` calls too.
 - **Breaking:** what `validation` finds lives in the map, and `pipeline`
   runs the three steps on one map. `validation` and `pipeline` write the
   FASTA files of the final clusters in the output directory

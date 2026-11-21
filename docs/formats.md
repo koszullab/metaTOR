@@ -59,7 +59,9 @@ without header, as `binning.txt` or the collection exported by anvi'o.
 ## The contig data tables
 
 `contig_data_final.txt` holds one row per contig of the map, in its order,
-with a header. Each step adds its columns to those of the step before; the
+with a header. [`metator dump`](cli.md#dump) writes it from the map of the
+clusters of a run; the validation writes its own in its temporary directory,
+which `-N` keeps. Each step adds its columns to those of the step before; the
 first come from the network, which `metator network` stores in the contigs
 table of the map, then the core and overlapping clusters, which
 `metator partition` stores as the clustering rounds of the map (the
@@ -68,7 +70,7 @@ its temporary directory):
 
 | Column | Written by | What it holds |
 |---|---|---|
-| `ID` | network | The ID of the contig, from 1: its position in the map as the run read it, the ID of its node in the network. A run that regroups the map (`validation`, `pipeline`) moves its contigs: join a table to the network of another map by contig name (`metator.network.relabel_network`), not by ID |
+| `ID` | network | The ID of the contig, from 1: its position in the map as the run read it, the ID of its node in the network. A run that regroups the map (`validation`, `pipeline`) moves its contigs: join a table to the network of another map by contig name (`metator.network.relabel_network`), not by ID. The tables of the validation only: `metator dump` leaves it out |
 | `Name` | network | Its name |
 | `Size` | network | Its length, in bp |
 | `GC_content` | network | Its GC content, in percent |
@@ -86,21 +88,36 @@ its temporary directory):
 1	2	NODE_1404	15015	64.2823842823842	952	4.00585	118	00002	1	15015	00002	5	19711	00000	-	-	ND
 ```
 
-`contig_data_final.txt` starts with a column without header, the row number
-from 0. A contig with no edge in the network (no hits, or no contact with
-another contig) has `-` in the columns of its core and overlapping clusters. As
-inputs, the tables are read by the headers of their columns: other columns
-may be added, in any order, such as the bins of another binning.
+The validation's `contig_data_final.txt` starts with a column without
+header, the row number from 0, then `ID`; that of `metator dump` starts with
+`Name`, its rows in the order of the map of the clusters, which the
+validation regroups by cluster. A contig with no edge in the network (no
+hits, or no contact with another contig) has `-` in the columns of its core
+and overlapping clusters. `Core_cluster_ID` is a number when every contig is
+in a core cluster, and has five digits, as the other IDs, next to the `-` of
+a contig in none. As inputs, the tables are read by the headers of their
+columns: other columns may be added, in any order, such as the bins of
+another binning.
 
 ## The network
 
 The network of contigs is in the map, which `metator network` stores it in
-(see [Building the network](guides/network.md#building-the-network)): metaTOR
-2.0 writes no `network.txt`. metacooler exports it, one line per pair of
-contigs in contact, by their names, with the normalised weight of their edge.
-It also writes a line per contig for the contacts within it (`node1` equal to
-`node2`), which are no edge of the network, and would write the edges of
-weight 0, which metaTOR leaves out: drop them, as `awk` does here.
+(see [Building the network](guides/network.md#building-the-network)): the
+steps write no `network.txt`. [`metator dump`](cli.md#dump) writes it from
+the map of the clusters of a run: one line per pair of contigs in contact,
+without a header, with three columns, `contig1` and `contig2`, the names of
+the two contigs, and the weight of their edge (the normalization that
+`metator network` stored; the count of their contacts for `None`). The lines
+come in the order of the map: each contig, from the first, with the contigs
+after it. The contacts within a contig, and the edges of weight 0, are no
+edge of the network. 1.x wrote the IDs of the contigs, in the order of their
+names; 2.0 writes their names.
+
+metacooler exports the network of any map that holds it, the map of the
+contigs once `metator network` ran included. It also writes a line per
+contig for the contacts within it (`node1` equal to `node2`), which are no
+edge of the network, and would write the edges of weight 0, which metaTOR
+leaves out: drop them, as `awk` does here.
 
 ```console
 metacooler network sample.metacool --level contig --balance metator_empirical_hit --header \
@@ -110,8 +127,7 @@ metacooler network sample.metacool --level contig --balance metator_empirical_hi
 `network.tsv` has three columns: `node1` and `node2`, the names of the two
 contigs of an edge, and `value`, its weight (the raw count of their contacts
 without `--balance`, for the normalisation `None`). Without `--header`,
-metacooler writes no header line. `metator dump` will write `network.txt`, as
-metaTOR 1.x did.
+metacooler writes no header line.
 
 ## The clusters
 
@@ -167,9 +183,11 @@ cluster summary up to `CDs`, and the marker set kept, `Bacteria` or `Archaea`.
 ### Clustering rounds
 
 `clusters.txt` holds every cluster of every round of the run, in the order
-they were made: `overlapping` (the overlapping clusters that miComplete
-checks), `recursive_<k>` (those that step `k` of the validation makes by
-partitioning a contaminated cluster again) and `final`. Tab-separated, with a
+they were made: `core` and `overlapping` (every core and overlapping cluster
+of the partition, those that miComplete checks with its columns),
+`recursive_<k>` (those that step `k` of the validation makes by partitioning
+a contaminated cluster again) and `final`; that of `metator dump` holds the
+round `mge` (or `mge_random`) of `metator mge` too. Tab-separated, with a
 header: the round, the name, the round and name of its parent (the cluster it
 was split from, or for a final cluster the cluster it is; `NA` for none), then
 miComplete's columns, `NA` where the cluster has none.
