@@ -1976,6 +1976,56 @@ def test_read_partition_refused(case, tmp_path):
         mtmc.read_partition(str(metacool))
 
 
+def test_read_partition_of_the_network_of_the_map(tmp_path):
+    """With the digest of the network of the map, read_partition reads the
+    partition only when the map records that it was made on that network,
+    as metator partition records it with the partition: a partition without
+    that record, or with that of another network, is refused, with the step
+    to run again. holds_partition says whether the map holds a partition at
+    all, and partition_network gives the network that it records."""
+    import metacooler
+
+    import metator.clusters as mtcl
+
+    metacool = _three_contigs(tmp_path / "map.metacool")
+    assert not mtmc.holds_partition(metacooler.MetaCooler(str(metacool)))
+    clusters = mtcl.Partition(core={1: [1, 2, 3]}, overlapping={1: [1, 2, 3]}, names={1: "m_00001_00000"})
+    for entries, made_on in [
+        (None, None),
+        ({"partition": {"version": "x"}}, None),
+        ({"partition": {mtmc.NETWORK_DIGEST: "f00"}}, "f00"),
+    ]:
+        mtmc.write_rounds(
+            str(metacool),
+            str(metacool),
+            mtcl.partition_rounds(clusters, ["a", "b", "c"]),
+            names=list(mtmc.PARTITION_ROUNDS),
+            force=True,
+            entries=entries,
+        )
+        mc = metacooler.MetaCooler(str(metacool))
+        assert mtmc.holds_partition(mc) and mtmc.partition_network(mc) == made_on
+        assert mtmc.read_partition(str(metacool)) == clusters
+    assert mtmc.read_partition(str(metacool), network="f00") == clusters
+    with pytest.raises(mtmc.MetacoolError) as refused:
+        mtmc.read_partition(str(metacool), network="ba5")
+    assert str(refused.value) == (
+        f"{metacool} holds a partition of another network than the one stored in it now: metator network stored another "
+        f"network in the map since metator partition ran on it. Run metator partition {metacool} again, which "
+        "partitions the network stored in the map."
+    )
+    mtmc.write_rounds(
+        str(metacool),
+        str(metacool),
+        mtcl.partition_rounds(clusters, ["a", "b", "c"]),
+        names=list(mtmc.PARTITION_ROUNDS),
+        force=True,
+        entries={"partition": "not an entry"},
+    )
+    with pytest.raises(mtmc.MetacoolError, match=re.escape(f"{metacool} does not record the network that its partition")):
+        mtmc.read_partition(str(metacool), network="f00")
+
+
 def test_the_partition_entry_is_kept_in_the_map_of_the_clusters(tmp_path):
     """The map of the clusters that a validation writes keeps the entry
     partition of the metator metadata of its input map, which metator

@@ -373,17 +373,18 @@ def start_step(
     reads the network of its contigs, which metator network stored in it,
     and refuses one that it cannot read (see stored_network), and, with
     partition (a validation run), the partition of that network, which
-    metator partition stored in it (see map_partition). It checks the
-    assembly (see check_assembly) and the prefix of the clusters (--prefix,
-    see bin_prefix) before it replaces them. Returns the log file, the map
-    to write, the prefix, the input map as the run read it at its start (see
-    step_map), the stored network (see stored_network), and, with
-    partition, the partition of the map (None without)."""
+    metator partition stored in it, refused when it was made on another
+    network (see map_partition). It checks the assembly (see check_assembly)
+    and the prefix of the clusters (--prefix, see bin_prefix) before it
+    replaces them. Returns the log file, the map to write, the prefix, the
+    input map as the run read it at its start (see step_map), the stored
+    network (see stored_network), and, with partition, the partition of the
+    map (None without)."""
     log_file = log_file_name(outdir, command)
     generate_log_header(log_file)
     metacool_file, planned = step_map(command, input_map, output_map, force, held, inputs=inputs, assembly=assembly)
     stored = stored_network(input_map)
-    clusters = map_partition(input_map, planned) if partition else None
+    clusters = map_partition(input_map, planned, stored.digest) if partition else None
     if assembly is not None:
         check_assembly(assembly)
     bins_prefix = bin_prefix(prefix)
@@ -424,26 +425,37 @@ def map_contacts(metacool):
     return contacts
 
 
-def map_partition(metacool, planned):
+def map_partition(metacool, planned, network):
     """The partition that metator partition stored in the map of a validation
     run, metacool, opened as planned (see
-    metator.metacool.read_partition): its core and overlapping clusters. A
-    map without it is refused before any work: the reason, which names the
-    step to run, is logged as an error, then its MetacoolError is raised."""
+    metator.metacool.read_partition): its core and overlapping clusters,
+    which must be those of the network stored in the map (network, its
+    digest: see metator.network.stored_network). A map without it, or whose
+    partition was made on another network (metator network ran on the map
+    since metator partition), is refused before any work: the reason, which
+    names the step to run, is logged as an error, then its MetacoolError is
+    raised."""
     try:
-        return mtmc.read_partition(metacool, planned)
+        return mtmc.read_partition(metacool, planned, network)
     except mtmc.MetacoolError as error:
         logger.error(str(error))
         raise
 
 
-def partition_entry(normalization):
+def partition_entry(normalization, digest):
     """What a map records of the partition of its network, under the
     partition key of its metator metadata (see
     metator.metacool.write_rounds): the version of metaTOR, the command line
-    and the parameters of the run, and the normalization of the network that
-    it partitioned."""
-    return {"version": __version__, **run_metadata(), "normalization": normalization}
+    and the parameters of the run, and the normalization and the digest of
+    the network that it partitioned (see metator.network.network_digest),
+    which a validation checks against the network stored in the map (see
+    metator.metacool.read_partition)."""
+    return {
+        "version": __version__,
+        **run_metadata(),
+        "normalization": normalization,
+        mtmc.NETWORK_DIGEST: digest,
+    }
 
 
 def write_partition_table(contig_data, clusters, directory):
@@ -746,6 +758,22 @@ def pipeline_metacool(metacool, outdir, outfile, normalization=None, planned=Non
             network=network,
             partition=partition,
         )
+
+
+def stale_partition(planned, contacts, table, normalization):
+    """Whether the input map of a network run, planned, holds a partition (the
+    clustering rounds core and overlapping, which the run keeps, as it keeps
+    every round) that was made on another network than the one the run
+    stores (see metator.metacool.partition_network): its digest (see
+    metator.network.network_digest), from the contacts of the map and the
+    contig data of the run (table), with its normalization. Read before the
+    run writes the map: metator validation refuses such a partition until
+    metator partition runs on the map again. A network that is the one the
+    partition was made on leaves it as it was."""
+    if not mtmc.holds_partition(planned):
+        return False
+    digest = mtn.network_digest(contacts, mtn.network_weights(table, normalization), table["Name"], normalization)
+    return mtmc.partition_network(planned) != digest
 
 
 def network_metacool(metacool, outfile, network, planned=None):
@@ -1087,9 +1115,12 @@ def network(
     Shotgun_coverage and Restriction_site when it has them) in its contigs
     table, and the normalization of the network as the weights
     metator_<normalization> of its bins, which replace those of an earlier
-    network. The map is updated in place (or written to --output-map), and
-    locked while the run writes it. [cyan]metacooler network MAP --level
-    contig --balance metator_<normalization>[/] writes the network.
+    network. The clusters of the map are kept: the partition of an earlier
+    network too, with a warning, as [cyan]metator validation MAP[/] refuses
+    it until [cyan]metator partition MAP[/] partitions the new network. The
+    map is updated in place (or written to --output-map), and locked while
+    the run writes it. [cyan]metacooler network MAP --level contig --balance
+    metator_<normalization>[/] writes the network.
     """
     # Private temporary directory inside --tmpdir, and the lock of the map
     # the run writes, held until its end.
@@ -1127,12 +1158,19 @@ def network(
         contacts = map_contacts(map)
         names = planned.contigs["name"]
         table = mtn.contig_data_table(contig_data, names, mtn.contig_hits(contacts, len(names)), map)
+        stale = stale_partition(planned, contacts, table, normalization)
         network_metacool(
             map,
             metacool_file,
             mtmc.Network(table, normalization, network_entry(columns_from_map), tmp_dir),
             planned,
         )
+        if stale:
+            logger.warning(
+                f"{metacool_file} holds a partition of another network than the one stored in it now, which the run "
+                f"kept: metator validation refuses it until metator partition {metacool_file} runs again, which "
+                "partitions this network."
+            )
 
     generate_log_footer(log_file)
 
@@ -1223,7 +1261,12 @@ def partition(
         # The core and overlapping clusters, stored in the map, their
         # contigs by name: the IDs of the network are their positions in it.
         partition_metacool(
-            map, metacool_file, clusters, list(stored.table["Name"]), partition_entry(stored.normalization), planned
+            map,
+            metacool_file,
+            clusters,
+            list(stored.table["Name"]),
+            partition_entry(stored.normalization, stored.digest),
+            planned,
         )
 
     generate_log_footer(log_file)
@@ -1519,7 +1562,8 @@ def pipeline(
         contacts = map_contacts(map)
         names = (planned if planned is not None else open_input_map(map)).contigs["name"]
         table = mtn.contig_data_table(contig_data, names, mtn.contig_hits(contacts, len(names)), map)
-        network = mtn.map_network(map, mtn.network_weights(table, normalization), contacts)
+        weights = mtn.network_weights(table, normalization)
+        network = mtn.map_network(map, weights, contacts)
 
         # Partition the network
         clusters = mtp.partition(algorithm, network, iterations, overlapping_parameter, res_param, threads, bins_prefix)
@@ -1563,7 +1607,7 @@ def pipeline(
                 normalization=normalization,
                 planned=planned,
                 network=mtmc.Network(table, normalization, network_entry(columns_from_map), tmp_dir),
-                partition=partition_entry(normalization),
+                partition=partition_entry(normalization, mtn.network_digest(contacts, weights, names, normalization)),
             )
 
     generate_log_footer(log_file)

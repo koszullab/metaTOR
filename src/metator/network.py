@@ -25,6 +25,7 @@ Core functions to build the network are:
     - map_columns
     - map_contig_table
     - map_network
+    - network_digest
     - network_normalization
     - network_weights
     - normalization_weights
@@ -292,20 +293,23 @@ def network_normalization(metacool, mc=None):
 class StoredNetwork(NamedTuple):
     """The network that metator network stored in a map, as the steps after
     it read it (see stored_network): the contig data of the contigs of the
-    map (table, see map_contig_table), the network (see map_network) and
-    its normalization."""
+    map (table, see map_contig_table), the network (see map_network), its
+    normalization, and its identity (digest, see network_digest)."""
 
     table: pd.DataFrame
     network: pd.DataFrame
     normalization: str
+    digest: str
 
 
 def stored_network(metacool):
     """The network that metator network stored in a map, read in full, as
     partition and validation read it: the contig data of its contigs (see
     map_contig_table), the network of its contacts weighed with the stored
-    weights (see map_network and stored_weights), and its normalization (see
-    network_normalization).
+    weights (see map_network and stored_weights), its normalization (see
+    network_normalization), and its identity (see network_digest), which
+    partition records with the partition that it stores, and validation
+    checks.
 
     The Hit column of the map must still be the hits of its contacts (see
     contig_hits): an edit that changed the contacts since metator network
@@ -323,7 +327,7 @@ def stored_network(metacool):
     Returns:
     --------
     StoredNetwork:
-        The contig data, the network and its normalization.
+        The contig data, the network, its normalization and its digest.
 
     Raises:
     -------
@@ -347,7 +351,13 @@ def stored_network(metacool):
             f"{mtmc._shown(stale)}. Its contacts changed since metator network stored the network (a merge of maps "
             "keeps the contigs table of the first): run metator network on the map again."
         )
-    return StoredNetwork(table, map_network(metacool, "stored", contacts), normalization)
+    weights = stored_weights(metacool)
+    return StoredNetwork(
+        table,
+        map_network(metacool, weights, contacts),
+        normalization,
+        network_digest(contacts, weights, table["Name"], normalization),
+    )
 
 
 def _check_network_columns(metacool, columns):
@@ -867,3 +877,66 @@ def normalization_weights(lengths, hits, coverage, sites, normalization):
     weights = np.array(weights, dtype=float)
     weights[~np.isfinite(weights)] = np.nan
     return weights
+
+
+def network_digest(contacts, weights, names, normalization):
+    """The identity of a network: the SHA-256 of what map_network computes it
+    from, by the names of the contigs. It is that of the network, not of a
+    run: two runs that store the same network give the same digest, and a run
+    that regroups the map (validation, pipeline), which moves the contigs but
+    keeps their names, their contacts and their weights, leaves it as it was.
+    metator partition records the digest of the network that it partitioned,
+    which validation checks against the network stored in the map (see
+    metator.metacool.read_partition), and metator network against the
+    network that it stores.
+
+    The digest covers the normalization, the names of the contigs of the map,
+    the weight of each (none for the normalization None; NaN for a contig
+    without one), and the contact count of every two contigs in contact (see
+    contig_contacts), each by the names of its two contigs, in the order of
+    the names. The weights of the edges are not hashed as map_network
+    computes them: it multiplies the count by the weight of the contig that
+    comes first in the map, then by the other, and a regroup that swaps the
+    two contigs can change the last bit of the product.
+
+    Parameters:
+    -----------
+    contacts : pandas.DataFrame
+        The contacts of the map (see contig_contacts).
+    weights : numpy.ndarray or None
+        The weight of each contig of the map, in its order (see
+        stored_weights and network_weights), or None for the normalization
+        None.
+    names : sequence of str
+        The names of the contigs of the map, in its order.
+    normalization : str
+        The normalization of the network ("None" for the counts).
+
+    Returns:
+    --------
+    str:
+        The SHA-256, in hexadecimal.
+    """
+    import hashlib
+
+    names = np.asarray(names, dtype=str)
+    order = np.argsort(names, kind="stable")
+    rank = np.empty(len(names), dtype=np.int64)
+    rank[order] = np.arange(len(names), dtype=np.int64)
+    between = contacts[contacts["id1"] != contacts["id2"]]
+    first = rank[between["id1"].to_numpy(dtype=np.int64)]
+    second = rank[between["id2"].to_numpy(dtype=np.int64)]
+    # One key per pair of contigs, by the ranks of their names: one row each
+    # in the contacts (see contig_contacts), so that any sort orders them so.
+    key = np.minimum(first, second) * len(names) + np.maximum(first, second)
+    edges = np.argsort(key)
+    # Each field ended by a NUL, which no name holds.
+    digest = hashlib.sha256(f"{normalization}\0".encode())
+    digest.update("".join(f"{name}\0" for name in names[order].tolist()).encode())
+    if weights is not None:
+        ordered = np.asarray(weights, dtype=np.float64)[order]
+        # One NaN, whatever the bits that the map stored for it.
+        digest.update(np.where(np.isnan(ordered), np.nan, ordered).tobytes())
+    for values in (key[edges], between["count"].to_numpy(dtype=np.int64)[edges]):
+        digest.update(np.ascontiguousarray(values).tobytes())
+    return digest.hexdigest()

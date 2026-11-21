@@ -634,24 +634,37 @@ def _contig_map(path, lengths=None, network=False, normalization="empirical_hit"
     metacooler.from_pairs(str(path), pairs=str(pairs), bins=bins, contig_genome_map=None, ps=False)
     pairs.unlink()
     if network:
-        names = metacooler.MetaCooler(str(path)).contigs["name"]
-        contacts = CONTIG_CONTACTS(str(path))
-        table = mtcli.mtn.contig_data_table(_AnyContig(), names, mtcli.mtn.contig_hits(contacts, len(names)))
-        mtmc.store_network(str(path), str(path), mtmc.Network(table, normalization), force=True)
+        _store_contig_network(path, normalization)
     if partition:
         import metator.clusters as mtcl
 
         names = [str(name) for name in metacooler.MetaCooler(str(path)).contigs["name"]]
         clusters = _one_cluster(pd.DataFrame({"contig1": [1], "contig2": [2]}))
+        entry = {"version": __version__, "normalization": normalization}
+        if network:
+            entry[mtmc.NETWORK_DIGEST] = mtcli.mtn.stored_network(str(path)).digest
         mtmc.write_rounds(
             str(path),
             str(path),
             mtcl.partition_rounds(clusters, names),
             names=list(mtmc.PARTITION_ROUNDS),
             force=True,
-            entries={"partition": {"version": __version__, "normalization": normalization}},
+            entries={"partition": entry},
         )
     return path
+
+
+def _store_contig_network(path, normalization):
+    """Store the network of the contigs of the map at path (see _contig_map)
+    in it, as metator network stores it (see
+    metator.metacool.store_network), with normalization: the network of an
+    earlier run is replaced, its partition kept."""
+    import metacooler
+
+    names = metacooler.MetaCooler(str(path)).contigs["name"]
+    contacts = CONTIG_CONTACTS(str(path))
+    table = mtcli.mtn.contig_data_table(_AnyContig(), names, mtcli.mtn.contig_hits(contacts, len(names)))
+    mtmc.store_network(str(path), str(path), mtmc.Network(table, normalization), force=True)
 
 
 # The restriction sites and the coverage of the contigs, read from the
@@ -1892,6 +1905,40 @@ def test_network_updates_its_map_in_place(stub_pipeline, tmp_path, run_cli):
     assert mtn.map_network(str(metacool)).to_dict("list") == {"contig1": [1], "contig2": [2], "weight": [1]}
 
 
+def test_network_keeps_the_partition_of_the_map(stub_pipeline, tmp_path, run_cli):
+    """metator network MAP keeps the clusters of the map, its partition among
+    them, with what partition recorded of it. The same network again leaves
+    it the partition of the network, which validation reads. Another network
+    is stored with a warning: validation refuses the partition until
+    partition MAP partitions that network, which it then reads."""
+    import metacooler
+
+    metacool = _contig_map(tmp_path / "input.metacool", network=True, partition=True)
+    mc = metacooler.MetaCooler(str(metacool))
+    rounds, members, entry = mc.cluster_rounds, mc.cluster_members(), mc.metadata["metator"]["partition"]
+    warning = (
+        f"WARNING :: {metacool} holds a partition of another network than the one stored in it now, which the run "
+        f"kept: metator validation refuses it until metator partition {metacool} runs again, which partitions this "
+        "network."
+    )
+    for normalization, stale in [("empirical_hit", False), ("None", True)]:
+        run_cli("network", metacool, "-a", _assembly(tmp_path), "-n", normalization, "-o", tmp_path / normalization,
+                "-T", tmp_path / "tmp")  # fmt: skip
+        mc = metacooler.MetaCooler(str(metacool))
+        assert mc.cluster_rounds == rounds and mc.cluster_members().equals(members)
+        assert mc.metadata["metator"]["partition"] == entry
+        (log,) = (tmp_path / normalization).glob("metator_network_*.log")
+        assert (warning in log.read_text()) == stale
+        digest = mtcli.mtn.stored_network(str(metacool)).digest
+        assert (digest != entry[mtmc.NETWORK_DIGEST]) == stale
+    with pytest.raises(mtmc.MetacoolError, match=re.escape(f"{metacool} holds a partition of another network")):
+        run_cli("validation", *_step_run("validation", metacool, tmp_path))
+    run_cli("partition", *_step_run("partition", metacool, tmp_path))
+    assert metacooler.MetaCooler(str(metacool)).metadata["metator"]["partition"][mtmc.NETWORK_DIGEST] == digest
+    run_cli("validation", *_step_run("validation", metacool, tmp_path))
+    assert [entry["name"] for entry in metacooler.MetaCooler(str(metacool)).cluster_rounds][:2] == ["core", "overlapping"]
+
+
 # What the first argument of a network or pipeline run cannot be, refused
 # before any work, the reason in its log file.
 NOT_A_MAP = (
@@ -2106,6 +2153,21 @@ STEP_MAP_ERRORS = {
         "{map} holds no partition of its network (the clustering round(s) core and overlapping): run metator partition "
         "on it first, which stores its core and overlapping clusters in the map.",
     ),
+    # metator network stored another network over the partition, which it
+    # keeps (see test_network_keeps_the_partition_of_the_map).
+    "a partition of another network": (
+        "{stale_map}",
+        [],
+        "{stale_map} holds a partition of another network than the one stored in it now: metator network stored "
+        "another network in the map since metator partition ran on it. Run metator partition {stale_map} again, which "
+        "partitions the network stored in the map.",
+    ),
+    "a partition that records no network": (
+        "{unrecorded_map}",
+        [],
+        "{unrecorded_map} does not record the network that its partition was made on, which metator partition "
+        "records. Run metator partition {unrecorded_map} again, which partitions the network stored in the map.",
+    ),
     "an input as --output-map": (
         "{map}",
         ["--output-map", "{assembly}"],
@@ -2139,7 +2201,12 @@ STEP_MAP_ERRORS = {
 
 # The refusals of a validation alone: it reads the partition that partition
 # stores, and the assembly, which partition does not read.
-VALIDATION_ONLY = {"a map without a partition", "an input as --output-map"}
+VALIDATION_ONLY = {
+    "a map without a partition",
+    "a partition of another network",
+    "a partition that records no network",
+    "an input as --output-map",
+}
 
 
 STEP_CASES = [
@@ -2159,8 +2226,11 @@ def test_step_on_a_map_refused(command, case, stub_pipeline, tmp_path, run_cli):
     directories of clusters of an earlier run. A lock that a running run
     holds (here, another process) is left to it. A collection is refused
     with metacooler's reason, which names its entries. validation MAP
-    refuses a map that partition MAP has not stored its partition in."""
+    refuses a map that partition MAP has not stored its partition in, or
+    whose partition is not that of the network stored in it."""
     from contextlib import ExitStack
+
+    import metacooler
 
     names = {
         "command": command,
@@ -2182,6 +2252,16 @@ def test_step_on_a_map_refused(command, case, stub_pipeline, tmp_path, run_cli):
             group["contigs/GC_content"] = np.array([b"high", b"low"])
     if case == "a network of other contacts":
         names["merged_map"] = _merged_map(tmp_path, "None")
+    if case == "a partition of another network":
+        names["stale_map"] = _contig_map(tmp_path / "stale.metacool", network=True, partition=True)
+        _store_contig_network(names["stale_map"], "None")
+    if case == "a partition that records no network":
+        names["unrecorded_map"] = _contig_map(tmp_path / "unrecorded.metacool", network=True, partition=True)
+        mc = metacooler.MetaCooler(str(names["unrecorded_map"]))
+        metadata = dict(mc.metadata)
+        del metadata["metator"]["partition"][mtmc.NETWORK_DIGEST]
+        with mc.open("r+") as group:
+            group.attrs["metadata"] = json.dumps(metadata)
     shutil.copyfile(names["map"], names["colon_map"])
     names["entry"] = f"{names['collection']}::entries/lib1"
     names["directory"].mkdir()

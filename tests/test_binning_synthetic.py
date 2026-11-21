@@ -131,13 +131,18 @@ def _map_with_merged_partition(metagenome, metagenome_network, path, merged):
         names={number: mtcl.overlapping_name("metator", number) for number in contigs},
     )
     metacool = _network_map(metagenome_network, path)
+    entry = {
+        "version": __version__,
+        "normalization": "empirical_hit",
+        mtmc.NETWORK_DIGEST: mtn.stored_network(str(metacool)).digest,
+    }
     mtmc.write_rounds(
         str(metacool),
         str(metacool),
         mtcl.partition_rounds(clusters, list(data.Name)),
         names=list(mtmc.PARTITION_ROUNDS),
         force=True,
-        entries={"partition": {"version": __version__, "normalization": "empirical_hit"}},
+        entries={"partition": entry},
     )
     return metacool
 
@@ -202,6 +207,46 @@ def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenom
     # The bins of the split are recursive bins, of step 1; the others are not.
     assert list(summary.recursive) == list(summary.step > 0)
     assert summary.recursive.any() and not summary.recursive.all()
+
+
+def test_validation_again_on_the_map_of_its_clusters(
+    metagenome, metagenome_inputs, metagenome_network, tmp_path, monkeypatch, run_cli
+):
+    """validation MAP runs again on the map of the clusters that it wrote, in
+    which it grouped the contigs by cluster: the partition stored in the map
+    is still that of its network, which the regroup left as it was (see
+    metator.network.network_digest), the same contig for contig, and the
+    run reads it with the IDs of the contigs in the regrouped map, their
+    positions in it, which number the rows of its tables."""
+    monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
+    metacool = _map_with_merged_partition(
+        metagenome, metagenome_network, tmp_path / "network.metacool", merged=("genome_1", "genome_2")
+    )
+
+    def named(path):
+        """The partition of the map at path, by contig name."""
+        names = list(metacooler.MetaCooler(str(path)).contigs.name)
+        partition = mtmc.read_partition(str(path), network=mtn.stored_network(str(path)).digest)
+        return [
+            {number: sorted(names[contig - 1] for contig in contigs) for number, contigs in clusters.items()}
+            for clusters in (partition.core, partition.overlapping)
+        ], names
+
+    before, names = named(metacool)
+    common = ["-a", metagenome_inputs["assembly"], "-T", tmp_path / "tmp", "-s", "50000", "-i", "10", "-t", "1"]
+    finals = {}
+    for run in ["first", "second"]:
+        random.seed(0)
+        run_cli("validation", metacool, "-o", tmp_path / run, *common)
+        finals[run] = pd.read_csv(tmp_path / run / "contig_data_final.txt", sep="\t")
+    after, regrouped = named(metacool)
+    assert regrouped != names and sorted(regrouped) == sorted(names)
+    assert after == before
+    # The second run numbers the contigs as the regrouped map orders them.
+    assert list(finals["first"].Name) == names and list(finals["second"].Name) == regrouped
+    assert list(finals["second"].ID) == list(range(1, len(regrouped) + 1))
+    found = {run: final.set_index("Name").Final_cluster.sort_index() for run, final in finals.items()}
+    assert found["second"].equals(found["first"])
 
 
 def test_validation_without_contaminated_bin(metagenome, metagenome_inputs, metagenome_network, tmp_path, monkeypatch, run_cli):
@@ -892,6 +937,10 @@ def test_steps_on_a_map_give_the_map_of_pipeline(metagenome, metagenome_inputs, 
     assert metator["steps"]["network"]["command"].startswith("metator network input.metacool")
     assert metator["steps"]["partition"]["command"].startswith("metator partition input.metacool")
     assert metator["pipeline"]["partition"]["command"].startswith("metator pipeline input.metacool")
+    # Both partitioned the network that both maps store, which the regroup
+    # of the map of the clusters left as it was: a validation reads it.
+    digests = {name: metator[name]["partition"][mtmc.NETWORK_DIGEST] for name in runs}
+    assert digests["steps"] == digests["pipeline"] == mtn.stored_network(str(written["pipeline"])).digest
     assert metator["steps"]["parameters"]["map"] == metator["pipeline"]["parameters"]["map"] == "input.metacool"
     assert "start" not in metator["steps"]["parameters"]
     # The rounds of the run, the final clusters those of the genomes of the
