@@ -147,6 +147,16 @@ minus one as the contamination of a cluster; the recursive
 partition divides it by the weighted completeness (see
 [Cluster quality](concepts.md#cluster-quality)).
 
+miComplete's numbers have two decimals, whole ones too (`Length`), the
+abundances four, and `step` none. The map of the clusters holds the same
+values, in its genomes table,
+and records how the table is written, under the `validation` entry of the
+`metator` key of its metadata: `summary_rows`, the clusters in the order of
+the lines; `summary_columns`, the columns in order; and `summary_formats`,
+the format of each column as printf writes it (`%.2f`, `%.4f`, `%d`, or
+`%s` for text and booleans), a missing value being an empty field. From
+them, the map alone writes the table again, byte for byte.
+
 ### binning.txt
 
 Each contig of a final cluster and its cluster, without header: the collection
