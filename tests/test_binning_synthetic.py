@@ -792,8 +792,9 @@ def test_steps_on_a_map_give_the_map_of_pipeline(metagenome, metagenome_inputs, 
     dataset (its dtype, shape, chunks, compression and values) and attribute
     of the HDF5 file, but the date it was written (creation-date) and the
     command line and parameters of the run that wrote it (the command and
-    parameters of the metator key of its metadata: pipeline's, validation's).
-    Each run is made in a directory of its own, with the same relative
+    parameters of the metator key of its metadata: pipeline's, validation's),
+    and the normalization of the network, which pipeline alone stores (see
+    metator.metacool.store_normalization). Each run is made in a directory of its own, with the same relative
     paths, which the history of the map records (the input map of
     metacooler reassign, the tables of metacooler annotate). The rounds are
     overlapping, recursive_1 (a cluster that the stub miComplete finds
@@ -858,6 +859,14 @@ def test_steps_on_a_map_give_the_map_of_pipeline(metagenome, metagenome_inputs, 
     for path in written.values():
         metacooler.validate(str(path), full=True)
     found = {name: walk(path) for name, path in written.items()}
+    # pipeline stores the normalization of its network in the map (#75):
+    # validation alone does not know it, as network does not store it in the
+    # map yet. Everything else is the same.
+    weights = "/bins/metator_empirical_hit"
+    assert weights in found["pipeline"] and weights not in found["steps"]
+    del found["pipeline"][weights]
+    kind, columns, attributes = found["pipeline"]["/bins"]
+    found["pipeline"]["/bins"] = (kind, [name for name in columns if name != "metator_empirical_hit"], attributes)
     assert _without_run(found["steps"]) == _without_run(found["pipeline"])
     # What differs: the command lines and their parameters, those of
     # pipeline and of validation.
