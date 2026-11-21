@@ -37,7 +37,7 @@ argument, `MAP`: a file, or an entry of a `.mmetacool` collection
 
 | From | The map |
 |---|---|
-| The reads of a library | `hicstuff pipeline -g assembly.fa -e DpnII -M metacool -P sample R1.fq.gz R2.fq.gz` aligns them and writes `sample.metacool` |
+| The reads of a library | `hicstuff pipeline -g assembly.fa -e DpnII -M metacool -P sample R1.fq.gz R2.fq.gz` aligns them and writes `sample.metacool` (from hicstuff's next release: see [Other tools](../other-tools.md#from-the-reads-to-the-map)) |
 | Pairs files | `metacooler create pairs --pairs sample.pairs.gz --bins 1000 -o sample.metacool` |
 | Several libraries | The map of each, summed with `metacooler merge L1.metacool L2.metacool -o sample.metacool` |
 

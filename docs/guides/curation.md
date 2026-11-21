@@ -10,7 +10,7 @@ explains the refinement itself.
 
 The commands below were written for anvi'o 7. They run on the output
 directory `binning` of a run on the map of two libraries, `L1` and `L2`, each
-made with `hicstuff pipeline -M metacool -n` (see
+made with `hicstuff pipeline -M metacool -n`, from hicstuff's next release (see
 [Other tools](../other-tools.md#from-the-reads-to-the-map)): `-n` keeps the
 alignments of hicstuff, which give the coverage of the contigs.
 

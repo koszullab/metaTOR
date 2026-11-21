@@ -177,24 +177,33 @@ def test_missing_input_files(metagenome, binning, tmp_path):
     assert not out.exists()
 
 
-@pytest.mark.parametrize("kind", ["contig", "cluster"])
-def test_non_ascii_names_are_refused(metagenome, binning, kind, tmp_path, monkeypatch):
+def test_non_ascii_cluster_names_are_refused(metagenome, binning, tmp_path, monkeypatch):
     """Before the map is read."""
     final_bin = _bin_names(metagenome)
     names = list(final_bin)
-    if kind == "cluster":
-        final_bin[names[0]] = final_bin[names[1]] = "bin_é"
+    final_bin[names[0]] = final_bin[names[1]] = "bin_é"
     contig_data = write_contig_data(metagenome, tmp_path / "contig_data_final.txt", final_bin)
-    if kind == "contig":
-        text = contig_data.read_text()
-        for name, new in [(names[0], "contig_é"), (names[1], "contig_ü")]:
-            text = text.replace(f"\t{name}\t", f"\t{new}\t")
-        contig_data.write_text(text)
     metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
     monkeypatch.setattr(metacooler, "MetaCooler", lambda *args, **kwargs: pytest.fail("map read"))
-    expected = "'contig_é', 'contig_ü'" if kind == "contig" else "'bin_é'."
-    with pytest.raises(mtmc.MetacoolError, match=f"needs ASCII {kind} names .* are not: {expected}"):
+    with pytest.raises(mtmc.MetacoolError, match=r"needs ASCII cluster names .* are not: 'bin_é'\."):
         mtmc.reassign_metacool(str(metacool), str(contig_data), str(tmp_path / "map.metacool"))
+
+
+def test_a_non_ascii_contig_that_the_map_lacks_is_left_out(metagenome, binning, tmp_path):
+    """A contig of the contig data that the map lacks (a contig of the
+    assembly that no read maps to) need not have an ASCII name, as no map
+    holds it: the map of the clusters is written without it, where the run
+    stopped once its clusters were made."""
+    final_bin = _bin_names(metagenome)
+    clustered = next(name for name, cluster in final_bin.items() if cluster != "ND")
+    contig_data = write_contig_data(metagenome, tmp_path / "contig_data_final.txt", final_bin)
+    text = contig_data.read_text()
+    contig_data.write_text(text.replace(f"\t{clustered}\t", "\tcontig_é\t"))
+    metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
+    out = tmp_path / "map.metacool"
+    mtmc.reassign_metacool(str(metacool), str(contig_data), str(out))
+    genome_of = assignment(out)
+    assert "contig_é" not in genome_of and genome_of[clustered] == "__unbinned__"
 
 
 def test_non_ascii_names_shown():

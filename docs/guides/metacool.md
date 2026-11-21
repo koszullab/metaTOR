@@ -354,8 +354,8 @@ another aligner:
 
 ```bash
 # One map of both libraries, one bin per contig, every contig in __unbinned__.
-samtools faidx assembly.fa
-awk -v OFS='\t' '{print $1, 0, $2}' assembly.fa.fai > contigs.bed
+python -c 'import sys; from Bio import SeqIO; [print(r.id, 0, len(r), sep="\t") for r in SeqIO.parse(sys.argv[1], "fasta")]' \
+    assembly.fa > contigs.bed
 metacooler create pairs --pairs hicstuff_L1/L1.valid_idx.pairs.gz \
     --pairs hicstuff_L2/L2.valid_idx.pairs.gz --bins contigs.bed --no-ps \
     --assembly-name assembly -o sample.metacool
@@ -380,8 +380,8 @@ metacooler create pairs --pairs hicstuff_L1/L1.valid_idx.pairs.gz \
   directory that must be writable.
 
 hicstuff aligns the reads with bowtie2 by default; `--mapping 5spm` aligns the
-mates with `bwa mem -5SPM`, as metaTOR 1.x did with `--aligner bwa`
-(`bwa mem -5SP`). On the test reads of metaTOR 1.x, `--mapping 5spm` finds the
+mates with `bwa mem -5SPM`, close to metaTOR 1.x's `--aligner bwa`, which ran
+`bwa mem -5SP`. On the test reads of metaTOR 1.x, `--mapping 5spm` finds the
 same 28,510 contacts between contigs as metaTOR 1.x with `--aligner bwa`, and
 bowtie2 the 41,563 contacts of `tests_data/alignment.pairs`, 18,632 of them
 between contigs.

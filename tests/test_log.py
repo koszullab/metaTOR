@@ -1,6 +1,8 @@
 # Tests of the logging helpers.
 
 import logging
+import subprocess
+import sys
 
 import pytest
 
@@ -9,13 +11,15 @@ import metator.log as mtl
 
 @pytest.fixture
 def restore_handlers():
-    """Put the metator logger handlers back as they were."""
-    saved = mtl.logger.handlers[:]
+    """Put the handlers of the metator logger, and of Python's warnings,
+    back as they were."""
+    saved = {log: log.handlers[:] for log in (mtl.logger, mtl.warnings_logger)}
     yield
-    for handler in mtl.logger.handlers:
-        if handler not in saved:
-            handler.close()
-    mtl.logger.handlers[:] = saved
+    for log, handlers in saved.items():
+        for handler in log.handlers:
+            if handler not in handlers:
+                handler.close()
+        log.handlers[:] = handlers
 
 
 def test_set_file_handler(tmp_path, restore_handlers):
@@ -27,3 +31,23 @@ def test_set_file_handler(tmp_path, restore_handlers):
     mtl.logger.info("hello")
     assert (tmp_path / "second.log").read_text().endswith(" :: INFO :: hello\n")
     assert (tmp_path / "first.log").read_text() == ""
+    assert mtl.warnings_logger.handlers == [mtl.stream_handler, *[h for h in mtl.logger.handlers if h is not mtl.stream_handler]]
+
+
+def test_python_warnings_are_shown_and_logged(tmp_path):
+    """Python's warnings (warnings.warn, which cooler gives the problems of a
+    map with) are shown, and written to the log file of the run, as
+    metaTOR's own messages are: without a handler, logging dropped them. In
+    a process of its own, as pytest catches the warnings of its tests."""
+    log = tmp_path / "run.log"
+    code = (
+        "import warnings\n"
+        "import metator.cli\n"
+        "import metator.log as mtl\n"
+        f"mtl.set_file_handler({str(log)!r})\n"
+        "warnings.warn('a problem of the map')\n"
+    )
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    assert result.stderr.startswith("WARNING :: ") and "UserWarning: a problem of the map" in result.stderr
+    logged = log.read_text()
+    assert " :: WARNING :: " in logged and "UserWarning: a problem of the map" in logged

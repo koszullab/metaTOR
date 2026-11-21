@@ -449,11 +449,14 @@ def _check_paths(outfile, force, inputs):
 def _checked_inputs(contig_data, outfile, force, inputs):
     """What the writer of the map of the bins (reassign_metacool) checks
     before any work, in this order: the outfile and the input files (see
-    _check_paths), then the contig data and its names. Returns what
-    read_contig_data reads."""
+    _check_paths), then the contig data and the names of its clusters.
+    Returns what read_contig_data reads. The contig names need no check:
+    those of the map are ASCII, as metacooler refuses others, and the
+    contigs of the contig data that the map lacks, a contig of the assembly
+    with another name among them, are left out of the map of the bins."""
     _check_paths(outfile, force, inputs)
     bins, contig_bin, contig_columns, header = read_contig_data(contig_data)
-    check_ascii_names(bins["chrom"], contig_bin.values())
+    check_ascii_names((), contig_bin.values())
     check_bin_names(contig_bin.values())
     return bins, contig_bin, contig_columns, header
 

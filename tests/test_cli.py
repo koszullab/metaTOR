@@ -393,15 +393,42 @@ def _pairs(tmp_path, contig="c1"):
     return pairs
 
 
-# The first bytes of a zstd and an lz4 file, which metaTOR does not know.
-ZSTD_START, LZ4_START = b"\x28\xb5\x2f\xfd", b"\x04\x22\x4d\x18"
-
 NON_ASCII_ASSEMBLY = ">NODE_1 a contig\n" + "ACGT" * 30 + "\n>NODE_522_é\n" + "ACGT" * 30 + "\n"
+
+
+@pytest.mark.parametrize("command", ["network", "pipeline"])
+@pytest.mark.parametrize("compression", ["bzip2", "zip"])
+def test_a_run_refuses_an_assembly_that_pyfastx_cannot_read(compression, command, stub_pipeline, tmp_path, run_cli, logged):
+    """An assembly compressed with bzip2 or zip, which metaTOR reads but
+    pyfastx, in the partition and the validation, does not, is refused
+    before any work: the clusters of an earlier run stay, even with -F
+    (pipeline)."""
+    import bz2
+    import zipfile
+
+    fasta = tmp_path / "assembly.fa"
+    if compression == "bzip2":
+        fasta.write_bytes(bz2.compress(b">c1\nACGT\n"))
+    else:
+        with zipfile.ZipFile(fasta, "w") as archive:
+            archive.writestr("assembly.fa", ">c1\nACGT\n")
+    earlier = tmp_path / "out" / "final_clusters" / "bin.fa"
+    earlier.parent.mkdir(parents=True)
+    earlier.write_text(">old\nA\n")
+    metacool = _contig_map(tmp_path / "map.metacool")
+    with pytest.raises(ValueError):
+        force = ["-F"] if command == "pipeline" else []
+        run_cli(command, metacool, "-a", fasta, *force, "-o", tmp_path / "out", "-T", tmp_path / "tmp")
+    assert earlier.exists() and not stub_pipeline
+    message = f"{fasta} is compressed with {compression}: give the assembly as a FASTA file, plain or compressed with gzip."
+    assert ("ERROR", message) in logged()
 
 
 def test_pipeline_from_a_map_keeps_the_contig_names(stub_pipeline, tmp_path, run_cli):
     """A guard: a run from a map does not check the contig names of the
-    assembly, as it builds no map of the contigs."""
+    assembly, as it builds no map of the contigs (nor does the map of its
+    clusters: see test_a_non_ascii_contig_that_the_map_lacks_is_left_out in
+    test_metacool.py)."""
     fasta = tmp_path / "assembly.fa"
     fasta.write_text(NON_ASCII_ASSEMBLY)
     metacool = _contig_map(tmp_path / "map.metacool")
@@ -1245,7 +1272,14 @@ def test_a_stale_lock_taken_by_a_third_run(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize(
     "case",
-    ["missing map", "no map written", "an entry", "a directory", "the collection of the input"],
+    [
+        "missing map",
+        "no map written",
+        "an entry",
+        "a directory",
+        "the collection of the input",
+        "the pyfastx index of the assembly",
+    ],
 )
 def test_pipeline_output_map_refusals(case, stub_pipeline, tmp_path, run_cli):
     """What --output-map cannot be, and an input map that is not there, are
@@ -1269,6 +1303,14 @@ def test_pipeline_output_map_refusals(case, stub_pipeline, tmp_path, run_cli):
         output.mkdir()
         options = ["--output-map", output, "-F"]
         message = f"{output} is a directory: --output-map takes the path of a .metacool file."
+    elif case == "the pyfastx index of the assembly":
+        # Not there yet: the run writes it, then removes it at its end.
+        output = f"{tmp_path / 'assembly.fa'}.fxi"
+        options = ["--output-map", output]
+        message = (
+            f"--output-map {output} is the pyfastx index of the assembly {tmp_path / 'assembly.fa'}, which the run "
+            "removes at its end: write the map elsewhere."
+        )
     else:
         collection = _collection(tmp_path / "maps.mmetacool", "rep1")
         given = f"{collection}::entries/rep1"
@@ -1574,8 +1616,8 @@ def test_network_from_a_metacool(monkeypatch, tmp_path, run_cli):
 # What the first argument of a network or pipeline run cannot be, refused
 # before any work, the reason in its log file.
 NOT_A_MAP = (
-    "{name} is not a .metacool contact map: make the map of the contigs from the pairs of the run with hicstuff "
-    "pipeline -M metacool, or metacooler create pairs."
+    "{name} is not a .metacool contact map: make the map of the contigs with hicstuff pipeline -M metacool, from "
+    "the reads of the run, or metacooler create pairs, from its pairs files."
 )
 RUN_INPUT_ERRORS = {
     "reads as the first argument": (["{reads}"], NOT_A_MAP.replace("{name}", "{reads}")),

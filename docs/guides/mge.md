@@ -28,8 +28,9 @@ Each contig that was never merged is an MGE cluster of its own.
 ## Running it
 
 ```bash
-# Index the pairs of the library that hicstuff wrote with the map (once)
-pairix -p pairs hicstuff/sample.valid_idx.pairs.gz
+# Index the pairs of the library that hicstuff wrote with the map (once), with
+# pypairix, which comes with metaTOR (or pairix -p pairs, with pairix's tools)
+python -c 'import pypairix; pypairix.build_index("hicstuff/sample.valid_idx.pairs.gz", "pairs")'
 
 metator mge -a assembly.fa -c binning/contig_data_final.txt -b binning/binning.txt \
     -m mges.txt -o mge hicstuff/sample.valid_idx.pairs.gz

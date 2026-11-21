@@ -227,8 +227,8 @@ def run_input(input_map):
     path = refuse_missing_map(input_map)
     if not mtmc.is_map(input_map):
         logger.error(
-            f"{input_map} is not a .metacool contact map: make the map of the contigs from the pairs of the run with "
-            "hicstuff pipeline -M metacool, or metacooler create pairs."
+            f"{input_map} is not a .metacool contact map: make the map of the contigs with hicstuff pipeline -M "
+            "metacool, from the reads of the run, or metacooler create pairs, from its pairs files."
         )
         raise ValueError
     refuse_a_map_named_as_a_uri(input_map, path)
@@ -276,12 +276,23 @@ def open_input_map(input_map):
         raise
 
 
-def refuse_an_input_as_the_map(output_map, inputs):
+def refuse_an_input_as_the_map(output_map, inputs, assembly=None):
     """Refuse, before any work, an --output-map that is one of the files of
     the inputs of the run (the assembly, a table): the run would replace it
-    with its map. The reason is logged as an error, then MetacoolError is
-    raised."""
-    if output_map is None or not os.path.exists(output_map):
+    with its map; or the pyfastx index of the assembly (<assembly>.fxi),
+    there or not: the run removes it at its end (see
+    metator.io.remove_pyfastx_index), with the map. The reason is logged as
+    an error, then MetacoolError is raised."""
+    if output_map is None:
+        return
+    if assembly is not None and os.path.realpath(output_map) == os.path.realpath(f"{assembly}.fxi"):
+        reason = (
+            f"--output-map {output_map} is the pyfastx index of the assembly {assembly}, which the run removes at "
+            "its end: write the map elsewhere."
+        )
+        logger.error(reason)
+        raise mtmc.MetacoolError(reason)
+    if not os.path.exists(output_map):
         return
     for path in inputs:
         if path is not None and os.path.isfile(path) and os.path.samefile(path, output_map):
@@ -327,7 +338,7 @@ def warn_of_what_is_replaced(command, metacool):
         )
 
 
-def step_map(command, input_map, output_map, force, held, contigs=None, inputs=(), option=None):
+def step_map(command, input_map, output_map, force, held, contigs=None, inputs=(), option=None, assembly=None):
     """The map that a partition, validation or mge run (command) writes, or
     None for a run without one. A run step by step from a map (network MAP,
     then partition MAP and validation MAP) updates the map, its first
@@ -345,7 +356,8 @@ def step_map(command, input_map, output_map, force, held, contigs=None, inputs=(
     collection rather than one of its entries, for example); a map that is
     no map of the contigs of contigs, the contig data file of the run
     (other contigs or lengths: see metator.metacool.check_map_of_contigs);
-    an output_map that is one of the files of contigs and inputs; what
+    an output_map that is one of the files of contigs and inputs, or the
+    pyfastx index of the assembly (see refuse_an_input_as_the_map); what
     run_map_path refuses (an entry of a collection without output_map, an
     output_map that is an entry, a directory, the collection of the input
     entry, or that exists and is not the input map, without force); and a
@@ -379,7 +391,7 @@ def step_map(command, input_map, output_map, force, held, contigs=None, inputs=(
         except mtmc.MetacoolError as error:
             logger.error(str(error))
             raise
-    refuse_an_input_as_the_map(output_map, [contigs, *inputs])
+    refuse_an_input_as_the_map(output_map, [contigs, *inputs], assembly)
     outfile = run_map_path(input_map, output_map, force)
     held.enter_context(terminated_as_interrupted())
     held.enter_context(mtmc.map_lock(outfile))
@@ -415,7 +427,18 @@ def refuse_an_input_in_the_outputs(path, outputs, force, option):
 
 
 def start_step(
-    command, outdir, cluster_dirs, input_map, output_map, force, held, prefix=None, contigs=None, inputs=(), outputs_of_1x=()
+    command,
+    outdir,
+    cluster_dirs,
+    input_map,
+    output_map,
+    force,
+    held,
+    prefix=None,
+    contigs=None,
+    inputs=(),
+    outputs_of_1x=(),
+    assembly=None,
 ):
     """Start a partition or validation run (command) in outdir: its log file,
     the map that it writes (see step_map) and its directories of clusters
@@ -446,7 +469,7 @@ def start_step(
         replace_outputs()
     log_file = log_file_name(outdir, command)
     generate_log_header(log_file)
-    metacool_file = step_map(command, input_map, output_map, force, held, contigs, inputs)
+    metacool_file = step_map(command, input_map, output_map, force, held, contigs, inputs, assembly=assembly)
     if with_a_map:
         bins_prefix = bin_prefix(prefix)
         replace_outputs()
@@ -470,8 +493,16 @@ def contig_network(metacool, contig_data, outdir, tmp_dir, threads, *args):
 
 def check_assembly(assembly):
     """Refuse, before any work, an assembly (-a) that is not a FASTA file,
-    plain or compressed (see metator.io.check_is_fasta): the reason is
-    logged as an error, then ValueError is raised."""
+    plain or compressed with gzip, as pyfastx reads it in the partition and
+    the validation (metator.io.check_is_fasta reads bzip2 and zip files
+    too): the reason is logged as an error, then ValueError is raised."""
+    compression = mio.file_compression(assembly) if os.path.isfile(assembly) else None
+    if compression in ("bz2", "zip"):
+        logger.error(
+            f"{assembly} is compressed with {'bzip2' if compression == 'bz2' else 'zip'}: give the assembly as a "
+            "FASTA file, plain or compressed with gzip."
+        )
+        raise ValueError
     if not mio.check_is_fasta(assembly):
         logger.error(f"{assembly} is not a FASTA file: give the assembly that the map was made from.")
         raise ValueError
@@ -636,15 +667,14 @@ def run_map_path(input_map, output_map=None, force=False, no_metacool=False):
         If output_map is given with no_metacool (no map is written), names
         an entry of a collection or a directory, is the collection of the
         input map (an entry), or exists and is not the input map, without
-        force; if the input map is not there; if the input map is an entry
-        of a .mmetacool collection, without output_map: updating it in place
-        would rewrite the whole collection; or if the directory of
-        output_map cannot be made.
+        force; if the input map is an entry of a .mmetacool collection,
+        without output_map: updating it in place would rewrite the whole
+        collection; or if the directory of output_map cannot be made. The
+        input map is there: run_input and step_map refuse a missing one
+        first.
     """
     reason = None
-    if not os.path.exists(mtmc.map_file(input_map)):
-        reason = f"Cannot read the contact map {input_map}: no such file."
-    elif output_map and no_metacool:
+    if output_map and no_metacool:
         reason = f"--no-metacool writes no map: drop --output-map {output_map}, or --no-metacool."
     elif output_map and "::" in str(output_map):
         reason = f"--output-map takes the path of a .metacool file, not an entry of a collection: {output_map}."
@@ -1221,6 +1251,7 @@ def partition(
             contigs,
             [assembly, network],
             [join(outdir, "overlapping_bin")],
+            assembly,
         )
 
         # Partition the network
@@ -1382,6 +1413,7 @@ def validation(
             contigs,
             [assembly, network],
             outputs_of_1x,
+            assembly,
         )
 
         mtv.recursive_decontamination(
@@ -1455,7 +1487,7 @@ def validation(
     "bin_summary.txt), and the plots of an earlier run (plot), which metaTOR 2.0 no longer draws."
 )
 @tmpdir_option()
-@threads_option(help="Number of parallel threads allocated for the partition and the validation.")
+@threads_option(help="Number of parallel threads allocated to sort the network, and for the partition and the validation.")
 @no_clean_up_option()
 @_option(
     "--no-metacool",
@@ -1526,7 +1558,7 @@ def pipeline(
         # they were.
         run_input(map)
         metacool_file = run_map_path(map, output_map, force, no_metacool)
-        refuse_an_input_as_the_map(output_map, [assembly, depth])
+        refuse_an_input_as_the_map(output_map, [assembly, depth], assembly)
         check_normalization(normalization, enzyme, depth, map)
         bins_prefix = bin_prefix(prefix)
         # A run that writes its map holds the map's lock from now on: a second
@@ -1753,6 +1785,7 @@ def mge(
             # The pairs files and their pypairix index too.
             [assembly, binning, mges, *pairsfile, *(f"{path}.px2" for path in pairsfile)],
             option="--map",
+            assembly=assembly,
         )
 
         # Defined the output directory and output file names.

@@ -57,6 +57,8 @@ head binning/cluster_summary.txt
 metacooler dump -t genomes -H hicstuff/sample.metacool
 ```
 
-The [Quickstart](quickstart.md) runs the same steps on the test data of the
+`-M metacool` comes with hicstuff's next release: see
+[Other tools](other-tools.md#from-the-reads-to-the-map). The
+[Quickstart](quickstart.md) runs the same steps on the test data of the
 repository, and [Concepts](concepts.md) explains the network, the partition
 and the validation.

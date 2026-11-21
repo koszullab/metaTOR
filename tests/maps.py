@@ -21,9 +21,10 @@ ASSEMBLY_COLUMNS = {"GC_content": "GC", "Shotgun_coverage": "coverage", "Restric
 
 def contig_map(pairs, contig_data, outfile, assembly_name=None, columns=True, metadata=None):
     """The map of the contigs that a run starts from, made from its pairs
-    files as hicstuff (pipeline -M metacool) and metacooler (create pairs)
-    make it: one bin per contig, every contig in __unbinned__, the longest
-    first, with the contact statistics of the reads (the QC block). With
+    files as metacooler create pairs makes it: one bin per contig (hicstuff
+    pipeline -M metacool makes one bin per restriction fragment, which gives
+    the same network), every contig in __unbinned__, the longest first, with
+    the contact statistics of the reads (the QC block). With
     columns, its contigs table also holds what metaTOR measures on the
     assembly (ASSEMBLY_COLUMNS: GC_content, and Shotgun_coverage and
     Restriction_site where measured), added with metacooler annotate, as

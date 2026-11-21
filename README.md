@@ -251,8 +251,8 @@ and the tools built on it read it as any `.cool` file, and `metacooler` adds the
 import cooler
 import metacooler
 
-clr = cooler.Cooler("metator.metacool")
-mc = metacooler.MetaCooler("metator.metacool")
+clr = cooler.Cooler("sample.metacool")
+mc = metacooler.MetaCooler("sample.metacool")
 mc.genomes  # one row per cluster, with the columns of cluster_summary.txt
 mc.contigs  # one row per contig, with its GC content and Hi-C hits (see above)
 ```

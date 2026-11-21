@@ -513,6 +513,15 @@ MGE_MAP_ERRORS = {
         ["--map", "{map}", "--output-map", "{directory}"],
         "{directory} is a directory: --output-map takes the path of a .metacool file.",
     ),
+    # The run removes it at its end: refused there or not.
+    **{
+        f"the pyfastx index of the assembly{where} as --output-map": (
+            ["--map", "{map}", "--output-map", "{index}", "-F"],
+            "--output-map {index} is the pyfastx index of the assembly {assembly}, which the run removes at its end: "
+            "write the map elsewhere.",
+        )
+        for where in ["", ", not there,"]
+    },
     "an existing --output-map": (
         ["--map", "{map}", "--output-map", "{copy}"],
         "{copy} exists: give -F to replace it with the map of this run, or another --output-map.",
@@ -566,6 +575,10 @@ def test_mge_on_a_map_refused(case, mge_run, metagenome_indexed_pairs, tmp_path,
         _lock(metacool, os.getpid())
     names.update(zip(["assembly", "contigs", "binning", "mges"], args[1:8:2], strict=True))
     names["pairs_index"] = f"{names['pairs']}.px2"
+    names["index"] = f"{names['assembly']}.fxi"
+    if case == "the pyfastx index of the assembly as --output-map":
+        # Left by an earlier run.
+        Path(names["index"]).write_text("index")
     contig_data = pd.read_csv(names["contigs"], sep="\t")
     names["contig"], names["length"] = str(contig_data.Name[0]), int(contig_data.Size[0])
     names["short"] = names["length"] - 500

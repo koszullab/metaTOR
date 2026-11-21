@@ -270,7 +270,8 @@ All notable changes to this project will be documented in this file.
 - **Breaking:** the reads, alignments and pairs inputs of `network` and
   `pipeline`: a run starts from a `.metacool` contact map of the contigs,
   `MAP`, their first argument, which they now require. hicstuff makes it
-  from the reads (`hicstuff pipeline -M metacool`), and metacooler from
+  from the reads (`hicstuff pipeline -M metacool`, from hicstuff's next
+  release), and metacooler from
   pairs files (`metacooler create pairs`) or a `.cool` file (`metacooler
   create cool`); `metacooler merge` sums the maps of several libraries (see
   [Other tools](other-tools.md#from-the-reads-to-the-map) and the
@@ -279,34 +280,34 @@ All notable changes to this project will be documented in this file.
   give the same network and contig data, byte for byte. Removed with them:
   - the options `-1/--forward`, `-2/--reverse`, `-S/--start`,
     `-b/--aligner`, `-B/--aligner-mode` and `-q/--min-quality`: a command
-    line that gives one is refused as an unknown option, a usage error (exit
-    status 2), without a hint, as is `--edge` (below);
+    line that gives one is refused by click as an unknown option, a usage
+    error (exit status 2), as is `--edge` (below); click may suggest an
+    option of a near name (`--force` for `--forward`);
   - the outputs of the alignment: `alignment_<i>.bam`,
     `alignment_<i>_for.bam` and `alignment_<i>_rev.bam`; the pairs files
     `alignment_<i>_sorted.pairs.gz` and their index (`network`, and
     `pipeline -N`); the network of each library, `network_<i>.txt`
-    (`network_0.txt` included), and `hit_data_alignment.txt`; and the maps of
-    the libraries of a run, `<prefix>.mmetacool`. `pipeline` no longer writes
-    `<outdir>/metator.metacool`: it writes the map of the clusters over
-    `MAP`, or to `--output-map`, and `--prefix` names the clusters only;
+    (`network_0.txt` included), and `hit_data_alignment.txt`. `pipeline` no
+    longer writes `<outdir>/metator.metacool`: it writes the map of the
+    clusters over `MAP`, or to `--output-map`, and `--prefix` names the
+    clusters only;
   - `--assembly` as the basename of a bowtie2 or bwa index: it is the FASTA
-    file of the assembly, plain or compressed with gzip, which a run no
-    longer refuses as `--output-map` when it has a pyfastx index;
-  - the refusals of an `--output-map` named as, or next to, a `.mmetacool`
-    collection, where a run of several libraries wrote their maps, and of an
-    input named as the map that a run from reads, alignments or pairs built;
+    file of the assembly, plain or compressed with gzip, and one compressed
+    with bzip2 or zip, which pyfastx cannot read, is refused before any work;
   - the dependencies on hicstuff and pysam, and the programs bowtie2, bwa
     and samtools: prodigal and hmmer stay, for miComplete. `metator mge`
     still reads pairs files: those of hicstuff, once indexed with pairix.
 
   Python API: the module `metator.align`; `metator.network.alignment_to_contacts`,
-  `precompute_network`, `compute_network` and `write_hit_data`, the
-  `libraries` argument of `metacool_to_contacts`, and `nb_alignment` and
-  `hit_data`, of `create_contig_data`, which returns the contig data
-  alone; `metator.metacool.write_contig_map`, `write_library_maps`,
-  `library_entry` and `ASSEMBLY_COLUMNS`; and `metator.io.check_fasta_index`,
-  `generate_fasta_index`, `retrieve_fasta`, `read_fasta_names`,
-  `sort_and_index_pairs` and `check_pypairix`.
+  `precompute_network`, `compute_network` and `write_hit_data`, and
+  `nb_alignment` and `hit_data`, of `create_contig_data`, which returns the
+  contig data alone; and `metator.io.check_fasta_index`,
+  `generate_fasta_index`, `retrieve_fasta`, `sort_and_index_pairs` and
+  `check_pypairix`.
+- Python's warnings (`warnings.warn`, which cooler gives the problems of a
+  map with) are shown, and written to the log file of a run, as metaTOR's
+  own messages (`WARNING :: ...`): logging dropped them once metaTOR no
+  longer imported hicstuff, which printed them.
 - **Breaking:** `--edge` (`-E`) of `network` and `pipeline`: the network
   counts every pair, as its contact map does, which holds the contacts of
   bins, not the positions of the reads (see Changed for the pairs that

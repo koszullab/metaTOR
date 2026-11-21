@@ -39,9 +39,10 @@ metator pipeline [OPTIONS] MAP
 ```
 
 The run starts from a `.metacool` contact map of the contigs, `MAP`, which
-hicstuff makes from the reads (`hicstuff pipeline -M metacool`), or metacooler
-from pairs files (`metacooler create pairs`): see
-[Other tools](other-tools.md).
+hicstuff makes from the reads (`hicstuff pipeline -M metacool`, from
+hicstuff's next release), or metacooler from pairs files
+(`metacooler create pairs`): see
+[Other tools](other-tools.md#from-the-reads-to-the-map).
 
 | Option | Default | Description |
 |---|---|---|
@@ -62,7 +63,7 @@ from pairs files (`metacooler create pairs`): see
 | `-p, --prefix` | none | Name the clusters `<prefix>_metator_…`. Letters, digits, `_` and `-` only. |
 | `-F, --force` | off | Replace the directories of clusters of an earlier run, and an existing `--output-map` file. Removes the outputs of a run of metaTOR 1.x: `overlapping_bin/`, `recursive_bin/`, `final_bin/`, `final_bin_unscaffold/` and `bin_summary.txt`, and the plots of an earlier run, `plot/`, which metaTOR 2.0 no longer draws. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory. |
-| `-t, --threads` | `1` | Threads for the partition and the validation (miComplete). |
+| `-t, --threads` | `1` | Threads to sort the network, and for the partition and the validation (miComplete). |
 | `-N, --no-clean-up` | off | Keep the temporary files. |
 | `--no-metacool` | off | Do not write the contact map of the clusters: the map of the run is left as it was. |
 | `--output-map` | none | Write the contact map of the clusters to this file (replaced only with `-F`), and leave `MAP` as it was. By default, the run updates `MAP` in place. |
@@ -248,6 +249,10 @@ replaces the clusters of the map drops the round `mge`, with a warning.
 | `--output-map` | none | With `--map`: write the map with the MGE clusters to this file (replaced only with `-F`), and leave `MAP` as it was. |
 
 ```bash
+# Index the pairs that hicstuff wrote with the map (once): mge needs the index
+# of a compressed pairs file
+python -c 'import pypairix; pypairix.build_index("hicstuff/sample.valid_idx.pairs.gz", "pairs")'
+
 metator mge -a assembly.fa -c binning/contig_data_final.txt -b binning/binning.txt \
     -m mges.txt -o mge hicstuff/sample.valid_idx.pairs.gz
 
