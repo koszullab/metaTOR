@@ -53,15 +53,13 @@ before installing `metator`:
 * The following dependencies should also be locally installed and available in the `$PATH`:
     * [`bowtie2`](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml) or `bwa`
     * [`samtools`](https://www.htslib.org/download/)
-    * [`hmmer`](http://hmmer.org/documentation.html)
-    * [`prodigal`](https://github.com/hyattpd/Prodigal)
 
 **Warning:** note that if you install `metator` with `pip`, this may upgrade/downgrade 
 versions of the above dependencies and may cause conflicts with other softwares.
 
 ```sh
-# Install bowtie2, bwa, samtools, hmmer and prodigal:
-sudo apt update && sudo apt install bowtie2 bwa samtools hmmer prodigal
+# Install bowtie2, bwa and samtools:
+sudo apt update && sudo apt install bowtie2 bwa samtools
 
 # Install metator from Pypi
 pip3 install metator

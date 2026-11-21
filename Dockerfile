@@ -10,7 +10,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 USER $MAMBA_USER
 
-# Non-Python tools: aligners, prodigal, hmmer...
+# Non-Python tools: the aligners and samtools.
 COPY --chown=$MAMBA_USER:$MAMBA_USER metator.yaml /tmp/metator.yaml
 RUN micromamba install -y -n base -f /tmp/metator.yaml python=$PY_VERSION \
     && micromamba clean --all --yes

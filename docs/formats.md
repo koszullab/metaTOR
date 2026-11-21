@@ -118,7 +118,7 @@ first columns are those of miComplete:
 | `Completeness`, `Redundancy` | The share of the markers found, and their mean number of copies (1 for no duplicate) |
 | `Weighted completeness`, `Weighted redundancy` | The same, with miComplete's weights of the markers of the set |
 | `Contigs`, `N50`, `L50`, `N90`, `L90` | Its number of contigs, and the N50, L50, N90 and L90 of their sizes |
-| `CDs` | Its number of coding sequences, found by prodigal |
+| `CDs` | Its number of coding sequences, found by Prodigal (pyrodigal) |
 | `recursive` | Whether the bin comes from the recursive partition |
 | `step` | The recursive step that made the bin, 0 for an overlapping bin |
 | `parent` | The bin it was split from (an overlapping bin at step 1, a recursive bin after), empty otherwise |

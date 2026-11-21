@@ -88,7 +88,8 @@ written as FASTA files, in `overlapping_bin/`: they are the bins to validate.
 ## Validation and recursive bins
 
 Each bin is checked with [miComplete](https://pypi.org/project/micomplete/),
-which counts single-copy marker genes, found by prodigal and hmmer: their
+which counts single-copy marker genes, found by Prodigal and HMMER (through
+pyrodigal and pyhmmer): their
 share gives the **completeness** of the bin, and their copies its
 **redundancy**. A bin with a weighted completeness of at least 33% whose
 contamination, (redundancy − 1) / completeness, reaches 5% is partitioned

@@ -70,6 +70,14 @@ All notable changes to this project will be documented in this file.
   `check_map_contigs`.
 
 ### Changed
+- Validation runs Prodigal and HMMER through pyrodigal and pyhmmer, their
+  Python bindings, which pip installs with metaTOR, in place of the
+  prodigal and hmmsearch programs that miComplete runs
+  (`metator._micomplete`): prodigal and hmmer no longer need installing,
+  with pip, with conda (`metator.yaml`) or in the Docker image. miComplete
+  gives the bins of the tests the rows that prodigal 2.6.3 and HMMER 3.4
+  gave them, and a bin of less than 20 kb still gets no gene, as prodigal
+  finds none in it.
 - `pipeline` from reads, alignments or pairs reads its pairs files into
   its `.metacool` map once, as soon as it has them: the map of the
   contigs, every contig in `__unbinned__`, with their contacts, the
