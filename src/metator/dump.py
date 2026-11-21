@@ -3,37 +3,17 @@
 
 """The tables of a run, written from the map of its clusters: metator dump.
 
-A run of metaTOR (``metator pipeline``, or ``network``, ``partition`` and
-``validation`` one by one) keeps everything it finds in its map (see
-metator.metacool): the network of the contigs, every clustering round and the
-summary of the final clusters. It writes the tables of its validation in its
-temporary directory only, which ``-N`` keeps. ``metator dump MAP -o DIR``
-writes them from the map, read only:
+A run keeps everything it finds in its map and writes its tables in its
+temporary directory only. ``metator dump MAP -o DIR`` writes them from the
+map, read only: ``contig_data_final.txt`` (in the map's order, without the
+``ID`` column, whose values were positions in the map the run read),
+``cluster_summary.txt`` (rows, columns and formats as the validation
+recorded them), ``binning.txt``, ``clusters.txt``, ``cluster_members.txt``
+and ``network.txt``.
 
-- ``contig_data_final.txt``: one row per contig of the map, in its order:
-  ``Name``, ``Size``, ``GC_content``, ``Hit``, ``Shotgun_coverage``,
-  ``Restriction_site``, then the ID, the number of contigs and the size of
-  its core, overlapping and recursive clusters, then its ``Final_cluster``,
-  with the values that the validation writes (``-`` for no cluster,
-  ``00000`` for no recursive cluster, ``ND`` for no final cluster), but no
-  ``ID`` column: the ID of a contig was its position in the map that the
-  run read, which a run that writes the map of its clusters changes (see
-  :func:`contig_data_final`).
-- ``cluster_summary.txt``: one row per final cluster, as the validation
-  wrote it: the map records its rows, its columns and their formats, and
-  holds its values (see :func:`cluster_summary`).
-- ``binning.txt``: each contig of a final cluster, and its cluster.
-- ``clusters.txt`` and ``cluster_members.txt``: every clustering round of the
-  map, as the validation writes them (see metator.clusters).
-- ``network.txt``: the network of the contigs, as metator network stored it
-  (see :func:`network_table`).
-
-The map must be the map of the clusters as the run wrote it (see
-:func:`check_dumpable`, :func:`summary_layout` and :func:`check_network`),
-and the tables are of one state of it: every table is read through one
-opened map, and a map replaced while it is read is refused. The tables are
-written under temporary names, then renamed onto their own all at once: a
-dump that fails leaves the output directory as it was.
+The map must be the map of the clusters as its run wrote it (see
+check_dumpable); every table is read through one opened map, and they are
+renamed into place all at once.
 """
 
 import os
@@ -77,6 +57,10 @@ RECURSIVE_COLUMNS = ("Recursive_cluster_ID", "Recursive_cluster_contigs", "Recur
 def check_dumpable(metacool, mc):
     """Refuse a map that holds no run to dump, or whose clusters were edited since
     the run wrote them.
+
+    A map whose genomes are no longer the final clusters of its run (a
+    metacooler reassign, a curation by hand) is refused too: its summary would
+    contradict its clusters.
 
     Returns
     -------
@@ -377,6 +361,9 @@ def dump(metacool, outdir, force=False):
     docstring) in outdir, made if it is not there. The map is read only: every
     table comes from one state of the map, read through one opened map, which
     is refused if it was replaced or written while it was read.
+
+    The tables are written under temporary names, then renamed: an earlier
+    dump's tables are replaced all at once, or not at all.
 
     Parameters
     ----------

@@ -47,7 +47,10 @@ GENERAL = "Options"
 
 
 def bin_prefix(user_prefix):
-    """Prefix of the bin names: "metator" or "<--prefix>_metator"."""
+    """Prefix of the bin names: "metator" or "<--prefix>_metator".
+
+    miComplete drops every dot of a FASTA file name, so only letters, digits, _
+    and - are accepted."""
     if not user_prefix:
         return "metator"
     if not re.fullmatch(r"[A-Za-z0-9_-]+", user_prefix):
@@ -61,7 +64,11 @@ def bin_prefix(user_prefix):
 
 @contextmanager
 def private_tmp_dir(tmpdir, clean_up=True):
-    """This run's private temporary directory, inside --tmpdir."""
+    """This run's private temporary directory, inside --tmpdir.
+
+    --tmpdir may hold the user's own files, so the run works in a fresh random
+    subdirectory and removes only that, and --tmpdir only if it made it and it
+    is empty."""
     base = tmpdir or "./tmp"
     base_created = not exists(base)
     tmp_dir = mio.generate_temp_dir(base)
@@ -327,7 +334,9 @@ def warn_of_what_is_replaced(command, metacool, rounds=None):
     """Warn, before any work, that a run (command) that updates the map metacool
     in place replaces what the map holds already: its clusters (the genomes
     other than __unbinned__, of an earlier run, or of another binner), and its
-    clustering rounds made by an earlier run (see REPLACED_IN_PLACE)."""
+    clustering rounds made by an earlier run (see REPLACED_IN_PLACE).
+
+    Neither can be found again in the updated map."""
     clusters, steps = REPLACED_IN_PLACE[command]
     replaced = (lambda entry: entry.get("step") in steps) if rounds is None else (lambda entry: entry.get("name") in rounds)
     try:
@@ -536,7 +545,11 @@ def hold_lock(held, path, in_place):
     """Hold the lock of the map at path until the end of the run (in held, an
     ExitStack): metacooler's (metacooler.lock), which every writer of the map
     takes too, and which the edit session that writes the map at the end of the
-    run re-enters (see metator.metacool._staged_edit)."""
+    run re-enters (see metator.metacool._staged_edit).
+
+    In place, the lock is the file a symbolic link points to, as metacooler
+    edits it; with --output-map, FILE's own name, so runs from one map, each
+    with its own --output-map, run side by side."""
     import metacooler
 
     try:
@@ -644,7 +657,10 @@ def write_map(metacool, outfile, planned, what="the map of the clusters", **stor
     metacool, the input map of the run, which outfile is by default: what the
     run stores in it (stores: its network, its partition, its final clusters or
     its MGE clusters, see metator.metacool.write_map), in one edit session of
-    metacooler."""
+    metacooler.
+
+    The map is refused if it changed since planned was opened, and outfile is
+    only replaced once the new map is written and validated."""
     # What the error adds when the new map is not written.
     kept = ""
     try:
@@ -682,7 +698,10 @@ def stale_partition(planned, contacts, table, normalization):
     every round) that was made on another network than the one the run stores
     (see metator.metacool.partition_network): its digest (see
     metator.network.network_digest), from the contacts of the map and the
-    contig data of the run (table), with its normalization."""
+    contig data of the run (table), with its normalization.
+
+    Read before the run writes the map; metator validation refuses such a
+    partition until metator partition runs again."""
     if not mtmc.holds_partition(planned):
         return False
     digest = mtn.network_digest(contacts, mtn.network_weights(table, normalization), table["Name"], normalization)
@@ -755,7 +774,10 @@ def check_final_clusters(assignment, final_fasta_dir):
     """Refuse the final clusters of a validation (assignment: the final cluster of
     each binned contig, by name) that are not those of the FASTA files it wrote
     in final_fasta_dir: a file of a cluster without a contig, or a cluster
-    without a file."""
+    without a file.
+
+    A name read as another (00123 as the number 123) would leave its cluster
+    without contigs."""
     written = {name[: -len(".fa")] for name in os.listdir(final_fasta_dir) if name.endswith(".fa")}
     clustered = set(assignment.values())
     if written == clustered:

@@ -3,35 +3,12 @@
 
 """The metaHiC network of the contigs of a .metacool contact map.
 
-The network sums the contacts of the map by pair of contigs (see
-contig_contacts: metacooler's network of the contigs), and weighs each edge
-with the normalization of the network (see map_network): the count of the
-pair times one weight per contig, which metator network stores in the map as
-weights of its bins (see metator.metacool.store_network). Its nodes are the
-contigs of the map, by their position in it.
-
-What metaTOR measures on each contig (see create_contig_data) is stored in
-the contigs table of the map by metator network too, and read from it by
-the steps after it (see map_contig_table): the map is the network that they
-partition.
-
-Core functions to build the network are:
-    - check_map_contigs
-    - contig_contacts
-    - contig_data_from_map
-    - contig_data_table
-    - contig_hits
-    - create_contig_data
-    - map_columns
-    - map_contig_table
-    - map_network
-    - network_digest
-    - network_normalization
-    - network_weights
-    - normalization_weights
-    - relabel_network
-    - stored_network
-    - stored_weights
+The network sums the map's contacts by pair of contigs (contig_contacts) and
+weighs each edge with the normalization (map_network): the count times one
+weight per contig, which metator network stores in the map as weights of its
+bins, next to what it measures on each contig in the contigs table
+(create_contig_data, map_contig_table). Its nodes are the contigs of the
+map, by their position in it.
 """
 
 import logging
@@ -61,6 +38,10 @@ CONTIG_TABLE_COLUMNS = ["ID", "Name", "Size", "GC_content", "Hit", "Shotgun_cove
 
 def contig_contacts(metacool, chunksize=METACOOL_CHUNKSIZE):
     """Contacts of a .metacool contact map summed by pair of contigs.
+
+    metacooler sums the pixels between the bins of each two contigs, by contig
+    id, whatever the bin size, chunksize pixels at a time: memory grows with
+    the contig pairs in contact, not with the pixels.
 
     Parameters
     ----------
@@ -150,6 +131,10 @@ def map_network(metacool, weights="stored", contacts=None):
     each two contigs of the map in contact, weighed with the normalization of
     the network.
 
+    An edge weighs count * w[i] * w[j], as cooler applies balancing weights,
+    with the map's stored weights by default, the weights given, or none (the
+    counts) for None. Edges of weight 0 or NaN are dropped.
+
     Parameters
     ----------
     metacool : str
@@ -229,7 +214,7 @@ def relabel_network(network, names, ids):
 
 def network_normalization(metacool, mc=None):
     """The normalization of the network that metator network stored in a map (see
-    metator.metacool.store_network): that of the entry network of the metator
+    metator.metacool.write_map): that of the entry network of the metator
     key of its metadata, which a pipeline run writes too. "None" for the raw
     counts.
 
@@ -276,6 +261,10 @@ def stored_network(metacool, mc=None):
     weights (see map_network and stored_weights), its normalization (see
     network_normalization), and its identity (see network_digest), which
     partition records with the partition that it stores, and validation checks.
+
+    Given mc, every table is read through it, so a map replaced since is
+    refused as replaced before its Hit column is checked. Hit must still be the
+    hits of the contacts.
 
     Parameters
     ----------
@@ -340,7 +329,7 @@ def _check_network_columns(metacool, columns):
 def stored_weights(metacool, mc=None):
     """The weights of the contigs of a map for the normalization of its network,
     which metator network stored in it as the weights metator_<normalization>
-    of its bins (see network_normalization and metator.metacool.store_network):
+    of its bins (see network_normalization and metator.metacool.write_map):
     one per contig, in the order of the map, the weight of each of its bins.
     None for the normalization None, whose network is the counts.
 
@@ -464,7 +453,7 @@ def contig_data_table(contig_data, names, hits, metacool=None):
 def map_contig_table(metacool, mc=None):
     """The contig data of the contigs of a map, in its order (see contig_table),
     as metator network stored them in its contigs table (see
-    metator.metacool.store_network): GC_content and Hit, and Shotgun_coverage
+    metator.metacool.write_map): GC_content and Hit, and Shotgun_coverage
     and Restriction_site when the run measured them. Given mc, the map opened,
     it is read through it.
 
@@ -682,6 +671,9 @@ def contig_data_from_map(metacool, contig_data, enzyme=None, depth=None):
     fill in a column that the map lacks, and replace one that it has, with a
     warning that counts the contigs whose value is not the map's.
 
+    A column is read only if it gives every contig a value: an integer of at
+    least 1 for the restriction sites, a number of at least 0 for the coverage.
+
     Parameters
     ----------
     metacool : str
@@ -746,6 +738,10 @@ def contig_data_from_map(metacool, contig_data, enzyme=None, depth=None):
 def normalization_weights(lengths, hits, coverage, sites, normalization):
     """One weight per contig whose products give the normalization of the network.
 
+    Each normalization divides the contacts of two contigs by the geometric
+    mean of one value per contig, so the normalized contact is count * w[i] *
+    w[j]; a contig whose value makes that factor 0 gets no weight (NaN).
+
     Parameters
     ----------
     lengths : numpy.ndarray
@@ -809,6 +805,10 @@ def network_digest(contacts, weights, names, normalization):
     validation checks against the network stored in the map (see
     metator.metacool.read_partition), and metator network against the network
     that it stores.
+
+    It covers the normalization, the contig names, each contig's weight and
+    each pair's count, by name: the inputs of map_network, which survive a
+    regrouping of the map where the edges' last bits may not.
 
     Parameters
     ----------

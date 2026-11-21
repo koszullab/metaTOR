@@ -1,39 +1,27 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
-"""The clustering rounds of a run: what the map stores in its /clusters
-group (see metacooler's format), and the two tables a run writes them to.
+"""The clustering rounds of a run: the map's /clusters group, and their tables.
 
-A run of metaTOR reaches its final clusters in rounds:
+A run reaches its final clusters in rounds:
 
-- ``core``: the core clusters of the partition, the contigs that every
-  iteration of Louvain or Leiden put together, named ``core_<number>``
-  (:func:`core_name`), with no parent: an overlapping cluster merges several
-  of them;
-- ``overlapping``: every overlapping cluster of the partition, its core
-  clusters merged, named ``<prefix>_<number>_00000``
-  (:func:`overlapping_name`); the validation checks with miComplete those
-  that reach ``--size``;
-- ``recursive_<k>``: the clusters that step k of the validation makes by
-  partitioning a contaminated cluster again, its parent;
-- ``final``: the final clusters, each the cluster of the same name of the
-  round it comes from.
+- ``core``: the contigs that every iteration of Louvain or Leiden put
+  together, named ``core_<number>`` (:func:`core_name`), with no parent;
+- ``overlapping``: the core clusters merged, named
+  ``<prefix>_<number>_00000`` (:func:`overlapping_name`), every one; the
+  validation checks those that reach ``--size``;
+- ``recursive_<k>``: the clusters that step k of the validation makes from a
+  contaminated cluster, their parent;
+- ``final``: the final clusters, each the cluster of its name in the round it
+  comes from;
+- ``mge``, or ``mge_random`` with ``--random``: the MGE clusters of
+  ``metator mge``, after the others.
 
-``metator partition MAP`` stores the first two in the map
-(:func:`partition_rounds`, :func:`metator.metacool.write_rounds`), and the
-validation reads them back (:func:`metator.metacool.read_partition`): the
-map is the partition that the validation checks. The validation records
-every round as it makes them (:class:`Rounds`) and writes them next to its
-other tables: ``clusters.txt``, one row per cluster of every round, with its
-parent and the columns of miComplete, and ``cluster_members.txt``, one row
-per contig of a cluster. The map of the clusters stores both
-(:func:`metator.metacool.reassign_metacool`).
-
-``metator mge`` makes one more round after them, ``mge``: its MGE clusters,
-which it stores in the map next to those of the run (:func:`mge_round`,
-:func:`metator.metacool.write_map`); ``mge_random`` with ``--random``, a
-random clustering of the same shape, which never replaces the round
-``mge``.
+``metator partition`` stores the first two (:func:`partition_rounds`), the
+validation reads them back (:func:`metator.metacool.read_partition`) and
+records every round (:class:`Rounds`), which the map of the clusters stores
+(:func:`metator.metacool.write_map`) and ``clusters.txt`` and
+``cluster_members.txt`` hold.
 """
 
 import csv
@@ -117,7 +105,11 @@ class Partition:
     in the map, from 1, as in the network: see
     :func:`metator.network.map_network`), in the order that the partition lists
     them, and the name of each overlapping cluster (see
-    :func:`overlapping_name`)."""
+    :func:`overlapping_name`).
+
+    An overlapping cluster's contigs come in the order of its core clusters, by
+    number, then of their IDs: the record order of the FASTA file miComplete
+    checks."""
 
     core: dict
     overlapping: dict
@@ -161,7 +153,10 @@ def partition_rounds(partition, names):
 
 
 class Rounds:
-    """The clustering rounds of a run, in the order they are made."""
+    """The clustering rounds of a run, in the order they are made.
+
+    A cluster's parent is looked up in the latest round that holds a cluster of
+    that name, as a recursive cluster replaces the one it was split from."""
 
     def __init__(self):
         self.clusters = []

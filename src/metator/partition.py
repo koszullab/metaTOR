@@ -1,31 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""Partition metaHiC network using Louvain or Leiden algorithm.
+"""Partition the metaHiC network with the Louvain or Leiden algorithm.
 
-General utility function for generating bins from the network of the contigs
-of a map (see metator.network.map_network) using Louvain algorithm. If an
-overlapping threshold is given, it will use the Hamming distance to group
-together bins relatively closed (to avaoid to split genomes in different bins).
-
-A partition is its core and overlapping clusters (metator.clusters.Partition),
-which metator partition MAP stores in the map as clustering rounds. The
-validation reads them back, and gives the contigs their clusters in the contig
-data table of the partition (partition_table).
-
-Core functions to partition the network are:
-    - algo_partition
-    - defined_overlapping_bins
-    - detect_core_bins
-    - get_distances_splitmat
-    - get_hamming_distance
-    - leiden_iterations
-    - louvain_iterations
-    - merge_iterations
-    - network_graph
-    - partition
-    - partition_table
-
+The partition iterates Louvain or Leiden on the network of the contigs of a
+map (see metator.network.map_network), finds the core clusters (contigs
+always together), then merges core clusters whose Hamming distance is below
+the overlap threshold (so as not to split genomes). metator partition MAP
+stores the result (metator.clusters.Partition) in the map as clustering
+rounds; the validation reads it back (partition_table).
 """
 
 import igraph as ig
@@ -83,6 +66,9 @@ def defined_overlapping_bins(
 ):
     """This function extract the overlapped bins
 
+    Two core bins overlap when the fraction of iterations that put them
+    together reaches the threshold.
+
     Parameters
     ----------
     overlap : float
@@ -129,6 +115,9 @@ def defined_overlapping_bins(
 
 def detect_core_bins(output_partition, iterations):
     """Detect core bins from the output of the partition algorithm.
+
+    A core bin holds the contigs that every iteration puts in the same
+    community.
 
     Parameters
     ----------
@@ -182,6 +171,9 @@ def get_distances_splitmat(bins, core_bins_iterations):
     """This function takes a segment of the full iterative clustering matrix and
     computes, for each index (i.e. contig), the hamming distance to each of the
     other indices.
+
+    The values are one minus the normalized Hamming distance: the fraction of
+    the iterations in which both core bins fell in the same community.
 
     Parameters
     ----------

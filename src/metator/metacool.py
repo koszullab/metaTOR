@@ -3,54 +3,21 @@
 
 """Contact map of a metaTOR run as a .metacool file.
 
-A .metacool file is the HDF5 contact map of metacooler: a cooler whose
-chromosomes are the contigs, grouped by genome. It stays readable by
-``cooler.Cooler``, and ``metacooler.MetaCooler`` adds the genome layer.
+A .metacool file is metacooler's HDF5 contact map: a cooler whose
+chromosomes are the contigs, grouped by genome, readable by
+``cooler.Cooler``. The map is the interface between the steps of a run:
+``network`` stores the contig columns and the weights of its normalization
+(the raw contacts stay as they are; a normalized contact is the count times
+both weights, as cooler stores balancing weights), ``partition`` the rounds
+core and overlapping (see read_partition), and ``validation`` the map of the
+clusters: one genome per final cluster, ``__unbinned__`` for the others, the
+summary in the genomes table and every round. ``pipeline`` stores what the
+three steps store, in one map (see write_map).
 
-metaTOR writes one bin per contig, and one genome per final bin: the
-``Final_cluster`` of the contig data file. The unbinned contigs, whose
-``Final_cluster`` is ``ND``, are kept with all their contacts, in metacooler's
-``__unbinned__`` genome: a run with no final bin gives a map whose contigs
-are all there. The columns of the bin summary (completeness,
-contamination, abundances...) are stored in the genomes table, and what
-metaTOR measured on each contig (GC content and Hi-C hits, plus shotgun
-coverage and restriction sites when it measured them) in the contigs table.
-
-A run starts from a .metacool map of the contigs, made before any binning
-(by hicstuff pipeline -M metacool, or metacooler create pairs, from the
-pairs of the Hi-C libraries): the map is the interface between its steps,
-and its only output but the FASTA files of its clusters. A run step by step
-stores the network of its contigs in the map first, which the next steps
-read, then its partition, as the clustering rounds core and overlapping,
-which its validation reads (see read_partition), then its validation
-writes the map of the clusters: its contigs grouped by final cluster, the
-summary of the clusters, and every round of the run. pipeline stores what
-the three steps store, in one map (see write_map).
-
-The network is stored as what metaTOR measured on each contig, in the
-contigs table, and as the normalization of the network, a weight column of
-the bins table (see store_normalization): the raw contacts stay as they
-are, and the normalized contact of two bins is their count times both
-weights, the way cooler stores its balancing weights.
-
-Every map is written through metacooler, in an edit session
-(metacooler.staged_edit): all the edits of a run go into one copy of the
-map, which metacooler validates in full once, then renames over the map, or
-onto the map that the run writes instead (--output-map). The map is whole
-whatever stops the run, and does not grow from run to run. A run
-holds the lock of the map it writes from its checks to its end
-(metacooler.lock, see metator.cli.hold_lock), which the session re-enters.
-A map is written in place when the file to write is the file of the input
-map, its symbolic links followed (see is_input_map); any other file is a
-map of its own, a symbolic link there replaced, not its target, and a hard
-link of the input map is refused.
-
-Core functions to write the file:
-    - write_map, the map of a run: its network, its partition, its final
-      clusters, or the MGE clusters of metator mge
-    - store_normalization, the normalization of the network in a map
-
-And to read it: read_partition, the partition that a map stores.
+Every map is written in one metacooler edit session, validated in full
+once, then renamed over the map or onto ``--output-map``: the map is whole
+whatever stops the run and does not grow from run to run. A run holds the
+map's lock from its checks to its end (see metator.cli.hold_lock).
 """
 
 import logging
@@ -263,7 +230,11 @@ def is_map(path):
     """Whether path is a contact map rather than a pairs file: an HDF5 file, which
     a pairs file never is, or the URI of a map inside one (file::group). A path
     that is a file is a map only when it is an HDF5 file, whatever its name: a
-    pairs file may have :: in its name."""
+    pairs file may have :: in its name.
+
+    A URI is one when its file part is an HDF5 file; so are a .mmetacool
+    collection and a .cool file, which open_map then refuses with metacooler's
+    reason."""
     path = str(path)
     if os.path.isfile(path):
         return _is_hdf5(path)
@@ -338,7 +309,9 @@ def check_ascii_names(contigs, bins):
 
 
 def check_bin_names(bins):
-    """Refuse bin names that metacooler reads as no bin."""
+    """Refuse bin names that metacooler reads as no bin.
+
+    metacooler would put the contigs of such a bin in __unbinned__ silently."""
     bad = list(dict.fromkeys(name for name in bins if name.strip().lower() in METACOOLER_UNBINNED))
     if bad:
         raise MetacoolError(
@@ -413,7 +386,11 @@ def _read(mc, planned):
 def _staged_edit(metacool, outfile, planned, force=False):
     """The edit session of metacooler that a map of a run is written in
     (metacooler.staged_edit): one staged copy of the map metacool, where every
-    edit of a step goes, validated in full once, when the session ends."""
+    edit of a step goes, validated in full once, when the session ends.
+
+    In place when outfile is the input map's file (its links followed);
+    otherwise the map alone is renamed onto outfile, so an entry of a
+    collection becomes a map of its own."""
     import metacooler
 
     if is_input_map(metacool, outfile):
@@ -430,6 +407,11 @@ def normalization_weight_name(normalization):
 def store_normalization(metacool, normalization):
     """Store a normalization of the network in a .metacool map, as a weight column
     of its bins table: metator_<normalization>.
+
+    Every bin of a contig takes its contig's weight, so the normalized contact
+    of two contigs is their count times both weights, as cooler stores
+    balancing weights. depends_on lets metacooler drop the column when an edit
+    changes what it was computed from.
 
     Parameters
     ----------
@@ -515,7 +497,9 @@ def _drop_earlier_normalizations(path, normalization=None):
     """Remove from a map the normalizations that metaTOR stored in it (see
     store_normalization): the weight columns of its bins whose normalization
     attribute, which metacooler's format documents for a weight column, is
-    metator."""
+    metator.
+
+    They were computed from the columns the run replaces."""
     mc = open_map(path)
     with mc.open() as group:
         bins = group["bins"]
@@ -544,7 +528,11 @@ def _write_back_columns(path, contig_data, contig_columns, metadata=None):
     those of the table contig_data that the run measured (contig_columns), in
     their order, after every other column of the contigs table (metacooler's QC
     columns included), whatever the map carried. metadata: keys of the metadata
-    of the map that metacooler annotate sets as it adds them."""
+    of the map that metacooler annotate sets as it adds them.
+
+    metaTOR's own columns that the map carried (METATOR_TABLE_COLUMNS) are
+    dropped first: an earlier network's, or a contig data table's, which would
+    contradict this run."""
     import metacooler
 
     stored = metacooler.MetaCooler(path)
@@ -741,6 +729,10 @@ def store_rounds(path, rounds, names=None, name=None):
     metator.clusters, with their contigs, their parents and their columns
     (those of miComplete, and of the bin summary for the final clusters).
 
+    A text column holds an empty text where a round has no value (HDF5 stores
+    no missing text), and the contigs of a cluster that the map lacks are left
+    out, with a warning.
+
     Parameters
     ----------
     path : str
@@ -832,6 +824,12 @@ def read_partition(metacool, mc=None, network=None):
     network, as the map records it (see partition_network): metator network can
     store another network in the map, and leaves the partition there, which is
     then not that of the network.
+
+    Clusters are numbered as their names say (see
+    metator.clusters.cluster_number) and contigs get their positions in the
+    map, from 1. A core cluster's contigs come in ID order, an overlapping
+    cluster's in the order of its core clusters, then of IDs: the order
+    metator.partition.partition gives, which the map's sorted rounds lose.
 
     Parameters
     ----------
@@ -979,6 +977,14 @@ def write_map(
     run stores in it, everything else as it was. Each step of a run writes its
     map so, and pipeline writes what its three steps store, in one map, as the
     steps one by one write it.
+
+    Everything goes into one edit session (see _staged_edit), validated once
+    and renamed once; on any failure outfile is left as it was. In order: the
+    final clusters (a map written anew from the input map, contigs grouped by
+    cluster then longest first), the network (columns and weights, last in both
+    tables), the partition's rounds and entry, then the round mge. A run that
+    replaces the rounds warns of those the binning did not make, and drops
+    them.
 
     Parameters
     ----------
@@ -1190,7 +1196,12 @@ def _store_round(path, metacool, rounds, entry):
     rounds, its bins, contacts, genomes and contigs tables, QC block and
     metadata. metator mge stores its MGE clusters so, as the round mge, next to
     the rounds of the binning run, whose final clusters the genomes and contigs
-    tables keep."""
+    tables keep.
+
+    The round replaces the one of its name and comes last; the other rounds are
+    kept, but for the columns metacooler computes again. A column only one
+    round has is missing in the others, so whole numbers or booleans there
+    become decimals or text."""
     clusters, members = rounds
     name = entry["name"]
     mc = open_map(path)

@@ -1,23 +1,11 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
-"""Module with the MGE clustering functions.
+"""Cluster the contigs of a .metacool map that are mobile genetic elements.
 
-It clusters the contigs of a .metacool contact map that are mobile genetic
-elements (MGEs) from the Hi-C contacts between them: those that the map
-holds between two contigs, and those that its contact statistics count
-within each contig, between reads more than 1 kb apart.
-
-Core functions to cluster the MGE contigs:
-    - check_mge_map
-    - generate_bin_summary
-    - map_matrix
-    - mge_binning
-    - mge_contigs
-    - resolve_matrix
-    - shuffle_mge_bins
-    - update_mge_data
-    - write_mges_fasta
+The MGE contigs are clustered from their Hi-C contacts: those the map holds
+between two contigs, and those its QC block counts within each contig,
+between reads at least 1001 bp apart.
 """
 
 import numpy as np
@@ -60,6 +48,10 @@ WHERE_THE_NETWORK_IS = (
 
 def check_mge_map(metacool, mc):
     """Refuse a map that mge cannot cluster the MGE contigs of, before any work.
+
+    The contacts within an MGE contig are its reads at least 1001 bp apart,
+    which only the map's QC block, measured from the pairs, gives; its pixels
+    do not.
 
     Parameters
     ----------
@@ -108,6 +100,10 @@ def check_mge_map(metacool, mc):
 def mge_contigs(metacool, mc, mges_list):
     """The MGE contigs of a map, the longest first (ties by name), with the values
     of each that mge reads.
+
+    Longest first, ties by name: resolve_matrix breaks ties and update_mge_data
+    numbers single-contig clusters in that order, so the result depends on
+    neither the map's order nor its clusters.
 
     Parameters
     ----------
@@ -165,6 +161,8 @@ def mge_contigs(metacool, mc, mges_list):
 def map_matrix(metacool, n_contigs, positions, intra):
     """The contacts of the MGE contigs of a map, as resolve_matrix reads them: the
     matrix of their raw contacts, in the order of positions.
+
+    Only the upper triangle is filled, which resolve_matrix reads.
 
     Parameters
     ----------
@@ -352,6 +350,9 @@ def write_mges_fasta(metacool, assembly, mge_bins, out_file, temp_dir=None):
 
 def resolve_matrix(mat: "np.ndarray", threshold: float = 0.8) -> List[Tuple]:
     """Main function to bin mges contigs.
+
+    Contacts are divided by the geometric mean of the intra-contig contacts
+    (reads at least 1001 bp apart); two contigs binned together are fused.
 
     Parameters
     ----------

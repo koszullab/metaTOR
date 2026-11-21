@@ -1,48 +1,19 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
-"""Validates bins using miComplete and make a recursive partition to try to
-decontaminate them.
+"""Validates bins with miComplete, and partitions contaminated ones again.
 
-General functions to validate bins completion using miComplete and make
-recursive iterations of Louvain or Leiden to try to partition contaminated bins.
 Only bins with a weighted completeness of at least 33% and a contamination,
-(weighted redundancy - 1) / weighted completeness, of at least 5% are subject to
-the recursive step. Its bins replace the original bin when the most complete of
-them keeps enough of its completeness, more than 0.4 + (c - 0.4) / 1.6 for a
-bin of completeness c; otherwise the original bin is kept. The step repeats on
-the new bins, 9 times at most.
+(weighted redundancy - 1) / weighted completeness, of at least 5% go through
+the recursive step. Its bins replace the original when the most complete of
+them keeps more than 0.4 + (c - 0.4) / 1.6 of a completeness c; otherwise
+the original is kept. The step repeats on the new bins, 9 times at most.
 
-
-The clusters that miComplete checks first are the overlapping clusters of the
-partition that the map stores (see metator.metacool.read_partition) that
-reach --size: their FASTA files, written by metacooler from the assembly in
-the temporary directory of the run (see write_overlapping_fasta), as are
-those of the clusters of each recursive step (see write_recursive_fasta). The
-FASTA files of the final clusters are those of the clusters they are.
-
-The tables of a validation (miComplete's results, the contig data and the
-summary of the final clusters, the clusters of every round, the binning of
-the contigs) are written in the temporary directory of the run, which -N
-keeps: the map of the clusters stores what they hold (see
-metator.metacool.write_map), and metator dump writes them from it (see
-metator.dump).
-
-Functions in this module:
-    - bin_quality
-    - correct_final_bin
-    - get_bin_coverage
-    - give_results_info
-    - merge_micomplete
-    - micomplete_compare_bins
-    - micomplete_quality
-    - name_recursive_clusters
-    - plain_assembly
-    - recursive_clustering
-    - recursive_clustering_worker
-    - recursive_decontamination
-    - write_overlapping_fasta
-    - write_recursive_fasta
+miComplete checks the overlapping clusters of the map's partition that reach
+--size, then those of each recursive step, from FASTA files that metacooler
+writes in the run's temporary directory. The validation's tables go there
+too (-N keeps them); the map of the clusters stores what they hold, and
+metator dump writes them from it.
 """
 
 import gzip
@@ -68,6 +39,9 @@ FASTA_EXTENSIONS = (".fa", ".fasta", ".fna")
 def bin_quality(completeness, redundancy):
     """The quality class of a bin, from miComplete's weighted completeness and
     weighted redundancy, its contamination being the redundancy minus 1:
+
+    HQ: completion >= 90% and contamination <= 5%; MQ: >= 70% and <= 10%; LQ:
+    >= 50% and <= 10%; "Contaminated": >= 50% and > 10%; "Other": < 50%.
 
     Parameters
     ----------
@@ -247,6 +221,9 @@ def micomplete_compare_bins(
     and from the recursive step. If the recursive step decrease the completion
     of one bin without decreasing its contamination, it will kept the bin
     before the recursive step.
+
+    A recursive split that would drop below 50% completion is not taken:
+    complete bins are kept, even contaminated, for a curation by hand.
 
     Parameters
     ----------

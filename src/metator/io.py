@@ -1,18 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""Core tools to build I/O for metator
-
-This mdoule contains all core I/O functions:
-    - check_is_fasta
-    - file_compression
-    - generate_temp_dir
-    - get_restriction_site
-    - import_mges_contigs
-    - process_ligation_sites
-    - read_compressed
-    - rename_1x_columns
-    - write_bin_summary
+"""Core I/O tools of metaTOR: FASTA checks, compressed files, restriction
+sites, the MGE list, miComplete's results and the summary of the clusters.
 """
 
 import bz2
@@ -77,6 +67,10 @@ def file_compression(filename):
 
 def generate_temp_dir(path):
     """Temporary directory generation
+
+    The name comes from the system's random numbers, not Python's random
+    module, which igraph draws from: a run's partition does not depend on how
+    many of these directories it made.
 
     Parameters
     ----------
@@ -248,6 +242,9 @@ def rename_1x_columns(contig_data):
     metaTOR 1.x renamed as metaTOR 2.0 names them (CONTIG_DATA_1X_COLUMNS).
     Kept for host.py, which calls it to read the contig data files of a 1.x run
     as those of a 2.0 run: no command reads the tables of 1.x anymore.
+
+    A column already named as in 2.0 is kept, and the 1.x column of the same
+    meaning left as it is.
 
     Parameters
     ----------
