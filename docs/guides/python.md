@@ -52,20 +52,25 @@ mc.contigs  # one row per contig
 ## Running a step
 
 The functions behind the commands take their options as arguments. The
-partition of a network, as `metator partition` runs it:
+partition of the network that `metator network` stored in a map, as
+`metator partition` runs it:
 
 ```python
 import os
 
+import metator.network as mtn
 import metator.partition as mtp
 
 os.makedirs("binning/overlapping_clusters", exist_ok=True)
 contig_data_file = mtp.partition(
     algorithm="louvain",
     assembly="assembly.fa",
-    contig_data_file="binning/contig_data_network.txt",
+    # The contig data and the network of the map (one edge per pair of
+    # contigs in contact, by their positions in the map, weighed by the
+    # normalization that metator network stored).
+    contig_data=mtn.map_contig_table("sample.metacool"),
     iterations=100,
-    network_file="binning/network.txt",
+    network=mtn.map_network("sample.metacool"),
     outdir="binning",
     fasta_dir="binning/overlapping_clusters",
     overlapping_parameter=0.8,  # --overlap 80
@@ -78,7 +83,7 @@ contig_data_file = mtp.partition(
 
 | Command | Function |
 |---|---|
-| `metator network` | `metator.network.create_contig_data` and `contig_data_from_map`, then `metator.network.metacool_to_contacts` |
+| `metator network` | `metator.network.create_contig_data` and `contig_data_from_map`, `contig_contacts` and `contig_data_table`, then `metator.metacool.store_network` |
 | `metator partition` | `metator.partition.partition` |
 | `metator validation` | `metator.validation.recursive_decontamination` |
 | `metator mge` | `metator.mge.mge_binning` |
