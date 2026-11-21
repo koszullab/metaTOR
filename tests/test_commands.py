@@ -27,8 +27,6 @@ global_args = {
     "DEPTH": "tests_data/depth.txt",
     "FASTA": "tests_data/assembly.fa",
     "PAIRS": "tests_data/alignment.pairs",
-    "NETWORK": "tests_data/network.txt",
-    "CONTIGS": "tests_data/contig_data_network.txt",
     "SUBSET_FASTA": "tests_data/subset.assembly.fa",
     "SUBSET_PAIRS": "tests_data/subset.pairs.gz",
 }

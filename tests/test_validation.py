@@ -9,10 +9,8 @@ import pytest
 import os
 
 threads = 8
-fasta_dir = "tests_data/outdir_validation/overlapping_clusters"
 arch_output = "tests_data/outdir_validation/tmp_micomplete/arch131.tsv"
 bact_output = "tests_data/outdir_validation/tmp_micomplete/bact105.tsv"
-assembly = "tests_data/outdir_validation/assembly_val.fa"
 bin_summary = mio.micomplete_results_to_dict("tests_data/outdir_validation/overlapping_micomplete_results.txt")
 iterations = 5
 resolution_parameter = 1.0
@@ -89,16 +87,27 @@ def test_micomplete_compare_bins_keeps_parent_over_worse_children(tmp_path):
     assert not contamination
 
 
+def _two_bins(directory, contigs=40):
+    """Two FASTA bins of the first contigs of tests_data/assembly.fa."""
+    records = open("tests_data/assembly.fa").read().split(">")[1:]
+    directory.mkdir()
+    for i, name in enumerate(["MetaTOR_00001_00000", "MetaTOR_00002_00000"]):
+        part = records[i * contigs : (i + 1) * contigs]
+        (directory / f"{name}.fa").write_text("".join(">" + record for record in part))
+    return str(directory)
+
+
 def test_micomplete_quality(tmp_path, monkeypatch):
-    bins = os.path.abspath(fasta_dir)
+    bins = _two_bins(tmp_path / "bins")
     before = sorted(os.listdir(bins))
-    monkeypatch.chdir(tmp_path)
+    (tmp_path / "run").mkdir()
+    monkeypatch.chdir(tmp_path / "run")
     mtv.micomplete_quality(bins, "results.tsv", threads)
     data = pd.read_csv("results.tsv", sep="\t", comment="#", index_col=0)
     assert len(data) == 2
     assert len(data.columns) == 14
     # miComplete's intermediate files are left neither here nor next to the bins.
-    assert sorted(os.listdir(tmp_path)) == ["results.tsv", "tests_data"]
+    assert sorted(os.listdir(tmp_path / "run")) == ["results.tsv"]
     assert sorted(os.listdir(bins)) == before
 
 
