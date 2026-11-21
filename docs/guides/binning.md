@@ -1,9 +1,9 @@
 # Partition and validation
 
 The second and third steps of metaTOR turn the network into clusters:
-`metator partition` finds groups of contigs in the network, and
-`metator validation` checks them with miComplete and splits the contaminated
-ones. `metator pipeline` runs both. [Concepts](../concepts.md) explains the
+`metator partition` finds groups of contigs in the network that
+`metator network` stored in the map, and `metator validation` checks them with
+miComplete and splits the contaminated ones. `metator pipeline` runs both. [Concepts](../concepts.md) explains the
 principle; this page covers the parameters and the outputs.
 
 ![The steps and parameters of metaTOR's clustering](../images/metator_figures_param.png)
@@ -11,8 +11,7 @@ principle; this page covers the parameters and the outputs.
 ## Partition
 
 ```bash
-metator partition -a assembly.fa -c binning/contig_data_network.txt \
-    -n binning/network.txt -t 16 -o binning
+metator partition sample.metacool -a assembly.fa -t 16 -o binning
 ```
 
 | Option | Default | Effect |
@@ -33,8 +32,8 @@ there with an error.
 ## Validation
 
 ```bash
-metator validation -a assembly.fa -c binning/contig_data_partition.txt \
-    -n binning/network.txt -f binning/overlapping_clusters -t 16 -o binning
+metator validation sample.metacool -a assembly.fa -c binning/contig_data_partition.txt \
+    -f binning/overlapping_clusters -t 16 -o binning
 ```
 
 Validation runs [miComplete](https://pypi.org/project/micomplete/) on every

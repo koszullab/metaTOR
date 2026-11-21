@@ -58,13 +58,14 @@ without header, as `binning.txt` or the collection exported by anvi'o.
 
 ## The contig data tables
 
-`contig_data_network.txt`, `contig_data_partition.txt` and
-`contig_data_final.txt` hold one row per contig of the assembly, in its order,
-with a header. Each step adds its columns to those of the step before:
+`contig_data_partition.txt` and `contig_data_final.txt` hold one row per
+contig of the map, in its order, with a header. Each step adds its columns to
+those of the step before; the first come from the network, which
+`metator network` stores in the contigs table of the map:
 
 | Column | Written by | What it holds |
 |---|---|---|
-| `ID` | network | The ID of the contig, from 1, in the order of the assembly: the ID of the network |
+| `ID` | network | The ID of the contig, from 1: its position in the map, the ID of its node in the network |
 | `Name` | network | Its name |
 | `Size` | network | Its length, in bp |
 | `GC_content` | network | Its GC content, in percent |
@@ -90,13 +91,13 @@ may be added, in any order, such as the bins of another binning.
 
 ## The network
 
-`network.txt` holds the network of contigs, one line per pair of contigs in
-contact, without header: the IDs of the two contigs, and the normalised
-weight of their edge.
+The network of contigs is in the map, which `metator network` stores it in
+(see [Building the network](guides/network.md#building-the-network)): metaTOR
+2.0 writes no `network.txt`. metacooler exports it, one line per pair of
+contigs in contact, by their names, with the normalised weight of their edge:
 
-```text
-1	2	0.014220405247506712
-1	3	0.008170769116255661
+```console
+metacooler network sample.metacool --level contig --balance metator_empirical_hit
 ```
 
 ## The clusters

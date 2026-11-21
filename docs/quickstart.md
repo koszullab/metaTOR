@@ -111,10 +111,8 @@ cluster_members.txt
 cluster_summary.txt
 clusters.txt
 contig_data_final.txt
-contig_data_network.txt
 final_clusters
 metator_pipeline_20261121023231.log
-network.txt
 overlapping_clusters
 overlapping_micomplete_results.txt
 recursive_clusters
@@ -127,11 +125,11 @@ recursive_clusters
 | `clusters.txt`, `cluster_members.txt` | Every cluster of every round (overlapping, recursive, final), with its parent and miComplete's columns, and the contigs of each |
 | `contig_data_final.txt` | One row per contig: its size, GC content, hits, and the clusters it went through |
 | `binning.txt` | The contigs of the final clusters and their cluster, as anvi'o imports a binning |
-| `network.txt` | The normalised network of contigs |
 | `metator_pipeline_<date>.log` | The log of the run |
 
 `sample.metacool`, next to them, is now the contact map of all the contigs,
-grouped by cluster. [Running the pipeline](guides/pipeline.md#outputs) lists
+grouped by cluster, with the network of the run: what metaTOR measured on
+each contig, and the weights of the normalization of the network. [Running the pipeline](guides/pipeline.md#outputs) lists
 every output, and [File formats](formats.md) describes the tables.
 
 ## Step 4: read the cluster summary
