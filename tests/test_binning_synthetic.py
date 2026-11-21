@@ -1055,7 +1055,9 @@ def test_a_cluster_partitioned_again_but_kept_whole(metagenome, metagenome_input
     the IDs of their recursive clusters in contig_data_final.txt, and are in
     it, in binning.txt (which left them out) and in the map of the clusters
     as in the round final, its FASTA file listing them."""
-    monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.first_cluster_contaminated(metagenome, kept_whole=True))
+    monkeypatch.setattr(
+        "metator.validation.micomplete_quality", synthetic.first_cluster_contaminated(metagenome, kept_whole=True)
+    )
     metacool = _contig_map(metagenome_inputs, tmp_path / "contigs.metacool")
     out = tmp_path / "out"
     random.seed(0)
