@@ -3,14 +3,11 @@
 
 
 from pathlib import Path
-import gzip
 import metator.align as mta
 import metator.cli as mtc
-import metator.io as mio
 import metator.metacool as mtmc
 import metator.network as mtn
 import metacooler
-import pypairix
 import pytest
 import re
 import shutil
@@ -177,9 +174,8 @@ def test_pipeline(tmp_path, run_cli):
     metacool = Path(tmp_path, "out_test", "metator.metacool")
     metacooler.validate(str(metacool))
     genomes = metacooler.MetaCooler(str(metacool)).genomes
-    assert set(genomes.name) - {"__unbinned__"} == set(
-        mio.read_bin_summary(Path(tmp_path, "out_test", "cluster_summary.txt")).index
-    )
+    summary = Path(tmp_path, "out_test", "cluster_summary.txt").read_text().splitlines()
+    assert set(genomes.name) - {"__unbinned__"} == {line.split("\t")[0] for line in summary[1:]}
     # The contig columns but Shotgun_coverage, which is - without a depth
     # file.
     contigs = metacooler.MetaCooler(str(metacool)).contigs
@@ -416,47 +412,6 @@ def test_metacool_of_other_contigs(command, tmp_path, run_cli):
     assert not (out / "network.txt").exists()
 
 
-def test_pairs(tmp_path, run_cli, monkeypatch):
-    """Plain and compressed pairs files are sorted, compressed and indexed
-    next to their input, with temporary files in the working directory."""
-    OUT_TEST = Path(tmp_path, "out_test")
-    os.makedirs(OUT_TEST, exist_ok=True)
-    pairs1 = OUT_TEST / "align1.pairs"
-    pairs2 = OUT_TEST / "align2.pairs.gz"
-    pairs = "{PAIRS}".format(**global_args)
-    shutil.copyfile(pairs, pairs1)
-    with open(pairs, "rb") as source, gzip.open(pairs2, "wb") as target:
-        shutil.copyfileobj(source, target)
-    sort_calls = []
-    real_sort_pairs = mio.hio.sort_pairs
-
-    def sort_pairs(*args, **kwargs):
-        sort_calls.append(kwargs)
-        return real_sort_pairs(*args, **kwargs)
-
-    monkeypatch.setattr(mio.hio, "sort_pairs", sort_pairs)
-    run_cli("pairs", "-t", "2", pairs1, pairs2)
-    assert [(call["tmp_dir"], call["threads"]) for call in sort_calls] == [(".", 2), (".", 2)]
-    outputs = [OUT_TEST / "align1_sorted.pairs.gz", OUT_TEST / "align2.pairs_sorted.pairs.gz"]
-    with open(pairs) as handle:
-        lines = handle.read().splitlines()
-    body = sorted(line for line in lines if not line.startswith("#"))
-    contig1, _, contig2 = body[0].split("\t")[1:4]
-    for output in outputs:
-        with gzip.open(output, "rt") as handle:
-            sorted_lines = handle.read().splitlines()
-        assert "#sorted: chr1-chr2-pos1-pos2" in sorted_lines
-        assert sorted(line for line in sorted_lines if not line.startswith("#")) == body
-        assert next(pypairix.open(str(output)).query2D(contig1, 0, 10**9, contig2, 0, 10**9, 1))
-    # The outputs exist: they are kept unless --force; --remove deletes the
-    # inputs.
-    with pytest.raises(ValueError):
-        run_cli("pairs", str(pairs1))
-    run_cli("pairs", "-rF", pairs1, pairs2)
-    assert not pairs1.exists() and not pairs2.exists()
-    assert all(output.exists() and Path(f"{output}.px2").exists() for output in outputs)
-
-
 def test_tmpdir_contents_survive(tmp_path, run_cli):
     """--tmpdir may already hold the user's files: a run removes only its own."""
     user_tmp = tmp_path / "scratch"
@@ -612,12 +567,12 @@ def test_pipeline_bad_choices(case, tmp_path, run_cli):
     assert not (tmp_path / "out").exists()
 
 
-@pytest.mark.parametrize("existing", ["overlapping_clusters", "recursive_clusters", "final_clusters", "scaffolded_clusters"])
+@pytest.mark.parametrize("existing", ["overlapping_clusters", "recursive_clusters", "final_clusters"])
 def test_pipeline_refuses_existing_outputs(existing, tmp_path, run_cli, logged):
     """A directory of clusters of an earlier run is refused without -F,
     named in the log."""
     (tmp_path / "out" / existing).mkdir(parents=True)
-    args = ["-a", global_args["FASTA"], "-1", "x.pairs", "-S", "pair", "--scaffold", "-o", str(tmp_path / "out"),
+    args = ["-a", global_args["FASTA"], "-1", "x.pairs", "-S", "pair", "-o", str(tmp_path / "out"),
             "-T", str(tmp_path / "tmp")]  # fmt: skip
     with pytest.raises(ValueError):
         run_cli("pipeline", *args)
@@ -632,7 +587,6 @@ def test_pipeline_refuses_existing_outputs(existing, tmp_path, run_cli, logged):
         ("recursive_bin", "recursive_clusters"),
         ("final_bin", "final_clusters"),
         ("final_bin_unscaffold", "final_clusters"),
-        ("scaffold_bin", "scaffolded_clusters"),
         ("bin_summary.txt", "cluster_summary.txt"),
     ],
 )
@@ -646,7 +600,7 @@ def test_pipeline_refuses_the_outputs_of_1x(existing, now, tmp_path, run_cli, lo
         path.write_text("earlier\n")
     else:
         path.mkdir(parents=True)
-    args = ["-a", global_args["FASTA"], "-1", "x.pairs", "-S", "pair", "--scaffold", "-o", str(tmp_path / "out"),
+    args = ["-a", global_args["FASTA"], "-1", "x.pairs", "-S", "pair", "-o", str(tmp_path / "out"),
             "-T", str(tmp_path / "tmp")]  # fmt: skip
     with pytest.raises(ValueError):
         run_cli("pipeline", *args)
@@ -661,16 +615,16 @@ def test_pipeline_force_replaces_outputs(tmp_path, run_cli):
     """With --force the output directories are emptied once the arguments
     and the assembly are checked, then the run goes on (here up to the map
     of the contigs, which the missing pairs file stops)."""
-    for existing in ["overlapping_clusters", "recursive_clusters", "final_clusters", "scaffolded_clusters"]:
+    for existing in ["overlapping_clusters", "recursive_clusters", "final_clusters"]:
         (tmp_path / "out" / existing).mkdir(parents=True)
         (tmp_path / "out" / existing / "stale.fa").write_text(">old\nA\n")
     # Those of a run of metaTOR 1.x, named after bins, are removed.
-    outputs_of_1x = ["overlapping_bin", "recursive_bin", "final_bin", "final_bin_unscaffold", "scaffold_bin"]
+    outputs_of_1x = ["overlapping_bin", "recursive_bin", "final_bin", "final_bin_unscaffold"]
     for existing in outputs_of_1x:
         (tmp_path / "out" / existing).mkdir(parents=True)
         (tmp_path / "out" / existing / "stale.fa").write_text(">old\nA\n")
     (tmp_path / "out" / "bin_summary.txt").write_text("earlier\n")
-    args = ["-a", global_args["FASTA"], "-1", str(tmp_path / "missing.pairs"), "-S", "pair", "--scaffold", "-F",
+    args = ["-a", global_args["FASTA"], "-1", str(tmp_path / "missing.pairs"), "-S", "pair", "-F",
             "-o", str(tmp_path / "out"), "-T", str(tmp_path / "tmp")]  # fmt: skip
     with pytest.raises(mtmc.MetacoolError, match=rf"^Input file\(s\) not found: {re.escape(str(tmp_path / 'missing.pairs'))}\.$"):
         run_cli("pipeline", *args)

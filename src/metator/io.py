@@ -10,13 +10,11 @@ This mdoule contains all core I/O functions:
     - file_compression
     - generate_fasta_index
     - generate_temp_dir
-    - get_pairs_data
     - get_restriction_site
     - import_anvio_binning
     - import_contig_data_mges
     - import_mges_contigs
     - process_ligation_sites
-    - read_bin_summary
     - read_compressed
     - read_contig_data
     - read_fasta_names
@@ -226,43 +224,6 @@ def generate_temp_dir(path):
     return full_path
 
 
-def get_pairs_data(pairfile, threads=1, remove=False, force=False):
-    """Extract pairs data from pypairix indexed pairs file. If no pypairix
-    index is found, sort, compress and index the pairs file with
-    sort_and_index_pairs.
-
-    Parameters
-    ----------
-    pairfile : str
-        Path to the pairfile to extract data.
-    threads : int
-        Number of threads to use to sort pairs if necessary. [Default: 1]
-    remove : bool
-        If set to true, it will remove the unsorted pair file. [Default: False]
-    force : bool
-        If set overwrite existing files. [Default: False]
-
-    Returns
-    -------
-    str :
-        Path to the sorted and indexed pair file.
-    """
-    # Check if pypairix index exists, generate it otherwise.
-    try:
-        pairs_data = pypairix.open(pairfile)
-    except pypairix.PairixError:
-        try:
-            pairfile_sorted = f"{os.path.splitext(pairfile)[0]}_sorted.pairs.gz"
-            pairs_data = pypairix.open(pairfile_sorted)
-        except pypairix.PairixError:
-            logger.warning("No pypairix index found. Build the index.")
-            # Sort's temporary files go to the working directory: /tmp can be
-            # small, or in memory.
-            pairfile = sort_and_index_pairs(pairfile, threads, remove, force, tmp_dir=".")
-            pairs_data = pypairix.open(pairfile)
-    return pairs_data
-
-
 def get_restriction_site(enzyme):
     """Function to return a regex which corresponds to all possible restriction
     sites given a set of enzyme.
@@ -412,22 +373,6 @@ def micomplete_results_to_dict(micomplete_file):
     micomplete_summary = micomplete_summary.to_dict(orient="index")
 
     return micomplete_summary
-
-
-def read_bin_summary(bin_summary_file):
-    """Read bin summary file from metator pipeline.
-
-    Parameters
-    ----------
-    bin_summary_file : str
-        Path to the bin summary file.
-
-    Returns
-    -------
-    pandas.DataFrame
-        Table from bin summary with bin name as index.
-    """
-    return pd.read_csv(bin_summary_file, sep="\t", index_col=0)
 
 
 def read_compressed(filename):

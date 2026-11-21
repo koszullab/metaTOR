@@ -3,14 +3,12 @@
 
 """metaTOR command line interface.
 
-One function per command: network, partition, validation, pipeline, qc,
-contactmap, metacool, scaffold, pairs and mge. The ``metator`` entry point
-is :func:`cli`.
+One function per command: network, partition, validation, pipeline and
+mge. The ``metator`` entry point is :func:`cli`.
 """
 
 import glob
 import logging
-import multiprocessing as mp
 import os
 import re
 import shlex
@@ -29,15 +27,12 @@ from scipy.sparse import load_npz, save_npz
 
 import metator.align as mta
 import metator.clusters as mtcl
-import metator.contact_map as mtc
 import metator.io as mio
 import metator.log as mtl
 import metator.metacool as mtmc
 import metator.mge as mtm
 import metator.network as mtn
 import metator.partition as mtp
-import metator.quality_check as mtq
-import metator.scaffold as mts
 import metator.validation as mtv
 from metator.log import logger
 from metator.version import __version__
@@ -47,7 +42,6 @@ ALIGNER_MODES = ["normal", "iterative", "cutsite"]
 ALGORITHMS = ["louvain", "leiden"]
 NORMALIZATIONS = ["None", "abundance", "length", "RS", "empirical_hit", "theoritical_hit"]
 STARTS = ["fastq", "bam", "pair"]
-MATRIX_FORMATS = ["graal", "bg2", "cool"]
 
 # Panel holding the options common to most commands (output, temporary
 # files, threads), with --help.
@@ -143,7 +137,6 @@ OUTPUTS_OF_1X = {
     "recursive_bin": "recursive_clusters",
     "final_bin": "final_clusters",
     "final_bin_unscaffold": "final_clusters",
-    "scaffold_bin": "scaffolded_clusters",
     "bin_summary.txt": "cluster_summary.txt",
 }
 
@@ -448,44 +441,6 @@ def step_map(command, input_map, output_map, force, held, contigs=None, inputs=(
     return outfile
 
 
-def map_in_place_of_pairs(command, pairsfile):
-    """The .metacool contact map given to qc or contactmap (command) in
-    place of its pairs files (pairsfile, the files given), as metator
-    metacool takes one: a map is an HDF5 file, which a pairs file never is
-    (see metator.metacool.is_map), or an entry of a .mmetacool collection.
-    None for pairs files.
-
-    Refused before any work, the reason logged as an error, as
-    MetacoolError: a map with pairs files or with other maps, a map whose
-    file name holds :: (which metacooler reads as file::group), and a map
-    that metacooler cannot open (a .mmetacool collection rather than one of
-    its entries, for example)."""
-    maps = [path for path in pairsfile if mtmc.is_map(path)]
-    if not maps:
-        return None
-    if len(pairsfile) > 1:
-        reason = (
-            f"metator {command} reads pairs files, or one .metacool map: got {len(pairsfile)} files, {len(maps)} of them "
-            ".metacool maps."
-        )
-        logger.error(reason)
-        raise mtmc.MetacoolError(reason)
-    refuse_a_map_named_as_a_uri(maps[0], refuse_missing_map(maps[0]))
-    open_input_map(maps[0])
-    return maps[0]
-
-
-def refuse_options_of_pairs(command, input_map, given, why):
-    """Refuse, before any work, the options of qc or contactmap (command)
-    that only pairs files serve (given: those given, as written), given
-    with a map (input_map) in place of the pairs files, with why (why): the
-    reason is logged as an error, then MetacoolError is raised."""
-    if given:
-        reason = f"metator {command} from the contact map {input_map} takes no {' or '.join(given)}: {why}"
-        logger.error(reason)
-        raise mtmc.MetacoolError(reason)
-
-
 def _is_in(path, directory):
     """Whether path is directory, or a path inside it."""
     return path == directory or path.startswith(directory.rstrip(os.sep) + os.sep)
@@ -551,32 +506,17 @@ def start_step(
     return log_file, metacool_file, bins_prefix
 
 
-def check_metacool_start(start, scaffold=False):
-    """A run from a map cannot scaffold: the scaffolding reads the pairs
-    files."""
-    if start == "metacool" and scaffold:
-        logger.error("--scaffold reads the pairs files: it cannot run from a contact map.")
-        raise ValueError
-
-
 # The compressions that metaTOR finds from the first bytes of a file
-# (metator.io.file_compression), whatever its name: it reads no zstd or lz4.
+# (metator.io.file_compression), whatever its name.
 SNIFFED_CODECS = {"gz": "gzip", "bz2": "bzip2", "zip": "zip"}
-# The first bytes of a zstd file and of an LZ4 frame, which metacooler reads
-# (it finds the compression of a pairs file from its first bytes too,
-# whatever its name), but not metaTOR.
-UNREAD_BY_METATOR = {b"\x28\xb5\x2f\xfd": "zstd", b"\x04\x22\x4d\x18": "lz4"}
 
 
-def check_pairs_compression(start, forward, scaffold=False):
+def check_pairs_compression(start, forward):
     """Refuse, before any work, a pairs file given to a run from pairs (-1)
     that metacooler, which builds the contact maps of the contigs from it,
-    or metaTOR, which reads the pairs files of --scaffold, could not read.
-    Both find the compression of a pairs file from its first bytes,
-    whatever its name; metaTOR reads no zstd or lz4 (UNREAD_BY_METATOR).
-    Refused: an empty file; a zip archive, which metacooler cannot read;
-    and, with --scaffold, a zstd or lz4 file (the network comes from the
-    maps, whatever the number of libraries). The reason, with what to do, is
+    could not read. metacooler finds the compression of a pairs file from
+    its first bytes, whatever its name. Refused: an empty file, and a zip
+    archive, which metacooler cannot read. The reason, with what to do, is
     logged as an error, then ValueError is raised. A file that is not there
     is left to the map, which stops on it."""
     if start != "pair":
@@ -584,20 +524,12 @@ def check_pairs_compression(start, forward, scaffold=False):
     for path in forward.split(","):
         if not os.path.isfile(path):
             continue
-        with open(path, "rb") as handle:
-            unread = UNREAD_BY_METATOR.get(handle.read(4))
         if os.path.getsize(path) == 0:
             reason = "is empty: give the pairs file of its library, or leave it out of -1."
         elif SNIFFED_CODECS.get(mio.file_compression(path)) == "zip":
             reason = (
                 "is a zip archive, which metacooler, which builds the contact map of the contigs, cannot read: "
                 "decompress it, and give the pairs file itself, plain or compressed with gzip."
-            )
-        elif unread and scaffold:
-            reason = (
-                f"is compressed with {unread}, which metacooler, which builds the contact map of the contigs, reads, "
-                "but not metaTOR, which reads the pairs files for --scaffold: decompress it, or compress it with gzip "
-                "(zstd and lz4 work without --scaffold)."
             )
         else:
             continue
@@ -640,7 +572,7 @@ def contig_network(metacool, contig_data, outdir, tmp_dir, threads, *args, libra
     run built from its pairs files (see network_map). A map that cannot
     give them stops the run, as metaTOR stops on an input it cannot use:
     the reason is logged as an error, in the log file of the run, and its
-    MetacoolError is raised, as `metator metacool` does."""
+    MetacoolError is raised."""
     files = ("network.txt", "contig_data_network.txt")
     try:
         return mtn.metacool_to_contacts(metacool, contig_data, outdir, *files, tmp_dir, threads, *args, libraries=libraries)
@@ -1024,7 +956,7 @@ def _failure(error):
 PAIRS_FILES_NEEDS = (
     "metacooler, which builds it, needs the same number of fields on every row of each pairs file given to -1 (its "
     "header lines, which start with #, may come anywhere, as in pairs files of one assembly concatenated into one "
-    "library), plain or compressed with gzip, bzip2 or, without --scaffold, zstd or lz4. Give the pairs files of "
+    "library), plain or compressed with gzip, bzip2, zstd or lz4. Give the pairs files of "
     "several libraries comma-separated, one file per library."
 )
 
@@ -1251,13 +1183,6 @@ def _options(*decorators):
 
 def pairsfile_argument(help="File(s) containing pairs information."):
     return click.argument("pairsfile", nargs=-1, required=True, help=help, panel="Input")
-
-
-# The PAIRSFILE argument of qc and contactmap, which take a map in its place.
-PAIRS_OR_MAP_HELP = (
-    "Pairs file(s) of the run, or one .metacool contact map of the run (or an entry of a .mmetacool collection: "
-    "file.mmetacool::entries/NAME) in their place: {}"
-)
 
 
 ASSEMBLY_INDEX_HELP = (
@@ -1555,7 +1480,7 @@ def no_clean_up_option(short="-N", help="Do not remove temporary files."):
 @click.group("metator", context_settings={"help_option_names": ["-h", "--help"]})
 @click.rich_config(help_config=click.RichHelpConfiguration(text_markup="rich", show_arguments=True, max_width=100))
 @click.command_panel("Clustering", commands=["network", "partition", "validation", "pipeline"])
-@click.command_panel("Other commands", commands=["qc", "contactmap", "metacool", "scaffold", "pairs", "mge"])
+@click.command_panel("Other commands", commands=["mge"])
 @click.version_option(__version__, "-v", "--version", prog_name="metator", message="%(version)s")
 def cli():
     """MetaHiC pipeline for generating and manipulating MAGs.
@@ -1988,9 +1913,6 @@ def validation(
             tmp_dir,
             threads,
             bins_prefix,
-            # The heatmap of the clusters is drawn from the map, as pipeline
-            # MAP draws it; without one, from the pairs files of outdir.
-            metacool=map,
         )
 
         # Delete pyfastx index (only made if a bin was re-partitioned):
@@ -2008,7 +1930,7 @@ def validation(
 # ---------------------------------------------------------------------------
 
 
-@cli.command(cls=Command, short_help="Run network, partition and validation (and scaffold the clusters) in one command line.")
+@cli.command(cls=Command, short_help="Run network, partition and validation in one command line.")
 @map_argument()
 @reads_options()
 @alignment_options()
@@ -2039,32 +1961,14 @@ def validation(
     panel="Validation",
     help="Hamming distance threshold to use to merge clusters for the recursive step (percentage).",
 )
-@_option(
-    "-v",
-    "--scaffold",
-    is_flag=True,
-    panel="Scaffolding",
-    help="If enabled, it will scaffold the genomes at the end.",
-)
-@_option(
-    "-J",
-    "--junctions",
-    default="NNNNN",
-    show_default=True,
-    metavar="STR",
-    panel="Scaffolding",
-    help="Sequences to use as junction between contigs.",
-)
 @outdir_option(help="The output directory to write the bam files the network and contig data into. Default: current directory.")
 @prefix_option()
 @force_option(
     "Replace the directories of clusters of an earlier run in the output directory, and an existing --output-map. "
     "Removes those of a run of metaTOR 1.x (overlapping_bin, recursive_bin, final_bin, final_bin_unscaffold, "
-    "bin_summary.txt, and scaffold_bin with --scaffold)."
+    "bin_summary.txt)."
 )
-@tmpdir_option(
-    help="Temporary directory, where the pairs files made from reads or alignments go, unsorted, but with -N or --scaffold."
-)
+@tmpdir_option(help="Temporary directory, where the pairs files made from reads or alignments go, unsorted, but with -N.")
 @threads_option(help="Number of parallel threads allocated for the alignment.")
 @no_clean_up_option(help="Do not remove temporary files, and keep the pairs files, sorted and indexed in the output directory.")
 @_option(
@@ -2100,8 +2004,6 @@ def pipeline(
     cluster_matrix,
     rec_iter,
     rec_overlap,
-    scaffold,
-    junctions,
     outdir,
     prefix,
     force,
@@ -2120,13 +2022,13 @@ def pipeline(
     restriction sites and the coverage of the contigs from its
     Restriction_site and Shotgun_coverage columns, unless --enzyme and
     --depth are given; it updates the map in place with the map of its
-    clusters (or writes --output-map), and cannot scaffold.
+    clusters (or writes --output-map).
 
     [cyan]metator pipeline -1 FORWARD -2 REVERSE -a ASSEMBLY[/] starts from
     the fastq, bam ([cyan]-S bam[/]) or pairs ([cyan]-S pair[/], -1 only)
     files. As soon as it has the pairs files, the run builds the contact map
-    of the contigs, in no cluster yet, as a .metacool file (see
-    [cyan]metator metacool[/] and the README): a map that cannot be built
+    of the contigs, in no cluster yet, as a .metacool file (see the
+    README): a map that cannot be built
     stops the run. The run reads its network from it; with several
     libraries, the map of each library (<prefix>.mmetacool) gives the
     network of each. At the end, the map of the clusters (the contigs
@@ -2161,13 +2063,12 @@ def pipeline(
         # once its path is resolved (run_map_path, below).
         if start != "metacool":
             check_normalization(normalization, enzyme, depth)
-        check_metacool_start(start, scaffold)
         metacool_file = run_map_path(start, forward, outdir, prefix, output_map, force, no_metacool)
         refuse_an_input_as_the_map(output_map, [*assembly_files(assembly), depth])
         if start == "metacool":
             check_normalization(normalization, enzyme, depth, forward)
         check_inputs_not_the_map(start, forward, reverse, metacool_file)
-        check_pairs_compression(start, forward, scaffold)
+        check_pairs_compression(start, forward)
         check_reverse_reads(start, aligner, reverse)
         bins_prefix = bin_prefix(prefix)
         # A run that writes its map holds the map's lock from now on: a second
@@ -2179,10 +2080,6 @@ def pipeline(
 
         # Manage start point.
         start_step = {"fastq": 1, "bam": 2, "pair": 3, "metacool": 3}[start]
-        # The pairs files made from the reads or the alignments are sorted,
-        # indexed and kept in the output directory for --scaffold and -N
-        # only (see get_contact_pairs).
-        keep_pairs = scaffold or no_clean_up
 
         # Print information of the workflow:
         if start_step == 1:
@@ -2203,14 +2100,12 @@ def pipeline(
         overlapping_fasta_dir = join(outdir, "overlapping_clusters")
         recursive_fasta_dir = join(outdir, "recursive_clusters")
         final_fasta_dir = join(outdir, "final_clusters")
-        scaffold_fasta_dir = join(outdir, "scaffolded_clusters")
-        bin_dirs = [overlapping_fasta_dir, recursive_fasta_dir, final_fasta_dir] + ([scaffold_fasta_dir] if scaffold else [])
+        bin_dirs = [overlapping_fasta_dir, recursive_fasta_dir, final_fasta_dir]
         # Those of a run of metaTOR 1.x, or one made before 2.0, named as 1.x
         # names them: refused too, and removed with --force.
         outputs_of_1x = [
             join(outdir, name)
             for name in ["overlapping_bin", "recursive_bin", "final_bin", "final_bin_unscaffold", "bin_summary.txt"]
-            + (["scaffold_bin"] if scaffold else [])
         ]
         for path in bin_dirs:
             refuse_output_dir(path, force)
@@ -2255,10 +2150,10 @@ def pipeline(
                 outdir,
                 tmp_dir,
                 threads,
-                # Only --scaffold and the user (-N) query the pairs of a
-                # contig: the maps read them once, in any order, and the
-                # networks come from the maps.
-                sort_pairs=keep_pairs,
+                # Only the user (-N) queries the pairs of a contig: the maps
+                # read them once, in any order, and the networks come from
+                # the maps.
+                sort_pairs=no_clean_up,
                 keep_temp=no_clean_up,
             )
             columns_from_map = []
@@ -2286,7 +2181,7 @@ def pipeline(
         # The pairs files made from the reads or the alignments, written to
         # the temporary directory as they were made: nothing reads them
         # after the maps, which the networks come from.
-        if start_step <= 2 and not keep_pairs:
+        if start_step <= 2 and not no_clean_up:
             logger.info("Removing the pairs files, read for the contact maps: -N keeps them.")
             for pair_file in alignment_files:
                 os.remove(pair_file)
@@ -2330,9 +2225,6 @@ def pipeline(
             tmp_dir,
             threads,
             bins_prefix,
-            # The heatmap of the clusters is drawn from the map of the run:
-            # the map it started from, or the map of its contigs.
-            metacool=forward if start == "metacool" else metacool_file,
         )
 
         if cluster_matrix:
@@ -2344,21 +2236,6 @@ def pipeline(
 
         # Remove contig_data_partition file
         os.remove(join(outdir, "contig_data_partition.txt"))
-
-        # Launch the scaffold
-        if scaffold:
-            bin_summary = mio.read_bin_summary(join(outdir, "cluster_summary.txt"))
-            task = partial(
-                mts.parallel_scaffold,
-                final_fasta_dir=final_fasta_dir,
-                alignment_files=alignment_files,
-                scaffold_fasta_dir=scaffold_fasta_dir,
-                junctions=junctions,
-            )
-            # Workers started by forkserver (Linux's default from Python 3.14)
-            # or spawn (macOS) do not inherit the log file handler.
-            with mp.Pool(processes=threads, initializer=mtl.set_file_handler, initargs=(log_file,)) as pool:
-                pool.map(task, bin_summary.index)
 
         # Delete pyfastx index:
         mio.remove_pyfastx_index(fasta)
@@ -2377,623 +2254,6 @@ def pipeline(
                 os.remove(collection)
         else:
             pipeline_metacool(metacool_file, outdir, metacool_file, contig_map=True, normalization=normalization)
-
-    # Delete the pairs files made from the reads or the alignments for
-    # --scaffold, and their pypairix index.
-    if scaffold and not no_clean_up and start_step < 3:
-        for pair_file in alignment_files:
-            os.remove(pair_file)
-            if os.path.exists(f"{pair_file}.px2"):
-                os.remove(f"{pair_file}.px2")
-
-    generate_log_footer(log_file)
-
-
-# ---------------------------------------------------------------------------
-# qc
-# ---------------------------------------------------------------------------
-
-
-@cli.command(short_help="Generate some quality checks on the output of metaTOR.")
-@pairsfile_argument(
-    help=PAIRS_OR_MAP_HELP.format(
-        "from a map, the noise of the library only, without the events of the pairs, which need their reads."
-    )
-)
-@_option(
-    "-a",
-    "--assembly",
-    required=True,
-    metavar="FILE",
-    panel="Input",
-    help="Path to the fasta file containing the contigs of interest. Could be the whole or the extracted contigs of one cluster. "
-    "Not read from a map.",
-)
-@_option(
-    "-e",
-    "--enzyme",
-    required=True,
-    metavar="STR",
-    panel="Input",
-    help="The list of restriction enzyme used to digest the contigs separated by a comma. Example: HpaII,MluCI. Not "
-    "used from a map.",
-)
-@_option(
-    "-O",
-    "--metator-dir",
-    metavar="DIR",
-    panel="Input",
-    help="Output directory from metator pipeline. If set, contigs data and cluster summary will be found automatically "
-    "(cluster_summary.txt, or the bin_summary.txt of metaTOR 1.x).",
-)
-@_option(
-    "-b",
-    "--bin-summary",
-    metavar="FILE",
-    panel="Input",
-    help="Path to the cluster_summary.txt file from MetaTOR output (bin_summary.txt in metaTOR 1.x).",
-)
-@_option(
-    "-c",
-    "--contig-data",
-    metavar="FILE",
-    panel="Input",
-    help="Path to the contig_data_final.txt file from MetaTOR output.",
-)
-@_option(
-    "-t",
-    "--threshold",
-    metavar="STR",
-    panel="Quality check",
-    help="Hicstuff religation and loop thresholds. Two integers separated by a comma. Refused from a map.",
-)
-@_option("-P", "--plot", is_flag=True, panel="Quality check", help="If enabled, display some plots. Refused from a map.")
-@_option("-p", "--prefix", metavar="STR", panel="Quality check", help="Name of the sample to add on plot and files.")
-@outdir_option(help="Directory to save output plots and log. Default: ./metator_qc or ./metator_qc_<prefix>.")
-@tmpdir_option(default=None, help="Temporary directory to save pairs files. Default to ./tmp in the current directory.")
-@no_clean_up_option(short="-n", help="If enabled, intermediary files will be kept.")
-def qc(
-    pairsfile,
-    assembly,
-    enzyme,
-    metator_dir,
-    bin_summary,
-    contig_data,
-    threshold,
-    plot,
-    prefix,
-    outdir,
-    tmpdir,
-    no_clean_up,
-):
-    """Generate some quality checks on the output of metaTOR.
-
-    The quality check is done on the high quality MAGs and only contigs with
-    a size bigger than 100kb. The goal is to assess HiC quality metrics on
-    genomes we kinda know to have a estimation of the quality of the
-    library.
-
-    If the plot are set it will return some plot of the event distribution
-    on the high quality contigs.
-
-    [cyan]metator qc MAP ...[/] reads a .metacool contact map of the run in
-    place of its pairs files, and measures the noise of the library only:
-    the contacts within contigs, within MAGs and between MAGs, the noise
-    contact ratio and the noise score, which are those of the pairs that
-    the map holds. The events of the pairs within a contig (uncuts, loops,
-    weirds, informative contacts) need the positions and strands of their
-    reads, which a map does not hold: they are not measured, and
-    --threshold and --plot are refused. --assembly and --enzyme are not
-    used.
-    """
-    # Private temporary directory inside --tmpdir.
-    with private_tmp_dir(tmpdir, clean_up=not no_clean_up) as tmp_dir:
-        # Set output directory.
-        if not outdir:
-            outdir = join(".", f"metator_qc_{prefix}" if prefix else "metator_qc")
-        os.makedirs(outdir, exist_ok=True)
-
-        # Enable file logging
-        log_file = log_file_name(outdir, "qc")
-        generate_log_header(log_file)
-
-        # A map in place of the pairs files: the noise only.
-        input_map = map_in_place_of_pairs("qc", pairsfile)
-        if input_map is not None:
-            given = [option for option, value in [("-t/--threshold", threshold is not None), ("-P/--plot", plot)] if value]
-            refuse_options_of_pairs(
-                "qc",
-                input_map,
-                given,
-                "they set and draw the events of the pairs within a contig (uncuts, loops, weirds), which need the "
-                "positions and strands of their reads, which only pairs files hold.",
-            )
-
-        # Try to find input files.
-        metator_dir = metator_dir or "."
-        if bin_summary:
-            bin_summary_file = bin_summary
-        else:
-            # cluster_summary.txt, or the bin_summary.txt of a run of 1.x
-            bin_summary_file = next(
-                (
-                    join(metator_dir, name)
-                    for name in ("cluster_summary.txt", "bin_summary.txt")
-                    if exists(join(metator_dir, name))
-                ),
-                None,
-            )
-            if bin_summary_file is None:
-                logger.error(
-                    "Please give a cluster summary file, or the ouput directory of metator or launch this command from the output directory of metator."
-                )
-                logger.error("You can also check that a cluster_summary.txt is present in metator output directory")
-                raise FileNotFoundError
-        if contig_data:
-            contig_data_file = contig_data
-        else:
-            contig_data_file = join(metator_dir, "contig_data_final.txt")
-            if not exists(contig_data_file):
-                logger.error(
-                    "Please give a contig data file, or the ouput directory of metator or launch this command from the output directory of metator."
-                )
-                logger.error("You can also check that a contig_data_final.txt is present in metator output directory")
-                raise FileNotFoundError
-
-        # Launch quality check
-        try:
-            mtq.quality_check(
-                contig_data_file,
-                bin_summary_file,
-                assembly,
-                list(pairsfile),
-                outdir,
-                tmp_dir,
-                prefix or "metator_qc",
-                plot,
-                enzyme=enzyme.split(",") if enzyme else enzyme,
-                threshold=threshold.split(",") if threshold else threshold,
-                metacool=input_map,
-            )
-        except mtmc.MetacoolError as error:
-            # A map that cannot give the noise: the reason in the log file.
-            logger.error(str(error))
-            raise
-
-    generate_log_footer(log_file)
-
-
-# ---------------------------------------------------------------------------
-# contactmap
-# ---------------------------------------------------------------------------
-
-
-@cli.command(short_help="Generate the HiC contact map of one metaTOR object (contig or cluster).")
-@pairsfile_argument(
-    help=PAIRS_OR_MAP_HELP.format("from a map, the contact map of the contigs, as metacooler extract writes it (a .cool file).")
-)
-@_option(
-    "-a",
-    "--assembly",
-    required=True,
-    metavar="FILE",
-    panel="Input",
-    help="Path to the fasta file containing the contigs of interest. Could be the whole or the extracted contigs of one cluster.",
-)
-@_option(
-    "-c",
-    "--contig-data",
-    required=True,
-    metavar="FILE",
-    panel="Input",
-    help="Path to the contig_data_final.txt file from MetaTOR output.",
-)
-@_option(
-    "-e",
-    "--enzyme",
-    required=True,
-    metavar="STR",
-    panel="Input",
-    help="The list of restriction enzyme used to digest the contigs separated by a comma. Example: HpaII,MluCI. Not "
-    "used from a map.",
-)
-@_option(
-    "-n",
-    "--name",
-    required=True,
-    metavar="STR",
-    panel="Input",
-    help="Name of the metator object, or its numerical ID for the core_bin and overlapping_bin objects. A recursive "
-    "cluster is numbered within its overlapping cluster: give its name. "
-    'Example: "NODE_1", "MetaTOR_1_0" or 8.',
-)
-@_option(
-    "-O",
-    "--object",
-    "metator_object",
-    default="final_bin",
-    show_default=True,
-    metavar="STR",
-    panel="Input",
-    help='Type of metator object used to build a contact map. Either "contig", "core_bin", "overlapping_bin", '
-    '"recursive_bin", "final_bin" or the name of another column of the contig data file, such as "Other". The name '
-    'that metaTOR 1.x gave a column, such as "Final_bin", reads its 2.0 column, "Final_cluster", unless the file has '
-    "a column of that name.",
-)
-@_option(
-    "-m",
-    "--mat-fmt",
-    type=click.Choice(MATRIX_FORMATS),
-    default="graal",
-    show_default=True,
-    panel="Contact map",
-    help='The format of the output sparse matrix: "bg2" for 2D Bedgraph format, "cool" for Mirnylab\'s cooler '
-    'software, or "graal" for graal-compatible plain text COO format. From a map, "cool" only, the default then.',
-)
-@_option(
-    "-f",
-    "--filter",
-    "filter_events",
-    is_flag=True,
-    panel="Contact map",
-    help="Filter out spurious 3C events (loops and uncuts) using hicstuff filter. For more informations, see Cournac "
-    "et al. BMC Genomics, 2012. Refused from a map.",
-)
-@_option(
-    "-D",
-    "--pcr-dup",
-    is_flag=True,
-    panel="Contact map",
-    help="Filter out PCR duplicates based on read positions. Refused from a map.",
-)
-@_option(
-    "-s",
-    "--min-size",
-    type=click.INT,
-    default=5000,
-    show_default=True,
-    metavar="INT",
-    panel="Contact map",
-    help="Minimum size threshold to consider contigs.",
-)
-@outdir_option(help="Output directory. Default creates a new directory contact_map_<name> in the current directory.")
-@force_option("Write files even if the output files already exists.")
-@tmpdir_option(
-    default=None,
-    help='Directory for storing intermediary files and temporary files. Default creates a "tmp" folder in the current directory.',
-)
-@threads_option(help="Number of threads to allocate.")
-@no_clean_up_option(help="If enabled, intermediary files will be kept.")
-def contactmap(
-    pairsfile,
-    assembly,
-    contig_data,
-    enzyme,
-    name,
-    metator_object,
-    mat_fmt,
-    filter_events,
-    pcr_dup,
-    min_size,
-    outdir,
-    force,
-    tmpdir,
-    threads,
-    no_clean_up,
-):
-    """Generate a HiC contact map of a MetaTOR object from the pairs files,
-    the contig data file and a fasta file containing the contigs of
-    interest.
-
-    Generates the Hi-C matrix of one MetaTOR object from the pair alignment
-    file of metator. MetaTOR object integrated are contigs, and core,
-    overlapping, recursive, final or personalized clusters. For the
-    personalized clusters you should add a column in the contig_data_final.txt file with a
-    header called "Other".
-
-    Do not display the matrix, you have to run another pipeline to display it
-    such hicstuff view or cooler show depending on the matrix format chosen.
-    It's also possible to try to scaffold the cluster using instagraal pipeline
-    using the output.
-
-    [cyan]metator contactmap MAP ...[/] reads a .metacool contact map of the
-    run in place of its pairs files: it writes the contact map of the
-    contigs of the object as metacooler extract writes it, <name>.cool, at
-    the bins of the map (one per contig in a map of metaTOR), where hicstuff
-    builds that of their restriction fragments from the pairs files. Its
-    contacts are those of the pairs that the map holds. A map holds no read
-    positions: --filter, --pcr-dup and a --mat-fmt other than cool are
-    refused. --enzyme is not used.
-    """
-    # Defined the output directory first: the log file is written there.
-    outdir = outdir or join(".", "contact_map_" + name)
-    os.makedirs(outdir, exist_ok=True)
-
-    # Enable file logging
-    log_file = log_file_name(outdir, "contactmap")
-    generate_log_header(log_file)
-
-    # A map in place of the pairs files: the contact map of the contigs.
-    input_map = map_in_place_of_pairs("contactmap", pairsfile)
-    if input_map is not None:
-        ctx = click.get_current_context(silent=True)
-        explicit_format = ctx is not None and ctx.get_parameter_source("mat_fmt") != ParameterSource.DEFAULT
-        given = [
-            option
-            for option, value in [
-                ("-f/--filter", filter_events),
-                ("-D/--pcr-dup", pcr_dup),
-                (f"-m/--mat-fmt {mat_fmt}", explicit_format and mat_fmt != "cool"),
-            ]
-            if value
-        ]
-        refuse_options_of_pairs(
-            "contactmap",
-            input_map,
-            given,
-            "it writes the contact map of the contigs as metacooler extract writes it, a .cool file, from a map that "
-            "holds no read positions, which the filters of hicstuff and its maps of restriction fragments need.",
-        )
-
-    # Private temporary directory inside --tmpdir.
-    with private_tmp_dir(tmpdir, clean_up=not no_clean_up) as tmp_dir:
-        if input_map is None:
-            mtc.generate_contact_map(
-                assembly,
-                contig_data,
-                enzyme,
-                name,
-                list(pairsfile),
-                outdir,
-                tmp_dir,
-                filter_events,
-                force,
-                mat_fmt,
-                metator_object,
-                min_size,
-                pcr_dup,
-                threads,
-            )
-        else:
-            try:
-                mtc.extract_contact_map(assembly, contig_data, name, input_map, outdir, force, metator_object, min_size)
-            except mtmc.MetacoolError as error:
-                # A map that cannot give the contact map: the reason in the
-                # log file.
-                logger.error(str(error))
-                raise
-
-    if not no_clean_up:
-        # Delete pyfastx index:
-        mio.remove_pyfastx_index(assembly)
-
-    generate_log_footer(log_file)
-
-
-# ---------------------------------------------------------------------------
-# metacool
-# ---------------------------------------------------------------------------
-
-
-@cli.command(short_help="Write the contact map of the contigs, grouped by cluster, as a .metacool file.")
-@click.argument(
-    "pairsfile",
-    nargs=-1,
-    required=True,
-    help="Pairs file(s) of the run, or one .metacool map of its contigs (or an entry of a .mmetacool collection: "
-    "file.mmetacool::entries/NAME), the map that a run from a map started from.",
-    panel="Input",
-)
-@_option(
-    "-c",
-    "--contig-data",
-    required=True,
-    metavar="FILE",
-    panel="Input",
-    help="Path to the contig_data_final.txt file from MetaTOR output: the contigs, their final clusters and what "
-    "metaTOR measured on them.",
-)
-@_option(
-    "-b",
-    "--bin-summary",
-    metavar="FILE",
-    panel="Input",
-    help="Path to the cluster_summary.txt file from MetaTOR output (bin_summary.txt in metaTOR 1.x): its columns are "
-    "added to the genomes table.",
-)
-@_option("-o", "--outfile", required=True, metavar="FILE", help="Path to the .metacool file to write.")
-@_option(
-    "-n",
-    "--assembly-name",
-    metavar="STR",
-    help="Name of the assembly, stored in the file. A map written from a .metacool map keeps its name.",
-)
-@threads_option(help="Number of threads binning the pairs.")
-@force_option("Overwrite the output file if it exists.")
-def metacool(pairsfile, contig_data, bin_summary, outfile, assembly_name, threads, force):
-    """Write the contact map of a metaTOR run as a .metacool file.
-
-    A .metacool file is the contact map of metacooler: a cooler whose
-    chromosomes are the contigs, one bin per contig, grouped by genome: one
-    genome per final cluster of the contig data file, and [cyan]__unbinned__[/]
-    for the other contigs, with all their contacts. The README says what
-    else it holds. The pairs files of several libraries are summed.
-
-    It is written from the pairs files of the run or, for a run that
-    started from a .metacool map of the contigs (run step by step:
-    [cyan]metator network MAP[/], partition, validation), from that map:
-    the map that [cyan]pipeline MAP[/] writes at the end of such a run.
-
-    The contig and cluster names must be ASCII, and no cluster may be named
-    as metacooler marks a contig in no cluster (NA, NaN, N/A, N/D, -1 or
-    __unbinned__ in any case, and nd in any case other than ND, which marks
-    a contig in no cluster). [cyan]pipeline[/] writes this file at the end of a
-    run: from the map of the contigs that it builds from the pairs files,
-    or from the map that it starts from.
-    """
-    # Generate log
-    log_file = log_file_name("", "metacool")
-    generate_log_header(log_file)
-
-    # Its map is locked as a pipeline run locks the map it writes: the two
-    # cannot write one map at once (map_lock logs its refusal). The map's
-    # directory is made first, as the writers make it.
-    make_map_directory(outfile, "-o/--outfile")
-    with terminated_as_interrupted(), mtmc.map_lock(outfile, elsewhere="another -o/--outfile"):
-        _write_metacool_command(pairsfile, contig_data, bin_summary, outfile, assembly_name, threads, force)
-
-    generate_log_footer(log_file)
-
-
-def _write_metacool_command(pairsfile, contig_data, bin_summary, outfile, assembly_name, threads, force):
-    """The map of metator metacool, written once its lock is held."""
-    try:
-        maps = [path for path in pairsfile if mtmc.is_map(path)]
-        if maps:
-            # The map of the bins written from the map of the contigs, as
-            # a pipeline run from a map writes it.
-            if len(pairsfile) > 1:
-                raise mtmc.MetacoolError(
-                    f"metator metacool writes the map from pairs files, or from one .metacool map: got "
-                    f"{len(pairsfile)} files, {len(maps)} of them .metacool maps."
-                )
-            if assembly_name:
-                raise mtmc.MetacoolError(
-                    f"--assembly-name names the assembly of a map written from pairs files: the map written from "
-                    f"{maps[0]} keeps the assembly name of that map."
-                )
-            mtmc.reassign_metacool(maps[0], contig_data, outfile, bin_summary=bin_summary, force=force, metadata=run_metadata())
-        else:
-            mtmc.write_metacool(
-                list(pairsfile),
-                contig_data,
-                outfile,
-                bin_summary=bin_summary,
-                assembly_name=assembly_name,
-                threads=threads,
-                force=force,
-                metadata=run_metadata(),
-            )
-    except mtmc.MetacoolError as error:
-        # The reason in the log file of the run, then the error.
-        logger.error(str(error))
-        raise
-
-
-# ---------------------------------------------------------------------------
-# scaffold
-# ---------------------------------------------------------------------------
-
-
-@cli.command(short_help="Scaffold a metaTOR cluster from pairs files.")
-@pairsfile_argument()
-@_option("-b", "--bin-name", required=True, metavar="STR", panel="Input", help="Name of the cluster to scaffold.")
-@_option("-i", "--input-fasta", required=True, metavar="FILE", panel="Input", help="Path to the input fasta.")
-@_option(
-    "-T",
-    "--threshold",
-    type=click.FLOAT,
-    default=0.05,
-    show_default=True,
-    metavar="FLOAT",
-    panel="Scaffolding",
-    help="Threshold score to consider an association between two contigs.",
-)
-@_option(
-    "-w",
-    "--window-size",
-    type=click.INT,
-    default=5000,
-    show_default=True,
-    metavar="INT",
-    panel="Scaffolding",
-    help="Size of the window in base pair to use as edge window to scaffold.",
-)
-@_option(
-    "-j",
-    "--junctions",
-    default="NNNNN",
-    show_default=True,
-    metavar="STR",
-    panel="Scaffolding",
-    help="Sequences to use as junction between contigs.",
-)
-@_option(
-    "-o",
-    "--out-fasta",
-    metavar="FILE",
-    help="Path to write the output fasta. Default in the current directory: <cluster_name>_scaffolded.fa.",
-)
-@_option(
-    "-O",
-    "--out-frags",
-    metavar="FILE",
-    help="Path to write the fragments information. Default in the current directory: <cluster_name>_info_frags.txt.",
-)
-@threads_option(help="Numbers of threads to allocate if pairs need to be sorted.")
-def scaffold(pairsfile, bin_name, input_fasta, threshold, window_size, junctions, out_fasta, out_frags, threads):
-    """Scaffold a cluster from metaTOR.
-
-    Use the pairs to build a scaffold from the contigs of the cluster. The
-    scaffolding is based on contact between the edges of the contigs. There
-    are normalized based on intra contacts of the contigs except for the
-    small contigs where a low score is given.
-    """
-    # Generate log
-    log_file = log_file_name("", "scaffold")
-    generate_log_header(log_file)
-
-    # Get the scaffolds
-    mts.get_scaffolds(
-        bin_name,
-        input_fasta,
-        list(pairsfile),
-        join(".", f"{bin_name}_scaffolded.fa") if out_fasta is None else out_fasta,
-        join(".", f"{bin_name}_info_frags.txt") if out_frags is None else out_frags,
-        threshold=threshold,
-        threads=threads,
-        window_size=window_size,
-        junctions=junctions,
-    )
-
-    generate_log_footer(log_file)
-
-
-# ---------------------------------------------------------------------------
-# pairs
-# ---------------------------------------------------------------------------
-
-
-@cli.command(short_help="Sort, compress and index pairs files.")
-@pairsfile_argument()
-@_option("-F", "--force", is_flag=True, help="Write files even if the output files already exists.")
-@_option(
-    "-r",
-    "--remove",
-    is_flag=True,
-    help="Remove the input file at the end to keep only the sorted, compressed and indexed pairs file.",
-)
-@threads_option(help="Numbers of thread to allocate.")
-def pairs(pairsfile, force, remove, threads):
-    """Sort, compress and index pairs files for faster access to the data.
-
-    Sort the pairs files (compressed or not) by chr1, chr2, pos1 and pos2
-    using hicstuff. Compress them using bgzip. Index them using pypairix.
-    Each output goes next to its input, named after it without its last
-    extension: sample.pairs gives sample_sorted.pairs.gz and its index
-    sample_sorted.pairs.gz.px2, sample.pairs.gz gives
-    sample.pairs_sorted.pairs.gz.
-    """
-    # Generate log
-    log_file = log_file_name("", "pairs")
-    generate_log_header(log_file)
-
-    # Iterates on pairfiles given.
-    for pairs_file in pairsfile:
-        logger.info(f"Processing {pairs_file}...")
-        # Run the sort/compress/index command. Sort's temporary files go to
-        # the working directory: /tmp can be small, or in memory.
-        mio.sort_and_index_pairs(pairs_file, threads=threads, remove=remove, force=force, tmp_dir=".")
 
     generate_log_footer(log_file)
 
