@@ -65,7 +65,6 @@ The pipeline writes into `--outdir` (`-o`, the current directory by default):
 | `overlapping_micomplete_results.txt` | miComplete's results on the overlapping clusters |
 | `recursive_micomplete_step_<n>.txt` | miComplete's results on the recursive clusters of step `n` |
 | `clusters.txt`, `cluster_members.txt` | Every cluster of every round (overlapping, recursive, final), with its parent and miComplete's columns, and the contigs of each: see [Clustering rounds](metacool.md#clustering-rounds) |
-| `clustering_matrix*.npz` | With `--cluster-matrix`: how often each two contigs were clustered together |
 | `metator_pipeline_<date>.log` | The log of the run |
 
 At its end, the run writes the contact map of all the contigs, grouped by

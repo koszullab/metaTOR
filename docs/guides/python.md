@@ -19,16 +19,14 @@ This page shows the pieces to put together; the
 
 ## Reading the outputs
 
-pandas reads `cluster_summary.txt`, indexed by cluster name, and
-`read_contig_data` the contig data table, indexed by contig name:
+pandas reads `cluster_summary.txt`, indexed by cluster name, and the contig
+data table, indexed here by contig name:
 
 ```python
 import pandas as pd
 
-import metator.io as mio
-
 summary = pd.read_csv("binning/cluster_summary.txt", sep="\t", index_col=0)
-contigs = mio.read_contig_data("binning/contig_data_final.txt")
+contigs = pd.read_csv("binning/contig_data_final.txt", sep="\t", index_col=0).set_index("Name", drop=False)
 
 # The high-quality MAGs, and their contigs.
 hq = summary[(summary["Weighted completeness"] >= 0.9) & (summary["Weighted redundancy"] <= 1.05)]
@@ -51,24 +49,6 @@ mc.genomes  # one row per cluster, and __unbinned__, with the columns of cluster
 mc.contigs  # one row per contig
 ```
 
-## The clustering matrices
-
-With `--cluster-matrix`, the partition writes how often each two contigs fell
-in the same community, as a sparse matrix in a `.npz` file. Row and column
-*i* are the contig of ID *i* of the contig data table (from 1: row and column
-0 are empty), and only the upper triangle is stored:
-
-```python
-import metator.io as mio
-from scipy import sparse
-
-matrix = sparse.load_npz("binning/clustering_matrix_partition.npz").tocsr()
-matrix[1, 1196]  # how often contigs 1 and 1196 were clustered together, from 0 to 1
-
-# As a text file: a header line (rows, columns, non-zero values), then row, column, value
-mio.save_sparse_matrix(matrix.tocoo(), "binning/clustering_matrix_partition.tsv")
-```
-
 ## Running a step
 
 The functions behind the commands take their options as arguments. The
@@ -80,10 +60,9 @@ import os
 import metator.partition as mtp
 
 os.makedirs("binning/overlapping_clusters", exist_ok=True)
-clustering_matrix_file, contig_data_file = mtp.partition(
+contig_data_file = mtp.partition(
     algorithm="louvain",
     assembly="assembly.fa",
-    cluster_matrix=True,
     contig_data_file="binning/contig_data_network.txt",
     iterations=100,
     network_file="binning/network.txt",

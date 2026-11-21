@@ -35,6 +35,9 @@ Louvain and Leiden run through igraph).
 | `metator scaffold`, and `-v, --scaffold` and `-J, --junctions` of `pipeline` | Removed: an unknown command, unknown options | hicstuff's `pipeline -M graal` on the FASTA file of a cluster, then instaGRAAL. |
 | `metator pairs` | Removed: an unknown command | hicstuff's `pipeline` writes its pairs sorted and compressed with bgzip, ready for `pairix -p pairs`; pairix's tools sort, compress and index other pairs files. |
 | `metator metacool` (1.4.0) | Removed: an unknown command | `pipeline` and `validation` write the contact map of the clusters; by hand, `metacooler reassign` and `annotate` (see [Other tools](other-tools.md)). |
+| `-C, --cluster-matrix` of `partition`, `validation` and `pipeline`: the clustering matrices, `clustering_matrix_partition.npz`, `clustering_matrix_recursive.npz` and `clustering_matrix.npz` | Removed: an unknown option | The clustering rounds of the run say which contigs each round put together: `clusters.txt` and `cluster_members.txt`, and the `/clusters` group of the map. |
+| `-s, --self-contacts` of `network` | Removed: an unknown option | The network has no edge from a contig to itself. The contacts within each contig are in the map: its `qc_intra_contig_short` and `qc_intra_contig_long` columns. |
+| `python -m metator.main`, `metator.main.main()` | Removed: `metator`, or `python -m metator` | The former entry point, an alias of the command line since 1.4.0. |
 | `metator host` | Removed: an unknown command | It always failed since 1.3.10: it called a function that the rewrite of the `host` module removed. |
 | `-A spinglass` (`validation`, `pipeline`) | Refused: not a value of `--algorithm` | It never worked: its code was commented out. |
 | `-p, --prefix` of `partition`, `validation` and `pipeline`: any characters | Letters, digits, `_` and `-` only | miComplete drops the dots from the names of the clusters. |
@@ -53,8 +56,6 @@ error, before any work unless said otherwise:
 |---|---|
 | A `--depth` file that lacks a contig of the assembly, or gives one another length | The file is read by contig name. 1.x read it line by line, in the order of the assembly, and gave the contigs of a file in another order the values of others. |
 | An assembly whose FASTA file starts with blank or `#` lines, with Biopython 1.87 or later | Biopython refuses it: start the file with its first `>` header line. |
-| In the output directory of a run of 1.x, without `-F`: its outputs named after bins. `partition` refuses `overlapping_bin/`; `validation` refuses `recursive_bin/`, `final_bin/`, `final_bin_unscaffold/` and `bin_summary.txt`; `pipeline` refuses all of these | The run would leave them next to its own outputs, which are named otherwise. `-F` removes them. |
-| In the output directory of an earlier run, without `-F`: its plots, `plot/` (`validation`, `pipeline`) | metaTOR 2.0 draws no plots: the run would leave them next to its own outputs. `-F` removes them. |
 
 ## What a run writes
 
@@ -71,20 +72,22 @@ error, before any work unless said otherwise:
 | `overlapping_bin/` | `overlapping_clusters/`: a script that gives it to `validation -f` names the new directory. |
 | `recursive_bin/` | `recursive_clusters/` |
 | `final_bin/` (`validation`), `final_bin_unscaffold/` (`pipeline`) | `final_clusters/` |
+| | The outputs of a run of 1.x in the output directory (`overlapping_bin/`, `recursive_bin/`, `final_bin/`, `final_bin_unscaffold/`, `bin_summary.txt`) and the `plot/` of an earlier run are left as they are, with or without `-F`: they are no output of 2.0. Remove them, or run in another directory. |
 | `scaffold_bin/` (`pipeline --scaffold`) | None: `--scaffold` is gone (see [Other tools](other-tools.md)). |
 | `mges_bin_summary.tsv` (`mge`) | `mges_cluster_summary.tsv` |
 | `<tmp>/recursive_clustering/recursive_bins/`, in the temporary directory (`validation`, `pipeline`; kept with `-N`) | `<tmp>/recursive_clustering/recursive_clusters/` |
-| The columns of the contig data tables `Core_bin_ID`, `Core_bin_contigs`, `Core_bin_size`, `Overlapping_bin_ID`, `Overlapping_bin_contigs`, `Overlapping_bin_size`, `Recursive_bin_ID`, `Recursive_bin_contigs`, `Recursive_bin_size` and `Final_bin` | `Core_cluster_ID`, `Core_cluster_contigs`, `Core_cluster_size`, `Overlapping_cluster_ID`, `Overlapping_cluster_contigs`, `Overlapping_cluster_size`, `Recursive_cluster_ID`, `Recursive_cluster_contigs`, `Recursive_cluster_size` and `Final_cluster`. Every command still reads the tables of 1.x, their columns under the new names. The Python functions that take a table of contig data (`metator.validation.correct_final_bin`...) need the new names: read a table of 1.x with `metator.io.read_contig_data`, or give it to `metator.io.rename_1x_columns`. metacooler's `--contigs-format metator` names `Final_bin`: give `--contigs-format Name,Final_cluster` for a table of 2.0. |
+| The columns of the contig data tables `Core_bin_ID`, `Core_bin_contigs`, `Core_bin_size`, `Overlapping_bin_ID`, `Overlapping_bin_contigs`, `Overlapping_bin_size`, `Recursive_bin_ID`, `Recursive_bin_contigs`, `Recursive_bin_size` and `Final_bin` | `Core_cluster_ID`, `Core_cluster_contigs`, `Core_cluster_size`, `Overlapping_cluster_ID`, `Overlapping_cluster_contigs`, `Overlapping_cluster_size`, `Recursive_cluster_ID`, `Recursive_cluster_contigs`, `Recursive_cluster_size` and `Final_cluster`. No command reads the tables of 1.x: rename their columns first (`metator.io.rename_1x_columns` does, which `metator.host` calls). metacooler's `--contigs-format metator` names `Final_bin`: give `--contigs-format Name,Final_cluster` for a table of 2.0. |
 | 1.4.0: a map of the clusters that could not be written, a warning, and exit status 0 | The run stops with the reason, logged as an error. Its other outputs are kept, and so is the map it would have replaced. |
-| `plot/` (`validation`, `pipeline`): `bins_distribution.png`, `bins_size_distribution.png`, `MAGs_GC_distribution.png`, `MAGs_HiC_cov_distribution.png`, `MAGs_SG_cov_distribution.png` and `network_heatmap.png` | None: metaTOR draws no plot. The log of the validation counts the clusters in each quality class, and `metacooler show` draws the contacts between them from the map (see [Other tools](other-tools.md)). A run refuses the `plot/` of an earlier run without `-F`, and removes it with `-F`. |
-| 1.4.0: the parameters of the run in the metadata of its map (its `metator` key), `edge`, `scaffold` and `junctions` among them | No `edge`, `scaffold` or `junctions`, nor `forward`, `reverse`, `start`, `aligner`, `aligner_mode` or `min_quality`. `map`: the map that the run started from. `columns_from_map`: the columns of the map that the run read (`Restriction_site`, `Shotgun_coverage`). |
+| `plot/` (`validation`, `pipeline`): `bins_distribution.png`, `bins_size_distribution.png`, `MAGs_GC_distribution.png`, `MAGs_HiC_cov_distribution.png`, `MAGs_SG_cov_distribution.png` and `network_heatmap.png` | None: metaTOR draws no plot. The log of the validation counts the clusters in each quality class, and `metacooler show` draws the contacts between them from the map (see [Other tools](other-tools.md)). |
+| 1.4.0: the parameters of the run in the metadata of its map (its `metator` key), `edge`, `scaffold`, `junctions` and `cluster_matrix` among them | No `edge`, `scaffold`, `junctions` or `cluster_matrix`, nor `forward`, `reverse`, `start`, `aligner`, `aligner_mode` or `min_quality`. `map`: the map that the run started from. `columns_from_map`: the columns of the map that the run read (`Restriction_site`, `Shotgun_coverage`). |
 
 ## What a run counts
 
 | metaTOR 1.x | metaTOR 2.0 |
 |---|---|
 | At `--edge 0`, the default, without `--self-contacts` (`-s`), the network left out a pair with a read at position 0 or on the last base of its contig. | Such a pair is a contact, as in the contact map: on `tests_data/alignment.pairs`, 360 of 13,415 edges change. |
-| A pair with a read past the end of its contig: left out of the network, but with `--self-contacts`, which tested no positions; its hits counted. | Left out, with or without `--self-contacts`, hits included. |
+| A pair with a read past the end of its contig: left out of the network, but with `--self-contacts`, which tested no positions; its hits counted. | Left out, hits included. |
+| With `--self-contacts` (`-s`), an edge from each contig to itself, its contacts within itself | No such edge: `--self-contacts` is gone. |
 
 See [the guide to the contact map](guides/metacool.md) for a run from a map
 and the map a run writes.

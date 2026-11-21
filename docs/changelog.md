@@ -140,16 +140,15 @@ All notable changes to this project will be documented in this file.
   `mges_cluster_summary.tsv`. In the contig data tables, `Core_bin_ID`,
   `Core_bin_contigs` and `Core_bin_size`, and the columns of the overlapping
   and recursive bins, are `Core_cluster_ID`, `Core_cluster_contigs`,
-  `Core_cluster_size` and so on, and `Final_bin` is `Final_cluster`. Every
-  command still reads the contig data tables of metaTOR 1.x, their columns
-  under the new names (`metator.io.rename_1x_columns`). `binning.txt`, which
-  anvi'o imports, and the names of the clusters are kept. A script that
-  gives the overlapping clusters of `partition` to `validation -f` names
-  `overlapping_clusters/` now: see [Migrating to metaTOR 2.0](migration.md).
-  A run in the output directory of a run of 1.x refuses its outputs named
-  after bins without `-F`, as those of 2.0, and removes them with it. The
-  Python functions that take a table of contig data need the 2.0 names (read
-  a table of 1.x with `metator.io.read_contig_data`). metacooler's
+  `Core_cluster_size` and so on, and `Final_bin` is `Final_cluster`.
+  `binning.txt`, which anvi'o imports, and the names of the clusters are
+  kept. A script that gives the overlapping clusters of `partition` to
+  `validation -f` names `overlapping_clusters/` now: see
+  [Migrating to metaTOR 2.0](migration.md). The commands and the Python
+  functions read the contig data tables of 2.0 only: rename the columns of a
+  table of 1.x first (`metator.io.rename_1x_columns` does). A run in the
+  output directory of a run of 1.x leaves the outputs that 1.x named after
+  bins as they are, with or without `-F`. metacooler's
   `--contigs-format metator` names `Final_bin`: give `--contigs-format
   Name,Final_cluster` for a table of 2.0. The help, the logs and the docs
   call them clusters too, and the help groups the three steps and `pipeline`
@@ -232,11 +231,6 @@ All notable changes to this project will be documented in this file.
   the CLI reference against the CLI. The docstring of
   `metator.validation.correct_final_bin`, which disagreed with its code, is
   corrected.
-- Python API: `metator.validation.recursive_clustering` takes the
-  clustering matrix of the earlier recursive steps (`clustering_matrix`)
-  and returns it, updated, instead of writing
-  `clustering_matrix_recursive.npz`, which `recursive_decontamination`
-  writes once, at the end.
 
 ### Removed
 - **Breaking:** the commands that did what hicstuff, metacooler, instaGRAAL
@@ -259,9 +253,8 @@ All notable changes to this project will be documented in this file.
     `metacooler show` draws the map.
 
   A command line that names one of them is refused as an unknown command or
-  option. A `validation` or `pipeline` run in the output directory of an
-  earlier one refuses its `plot/` without `-F`, and removes it with `-F`, as
-  the outputs that 1.x named after bins. Python API:
+  option, and a run leaves the `plot/` of an earlier run as it is. Python
+  API:
   the modules `metator.figures` (but `bin_quality`, now
   `metator.validation.bin_quality`), `metator.quality_check`,
   `metator.contact_map`, `metator.scaffold` and `metator.regions`;
@@ -324,6 +317,28 @@ All notable changes to this project will be documented in this file.
   `anvio_figures.py` read CheckM's results with `read_results_checkm`,
   removed above, and `checkM.sh` ran CheckM. The curation guide checks the
   curated bins with miComplete, through the Python API, instead.
+- **Breaking:** the small features that nothing else used:
+  - `--cluster-matrix` (`-C`) of `partition`, `validation` and `pipeline`,
+    and the clustering matrices that it wrote, `clustering_matrix_partition.npz`,
+    `clustering_matrix_recursive.npz` and `clustering_matrix.npz`: the
+    clustering rounds of a run (`clusters.txt`, `cluster_members.txt` and
+    the `/clusters` group of the map) say which contigs each round put
+    together;
+  - `--self-contacts` (`-s`) of `network`: the network has no edge from a
+    contig to itself; the contacts within each contig are in the map
+    (`qc_intra_contig_short`, `qc_intra_contig_long`);
+  - the module `metator.main` (`python -m metator.main`), the former entry
+    point: run `metator`, or `python -m metator`.
+
+  A command line that gives one of these options is refused as an unknown
+  option. Python API: `metator.partition.build_clustering_matrix` and
+  `metator.validation.replace_clustering_values`; the `cluster_matrix`
+  argument of `metator.partition.partition`, which returns the path of the
+  contig data table only, of `metator.validation.recursive_clustering`,
+  which returns no matrix, and of `recursive_decontamination`, which returns
+  nothing; the `self_contacts` argument of
+  `metator.network.metacool_to_contacts`; `metator.io.read_contig_data` and
+  `save_sparse_matrix`; and `metator.cli.check_output_path`.
 
 ### Fixed
 - The commands that write a map refuse an output path that holds `::`,
@@ -332,15 +347,8 @@ All notable changes to this project will be documented in this file.
   is refused, as metacooler would read a group of it; so is a `::` in an
   `--output-map`.
 - `validation -F` refuses clusters to validate (`--fasta`) in a directory
-  that `-F` removes (`final_clusters/`, or a directory of 1.x such as
-  `final_bin/`), before it removes anything. It removed them, then failed.
-- `validation` and `pipeline --cluster-matrix` no longer fail as soon as a
-  bin is partitioned again (`ValueError: axis 1 index … exceeds matrix
-  dimension 2`): the clustering matrix of the recursive partition was built
-  2 columns wide. It now holds the pairs of contigs of every bin partitioned
-  again, with the values of its latest partition: each recursive step
-  overwrote the matrix of the steps before, usually with an empty one, as
-  the last step partitions no bin.
+  that `-F` removes (`recursive_clusters/`, `final_clusters/`), before it
+  removes anything. It removed them, then failed.
 - `binning.txt` holds every contig of the final bins, as
   `contig_data_final.txt` does: the contigs of a bin partitioned again but
   kept whole, which had gone to a recursive part, were left out. Python
