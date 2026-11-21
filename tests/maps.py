@@ -63,11 +63,19 @@ def contig_map(pairs, contig_data, outfile, assembly_name=None, columns=True, me
 def pairs_map(pairs, contig_data, outfile, bin_summary=None, assembly_name=None, metadata=None):
     """The map of a binning written from its pairs, as metator metacool of
     metaTOR 1.4.0 wrote it (metator.metacool.write_metacool): metacooler create pairs
-    with the final clusters, then the contig columns stored as metaTOR
-    stores them. The oracle of the map that metaTOR writes from a map of the
-    contigs (metator.metacool.reassign_metacool): the same bins, contacts
-    and tables."""
-    bins, contig_bin, contig_columns, header = mtmc.read_contig_data(str(contig_data))
+    with the final clusters (Final_cluster of the contig data file
+    contig_data, ND for none), then the contig columns that metaTOR measured
+    (those of CONTIG_COLUMNS that the table fills) stored as metaTOR stores
+    them. The oracle of the map that metaTOR writes from a map of the
+    contigs (metator.metacool.write_map): the same bins, contacts and
+    tables."""
+    table = pd.read_csv(str(contig_data), sep="\t", dtype=str, keep_default_na=False)
+    bins = pd.DataFrame({"chrom": table["Name"], "start": 0, "end": table["Size"].astype("int64")})
+    final = table["Final_cluster"].str.strip()
+    binned = ~final.isin(mtmc.UNBINNED)
+    contig_bin = dict(zip(table["Name"][binned], final[binned], strict=True))
+    header = list(table.columns)
+    contig_columns = [column for column in mtmc.CONTIG_COLUMNS if column in table and not table[column].str.strip().eq("-").all()]
     metacooler.from_pairs(
         str(outfile),
         bins=bins,

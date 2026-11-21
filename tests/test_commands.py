@@ -73,7 +73,7 @@ def tests_data_network_maps(tests_data_maps, tmp_path_factory):
         contacts = mtn.contig_contacts(str(path))
         names = metacooler.MetaCooler(str(path)).contigs["name"]
         table = mtn.contig_data_table(contig_data, names, mtn.contig_hits(contacts, len(names)))
-        mtmc.store_network(str(path), str(path), mtmc.Network(table, "empirical_hit"), force=True)
+        mtmc.write_map(str(path), str(path), network=mtmc.Network(table, "empirical_hit"), force=True)
         maps[name] = path
     return maps
 
@@ -213,8 +213,11 @@ def test_pipeline(a_map, tmp_path, run_cli):
     # updated in place.
     metacooler.validate(str(metacool))
     genomes = metacooler.MetaCooler(str(metacool)).genomes
-    summary = Path(tmp_path, "out_test", "cluster_summary.txt").read_text().splitlines()
-    assert set(genomes.name) - {"__unbinned__"} == {line.split("\t")[0] for line in summary[1:]}
+    # The tables of the validation, in the temporary directory of the run,
+    # which --no-clean-up keeps; none in the output directory.
+    (summary,) = Path(tmp_path, "tmp").glob("*/cluster_summary.txt")
+    assert set(genomes.name) - {"__unbinned__"} == {line.split("\t")[0] for line in summary.read_text().splitlines()[1:]}
+    assert not list(Path(tmp_path, "out_test").glob("*.txt"))
     # The contig columns but Shotgun_coverage, which is - without a depth
     # file.
     contigs = metacooler.MetaCooler(str(metacool)).contigs
@@ -463,7 +466,7 @@ def test_pipeline_bad_choices(case, tmp_path, run_cli):
     assert not (tmp_path / "out").exists()
 
 
-@pytest.mark.parametrize("existing", ["recursive_clusters", "final_clusters"])
+@pytest.mark.parametrize("existing", ["final_clusters"])
 def test_pipeline_refuses_existing_outputs(existing, a_map, tmp_path, run_cli, logged):
     """A directory of clusters of an earlier run is refused without -F,
     named in the log."""
@@ -479,13 +482,15 @@ def test_pipeline_force_replaces_outputs(a_map, network_from_a_map, tmp_path, ru
     """With --force the output directories are emptied once the arguments
     and the assembly are checked, then the run goes on (here up to the
     partition, which network_from_a_map stops). The outputs that metaTOR
-    1.x named after bins, the plots of an earlier run, and the overlapping
-    clusters that partition wrote before it stored them in the map, are no
-    output of 2.0: they are neither refused nor removed."""
-    for existing in ["recursive_clusters", "final_clusters"]:
+    1.x named after bins, the plots of an earlier run, the overlapping
+    clusters that partition wrote before it stored them in the map, and the
+    recursive clusters that validation wrote before they went to its
+    temporary directory, are no output of 2.0: they are neither refused nor
+    removed."""
+    for existing in ["final_clusters"]:
         (tmp_path / "out" / existing).mkdir(parents=True)
         (tmp_path / "out" / existing / "stale.fa").write_text(">old\nA\n")
-    others = ["overlapping_bin", "final_bin", "plot", "overlapping_clusters"]
+    others = ["overlapping_bin", "final_bin", "plot", "overlapping_clusters", "recursive_clusters"]
     for existing in others:
         (tmp_path / "out" / existing).mkdir(parents=True)
         (tmp_path / "out" / existing / "earlier.fa").write_text(">old\nA\n")
@@ -499,7 +504,7 @@ def test_pipeline_force_replaces_outputs(a_map, network_from_a_map, tmp_path, ru
     assert not [message for _, message in logged() if message.startswith("Removed ")]
 
 
-@pytest.mark.parametrize("existing", ["recursive_clusters", "final_clusters"])
+@pytest.mark.parametrize("existing", ["final_clusters"])
 def test_validation_refuses_existing_outputs(existing, a_network_map, tmp_path, run_cli, logged):
     (tmp_path / "out" / existing).mkdir(parents=True)
     args = ("{MAP} -a {SUBSET_FASTA} -o {OUT} -T {TMP}").format(

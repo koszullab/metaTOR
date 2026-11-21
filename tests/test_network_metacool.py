@@ -435,7 +435,7 @@ def test_small_map_network(tmp_path):
 def _stored_network(tmp_path, halves=False, normalization="length"):
     """A map of the contigs a, b and c, with the network (normalization
     length) that metator network stores in it (see
-    metator.metacool.store_network): one bin per contig, or two (halves)."""
+    metator.metacool.write_map): one bin per contig, or two (halves)."""
     contigs = {"a": 100, "b": 200, "c": 300}
     if halves:
         pairs_file = tmp_path / "map.pairs"
@@ -456,7 +456,7 @@ def _stored_network(tmp_path, halves=False, normalization="length"):
     names = [str(name) for name in metacooler.MetaCooler(str(metacool)).contigs["name"]]
     hits = mtn.contig_hits(mtn.contig_contacts(str(metacool)), len(names))
     table = mtn.contig_data_table(_contig_data(tmp_path, contigs), names, hits)
-    mtmc.store_network(str(metacool), str(metacool), mtmc.Network(table, normalization), force=True)
+    mtmc.write_map(str(metacool), str(metacool), network=mtmc.Network(table, normalization), force=True)
     return str(metacool)
 
 

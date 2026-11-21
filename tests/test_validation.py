@@ -7,7 +7,6 @@ import pandas as pd
 import pickle
 import pytest
 import os
-import shutil
 
 threads = 8
 fasta_dir = "tests_data/outdir_validation/overlapping_clusters"
@@ -181,61 +180,34 @@ def test_recursive_clustering_worker_subnetwork(monkeypatch):
     assert sorted(partition) == [1, 2, 3, 5]
 
 
-def test_update_contigs_data_recursive(tmp_path, monkeypatch):
-    """The fasta of the recursive bins are written without the pyfastx
-    command, which is not on the PATH here (the files were empty)."""
-    monkeypatch.setenv("PATH", str(tmp_path))
-    # A private copy of the assembly: pyfastx indexes it (.fxi) in place.
-    shutil.copyfile(assembly, tmp_path / "assembly.fa")
-    out = tmp_path / "bins"
-    out.mkdir()
-    contamination, contig_data, _ = mtv.update_contigs_data_recursive(
-        "MetaTOR_00002_00000",
-        contigs_data,
-        recursive_bins,
-        str(tmp_path / "assembly.fa"),
-        str(out),
-        500000,
-        False,
-        dict(),
-        "MetaTOR",
-    )
-    assert contamination
-    assert len(np.unique(contig_data.Recursive_cluster_ID)) > 1
-    assert sorted(os.listdir(out)) == ["MetaTOR_00002_00001.fa", "MetaTOR_00002_00002.fa"]
-    assert all(path.read_text().startswith(">") for path in out.iterdir())
-
-
-def test_write_bins_contigs(tmp_path):
-    """binning.txt holds the contigs of the final bins, with the bin that
-    Final_cluster gives them, in the order of the contigs data."""
-    binning_file = tmp_path / "binning.txt"
+def test_name_recursive_clusters():
+    """The recursive bins larger than the size get their IDs in the contig
+    data, their parent, and their contigs, by name, for their FASTA files
+    (which metacooler writes: see write_recursive_fasta); the others none."""
     data = contigs_data.copy()
-    data.loc[data.index[0], "Final_cluster"] = "ND"
-    # The contigs of a bin partitioned again but kept whole keep the ID of
-    # their recursive bin: they were left out of binning.txt.
-    kept_whole = data.index[data.Final_cluster == "MetaTOR_00002_00000"][:5]
-    data.loc[kept_whole, "Recursive_cluster_ID"] = "00003"
-    returned = mtv.write_bins_contigs(bin_summary, data, str(binning_file))
-    assert returned is data
-    binning = pd.read_csv(binning_file, sep="\t", header=None, names=["Name", "Bin"])
-    expected = data[data.Final_cluster != "ND"]
-    assert list(binning.Name) == list(expected.Name) and list(binning.Bin) == list(expected.Final_cluster)
-    assert set(data.loc[kept_whole, "Name"]) <= set(binning.Name)
+    parents, groups = {}, {}
+    contamination = mtv.name_recursive_clusters("MetaTOR_00002_00000", data, recursive_bins, 500000, parents, "MetaTOR", groups)
+    assert contamination
+    assert len(np.unique(data.Recursive_cluster_ID)) > 1
+    assert sorted(groups) == ["MetaTOR_00002_00001", "MetaTOR_00002_00002"]
+    assert parents == dict.fromkeys(groups, "MetaTOR_00002_00000")
+    for name, contigs in groups.items():
+        rows = data[data.Recursive_cluster_ID == name.rsplit("_", 1)[1]]
+        assert contigs == list(rows.Name) and all(isinstance(contig, str) for contig in contigs)
+    # None reaches an enormous size: no bin, no change.
+    data, parents, groups = contigs_data.copy(), {}, {}
+    assert not mtv.name_recursive_clusters("MetaTOR_00002_00000", data, recursive_bins, 10**12, parents, "MetaTOR", groups)
+    assert parents == {} and groups == {} and set(data.Recursive_cluster_ID) == {"00000"}
 
 
-def test_correct_final_bin(tmp_path):
-    """The final bin of each contig is read in the fasta files of the bins,
-    without leaving the index of pyfastx next to them."""
-    final_dir = tmp_path / "final_clusters"
-    final_dir.mkdir()
-    (final_dir / "B_00001_00000.fa").write_text(">c1 description\nACGT\n>c3\nGG\n")
-    (final_dir / "B_00002_00001.fa").write_text(">c2\nTT\n")
+def test_correct_final_bin():
+    """The final bin of each contig: the bin of the FASTA file it was written
+    in (written, the contigs of each file by bin name)."""
     data = pd.DataFrame({"Name": ["c1", "c2", "c3", "c4"], "Final_cluster": "ND"})
+    written = {"B_00001_00000": ["c1", "c3"], "B_00002_00001": ["c2"], "B_00003_00000": ["c4"]}
     summary = {"B_00001_00000": {}, "B_00002_00001": {}}
-    corrected = mtv.correct_final_bin(data, str(final_dir), summary)
+    corrected = mtv.correct_final_bin(data, written, summary)
     assert list(corrected.Final_cluster) == ["B_00001_00000", "B_00002_00001", "B_00001_00000", "ND"]
-    assert sorted(path.name for path in final_dir.iterdir()) == ["B_00001_00000.fa", "B_00002_00001.fa"]
 
 
 @pytest.mark.parametrize(
@@ -327,4 +299,26 @@ def test_write_overlapping_fasta_needs_the_assembly_of_the_map(metagenome_networ
     written = mtv.write_overlapping_fasta(
         str(metagenome_network["map"]), str(other), clusters, table, int(table.Size.sum()) + 1, str(tmp_path / "none")
     )
-    assert written == [] and not list((tmp_path / "none").iterdir())
+    assert written == {} and not list((tmp_path / "none").iterdir())
+
+
+def test_write_recursive_fasta(metagenome_network, metagenome_files, tmp_path, logged):
+    """The FASTA files of the clusters of a recursive step: those of their
+    contigs, through metacooler, each record as it is in the assembly, in
+    the order given; none for no cluster. An assembly that lacks a contig is
+    refused, with metacooler's reason, logged as an error."""
+    table = metagenome_network["contig_table"]
+    names = [str(name) for name in table.Name[:3]]
+    groups = {"metator_00001_00001": names[::-1], "metator_00001_00002": names[:1]}
+    out = tmp_path / "step_1"
+    mtv.write_recursive_fasta(str(metagenome_network["map"]), str(metagenome_files["assembly"]), groups, str(out))
+    assert sorted(path.name for path in out.iterdir()) == ["metator_00001_00001.fa", "metator_00001_00002.fa"]
+    records = [line[1:].split()[0] for line in (out / "metator_00001_00001.fa").read_text().splitlines() if line.startswith(">")]
+    assert records == names[::-1]
+    mtv.write_recursive_fasta(str(metagenome_network["map"]), str(metagenome_files["assembly"]), {}, str(tmp_path / "none"))
+    assert not list((tmp_path / "none").iterdir())
+    other = tmp_path / "other.fa"
+    other.write_text(">x\nACGT\n")
+    with pytest.raises(ValueError, match=r"^The clusters of the recursive step cannot be written from "):
+        mtv.write_recursive_fasta(str(metagenome_network["map"]), str(other), groups, str(tmp_path / "refused"))
+    assert [level for level, message in logged() if message.startswith("The clusters of the recursive")] == ["ERROR"]
