@@ -36,9 +36,15 @@ metator validation sample.metacool -a assembly.fa -t 16 -o binning
 The clusters to validate are the overlapping clusters of the partition of the
 map of at least `--size` base pairs (500 kb by default): the validation writes
 them from the assembly as FASTA files, one each, in its temporary directory
-(`-N` keeps them), with the contig data table of the partition. When no
-cluster reaches `--size`, there is nothing to validate: the run stops there
-with an error.
+(`-N` keeps them), with the contig data table of the partition. Give the
+temporary directory room for them, at most the size of the assembly, and,
+from a gzip-compressed assembly, for its decompressed copy, which metacooler
+writes there while it writes them. When no cluster reaches `--size`, there
+is nothing to validate: the run stops there with an error.
+
+The partition is that of the network stored in the map: a validation refuses
+one made on another network (`metator network MAP` run again since, which
+warns of it), and `metator partition MAP` partitions the network again.
 
 Validation runs [miComplete](https://pypi.org/project/micomplete/) on every
 cluster: prodigal predicts its genes, and hmmer finds among them the

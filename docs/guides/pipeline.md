@@ -46,7 +46,9 @@ commands, and [Starting from a contact map](metacool.md#starting-from-a-contact-
 for what the run reads from the map.
 
 `--assembly` (`-a`) is the assembly that the map was made from, as a FASTA
-file, plain or compressed with gzip.
+file, plain or compressed with gzip. A compressed one is decompressed into
+the temporary directory while the run writes the clusters that miComplete
+checks: see `--tmpdir` below.
 
 ## Outputs
 
@@ -92,7 +94,7 @@ A run refuses to overwrite the clusters of an earlier one unless given
 | `--size` | 500000 | The size, in base pairs, an overlapping cluster must reach to be checked with miComplete, and a recursive cluster must exceed |
 | `--prefix` | none | Names the clusters `<prefix>_metator_…` |
 | `--threads` | 1 | Threads for the partition and the validation |
-| `--tmpdir` | `./tmp` | Where the temporary files go; deleted at the end, unless `--no-clean-up` |
+| `--tmpdir` | `./tmp` | Where the temporary files go; deleted at the end, unless `--no-clean-up`. It holds the FASTA files of the clusters that miComplete checks (at most the size of the assembly) and, from a compressed assembly, its decompressed copy while they are written: give it room for both. Not in `recursive_clusters/` or `final_clusters/` of `--outdir`, which the run makes anew |
 
 The validation is the step that needs the most memory and time: miComplete
 runs prodigal and hmmer on every cluster.

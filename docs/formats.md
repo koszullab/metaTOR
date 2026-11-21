@@ -193,7 +193,10 @@ clusters stores both (see
 records of its contigs as they are in the assembly. The overlapping clusters
 that the validation checks are written so, by metacooler
 (`metacooler.write_fasta`), in `overlapping_clusters/` of its temporary
-directory (`-N` keeps it).
+directory (`-N` keeps it), in the order of the partition: by core cluster,
+then by ID. From a gzip-compressed assembly, metacooler writes them through
+a decompressed copy of it, in the temporary directory too, which it removes
+once they are written.
 The final clusters also hold the pyfastx index of each, `<cluster>.fa.fxi`,
 which the validation leaves there.
 

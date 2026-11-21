@@ -512,9 +512,10 @@ def network_entry(columns_from_map=()):
 
 def check_assembly(assembly):
     """Refuse, before any work, an assembly (-a) that is not a FASTA file,
-    plain or compressed with gzip, as pyfastx reads it in the partition and
-    the validation (metator.io.check_is_fasta reads bzip2 and zip files
-    too): the reason is logged as an error, then ValueError is raised."""
+    plain or compressed with gzip, as the network, the validation and the
+    pipeline read it (Biopython, metacooler and pyfastx;
+    metator.io.check_is_fasta reads bzip2 and zip files too): the reason is
+    logged as an error, then ValueError is raised."""
     compression = mio.file_compression(assembly) if os.path.isfile(assembly) else None
     if compression in ("bz2", "zip"):
         logger.error(
@@ -907,6 +908,17 @@ def pairsfile_argument(help):
 
 
 ASSEMBLY_HELP = "The assembly that the map was made from: a FASTA file, plain or compressed with gzip."
+# A validation or pipeline run writes the clusters that miComplete checks
+# from the assembly through metacooler (see
+# metator.validation.write_overlapping_fasta), which decompresses a
+# gzip-compressed one into the temporary directory of the run first, once.
+CHECKED_ASSEMBLY_HELP = (
+    ASSEMBLY_HELP + " A compressed one is decompressed into --tmpdir while the run writes the clusters that miComplete checks."
+)
+CHECKED_TMPDIR_HELP = (
+    "Temporary directory, where the run writes the clusters that miComplete checks (at most the size of the "
+    "assembly), and, from a compressed assembly, its decompressed copy while it writes them: give it room for both."
+)
 SIZE_HELP = (
     "Threshold size to keep clusters in base pair: miComplete checks the overlapping clusters of the partition that "
     "reach it, and the clusters of the recursive partition larger than it."
@@ -946,12 +958,12 @@ def output_map_option(help):
     return _option("--output-map", metavar="FILE", help=help)
 
 
-def network_options(normalization_short):
+def network_options(normalization_short, assembly_help=ASSEMBLY_HELP):
     """Options of the network step: the assembly, what is measured on its
     contigs, and the normalization; the short alias of --normalization is
     -n in network, -m in pipeline."""
     return _options(
-        assembly_option(ASSEMBLY_HELP),
+        assembly_option(assembly_help),
         _option(
             "-d",
             "--depth",
@@ -1049,13 +1061,12 @@ def outdir_option(default=None, help="The output directory. Default: current dir
     return _option("-o", "--outdir", default=default, show_default=default is not None, metavar="DIR", help=help)
 
 
-def prefix_option():
+def prefix_option(what):
     return _option(
         "-p",
         "--prefix",
         metavar="STR",
-        help="Prefix to use for fasta files. By default just 'metator_', otherwise 'STR_metator_'. Only letters, "
-        "digits, '_' and '-'.",
+        help=f"Name {what} STR_metator_... (by default, metator_...). Only letters, digits, '_' and '-'.",
     )
 
 
@@ -1226,7 +1237,7 @@ def network(
     overlap_help="Hamming distance threshold to use to merge clusters (percentage).",
 )
 @outdir_option(default="./", help="The output directory, of the log of the run.")
-@prefix_option()
+@prefix_option("the overlapping clusters")
 @force_option("Replace an existing --output-map.")
 @tmpdir_option()
 @threads_option(help="Number of parallel threads allocated for the partition.")
@@ -1317,7 +1328,7 @@ def partition(
     "(file.mmetacool::entries/NAME): it becomes the map of the clusters of the run, as pipeline MAP writes it, in place, "
     "or in --output-map, which an entry needs.",
 )
-@assembly_option(ASSEMBLY_HELP)
+@assembly_option(CHECKED_ASSEMBLY_HELP)
 @partition_options(
     iterations=10,
     overlap=90,
@@ -1326,12 +1337,12 @@ def partition(
     size_help=SIZE_HELP,
 )
 @outdir_option(default="./", help="Path to the directory to write the output.")
-@prefix_option()
+@prefix_option("the recursive clusters")
 @force_option(
     "Replace the directories of recursive and final clusters of an earlier run in the output directory "
     "(recursive_clusters, final_clusters), and an existing --output-map."
 )
-@tmpdir_option(help="Temporary directory, where the run writes the clusters it checks with miComplete.")
+@tmpdir_option(help=CHECKED_TMPDIR_HELP)
 @threads_option(help="Number of parallel threads allocated for the partition.")
 @no_clean_up_option()
 @output_map_option(
@@ -1456,7 +1467,7 @@ def validation(
 
 @cli.command(short_help="Run network, partition and validation in one command line.")
 @map_argument(required=True)
-@network_options("-m")
+@network_options("-m", CHECKED_ASSEMBLY_HELP)
 @partition_options(
     iterations=100,
     overlap=80,
@@ -1485,9 +1496,9 @@ def validation(
     help="Hamming distance threshold to use to merge clusters for the recursive step (percentage).",
 )
 @outdir_option(help="The output directory. Default: current directory.")
-@prefix_option()
+@prefix_option("the clusters")
 @force_option("Replace the directories of clusters of an earlier run in the output directory, and an existing --output-map.")
-@tmpdir_option()
+@tmpdir_option(help=CHECKED_TMPDIR_HELP)
 @threads_option(help="Number of parallel threads allocated for the partition and the validation.")
 @no_clean_up_option()
 @_option(

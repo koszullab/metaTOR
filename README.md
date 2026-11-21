@@ -385,11 +385,15 @@ scheduler's signal to the job, reaches it too.
 The three steps of `pipeline MAP` take the map as their first argument too: the map is the network
 that they share. Run one after the other on one map, they read and update it as `pipeline MAP` does,
 and write the map that it writes from the same clusters, but for the date the map was written and the
-command lines and parameters that it stores (those of `network` and `validation`). Louvain draws random numbers: two runs give the same clusters only from the same random
-stream, as the tests check in one process, so steps run as separate commands differ from `pipeline` as
-two `pipeline` runs do. `partition MAP` on a map that holds the clusters of an earlier run replaces its
-clustering rounds with its own, and leaves its genomes, contigs and the `metator` key of its metadata as
-the earlier run wrote them, until `validation MAP` writes the new ones:
+command lines and parameters that it stores (those of `network`, `partition` and `validation`). Louvain
+draws random numbers: two runs give the same clusters only from the same random stream, as the tests
+check in one process, so steps run as separate commands differ from `pipeline` as two `pipeline` runs
+do. `partition MAP` on a map that holds the clusters of an earlier run replaces its clustering rounds
+with its own, and the `partition` entry of the `metator` key of its metadata with what the run was (the
+network it partitioned among it), and leaves its genomes, contigs and the rest of its metadata as the
+earlier run wrote them, until `validation MAP` writes the new ones. `validation MAP` refuses a partition
+made on another network than the one stored in the map: `network MAP` run again keeps the partition,
+with a warning, until `partition MAP` partitions the new network:
 
 ```sh
 # 1. The network, stored in the map.
@@ -408,7 +412,8 @@ cluster with its contigs, as the rounds `core` and `overlapping` of the clusteri
 in place of the rounds that it held (without the columns of miComplete, which the validation runs),
 and the `partition` entry of its metadata, and leaves the genomes and contigs tables of the map as
 they were; it writes no table and no FASTA file. `validation MAP` reads the partition from the map
-(refused without it), checks the overlapping clusters that reach its `--size`, and writes the map of
+(refused without it, or when it was made on another network than the one stored in the map), checks
+the overlapping clusters that reach its `--size`, and writes the map of
 the clusters, as `pipeline MAP` does at its end, with every round (`core`, `overlapping`,
 `recursive_<k>`, `final`). Both write the map as `pipeline MAP` does: in place, through a map written
 next to it and validated in full, or to `--output-map FILE`, which leaves the map as it was (give the

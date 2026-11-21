@@ -104,13 +104,18 @@ All notable changes to this project will be documented in this file.
   cluster (`core_00001`...) and every overlapping cluster, with their
   contigs, as the rounds `core` and `overlapping` of the clustering rounds
   of the map, in place of those it held, and what the run was (its command
-  line, parameters and the normalization of the network it partitioned) as
-  the `partition` entry of the `metator` key of its metadata, and leaves its
-  genomes and contigs tables and the rest of its metadata as they were (an
-  earlier run's, until `validation MAP` writes the new ones); the rounds
-  record the step that made them. `validation MAP` reads the partition
-  there, and writes the map of the clusters, with every round, and keeps
-  the `partition` entry, as `pipeline MAP` stores it.
+  line, parameters, and the normalization and the identity of the network
+  it partitioned, `network_digest`: the SHA-256 of what the network is
+  computed from, by contig name, which a regroup of the map leaves as it
+  was) as the `partition` entry of the `metator` key of its metadata, and
+  leaves its genomes and contigs tables and the rest of its metadata as
+  they were (an earlier run's, until `validation MAP` writes the new ones);
+  the rounds record the step that made them. `validation MAP` reads the
+  partition there, and writes the map of the clusters, with every round,
+  and keeps the `partition` entry, as `pipeline MAP` stores it.
+  `network MAP` keeps the clusters of the map, its partition among them,
+  and warns when the network that it stores is not the one the partition
+  was made on.
   Each writes the map in place (through metacooler: staged, validated in
   full, then renamed over it, the mode kept; through a symbolic link, the
   file it points to) or to `--output-map FILE` (replaced only with `-F`), and
@@ -120,11 +125,15 @@ All notable changes to this project will be documented in this file.
   metacooler cannot open, such as a `.mmetacool` collection, an entry of a
   collection without `--output-map`, an `--output-map` that exists without
   `-F`, a map that another run holds), a map without the partition that
-  `partition MAP` stores (`validation`), an `--output-map` that is one of
-  their inputs, `--output-map` without a map, and an invalid `--prefix`;
+  `partition MAP` stores, or whose partition was made on another network
+  than the one stored in it (`validation`: run `partition MAP` again), an
+  `--output-map` that is one of their inputs, `--output-map` without a
+  map, and an invalid `--prefix`;
   `pipeline` refuses an `--output-map` that is its assembly or depth file,
   which the map replaced. Python API: `metator.metacool.write_rounds` (and
-  its `entries`) and `read_partition`; `metator.clusters.Partition`,
+  its `entries`), `read_partition` (and its `network`), `holds_partition`,
+  `partition_network` and `NETWORK_DIGEST`; `metator.network.network_digest`
+  and `StoredNetwork.digest`; `metator.clusters.Partition`,
   `partition_rounds`, `record_partition`, `core_name`, `overlapping_name`
   and `cluster_number`, and `Rounds.tables`; the `names` of
   `metator.metacool.store_rounds` (a round with no cluster), and the
@@ -174,7 +183,10 @@ All notable changes to this project will be documented in this file.
   that reach its `--size`, through metacooler (`metacooler.write_fasta`,
   the records as they are in the assembly, in the order of the partition),
   and the contig data table of the partition, in its temporary directory
-  (`-N` keeps them), and so does `pipeline`, which wrote
+  (`-N` keeps them), which needs room for them (at most the size of the
+  assembly) and, from a gzip-compressed assembly, for its decompressed
+  copy, which metacooler writes there while it writes them (pyfastx read
+  it compressed); and so does `pipeline`, which wrote
   `overlapping_clusters/` and `contig_data_partition.txt` in its output
   directory. `partition` loses `-a, --assembly` and `-s, --size`: it reads no
   assembly, and keeps every cluster; `validation` loses `-c, --contigs` and
@@ -184,7 +196,15 @@ All notable changes to this project will be documented in this file.
   miComplete checks, as that of `pipeline` does. The round `overlapping` of
   the map of the clusters holds every overlapping cluster, those that
   miComplete checked with its columns, after the round `core`; so do
-  `clusters.txt` and `cluster_members.txt`.
+  `clusters.txt` and `cluster_members.txt`. Python API:
+  `metator.partition.partition(algorithm, network, iterations,
+  overlapping_parameter, resolution_parameter, threads, prefix)` returns
+  the partition, a `metator.clusters.Partition`, and writes nothing: it
+  took the assembly, the contig data, the output and FASTA directories and
+  the size, and returned the path of the table that it wrote;
+  `metator.validation.recursive_decontamination` takes the partition
+  (`partition`, after `prefix`, required), whose core and overlapping
+  clusters it records as the first rounds of the run.
 - **Breaking:** the contigs of a run are those of its map, in its order
   (longest first, as hicstuff and metacooler make it), and the ID of a contig
   is its position in the map: the rows of `contig_data_final.txt`, the
@@ -349,8 +369,12 @@ All notable changes to this project will be documented in this file.
 - **Breaking:** `contig_data_partition.txt` and `overlapping_clusters/` of
   `partition` and `pipeline`: the partition is in the map (see Changed).
   `metacooler dump MAP -t members` lists the contigs of each core and
-  overlapping cluster, and `metacooler fasta MAP --fasta ASSEMBLY --round
-  overlapping -o DIR` writes the overlapping clusters as FASTA files.
+  overlapping cluster. `validation` writes the FASTA files of the
+  overlapping clusters that reach its `--size`, those that miComplete
+  checks, in its temporary directory (`-N` keeps them), as
+  `overlapping_clusters/` held them; `metacooler fasta MAP --fasta ASSEMBLY
+  --round overlapping -o DIR` writes every overlapping cluster, whatever its
+  size, its contigs in the order of the map: not the same files.
   Python API: `metator.partition.generate_fasta` and
   `update_contigs_data`, whose table `metator.partition.partition_table`
   makes; `metator.clusters.overlapping_round`;
@@ -456,9 +480,9 @@ All notable changes to this project will be documented in this file.
 
   A command line that gives one of these options is refused as an unknown
   option. Python API: `metator.partition.build_clustering_matrix`; the
-  `cluster_matrix` argument of `metator.partition.partition`, which returns
-  the path of the contig data table only (it returned that of the clustering
-  matrix too), of `metator.validation.recursive_clustering`, which returns
+  `cluster_matrix` argument of `metator.partition.partition`, which returned
+  the path of the clustering matrix too (it returns the partition now: see
+  Changed), of `metator.validation.recursive_clustering`, which returns
   `(contamination, contigs_data, parent_dict)` (without the path of the
   matrix), and of `recursive_decontamination`, which returns nothing (it
   returned the path of the matrix); `metator.io.read_contig_data` and
@@ -466,19 +490,22 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - `-F` replaces a directory of clusters of an earlier run that is a
-  symbolic link (`partition`, `validation`, `pipeline`): the link is
-  removed, not its target, where the run failed with `OSError`, some of the
-  directories already replaced. A link to nothing is refused without
-  `-F`, as a directory is. `validation -F` refuses clusters to validate
-  (`--fasta`) in the target of such a link, before anything is replaced.
+  symbolic link (`validation`, `pipeline`): the link is removed, not its
+  target, where the run failed with `OSError`, some of the directories
+  already replaced. A link to nothing is refused without `-F`, as a
+  directory is.
 - The commands that write a map refuse an output path that holds `::`,
   which metacooler reads as `file::group`. A map given as `file::/`, the
   root of the file, is the file itself, and a map whose file name holds `::`
   is refused, as metacooler would read a group of it; so is a `::` in an
   `--output-map`.
-- `validation -F` refuses clusters to validate (`--fasta`) in a directory
-  that `-F` removes (`recursive_clusters/`, `final_clusters/`), before it
-  removes anything. It removed them, then failed.
+- `validation` and `pipeline` refuse a `--tmpdir` in a directory that they
+  make anew, which `-F` removes (`recursive_clusters/`, `final_clusters/`),
+  as a usage error, before they create or remove anything. `-F` removed it
+  with them, and the run then failed on its temporary files.
+- A contig named `NA` (or `N/A`, `null`...) is a contig in the validation:
+  read as a missing value, it made the `Size` column of
+  `contig_data_final.txt` a float, and the run wrote no map of its clusters.
 - `binning.txt` holds every contig of the final bins, as
   `contig_data_final.txt` does: the contigs of a bin partitioned again but
   kept whole, which had gone to a recursive part, were left out. Python

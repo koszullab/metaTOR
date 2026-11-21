@@ -57,7 +57,12 @@ file, and metacooler adds the genomes.
 - **The metadata** hold the version of metaTOR, the command line and its
   parameters, under the `metator` key, and, under its `network` entry, those
   of the run that stored the network (`metator network`, or `pipeline`), with
-  its normalization and the columns of the map that it read.
+  its normalization and the columns of the map that it read; under its
+  `partition` entry, those of the run that stored the partition
+  (`metator partition`, or `pipeline`), with the normalization and the
+  identity of the network that it partitioned (`network_digest`: the
+  SHA-256 of what the network is computed from, by contig name), which
+  `validation` checks against the network stored in the map.
 
 ```python
 import cooler
@@ -277,9 +282,13 @@ random numbers: two runs give the same clusters only from the same random
 stream, as the tests check in one process, so steps run as separate commands
 differ from `pipeline` as two `pipeline` runs do. `partition MAP` on a map
 that holds the clusters of an earlier run replaces its clustering rounds with
-its own, and leaves its genomes, contigs and the `metator` key of its
-metadata as the earlier run wrote them, until `validation MAP` writes the new
-ones:
+its own, and the `partition` entry of the `metator` key of its metadata with
+what the run was (the network it partitioned among it), and leaves its
+genomes, contigs and the rest of its metadata as the earlier run wrote them,
+until `validation MAP` writes the new ones. `validation MAP` refuses a
+partition made on another network than the one stored in the map:
+`network MAP` run again keeps the partition, with a warning, until
+`partition MAP` partitions the new network:
 
 ```bash
 # 1. The network, stored in the map.
