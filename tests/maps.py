@@ -80,8 +80,10 @@ def pairs_map(pairs, contig_data, outfile, bin_summary=None, assembly_name=None,
         ps=False,
         keep_partial=False,
     )
-    mtmc._write_back_columns(str(outfile), str(contig_data), contig_columns, header)
-    mtmc._rewrite_in_a_fresh_file(str(outfile))
+    # In an edit session, as metaTOR stores its columns: a fresh copy of the
+    # map, as metacooler stages every map it writes.
+    with metacooler.staged_edit(str(outfile)) as staged:
+        mtmc._write_back_columns(staged, str(contig_data), contig_columns, header)
     return outfile
 
 

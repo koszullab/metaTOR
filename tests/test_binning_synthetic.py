@@ -348,14 +348,12 @@ def test_pipeline_map_is_the_map_of_the_pairs(metagenome, metagenome_inputs, tmp
     ref = cooler.Cooler(str(expected))
     bins = clr.bins()[:]
     # The run's map also stores the normalization of its network, which the
-    # map of the pairs does not hold: with metacooler.store_weights, from
-    # metacooler's next release.
-    assert ("metator_empirical_hit" in bins.columns) == mtmc.stores_weights()
+    # map of the pairs does not hold.
+    assert "metator_empirical_hit" in bins.columns
     pd.testing.assert_frame_equal(bins.drop(columns="metator_empirical_hit", errors="ignore"), ref.bins()[:])
     for table in ["pixels", "chroms"]:
         pd.testing.assert_frame_equal(getattr(clr, table)()[:], getattr(ref, table)()[:])
-    if mtmc.stores_weights():
-        _assert_normalized_as_the_network(written, out, tmp_path)
+    _assert_normalized_as_the_network(written, out, tmp_path)
     genomes = metacooler.MetaCooler(str(written)).genomes
     pd.testing.assert_frame_equal(genomes, metacooler.MetaCooler(str(expected)).genomes)
     assert {"Completeness", "qc_inter_genome"} <= set(genomes.columns)

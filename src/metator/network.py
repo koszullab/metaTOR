@@ -224,7 +224,7 @@ def read_metacool_contacts(metacool, contig_data, chunksize=METACOOL_CHUNKSIZE):
         not in the assembly or that have another length in it, or holds
         counts that are not integers.
     """
-    with mtmc._metacooler_logging(), mtmc.unchanged_while_read(metacool):
+    with mtmc._metacooler_logging(), mtmc.read_errors(metacool):
         mc = mtmc.open_map(metacool)
         # Each pixel of the table is read: a map that also stores the lower
         # triangle would count the contacts between two bins twice.
@@ -495,9 +495,10 @@ def map_columns(metacool):
     Raises:
     -------
     metator.metacool.MetacoolError
-        If the map cannot be read.
+        If the map cannot be read, or is replaced or written as it is read.
     """
-    contigs = mtmc.open_map(metacool).contigs
+    with mtmc.read_errors(metacool):
+        contigs = mtmc.open_map(metacool).contigs
     return [column for column in MAP_COLUMNS if column in contigs.columns and _map_values(contigs, column)]
 
 
@@ -565,7 +566,8 @@ def contig_data_from_map(metacool, contig_data, enzyme=None, depth=None):
         If the map cannot be read, or is not a map of the contigs of the
         assembly.
     """
-    contigs = mtmc.open_map(metacool).contigs
+    with mtmc.read_errors(metacool):
+        contigs = mtmc.open_map(metacool).contigs
     check_map_contigs(metacool, contigs, contig_data)
     given = {"Restriction_site": enzyme, "Shotgun_coverage": depth}
     read = []

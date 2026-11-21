@@ -102,9 +102,10 @@ mc.cluster_members("mge")                   # their contigs
 
 A second run replaces the round `mge`, and only it. The map is updated as
 `metator partition MAP` updates it (see
-[Step by step](metacool.md#step-by-step)): written next to it, validated in
-full, then renamed over it, keeping its mode (a symbolic link is replaced,
-not its target), and locked while the run writes it; `--output-map FILE`
+[Step by step](metacool.md#step-by-step)): in an edit session of metacooler,
+validated in full, then renamed over it, keeping its mode (through a symbolic
+link, the file it points to is updated), and locked while the run writes it;
+`--output-map FILE`
 writes the map to FILE instead (replaced only with `-F`), and leaves `MAP` as
 it was, which a run from an entry of a `.mmetacool` collection needs. What
 `partition MAP` refuses is refused before any work, with the reason in the

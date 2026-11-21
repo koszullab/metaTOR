@@ -1835,7 +1835,7 @@ wheels = [
 [[package]]
 name = "metacooler"
 version = "0.3.0"
-source = { git = "https://github.com/js2264/metacooler?rev=83efc0de33f97348d69f2dbd052193aaeabb9157#83efc0de33f97348d69f2dbd052193aaeabb9157" }
+source = { git = "https://github.com/js2264/metacooler?rev=5bc5e85e7673b621f155633e4042e56878216bd5#5bc5e85e7673b621f155633e4042e56878216bd5" }
 dependencies = [
     { name = "click" },
     { name = "cooler" },
@@ -1863,7 +1863,6 @@ name = "metator"
 source = { editable = "." }
 dependencies = [
     { name = "biopython" },
-    { name = "h5py" },
     { name = "igraph" },
     { name = "matplotlib", version = "3.10.9", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "matplotlib", version = "3.11.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -1893,6 +1892,7 @@ docs = [
 [package.dev-dependencies]
 dev = [
     { name = "bump-my-version" },
+    { name = "h5py" },
     { name = "pre-commit", version = "4.6.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pre-commit", version = "4.7.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pytest" },
@@ -1904,10 +1904,9 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "biopython", specifier = ">=1.80" },
-    { name = "h5py", specifier = ">=3.8" },
     { name = "igraph", specifier = ">=0.10.3" },
     { name = "matplotlib", specifier = ">=3.9" },
-    { name = "metacooler", git = "https://github.com/js2264/metacooler?rev=83efc0de33f97348d69f2dbd052193aaeabb9157" },
+    { name = "metacooler", git = "https://github.com/js2264/metacooler?rev=5bc5e85e7673b621f155633e4042e56878216bd5" },
     { name = "micomplete" },
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'", specifier = ">=0.25" },
     { name = "numpy" },
@@ -1923,6 +1922,7 @@ provides-extras = ["docs"]
 [package.metadata.requires-dev]
 dev = [
     { name = "bump-my-version", specifier = ">=0.28" },
+    { name = "h5py", specifier = ">=3.8" },
     { name = "pre-commit", specifier = ">=3" },
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-cov", specifier = ">=5" },
