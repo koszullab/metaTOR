@@ -21,6 +21,7 @@ import metator.partition as mtp
 from metator.version import __version__
 from tests import synthetic
 from tests.hdf5 import walk
+from tests.maps import pairs_map
 
 NORMALIZATIONS = ["None", "abundance", "length", "RS", "empirical_hit", "theoritical_hit"]
 
@@ -193,7 +194,8 @@ def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenom
     binning = pd.read_csv(out / "binning.txt", sep="\t", header=None, names=["Name", "Bin"])
     assert set(binning.Bin) == set(summary.index)
     assert sorted(binning.Name) == sorted(final.Name[final.Final_cluster != "ND"])
-    assert (out / "plot" / "bins_distribution.png").stat().st_size > 0
+    # No plots: metaTOR draws none since 2.0.
+    assert not (out / "plot").exists()
     # The bins of the split are recursive bins, of step 1; the others are not.
     assert list(summary.recursive) == list(summary.step > 0)
     assert summary.recursive.any() and not summary.recursive.all()
@@ -318,7 +320,7 @@ def test_pipeline_network_is_that_of_its_pairs(
 
 
 def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, metagenome_indexed_pairs, tmp_path, monkeypatch, run_cli):
-    """The whole pipeline from pairs, with stub miComplete and scaffolding."""
+    """The whole pipeline from pairs, with stub miComplete."""
     random.seed(0)
     monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
     pairs = tmp_path / "inputs" / metagenome_indexed_pairs.name
@@ -338,7 +340,6 @@ def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, metagenome
         "-o", str(out),
         "-T", str(tmp_path / "tmp"),
         "-C",
-        "--scaffold",
     ]  # fmt: skip
     run_cli("pipeline", *args)
 
@@ -360,14 +361,6 @@ def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, metagenome
     assert summary.SG_abundance.astype(float).to_numpy() == pytest.approx(expected[summary.index].to_numpy(), rel=0.1)
     # Outputs of the optional steps.
     assert (out / "clustering_matrix.npz").stat().st_size > 0
-    scaffolds = sorted(p.name for p in (out / "scaffolded_clusters").glob("*_scaffolded.fa"))
-    assert scaffolds == sorted(f"{name}_scaffolded.fa" for name in summary.index)
-    # The worker processes that scaffold the bins write to the log file too,
-    # whether they are forked or not (forkserver, Linux's default from Python
-    # 3.14 on, and spawn start them without the parent's log handlers).
-    (log_file,) = out.glob("metator_pipeline_*.log")
-    logged = log_file.read_text()
-    assert [name for name in summary.index if f"Scaffolding {name}..." not in logged] == []
     # The contact map, written by default: one bin per contig, one genome
     # per bin (the bin summary columns with it), and every pair a contact.
     metacool = out / "metator.metacool"
@@ -396,8 +389,8 @@ def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, metagenome
 def test_pipeline_map_is_the_map_of_the_pairs(
     metagenome, metagenome_inputs, metagenome_indexed_pairs, tmp_path, monkeypatch, run_cli
 ):
-    """The map that a run from pairs leaves is the map that metator metacool
-    (write_metacool) writes from its pairs files and final tables: the same
+    """The map that a run from pairs leaves is the map of its pairs files and
+    final tables (see tests.maps.pairs_map): the same
     bins, contacts, contigs table (column for column), genomes table (the
     columns of the bin summary and the contact statistics of each bin) and
     QC block. The run reads its pairs files into a map once, as soon as it
@@ -406,8 +399,7 @@ def test_pipeline_map_is_the_map_of_the_pairs(
     the map differs, the annotate and reassign keys of its metadata (and
     the date of the file)."""
     monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
-    write_metacool, from_pairs = mtmc.write_metacool, metacooler.from_pairs
-    monkeypatch.setattr("metator.metacool.write_metacool", lambda *args, **kwargs: pytest.fail("pairs read again"))
+    from_pairs = metacooler.from_pairs
     maps = []
 
     def counted_from_pairs(uri, *args, **kwargs):
@@ -425,10 +417,10 @@ def test_pipeline_map_is_the_map_of_the_pairs(
     metacooler.validate(str(written), full=True)
     clr = cooler.Cooler(str(written))
     expected = tmp_path / "pairs.metacool"
-    write_metacool(
-        [str(metagenome_indexed_pairs)],
-        str(out / "contig_data_final.txt"),
-        str(expected),
+    pairs_map(
+        metagenome_indexed_pairs,
+        out / "contig_data_final.txt",
+        expected,
         bin_summary=str(out / "cluster_summary.txt"),
         assembly_name=clr.info["genome-assembly"],
         metadata={key: value for key, value in clr.info["metadata"]["metator"].items() if key != "version"},
@@ -436,8 +428,8 @@ def test_pipeline_map_is_the_map_of_the_pairs(
 
     ref = cooler.Cooler(str(expected))
     bins = clr.bins()[:]
-    # The run's map also stores the normalization of its network, which
-    # write_metacool does not compute: with metacooler.store_weights, from
+    # The run's map also stores the normalization of its network, which the
+    # map of the pairs does not hold: with metacooler.store_weights, from
     # metacooler's next release.
     assert ("metator_empirical_hit" in bins.columns) == mtmc.stores_weights()
     pd.testing.assert_frame_equal(bins.drop(columns="metator_empirical_hit", errors="ignore"), ref.bins()[:])
@@ -559,11 +551,6 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, metagenome_inde
     final = pd.read_csv(mcool / "contig_data_final.txt", sep="\t")
     truth, found = _genome_labels(final, metagenome, "Final_cluster")
     assert synthetic.adjusted_rand(truth, found) >= 0.9
-    # The heatmap of the clusters, drawn from the map of the run, from pairs
-    # or from a map (a run from a map drew none): the same map, the same
-    # image.
-    heatmaps = [run / "plot" / "network_heatmap.png" for run in [pair, mcool]]
-    assert heatmaps[0].read_bytes() == heatmaps[1].read_bytes()
     # The input map, updated in place: no map goes to the output directory.
     assert not list(mcool.glob("*.metacool*")) and not list(tmp_path.glob("*.lock"))
     written = metacool
@@ -608,11 +595,13 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, metagenome_inde
     assert set(final_members.cluster) == set(mc.genomes.name) - {"__unbinned__"}
     assert all(genome_of[contig] == cluster for cluster, contig in zip(final_members.cluster, final_members.contig, strict=True))
 
-    # The same map, written by metator metacool from the map and the tables
-    # of the run: a run step by step can write it too (but for the rounds,
-    # which metator metacool does not store).
+    # The same map, written from the map and the tables of the run, without
+    # rounds (metator.metacool.reassign_metacool, as metator metacool of
+    # metaTOR 1.4.0 wrote it from a map).
     command = tmp_path / "command.metacool"
-    run_cli("metacool", "-c", mcool / "contig_data_final.txt", "-b", mcool / "cluster_summary.txt", "-o", command, expected)
+    mtmc.reassign_metacool(
+        str(expected), str(mcool / "contig_data_final.txt"), str(command), bin_summary=str(mcool / "cluster_summary.txt")
+    )
     metacooler.validate(str(command), full=True)
     clr = cooler.Cooler(str(command))
     run_map = cooler.Cooler(str(written))
@@ -852,8 +841,7 @@ def test_steps_on_a_map_give_the_map_of_pipeline(metagenome, metagenome_inputs, 
             "-f", "out/overlapping_clusters", "-i", "5")  # fmt: skip
 
     pipeline, steps = runs["pipeline"] / "out", runs["steps"] / "out"
-    for name in ["cluster_summary.txt", "contig_data_final.txt", "binning.txt", "clusters.txt", "cluster_members.txt",
-                 "plot/network_heatmap.png"]:  # fmt: skip
+    for name in ["cluster_summary.txt", "contig_data_final.txt", "binning.txt", "clusters.txt", "cluster_members.txt"]:
         assert (steps / name).read_bytes() == (pipeline / name).read_bytes(), name
     written = {name: directory / "input.metacool" for name, directory in runs.items()}
     for path in written.values():

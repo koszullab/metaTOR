@@ -488,7 +488,7 @@ def test_bin_summary_round_trip(tmp_path, shotgun):
         for i, values in enumerate(summary.values()):
             values["SG_abundance"] = 10.0 / (i + 1)
     mio.write_bin_summary(summary, str(tmp_path / "cluster_summary.txt"))
-    table = mio.read_bin_summary(str(tmp_path / "cluster_summary.txt"))
+    table = pd.read_csv(tmp_path / "cluster_summary.txt", sep="\t", index_col=0)
     assert list(table.index) == ["bin_1", "bin_2"]
     assert table.loc["bin_1", "Weighted completeness"] == 0.91
     assert table.loc["bin_1", "HiC_abundance"] == 1.2346
@@ -523,23 +523,6 @@ def _count_query(pairs_data, metagenome, first, second):
     pairs = metagenome.pairs
     expected = (((pairs.chr1 == first) & (pairs.chr2 == second)) | ((pairs.chr1 == second) & (pairs.chr2 == first))).sum()
     return found, expected
-
-
-def test_get_pairs_data(metagenome, metagenome_files, tmp_path):
-    first, second = (c.name for c in metagenome.molecule("genome_2").contigs[:2])
-    pairs = tmp_path / "synthetic.pairs"
-    shutil.copyfile(metagenome_files["pairs"], pairs)
-    # Not indexed: sorted, compressed and indexed next to the input.
-    found, expected = _count_query(mio.get_pairs_data(str(pairs)), metagenome, first, second)
-    assert found == expected > 0
-    sorted_pairs = tmp_path / "synthetic_sorted.pairs.gz"
-    assert sorted_pairs.exists() and pairs.exists()
-    # Indexed already: opened as it is.
-    assert _count_query(mio.get_pairs_data(str(sorted_pairs)), metagenome, first, second) == (found, expected)
-    # The sorted file next to the input is reused rather than rebuilt.
-    mtime = sorted_pairs.stat().st_mtime_ns
-    assert _count_query(mio.get_pairs_data(str(pairs)), metagenome, first, second) == (found, expected)
-    assert sorted_pairs.stat().st_mtime_ns == mtime
 
 
 def test_sort_and_index_pairs_synthetic(metagenome, metagenome_files, tmp_path):

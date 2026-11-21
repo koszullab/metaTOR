@@ -8,7 +8,6 @@
 
 import re
 import runpy
-import shutil
 import sys
 
 import pytest
@@ -18,7 +17,7 @@ import metator.main as mtm
 from metator.version import __version__
 from tests.ansi import plain
 
-COMMANDS = ["network", "partition", "validation", "pipeline", "qc", "contactmap", "metacool", "scaffold", "pairs", "mge"]
+COMMANDS = ["network", "partition", "validation", "pipeline", "mge"]
 
 
 def _run(monkeypatch, *argv):
@@ -65,8 +64,8 @@ def test_no_command(monkeypatch, capsys):
     assert "usage" in _shown(exit, capsys).lower()
 
 
-# host: removed in 1.4.0, it always failed.
-@pytest.mark.parametrize("command", ["binning", "host"])
+# host: removed in 1.4.0, it always failed; the others in 2.0.0.
+@pytest.mark.parametrize("command", ["binning", "host", "qc", "contactmap", "metacool", "scaffold", "pairs"])
 def test_unknown_command(monkeypatch, capsys, command):
     with pytest.raises(SystemExit) as exit:
         _run(monkeypatch, command)
@@ -77,23 +76,23 @@ def test_unknown_command(monkeypatch, capsys, command):
 
 def test_command_help(monkeypatch, capsys):
     with pytest.raises(SystemExit) as exit:
-        _run(monkeypatch, "pairs", "--help")
+        _run(monkeypatch, "partition", "--help")
     assert not exit.value.code
     out = plain(capsys.readouterr().out)
-    for option in ["--force", "--remove", "--threads"]:
+    for option in ["--force", "--network", "--threads"]:
         assert option in out
-    assert "pairsfile" in out.lower()
+    assert "map" in out.lower()
 
 
-def test_command_runs(monkeypatch, tmp_path):
-    pairs = tmp_path / "sample.pairs"
-    shutil.copyfile("tests_data/alignment.pairs", pairs)
+def test_command_runs(monkeypatch, tmp_path, private_link):
+    out = tmp_path / "out"
     with pytest.raises(SystemExit) as exit:
-        _run(monkeypatch, "pairs", "--remove", str(pairs))
+        _run(monkeypatch, "partition", "-a", private_link("tests_data/subset.assembly.fa"), "-c",
+             "tests_data/contig_data_network.txt", "-n", "tests_data/network.txt", "-i", "2", "-s", "30000", "-o",
+             str(out), "-T", str(tmp_path / "tmp"))  # fmt: skip
     assert not exit.value.code
-    assert (tmp_path / "sample_sorted.pairs.gz").exists()
-    assert (tmp_path / "sample_sorted.pairs.gz.px2").exists()
-    assert not pairs.exists()
+    assert (out / "contig_data_partition.txt").exists()
+    assert any((out / "overlapping_clusters").iterdir())
 
 
 @pytest.mark.parametrize("module", ["metator", "metator.main"])

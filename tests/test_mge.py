@@ -676,8 +676,8 @@ def test_new_clusters_drop_the_round_mge_with_a_warning(writer, with_mge, metage
     the round mge, which mge --map made from the clusters that it replaces:
     once the map is written, a warning says so, and to run mge again on the
     new clusters. So writes write_rounds the map of partition MAP (in
-    place, here), and reassign_metacool those of validation MAP, pipeline
-    MAP and metator metacool MAP (to another file, here). Without the round
+    place, here), and reassign_metacool those of validation MAP and
+    pipeline MAP (to another file, here). Without the round
     mge, the rounds of the binning are replaced with no warning: a guard,
     which passes without the warning too."""
     import metacooler

@@ -278,8 +278,36 @@ def test_correct_final_bin(tmp_path):
     assert sorted(path.name for path in final_dir.iterdir()) == ["B_00001_00000.fa", "B_00002_00001.fa"]
 
 
+@pytest.mark.parametrize(
+    ("completeness", "redundancy", "quality"),
+    [
+        # One bin of each class (the classes of the binning of the mock
+        # metagenome that tests/test_figures.py drew, before the plots went).
+        (0.95, 1.02, "HQ"),
+        (0.80, 1.05, "MQ"),
+        (0.60, 1.05, "LQ"),
+        (0.90, 1.30, "Contaminated"),
+        (0.30, 1.00, "Other"),
+        # The edges: >= 90% and <= 5% contamination is HQ, >= 70% MQ, >= 50%
+        # LQ, more than 10% contamination is contaminated, below 50% other.
+        (0.90, 1.05, "HQ"),
+        (0.90, 1.06, "MQ"),
+        (0.89, 1.0, "MQ"),
+        (0.70, 1.10, "MQ"),
+        (0.69, 1.0, "LQ"),
+        (0.50, 1.10, "LQ"),
+        (0.50, 1.11, "Contaminated"),
+        (0.49, 2.0, "Other"),
+        # As miComplete writes them: text.
+        ("0.95", "1.02", "HQ"),
+    ],
+)
+def test_bin_quality(completeness, redundancy, quality):
+    assert mtv.bin_quality(completeness, redundancy) == quality
+
+
 def test_give_results_info(caplog):
-    """The log counts the bins in the quality classes of the plot: a bin of
+    """The log counts the bins in the quality classes of bin_quality: a bin of
     95% completeness with a redundancy of 1.08 is a MQ MAG, which the log
     counted as HQ, and a bin of 95% with 1.02 is a HQ MAG, which it counted
     as MQ."""
