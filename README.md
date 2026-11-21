@@ -149,8 +149,11 @@ The output files will be in the ouput directory given as parmater or in working 
 **The network**
 `metator network` stores the network in the map: what it measured on each contig, in the contigs table
 of the map, and the weights of its normalization, in its bins table. `partition` and `validation` read
-it there. `metacooler network MAP --level contig --balance metator_empirical_hit` writes it out, one
-line per pair of contigs in contact, by their names, with the normalised weight of their edge.
+it there. metacooler writes it out, one line per pair of contigs in contact, by their names, with
+the normalised weight of their edge (columns `node1`, `node2` and `value`), once the contacts within
+each contig, which it writes too and are no edge, are dropped:
+`metacooler network MAP --level contig --balance metator_empirical_hit --header | awk -F '\t' '$1 != $2 && $3 != 0'`.
+`metator dump` will write `network.txt`.
 
 **Contig data files**
 These are the files with all the informations from the contigs:

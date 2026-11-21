@@ -73,8 +73,10 @@ clr.matrix(balance="metator_empirical_hit")[:]  # the contacts, normalized as th
 ```bash
 metacooler info sample.metacool
 metacooler dump -t genomes -H sample.metacool
-# The network of the contigs, normalized as metaTOR's
-metacooler network sample.metacool --level contig --balance metator_empirical_hit
+# The network of the contigs, normalized as metaTOR's (without the contacts
+# within each contig, which metacooler writes too and are no edge)
+metacooler network sample.metacool --level contig --balance metator_empirical_hit --header \
+    | awk -F '\t' '$1 != $2 && $3 != 0'
 ```
 
 ## The map of a run made without it

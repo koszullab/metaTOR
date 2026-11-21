@@ -99,9 +99,13 @@ it has them), and the normalization of the network, as the weights
 an earlier network; and its command line, under the `network` entry of the
 `metator` key of the metadata of the map. The map is updated in place, or
 written to `--output-map`. It writes no table: `network.txt` and
-`contig_data_network.txt` are gone. To export the network, run
-`metacooler network MAP --level contig --balance metator_<normalization>`
-(the raw counts without `--balance`).
+`contig_data_network.txt` are gone. To export the network, by contig names,
+run `metacooler network MAP --level contig --balance metator_<normalization>
+--header`, piped to `awk -F '\t' '$1 != $2 && $3 != 0'`, which drops the
+contacts within each contig that metacooler writes too (columns `node1`,
+`node2` and `value`; the raw counts without `--balance`): see
+[The network](formats.md#the-network). `metator dump` will write
+`network.txt`.
 
 | Option | Default | Description |
 |---|---|---|

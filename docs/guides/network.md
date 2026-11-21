@@ -48,12 +48,17 @@ the weights of its normalisation (below), which `metator network` stores in
 the map as the weights `metator_<normalization>` of its bins. The contacts of
 several libraries are those of their map, summed. The nodes of the network are
 the contigs of the map, by their position in it (the `ID` column of
-`contig_data_partition.txt`, from 1). `metator network` writes no table of it;
-metacooler exports it:
+`contig_data_partition.txt`, from 1): a run that regroups the map
+(`validation`, `pipeline`) moves them, so join a table to the network of
+another map by contig name, not by ID. `metator network` writes no table of
+it; metacooler exports it, by contig names, once the contacts within each
+contig, which metacooler writes too and are no edge, are dropped (see
+[The network](../formats.md#the-network)):
 
 ```bash
-# The normalised network: contig1, contig2, weight (the raw counts without --balance)
-metacooler network sample.metacool --level contig --balance metator_empirical_hit
+# The normalised network: node1, node2, value (the raw counts without --balance)
+metacooler network sample.metacool --level contig --balance metator_empirical_hit --header \
+    | awk -F '\t' '$1 != $2 && $3 != 0' > network.tsv
 ```
 
 ## Normalising the network
