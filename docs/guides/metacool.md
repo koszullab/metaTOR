@@ -57,6 +57,20 @@ file, and metacooler adds the genomes.
   either), and the contact statistics that metacooler computes
   within each contig (`qc_intra_contig_short`, `qc_intra_contig_long`). The
   genome of a contig is its final cluster.
+- **The normalization of the network**, in the map of a `metator pipeline`
+  run: the weights `metator_<normalization>` of its bins (`--normalization`,
+  `empirical_hit` by default), stored the way `cooler` stores balancing
+  weights. The normalized contact of two bins is their raw count times both
+  weights, so the contacts normalized and summed by pair of contigs are the
+  edges of `network.txt`, but those of weight 0 (a contig without hits, or
+  without coverage, has no weight). They are computed from the `Hit`,
+  `Shotgun_coverage` and `Restriction_site` columns of the contigs table,
+  which the column records, so that metacooler drops it when an edit changes
+  one of them. A run whose map lacks a column that the normalization reads
+  (`Restriction_site` without `--enzyme`) stores none, with a warning, and so
+  does `--normalization None`, without one. It needs
+  `metacooler.store_weights`, from metacooler's next release: with metacooler
+  0.3.0, the map stores none, which the log says.
 - **The metadata** hold the version of metaTOR, the command line and its
   parameters, under the `metator` key.
 
@@ -68,11 +82,14 @@ clr = cooler.Cooler("binning/metator.metacool")
 mc = metacooler.MetaCooler("binning/metator.metacool")
 mc.genomes  # one row per cluster, and __unbinned__, with the columns of cluster_summary.txt
 mc.contigs  # one row per contig, with its GC content and Hi-C hits
+clr.matrix(balance="metator_empirical_hit")[:]  # the contacts, normalized as the network
 ```
 
 ```bash
 metacooler info binning/metator.metacool
 metacooler dump -t genomes -H binning/metator.metacool
+# The network of the contigs, normalized as metaTOR's
+metacooler network binning/metator.metacool --level contig --balance metator_empirical_hit
 ```
 
 ## `metator metacool`
