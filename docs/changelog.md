@@ -320,7 +320,13 @@ each removed command.
 - The log of the validation counts the clusters in the quality classes of
   `metator.validation.bin_quality`, as the plot of their sizes does
   (`plot/bins_size_distribution.png`), the contamination being the weighted
-  redundancy − 1; it divided it by the completeness, where the plot does not.
+  redundancy − 1; it divided it by the completeness, where the plot does not,
+  and, from 1.2.0 to 1.4.0, its test of the HQ class was inverted: a cluster
+  of at least 90% completeness was counted HQ when its contamination was over
+  5%, and MQ when it was 5% or less. Only the sum of the HQ and MQ counts of a
+  1.x log was right: on a mock community, the 31 HQ and MQ clusters of a
+  1.3.10 run, 7 HQ and 24 MQ in its log, are 24 HQ and 7 MQ for
+  `bin_quality`. From 1.2.3, the plot counted them right.
 - The plot of the completeness and the contamination of the clusters
   (`plot/bins_distribution.png`) draws the contamination from 0 to 105%, as
   it meant to: it compared the weighted redundancy, a ratio, with 105, which
