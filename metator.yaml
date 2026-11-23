@@ -12,5 +12,3 @@ dependencies:
   - bowtie2
   - bwa
   - samtools
-  - prodigal
-  - hmmer

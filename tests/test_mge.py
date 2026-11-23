@@ -370,7 +370,7 @@ def test_mge_stores_its_clusters_in_the_map(output, mge_run, tmp_path, monkeypat
     monkeypatch.setattr("metator.metacool.write_round", locked)
     run_cli("mge", *args, "--map", source, *options)
     written = metacool if output == "in place" else output_map
-    assert locks == [[f"{written.name}.lock"]] and not list(tmp_path.glob("*.lock"))
+    assert locks == [[f"{written.name}.metator.lock"]] and not list(tmp_path.glob("*.lock"))
     metacooler.validate(str(written), full=True)
     mc = metacooler.MetaCooler(str(written))
     _check_mge_round(mc, tmp_path / "out" / "mges_cluster_summary.tsv")
@@ -422,7 +422,7 @@ def _lock(metacool, pid):
     import socket
 
     holder = {"pid": pid, "host": socket.gethostname(), "started": "2026-11-18T10:00:00+0000", "command": "metator mge"}
-    lock = Path(f"{metacool}.lock")
+    lock = Path(f"{metacool}.metator.lock")
     lock.write_text(json.dumps(holder))
     return lock
 
@@ -522,7 +522,7 @@ MGE_MAP_ERRORS = {
         ["--map", "{map}"],
         "{map} is being written by another metaTOR run (pid {pid} on {host}, since 2026-11-18T10:00:00+0000): wait "
         "for it to end, write this run's map elsewhere with --output-map, or, if no such run is going on, remove "
-        "{map}.lock.",
+        "{map}.metator.lock.",
     ),
 }
 
@@ -587,7 +587,7 @@ def test_mge_on_a_map_refused(case, mge_run, metagenome_indexed_pairs, tmp_path,
     assert not (tmp_path / "out").exists()
     assert metacool.read_bytes() == before and names["copy"].read_text() == "an older map"
     assert {name: Path(names[name]).read_bytes() for name in MGE_INPUTS.values()} == inputs
-    assert (case == "a lock held by another run") == Path(f"{metacool}.lock").exists()
+    assert (case == "a lock held by another run") == Path(f"{metacool}.metator.lock").exists()
     (log,) = tmp_path.glob("metator_mge_*.log")
     assert f"ERROR :: {message}" in log.read_text()
 
