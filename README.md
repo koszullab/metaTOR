@@ -335,10 +335,8 @@ as both count every pair. A map that cannot give this network (contigs that are 
 other lengths, or both triangles of the matrix stored) stops the run with an error, whose reason is
 logged in the log file of the run. The libraries of a map are already summed: no `network_N.txt` is
 written. `pipeline --scaffold`, which reads the pairs files, is refused. The heatmap of the network of the final clusters
-(`plot/network_heatmap.png`) is drawn from
-the `.pairs.gz` files of the output directory: a run from a map draws none, and its log warns that no
-pairs alignment files were found, unless the output directory holds those of an earlier run (a rebinning
-in the directory of a run from reads, for example), from which the heatmap is then drawn.
+(`plot/network_heatmap.png`) is drawn from the map, as for every run of `pipeline`, whatever it started
+from (see [Plots](docs/guides/binning.md#plots)).
 
 At the end of such a run, `pipeline` updates the input map in place with the map of its clusters,
 with `metacooler reassign` (`--output-map FILE` writes it to FILE instead, and leaves the input map

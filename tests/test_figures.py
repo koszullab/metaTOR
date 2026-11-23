@@ -1,8 +1,12 @@
 # Test for figures module
 
 import gzip
+import shutil
 
+import hicstuff.hicstuff as hcs
+import metacooler
 import metator.figures as mtf
+import scipy.sparse as sp
 import numpy as np
 import pandas as pd
 import pytest
@@ -252,3 +256,186 @@ def test_frags_network_and_heatmap(metagenome, tmp_path):
     assert matrix.shape == (n_bins, n_bins)
     assert np.allclose(matrix, matrix.T)
     mtf.network_heatmap(matrix, mag_starts=mag_starts)  # shown, not saved
+
+
+# The heatmap drawn from the map of a run (build_matrix_map).
+
+
+def test_normalize_scn_is_that_of_hicstuff():
+    """The in-place SCN normalization gives the numbers of hicstuff's, a
+    window without contacts included."""
+    rng = np.random.default_rng(0)
+    for size in [1, 7, 64, 150]:
+        matrix = (rng.random((size, size)) < 0.3) * rng.poisson(4, (size, size)).astype(float)
+        matrix[rng.integers(0, size)] = 0
+        matrix = np.minimum(matrix, matrix.T) + np.minimum(matrix, matrix.T).T
+        np.testing.assert_allclose(
+            mtf.normalize_scn(matrix), hcs.normalize_dense(matrix, norm="SCN", iterations=100), rtol=1e-12, atol=0
+        )
+
+
+def test_heatmap_windows():
+    """The windows of build_matrix_network, MAG after MAG, the contigs of
+    each end to end: each bin of a map covers its windows by share; a contig
+    in no MAG covers none."""
+    contigs_data = pd.DataFrame({"Name": ["a", "b", "c", "d"], "Size": [30, 25, 10, 40], "Final_bin": ["m1", "m1", "ND", "m2"]})
+    bin_summary = {"m1": {"Length": 55}, "m2": {"Length": 40}}
+    bins = pd.DataFrame({"chrom": ["a", "b", "c", "d", "d"], "start": [0, 0, 0, 0, 25], "end": [30, 25, 10, 25, 40]})
+    windows, starts, size = mtf.heatmap_windows(bins, contigs_data, bin_summary, 20)
+    # m1: 55 bp, windows 0 to 2; m2: 40 bp, windows 3 to 5.
+    assert (starts, size) == ([0, 3], 6)
+    expected = np.zeros((5, 6))
+    expected[0, [0, 1]] = [20 / 30, 10 / 30]
+    expected[1, [1, 2]] = [10 / 25, 15 / 25]
+    expected[3, [3, 4]] = [20 / 25, 5 / 25]
+    expected[4, 4] = 1
+    np.testing.assert_allclose(windows.toarray(), expected)
+
+
+def _pairs_matrix(pairs_file, bins, windows):
+    """The matrix of the heatmap from a pairs file, as a map of these bins
+    holds its pairs: each read in its bin (one per contig, or of a fixed
+    size from the first base), the contacts of each bin, with another or
+    within itself, spread over its windows, those within a window left
+    out, then normalized."""
+    pairs = pd.read_csv(pairs_file, sep="\t", comment="#", header=None, usecols=[1, 2, 3, 4],
+                        names=["chr1", "pos1", "chr2", "pos2"])  # fmt: skip
+    first = bins.reset_index().groupby(bins["chrom"].astype(str), sort=False)["index"].min()
+    width = (bins["end"] - bins["start"]).max() if len(bins.chrom.unique()) < len(bins) else None
+
+    def bin_of(chrom, pos):
+        index = first.loc[chrom.astype(str)].to_numpy()
+        return index if width is None else index + np.maximum(pos.to_numpy() - 1, 0) // width
+
+    b1, b2 = bin_of(pairs.chr1, pairs.pos1), bin_of(pairs.chr2, pairs.pos2)
+    counts = sp.coo_matrix((np.ones(len(b1)), (np.minimum(b1, b2), np.maximum(b1, b2))), shape=(len(bins),) * 2)
+    matrix = (windows.T @ counts.tocsr() @ windows).toarray()
+    matrix += matrix.T
+    np.fill_diagonal(matrix, 0)
+    return mtf.normalize_scn(matrix)
+
+
+@pytest.mark.parametrize("binsize", [None, 1000], ids=["one bin per contig", "1 kb bins"])
+def test_heatmap_of_a_map_is_that_of_its_pairs(metagenome, metagenome_files, binsize, tmp_path):
+    """The matrix that build_matrix_map builds from the pixels of a map is
+    the matrix that a helper builds from the pairs the map holds."""
+    contigs_data, bin_summary = _binning(metagenome, list(QUALITIES))
+    # metacooler indexes the assembly (.fai): a private copy.
+    assembly = shutil.copyfile(metagenome_files["assembly"], tmp_path / "assembly.fa")
+    metacool = tmp_path / "map.metacool"
+    if binsize:
+        kwargs = {"binsize": binsize}
+    else:
+        kwargs = {"bins": pd.DataFrame({"chrom": contigs_data.Name, "start": 0, "end": contigs_data.Size})}
+    metacooler.from_pairs(str(metacool), pairs=str(metagenome_files["pairs"]), fasta=str(assembly),
+                          contig_genome_map=None, contig_ordering="fasta", ps=False, **kwargs)  # fmt: skip
+    matrix, starts = mtf.build_matrix_map(str(metacool), contigs_data, bin_summary, 20_000, chunksize=1000)
+    bins = metacooler.MetaCooler(str(metacool)).bins()[:]
+    windows, expected_starts, size = mtf.heatmap_windows(bins, contigs_data, bin_summary, 20_000)
+    assert starts == expected_starts and matrix.shape == (size, size)
+    assert size == sum(genome.length // 20_000 + 1 for genome in metagenome.genomes)
+    np.testing.assert_allclose(matrix, _pairs_matrix(metagenome_files["pairs"], bins, windows), rtol=1e-9, atol=1e-15)
+    assert np.allclose(matrix, matrix.T) and matrix.max() > 0
+
+
+@pytest.mark.parametrize("windows", [40, 3000])
+def test_heatmap_drawn_at_a_pixel_per_window(windows, tmp_path):
+    """The heatmap is saved at about one pixel per window, from 100 to 2000
+    dpi: its side has at least as many pixels as the matrix has windows,
+    and less than 1.5 times as many (600 for a small matrix, drawn at 100
+    dpi). It was saved at 2000 dpi whatever its size, 8879 pixels a side,
+    which took gigabytes of memory for a few thousand windows."""
+    from PIL import Image
+
+    matrix = np.random.default_rng(0).random((windows, windows))
+    out_file = tmp_path / "heatmap.png"
+    mtf.network_heatmap(matrix, str(out_file), [0, windows // 2])
+    width, height = Image.open(out_file).size
+    assert windows <= min(width, height) <= max(width, height) < 1.5 * max(windows, 400)
+
+
+def test_the_contacts_within_a_bin_are_spread_over_its_windows(tmp_path):
+    """The contacts within a bin of the map are spread over its windows, as
+    those between two bins are: a contig longer than a window, in one bin
+    (as in the map of the contigs of a run), is no dark square on the
+    heatmap. They were left out: every contig of 50 kb or more was a dark
+    square, and a MAG of one contig an empty block."""
+    pairs = tmp_path / "c1.pairs"
+    pairs.write_text("## pairs format v1.0\n" + "".join(f"r{i}\tc1\t{1 + 37 * i}\tc1\t{290 - 41 * i}\t+\t-\n" for i in range(7)))
+    metacool = tmp_path / "c1.metacool"
+    bins = pd.DataFrame({"chrom": ["c1"], "start": [0], "end": [300]})
+    metacooler.from_pairs(str(metacool), pairs=str(pairs), bins=bins, contig_genome_map=None, ps=False)
+    contigs_data = pd.DataFrame({"Name": ["c1"], "Size": [300], "Final_bin": ["m1"]})
+    matrix, starts = mtf.build_matrix_map(str(metacool), contigs_data, {"m1": {"Length": 300}}, 100)
+    # c1 covers windows 0 to 2 of the 4 of m1: its contacts within itself
+    # fill them, but for the diagonal.
+    assert starts == [0] and matrix.shape == (4, 4)
+    assert (matrix[:3, :3] > 0).sum() == 6 and not matrix.diagonal().any() and not matrix[3].any()
+
+
+def test_heatmap_windows_without_a_mag():
+    """No MAG gives no window: heatmap_windows failed on an empty bin
+    summary (zip() argument 2 is longer than argument 1)."""
+    contigs_data = pd.DataFrame({"Name": ["a"], "Size": [30], "Final_bin": ["ND"]})
+    bins = pd.DataFrame({"chrom": ["a"], "start": [0], "end": [30]})
+    windows, starts, size = mtf.heatmap_windows(bins, contigs_data, {}, 20)
+    assert (starts, size, windows.shape) == ([], 0, (1, 0))
+
+
+@pytest.mark.parametrize("error", ["MetacoolError", "ValueError"])
+def test_a_heatmap_that_cannot_be_drawn_is_a_warning(error, binned_output, monkeypatch, caplog):
+    """The heatmap is a figure: when it cannot be drawn, the reason is a
+    warning, and the other figures are drawn, where the run stopped (and
+    left the map of its contigs unbinned). The reason of a map that cannot
+    be read is its message; that of another error, which is unexpected,
+    its type, message and traceback, as the map of a run says it. The case
+    of a map that cannot be read is a guard: its warning was that already.
+    """
+    import metator.metacool as mtmc
+
+    out_dir, contigs_data, bin_summary = binned_output
+
+    def build_matrix_map(*args, **kwargs):
+        raise {"MetacoolError": mtmc.MetacoolError, "ValueError": ValueError}[error]("no map")
+
+    monkeypatch.setattr(mtf, "build_matrix_map", build_matrix_map)
+    with caplog.at_level("WARNING", logger="metator"):
+        mtf.plot_figures(str(out_dir), contigs_data, bin_summary, 50_000, metacool="map.metacool")
+    (record,) = [record for record in caplog.records if "heatmap" in record.getMessage()]
+    reason = "no map" if error == "MetacoolError" else "ValueError: no map"
+    assert (record.levelname, record.getMessage()) == ("WARNING", f"The heatmap of the clusters is not drawn: {reason}")
+    assert bool(record.exc_info) == (error == "ValueError")
+    assert not (out_dir / "plot" / "network_heatmap.png").exists()
+    assert (out_dir / "plot" / "bins_distribution.png").exists()
+
+
+def test_no_heatmap_without_a_mag(binned_output, caplog):
+    """With no MAG, no heatmap is drawn, and the log says so: it failed
+    with an index error on an empty matrix, given as the reason."""
+    out_dir, contigs_data, _ = binned_output
+    (out_dir / "plot").mkdir()
+    with caplog.at_level("INFO", logger="metator"):
+        mtf.plot_heatmap(str(out_dir), str(out_dir / "plot"), contigs_data, {}, metacool="map.metacool")
+    assert "No MAG: the heatmap of the clusters is not drawn." in caplog.text and "not drawn:" not in caplog.text
+    assert not (out_dir / "plot" / "network_heatmap.png").exists()
+
+
+def test_the_lines_between_mags_are_a_pixel_wide(tmp_path):
+    """The lines between the MAGs are a pixel wide at the dpi of the image,
+    which can be 100 dpi: they were 0.1 pt, which no pixel shows below 720
+    dpi (the brightest of them barely above the colour of the matrix).
+    Before the heatmap was saved at about a pixel per window, it was saved
+    at 2000 dpi, where 0.1 pt is a few pixels: this passes there."""
+    from PIL import Image
+
+    out_file = tmp_path / "heatmap.png"
+    mtf.network_heatmap(np.zeros((40, 40)), str(out_file), [0, 20])
+    image = np.asarray(Image.open(out_file).convert("RGB")).astype(int)
+    # The matrix, all 0, is the most frequent colour; the lines are white,
+    # dotted, at alpha 0.8.
+    colours, counts = np.unique(image.reshape(-1, 3), axis=0, return_counts=True)
+    matrix = (image == colours[counts.argmax()]).all(axis=2)
+    rows, columns = np.flatnonzero(matrix.any(axis=1)), np.flatnonzero(matrix.any(axis=0))
+    inside = image[rows[0] : rows[-1] + 1, columns[0] : columns[-1] + 1]
+    bright = inside.sum(axis=2) - colours[counts.argmax()].sum() > 150
+    assert bright.sum() >= 40

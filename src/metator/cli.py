@@ -1806,6 +1806,9 @@ def pipeline(
             tmp_dir,
             threads,
             bins_prefix,
+            # The heatmap of the clusters is drawn from the map of the run:
+            # the map it started from, or the map of its contigs.
+            metacool=forward if start == "metacool" else metacool_file,
         )
 
         if cluster_matrix:

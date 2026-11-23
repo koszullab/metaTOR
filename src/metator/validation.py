@@ -625,6 +625,7 @@ def recursive_decontamination(
     temp_directory,
     threads,
     prefix,
+    metacool=None,
 ):
     """Function to validate bins do the recursive decontamination using Louvain
     or Leiden algorithm
@@ -668,6 +669,10 @@ def recursive_decontamination(
         Number of threads to use.
     prefix : str
         Sample prefix to use.
+    metacool : str or None
+        The .metacool map of the contigs of the run, which the heatmap of the
+        clusters is drawn from (see metator.figures.plot_figures): without
+        one, from the pairs files of outdir.
 
     Returns:
     --------
@@ -890,8 +895,9 @@ def recursive_decontamination(
     contig_data_file_final = join(outdir, "contig_data_final.txt")
     contigs_data.to_csv(contig_data_file_final, sep="\t", header=True, index=True)
 
-    # Plot some figures of contigs distribution inside bins:
-    mtf.plot_figures(outdir, contigs_data, bin_summary, size)
+    # Plot some figures of contigs distribution inside bins: the heatmap from
+    # the map of the contigs of the run, when it has one.
+    mtf.plot_figures(outdir, contigs_data, bin_summary, size, metacool=metacool)
 
     return clustering_matrix_file
 

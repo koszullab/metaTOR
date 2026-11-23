@@ -339,8 +339,10 @@ def stub_pipeline(monkeypatch, tmp_path):
         Path(out_dir, "contig_data_partition.txt").write_text("x")
         return os.path.join(out_dir, "clustering_matrix_partition"), os.path.join(out_dir, "contig_data_partition.txt")
 
-    def recursive_decontamination(*args):
+    def recursive_decontamination(*args, **kwargs):
         calls["recursive_decontamination"] = args
+        # The map that the heatmap of the clusters is drawn from.
+        calls["heatmap_map"] = kwargs.get("metacool")
         # pyfastx indexes the assembly while extracting the bins.
         Path(f"{args[1]}.fxi").write_text("x")
         return os.path.join(args[8], "clustering_matrix_validation")
@@ -423,6 +425,8 @@ def test_pipeline_from_reads(start, clean_up, libraries, stub_pipeline, tmp_path
         assert index == str(assembly) and fasta.endswith(".fa")
     assert calls["partition"][1] == fasta
     assert calls["recursive_decontamination"][6] == 10
+    # The heatmap of the clusters is drawn from the map of the contigs.
+    assert calls["heatmap_map"] == str(out / "metator.metacool")
     assert not Path(f"{fasta}.fxi").exists()
     assert not (out / "contig_data_network.txt").exists()
     assert not (out / "contig_data_partition.txt").exists()
@@ -543,7 +547,7 @@ def _final_tables(monkeypatch, contig, final_bin="metator_00001_00000", summary=
     none, and the bin summary (``summary``, if given)."""
     stub = mtcli.mtv.recursive_decontamination
 
-    def recursive_decontamination(*args):
+    def recursive_decontamination(*args, **kwargs):
         out_dir = args[8]
         Path(out_dir, "contig_data_final.txt").write_text(
             "\tID\tName\tSize\tGC_content\tHit\tFinal_bin\n"
@@ -551,7 +555,7 @@ def _final_tables(monkeypatch, contig, final_bin="metator_00001_00000", summary=
         )
         rows = "" if final_bin == "ND" else f"{final_bin}\t0.9\n"
         Path(out_dir, "bin_summary.txt").write_text(summary or f"\tCompleteness\n{rows}")
-        return stub(*args)
+        return stub(*args, **kwargs)
 
     monkeypatch.setattr("metator.validation.recursive_decontamination", recursive_decontamination)
 
@@ -1225,7 +1229,7 @@ def test_pipeline_failure_leaves_the_map_of_the_contigs(no_metacool, stub_pipeli
     monkeypatch.setattr("metator.metacool.write_contig_map", mtmc_write_contig_map)
     _contig_data(monkeypatch, CONTIGS)
 
-    def recursive_decontamination(*args):
+    def recursive_decontamination(*args, **kwargs):
         raise RuntimeError("miComplete failed")
 
     monkeypatch.setattr("metator.validation.recursive_decontamination", recursive_decontamination)
@@ -1322,6 +1326,8 @@ def test_pipeline_from_a_metacool(no_metacool, stub_pipeline, tmp_path, run_cli)
     assert Path(tmp_dir).parent == tmp_path / "tmp"
     assert (threads, normalization, self_contacts) == (3, "abundance", False)
     assert calls["partition"][5] == str(out / "network.txt")
+    # The heatmap of the clusters is drawn from the input map.
+    assert calls["heatmap_map"] == str(metacool)
     assert metacool.read_bytes() == before
     # The contig data of the network step is kept, as from pairs files. A
     # map sums its libraries: no network_0.txt, even when the input map is
@@ -1600,6 +1606,9 @@ def test_pipeline_metacool_written_from_a_map(where, stub_pipeline, tmp_path, mo
     assert list(mc.genomes.Completeness.iloc[1:]) == [0.9]
     assert dict(zip(mc.contigs.name, mc.contigs.GC_content, strict=True)) == {"c1": 40.5, "c2": 35.0}
     assert (metacool.read_bytes() == before) == (where == "output-map")
+    # The heatmap is drawn from the input map, wherever the map of the
+    # clusters goes: --output-map is not written yet.
+    assert stub_pipeline["heatmap_map"] == str(metacool)
     expected = ["metator.metacool"] if where == "outdir" else []
     assert sorted(path.name for path in out.iterdir() if "metacool" in path.name) == expected
     assert not list(tmp_path.rglob("*.lock"))
@@ -1697,8 +1706,8 @@ def _rounds_tables(monkeypatch, members):
 
     stub = mtcli.mtv.recursive_decontamination
 
-    def recursive_decontamination(*args):
-        result = stub(*args)
+    def recursive_decontamination(*args, **kwargs):
+        result = stub(*args, **kwargs)
         rounds = mtcl.Rounds()
         rounds.add(mtcl.OVERLAPPING, "metator_00001_00000", members, columns={"Completeness": 0.9, "Lineage": "x"})
         rounds.close_round(mtcl.OVERLAPPING)
@@ -2646,7 +2655,9 @@ def test_pipeline_without_pyfastx_index(stub_pipeline, tmp_path, monkeypatch, ru
     """No bin passed the size threshold, so pyfastx never indexed the
     assembly: the run ends without removing an index that is not there (it
     used to fail at its very end, with FileNotFoundError)."""
-    monkeypatch.setattr("metator.validation.recursive_decontamination", lambda *args: os.path.join(args[8], "clustering_matrix"))
+    monkeypatch.setattr(
+        "metator.validation.recursive_decontamination", lambda *args, **kwargs: os.path.join(args[8], "clustering_matrix")
+    )
     assembly = tmp_path / "assembly.fa"
     shutil.copyfile(TESTS_DATA / "subset.assembly.fa", assembly)
     pairs = tmp_path / "a_sorted.pairs.gz"
