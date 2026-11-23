@@ -45,34 +45,24 @@ conda create -n metator bioconda::metator
 
 ### With pip
 
-**Note:** although `metator` itself is available from Pypi, several additional libraries are 
-not available from Pypi and must be installed separately. Please consider the following 
-before installing `metator`:
+Before installing `metator`:
 
 * Python `3.10` to `3.14` is required.
-* The following dependencies of miComplete, which checks the clusters, should also be locally
-  installed and available in the `$PATH`:
-    * [`hmmer`](http://hmmer.org/documentation.html)
-    * [`prodigal`](https://github.com/hyattpd/Prodigal)
 * metaTOR starts from a `.metacool` contact map of the contigs, which
   [hicstuff](https://github.com/koszullab/hicstuff) makes from the reads (`hicstuff pipeline -M metacool`),
   or [metacooler](https://pypi.org/project/metacooler/) from pairs files (`metacooler create pairs`).
 
 **Warning:** note that if you install `metator` with `pip`, this may upgrade/downgrade 
-versions of the above dependencies and may cause conflicts with other softwares.
+versions of its dependencies and may cause conflicts with other softwares.
 
 ```sh
-# Install hmmer and prodigal:
-sudo apt update && sudo apt install hmmer prodigal
-
 # Install metator from Pypi
 pip3 install metator
 ```
 
 ### Development version 
 
-The development version is managed with [uv](https://docs.astral.sh/uv/). With the
-non-Python dependencies listed above installed:
+The development version is managed with [uv](https://docs.astral.sh/uv/):
 
 ```sh
 git clone https://github.com/koszullab/metaTOR

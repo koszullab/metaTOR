@@ -67,7 +67,7 @@ hicstuff's next release), or metacooler from pairs files
 | `--output-map` | none | Write the contact map of the clusters to this file (replaced only with `-F`), and leave `MAP` as it was. By default, the run updates `MAP` in place. |
 
 The validation is the step that needs the most memory: miComplete runs
-prodigal and hmmer on every cluster.
+Prodigal and HMMER (pyrodigal and pyhmmer) on every cluster.
 
 ```bash
 # The map of the contigs, from the reads, with hicstuff

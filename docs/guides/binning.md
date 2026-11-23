@@ -47,10 +47,10 @@ one made on another network (`metator network MAP` run again since, which
 warns of it), and `metator partition MAP` partitions the network again.
 
 Validation runs [miComplete](https://pypi.org/project/micomplete/) on every
-cluster: prodigal predicts its genes, and hmmer finds among them the
+cluster: Prodigal predicts its genes, and HMMER finds among them the
 single-copy marker genes of bacteria (105 markers) and of archaea
-(131 markers). Each cluster keeps the set that gives it the higher weighted
-completeness.
+(131 markers), through pyrodigal and pyhmmer, their Python bindings. Each
+cluster keeps the set that gives it the higher weighted completeness.
 
 A cluster is **contaminated** when its weighted completeness reaches 33% and its
 contamination, (weighted redundancy − 1) / weighted completeness, reaches 5%.
