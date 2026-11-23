@@ -344,14 +344,13 @@ def stub_pipeline(monkeypatch, tmp_path):
 
     def partition(*args):
         calls["partition"] = args
-        out_dir = args[5]
-        # What the network step left in the output directory.
-        calls["partition_outdir"] = sorted(os.listdir(out_dir))
-        Path(out_dir, "contig_data_partition.txt").write_text("x")
-        return os.path.join(out_dir, "contig_data_partition.txt")
+        return _one_cluster(args[1])
 
     def recursive_decontamination(*args):
         calls["recursive_decontamination"] = args
+        # The contig data table of the partition, in the temporary directory
+        # of the run, which is removed at its end.
+        calls["partition_table"] = pd.read_csv(args[2], sep="\t", dtype={"Core_cluster_ID": str})
         # pyfastx indexes the assembly while extracting the bins.
         Path(f"{args[1]}.fxi").write_text("x")
 
@@ -366,6 +365,17 @@ def stub_pipeline(monkeypatch, tmp_path):
     monkeypatch.setattr("metator.validation.recursive_decontamination", recursive_decontamination)
     monkeypatch.setattr("metator.metacool.reassign_metacool", reassign_metacool)
     return calls
+
+
+def _one_cluster(network):
+    """The partition of the stub partition: one core and overlapping cluster
+    (metator_00001_00000) of the contigs of the network, in the order of
+    their IDs (none for a network without an edge)."""
+    import metator.clusters as mtcl
+
+    contigs = sorted({int(contig) for contig in network.contig1} | {int(contig) for contig in network.contig2})
+    clusters = {1: contigs} if contigs else {}
+    return mtcl.Partition(core=dict(clusters), overlapping=dict(clusters), names={1: "metator_00001_00000"} if contigs else {})
 
 
 def _assembly(tmp_path):
@@ -560,14 +570,19 @@ def test_pipeline_from_a_metacool(no_metacool, stub_pipeline, tmp_path, run_cli)
     fasta, depth, enzyme = calls["create_contig_data"]
     assert (fasta, depth, enzyme) == (str(tmp_path / "assembly.fa"), str(TESTS_DATA / "depth.txt"), None)
     assert calls["contig_contacts"] == (str(metacool),)
-    # The contig data and the network of the map, in memory: c1 and c2 (the
-    # stub contig data gives them 1000 bp), one contact.
-    table, network = calls["partition"][2], calls["partition"][4]
-    assert list(table.Name) == ["c1", "c2"] and list(table.Hit) == [3, 1]
+    # The network of the map, in memory: c1 and c2 (the stub contig data
+    # gives them 1000 bp), one contact; the contig data of its partition,
+    # which the validation reads, in the temporary directory of the run.
+    network = calls["partition"][1]
     assert network.to_dict("list") == {
         "contig1": [1], "contig2": [2], "weight": [pytest.approx((1000 / 3) ** 0.5 * 1000**0.5, rel=1e-15)]
     }  # fmt: skip
-    assert calls["partition"][10] == 3
+    assert calls["partition"][5] == 3
+    table = calls["partition_table"]
+    assert list(table.Name) == ["c1", "c2"] and list(table.Hit) == [3, 1]
+    assert list(table.Core_cluster_ID) == ["00001", "00001"] and list(table.Overlapping_cluster_size) == [2000, 2000]
+    assert Path(calls["recursive_decontamination"][2]).parent.parent == tmp_path / "tmp"
+    assert not (out / "overlapping_clusters").exists() and not (out / "contig_data_partition.txt").exists()
     assert metacool.read_bytes() == before
     # No table of the network: it is in the map.
     assert not list(out.glob("*network*"))
@@ -587,7 +602,10 @@ def test_pipeline_from_a_metacool(no_metacool, stub_pipeline, tmp_path, run_cli)
     # normalization.
     network = kwargs["network"]
     assert (kwargs["normalization"], network.normalization) == ("length", "length")
-    pd.testing.assert_frame_equal(network.table, table)
+    pd.testing.assert_frame_equal(network.table, table[network.table.columns], check_dtype=False)
+    # What its partition was, as metator partition stores it.
+    assert kwargs["partition"]["normalization"] == "length"
+    assert kwargs["partition"]["command"] == kwargs["metadata"]["command"] and kwargs["partition"]["version"] == __version__
     assert network.entry["command"] == kwargs["metadata"]["command"] and network.entry["version"] == __version__
     assert Path(network.tmp_dir).parent == tmp_path / "tmp"
     # No column was read from the map (the stub reads none).
@@ -595,14 +613,17 @@ def test_pipeline_from_a_metacool(no_metacool, stub_pipeline, tmp_path, run_cli)
     assert f"INFO :: {metacool} is the input map {metacool}: it is replaced once the map of the clusters is validated." in logged
 
 
-def _contig_map(path, lengths=None, network=False, normalization="empirical_hit"):
+def _contig_map(path, lengths=None, network=False, normalization="empirical_hit", partition=False):
     """A .metacool map of the contigs c1 and c2 of the stub validation's
     tables (see _final_tables), made before any binning: every contig in
     __unbinned__, one bin per contig. With network, the network of its
     contigs stored in it, as metator network stores it (see
     metator.metacool.store_network), which partition and validation read:
     the contacts of c1 and c2 normalized by their hits (empirical_hit, by
-    default)."""
+    default). With partition too, the partition of the stub partition stored
+    in it, as metator partition stores it (see
+    metator.metacool.write_rounds), which validation reads: one core and
+    overlapping cluster of c1 and c2."""
     import metacooler
     import pandas as pd
 
@@ -613,11 +634,37 @@ def _contig_map(path, lengths=None, network=False, normalization="empirical_hit"
     metacooler.from_pairs(str(path), pairs=str(pairs), bins=bins, contig_genome_map=None, ps=False)
     pairs.unlink()
     if network:
-        names = metacooler.MetaCooler(str(path)).contigs["name"]
-        contacts = CONTIG_CONTACTS(str(path))
-        table = mtcli.mtn.contig_data_table(_AnyContig(), names, mtcli.mtn.contig_hits(contacts, len(names)))
-        mtmc.store_network(str(path), str(path), mtmc.Network(table, normalization), force=True)
+        _store_contig_network(path, normalization)
+    if partition:
+        import metator.clusters as mtcl
+
+        names = [str(name) for name in metacooler.MetaCooler(str(path)).contigs["name"]]
+        clusters = _one_cluster(pd.DataFrame({"contig1": [1], "contig2": [2]}))
+        entry = {"version": __version__, "normalization": normalization}
+        if network:
+            entry[mtmc.NETWORK_DIGEST] = mtcli.mtn.stored_network(str(path)).digest
+        mtmc.write_rounds(
+            str(path),
+            str(path),
+            mtcl.partition_rounds(clusters, names),
+            names=list(mtmc.PARTITION_ROUNDS),
+            force=True,
+            entries={"partition": entry},
+        )
     return path
+
+
+def _store_contig_network(path, normalization):
+    """Store the network of the contigs of the map at path (see _contig_map)
+    in it, as metator network stores it (see
+    metator.metacool.store_network), with normalization: the network of an
+    earlier run is replaced, its partition kept."""
+    import metacooler
+
+    names = metacooler.MetaCooler(str(path)).contigs["name"]
+    contacts = CONTIG_CONTACTS(str(path))
+    table = mtcli.mtn.contig_data_table(_AnyContig(), names, mtcli.mtn.contig_hits(contacts, len(names)))
+    mtmc.store_network(str(path), str(path), mtmc.Network(table, normalization), force=True)
 
 
 # The restriction sites and the coverage of the contigs, read from the
@@ -831,13 +878,16 @@ def _merged_map(tmp_path, normalization):
     return merged
 
 
-def _collection(path, *entries, network=False):
+def _collection(path, *entries, network=False, partition=False):
     """A .mmetacool collection at path, with a map of the contigs
-    (_contig_map, with its network with network) as each entry of
-    entries."""
+    (_contig_map, with its network with network, and its partition with
+    partition) as each entry of entries."""
     import metacooler
 
-    maps = {name: _contig_map(path.with_name(f"{path.stem}_{name}.metacool"), network=network) for name in entries}
+    maps = {
+        name: _contig_map(path.with_name(f"{path.stem}_{name}.metacool"), network=network, partition=partition)
+        for name in entries
+    }
     metacooler.create_mmetacool(path, maps)
     return path
 
@@ -1438,8 +1488,6 @@ def test_a_map_changed_during_the_run_is_refused_at_its_end(command, output, stu
     written either, and the map is left as the other program left it."""
     monkeypatch.setattr("metator.metacool.reassign_metacool", mtmc_reassign_metacool)
     _final_tables(monkeypatch, "c1")
-    if command == "partition":
-        _partition_table(monkeypatch)
     metacool = _contig_map(tmp_path / "input.metacool", network=command == "partition")
     partition = mtcli.mtp.partition
 
@@ -1475,7 +1523,7 @@ def _output_map_run(command, metacool, tmp_path, *options):
     with options (--output-map, -F...)."""
     if command == "pipeline":
         return _map_run(metacool, tmp_path, *options)
-    return _step_run(command, metacool, tmp_path, "-s", "100", *options)
+    return _step_run(command, metacool, tmp_path, *options)
 
 
 @pytest.mark.parametrize("command", ["pipeline", "partition"])
@@ -1491,8 +1539,6 @@ def test_output_map_a_link_to_the_input_map(kind, command, stub_pipeline, tmp_pa
 
     monkeypatch.setattr("metator.metacool.reassign_metacool", mtmc_reassign_metacool)
     _final_tables(monkeypatch, "c1")
-    if command == "partition":
-        _partition_table(monkeypatch)
     (tmp_path / "maps").mkdir()
     metacool = _contig_map(tmp_path / "maps" / "input.metacool", network=command == "partition")
     before = metacool.read_bytes()
@@ -1520,7 +1566,7 @@ def test_output_map_a_link_to_the_input_map(kind, command, stub_pipeline, tmp_pa
     if command == "pipeline":
         assert list(mc.genomes.name) == ["__unbinned__", "metator_00001_00000"]
     else:
-        assert list(mc.clusters.name) == ["metator_00001_00000"]
+        assert list(mc.clusters.name) == ["core_00001", "metator_00001_00000"]
     assert sorted(path.name for path in (tmp_path / "maps").iterdir()) == ["input.metacool"]
     assert not [path.name for path in tmp_path.iterdir() if path.name.startswith(".") or path.suffix == ".lock"]
 
@@ -1592,8 +1638,6 @@ def test_a_writer_before_the_lock_is_seen_by_the_run(command, stub_pipeline, tmp
 
     monkeypatch.setattr("metator.metacool.reassign_metacool", mtmc_reassign_metacool)
     _final_tables(monkeypatch, "c1")
-    if command == "partition":
-        _partition_table(monkeypatch)
     metacool = _contig_map(tmp_path / "input.metacool", network=command == "partition")
     table = tmp_path / "extra.txt"
     table.write_text("Name\tnote\nc1\tx\nc2\ty\n")
@@ -1610,7 +1654,7 @@ def test_a_writer_before_the_lock_is_seen_by_the_run(command, stub_pipeline, tmp
     if command == "pipeline":
         assert list(mc.genomes.name) == ["__unbinned__", "metator_00001_00000"]
     else:
-        assert list(mc.clusters.name) == ["metator_00001_00000"]
+        assert list(mc.clusters.name) == ["core_00001", "metator_00001_00000"]
 
 
 def _replaced_once_opened_by(monkeypatch, metacool, reader):
@@ -1639,14 +1683,14 @@ REPLACED_WHILE_READ = (
 @pytest.mark.parametrize(
     ("reader", "command", "options"),
     [
-        ("check_map_of_contigs", "validation", ["--output-map", "out.metacool"]),
+        ("check_map_of_contigs", "mge", ["--output-map", "out.metacool"]),
         ("map_columns", "pipeline", ["--normalization", "RS"]),
         ("warn_of_what_is_replaced", "partition", []),
     ],
 )
 def test_a_map_replaced_as_the_run_checks_it(reader, command, options, stub_pipeline, tmp_path, monkeypatch, run_cli):
     """A map replaced as the run reads it to check it (its contigs against
-    the contig data of a validation, its columns against the normalization,
+    the contig data of mge --map, its columns against the normalization,
     what it holds that the run replaces) stops the run with metaTOR's error,
     logged as an ERROR: it stopped on metacooler's MapChangedError, raised as
     it is, with nothing in the log."""
@@ -1654,10 +1698,40 @@ def test_a_map_replaced_as_the_run_checks_it(reader, command, options, stub_pipe
     _replaced_once_opened_by(monkeypatch, metacool, reader)
     message = REPLACED_WHILE_READ.format(map=metacool)
     options = [tmp_path / option if option.endswith(".metacool") else option for option in options]
+    if command == "mge":
+        contigs = tmp_path / "contig_data_final.txt"
+        contigs.write_text("Name\tSize\nc1\t100\nc2\t50\n")
+        arguments = ["-a", _assembly(tmp_path), "-c", contigs, "-b", TESTS_DATA / "binning.txt", "-m",
+                     TESTS_DATA / "subset.mges.txt", "-o", tmp_path / "out", "--map", metacool, *options, "a.pairs"]  # fmt: skip
+    else:
+        arguments = _output_map_run(command, metacool, tmp_path, *options)
     with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
-        run_cli(command, *_output_map_run(command, metacool, tmp_path, *options))
+        run_cli(command, *arguments)
     assert "partition" not in stub_pipeline and "recursive_decontamination" not in stub_pipeline
-    (log,) = (tmp_path / "out").glob(f"metator_{command}_*.log")
+    # mge writes its log in the current directory.
+    (log,) = (Path.cwd() if command == "mge" else tmp_path / "out").glob(f"metator_{command}_*.log")
+    assert f"ERROR :: {message}" in log.read_text()
+
+
+def test_a_map_replaced_as_validation_reads_its_partition(stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """A map replaced as a validation run reads the partition that partition
+    MAP stored in it (see metator.metacool.read_partition) stops the run
+    with metaTOR's error, logged as an ERROR, before any work."""
+    metacool = _contig_map(tmp_path / "input.metacool", network=True, partition=True)
+    read_partition = mtmc.read_partition
+
+    def replaced_then_read(*args, **kwargs):
+        copy = Path(f"{metacool}.copy")
+        shutil.copyfile(metacool, copy)
+        os.replace(copy, metacool)
+        return read_partition(*args, **kwargs)
+
+    monkeypatch.setattr(mtmc, "read_partition", replaced_then_read)
+    message = REPLACED_WHILE_READ.format(map=metacool)
+    with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
+        run_cli("validation", *_step_run("validation", metacool, tmp_path, "--output-map", tmp_path / "out.metacool"))
+    assert "recursive_decontamination" not in stub_pipeline
+    (log,) = (tmp_path / "out").glob("metator_validation_*.log")
     assert f"ERROR :: {message}" in log.read_text()
 
 
@@ -1828,6 +1902,40 @@ def test_network_updates_its_map_in_place(stub_pipeline, tmp_path, run_cli):
     assert mtn.map_network(str(metacool)).to_dict("list") == {"contig1": [1], "contig2": [2], "weight": [1]}
 
 
+def test_network_keeps_the_partition_of_the_map(stub_pipeline, tmp_path, run_cli):
+    """metator network MAP keeps the clusters of the map, its partition among
+    them, with what partition recorded of it. The same network again leaves
+    it the partition of the network, which validation reads. Another network
+    is stored with a warning: validation refuses the partition until
+    partition MAP partitions that network, which it then reads."""
+    import metacooler
+
+    metacool = _contig_map(tmp_path / "input.metacool", network=True, partition=True)
+    mc = metacooler.MetaCooler(str(metacool))
+    rounds, members, entry = mc.cluster_rounds, mc.cluster_members(), mc.metadata["metator"]["partition"]
+    warning = (
+        f"WARNING :: {metacool} holds a partition of another network than the one stored in it now, which the run "
+        f"kept: metator validation refuses it until metator partition {metacool} runs again, which partitions this "
+        "network."
+    )
+    for normalization, stale in [("empirical_hit", False), ("None", True)]:
+        run_cli("network", metacool, "-a", _assembly(tmp_path), "-n", normalization, "-o", tmp_path / normalization,
+                "-T", tmp_path / "tmp")  # fmt: skip
+        mc = metacooler.MetaCooler(str(metacool))
+        assert mc.cluster_rounds == rounds and mc.cluster_members().equals(members)
+        assert mc.metadata["metator"]["partition"] == entry
+        (log,) = (tmp_path / normalization).glob("metator_network_*.log")
+        assert (warning in log.read_text()) == stale
+        digest = mtcli.mtn.stored_network(str(metacool)).digest
+        assert (digest != entry[mtmc.NETWORK_DIGEST]) == stale
+    with pytest.raises(mtmc.MetacoolError, match=re.escape(f"{metacool} holds a partition of another network")):
+        run_cli("validation", *_step_run("validation", metacool, tmp_path))
+    run_cli("partition", *_step_run("partition", metacool, tmp_path))
+    assert metacooler.MetaCooler(str(metacool)).metadata["metator"]["partition"][mtmc.NETWORK_DIGEST] == digest
+    run_cli("validation", *_step_run("validation", metacool, tmp_path))
+    assert [entry["name"] for entry in metacooler.MetaCooler(str(metacool)).cluster_rounds][:2] == ["core", "overlapping"]
+
+
 # What the first argument of a network or pipeline run cannot be, refused
 # before any work, the reason in its log file.
 NOT_A_MAP = (
@@ -1920,11 +2028,12 @@ def test_a_directory_is_no_map(command, stub_pipeline, tmp_path, monkeypatch, ru
     removed the clusters of the earlier run)."""
     monkeypatch.chdir(tmp_path)
     Path("maps").mkdir()
-    bins = Path("out", "overlapping_clusters", "bin.fa")
+    bins = Path("out", "final_clusters", "bin.fa")
     bins.parent.mkdir(parents=True)
     bins.write_text(">c1\nACGT\n")
     force = [] if command == "network" else ["-F"]
-    result = run_cli(command, "maps", "-a", _assembly(tmp_path), "-o", "out", *force, exit_code=2)
+    assembly = [] if command == "partition" else ["-a", _assembly(tmp_path)]
+    result = run_cli(command, "maps", *assembly, "-o", "out", *force, exit_code=2)
     assert "File 'maps' is a directory." in " ".join(result.output.replace("│", " ").split())
     assert not stub_pipeline and bins.exists() and not list(Path("out").glob("*.log"))
 
@@ -1966,31 +2075,23 @@ def test_options_of_reads_and_pairs_are_gone(command, option, stub_pipeline, tmp
 # the steps replaced by stubs (see tests/test_binning_synthetic.py for the
 # map that they give).
 
-# The directories of clusters of each step, replaced with -F.
-STEP_DIRS = {"partition": ["overlapping_clusters"], "validation": ["recursive_clusters", "final_clusters"]}
+# The directories of clusters of each step, replaced with -F: partition writes
+# none.
+STEP_DIRS = {"partition": [], "validation": ["recursive_clusters", "final_clusters"]}
 
 
 def _step_run(command, metacool, tmp_path, *options):
     """The arguments of a partition or validation run on the map metacool
     (for None, a map of the contigs c1 and c2 with their network, which
-    metator network stores). A validation reads the tables of the partition, which
-    the stub steps do not read, but for the contig data, which the run
-    checks the map against: the contigs c1 and c2 of _contig_map, at their
-    positions in the map (c1, the longest, first)."""
-    tables = []
-    if command == "validation":
-        contigs = tmp_path / "contig_data.txt"
-        if not contigs.exists():
-            contigs.write_text(
-                "ID\tName\tSize\tHit\tShotgun_coverage\tOverlapping_cluster_ID\n1\tc1\t100\t3\t-\t00001\n2\tc2\t50\t1\t-\t00001\n"
-            )
-        tables = ["-c", contigs, "-f", "overlapping_clusters"]
+    metator network stores, and their partition, which metator partition
+    stores). A validation reads the assembly, which partition does not."""
+    assembly = ["-a", _assembly(tmp_path)] if command == "validation" else []
     out = ["-o", tmp_path / "out", "-T", tmp_path / "tmp"]
     if metacool is None:
         metacool = tmp_path / "network.metacool"
         if not metacool.exists():
-            _contig_map(metacool, network=True)
-    return [metacool, "-a", _assembly(tmp_path), *tables, *out, *options]
+            _contig_map(metacool, network=True, partition=True)
+    return [metacool, *assembly, *out, *options]
 
 
 def _earlier_run(command, tmp_path):
@@ -2003,21 +2104,52 @@ def _earlier_run(command, tmp_path):
     return files
 
 
-def _partition_table(monkeypatch, size=150):
-    """Have the stub partition write the contig data of a partition of the
-    contigs c1 and c2 of _contig_map, as metator.partition writes it: one
-    overlapping cluster of both, of size bp (00001: metator_00001_00000)."""
-    stub = mtcli.mtp.partition
-
-    def partition(*args):
-        result = stub(*args)
-        Path(args[5], "contig_data_partition.txt").write_text(
-            "ID\tName\tSize\tOverlapping_cluster_ID\tOverlapping_cluster_contigs\tOverlapping_cluster_size\n"
-            f"1\tc1\t100\t00001\t2\t{size}\n2\tc2\t50\t00001\t2\t{size}\n"
-        )
-        return result
-
-    monkeypatch.setattr("metator.partition.partition", partition)
+@pytest.mark.parametrize("command", ["validation", "pipeline"])
+@pytest.mark.parametrize(
+    "where", ["in final_clusters", "recursive_clusters", "through a link of -o", "through a link of final_clusters"]
+)
+def test_tmpdir_in_the_clusters_refused(command, where, stub_pipeline, tmp_path, run_cli):
+    """A --tmpdir in a directory of the clusters that a validation or
+    pipeline run writes, which it makes anew (-F removes it, and the
+    temporary directory of the run with it), is refused as a usage error
+    before the run creates or removes anything: the clusters of an earlier
+    run stay, and no temporary directory is made. It is in it as written, or
+    once the symbolic links are resolved (an output directory given through
+    a link), or through a directory of the clusters that is a link, which -F
+    removes, not its target."""
+    metacool = _contig_map(tmp_path / "network.metacool", network=True, partition=True)
+    earlier = _earlier_run("validation", tmp_path)
+    out = tmp_path / "out"
+    if where == "through a link of -o":
+        (tmp_path / "alias").symlink_to(out)
+    if where == "through a link of final_clusters":
+        shutil.move(out / "final_clusters", tmp_path / "elsewhere")
+        (out / "final_clusters").symlink_to(tmp_path / "elsewhere")
+        earlier = [tmp_path / "elsewhere" / "earlier.fa", earlier[0]]
+    outdir = tmp_path / "alias" if where == "through a link of -o" else out
+    tmpdir = {
+        "in final_clusters": out / "final_clusters" / "tmp",
+        "recursive_clusters": out / "recursive_clusters",
+        "through a link of -o": out / "final_clusters" / "tmp",
+        "through a link of final_clusters": out / "final_clusters" / "tmp",
+    }[where]
+    clusters = outdir / ("recursive_clusters" if where == "recursive_clusters" else "final_clusters")
+    if command == "validation":
+        args = _step_run("validation", metacool, tmp_path, "-o", outdir, "-T", tmpdir, "-F")
+    else:
+        args = [metacool, "-a", _assembly(tmp_path), "-o", outdir, "-T", tmpdir, "-F"]
+    before = sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*"))
+    # The map made, nothing read yet.
+    stub_pipeline.clear()
+    result = run_cli(command, *args, exit_code=2)
+    message = (
+        f"Invalid value for '-T' / '--tmpdir': {tmpdir} is in {clusters}, where the run writes its clusters, which it "
+        "makes anew (-F replaces an earlier one): give a temporary directory outside it."
+    )
+    assert message in " ".join(result.output.replace("│", " ").split())
+    assert all(path.exists() for path in earlier)
+    assert sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*")) == before
+    assert not stub_pipeline
 
 
 @pytest.mark.parametrize("command", ["partition", "validation"])
@@ -2060,21 +2192,31 @@ STEP_MAP_ERRORS = {
         "network on the map again.",
     ),
     "a collection": ("{collection}", [], "Cannot read the contact map {collection}: "),
-    "a map of other contigs": (
-        "{other_map}",
+    "a map without a partition": (
+        "{map}",
         [],
-        "{other_map} is not a contact map of the contigs of {contigs}: 1 of its contig(s) are not in it: 'c3'.",
+        "{map} holds no partition of its network (the clustering round(s) core and overlapping): run metator partition "
+        "on it first, which stores its core and overlapping clusters in the map.",
     ),
-    "a map of other lengths": (
-        "{long_map}",
+    # metator network stored another network over the partition, which it
+    # keeps (see test_network_keeps_the_partition_of_the_map).
+    "a partition of another network": (
+        "{stale_map}",
         [],
-        "{long_map} is not a contact map of the contigs of {contigs}: 1 contig(s) have another length in it: 'c1' (120 "
-        "bp in the map, 100 bp in {contigs}).",
+        "{stale_map} holds a partition of another network than the one stored in it now: metator network stored "
+        "another network in the map since metator partition ran on it. Run metator partition {stale_map} again, which "
+        "partitions the network stored in the map.",
+    ),
+    "a partition that records no network": (
+        "{unrecorded_map}",
+        [],
+        "{unrecorded_map} does not record the network that its partition was made on, which metator partition "
+        "records. Run metator partition {unrecorded_map} again, which partitions the network stored in the map.",
     ),
     "an input as --output-map": (
         "{map}",
-        ["--output-map", "{contigs}"],
-        "--output-map {contigs} is {contigs}, an input of the run: write the map elsewhere.",
+        ["--output-map", "{assembly}"],
+        "--output-map {assembly} is {assembly}, an input of the run: write the map elsewhere.",
     ),
     "a map whose name holds ::": (
         "{colon_map}",
@@ -2102,9 +2244,14 @@ STEP_MAP_ERRORS = {
 }
 
 
-# The refusals of a validation alone: partition reads the contig data from the
-# map, and takes no table that the map could not be the map of.
-VALIDATION_ONLY = {"a map of other contigs", "a map of other lengths", "an input as --output-map"}
+# The refusals of a validation alone: it reads the partition that partition
+# stores, and the assembly, which partition does not read.
+VALIDATION_ONLY = {
+    "a map without a partition",
+    "a partition of another network",
+    "a partition that records no network",
+    "an input as --output-map",
+}
 
 
 STEP_CASES = [
@@ -2123,8 +2270,12 @@ def test_step_on_a_map_refused(command, case, stub_pipeline, tmp_path, run_cli):
     raised as a MetacoolError, before the step and before -F replaces the
     directories of clusters of an earlier run. A lock that a running run
     holds (here, another process) is left to it. A collection is refused
-    with metacooler's reason, which names its entries."""
+    with metacooler's reason, which names its entries. validation MAP
+    refuses a map that partition MAP has not stored its partition in, or
+    whose partition is not that of the network stored in it."""
     from contextlib import ExitStack
+
+    import metacooler
 
     names = {
         "command": command,
@@ -2136,12 +2287,9 @@ def test_step_on_a_map_refused(command, case, stub_pipeline, tmp_path, run_cli):
         "collection": _collection(tmp_path / "maps.mmetacool", "lib1"),
         "copy": tmp_path / "copy.metacool",
         "colon_map": tmp_path / "run::1.metacool",
-        "other_map": _contig_map(tmp_path / "other.metacool", {"c1": 100, "c3": 50}),
-        "long_map": _contig_map(tmp_path / "long.metacool", {"c1": 120, "c2": 50}),
-        "contigs": tmp_path / "contig_data.txt",
+        # The copy of the assembly that a validation run reads (see _step_run).
+        "assembly": tmp_path / "assembly.fa",
     }
-    names["contigs"].write_text("ID\tName\tSize\tHit\tShotgun_coverage\tOverlapping_cluster_ID\n1\tc1\t100\t3\t-\t00001\n"
-                                "2\tc2\t50\t1\t-\t00001\n")  # fmt: skip
     if case == "a network with text in a column":
         names["text_map"] = _contig_map(tmp_path / "text.metacool", network=True)
         with h5py.File(names["text_map"], "r+") as group:
@@ -2149,6 +2297,16 @@ def test_step_on_a_map_refused(command, case, stub_pipeline, tmp_path, run_cli):
             group["contigs/GC_content"] = np.array([b"high", b"low"])
     if case == "a network of other contacts":
         names["merged_map"] = _merged_map(tmp_path, "None")
+    if case == "a partition of another network":
+        names["stale_map"] = _contig_map(tmp_path / "stale.metacool", network=True, partition=True)
+        _store_contig_network(names["stale_map"], "None")
+    if case == "a partition that records no network":
+        names["unrecorded_map"] = _contig_map(tmp_path / "unrecorded.metacool", network=True, partition=True)
+        mc = metacooler.MetaCooler(str(names["unrecorded_map"]))
+        metadata = dict(mc.metadata)
+        del metadata["metator"]["partition"][mtmc.NETWORK_DIGEST]
+        with mc.open("r+") as group:
+            group.attrs["metadata"] = json.dumps(metadata)
     shutil.copyfile(names["map"], names["colon_map"])
     names["entry"] = f"{names['collection']}::entries/lib1"
     names["directory"].mkdir()
@@ -2187,18 +2345,21 @@ def test_step_on_a_map_refuses_an_existing_output_map(command, stub_pipeline, tm
 
 
 @pytest.mark.parametrize("output", ["in place", "--output-map", "-F --output-map"])
-def test_partition_on_a_map_stores_its_overlapping_clusters(output, stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """partition MAP stores the overlapping clusters that reach --size in the
-    clustering rounds of the map, the round overlapping, with their contigs
-    and without the columns of miComplete, in place of the rounds the map
-    held; its genomes are left as they were. In place, the map keeps its
-    mode; with --output-map, the map is left as it was, and the copy is
-    written to the file (an existing one, with -F, is replaced: removed
-    first, as pipeline does). The map is locked while the run writes it."""
+def test_partition_on_a_map_stores_its_partition(output, stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """partition MAP stores its partition in the clustering rounds of the
+    map: every core cluster (core_00001...) and every overlapping cluster
+    (metator_00001_00000...), whatever its size, as the rounds core and
+    overlapping, with their contigs and without the columns of miComplete,
+    in place of the rounds the map held, and what the run was, as the entry
+    partition of the metator metadata of the map; its genomes are left as
+    they were, and it writes no table and no FASTA file. In place, the map
+    keeps its mode; with --output-map, the map is left as it was, and the
+    copy is written to the file (an existing one, with -F, is replaced:
+    removed first, as pipeline does). The map is locked while the run
+    writes it."""
     import metacooler
     import pandas as pd
 
-    _partition_table(monkeypatch)
     metacool = _contig_map(tmp_path / "input.metacool", network=True)
     metacooler.write_clusters(
         str(metacool),
@@ -2221,87 +2382,78 @@ def test_partition_on_a_map_stores_its_overlapping_clusters(output, stub_pipelin
         return write_rounds(*args, **kwargs)
 
     monkeypatch.setattr("metator.metacool.write_rounds", locked)
-    run_cli("partition", *_step_run("partition", metacool, tmp_path, "-s", "100", *options))
+    run_cli("partition", *_step_run("partition", metacool, tmp_path, "-i", "4", *options))
     written = metacool if output == "in place" else output_map
     assert locks == [[f"{written.name}.lock"]] and not list(tmp_path.glob("*.lock"))
     metacooler.validate(str(written), full=True)
     mc = metacooler.MetaCooler(str(written))
-    assert mc.cluster_rounds == [{"name": "overlapping", "tool": "metaTOR", "version": __version__, "step": "partition"}]
-    assert list(mc.clusters.name) == ["metator_00001_00000"] and list(mc.clusters.n_contigs) == [2]
+    entries = [{"name": name, "tool": "metaTOR", "version": __version__, "step": "partition"} for name in ["core", "overlapping"]]
+    assert mc.cluster_rounds == entries
+    assert list(mc.clusters.name) == ["core_00001", "metator_00001_00000"] and list(mc.clusters.n_contigs) == [2, 2]
     # genome, which metacooler computes: no cluster is a genome of the map yet.
     assert list(mc.clusters.columns) == ["round", "name", "parent_round", "parent", "n_contigs", "length", "genome"]
     assert mc.clusters.genome.isna().all()
-    assert sorted(mc.cluster_members().contig) == ["c1", "c2"]
+    assert sorted(mc.cluster_members().contig) == ["c1", "c1", "c2", "c2"]
     assert list(mc.genomes.name) == ["__unbinned__"]
+    # What the run was: the network that it partitioned, its command line.
+    partition = mc.metadata["metator"]["partition"]
+    assert partition["normalization"] == "empirical_hit" and partition["version"] == __version__
+    assert partition["command"].startswith(f"metator partition {metacool}") and partition["parameters"]["iterations"] == 4
+    assert mc.metadata["metator"]["network"]["normalization"] == "empirical_hit"
+    # The stub partition got the network that metator network stored.
+    algorithm, network, iterations, overlap, res_param, threads, prefix = stub_pipeline["partition"]
+    assert (algorithm, iterations, overlap, res_param, threads, prefix) == ("louvain", 4, 0.8, 1.0, 1, "metator")
+    assert network.to_dict("list") == {"contig1": [1], "contig2": [2], "weight": [pytest.approx(1 / 3**0.5, rel=1e-15)]}
     assert (metacool.read_bytes() == before) == (output != "in place")
     if output == "in place":
         assert metacool.stat().st_mode & 0o777 == 0o640
     assert not [path.name for path in tmp_path.iterdir() if path.name.startswith(".")]
+    # No table, no FASTA file: the partition is in the map.
+    assert sorted(path.name for path in (tmp_path / "out").iterdir() if not path.name.endswith(".log")) == []
     (log,) = (tmp_path / "out").glob("metator_partition_*.log")
     logged = log.read_text()
     assert f"INFO :: {written} is written: the contact map, with the clustering rounds of the run." in logged
     assert ("Removing" in logged) == output.startswith("-F")
     # What replaces the map, in place: not the map of the clusters.
-    replaced = f"INFO :: {metacool} is the input map {metacool}: it is replaced once the map with its overlapping clusters"
+    replaced = f"INFO :: {metacool} is the input map {metacool}: it is replaced once the map with its partition"
     assert (replaced in logged) == (output == "in place")
-
-
-def test_partition_on_a_map_without_a_cluster_of_its_size(stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """No overlapping cluster reaches --size (the default, 500 kb, here): the
-    map holds the round overlapping, with no cluster, in place of the rounds
-    it held."""
-    import metacooler
-
-    _partition_table(monkeypatch)
-    metacool = _contig_map(tmp_path / "input.metacool", network=True)
-    run_cli("partition", *_step_run("partition", metacool, tmp_path))
-    mc = metacooler.MetaCooler(str(metacool))
-    assert [entry["name"] for entry in mc.cluster_rounds] == ["overlapping"]
-    assert mc.clusters.empty and mc.cluster_members().empty
 
 
 def test_partition_on_an_entry_of_a_collection(stub_pipeline, tmp_path, monkeypatch, run_cli):
     """From an entry of a .mmetacool collection, --output-map is a map of its
-    own, with the overlapping clusters, and the collection is left as it
-    was."""
+    own, with the partition, and the collection is left as it was."""
     import metacooler
 
-    _partition_table(monkeypatch)
     collection = _collection(tmp_path / "maps.mmetacool", "lib1", "lib2", network=True)
     before = collection.read_bytes()
     output_map = tmp_path / "lib1.metacool"
-    run_cli(
-        "partition", *_step_run("partition", f"{collection}::entries/lib1", tmp_path, "-s", "100", "--output-map", output_map)
-    )
+    run_cli("partition", *_step_run("partition", f"{collection}::entries/lib1", tmp_path, "--output-map", output_map))
     metacooler.validate(str(output_map), full=True)
     mc = metacooler.MetaCooler(str(output_map))
-    assert list(mc.clusters.name) == ["metator_00001_00000"] and list(mc.genomes.name) == ["__unbinned__"]
+    assert list(mc.clusters.name) == ["core_00001", "metator_00001_00000"] and list(mc.genomes.name) == ["__unbinned__"]
     assert collection.read_bytes() == before
 
 
 def test_partition_on_a_map_through_a_symbolic_link(stub_pipeline, tmp_path, monkeypatch, run_cli):
     """The map given through a symbolic link: the map it points to stores
-    the overlapping clusters, as metacooler edits the target of a link, and
-    the link keeps pointing at it, as pipeline updates it."""
+    the partition, as metacooler edits the target of a link, and the link
+    keeps pointing at it, as pipeline updates it."""
     import metacooler
 
-    _partition_table(monkeypatch)
     target = _contig_map(tmp_path / "target.metacool", network=True)
     link = tmp_path / "link.metacool"
     link.symlink_to(target)
-    run_cli("partition", *_step_run("partition", link, tmp_path, "-s", "100"))
+    run_cli("partition", *_step_run("partition", link, tmp_path))
     assert link.is_symlink() and link.resolve() == target
-    assert list(metacooler.MetaCooler(str(target)).clusters.name) == ["metator_00001_00000"]
+    assert list(metacooler.MetaCooler(str(target)).clusters.name) == ["core_00001", "metator_00001_00000"]
 
 
 @pytest.mark.parametrize("error", [ValueError("not valid"), KeyboardInterrupt()], ids=["ValueError", "Ctrl-C"])
 def test_partition_on_a_map_that_cannot_be_written(error, stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """A map with the overlapping clusters that cannot be written (here, its
+    """A map with the partition that cannot be written (here, its
     validation fails) stops the run with an error that says why and that the
     map is left as it was, as pipeline says it; Ctrl-C stops it too. The map
-    is left byte for byte, with no file beside it (no staged map, no lock);
-    the other outputs of the run are kept."""
-    _partition_table(monkeypatch)
+    is left byte for byte, with no file beside it (no staged map, no lock)."""
     (tmp_path / "maps").mkdir()
     metacool = _contig_map(tmp_path / "maps" / "input.metacool", network=True)
     before = metacool.read_bytes()
@@ -2311,7 +2463,7 @@ def test_partition_on_a_map_that_cannot_be_written(error, stub_pipeline, tmp_pat
 
     # The full validation of the staged map, before metacooler renames it.
     monkeypatch.setattr("metacooler.schema.validate", validate)
-    args = _step_run("partition", metacool, tmp_path, "-s", "100")
+    args = _step_run("partition", metacool, tmp_path)
     message = (
         f"{metacool} is not written: not valid. It is still the input map of the run, as it was. The other outputs of "
         "the run are kept."
@@ -2325,7 +2477,6 @@ def test_partition_on_a_map_that_cannot_be_written(error, stub_pipeline, tmp_pat
         assert "Aborted" in run_cli("partition", *args, exit_code=1).output
     assert metacool.read_bytes() == before
     assert sorted(path.name for path in (tmp_path / "maps").iterdir()) == ["input.metacool"]
-    assert (tmp_path / "out" / "contig_data_partition.txt").exists()
 
 
 @pytest.mark.parametrize("output", ["in place", "--output-map"])
@@ -2340,7 +2491,7 @@ def test_validation_on_a_map_writes_the_map_of_the_clusters(output, stub_pipelin
     monkeypatch.setattr("metator.metacool.reassign_metacool", mtmc_reassign_metacool)
     _final_tables(monkeypatch, "c1")
     _rounds_tables(monkeypatch, ["c1", "c2"])
-    metacool = _contig_map(tmp_path / "input.metacool", network=True)
+    metacool = _contig_map(tmp_path / "input.metacool", network=True, partition=True)
     metacool.chmod(0o640)
     before = metacool.read_bytes()
     output_map = tmp_path / "copy.metacool"
@@ -2367,7 +2518,7 @@ def test_validation_on_a_map_that_cannot_be_written(stub_pipeline, tmp_path, mon
     as it was."""
     monkeypatch.setattr("metator.metacool.reassign_metacool", mtmc_reassign_metacool)
     _final_tables(monkeypatch, "c1")
-    metacool = _contig_map(tmp_path / "input.metacool", network=True)
+    metacool = _contig_map(tmp_path / "input.metacool", network=True, partition=True)
     before = metacool.read_bytes()
 
     def validate(*args, **kwargs):
@@ -2389,7 +2540,7 @@ def test_a_step_on_a_map_holds_its_lock(command, stub_pipeline, tmp_path, monkey
     import signal
 
     seen = {}
-    metacool = _contig_map(tmp_path / "input.metacool", network=True)
+    metacool = _contig_map(tmp_path / "input.metacool", network=True, partition=command == "validation")
 
     def step(*args, **kwargs):
         lock = lock_file(metacool)
@@ -2411,7 +2562,7 @@ def test_a_step_refuses_a_bad_prefix_before_replacing_the_clusters(command, stub
     clusters of an earlier run, as pipeline refuses it: it emptied them
     first, then was refused."""
     earlier = _earlier_run(command, tmp_path)
-    metacool = _contig_map(tmp_path / "input.metacool", network=True)
+    metacool = _contig_map(tmp_path / "input.metacool", network=True, partition=command == "validation")
     with pytest.raises(ValueError, match="Invalid --prefix"):
         run_cli(command, *_step_run(command, metacool, tmp_path, "-F", "-p", "bad.prefix"))
     assert all(path.exists() for path in earlier) and _no_step(stub_pipeline)
@@ -2440,24 +2591,6 @@ def test_pipeline_refuses_an_input_as_its_output_map(stub_pipeline, tmp_path, ru
     assert assembly.read_bytes() == before and not stub_pipeline
 
 
-@pytest.mark.parametrize("name", ["final_clusters", "recursive_clusters/step_1"])
-def test_validation_refuses_its_input_in_what_force_removes(name, stub_pipeline, tmp_path, run_cli, logged):
-    """The clusters to validate (-f) in a directory that -F removes: refused
-    before anything is removed. -F removed them, then the run failed, or
-    found no cluster."""
-    fasta = tmp_path / "out" / name
-    fasta.mkdir(parents=True)
-    (fasta / "metator_00001_00000.fa").write_text(">c1\nACGT\n")
-    args = _step_run("validation", None, tmp_path, "-F")
-    args[args.index("overlapping_clusters")] = fasta
-    with pytest.raises(ValueError):
-        run_cli("validation", *args)
-    removed = tmp_path / "out" / name.split("/")[0]
-    message = f"{fasta}, given as -f, is in {removed}, which -F removes: write the run to another directory (-o)."
-    assert ("ERROR", message) in logged()
-    assert (fasta / "metator_00001_00000.fa").exists() and not stub_pipeline
-
-
 @pytest.mark.parametrize("dangling", [False, True], ids=["link", "dangling link"])
 def test_force_replaces_a_link_of_clusters_not_its_target(dangling, stub_pipeline, tmp_path, run_cli):
     """A directory of clusters of an earlier run that is a symbolic link, to
@@ -2477,27 +2610,6 @@ def test_force_replaces_a_link_of_clusters_not_its_target(dangling, stub_pipelin
     run_cli("validation", *_step_run("validation", None, tmp_path, "-F"))
     assert link.is_dir() and not link.is_symlink() and stub_pipeline
     assert dangling or (target / "earlier.fa").exists()
-
-
-def test_validation_refuses_its_input_through_a_link_that_force_replaces(stub_pipeline, tmp_path, run_cli, logged):
-    """The clusters to validate (-f) in the target of a directory of
-    clusters that is a symbolic link: refused with -F, before anything is
-    replaced, as in the directory itself. The run let it through, as the
-    link alone is removed, then replaced the directory it was in."""
-    target = tmp_path / "elsewhere"
-    fasta = target / "clusters"
-    fasta.mkdir(parents=True)
-    (fasta / "metator_00001_00000.fa").write_text(">c1\nACGT\n")
-    link = tmp_path / "out" / "final_clusters"
-    link.parent.mkdir()
-    link.symlink_to(target)
-    args = _step_run("validation", None, tmp_path, "-F")
-    args[args.index("overlapping_clusters")] = fasta
-    with pytest.raises(ValueError):
-        run_cli("validation", *args)
-    message = f"{fasta}, given as -f, is in {link}, which -F removes: write the run to another directory (-o)."
-    assert ("ERROR", message) in logged()
-    assert link.is_symlink() and (fasta / "metator_00001_00000.fa").exists() and not stub_pipeline
 
 
 # The commands of the tutorial of metaTOR 1.x (4253551,
@@ -2521,12 +2633,13 @@ def test_the_commands_of_metator_1(command):
     not run) are usage errors, with no hint: a network or pipeline run from
     reads, alignments or pairs (-1, -2, --start), -1 an unknown option, as
     metaTOR 2.0 starts from a map, which hicstuff makes; partition and
-    validation from the tables of the network (-n, and partition's -c), -n
-    an unknown option of validation, -c of partition, as both read the
-    network that metator network stores in the map."""
+    validation from the tables of the network and of the partition (-c, -n
+    and validation's -f), -c an unknown option of both, as they read the
+    network that metator network stores in the map, and validation the
+    partition that metator partition stores there."""
     name, *args = command.split()
     ctx = click.Context(mtcli.cli, info_name="metator")
-    option = {"network": "-1", "pipeline": "-1", "partition": "-c", "validation": "-n"}[name]
+    option = {"network": "-1", "pipeline": "-1", "partition": "-c", "validation": "-c"}[name]
     with pytest.raises(click.NoSuchOption, match=rf"^No such option '{option}'\.$"):
         mtcli.cli.get_command(ctx, name).make_context(name, list(args), parent=ctx)
 
@@ -2636,3 +2749,25 @@ def test_mge_default_outdir(tmp_path, monkeypatch, run_cli):
     assert kwargs["threshold_bin"] == 0.8 and kwargs["random"] is False
     assert not Path(f"{assembly}.fxi").exists()
     assert not (tmp_path / "tmp").exists()
+
+
+@pytest.mark.parametrize(
+    ("command", "reader"),
+    [("partition", "metator.network.map_network"), ("validation", "metator.network.map_contig_table")],
+)
+def test_a_step_that_cannot_read_what_the_map_stores(command, reader, stub_pipeline, tmp_path, monkeypatch, run_cli):
+    """The network (partition), or the contig data (validation), that the map
+    cannot give as the run reads the network stored in it stops the run with
+    its reason, logged as an error, and leaves the map as it was."""
+    metacool = _contig_map(tmp_path / "input.metacool", network=True, partition=command == "validation")
+    before = metacool.read_bytes()
+
+    def unreadable(*args, **kwargs):
+        raise mtmc.MetacoolError("unreadable")
+
+    monkeypatch.setattr(reader, unreadable)
+    with pytest.raises(mtmc.MetacoolError, match=r"^unreadable$"):
+        run_cli(command, *_step_run(command, metacool, tmp_path))
+    (log,) = (tmp_path / "out").glob(f"metator_{command}_*.log")
+    assert "ERROR :: unreadable\n" in log.read_text()
+    assert metacool.read_bytes() == before and "partition" not in stub_pipeline

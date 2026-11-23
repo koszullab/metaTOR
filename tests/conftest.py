@@ -134,9 +134,10 @@ def run_cli(monkeypatch):
 
 
 class _Read(list):
-    """The maps that a run read the contacts of, in order, and what its
-    partition was given (see network_from_a_map)."""
+    """The maps that a run read the contacts of, in order, the contig data of
+    the run, and what its partition was given (see network_from_a_map)."""
 
+    table = None
     partitioned = None
 
 
@@ -145,22 +146,29 @@ def network_from_a_map(monkeypatch):
     """Have a pipeline run stop once its network is built from its .metacool
     map: the partition raises RuntimeError("network built"). Returns the
     maps whose contacts were read (metator.network.contig_contacts), in
-    order, with the contig data and the network that the partition was
-    given (their attribute partitioned)."""
+    order, with the contig data of the run (the last that
+    metator.network.contig_data_table made) and the network that the
+    partition was given (their attribute partitioned)."""
     import metator.network as mtn
 
     read = _Read()
     contig_contacts = mtn.contig_contacts
+    contig_data_table = mtn.contig_data_table
 
     def from_the_map(metacool, *args, **kwargs):
         read.append(metacool)
         return contig_contacts(metacool, *args, **kwargs)
 
-    def partition(algorithm, assembly, contig_data, iterations, network, *args):
-        read.partitioned = (contig_data, network)
+    def table(*args, **kwargs):
+        read.table = contig_data_table(*args, **kwargs)
+        return read.table
+
+    def partition(algorithm, network, *args):
+        read.partitioned = (read.table, network)
         raise RuntimeError("network built")
 
     monkeypatch.setattr("metator.network.contig_contacts", from_the_map)
+    monkeypatch.setattr("metator.network.contig_data_table", table)
     monkeypatch.setattr("metator.partition.partition", partition)
     return read
 

@@ -120,14 +120,6 @@
       "required": false
      },
      {
-      "short": "-a",
-      "long": "--assembly",
-      "takes_value": true,
-      "metavar": "FILE",
-      "default": null,
-      "required": true
-     },
-     {
       "short": "-F",
       "long": "--force",
       "takes_value": false,
@@ -192,14 +184,6 @@
       "required": false
      },
      {
-      "short": "-s",
-      "long": "--size",
-      "takes_value": true,
-      "metavar": "INT",
-      "default": "500000",
-      "required": false
-     },
-     {
       "short": "-t",
       "long": "--threads",
       "takes_value": true,
@@ -239,22 +223,6 @@
       "long": "--assembly",
       "takes_value": true,
       "metavar": "FILE",
-      "default": null,
-      "required": true
-     },
-     {
-      "short": "-c",
-      "long": "--contigs",
-      "takes_value": true,
-      "metavar": "FILE",
-      "default": null,
-      "required": true
-     },
-     {
-      "short": "-f",
-      "long": "--fasta",
-      "takes_value": true,
-      "metavar": "DIR",
       "default": null,
       "required": true
      },

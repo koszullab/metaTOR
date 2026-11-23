@@ -22,8 +22,9 @@ pairs of the Hi-C libraries): it reads its network from that map, and
 writes the map of its clusters from it at the end, with its bins and
 contacts, grouped by final cluster. A run step by step from a map stores
 the network of its contigs in the map first (see store_network), which the
-next steps read, then the overlapping clusters of its partition, as a
-clustering round, then its validation writes the map of the clusters.
+next steps read, then its partition, as the clustering rounds core and
+overlapping (see write_rounds), which its validation reads (see
+read_partition), then its validation writes the map of the clusters.
 
 The network is stored as what metaTOR measured on each contig, in the
 contigs table, and as the normalization of the network, a weight column of
@@ -48,6 +49,8 @@ Core functions to write the file:
     - store_network, a .metacool map with the network of its contigs
     - write_rounds, a .metacool map with the clustering rounds of a run
     - store_normalization, the normalization of the network in a map
+
+And to read it: read_partition, the partition that a map stores.
 """
 
 import gzip
@@ -60,6 +63,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+import metator.clusters as mtcl
 import metator.io as mio
 from metator.log import logger
 from metator.version import __version__
@@ -497,6 +501,7 @@ def reassign_metacool(
     normalization=None,
     planned=None,
     network=None,
+    partition=None,
 ):
     """Write the contact map of the final bins from a .metacool map of the
     contigs, without pairs files.
@@ -580,6 +585,11 @@ def reassign_metacool(
         network, and the map of the clusters keeps the entry network of its
         metator metadata. Its weights are those of normalization, stored
         once the columns are.
+    partition : dict, optional
+        The entry partition of the metator metadata of a pipeline run (what
+        its partition was), as metator partition stores it (see
+        write_rounds): a run step by step stored it with metator partition,
+        and the map of the clusters keeps the entry of the input map.
 
     Raises
     ------
@@ -614,9 +624,11 @@ def reassign_metacool(
         contigs = mc.contigs
         # Said once the map is written: a refused run drops nothing.
         later = _later_rounds(mc)
-        # The network that metator network stored in the map, which the
-        # map of the clusters keeps, unless the run stores its own.
+        # The network that metator network stored in the map, and the
+        # partition that metator partition stored, which the map of the
+        # clusters keeps, unless the run stores its own.
         stored = {} if network is not None else _network_entry(mc)
+        stored.update({"partition": partition} if partition is not None else _metator_entry(mc, "partition"))
     in_place = is_input_map(metacool, outfile)
     names = [str(name) for name in contigs["name"]]
     # The binning of another version of the assembly (other contigs under
@@ -1108,14 +1120,63 @@ def _network_entry(mc):
     """The entry network of the metator metadata of the map mc, which
     metator network stored (see store_network), as the metadata of a map
     written from mc keeps it: {"network": entry}, or {} without one."""
-    entry = _metator_metadata(mc).get("network")
-    return {"network": entry} if entry is not None else {}
+    return _metator_entry(mc, "network")
+
+
+def _metator_entry(mc, key):
+    """The entry key (network, partition) of the metator metadata of the map
+    mc, as the metadata of a map written from mc keeps it: {key: entry}, or
+    {} without one."""
+    entry = _metator_metadata(mc).get(key)
+    return {key: entry} if entry is not None else {}
+
+
+def _store_metator_entries(path, entries):
+    """Set entries (a dict: partition...) in the metator key of the metadata
+    of the map at path, the staged map of an edit session, whose other keys,
+    and the other keys of the metadata, are kept: a write of metacooler's
+    MetaCooler.open("r+"), which the session validates with the rest."""
+    import json
+
+    import metacooler
+
+    mc = metacooler.MetaCooler(path)
+    metadata = dict(mc.metadata)
+    metadata["metator"] = {**_metator_metadata(mc), **entries}
+    with mc.open("r+") as group:
+        group.attrs["metadata"] = json.dumps(metadata)
 
 
 # The steps of the binning, which make the clustering rounds that a run
 # replaces (see store_rounds): a round that another step made (that of
 # metator mge --map), or another tool, is dropped with them.
 BINNING_STEPS = ("partition", "validation")
+
+# The clustering rounds that metator partition stores (see write_rounds),
+# which the validation reads (see read_partition).
+PARTITION_ROUNDS = (mtcl.CORE, mtcl.OVERLAPPING)
+
+# The key of the partition entry of the metator metadata of a map that
+# records the network that the partition was made on: its digest (see
+# metator.network.network_digest).
+NETWORK_DIGEST = "network_digest"
+
+
+def holds_partition(mc):
+    """Whether the map mc holds a partition of its network: the clustering
+    round core or overlapping, which metator partition stores (see
+    read_partition)."""
+    return any(entry.get("name") in PARTITION_ROUNDS for entry in mc.cluster_rounds)
+
+
+def partition_network(mc):
+    """The digest of the network that the partition of the map mc was made
+    on (see metator.network.network_digest), which metator partition records
+    with it, under the partition key of the metator metadata of the map (as
+    NETWORK_DIGEST): None when the map records none."""
+    entry = _metator_metadata(mc).get("partition")
+    digest = entry.get(NETWORK_DIGEST) if isinstance(entry, dict) else None
+    return digest if isinstance(digest, str) else None
 
 
 def _later_rounds(mc):
@@ -1154,8 +1215,8 @@ def store_rounds(path, rounds, names=None, name=None):
     (those of miComplete, and of the bin summary for the final clusters).
 
     Each round is stored with the tool and the version that made it, and
-    the step that made it: partition for the round overlapping, validation
-    for the others. A text column holds an empty text where a round has no
+    the step that made it: partition for the rounds core and overlapping,
+    validation for the others. A text column holds an empty text where a round has no
     value, as HDF5 stores no missing text. The contigs of a cluster that
     the map lacks (a map made with a contig filter) are left out, with a
     warning.
@@ -1170,8 +1231,7 @@ def store_rounds(path, rounds, names=None, name=None):
     names : list of str, optional
         The names of the rounds, in the order they were made: by default,
         those of the clusters, in their order. A round named here may have
-        no cluster: the overlapping clusters of a partition when none of
-        them reaches its --size.
+        no cluster: those of a partition of a network without an edge.
     name : str, optional
         The map that path is staged for, which the warnings name (path by
         default).
@@ -1183,7 +1243,7 @@ def store_rounds(path, rounds, names=None, name=None):
         return
     clusters, members = rounds
     order = list(dict.fromkeys(clusters["round"])) if names is None else list(names)
-    steps = {name: "partition" if name == "overlapping" else "validation" for name in order}
+    steps = {name: "partition" if name in PARTITION_ROUNDS else "validation" for name in order}
     _store_clusters(
         path,
         [{"name": name, "tool": "metaTOR", "version": __version__, "step": steps[name]} for name in order],
@@ -1218,12 +1278,14 @@ def _store_clusters(path, entries, clusters, members, name=None):
     metacooler.write_clusters(path, entries, stored, members)
 
 
-def write_rounds(metacool, outfile, rounds, names=None, force=False, planned=None):
+def write_rounds(metacool, outfile, rounds, names=None, force=False, planned=None, entries=None):
     """Write the map metacool at outfile with the clustering rounds of a run
     in its /clusters group (see store_rounds), in place of those it held,
     and everything else as it was: its bins, contacts, genomes and contigs
-    tables, QC block and metadata. A partition run from a map stores its
-    overlapping clusters so, before its validation writes the map of the
+    tables, QC block and metadata, but the entries of its metator metadata
+    that entries sets. A partition run from a map stores its core and
+    overlapping clusters so, with the entry partition of the run, before its
+    validation reads them (see read_partition) and writes the map of the
     final clusters (see reassign_metacool).
 
     The rounds are stored in an edit session of metacooler, as
@@ -1251,6 +1313,10 @@ def write_rounds(metacool, outfile, rounds, names=None, force=False, planned=Non
         a run updates in place, or another file.
     planned : metacooler.MetaCooler, optional
         The input map as the run read it (see reassign_metacool).
+    entries : dict, optional
+        Entries of the metator key of the metadata of the map to set (the
+        entry partition of a partition run: what the run was), the others
+        kept.
 
     Raises
     ------
@@ -1270,6 +1336,8 @@ def write_rounds(metacool, outfile, rounds, names=None, force=False, planned=Non
         with read_errors(metacool):
             later.extend(_later_rounds(mc))
         store_rounds(staged, rounds, names, name=metacool)
+        if entries:
+            _store_metator_entries(staged, entries)
 
     _edit_map(
         metacool,
@@ -1360,6 +1428,116 @@ def write_round(metacool, outfile, rounds, entry, force=False, planned=None):
         f"with the round {name} of its clustering rounds",
         planned,
     )
+
+
+def read_partition(metacool, mc=None, network=None):
+    """The partition that a map stores, as metator partition MAP stores it
+    (see write_rounds and metator.clusters.partition_rounds): its clustering
+    rounds core and overlapping, read back as metator.clusters.Partition.
+    With network, the digest of the network stored in the map (see
+    metator.network.stored_network), the partition must have been made on
+    that network, as the map records it (see partition_network): metator
+    network can store another network in the map, and leaves the partition
+    there, which is then not that of the network.
+
+    The clusters are numbered as their names say (core_<number>, and
+    <prefix>_<number>_00000: see metator.clusters.cluster_number), and their
+    contigs are given their IDs, their positions in the map, from 1, as the
+    network of the map gives them (see metator.network.map_network). The
+    contigs of a core cluster come in the order of their IDs, and those of an
+    overlapping cluster in the order of its core clusters, by number, then
+    of their IDs: as metator.partition.partition lists them, which the
+    rounds of the map, sorted by metacooler, do not keep.
+
+    Parameters
+    ----------
+    metacool : str
+        Path to the .metacool file, or URI of an entry of a .mmetacool
+        collection, for the messages.
+    mc : metacooler.MetaCooler, optional
+        The map, opened: by default, metacool is opened.
+    network : str, optional
+        The digest of the network stored in the map, which the partition must
+        have been made on. By default, the partition is read whatever network
+        it was made on.
+
+    Returns
+    -------
+    metator.clusters.Partition
+        The core and the overlapping clusters of the map.
+
+    Raises
+    ------
+    MetacoolError
+        If the map lacks the round core or overlapping (metator partition has
+        not run on it), or, with network, does not record that its partition
+        was made on that network, or a cluster of them is not named as
+        metator partition names it, or holds a contig in no core cluster (an
+        overlapping cluster), or the map cannot be read.
+    """
+    with _metacooler_logging(), read_errors(metacool):
+        if mc is None:
+            mc = open_map(metacool)
+        held = [entry["name"] for entry in mc.cluster_rounds]
+        missing = [name for name in PARTITION_ROUNDS if name not in held]
+        if missing:
+            raise MetacoolError(
+                f"{metacool} holds no partition of its network (the clustering round(s) {' and '.join(missing)}): run "
+                "metator partition on it first, which stores its core and overlapping clusters in the map."
+            )
+        made_on = partition_network(mc)
+        if network is not None and made_on != network:
+            reason = (
+                "does not record the network that its partition was made on, which metator partition records"
+                if made_on is None
+                else "holds a partition of another network than the one stored in it now: metator network stored "
+                "another network in the map since metator partition ran on it"
+            )
+            raise MetacoolError(
+                f"{metacool} {reason}. Run metator partition {metacool} again, which partitions the network stored in the map."
+            )
+        ids = pd.Index(mc.contigs["name"].astype(str))
+        members = {name: mc.cluster_members(name) for name in PARTITION_ROUNDS}
+        # Every cluster of the round, those with no contig too.
+        clusters = mc.clusters
+    found = {}
+    for round_name in PARTITION_ROUNDS:
+        named = list(clusters.loc[(clusters["round"] == round_name).to_numpy(), "name"].astype(str))
+        numbers = {name: mtcl.cluster_number(round_name, name) for name in named}
+        odd = [name for name, number in numbers.items() if number is None]
+        # Two names of one number (core_00001 and core_000001).
+        seen = {}
+        for name, number in numbers.items():
+            if number is not None and seen.setdefault(number, name) != name:
+                odd.append(name)
+        if odd:
+            form = "core_<number>" if round_name == mtcl.CORE else "<prefix>_<number>_00000"
+            raise MetacoolError(
+                f"The clustering round {round_name} of {metacool} holds cluster(s) that metator partition does not "
+                f"name so ({form}, one number each): {_shown(odd)}. Run metator partition on the map again."
+            )
+        held_members = members[round_name]
+        # The ID of each contig of a cluster: its position in the map, from 1.
+        rows = pd.Series(ids.get_indexer(held_members["contig"].astype(str)) + 1)
+        by_cluster = rows.groupby(held_members["cluster"].astype(str).to_numpy()).agg(sorted).to_dict()
+        found[round_name] = (
+            {numbers[name]: [int(contig) for contig in by_cluster.get(name, [])] for name in named},
+            {numbers[name]: name for name in named},
+        )
+    core, _ = found[mtcl.CORE]
+    overlapping, names = found[mtcl.OVERLAPPING]
+    # The core cluster of each contig, for the order of the overlapping ones.
+    core_of = {contig: number for number, contigs in core.items() for contig in contigs}
+    lacking = sorted({contig for contigs in overlapping.values() for contig in contigs} - core_of.keys())
+    if lacking:
+        raise MetacoolError(
+            f"The overlapping clusters of {metacool} hold contig(s) in no core cluster: {_shown([ids[i - 1] for i in lacking])}. "
+            "Run metator partition on the map again."
+        )
+    overlapping = {
+        number: sorted(contigs, key=lambda contig: (core_of[contig], contig)) for number, contigs in overlapping.items()
+    }
+    return mtcl.Partition(core=dict(sorted(core.items())), overlapping=dict(sorted(overlapping.items())), names=names)
 
 
 def _stacked(first, second):
