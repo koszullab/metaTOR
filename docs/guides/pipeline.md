@@ -58,6 +58,7 @@ The pipeline writes into `--outdir` (`-o`, the current directory by default):
 |---|---|
 | `<MAP>` | The contact map of the clusters, named as `MAP` (`sample.metacool` from `sample.metacool`) |
 | `final_clusters/` | One FASTA file per final cluster |
+| `plot/` | The plots of the final clusters: their completeness and contamination (`bins_distribution.png`), and the size of each quality class (`bins_size_distribution.png`); see [Viewing the clusters](binning.md#viewing-the-clusters) |
 | `metator_pipeline_<date>.log` | The log of the run |
 
 What the run finds is in the map. At its end, the run writes the contact map
@@ -71,7 +72,8 @@ was: metacooler copies it next to the map of the run, which the run edits, and
 renames into place once it is validated. `--inplace` writes the map of the
 clusters over `MAP` instead, and so does a run whose output directory holds
 `MAP` already. A run that stops before leaves `MAP` as it was, which a run
-restarts from (`-F` to replace the map and the final clusters it began).
+restarts from (`-F` to replace the map, the final clusters and the plots it
+began).
 
 The tables of the run are written in its temporary directory (`--tmpdir`, in
 a directory of its own, which the log names), which `--no-clean-up` (`-N`)
@@ -92,8 +94,9 @@ The tables list the contigs of the map, in its order, by their position in it
 map of the clusters (see [`dump`](../cli.md#dump)), in the order of that map,
 without the `ID`. [File formats](../formats.md) describes each table.
 
-A run refuses to overwrite the final clusters of an earlier one unless given
-`--force` (`-F`). The other results of an earlier run in the output directory
+A run refuses to overwrite the final clusters and the plots of an earlier one
+unless given `--force` (`-F`), which leaves the other files of `plot/` as
+they are. The other results of an earlier run in the output directory
 (the tables and `recursive_clusters/` of a development build of 2.0, the
 outputs of 1.x) are refused, with or without `-F`, and never removed: move
 them away, or give the run another `--outdir`.
@@ -128,11 +131,12 @@ metator network sample.metacool -a assembly.fa -e DpnII -d depth.txt -o binning
 # 2. Partition it: the map stores its core and overlapping clusters, in place
 metator partition binning/sample.metacool -t 16 -o binning
 
-# 3. Validate the clusters: final_clusters/, and the map of the clusters
+# 3. Validate the clusters: final_clusters/, plot/, and the map of the clusters
 metator validation binning/sample.metacool -a assembly.fa -t 16 -o binning
 ```
 
-Run step by step, the final clusters go to `final_clusters/`. The map is
+Run step by step, the final clusters go to `final_clusters/`, and their plots
+to `plot/`. The map is
 what the steps share: `metator network` stores the network in the map of its
 output directory, which `partition` and `validation` read and update in
 place (it is the map of their output directory too), `partition` stores its

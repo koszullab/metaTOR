@@ -622,6 +622,9 @@ def test_pipeline_from_a_metacool(stub_pipeline, tmp_path, run_cli):
     assert calls["recursive_decontamination"][3] == str(out / "final_clusters")
     assert Path(calls["recursive_decontamination"][9]) == tables / "recursive_clusters"
     assert calls["recursive_decontamination_kwargs"]["metacool"] == str(metacool)
+    # The plots of the final clusters go to plot/ of the output directory,
+    # which the validation makes (the stub validation draws none).
+    assert calls["recursive_decontamination_kwargs"]["plot_outdir"] == str(out) and not (out / "plot").exists()
     assert not (out / "overlapping_clusters").exists() and not (out / "contig_data_partition.txt").exists()
     assert metacool.read_bytes() == before
     # No table of the network: it is in the map.
@@ -2166,7 +2169,9 @@ def _earlier_run(command, tmp_path):
 
 # The results of a run of an earlier version in the output directory of a
 # validation or pipeline run (see metator.cli.EARLIER_OUTPUTS): the tables of
-# 2.0's development builds, and the outputs of 1.x, files and directories.
+# 2.0's development builds, and the outputs of 1.x, files and directories, the
+# plots of 1.x that 2.0 no longer draws among them (the run draws its own in
+# plot/: see test_the_plots_of_an_earlier_run).
 EARLIER_FILES = [
     "bin_summary.txt",
     "binning.txt",
@@ -2179,13 +2184,16 @@ EARLIER_FILES = [
     "contig_data_partition.txt",
     "network.txt",
     "overlapping_micomplete_results.txt",
+    "plot/MAGs_GC_distribution.png",
+    "plot/MAGs_HiC_cov_distribution.png",
+    "plot/MAGs_SG_cov_distribution.png",
+    "plot/network_heatmap.png",
     "recursive_micomplete_step_1.txt",
 ]
 EARLIER_DIRECTORIES = [
     "final_bin",
     "final_bin_unscaffold",
     "overlapping_bin",
-    "plot",
     "recursive_bin",
     "recursive_clusters",
     "scaffold_bin",
@@ -2205,6 +2213,7 @@ def test_the_outputs_of_an_earlier_version(command, force, stub_pipeline, tmp_pa
         (out / directory).mkdir(parents=True)
         (out / directory / "earlier.fa").write_text(">c1\nACGT\n")
     for name in EARLIER_FILES:
+        (out / name).parent.mkdir(parents=True, exist_ok=True)
         (out / name).write_text("an earlier run's\n")
     (out / "binning_other.txt").write_text("another tool's\n")
     (tmp_path / "kept.txt").write_text("the target of a link\n")
@@ -2227,6 +2236,74 @@ def test_the_outputs_of_an_earlier_version(command, force, stub_pipeline, tmp_pa
         f"{shown}, ... (+{len(EARLIER_OUTPUTS) - 5} more). Move them away, or give the run another output directory "
         "with -o."
     ) in log.read_text()
+
+
+@pytest.mark.parametrize("command", ["validation", "pipeline"])
+@pytest.mark.parametrize("force", [False, True], ids=["refused", "-F"])
+def test_the_plots_of_an_earlier_run(command, force, stub_pipeline, tmp_path, run_cli):
+    """The plots of an earlier run in plot/ are refused without -F, before any work,
+    and removed with -F once the run is checked, for the validation to draw
+    them again: a symbolic link, not its target. The other files of plot/ are
+    left as they are, with or without -F: a file of the user's, and the map
+    of the run itself."""
+    out = tmp_path / "out"
+    plot = out / "plot"
+    plot.mkdir(parents=True)
+    metacool = _contig_map(plot / "network.metacool", network=True, partition=True)
+    before = metacool.read_bytes()
+    (plot / "notes.txt").write_text("the user's\n")
+    (plot / "bins_distribution.png").write_text("an earlier run's\n")
+    (tmp_path / "kept.png").write_text("the target of a link\n")
+    (plot / "bins_size_distribution.png").symlink_to(tmp_path / "kept.png")
+    options = ["-F"] if force else []
+    args = (
+        _step_run("validation", metacool, tmp_path, *options)
+        if command == "validation"
+        else _map_run(metacool, tmp_path, *options)
+    )
+    if not force:
+        with pytest.raises(ValueError):
+            run_cli(command, *args)
+        assert all(os.path.lexists(plot / name) for name in ["bins_distribution.png", "bins_size_distribution.png"])
+        assert _no_step(stub_pipeline) and not (out / "final_clusters").exists()
+        (log,) = out.glob(f"metator_{command}_*.log")
+        assert (
+            f"ERROR :: {plot} holds the plots of an earlier run ('bins_distribution.png', 'bins_size_distribution.png'), "
+            "which this run draws again: give -F to replace them, or give the run another output directory with -o."
+        ) in log.read_text()
+    else:
+        run_cli(command, *args)
+        # Removed, for the validation to draw them (the stub draws none).
+        assert not any(os.path.lexists(plot / name) for name in ["bins_distribution.png", "bins_size_distribution.png"])
+        assert stub_pipeline["recursive_decontamination_kwargs"]["plot_outdir"] == str(out)
+    assert (plot / "notes.txt").read_text() == "the user's\n" and metacool.read_bytes() == before
+    assert (tmp_path / "kept.png").read_text() == "the target of a link\n"
+
+
+@pytest.mark.parametrize("command", ["validation", "pipeline"])
+@pytest.mark.parametrize("what", ["plot, a file", "a plot, a directory"])
+def test_where_the_run_draws_no_plot(command, what, stub_pipeline, tmp_path, run_cli):
+    """A plot/ that is no directory, or a directory where a plot goes, is refused
+    with or without -F, before any work, and left as it is: the run would draw
+    no plot there."""
+    metacool = _contig_map(tmp_path / "network.metacool", network=True, partition=True)
+    out = tmp_path / "out"
+    out.mkdir()
+    if what == "plot, a file":
+        where = out / "plot"
+        where.write_text("a file\n")
+        message = f"{where} is not a directory, where the run draws its plots"
+    else:
+        where = out / "plot" / "bins_size_distribution.png"
+        where.mkdir(parents=True)
+        message = f"{where} is a directory, where the run draws a plot"
+    args = _step_run("validation", metacool, tmp_path, "-F") if command == "validation" else _map_run(metacool, tmp_path, "-F")
+    with pytest.raises(ValueError):
+        run_cli(command, *args)
+    assert where.is_file() if what == "plot, a file" else where.is_dir()
+    assert _no_step(stub_pipeline) and not (out / "final_clusters").exists()
+    (log,) = out.glob(f"metator_{command}_*.log")
+    assert f"ERROR :: {message}: move it away, or give the run another output directory with -o." in log.read_text()
 
 
 @pytest.mark.parametrize("command", ["validation", "pipeline"])
@@ -2846,9 +2923,9 @@ def test_pipeline_refused_keeps_the_bins_of_an_earlier_run(args, tmp_path, run_c
     }
     args = [arg.format(**names) for arg in args]
     out = tmp_path / "out"
-    # The outputs of an earlier run.
+    # The outputs of an earlier run: its clusters, and its plots.
     names = ["overlapping_clusters", "recursive_clusters", "final_clusters"]
-    bins = [out / name / "bin.fa" for name in names]
+    bins = [out / name / "bin.fa" for name in names] + [out / "plot" / "bins_distribution.png"]
     for path in bins:
         path.parent.mkdir(parents=True)
         path.write_text(">c1\nACGT\n")

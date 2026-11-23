@@ -12,6 +12,7 @@ This page shows the pieces to put together; the
 | `metator.network` | `mtn` | The contig data table, and the network built from a contact map |
 | `metator.partition` | `mtp` | Partitioning the network into core and overlapping clusters |
 | `metator.validation` | `mtv` | miComplete, and the recursive partition of contaminated clusters |
+| `metator.figures` | `mtf` | The plots of the quality of the final clusters |
 | `metator.metacool` | `mtmc` | Writing the `.metacool` contact map of the clusters |
 | `metator.mge`, `metator.host` | `mtm` | Clustering MGE contigs, and finding their hosts |
 | `metator.io` | `mio` | Reading and writing tables and FASTA files |
@@ -98,10 +99,11 @@ their temporary files, which the functions leave to the caller.
 ## Checking other clusters
 
 `metator.validation.micomplete_quality` runs miComplete on a directory of
-FASTA files, one per cluster, as the validation does, and
+FASTA files, one per cluster, as the validation does,
 `metator.validation.bin_quality` gives the quality class of each from its
-results: see [Curating MAGs with anvi'o](curation.md#5-the-curated-clusters),
-which checks clusters curated by hand this way.
+results, and `metator.figures` draws the plots of the validation from them:
+see [Curating MAGs with anvi'o](curation.md#5-the-curated-clusters), which
+checks clusters curated by hand this way.
 
 ## Logging
 
