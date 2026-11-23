@@ -39,7 +39,7 @@ NETWORK_FILE = "network.txt"
 TABLES = (CONTIG_DATA_FILE, SUMMARY_FILE, BINNING_FILE, mtcl.CLUSTERS_FILE, mtcl.CLUSTER_MEMBERS_FILE, NETWORK_FILE)
 
 #: metacooler's genome of the contigs in no genome: those in no final cluster.
-UNBINNED_GENOME = "__unbinned__"
+UNBINNED_GENOME = mtmc.UNBINNED_GENOME
 
 #: The keys of the validation entry of the metator metadata of a map that
 #: record how the run wrote the summary of its final clusters
@@ -51,17 +51,25 @@ SUMMARY_KEYS = ("summary_rows", "summary_columns", "summary_formats")
 #: metator.io.SummaryLayout).
 SUMMARY_FORMATS = ("%.2f", "%.4f", "%d", "%s")
 
+#: The columns of the summary that the MGE genomes of a map add, after those of
+#: the validation, when its genomes table says which genomes are MGE genomes
+#: (its column mge, see metator.metacool.MGE_GENOME_COLUMN): the values that
+#: metator mge --reassign gives them, those of their MGE clusters, and the
+#: column mge itself, each with its format.
+MGE_SUMMARY_FORMATS = {"GC": "%.2f", "Hit": "%d", "BinningScore": "%.4f", mtmc.MGE_GENOME_COLUMN: "%s"}
+
 #: The columns that a recursive step of the validation sets.
 RECURSIVE_COLUMNS = ("Recursive_cluster_ID", "Recursive_cluster_contigs", "Recursive_cluster_size")
 
 
 def check_dumpable(metacool, mc):
-    """Refuse a map that holds no run to dump, or whose clusters were edited since
-    the run wrote them.
+    """Refuse a map that holds no run to dump: no validation entry in its metator
+    metadata, or no clustering round final.
 
-    A map whose genomes are no longer the final clusters of its run (a
-    metacooler reassign, a curation by hand) is refused too: its summary would
-    contradict its clusters.
+    The genomes of the map need not be the final clusters of its run: the
+    tables follow the genomes (those that metator mge --reassign makes of its
+    MGE clusters, or a curation by hand with metacooler reassign), each with
+    the values that the genomes table gives it.
 
     Returns
     -------
@@ -71,7 +79,7 @@ def check_dumpable(metacool, mc):
     Raises
     ------
     metator.metacool.MetacoolError
-        If the map lacks either, or its clusters were edited."""
+        If the map lacks either."""
     missing = []
     metator = mc.metadata.get("metator")
     validation = metator.get("validation") if isinstance(metator, dict) else None
@@ -83,29 +91,6 @@ def check_dumpable(metacool, mc):
         raise mtmc.MetacoolError(
             f"{metacool} holds no clusters of a validation to dump: it lacks {' and '.join(missing)}. Run metator "
             "validation (or metator pipeline) on it first, which writes the map of the clusters."
-        )
-    from metacooler.schema import CLUSTER_GENOME_COLUMN
-
-    clusters = mc.clusters
-    final = clusters.loc[(clusters["round"] == mtcl.FINAL).to_numpy(), ["name", CLUSTER_GENOME_COLUMN]]
-    edited = [
-        str(name)
-        for name, genome in zip(final["name"], final[CLUSTER_GENOME_COLUMN], strict=True)
-        if pd.isna(genome) or str(genome) != str(name)
-    ]
-    final_names = set(final["name"].astype(str))
-    extra = [name for name in mc.genomes["name"].astype(str) if name != UNBINNED_GENOME and name not in final_names]
-    if edited or extra:
-        changed = []
-        if edited:
-            changed.append(f"final cluster(s) whose contigs are no longer a genome of the map: {mtmc._shown(edited)}")
-        if extra:
-            changed.append(f"genome(s) that are no final cluster: {mtmc._shown(extra)}")
-        raise mtmc.MetacoolError(
-            f"The clusters of {metacool} were edited after the run that wrote it (by metacooler reassign, for example): "
-            f"{'; and '.join(changed)}. Its summary of the clusters and its clustering rounds no longer describe "
-            "them, and its tables would contradict each other. Run metator validation on the map again, or write "
-            "the edited assignment with metacooler dump (metacooler dump -t contigs MAP)."
         )
     return validation
 
@@ -226,26 +211,31 @@ def _texts(values):
 
 
 def cluster_summary(metacool, mc, layout):
-    """The summary of the final clusters of a run (cluster_summary.txt), from the
-    genomes table of its map, as the validation wrote it (layout, see
-    summary_layout): a line per row of the summary, in its order, the name of
-    the cluster then the value of each column in the genomes table, written
-    with the format of the column (an empty field for a missing value: NaN,
-    None or an empty text), after a header, an empty field then the columns.
+    """The summary of the genomes of the map of a run (cluster_summary.txt), from
+    its genomes table, as the validation wrote the summary of its final
+    clusters (layout, see summary_layout): a line per genome, the final
+    clusters of the summary that are genomes of the map, in its order, then
+    its other genomes, in the order of the genomes table (the MGE genomes that
+    metator mge --reassign makes, or genomes of a curation by hand); its name
+    then the value of each column in the genomes table, written with the
+    format of the column (an empty field for a missing value: NaN, None or an
+    empty text), after a header, an empty field then the columns. The columns
+    are those of the summary, then, when the genomes table says which genomes
+    are MGE genomes, those of MGE_SUMMARY_FORMATS that it holds.
 
     Returns
     -------
     pandas.DataFrame
         The fields of the summary, as text, indexed by the names of the
-        clusters (an index without a name, which gives the header its empty
+        genomes (an index without a name, which gives the header its empty
         field).
 
     Raises
     ------
     metator.metacool.MetacoolError
-        If the genomes table lacks a column or a cluster of the summary, or
-        holds a value that the format of its column does not write (an edit of
-        the map changed them since the run)."""
+        If the genomes table lacks a column of the summary, or holds a value
+        that the format of its column does not write (an edit of the map
+        changed them since the run)."""
     genomes = mc.genomes.set_index(mc.genomes["name"].astype(str))
     missing = [column for column in layout.columns if column not in genomes.columns]
     if missing:
@@ -254,25 +244,26 @@ def cluster_summary(metacool, mc, layout):
             "clusters, which metator validation stored there (an edit of the map dropped them since): run metator "
             "validation on the map again."
         )
-    absent = [row for row in layout.rows if row not in genomes.index]
-    if absent:
-        raise mtmc.MetacoolError(
-            f"The genomes table of {metacool} lacks the cluster(s) {mtmc._shown(absent)} of the summary of its "
-            "clusters (summary_rows): run metator validation on the map again."
-        )
-    values = genomes.loc[layout.rows, layout.columns]
+    formats = {column: layout.formats[column] for column in layout.columns}
+    if mtmc.MGE_GENOME_COLUMN in genomes.columns:
+        for column, written in MGE_SUMMARY_FORMATS.items():
+            if column in genomes.columns and column not in formats:
+                formats[column] = written
+    listed = set(layout.rows)
+    rows = [row for row in layout.rows if row in genomes.index]
+    rows += [name for name in genomes.index if name != UNBINNED_GENOME and name not in listed]
+    values = genomes.loc[rows, list(formats)]
     fields = {}
-    for column in layout.columns:
-        written = layout.formats[column]
+    for column, written in formats.items():
         try:
             fields[column] = ["" if _missing(value) else written % value for value in values[column]]
         except (TypeError, ValueError) as error:
             raise mtmc.MetacoolError(
-                f"The column {column} of the genomes table of {metacool} holds a value that metator validation did "
-                f"not write there ({written}: {error}): an edit of the map changed it since. Run metator validation "
-                "on the map again."
+                f"The column {column} of the genomes table of {metacool} holds a value that metator did not write "
+                f"there ({written}: {error}): an edit of the map changed it since. Run metator validation on the map "
+                "again."
             ) from error
-    return pd.DataFrame(fields, index=pd.Index(layout.rows, dtype=object), columns=layout.columns, dtype=object)
+    return pd.DataFrame(fields, index=pd.Index(rows, dtype=object), columns=list(formats), dtype=object)
 
 
 def _missing(value):
@@ -443,7 +434,7 @@ def dump(metacool, outdir, force=False):
     }
     _write_all(metacool, outdir, writers, (clusters, members))
     logger.info(
-        f"The tables of {metacool} are written in {outdir}: {len(data)} contigs, {len(summary)} final clusters, "
+        f"The tables of {metacool} are written in {outdir}: {len(data)} contigs, {len(summary)} genomes, "
         f"{clusters['round'].nunique()} clustering rounds and {len(stored.network)} edges of the network."
     )
     return [join(outdir, name) for name in TABLES]

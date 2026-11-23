@@ -202,10 +202,22 @@ each removed command.
   `network.txt` (by contig names, where 1.x wrote IDs). The values are those
   of the tables that the run kept in its temporary directory; the rows of
   `contig_data_final.txt`, `binning.txt` and `cluster_members.txt` follow
-  the map of the clusters. A map without the clusters of a validation, whose
-  clusters were edited after the run (by `metacooler reassign`), whose network
-  is not the one its clusters were made from, or that changes while it is
-  read, is refused, and the tables are replaced all at once.
+  the map of the clusters, and its genomes give `Final_cluster`,
+  `binning.txt` and the rows of `cluster_summary.txt`: the final clusters, and
+  the MGE genomes of `metator mge --reassign` or the genomes of a curation by
+  hand (`metacooler reassign`). A map without the clusters of a validation,
+  whose network is not the one its clusters were made from, or that changes
+  while it is read, is refused, and the tables are replaced all at once.
+- `metator mge --reassign` makes each MGE cluster a genome of the map, named
+  after it, with its GC content, hits and clustering score: its contigs leave
+  the final clusters that held them, which keep the values of their
+  validation, and the column `mge` of the genomes table is `True` for the MGE
+  genomes, `False` for the others. A run that replaces the round `mge`
+  undoes the MGE genomes of an earlier run first, so a run with `--reassign`
+  replaces them, and one without leaves the final clusters alone; `--random`
+  leaves them as they are, and is refused with `--reassign`. `binning.txt` of
+  `metator dump` then lists the MAGs and the MGE genomes, which 1.x kept
+  apart, in `mges_bin_summary.tsv`.
 - The clustering rounds of a run: every cluster of every round (`core`,
   `overlapping`, `recursive_<k>`, `final`, `mge`, `mge_random`), with its
   parent and miComplete's columns, and the contigs of each, in the

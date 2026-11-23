@@ -272,12 +272,12 @@ its metadata, and the clustering round `final`) is refused, and so is one
 without the network or the partition of its run, each with the step to run,
 and one that a development build of metaTOR 2.0 validated, which does not
 record how the summary of its clusters is written (`summary_rows`,
-`summary_formats`): run `metator validation` on it again. A map whose
-clusters were edited after the run (by `metacooler reassign`: a final
-cluster that is no longer a genome of the map, or a genome that is no final
-cluster) is refused too, naming them: its summary and its rounds no longer
-describe its genomes. Run `metator validation` on it again, or write the
-edited assignment with `metacooler dump -t contigs MAP`. A map whose network
+`summary_formats`): run `metator validation` on it again. The tables follow
+the genomes of the map, which need not be the final clusters of the run: the
+MGE genomes that `metator mge --reassign` makes (see [`mge`](#mge)), or the
+genomes of a curation by hand with `metacooler reassign`, each with the values
+that the genomes table gives it (those of the validation for a final
+cluster, which describe it with the contigs that it had). A map whose network
 is not the one that its clusters were made from (`metator network` ran on it
 after the run, with another normalization: the `network_digest` of its
 `partition` entry, see [`partition`](#partition)) is refused, since its
@@ -296,15 +296,17 @@ that fails leaves the output directory as it was.
 
 | Table | What it holds |
 |---|---|
-| `contig_data_final.txt` | One row per contig of the map, in its order: `Name`, `Size`, `GC_content`, `Hit`, `Shotgun_coverage`, `Restriction_site`, then the ID, number of contigs and size of its core, overlapping and recursive clusters, then `Final_cluster` (see [The contig data tables](formats.md#the-contig-data-tables)). No `ID` column: the ID of a contig was its position in the map that the run read. |
-| `cluster_summary.txt` | The summary of the final clusters, one row per cluster: its values are those of the genomes table of the map, written as the `validation` entry of its metadata records it, its rows in order (`summary_rows`), its columns in order (`summary_columns`) and the format of each (`summary_formats`). |
-| `binning.txt` | Each contig of a final cluster and its cluster, without a header: the binning that anvi'o imports. |
+| `contig_data_final.txt` | One row per contig of the map, in its order: `Name`, `Size`, `GC_content`, `Hit`, `Shotgun_coverage`, `Restriction_site`, then the ID, number of contigs and size of its core, overlapping and recursive clusters, then `Final_cluster`, its genome in the map (`ND` for none; see [The contig data tables](formats.md#the-contig-data-tables)). No `ID` column: the ID of a contig was its position in the map that the run read. |
+| `cluster_summary.txt` | The summary of the genomes of the map, one row per genome: its final clusters, in the order of the `validation` entry of its metadata (`summary_rows`), then its other genomes, in the order of its genomes table (the MGE genomes of `metator mge --reassign`). The values are those of the genomes table, written as the `validation` entry records them: its columns in order (`summary_columns`), each in its format (`summary_formats`). A map with MGE genomes adds their columns, `GC`, `Hit` and `BinningScore` (empty for the final clusters), and `mge`, `True` for an MGE genome and `False` for a final cluster. |
+| `binning.txt` | Each contig of a genome of the map and its genome, without a header: the binning that anvi'o imports, its final clusters, and its MGE genomes after `metator mge --reassign`. |
 | `clusters.txt`, `cluster_members.txt` | Every clustering round of the map (`core`, `overlapping`, `recursive_<k>`, `final`, the round `mge` that `metator mge` stores, and `mge_random` when `metator mge --random` stores one), every cluster with its parent, its number of contigs and their length (`n_contigs`, `length`, which the map computes) and the columns its round stored, and the contigs of each cluster. |
 | `network.txt` | The network of the contigs, without a header: `contig1`, `contig2` (their names) and the weight of their edge, the normalization that `metator network` stored (the count of their contacts for `None`); one row per pair of contigs in contact, in the order of the map, without the contacts within a contig (see [The network](formats.md#the-network)). |
 
 The values are those of the tables that the run kept in its temporary
-directory: `cluster_summary.txt` is the same file, and so is `clusters.txt`
-until a later command stores a round in the map. After `metator mge`,
+directory: `cluster_summary.txt` is the same file until the genomes of the map
+change (`metator mge --reassign`, `metacooler reassign`), and so is
+`clusters.txt` until a later command stores a round in the map, whose rounds
+keep the final clusters of the run, whatever its genomes. After `metator mge`,
 `clusters.txt` and `cluster_members.txt` list the rounds `mge` and
 `mge_random` after those of the run, and every row of `clusters.txt` gains
 their columns, `GC`, `Hit` and `BinningScore` (`NA` for the rounds of the
@@ -361,7 +363,24 @@ content, hits and clustering score, in place of the round `mge` of an earlier
 run, after the other rounds, which are kept (`metator dump` writes it with
 them: see [`dump`](#dump)); the entry `mge` of the `metator` key of its
 metadata records the run, and what it read of the map (`read`). Its genomes
-and contigs tables are left as they were. The run writes the map to its
+and contigs tables are left as they were, but with `--reassign`, which makes
+each MGE cluster a genome of the map, named after it (`MetaTOR_MGE_<ID>`),
+with its GC content, hits and clustering score (`GC`, `Hit`,
+`BinningScore`): its contigs leave the genomes that held them, final clusters
+or none. The other genomes are kept, with their other contigs and the values
+of their validation, which describe them with the contigs that they lose (the
+log names them), and a final cluster whose contigs are all MGE contigs is no
+genome any more, with a warning; the column `mge` of the genomes table is
+`True` for the MGE genomes, and `False` for the others. `metator dump`
+follows them (see [`dump`](#dump)). A run that replaces the round `mge`
+undoes the MGE genomes of the map first, those that the column `mge` names
+and those named after a cluster of its round `mge` (as `metacooler reassign
+--round mge` makes them): their contigs go back to their final cluster, or to
+none. So a run with `--reassign` replaces them with its own, and one without
+leaves the map with its final clusters alone (a final cluster that had lost
+all its contigs comes back without its values, with a warning: run
+`validation` again to measure them). `--random` leaves them as they are, and
+is refused with `--reassign`. The run writes the map to its
 output directory, as `metator partition MAP` writes it (`MAP` itself when it
 is there already, or with `--inplace`: see
 [Step by step](guides/metacool.md#step-by-step)), and refused as it refuses
@@ -373,7 +392,8 @@ build), with or without `-F`: it is never removed. `--random` stores the round `
 `mges_binned_random.fa`, and leaves the round `mge` as it was. A run that
 replaces the clusters of the map (`partition`, `validation`, `pipeline`)
 drops the rounds `mge` and `mge_random`, and their entries, with a warning:
-run `mge` again on its map.
+run `mge` again on its map (`validation` and `pipeline` make their final
+clusters the genomes of the map, without MGE genomes).
 
 | Option | Default | Description |
 |---|---|---|
@@ -381,6 +401,7 @@ run `mge` again on its map.
 | `-m, --mges` | *required* | The MGE contigs, one name per line. |
 | `-s, --threshold-bin` | `0.8` | The score above which two contigs, or clusters, are merged. |
 | `-r, --random` | off | Shuffle the contigs between the clusters: a random clustering of the same shape, stored as the round `mge_random` and written to `mges_binned_random.fa`. |
+| `--reassign` | off | Make each MGE cluster a genome of the map, with its GC content, hits and clustering score: its contigs leave the final clusters that held them, which keep their values. The column `mge` of the genomes table says which genomes are MGE genomes. Refused with `--random`. |
 | `-o, --outdir` | the current directory | The output directory: the map of the run and `mges_binned.fa`. |
 | `-F, --force` | off | Replace the map of an earlier run in the output directory. A summary of the MGE clusters that an earlier version wrote in the output directory (`mges_bin_summary.tsv` or `mges_cluster_summary.tsv`) is refused, with or without `-F`, and never removed. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory, where metacooler copies a compressed assembly, plain, while it reads it. `mge` writes no temporary file of its own. |
@@ -390,4 +411,8 @@ run `mge` again on its map.
 ```bash
 # The map of the clusters of a run, in binning: updated in place
 metator mge binning/sample.metacool -a assembly.fa -m mges.txt -o binning
+# The same, the MGE clusters made genomes of the map, then the tables:
+# binning.txt lists the MAGs and the MGE genomes
+metator mge binning/sample.metacool -a assembly.fa -m mges.txt -o binning --reassign
+metator dump binning/sample.metacool -o tables
 ```
