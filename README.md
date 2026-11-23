@@ -91,9 +91,12 @@ metator {network|partition|validation|pipeline|mge|dump} MAP [OPTIONS]
 | `dump` | Writes the tables of a run (contig data, cluster summary, binning, clustering rounds, network) from the map of its clusters. |
 
 `metator --help` lists the commands, `metator <command> --help` their options,
-and `metator --version` prints the version. The steps update the map in place,
-through metacooler, under its lock; `--output-map FILE` writes the map to FILE
-instead and leaves `MAP` as it was. [The contact map of the clusters](https://koszullab.github.io/metator/guides/metacool/)
+and `metator --version` prints the version. A run writes its map to its output
+directory (`-o`), under the name of `MAP`, which it leaves as it was:
+metacooler copies `MAP` there, the run edits the copy, under its lock, and
+renames it into place once it is validated. `--inplace` updates `MAP` itself
+instead, and so does a run whose output directory holds `MAP` already (the
+steps of a run, one by one, in one output directory). [The contact map of the clusters](https://koszullab.github.io/metator/guides/metacool/)
 says what the map holds, how it is written, and what a run refuses.
 
 ### From the reads to the clusters
@@ -107,11 +110,12 @@ hicstuff pipeline -g assembly.fa -e DpnII -M metacool -o hicstuff_L2 -P L2 L2_R1
 # 2. One map of both libraries, their contacts summed.
 metacooler merge hicstuff_L1/L1.metacool hicstuff_L2/L2.metacool -o sample.metacool
 
-# 3. The clusters: sample.metacool becomes the contact map of the clusters.
+# 3. The clusters: binning/sample.metacool, the contact map of the clusters.
+#    sample.metacool is left as it was.
 metator pipeline sample.metacool -a assembly.fa -e DpnII -d depth.txt -o binning
 
 # 4. The tables of the run, from the map.
-metator dump sample.metacool -o tables
+metator dump binning/sample.metacool -o tables
 ```
 
 `hicstuff pipeline -M metacool` needs hicstuff 4.0.0 or later; with an
@@ -129,23 +133,27 @@ The map can have any bin size, from one bin per contig to fixed bins.
 
 ### Step by step
 
-The three steps of `pipeline` can run one by one on one map, which gives the
-map that `pipeline` writes:
+The three steps of `pipeline` can run one by one, in one output directory,
+which gives the map that `pipeline` writes: the first writes the map there,
+and the next ones update it in place.
 
 ```sh
-# 1. The network, stored in the map.
+# 1. The network, stored in binning/sample.metacool.
 metator network sample.metacool -a assembly.fa -e DpnII -d depth.txt -o binning
 # 2. The partition: the map stores its core and overlapping clusters.
-metator partition sample.metacool -o binning
+metator partition binning/sample.metacool -o binning
 # 3. The validation: the final clusters. The map becomes the map of the clusters.
-metator validation sample.metacool -a assembly.fa -o binning
+metator validation binning/sample.metacool -a assembly.fa -o binning
 ```
 
 
 ### Outputs
 
-**In the output directory** (`-o`): `final_clusters/`, one FASTA file per final
-cluster, and the log of the run, `metator_<command>_<date>.log`.
+**In the output directory** (`-o`): the map of the run, named as `MAP`;
+`final_clusters/`, one FASTA file per final cluster; and the log of the run,
+`metator_<command>_<date>.log`, which starts with the version, the command line
+and the value of each option, and ends with what the run wrote and how long it
+took.
 
 **In the map**, which `validation` and `pipeline` make the contact map of the
 clusters:
@@ -172,9 +180,9 @@ metacooler adds the genomes:
 import cooler
 import metacooler
 
-clr = cooler.Cooler("sample.metacool")
+clr = cooler.Cooler("binning/sample.metacool")
 clr.matrix(balance="metator_empirical_hit")  # the normalized contacts
-mc = metacooler.MetaCooler("sample.metacool")
+mc = metacooler.MetaCooler("binning/sample.metacool")
 mc.genomes  # one row per cluster: the summary of the clusters
 mc.contigs  # one row per contig: its GC content, hits... and its cluster
 ```
@@ -196,8 +204,9 @@ within each, between reads more than 1 kb apart, which the map counts when
 hicstuff or metacooler made it from the pairs (metacooler 0.4.0 or later). It
 reads the map after `metator network`, `pipeline` or `validation`, writes
 `mges_binned.fa`, one record per MGE cluster (`MetaTOR_MGE_00001`...), its
-contigs joined by 200 `N`, and stores the MGE clusters in the map, as the round
-`mge` of its clustering rounds. See
+contigs joined by 200 `N`, and stores the MGE clusters in the map of its output
+directory, as the round `mge` of its clustering rounds (`-o binning` updates
+`binning/sample.metacool` in place). See
 [Clustering mobile genetic elements](https://koszullab.github.io/metator/guides/mge/).
 
 ## Migrating from metaTOR 1.x

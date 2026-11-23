@@ -13,3 +13,32 @@
   --md-mermaid-label-fg-color: var(--cx-text);
   --md-mermaid-label-bg-color: var(--cx-bg);
 }
+
+/* The tables that set metaTOR 1.x beside 2.0 (docs/migration.md), each in a
+   <div class="mt-versions" markdown>. The kit keeps the code of a first
+   column on one line, for the names and options that open the rows of the
+   other tables: here, a command of 1.x (`metator mge -c ... PAIRSFILE...`)
+   would make the first column as wide as itself, and squeeze the others out
+   of the page. Its code wraps at its spaces, and the columns have set
+   widths: the 1.x column, often empty, is the narrowest. */
+.md-typeset .mt-versions table:not([class]) {
+  table-layout: fixed;
+}
+
+.md-typeset .mt-versions table:not([class]) td:first-child code {
+  white-space: normal;
+}
+
+/* metaTOR 1.x | metaTOR 2.0 */
+.md-typeset .mt-versions table:not([class]) th:first-child {
+  width: 36%;
+}
+
+/* metaTOR 1.x | metaTOR 2.0 | Why */
+.md-typeset .mt-versions table:not([class]) th:first-child:nth-last-child(3) {
+  width: 28%;
+}
+
+.md-typeset .mt-versions table:not([class]) th:nth-child(2):nth-last-child(2) {
+  width: 28%;
+}

@@ -76,7 +76,8 @@ def tests_data_network_maps(tests_data_maps, tmp_path_factory):
 @pytest.fixture
 def a_network_map(tests_data_network_maps, tmp_path):
     """A copy of a map of tests_data with its network (see
-    tests_data_network_maps), its own: runs update their map in place."""
+    tests_data_network_maps), its own: runs write their map to their output
+    directory (or update this one in place, with --inplace)."""
 
     def copy(name="subset"):
         path = tmp_path / "network_maps" / f"{name}.metacool"
@@ -88,8 +89,9 @@ def a_network_map(tests_data_network_maps, tmp_path):
 
 @pytest.fixture
 def a_map(tests_data_maps, tmp_path):
-    """A copy of a map of tests_data (see tests_data_maps), its own: runs update
-    their map in place."""
+    """A copy of a map of tests_data (see tests_data_maps), its own: runs write
+    their map to their output directory (or update this one in place, with
+    --inplace)."""
 
     def copy(name="subset"):
         path = tmp_path / "maps" / f"{name}.metacool"
@@ -129,15 +131,17 @@ def test_partition(alg, a_network_map, tmp_path, run_cli):
     )
     print("CLI command:\nmetator partition", *args.split(" "))
     run_cli("partition", *args.split(" "))
-    # The partition is in the map, and in no table or FASTA file.
-    assert sorted(path.name for path in Path(tmp_path, "out_test").iterdir() if path.suffix != ".log") == []
+    # The partition is in the map of the output directory, and in no table or
+    # FASTA file.
+    assert sorted(path.name for path in Path(tmp_path, "out_test").iterdir() if path.suffix != ".log") == ["subset.metacool"]
 
 
 def _partitioned(metacool, tmp_path, run_cli):
-    """The map metacool, in which metator partition stored its partition (two
-    iterations), which validation reads."""
+    """The map in which metator partition stored its partition (two iterations)
+    of the map metacool, which validation reads: the map of its output
+    directory."""
     run_cli("partition", metacool, "-i", "2", "-o", Path(tmp_path, "partition"), "-T", Path(tmp_path, "tmp"))
-    return metacool
+    return Path(tmp_path, "partition", Path(metacool).name)
 
 
 def test_validation(a_network_map, tmp_path, run_cli):
@@ -158,17 +162,22 @@ def test_validation(a_network_map, tmp_path, run_cli):
 
 
 def test_network_partition_validation(tmp_dir, a_map, run_cli):
+    """The steps of a run one by one, in one output directory: network writes the
+    map there, which partition and validation then update in place, and the
+    map of the run is left as it was."""
     tmp = Path(tmp_dir, "tmp")
     out = Path(tmp_dir, "out_test")
-    metacool = a_map()
+    given = a_map()
+    before = Path(given).read_bytes()
     args = "{MAP} -a {SUBSET_FASTA} -o {OUT_TEST} -T {TMP} -e HindIII,DpnII --no-clean-up".format(
-        MAP=metacool,
+        MAP=given,
         TMP=tmp,
         OUT_TEST=out,
         **global_args,
     )
     print("CLI command:\nmetator network", *args.split(" "))
     run_cli("network", *args.split(" "))
+    metacool = out / Path(given).name
 
     args = ("{MAP} -i 5 -o {OUT_TEST} -t 8 -T {TMP} -F --no-clean-up").format(
         MAP=metacool,
@@ -191,6 +200,11 @@ def test_network_partition_validation(tmp_dir, a_map, run_cli):
     # clusters keeps: no table of it.
     assert mtn.network_normalization(str(metacool)) == "empirical_hit"
     assert not list(out.glob("*network*.txt"))
+    # The map of the clusters, of the three steps.
+    mc = metacooler.MetaCooler(str(metacool))
+    assert list(mc.metadata["metator"]) == ["network", "partition", "validation"]
+    assert [entry["name"] for entry in mc.cluster_rounds][:2] == ["core", "overlapping"]
+    assert Path(given).read_bytes() == before
 
 
 def test_pipeline(a_map, tmp_path, run_cli):
@@ -203,9 +217,12 @@ def test_pipeline(a_map, tmp_path, run_cli):
         **global_args,
     )
     print("CLI command:\n", "metator pipeline", *args.split(" "))
+    before = Path(metacool).read_bytes()
     run_cli("pipeline", *args.split(" "))
-    # The contact map of the contigs, grouped by cluster: the map of the run,
-    # updated in place.
+    # The contact map of the contigs, grouped by cluster, in the output
+    # directory: the map of the run is left as it was.
+    assert Path(metacool).read_bytes() == before
+    metacool = Path(tmp_path, "out_test", Path(metacool).name)
     metacooler.validate(str(metacool))
     genomes = metacooler.MetaCooler(str(metacool)).genomes
     # The tables of the validation, in the temporary directory of the run,
@@ -233,12 +250,13 @@ def test_network_from_a_metacool(a_map, tmp_path, run_cli):
     for binned, given in [("contig", a_map()), ("1kb", metacool)]:
         out = tmp_path / binned
         run_cli("network", given, "-a", assembly, "-e", "HindIII,DpnII", "-o", out, "-T", tmp_path / "tmp")
-        names = [str(name) for name in metacooler.MetaCooler(str(given)).contigs["name"]]
-        network = mtn.map_network(str(given))
+        written = out / Path(given).name
+        names = [str(name) for name in metacooler.MetaCooler(str(written)).contigs["name"]]
+        network = mtn.map_network(str(written))
         networks[binned] = {
             tuple(sorted((names[a - 1], names[b - 1]))): weight for a, b, weight in network.itertuples(index=False)
         }
-        tables[binned] = mtn.map_contig_table(str(given)).drop(columns="ID").set_index("Name").sort_index()
+        tables[binned] = mtn.map_contig_table(str(written)).drop(columns="ID").set_index("Name").sort_index()
         assert not list(out.glob("*network*.txt"))
     # The same network and contig data, by contig name: the maps hold their
     # contigs in other orders.
@@ -247,7 +265,7 @@ def test_network_from_a_metacool(a_map, tmp_path, run_cli):
         assert weight == pytest.approx(networks["contig"][pair], rel=1e-12)
     pd.testing.assert_frame_equal(tables["1kb"], tables["contig"])
     (log,) = (tmp_path / "1kb").glob("metator_network_*.log")
-    assert f"INFO :: Information of {metacool}:" in log.read_text()
+    assert re.search(rf"INFO :: [0-9]+ contacts in {re.escape(str(metacool))}, [0-9]+ of them between contigs", log.read_text())
 
 
 def test_network_from_the_columns_of_a_metacool(tmp_path, run_cli):
@@ -258,10 +276,12 @@ def test_network_from_the_columns_of_a_metacool(tmp_path, run_cli):
     byte for byte."""
     contig_data = mtn.create_contig_data(global_args["FASTA"], global_args["DEPTH"], "HindIII,DpnII")
     metacool = contig_map(global_args["PAIRS"], contig_data, tmp_path / "contigs.metacool")
-    maps = {how: shutil.copyfile(metacool, tmp_path / f"{how}.metacool") for how in ["options", "map"]}
+    inputs = {how: shutil.copyfile(metacool, tmp_path / f"{how}.metacool") for how in ["options", "map"]}
     common = ["-a", global_args["FASTA"], "-n", "theoritical_hit", "-T", tmp_path / "tmp"]
-    run_cli("network", maps["options"], *common, "-d", global_args["DEPTH"], "-e", "HindIII,DpnII", "-o", tmp_path / "options")
-    run_cli("network", metacool, *common, "-o", tmp_path / "map", "--output-map", maps["map"], "-F")
+    run_cli("network", inputs["options"], *common, "-d", global_args["DEPTH"], "-e", "HindIII,DpnII", "-o", tmp_path / "options")
+    run_cli("network", inputs["map"], *common, "-o", tmp_path / "map")
+    # The maps of the output directories.
+    maps = {how: tmp_path / how / f"{how}.metacool" for how in inputs}
     pd.testing.assert_frame_equal(mtn.map_network(str(maps["map"])), mtn.map_network(str(maps["options"])))
     pd.testing.assert_frame_equal(mtn.map_contig_table(str(maps["map"])), mtn.map_contig_table(str(maps["options"])))
     for path in maps.values():
@@ -270,7 +290,7 @@ def test_network_from_the_columns_of_a_metacool(tmp_path, run_cli):
     (log,) = (tmp_path / "map").glob("metator_network_*.log")
     logged = log.read_text()
     for what, column in [("restriction sites", "Restriction_site"), ("shotgun coverage", "Shotgun_coverage")]:
-        assert f"INFO :: The {what} of the contigs: the {column} column of {metacool}." in logged
+        assert f"INFO :: The {what} of the contigs: the {column} column of {inputs['map']}." in logged
 
 
 @pytest.mark.parametrize("data", ["full", "subset"])
@@ -285,8 +305,8 @@ def test_pipeline_network_is_that_of_network(data, a_map, network_from_a_map, tm
     depth = ["-d", global_args["DEPTH"]] if data == "full" else []
     common = ["-a", assembly, *depth, "-e", "HindIII,DpnII", "-T", tmp_path / "tmp"]
     metacool = a_map(data)
-    stored = tmp_path / "network.metacool"
-    run_cli("network", metacool, *common, "-o", tmp_path / "network", "--output-map", stored)
+    stored = tmp_path / "network" / Path(metacool).name
+    run_cli("network", metacool, *common, "-o", tmp_path / "network")
     with pytest.raises(RuntimeError, match=r"^network built$"):
         run_cli("pipeline", metacool, *common, "-o", tmp_path / "pipeline")
     # Read by metator network, then by pipeline.
@@ -341,6 +361,8 @@ def test_default_tmpdir_is_tidied(a_map, tmp_path, monkeypatch, run_cli):
         str(a_map()),
         "-a", str(Path(global_args["SUBSET_FASTA"]).resolve()),
         "-o", "out",
+        # The second run replaces the map of the first in out.
+        "-F",
     ]  # fmt: skip
     monkeypatch.chdir(tmp_path)
     run_cli("network", *args)
@@ -353,18 +375,21 @@ def test_default_tmpdir_is_tidied(a_map, tmp_path, monkeypatch, run_cli):
 
 
 def test_network_default_outdir(a_map, tmp_path, monkeypatch, run_cli):
-    """Without -o, the log of the run is written to the current directory: the
-    network goes to the map, and no table of it anywhere."""
+    """Without -o, the map of the run and its log are written to the current
+    directory: the network goes to the map, and no table of it anywhere; the
+    map that the run started from is left as it was."""
     args = [
         str(a_map()),
         "-a", str(Path(global_args["SUBSET_FASTA"]).resolve()),
     ]  # fmt: skip
     monkeypatch.chdir(tmp_path)
+    before = Path(args[0]).read_bytes()
     run_cli("network", *args)
-    assert mtn.network_normalization(args[0]) == "empirical_hit"
+    assert mtn.network_normalization(str(tmp_path / "subset.metacool")) == "empirical_hit"
+    assert Path(args[0]).read_bytes() == before
     assert not list(tmp_path.rglob("*network*.txt"))
     (log,) = tmp_path.glob("metator_network_*.log")
-    assert f"## Command used: metator network {args[0]} -a {args[2]}\n" in log.read_text()
+    assert f"## cmd: metator network {args[0]} -a {args[2]}\n" in log.read_text()
 
 
 def test_invalid_prefix_is_rejected(a_network_map, tmp_path, run_cli):
@@ -507,9 +532,9 @@ def test_partition_prefix_names_the_clusters(metagenome_network, tmp_path, run_c
     before = Path(metacool).read_bytes()
     args = [str(metacool), "-o", str(tmp_path / "out"), "-T", str(tmp_path / "tmp"), "-i", "5", "-p", "sample-1"]
     run_cli("partition", *args, "-A", "spinglass", exit_code=2)
-    assert Path(metacool).read_bytes() == before
+    assert Path(metacool).read_bytes() == before and not (tmp_path / "out").exists()
     run_cli("partition", *args)
-    clusters = metacooler.MetaCooler(str(metacool)).clusters
+    clusters = metacooler.MetaCooler(str(tmp_path / "out" / "network.metacool")).clusters
     overlapping = list(clusters.name[clusters["round"] == "overlapping"])
     assert overlapping and all(name.startswith("sample-1_metator_") and name.endswith("_00000") for name in overlapping)
     assert all(name.startswith("core_") for name in clusters.name[clusters["round"] == "core"])

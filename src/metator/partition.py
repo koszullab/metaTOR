@@ -15,12 +15,18 @@ import igraph as ig
 import multiprocessing
 import numpy as np
 import pandas as pd
+import time
 
 from functools import partial
 import metator.clusters as mtc
-from metator.log import logger
+from metator.log import duration, logger
 from scipy import sparse
 from scipy.spatial.distance import cdist
+
+# The least time, in seconds, between two lines of the log that follow the
+# iterations of a partition (see iterate): a partition faster than that logs
+# only its last.
+PROGRESS_INTERVAL = 10
 
 
 def algo_partition(
@@ -28,6 +34,7 @@ def algo_partition(
     network=None,
     iterations=10,
     resolution_parameter=1.0,
+    progress=False,
 ):
     """Function to partition the network depednding on the used algorithm.
 
@@ -43,6 +50,10 @@ def algo_partition(
         Number of iterations of the algorithm of Leiden or Louvain.
     resolution_parameter : float
         Resolution parameter for Leiden clustering.
+    progress : bool
+        Whether the log follows the iterations (see iterate): that of the
+        partition of the network, not those of the recursive partitions of
+        the validation.
 
     Returns
     -------
@@ -50,9 +61,9 @@ def algo_partition(
         Dictionnary with the id of the contig as key and the list of the
         results of each iterations separated by a semicolon as values."""
     if algorithm == "leiden":
-        output_partition = leiden_iterations(network, iterations, resolution_parameter)
+        output_partition = leiden_iterations(network, iterations, resolution_parameter, progress)
     elif algorithm == "louvain":
-        output_partition = louvain_iterations(network, iterations)
+        output_partition = louvain_iterations(network, iterations, progress)
     else:
         logger.error('algorithm should be either "louvain" or "leiden"')
         raise ValueError
@@ -108,7 +119,7 @@ def defined_overlapping_bins(
             overlapping_bins[oc_id + 1] += core_bin_contigs
         cc_id += 1
 
-    logger.info(f"{len(overlapping_bins)} overlapping clusters were found.")
+    logger.debug(f"{len(overlapping_bins)} overlapping clusters were found.")
 
     return overlapping_bins
 
@@ -162,7 +173,7 @@ def detect_core_bins(output_partition, iterations):
     # Transform the array in a dataframe
     core_bins_iterations = pd.DataFrame(np.array(core_bins_rows, dtype=int).reshape(-1, iterations))
 
-    logger.info(f"{len(core_bins)} core clusters were found.")
+    logger.debug(f"{len(core_bins)} core clusters were found.")
 
     return core_bins_contigs, core_bins_iterations
 
@@ -227,7 +238,7 @@ def get_hamming_distance(core_bins_iterations, threads):
     return res.tocsr()
 
 
-def leiden_iterations(network, iterations, resolution_parameter):
+def leiden_iterations(network, iterations, resolution_parameter, progress=False):
     """Partition the network with the igraph implementation of Leiden.
 
     Parameters
@@ -238,6 +249,8 @@ def leiden_iterations(network, iterations, resolution_parameter):
         Number of iterations of the algorithm of Leiden.
     resolution_parameter : float
         Resolution parameter for Leiden clustering.
+    progress : bool
+        Whether the log follows the iterations (see iterate).
 
     Returns
     -------
@@ -245,19 +258,19 @@ def leiden_iterations(network, iterations, resolution_parameter):
         Dictionnary with the id of the contig as key and the list of the
         results of each iterations separated by a semicolon as values."""
     graph, contigs = network_graph(network)
-    memberships = [
-        graph.community_leiden(
+
+    def membership():
+        return graph.community_leiden(
             objective_function="modularity",
             weights="weight",
             resolution=resolution_parameter,
             n_iterations=4,
         ).membership
-        for _ in range(iterations)
-    ]
-    return merge_iterations(contigs, memberships)
+
+    return merge_iterations(contigs, iterate("leiden", iterations, membership, progress))
 
 
-def louvain_iterations(network, iterations):
+def louvain_iterations(network, iterations, progress=False):
     """Partition the network with the igraph implementation of Louvain.
 
     Parameters
@@ -266,6 +279,8 @@ def louvain_iterations(network, iterations):
         The network (see network_graph).
     iterations : int
         Number of iterations of the algorithm of Louvain.
+    progress : bool
+        Whether the log follows the iterations (see iterate).
 
     Returns
     -------
@@ -273,8 +288,35 @@ def louvain_iterations(network, iterations):
         Dictionnary with the id of the contig as key and the list of the
         results of each iterations separated by a semicolon as values."""
     graph, contigs = network_graph(network)
-    memberships = [graph.community_multilevel(weights="weight").membership for _ in range(iterations)]
-    return merge_iterations(contigs, memberships)
+
+    def membership():
+        return graph.community_multilevel(weights="weight").membership
+
+    return merge_iterations(contigs, iterate("louvain", iterations, membership, progress))
+
+
+def iterate(algorithm, iterations, membership, progress=False):
+    """The memberships of the vertices of a network in iterations iterations of
+    an algorithm (louvain or leiden), each one call of membership.
+
+    With progress, the log follows them, as they can take minutes on a large
+    network: a line at each tenth of the iterations, when PROGRESS_INTERVAL
+    seconds have passed since the previous line, and one once they are all
+    done, with the time they took."""
+    started = last = time.monotonic()
+    step = max(1, iterations // 10)
+    memberships = []
+    for done in range(1, iterations + 1):
+        memberships.append(membership())
+        if not progress:
+            continue
+        now = time.monotonic()
+        if done == iterations:
+            logger.info(f"{algorithm}: {done}/{iterations} iterations, done in {duration(now - started)}.")
+        elif done % step == 0 and now - last >= PROGRESS_INTERVAL:
+            logger.info(f"{algorithm}: {done}/{iterations} iterations ({duration(now - started)}).")
+            last = now
+    return memberships
 
 
 def merge_iterations(contigs, memberships):
@@ -333,19 +375,19 @@ def partition(
         The core and the overlapping clusters, numbered from 1, each with the
         IDs of its contigs."""
 
-    # Perform the iterations of Louvain or Leiden to partition the network.
-    logger.info("Start iterations:")
-    output_partition = algo_partition(algorithm, network, iterations, resolution_parameter)
+    # Perform the iterations of Louvain or Leiden to partition the network,
+    # which the log follows.
+    n_contigs = len(np.unique(network[["contig1", "contig2"]].to_numpy()))
+    logger.info(f"{iterations} iterations of {algorithm} on the network of {n_contigs} contigs and {len(network)} edges.")
+    output_partition = algo_partition(algorithm, network, iterations, resolution_parameter, progress=True)
 
     # Detect core bins
-    logger.info("Detect core clusters:")
     (
         core_bins_contigs,
         core_bins_iterations,
     ) = detect_core_bins(output_partition, iterations)
 
     # Compute the Hamming distance between core bins.
-    logger.info("Detect overlapping clusters:")
     hamming_distance = get_hamming_distance(
         core_bins_iterations,
         threads,
@@ -357,6 +399,7 @@ def partition(
         hamming_distance,
         core_bins_contigs,
     )
+    logger.info(f"{len(core_bins_contigs)} core clusters, merged into {len(overlapping_bins)} overlapping clusters.")
 
     # The core bins numbered from 1, as the contig data tables number them,
     # and the overlapping bins, numbered from 1 already.

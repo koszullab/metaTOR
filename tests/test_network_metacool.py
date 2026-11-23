@@ -634,12 +634,7 @@ def test_map_without_contacts(tmp_path):
 def test_contacts_are_logged(tmp_path, logged):
     metacool = _small_map(tmp_path, {"a": 100, "b": 200, "c": 300}, PAIRS)
     mtn.log_contacts("map.metacool", mtn.contig_contacts(str(metacool)))
-    assert [message for _, message in logged()] == [
-        "Information of map.metacool:",
-        "3 contacts in the library.",
-        "2 contacts inter-contigs in the library.",
-        f"3D ratio : {2 / 3}\n",
-    ]
+    assert logged() == [("INFO", "3 contacts in map.metacool, 2 of them between contigs (3D ratio: 0.6667).")]
 
 
 def test_map_of_a_square_matrix(tmp_path):

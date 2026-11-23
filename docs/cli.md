@@ -15,11 +15,12 @@ metator --version
 |---|---|
 | Several libraries | One map, which sums them: make the map of each library, then merge them with `metacooler merge` (see [Other tools](other-tools.md)). |
 | Several enzymes | Separated by commas: `DpnII,HinfI`. |
-| `-F, --force` | Replace what the command writes itself, when an earlier run left it: the final clusters (`final_clusters/`), the tables of a dump, the `--output-map`. Without it, a command refuses to overwrite them. The other results of an earlier run in the output directory (the tables of a development build of 2.0, the outputs of 1.x, an earlier summary of `mge`) are refused, with or without it, and never removed. A run from a map updates that map in place without it, and warns, before any work, of the clusters and clustering rounds that it replaces there: `--output-map` writes the map of the run to another file instead, and leaves the map as it was. |
-| Writing a map | Through metacooler: a run holds the lock of the map it writes, `<map>.lock` (FILE's with `--output-map`), from its checks to its end, and writes the map in an edit session, one staged copy next to it (`.<map>.<uuid>.<n>.d/`), validated, then renamed over it, so a run that stops leaves the map as it was. `MAP` given as a symbolic link is updated where the link points; a symbolic link at `--output-map` is replaced (`-F`), not its target, and a hard link of `MAP` there is refused. A map that another process holds, a map without write permission, or one whose directory is not writable (with room for a copy of the map and for the new map), is refused before any work: write a copy with `--output-map`. A run killed by SIGTERM (a job scheduler's time limit) or SIGKILL leaves its lock and its staged copy, which the next run that writes the map on the same host takes over and removes; on another host, delete the files that the error names. |
+| The map of a run | A run writes its map to its output directory (`-o`), under the name of `MAP` (`NAME.metacool` for an entry of a collection), and leaves `MAP` as it was: metacooler copies `MAP` next to that map, the run writes what it stores into the copy, and metacooler renames it into place once it is validated. `--inplace` updates `MAP` itself instead, and so does a run whose output directory holds `MAP` already: the steps of a run, one by one, in one output directory (`network MAP -o DIR`, then `partition DIR/MAP -o DIR`...). |
+| `-F, --force` | Replace what the command writes itself, when an earlier run left it: the map of the output directory, the final clusters (`final_clusters/`), the tables of a dump. Without it, a command refuses to overwrite them. The other results of an earlier run in the output directory (the tables of a development build of 2.0, the outputs of 1.x, an earlier summary of `mge`) are refused, with or without it, and never removed. A run that updates its map in place warns, before any work, of the clusters and clustering rounds that it replaces there. |
+| Writing a map | Through metacooler: a run holds the lock of the map it writes, `<map>.lock` (that of the output directory, or `MAP` in place), from its checks to its end, and writes the map in an edit session, one staged copy next to it (`.<map>.<uuid>.<n>.d/`), validated, then renamed onto it, so a run that stops leaves the map as it was. `MAP` updated in place through a symbolic link is updated where the link points; a symbolic link in the output directory, where the map of the run goes, is replaced (`-F`), not its target, and a hard link of `MAP` there is refused. A map that another process holds, a map updated in place without write permission, or one whose directory is not writable (with room for a copy of the map and for the new map), is refused before any work. A run killed by SIGTERM (a job scheduler's time limit) or SIGKILL leaves its lock and its staged copy, which the next run that writes the map on the same host takes over and removes; on another host, delete the files that the error names. |
 | `-T, --tmpdir` | Each run works in a directory of its own inside it, removed at the end, unless `--no-clean-up` or the run fails: the log says which. |
 | `-N, --no-clean-up` | Keep the temporary directory of the run: that of a `validation` or `pipeline` run holds its tables. |
-| Log files | Each command writes its log, `metator_<command>_<date>.log`, into its output directory; `mge`, into the current directory. |
+| Log files | Each command writes its log, `metator_<command>_<date>.log`, into its output directory; `mge`, into the current directory. The log starts, as hicstuff's does, with the version, the date, the command line (`cmd`) and the value of each option, then a line of dashes; `pipeline` marks its three steps (`[1/3] network`...), the partition counts its iterations as they go, the validation each recursive step (`Recursive step 1/9`); and the log ends with what the run wrote and how long it took. The bookkeeping of a run (the files it writes on the way, metacooler's accounts of its work) is logged at the DEBUG level, which the log does not show. |
 
 New to metaTOR? Start with the [Quickstart](quickstart.md); for hits, core,
 overlapping and recursive clusters, see [Concepts](concepts.md). metaTOR 2.0
@@ -46,7 +47,7 @@ hicstuff 4.0.0), or metacooler from pairs files
 
 | Option | Default | Description |
 |---|---|---|
-| `MAP` | *required* | A `.metacool` contact map of the contigs, or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`): the run reads its network from it, and writes the map of its clusters over it, with the network of its contigs, as `network` stores it. See [Starting from a contact map](guides/metacool.md#starting-from-a-contact-map). |
+| `MAP` | *required* | A `.metacool` contact map of the contigs, or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`): the run reads its network from it, and writes the map of its clusters, with the network of its contigs, as `network` stores it, to the output directory, under the name of `MAP` (see [The map of a run](#conventions)). See [Starting from a contact map](guides/metacool.md#starting-from-a-contact-map). |
 | `-a, --assembly` | *required* | The assembly that the map was made from: a FASTA file, plain or compressed with gzip; a compressed one is decompressed once, into the temporary directory of the run, for the FASTA files of the clusters. |
 | `-d, --depth` | none | The coverage of the contigs, from `jgi_summarize_bam_contig_depths` of MetaBAT2. The `Shotgun_coverage` column of the map gives it without `--depth`, which replaces it: see [Starting from a contact map](guides/metacool.md#starting-from-a-contact-map). |
 | `-e, --enzyme` | none | The restriction enzymes of the library. The `Restriction_site` column of the map gives the restriction sites without `--enzyme`, which replaces it. |
@@ -58,13 +59,13 @@ hicstuff 4.0.0), or metacooler from pairs files
 | `-s, --size` | `500000` | The size, in bp, that an overlapping cluster must reach to be checked with miComplete, and that a cluster of the recursive partition must exceed. |
 | `-j, --rec-iter` | `10` | The iterations of the recursive partition of the contaminated clusters. |
 | `-P, --rec-overlap` | `90` | The overlap threshold of the recursive partition, in percent. |
-| `-o, --outdir` | the current directory | The output directory. |
+| `-o, --outdir` | the current directory | The output directory: the map of the clusters, `final_clusters/` and the log. |
 | `-p, --prefix` | none | Name the clusters `<prefix>_metator_…`. Letters, digits, `_` and `-` only. |
-| `-F, --force` | off | Replace `final_clusters/` of an earlier run, and an existing `--output-map` file. The other results of an earlier run in the output directory (the tables and `recursive_clusters/` of a development build of 2.0, the outputs of 1.x) are refused, with or without `-F`, and never removed. |
+| `-F, --force` | off | Replace the map and `final_clusters/` of an earlier run in the output directory. The other results of an earlier run in the output directory (the tables and `recursive_clusters/` of a development build of 2.0, the outputs of 1.x) are refused, with or without `-F`, and never removed. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory, where the run works in a directory of its own: the FASTA files of the clusters that miComplete checks (at most the size of the assembly), miComplete's results, the tables of the validation, and, from a compressed assembly, its decompressed copy. Not in `final_clusters/`, which the run makes anew, nor in a directory of the results of an earlier run (`recursive_clusters/`, `final_bin/`...), which the run refuses. |
 | `-t, --threads` | `1` | Threads for the partition and the validation (miComplete). |
 | `-N, --no-clean-up` | off | Keep the temporary directory of the run, which the log names: the tables of the validation (`cluster_summary.txt`, `contig_data_final.txt`, `binning.txt`, `clusters.txt`, `cluster_members.txt`), miComplete's results and the FASTA files of the clusters that it checked. |
-| `--output-map` | none | Write the contact map of the clusters to this file (replaced only with `-F`), and leave `MAP` as it was. By default, the run updates `MAP` in place. |
+| `--inplace` | off | Update `MAP` in place with the map of the clusters, rather than write it to the output directory: refused for an entry of a collection. A run whose output directory holds `MAP` already updates it in place without `--inplace`. |
 
 The validation is the step that needs the most memory: miComplete runs
 Prodigal and HMMER (pyrodigal and pyhmmer) on every cluster.
@@ -73,11 +74,11 @@ Prodigal and HMMER (pyrodigal and pyhmmer) on every cluster.
 # The map of the contigs, from the reads, with hicstuff
 hicstuff pipeline -g assembly.fa -e DpnII -M metacool -o hicstuff -P sample R1.fq.gz R2.fq.gz
 
-# The clusters: hicstuff/sample.metacool becomes the map of the clusters
+# The clusters: binning/sample.metacool, the map of the clusters; hicstuff/sample.metacool is left as it was
 metator pipeline hicstuff/sample.metacool -a assembly.fa -e DpnII -d depth.txt -t 16 -o binning
 
-# The same, leaving the map of hicstuff as it was
-metator pipeline hicstuff/sample.metacool -a assembly.fa -e DpnII -o binning --output-map binning/sample.metacool
+# The same, updating hicstuff/sample.metacool in place
+metator pipeline hicstuff/sample.metacool -a assembly.fa -e DpnII -o binning --inplace
 ```
 
 ### `network` { #network }
@@ -99,9 +100,11 @@ an earlier network; and its command line, under the `network` entry of the
 its partition too: when the run stores another network than the one the
 partition was made on, it says so with a warning, and `metator validation
 MAP` refuses the partition until `metator partition MAP` partitions the new
-network ([`metator dump MAP`](#dump) refuses the map too). The map is updated
-in place, or written to `--output-map`. It writes no table in the output
-directory: `network.txt` is gone, and `contig_data_network.txt`, the contig
+network ([`metator dump MAP`](#dump) refuses the map too). The run writes the
+map to its output directory, under the name of `MAP`, or updates `MAP` in
+place with `--inplace` (see [The map of a run](#conventions)). It writes no
+table in the output directory: `network.txt` is gone, and
+`contig_data_network.txt`, the contig
 data that it stores in the map, is written in its temporary directory, which
 `-N` keeps. [`metator dump`](#dump) writes the network, `network.txt`, from
 the map of the clusters of a run; metacooler writes it from any map that holds
@@ -110,18 +113,19 @@ it, one that only `network` ran on included (see
 
 | Option | Default | Description |
 |---|---|---|
-| `MAP` | *required* | As in `pipeline`: the network is stored in it, in place, or in `--output-map`, which an entry of a collection needs. |
+| `MAP` | *required* | As in `pipeline`: the run writes it, with the network of its contigs, to the output directory. |
 | `-a, --assembly` | *required* | The assembly that the map was made from: a FASTA file, plain or compressed with gzip. |
 | `-d, --depth` | none | As in `pipeline`. |
 | `-e, --enzyme` | none | As in `pipeline`. |
 | `-n, --normalization` | `empirical_hit` | As `--normalization` (`-m`) in `pipeline`. |
-| `-o, --outdir` | the current directory | The output directory, of the log of the run. |
-| `-F, --force` | off | Replace an existing `--output-map` file. |
+| `-o, --outdir` | the current directory | The output directory, of the map of the run and of its log. |
+| `-F, --force` | off | Replace the map of an earlier run in the output directory. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory, where the run writes, in a directory of its own, the contig data that it stores in the map (`contig_data_network.txt`). |
 | `-N, --no-clean-up` | off | Keep the temporary directory of the run, which the log names, and its `contig_data_network.txt`. |
-| `--output-map` | none | Store the network in a copy of `MAP` written to this file (replaced only with `-F`), and leave `MAP` as it was. By default, the run updates `MAP` in place. |
+| `--inplace` | off | Store the network in `MAP` itself, in place, rather than in the map of the output directory: refused for an entry of a collection. |
 
 ```bash
+# binning/sample.metacool, with the network of the contigs
 metator network sample.metacool -a assembly.fa -e DpnII -o binning
 ```
 
@@ -143,28 +147,30 @@ there, and refuses a map without it. It stores every core cluster
 the rounds `core` and `overlapping` of the clustering rounds of the map, in
 place of those it held, and what the run was as the `partition` entry of the
 `metator` key of the metadata of the map, the network that it partitioned
-among it (`network_digest`): the map is updated in place, or written to
-`--output-map`. Its genomes and contigs tables are left as they were.
+among it (`network_digest`), in the map that it writes to its output
+directory (`MAP` itself when it is there already, or with `--inplace`). Its
+genomes and contigs tables are left as they were.
 `validation` checks the overlapping clusters that reach its `--size`. See
 [Step by step](guides/metacool.md#step-by-step).
 
 | Option | Default | Description |
 |---|---|---|
-| `MAP` | *required* | The `.metacool` contact map of the contigs of the run, which `metator network` stored the network in, and which the run stores its partition in; or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`), with `--output-map`, the map it writes it to. |
+| `MAP` | *required* | The `.metacool` contact map of the contigs of the run, which `metator network` stored the network in, or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`): the run writes it, with its partition, to the output directory. |
 | `-A, --algorithm` | `louvain` | `louvain` or `leiden`. |
 | `-i, --iterations` | `100` | The iterations of the partition. |
 | `-O, --overlap` | `80` | The overlap threshold, in percent. |
 | `-r, --res-param` | `1.0` | The resolution of the Leiden algorithm. |
-| `-o, --outdir` | `./` | The output directory, of the log of the run. |
+| `-o, --outdir` | `./` | The output directory, of the map of the run and of its log. |
 | `-p, --prefix` | none | Name the overlapping clusters `<prefix>_metator_…`. |
-| `-F, --force` | off | Replace an existing `--output-map` file. |
+| `-F, --force` | off | Replace the map of an earlier run in the output directory. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory: `partition` writes no temporary file in it. |
 | `-t, --threads` | `1` | Threads for the partition. |
 | `-N, --no-clean-up` | off | Keep the temporary directory of the run: `partition` leaves nothing in it. |
-| `--output-map` | none | Write the map with the partition to this file (replaced only with `-F`), and leave `MAP` as it was. By default, the run updates `MAP` in place. |
+| `--inplace` | off | Store the partition in `MAP` itself, in place, rather than in the map of the output directory: refused for an entry of a collection. |
 
 ```bash
-metator partition sample.metacool -t 16 -o binning
+# The map that metator network wrote in binning, updated in place
+metator partition binning/sample.metacool -t 16 -o binning
 ```
 
 ### `validation` { #validation }
@@ -201,29 +207,30 @@ partition MAP`, or whose partition was made on another network than the one
 stored in it (`metator network MAP` ran again since): run `metator partition
 MAP` again. It then writes the map of its clusters, with all its
 clustering rounds and the normalization of its network, as `metator pipeline
-MAP` does at its end: in place, or to `--output-map`. See
+MAP` does at its end: to its output directory (`MAP` itself when it is there
+already, or with `--inplace`). See
 [Step by step](guides/metacool.md#step-by-step).
 
 | Option | Default | Description |
 |---|---|---|
-| `MAP` | *required* | The `.metacool` contact map of the contigs of the run, which `metator network` stored the network in, and `metator partition` its partition, and which becomes the map of its clusters; or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`), with `--output-map`, the map it writes them to. |
+| `MAP` | *required* | The `.metacool` contact map of the contigs of the run, which `metator network` stored the network in, and `metator partition` its partition, or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`): the run writes the map of its clusters from it, to the output directory. |
 | `-a, --assembly` | *required* | The assembly that the map was made from: a FASTA file, plain or compressed with gzip; a compressed one is decompressed once, into the temporary directory of the run, for the FASTA files of the clusters. |
 | `-A, --algorithm` | `louvain` | `louvain` or `leiden`. |
 | `-i, --iterations` | `10` | The iterations of the recursive partition. |
 | `-O, --overlap` | `90` | The overlap threshold of the recursive partition, in percent. |
 | `-r, --res-param` | `1.0` | The resolution of the Leiden algorithm. |
 | `-s, --size` | `500000` | The size, in bp, that an overlapping cluster of the partition must reach to be checked, and that a cluster of the recursive partition must exceed. |
-| `-o, --outdir` | `./` | The output directory. |
+| `-o, --outdir` | `./` | The output directory: the map of the clusters, `final_clusters/` and the log. |
 | `-p, --prefix` | none | Name the recursive clusters `<prefix>_metator_…`. |
-| `-F, --force` | off | Replace `final_clusters/`, and an existing `--output-map` file. The other results of an earlier run in the output directory (the tables and `recursive_clusters/` of a development build of 2.0, the outputs of 1.x) are refused, with or without `-F`, and never removed. |
+| `-F, --force` | off | Replace the map and `final_clusters/` of an earlier run in the output directory. The other results of an earlier run in the output directory (the tables and `recursive_clusters/` of a development build of 2.0, the outputs of 1.x) are refused, with or without `-F`, and never removed. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory, where the run writes, in a directory of its own, the clusters that miComplete checks (at most the size of the assembly), miComplete's results and the tables of the validation, and, from a compressed assembly, its decompressed copy. Not in `final_clusters/`, which the run makes anew, nor in a directory of the results of an earlier run (`recursive_clusters/`, `final_bin/`...), which the run refuses. |
 | `-t, --threads` | `1` | Threads for the partition and miComplete. |
 | `-N, --no-clean-up` | off | Keep the temporary directory of the run, which the log names: the tables of the validation (`cluster_summary.txt`, `contig_data_final.txt`, `binning.txt`, `clusters.txt`, `cluster_members.txt`), miComplete's results and the FASTA files of the clusters that it checked. |
-| `--output-map` | none | Write the map of the clusters to this file (replaced only with `-F`), and leave `MAP` as it was. By default, the run updates `MAP` in place. |
+| `--inplace` | off | Write the map of the clusters over `MAP`, in place, rather than to the output directory: refused for an entry of a collection. |
 
 ```bash
-# The map of a run step by step: it becomes the map of the clusters
-metator validation sample.metacool -a assembly.fa -t 16 -o binning
+# The map of a run step by step, in binning: it becomes the map of the clusters
+metator validation binning/sample.metacool -a assembly.fa -t 16 -o binning
 ```
 
 ## After the clustering
@@ -299,7 +306,7 @@ run's tables followed the map as it read it.
 
 ```bash
 # The tables of a run, from the map of its clusters
-metator dump sample.metacool -o tables
+metator dump binning/sample.metacool -o tables
 ```
 
 ### `mge` { #mge }
@@ -315,9 +322,9 @@ metator mge [OPTIONS] MAP
 ```
 
 `MAP` is a contact map that `metator network` stored the network of its
-contigs in: that of `network MAP`, `pipeline MAP` or `validation MAP` (their
-`--output-map`, if they wrote one), or an entry of a `.mmetacool` collection
-(`file.mmetacool::entries/<name>`, with `--output-map`). The contacts of the
+contigs in: the map that `network`, `pipeline` or `validation` wrote in its
+output directory (or updated in place), or an entry of a `.mmetacool`
+collection (`file.mmetacool::entries/<name>`). The contacts of the
 MGE contigs come from it: between two contigs, its contacts summed by pair of
 contigs, whatever its bin size; within a contig, those between reads more
 than 1 kb apart, which its contact statistics count (metacooler's QC block,
@@ -339,8 +346,9 @@ content, hits and clustering score, in place of the round `mge` of an earlier
 run, after the other rounds, which are kept (`metator dump` writes it with
 them: see [`dump`](#dump)); the entry `mge` of the `metator` key of its
 metadata records the run, and what it read of the map (`read`). Its genomes
-and contigs tables are left as they were. The map is updated in place, or
-written to `--output-map`, as `metator partition MAP` writes it (see
+and contigs tables are left as they were. The run writes the map to its
+output directory, as `metator partition MAP` writes it (`MAP` itself when it
+is there already, or with `--inplace`: see
 [Step by step](guides/metacool.md#step-by-step)), and refused as it refuses
 it, before any work; so is an assembly that is not a FASTA file, plain or
 compressed with gzip, as `validation` refuses it, and the summary of the MGE
@@ -358,13 +366,13 @@ run `mge` again on its map.
 | `-m, --mges` | *required* | The MGE contigs, one name per line. |
 | `-s, --threshold-bin` | `0.8` | The score above which two contigs, or clusters, are merged. |
 | `-r, --random` | off | Shuffle the contigs between the clusters: a random clustering of the same shape, stored as the round `mge_random` and written to `mges_binned_random.fa`. |
-| `-o, --outdir` | the current directory | The output directory. |
-| `-F, --force` | off | Replace an existing `--output-map` file. A summary of the MGE clusters that an earlier version wrote in the output directory (`mges_bin_summary.tsv` or `mges_cluster_summary.tsv`) is refused, with or without `-F`, and never removed. |
+| `-o, --outdir` | the current directory | The output directory: the map of the run and `mges_binned.fa`. |
+| `-F, --force` | off | Replace the map of an earlier run in the output directory. A summary of the MGE clusters that an earlier version wrote in the output directory (`mges_bin_summary.tsv` or `mges_cluster_summary.tsv`) is refused, with or without `-F`, and never removed. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory, where metacooler copies a compressed assembly, plain, while it reads it. `mge` writes no temporary file of its own. |
 | `-N, --no-clean-up` | off | Keep the temporary directory of the run: `mge` leaves nothing in it. |
-| `--output-map` | none | Write the map with the MGE clusters to this file (replaced only with `-F`), and leave `MAP` as it was. |
+| `--inplace` | off | Store the MGE clusters in `MAP` itself, in place, rather than in the map of the output directory: refused for an entry of a collection. |
 
 ```bash
-# The map of the run, after network, pipeline or validation
-metator mge sample.metacool -a assembly.fa -m mges.txt -o mge
+# The map of the clusters of a run, in binning: updated in place
+metator mge binning/sample.metacool -a assembly.fa -m mges.txt -o binning
 ```

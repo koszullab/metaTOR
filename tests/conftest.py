@@ -206,6 +206,18 @@ def metagenome_inputs(metagenome_files, tmp_path):
 
 
 @pytest.fixture
+def debug_log():
+    """metaTOR's logger at DEBUG for the test, which shows the details of a run
+    (and metacooler's accounts of what it does), then at its level again."""
+    from metator.log import logger
+
+    level = logger.level
+    logger.setLevel(logging.DEBUG)
+    yield logger
+    logger.setLevel(level)
+
+
+@pytest.fixture
 def logged():
     """The messages that metaTOR logs during the test, with their level."""
     from metator.log import logger

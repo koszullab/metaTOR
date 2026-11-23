@@ -3,9 +3,10 @@
 metaTOR 2.0 clusters contigs, and nothing else: it starts from a contact map
 of the contigs, and the commands that did what hicstuff, metacooler,
 instaGRAAL or pairix do were removed. This page lists each one, with what
-replaces it. `MAP` is the contact map of a run: the map that it started from,
-which it updates in place, or the `--output-map` that it wrote; `NAME` a
-cluster of it, and `R1.fq.gz` and `R2.fq.gz` the Hi-C reads of the run.
+replaces it. `MAP` is the contact map of a run: the map that it wrote in its
+output directory (or the map that it started from, which it updates in place
+with `--inplace`); `NAME` a cluster of it, and `R1.fq.gz` and `R2.fq.gz` the
+Hi-C reads of the run.
 
 | Removed | Use instead |
 |---|---|
@@ -33,7 +34,7 @@ hicstuff pipeline -g assembly.fa -e DpnII -M metacool -o hicstuff_L2 -P L2 L2_R1
 # 2. One map of both libraries, their contacts summed
 metacooler merge hicstuff_L1/L1.metacool hicstuff_L2/L2.metacool -o sample.metacool
 
-# 3. The clusters: sample.metacool becomes the map of the clusters
+# 3. The clusters: binning/sample.metacool, the map of the clusters
 metator pipeline sample.metacool -a assembly.fa -e DpnII -o binning
 ```
 

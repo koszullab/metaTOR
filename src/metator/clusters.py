@@ -234,7 +234,7 @@ def write_round_tables(clusters, members, clusters_file, members_file):
     dump`` those of a map (see :func:`metator.dump.dump`)."""
     clusters.to_csv(clusters_file, sep="\t", index=False, na_rep="NA", quoting=csv.QUOTE_NONE)
     members.to_csv(members_file, sep="\t", index=False, quoting=csv.QUOTE_NONE)
-    logger.info(
+    logger.debug(
         f"{len(clusters)} clusters in {clusters['round'].nunique()} rounds are written to {clusters_file} and {members_file}."
     )
 

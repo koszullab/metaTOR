@@ -4,6 +4,7 @@
 # contigs and a plasmid in one, each bound to a different host.
 
 import json
+import os
 import re
 import shutil
 from pathlib import Path
@@ -337,6 +338,7 @@ def test_mge_on_a_map_without_clusters(metagenome, metagenome_files, metagenome_
     summary = mtm.mge_binning(str(metacool), _mge_contigs(metagenome))[0]
     before = _outside_clusters(metacool)
     run_cli("mge", metacool, "-a", metagenome_inputs["assembly"], "-m", mges, "-o", tmp_path / "out")
+    metacool = tmp_path / "out" / "contigs.metacool"
     mc = metacooler.MetaCooler(str(metacool))
     assert [entry["name"] for entry in mc.cluster_rounds] == ["mge"]
     _check_mge_round(mc, summary)
@@ -477,14 +479,16 @@ def _outside_clusters(path, *entries):
     return found
 
 
-@pytest.mark.parametrize("output", ["in place", "--output-map", "-F --output-map", "an entry, --output-map"])
+@pytest.mark.parametrize("output", ["--inplace", "the output directory", "-F the output directory", "an entry"])
 def test_mge_stores_its_clusters_in_the_map(output, mge_run, tmp_path, monkeypatch, run_cli):
-    """mge MAP stores the MGE clusters of the run in the map: the round mge of its
-    clustering rounds, with the contigs of each cluster, after the rounds of
-    the binning run, which are kept as they were; the round records the
-    version, the command line and the parameters of the run, and so does the
-    entry mge of the metator metadata of the map, with the columns of the map
-    that the run read."""
+    """mge MAP stores the MGE clusters of the run in the map of its output
+    directory (MAP itself, with --inplace; for an entry of a collection, a map
+    of its own, named after the entry): the round mge of its clustering
+    rounds, with the contigs of each cluster, after the rounds of the binning
+    run, which are kept as they were; the round records the version, the
+    command line and the parameters of the run, and so does the entry mge of
+    the metator metadata of the map, with the columns of the map that the run
+    read."""
     import metacooler
 
     import metator.metacool as mtmc
@@ -500,22 +504,25 @@ def test_mge_stores_its_clusters_in_the_map(output, mge_run, tmp_path, monkeypat
         metacooler.create_mmetacool(tmp_path / "maps.mmetacool", {"lib1": metacool})
     metacool.chmod(0o640)
     unchanged = {path: path.read_bytes() for path in [metacool, tmp_path / "maps.mmetacool"] if path.exists()}
-    output_map = tmp_path / "copy.metacool"
-    options = [] if output == "in place" else ["--output-map", output_map]
+    out = tmp_path / "out"
+    output_map = out / ("lib1.metacool" if output == "an entry" else metacool.name)
+    options = ["--inplace"] if output == "--inplace" else []
     if output.startswith("-F"):
+        out.mkdir()
         output_map.write_text("an older map")
         options.append("-F")
     locks = []
     write_map = mtmc.write_map
 
     def locked(*args, **kwargs):
-        locks.append(sorted(path.name for path in tmp_path.glob("*.lock")))
+        locks.append(sorted(str(path.relative_to(tmp_path)) for path in [*tmp_path.glob("*.lock"), *out.glob("*.lock")]))
         return write_map(*args, **kwargs)
 
     monkeypatch.setattr("metator.metacool.write_map", locked)
     run_cli("mge", source, *args, *options)
-    written = metacool if output == "in place" else output_map
-    assert locks == [[f"{written.name}.lock"]] and not list(tmp_path.glob("*.lock"))
+    written = metacool if output == "--inplace" else output_map
+    assert locks == [[f"{written.relative_to(tmp_path)}.lock"]]
+    assert not list(tmp_path.glob("*.lock")) and not list(out.glob("*.lock"))
     metacooler.validate(str(written), full=True)
     mc = metacooler.MetaCooler(str(written))
     _check_mge_round(mc, summary)
@@ -531,17 +538,19 @@ def test_mge_stores_its_clusters_in_the_map(output, mge_run, tmp_path, monkeypat
     assert run == {key: entry[key] for key in ["version", "command", "parameters"]} | {"read": read} and entry["read"] == read
     _check_binning_rounds(held, mc)
     assert _outside_clusters(written, "mge") == before
-    if output == "in place":
+    if output == "--inplace":
         assert metacool.stat().st_mode & 0o777 == 0o640
         del unchanged[metacool]
     assert {path: path.read_bytes() for path in unchanged} == unchanged
-    assert not [path.name for path in tmp_path.iterdir() if path.name.startswith(".")]
-    assert sorted(path.name for path in (tmp_path / "out").iterdir()) == ["mges_binned.fa"]
-    assert sorted(synthetic.read_fasta(tmp_path / "out" / "mges_binned.fa")) == sorted(summary.BinName)
+    assert not [path.name for path in [*tmp_path.iterdir(), *out.iterdir()] if path.name.startswith(".")]
+    maps = [] if output == "--inplace" else [output_map.name]
+    assert sorted(path.name for path in out.iterdir()) == sorted(["mges_binned.fa", *maps])
+    assert sorted(synthetic.read_fasta(out / "mges_binned.fa")) == sorted(summary.BinName)
     assert not (tmp_path / "tmp").exists()
     (log,) = tmp_path.glob("metator_mge_*.log")
     logged = log.read_text()
-    assert f"INFO :: {written} is written: the contact map, with the round mge of its clustering rounds." in logged
+    ended = rf"INFO :: Contact map with the MGE clusters written after 0h 0m [0-9]+s: {re.escape(str(written))}\n"
+    assert re.search(ended, logged)
     assert ("Removing" in logged) == output.startswith("-F")
 
 
@@ -556,10 +565,10 @@ def test_mge_rerun_replaces_its_round(mge_run, tmp_path, run_cli):
     held = _binning_rounds(metacooler.MetaCooler(str(metacool)))
     before = _outside_clusters(metacool)
     first = _expected_summary(metacool, args)
-    run_cli("mge", metacool, *args)
+    run_cli("mge", metacool, *args, "--inplace")
     _check_mge_round(metacooler.MetaCooler(str(metacool)), first)
     second = mtm.mge_binning(str(metacool), mio.import_mges_contigs(args[3]), threshold_bin=100)[0]
-    run_cli("mge", metacool, *args, "-s", "100", "-o", tmp_path / "again")
+    run_cli("mge", metacool, *args, "-s", "100", "-o", tmp_path / "again", "--inplace")
     mc = metacooler.MetaCooler(str(metacool))
     assert [entry["name"] for entry in mc.cluster_rounds] == ["overlapping", "final", "mge"]
     assert mc.cluster_rounds[-1]["parameters"]["threshold_bin"] == 100
@@ -577,7 +586,7 @@ def test_mge_random_is_a_round_of_its_own(mge_run, tmp_path, monkeypatch, run_cl
     import metacooler
 
     metacool, args = mge_run
-    run_cli("mge", metacool, *args)
+    run_cli("mge", metacool, *args, "--inplace")
     real = metacooler.MetaCooler(str(metacool))
     rounds, entry = _round(real), real.metadata["metator"]["mge"]
     fasta = (tmp_path / "out" / "mges_binned.fa").read_bytes()
@@ -585,7 +594,7 @@ def test_mge_random_is_a_round_of_its_own(mge_run, tmp_path, monkeypatch, run_cl
     for _ in range(2):
         monkeypatch.setattr("numpy.random.permutation", lambda ids: np.random.RandomState(7).permutation(ids))
         np.random.seed(7)
-        run_cli("mge", metacool, *args, "--random")
+        run_cli("mge", metacool, *args, "--random", "--inplace")
     mc = metacooler.MetaCooler(str(metacool))
     assert [entry["name"] for entry in mc.cluster_rounds] == ["overlapping", "final", "mge", "mge_random"]
     pd.testing.assert_frame_equal(_round(mc), rounds)
@@ -692,16 +701,17 @@ HOW = (
 
 # What mge refuses of its map, before anything is written, the reason logged
 # as an error in the log file of the run: what partition MAP refuses of the
-# map that it updates (see tests/test_cli.py), its inputs as --output-map
-# included, even with -F; and a map that it cannot cluster the MGE contigs of
-# (see metator.mge.check_mge_map): without the contact statistics of its
-# pairs at 1001 bp or the network of metator network, or without any of the
-# MGE contigs.
+# map that it writes (see tests/test_cli.py), its inputs as the map of its
+# output directory included, even with -F; and a map that it cannot cluster
+# the MGE contigs of (see metator.mge.check_mge_map): without the contact
+# statistics of its pairs at 1001 bp or the network of metator network, or
+# without any of the MGE contigs.
 MGE_MAP_ERRORS = {
     **{
-        f"{what} as --output-map": (
-            ["{map}", "--output-map", f"{{{name}}}", "-F"],
-            f"--output-map {{{name}}} is {{{name}}}, an input of the run: write the map elsewhere.",
+        f"{what} as the map of the output directory": (
+            ["{map}", "-F"],
+            f"{{out_map}}, where the run writes its map, is {{{name}}}, an input of the run: give the run another "
+            "output directory with -o.",
         )
         for what, name in {"the assembly": "assembly", "the MGE contigs": "mges"}.items()
     },
@@ -717,23 +727,23 @@ MGE_MAP_ERRORS = {
         "Cannot read the contact map {colon_map}: metacooler reads a path that holds :: as file::group. Rename the map "
         "without ::.",
     ),
-    "an entry without --output-map": (
-        ["{entry}"],
-        "{entry} is an entry of a .mmetacool collection, which a run does not update in place: write the map of its "
-        "clusters to another file with --output-map.",
+    "an entry with --inplace": (
+        ["{entry}", "--inplace"],
+        "{entry} is an entry of a .mmetacool collection, which a run does not update in place: leave out --inplace, "
+        "and the run writes its map, a map of its own, in its output directory.",
     ),
-    "a directory as --output-map": (
-        ["{map}", "--output-map", "{directory}"],
-        "{directory} is a directory: --output-map takes the path of a .metacool file.",
+    "a directory as the map of the output directory": (
+        ["{map}"],
+        "{out_map} is a directory, where the run writes its map: move it away, or give the run another output directory with -o.",
     ),
-    "an existing --output-map": (
-        ["{map}", "--output-map", "{copy}"],
-        "{copy} exists: give -F to replace it with the map of this run, or another --output-map.",
+    "an existing map of the output directory": (
+        ["{map}"],
+        "{out_map} exists: give -F to replace it with the map of this run, or another output directory with -o.",
     ),
     "a lock held by another run": (
-        ["{map}"],
+        ["{map}", "--inplace"],
         # metacooler's reason (see tests.locks.refusal).
-        "{refusal} Or write this run's map elsewhere with --output-map.",
+        "{refusal} Or write this run's map elsewhere: leave out --inplace.",
     ),
     "a map without contact statistics": (
         ["{map}"],
@@ -755,8 +765,8 @@ MGE_MAP_ERRORS = {
     "a map without the network": (
         ["{map}"],
         "{map} lacks the Hit column(s) of its contigs table that metator network stores: run metator network on the "
-        "map first (or pipeline), or give the map that such a run wrote (the --output-map of network, pipeline or "
-        "validation).",
+        "map first (or pipeline), or give the map that such a run wrote in its output directory (network, pipeline "
+        "or validation).",
     ),
     "none of the MGE contigs in the map": (
         ["{map}"],
@@ -768,13 +778,14 @@ MGE_MAP_ERRORS = {
 @pytest.mark.parametrize("case", list(MGE_MAP_ERRORS))
 def test_mge_refuses_a_map(case, mge_run, metagenome_files, tmp_path, run_cli):
     """mge refuses, before anything is written (no MGE fasta, no map): what
-    partition MAP refuses of the map that it updates (a map that is not there,
-    no map, one that metacooler cannot open, an entry without --output-map, an
-    --output-map that is a directory, an input of the run, even with -F, or
-    that exists, without -F, a map that another run holds); and a map that it
-    cannot cluster the MGE contigs of: without the contact statistics of its
-    pairs (or of its pixels, or at another distance than 1001 bp), without the
-    network of metator network, or without any of the MGE contigs."""
+    partition MAP refuses of the map that it writes (a map that is not there,
+    no map, one that metacooler cannot open, an entry with --inplace, a map of
+    the output directory that is a directory, an input of the run, even with
+    -F, or that exists, without -F, a map that another run holds); and a map
+    that it cannot cluster the MGE contigs of: without the contact statistics
+    of its pairs (or of its pixels, or at another distance than 1001 bp),
+    without the network of metator network, or without any of the MGE
+    contigs."""
     from contextlib import ExitStack
 
     import metacooler
@@ -791,7 +802,8 @@ def test_mge_refuses_a_map(case, mge_run, metagenome_files, tmp_path, run_cli):
         "pairs": metagenome_files["pairs"],
         "collection": tmp_path / "maps.mmetacool",
         "colon_map": tmp_path / "run::1.metacool",
-        "copy": tmp_path / "copy.metacool",
+        # The map that the run writes in its output directory.
+        "out_map": tmp_path / "out" / metacool.name,
         "assembly": args[1],
         "mges": args[3],
     }
@@ -799,7 +811,16 @@ def test_mge_refuses_a_map(case, mge_run, metagenome_files, tmp_path, run_cli):
     metacooler.create_mmetacool(names["collection"], {"lib1": metacool})
     names["entry"] = f"{names['collection']}::entries/lib1"
     shutil.copyfile(metacool, names["colon_map"])
-    names["copy"].write_text("an older map")
+    # What the case puts in the output directory, as the map of the run.
+    out_map = names["out_map"]
+    if case.startswith(("the assembly", "the MGE contigs")):
+        out_map.parent.mkdir()
+        out_map.symlink_to(Path(names["assembly" if case.startswith("the assembly") else "mges"]).resolve())
+    elif case == "a directory as the map of the output directory":
+        out_map.mkdir(parents=True)
+    elif case == "an existing map of the output directory":
+        out_map.parent.mkdir()
+        out_map.write_text("an older map")
     _cannot_cluster(metacool, case)
     if case == "none of the MGE contigs in the map":
         mges = tmp_path / "absent.txt"
@@ -818,8 +839,11 @@ def test_mge_refuses_a_map(case, mge_run, metagenome_files, tmp_path, run_cli):
         with pytest.raises(mtmc.MetacoolError, match=pattern):
             run_cli("mge", *[option.format(**names) for option in options], *args)
         assert (case == "a lock held by another run") == lock_file(metacool).exists()
-    assert not (tmp_path / "out").exists()
-    assert metacool.read_bytes() == before and names["copy"].read_text() == "an older map"
+    # Nothing in the output directory but what the case put there.
+    assert [path.name for path in (tmp_path / "out").glob("*")] == ([out_map.name] if os.path.lexists(out_map) else [])
+    if case == "an existing map of the output directory":
+        assert out_map.read_text() == "an older map"
+    assert metacool.read_bytes() == before
     assert {name: Path(names[name]).read_bytes() for name in ["assembly", "mges"]} == inputs
     assert not lock_file(metacool).exists()
     (log,) = tmp_path.glob("metator_mge_*.log")
@@ -850,11 +874,11 @@ def test_mge_on_a_map_that_cannot_be_written(error, mge_run, tmp_path, monkeypat
     )
     if isinstance(error, ValueError):
         with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
-            run_cli("mge", metacool, *args)
+            run_cli("mge", metacool, *args, "--inplace")
         (log,) = tmp_path.glob("metator_mge_*.log")
         assert f"ERROR :: {message}\n" in log.read_text()
     else:
-        assert "Aborted" in run_cli("mge", metacool, *args, exit_code=1).output
+        assert "Aborted" in run_cli("mge", metacool, *args, "--inplace", exit_code=1).output
     assert metacool.read_bytes() == before
     assert sorted(path.name for path in (tmp_path / "maps").iterdir()) == [metacool.name]
     assert (tmp_path / "out" / "mges_binned.fa").exists()
@@ -881,7 +905,9 @@ def _final_clusters(metagenome):
 
 @pytest.mark.parametrize("with_mge", [True, False], ids=["with the round mge", "without"])
 @pytest.mark.parametrize("writer", ["rounds", "clusters"])
-def test_new_clusters_drop_the_round_mge_with_a_warning(writer, with_mge, metagenome, mge_run, tmp_path, run_cli, logged):
+def test_new_clusters_drop_the_round_mge_with_a_warning(
+    writer, with_mge, metagenome, mge_run, tmp_path, run_cli, logged, debug_log
+):
     """The map of the clusters of a new binning run on the map does not keep the
     round mge, which mge made from the map of the clusters that it replaces:
     once the map is written, a warning says so, and to run mge again on the new
@@ -893,7 +919,7 @@ def test_new_clusters_drop_the_round_mge_with_a_warning(writer, with_mge, metage
 
     metacool, args = mge_run
     if with_mge:
-        run_cli("mge", metacool, *args)
+        run_cli("mge", metacool, *args, "--inplace")
     if writer == "rounds":
         outfile = metacool
         mtmc.write_map(str(metacool), str(outfile), rounds=mtcl.Rounds().tables(), round_names=[mtcl.OVERLAPPING], force=True)

@@ -290,8 +290,7 @@ def test_give_results_info(caplog):
     }
     with caplog.at_level("INFO", logger="metator_logger"):
         mtv.give_results_info(summary)
-    assert "5 clusters have been kept after the recursive iterations." in caplog.text
-    assert "Total size of the extracted clusters: 5001011" in caplog.text
+    assert "5 clusters kept after the recursive steps, 5001011 bp in all:" in caplog.text
     for line in [
         "HQ MAGs: 1\tTotal Size: 3000000",
         "MQ MAGs: 1\tTotal Size: 2000000",

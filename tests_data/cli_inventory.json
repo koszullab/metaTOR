@@ -86,10 +86,10 @@
      },
      {
       "short": null,
-      "long": "--output-map",
-      "takes_value": true,
-      "metavar": "FILE",
-      "default": null,
+      "long": "--inplace",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
       "required": false
      },
      {
@@ -153,10 +153,10 @@
      },
      {
       "short": null,
-      "long": "--output-map",
-      "takes_value": true,
-      "metavar": "FILE",
-      "default": null,
+      "long": "--inplace",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
       "required": false
      },
      {
@@ -260,10 +260,10 @@
      },
      {
       "short": null,
-      "long": "--output-map",
-      "takes_value": true,
-      "metavar": "FILE",
-      "default": null,
+      "long": "--inplace",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
       "required": false
      },
      {
@@ -399,10 +399,10 @@
      },
      {
       "short": null,
-      "long": "--output-map",
-      "takes_value": true,
-      "metavar": "FILE",
-      "default": null,
+      "long": "--inplace",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
       "required": false
      },
      {
@@ -522,10 +522,10 @@
      },
      {
       "short": null,
-      "long": "--output-map",
-      "takes_value": true,
-      "metavar": "FILE",
-      "default": null,
+      "long": "--inplace",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
       "required": false
      },
      {

@@ -8,13 +8,14 @@ several libraries, which `metacooler merge` sums: see
 [From the reads to the map](#from-the-reads-to-the-map). `metator network`
 and `metator pipeline` read the network of the contigs from it (see
 [Starting from a contact map](#starting-from-a-contact-map)). At its end,
-`pipeline` writes the contact map of all the contigs, grouped by cluster, over
-it, with its final clusters, their summary, every clustering round and the
-network of the contigs, with `metacooler reassign` from the map as the run
-read it (`--output-map` writes it to another file, and leaves the map as it
-was). It is written through metacooler, anew from the map, so a map updated
-in place holds at most the space that the edits of its last run left behind:
-it does not grow with each run. A `.metacool` file is the contact map format of
+`pipeline` writes the contact map of all the contigs, grouped by cluster, with
+its final clusters, their summary, every clustering round and the network of
+the contigs, with `metacooler reassign` from the map as the run read it: to
+its output directory, under the name of the map, which it leaves as it was
+(`--inplace` writes it over the map instead). It is written through
+metacooler, anew from the map, so a map updated in place holds at most the
+space that the edits of its last run left behind: it does not grow with each
+run. A `.metacool` file is the contact map format of
 [metacooler](https://github.com/js2264/metacooler): a
 [cooler](https://github.com/open2c/cooler) whose chromosomes are the contigs,
 grouped by genome. `cooler` and the tools built on it read it as any `.cool`
@@ -76,22 +77,23 @@ file, and metacooler adds the genomes.
 import cooler
 import metacooler
 
-clr = cooler.Cooler("sample.metacool")
-mc = metacooler.MetaCooler("sample.metacool")
+# The map of the clusters, which metator pipeline sample.metacool -o binning wrote
+clr = cooler.Cooler("binning/sample.metacool")
+mc = metacooler.MetaCooler("binning/sample.metacool")
 mc.genomes  # one row per cluster, and __unbinned__, with the columns of cluster_summary.txt
 mc.contigs  # one row per contig, with its GC content and Hi-C hits
 clr.matrix(balance="metator_empirical_hit")[:]  # the contacts, normalized as the network
 ```
 
 ```bash
-metacooler info sample.metacool
-metacooler dump -t genomes -H sample.metacool
+metacooler info binning/sample.metacool
+metacooler dump -t genomes -H binning/sample.metacool
 # The tables of the run (contig_data_final.txt, cluster_summary.txt,
 # binning.txt, clusters.txt, cluster_members.txt and network.txt)
-metator dump sample.metacool -o tables
+metator dump binning/sample.metacool -o tables
 # The network of the contigs, normalized as metaTOR's (without the contacts
 # within each contig, which metacooler writes too and are no edge)
-metacooler network sample.metacool --level contig --balance metator_empirical_hit --header \
+metacooler network binning/sample.metacool --level contig --balance metator_empirical_hit --header \
     | awk -F '\t' '$1 != $2 && $3 != 0'
 ```
 
@@ -194,9 +196,9 @@ refused before any work.
     give (`RS`, `abundance`, `theoritical_hit`) is refused before the run
     replaces anything: before any work when the map has no such column, once
     the assembly is read when the column lacks contigs.
-At its end, `pipeline` updates the input map in place with the map of its
-clusters, which `metacooler reassign` writes anew from the input map
-(`--output-map FILE` writes it to FILE instead):
+At its end, `pipeline` writes the map of its clusters to its output directory,
+under the name of the input map, which `metacooler reassign` writes anew from
+the input map (`--inplace` updates the input map in place with it instead):
 
 - the bins and contacts of the input map, at its bin size; one genome per
   final cluster and `__unbinned__` for the other contigs, grouped genome by
@@ -219,57 +221,62 @@ clusters, which `metacooler reassign` writes anew from the input map
   attribute of the file or of its tables) is left out, with a warning that
   names it.
 
-The input map is replaced only once the map of the clusters is written and
-validated in full. metaTOR writes it in an edit session of metacooler
-(`metacooler.staged_edit`): every edit of the step goes into one copy of the
-map, staged in a private directory next to it (`.<map>.<uuid>.<n>.d/`), which
-metacooler validates in full, then renames over the map. The copy starts fresh,
-so the map holds at most the space that the edits of the last run left behind
-(HDF5 does not reclaim the space of what an edit replaces): a map updated run
-after run does not grow.
+The map of the clusters is renamed into place (over the input map, in place)
+only once it is written and validated in full. metaTOR writes it in an edit
+session of metacooler (`metacooler.staged_edit`): every edit of the step goes
+into one copy of the input map, staged in a private directory next to the map
+that the run writes (`.<map>.<uuid>.<n>.d/`), which metacooler validates in
+full, then renames onto that map. The copy starts fresh, so the map holds at
+most the space that the edits of the last run left behind (HDF5 does not
+reclaim the space of what an edit replaces): a map updated run after run does
+not grow.
 When it cannot be written, the run stops with the reason, and the input map is
 left as it was, as it is when the run stops for any other reason (Ctrl-C
-included). A map given through a symbolic link is updated where the link
-points: the link keeps pointing at the new map, and the lock and the staged
-copy are next to the file it points to. The map keeps its mode, its owner and
-group, and its extended attributes (POSIX ACLs included), where the run may
-set them: a warning names those it cannot keep (the owner of a map of another
-user, written through its group, for example). The directory of the map must
-be writable, with room, beside the map, for the copy of the edit session and
-for the new map that `metacooler reassign` writes from the input map, plus
-cooler's temporary files, and a map without write permission is refused
-before any work.
-`--output-map FILE` leaves the input map as it was: a run from an entry of a
-`.mmetacool` collection needs it, as a run does not update a collection in
-place, and a FILE that exists is replaced only with `-F`. FILE is a map of its
-own unless it names the file of the input map, which the run then updates in
-place: a symbolic link at FILE is replaced, not its target (even one that
-points to the input map), and a hard link of the input map (the same file
-under another name) is refused before any work. A run that updates a
-map in place warns, before any work, of what it replaces there that an earlier
-run left (or another binner): the clusters of the map (`pipeline MAP`,
-`validation MAP`) and its clustering rounds (the rounds of the binning for
-`pipeline MAP` and `partition MAP`, those of the validation for `validation
-MAP`, the round `mge` for `mge MAP`, `mge_random` for `mge MAP --random`).
-The map keeps no record of them:
-`--output-map` writes the map of the run to another file instead.
+included). A map updated in place through a symbolic link is updated where
+the link points: the link keeps pointing at the new map, and the lock and the
+staged copy are next to the file it points to. A map updated in place keeps
+its mode, its owner and group, and its extended attributes (POSIX ACLs
+included), where the run may set them: a warning names those it cannot keep
+(the owner of a map of another user, written through its group, for
+example). The directory of the map that the run writes must be writable, with
+room for the copy of the edit session and for the new map that `metacooler
+reassign` writes from the input map, plus cooler's temporary files; a map
+updated in place without write permission is refused before any work.
+The map of the output directory is a map of its own, which leaves the input
+map as it was: from an entry of a `.mmetacool` collection, a map named after
+the entry (`NAME.metacool`), as a run does not update a collection in place
+(`--inplace` is refused for it). One that an earlier run left there is
+replaced only with `-F`; a symbolic link there is replaced, not its target
+(even one that points to the input map), and a hard link of the input map
+(the same file under another name) is refused before any work. When the
+output directory holds the input map itself, the run updates it in place: the
+steps of a run, one by one, in one output directory. A run that updates a map
+in place (as the map of its output directory, or with `--inplace`) warns,
+before any work, of what it replaces there that an earlier run left (or
+another binner): the clusters of the map (`pipeline MAP`, `validation MAP`)
+and its clustering rounds (the rounds of the binning for `pipeline MAP` and
+`partition MAP`, those of the validation for `validation MAP`, the round
+`mge` for `mge MAP`, `mge_random` for `mge MAP --random`). The map keeps no
+record of them: a run that writes its map to another output directory, without
+`--inplace`, leaves them in the input map.
 
 A run holds metacooler's lock of the map it writes (`<map>.lock`, next to it)
 from its checks to its end, and reads the map under it: a second run, or a
 metacooler command that writes the map in place (`annotate --inplace`,
 `reassign --inplace`, `normalize`, the `metadata` edits), stops before any
 work, naming the process that holds it, and the files to delete if it is
-gone. With `--output-map`, the map it writes is FILE, its own name locked: runs
-from one map, each with its own `--output-map`, run side by side, and the
-input map is not locked. A map that changed since the run read it (another run
+gone. A run that writes the map of its output directory locks that map, its
+own name: runs from one map, each in its own output directory, run side by
+side, and the input map is not locked. A map that changed since the run read it (another run
 replaced it, or a program that writes it without metacooler's lock, `cooler
 balance` or an h5py script, wrote it) is refused when the run writes its map,
 rather than mixed with the clusters of the run, read from the map as it was:
 the run stops with the reason, its other outputs kept, and the map keeps that
 change; run it again. A command that reads the map to check it (its contigs,
 its columns) stops so too when the map is replaced as it reads it. A command that reads a map
-(`network MAP`, the input map of a run with `--output-map`) stops with an
-error when another run replaces it, or writes it, as it reads it. metacooler
+(`network MAP`, the input map of a run that writes its map to its output
+directory) stops with an error when another run replaces it, or writes it, as
+it reads it. metacooler
 reads a map one chunk of pixels at a time, and a map updated in place has its
 bins in another order: such a read would mix the two maps. metacooler checks
 the file of the map before and after each read. Run it again once the other
@@ -293,8 +300,9 @@ The map itself is left as it was.
 
 The three steps of `pipeline MAP` are commands of their own, which take the
 map as their first argument too: the map is the network that they share.
-Run one after the other on one map, they read and update it as
-`pipeline MAP` does, and write the map that it writes from the same clusters,
+Run one after the other in one output directory, the first writes the map
+there, and the next ones read it and update it in place, as `pipeline MAP`
+does, and write the map that it writes from the same clusters,
 but for the date the map was written and the command lines and parameters
 that it stores (those of `network`, `partition` and `validation`). Louvain draws
 random numbers: two runs give the same clusters only from the same random
@@ -310,15 +318,16 @@ partition made on another network than the one stored in the map:
 `partition MAP` partitions the new network:
 
 ```bash
-# 1. The network, stored in the map.
+# 1. The network, stored in binning/sample.metacool; sample.metacool is left
+#    as it was.
 metator network sample.metacool -a assembly.fa -d depth.txt -e DpnII -o binning
 
 # 2. The partition of the network of the map: the map stores its core and
-#    overlapping clusters.
-metator partition sample.metacool -o binning
+#    overlapping clusters, in place.
+metator partition binning/sample.metacool -o binning
 
 # 3. The validation: the final clusters. The map becomes the map of the clusters.
-metator validation sample.metacool -a assembly.fa -o binning
+metator validation binning/sample.metacool -a assembly.fa -o binning
 ```
 
 - `network MAP` stores the network of the contigs in the map: the
@@ -348,20 +357,20 @@ metator validation sample.metacool -a assembly.fa -o binning
   numbers them in that order.
 
 `network MAP`, `partition MAP` and `validation MAP` write the map as
-`pipeline MAP` does: in place, through a map written next to it and validated
-in full, or to `--output-map FILE`, which leaves the map as it was (give the
-next step that FILE; a run from an entry of a `.mmetacool` collection needs
-it). They lock
+`pipeline MAP` does: to their output directory, through a map written next to
+it and validated in full, which leaves `MAP` as it was (give the next step
+that map), or in place, when `MAP` is the map of their output directory or
+with `--inplace`. They lock
 the map while they run, and refuse what `pipeline MAP` refuses, before any
 work and before `-F` replaces the directories of clusters of an earlier run:
 a map that is not there or that metacooler cannot open, a lock that another
-run holds, an entry of a collection without `--output-map`, and a FILE that
-exists, without `-F`. `partition` and `validation` refuse a map without the
+run holds, an entry of a collection with `--inplace`, and a map of an earlier
+run in the output directory, without `-F`. `partition` and `validation` refuse a map without the
 network that `metator network` stores (or one whose weights or columns an
 edit dropped since), and `validation` a map without the partition that
 `metator partition` stores (the rounds `core` and `overlapping`, their
-clusters named as `partition` names them); they refuse an `--output-map`
-that is one of their inputs, and an invalid `--prefix`. Both need the map:
+clusters named as `partition` names them); they refuse a map of the output
+directory that is one of their inputs, and an invalid `--prefix`. Both need the map:
 metaTOR 2.0 removed their runs from the tables of the network and of the
 partition (`-n`, `-c`, `-f`).
 
@@ -417,8 +426,8 @@ rounds, after the others, and the run in the `mge` entry of its metadata
 (`mge_random` for both with `--random`); the genomes and contigs tables are
 left as they were. A run that replaces the clusters of the map drops the
 rounds `mge` and `mge_random`, and their entries, with a warning: run `mge`
-again on its map. The map is written as `partition MAP` writes it: in place,
-or to `--output-map FILE` (see
+again on its map. The map is written as `partition MAP` writes it: to the
+output directory, or in place (see
 [Clustering mobile genetic elements](mge.md#in-the-contact-map-of-the-run)).
 
 ## From the reads to the map
@@ -438,7 +447,7 @@ hicstuff pipeline -g assembly.fa -e DpnII -M metacool -o hicstuff_L2 -P L2 \
 # 2. One map of both libraries, their contacts summed.
 metacooler merge hicstuff_L1/L1.metacool hicstuff_L2/L2.metacool -o sample.metacool
 
-# 3. Cluster the contigs: sample.metacool becomes the map of the clusters, in place.
+# 3. Cluster the contigs: binning/sample.metacool, the map of the clusters.
 metator pipeline sample.metacool -a assembly.fa -e DpnII -o binning
 ```
 

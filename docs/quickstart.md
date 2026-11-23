@@ -63,9 +63,10 @@ metator pipeline sample.metacool --assembly assembly.fa --enzyme DpnII \
 The run reads the network of the contigs from the map. `--enzyme` and
 `--depth` add the restriction sites and the shotgun coverage of each contig to
 its data; the default normalisation needs neither. At its end, the run writes
-the contact map of the clusters over the map: `--output-map` writes it to
-another file, and leaves the map as it was. `--no-clean-up` keeps its
-temporary directory, in `tmp/`, with the tables of the run.
+the contact map of the clusters to its output directory,
+`binning/sample.metacool`, and leaves `sample.metacool` as it was
+(`--inplace` would update it in place). `--no-clean-up` keeps its temporary
+directory, in `tmp/`, with the tables of the run.
 
 !!! note "`--size 20000` is for this test library only"
 
@@ -74,29 +75,44 @@ temporary directory, in `tmp/`, with the tables of the run.
     large, and at the default size the run stops before validation, with no
     cluster to check. On a real sample, leave `--size` out.
 
-The run logs each step (excerpt):
+The log starts with the version, the command line and the value of each
+option, then follows the three steps of the run, and ends with how long it
+took (excerpt):
 
 ```console
-INFO :: Information of sample.metacool:
-INFO :: 41563 contacts in the library.
-INFO :: 18632 contacts inter-contigs in the library.
-INFO :: 3D ratio : 0.44828332892235884
-INFO :: Detect core clusters:
-INFO :: 429 core clusters were found.
-INFO :: Detect overlapping clusters:
-INFO :: 230 overlapping clusters were found.
-INFO :: 24 clusters have been extracted
-INFO :: Lauch miComplete quality check.
-INFO :: No more contaminated cluster has been found after 1 steps.
-INFO :: 24 clusters have been kept after the recursive iterations.
+INFO :: ## MetaTOR: v1.4.0 log file
+INFO :: ## date: 2026-11-23 15:23:35
+INFO :: ## cmd: metator pipeline sample.metacool --assembly assembly.fa --enzyme DpnII --depth depth.txt --size 20000 --threads 4 --outdir binning --no-clean-up
+INFO :: ## map: sample.metacool
+INFO :: ## assembly: assembly.fa
+...
+INFO :: ## inplace: False
+INFO :: ---
+INFO :: The run writes its map to binning/sample.metacool, and leaves sample.metacool as it is (--inplace updates it).
+INFO :: [1/3] network: the contigs of sample.metacool and their contacts
+INFO :: 41563 contacts in sample.metacool, 18632 of them between contigs (3D ratio: 0.4483).
+INFO :: [2/3] partition: the clusters of the network
+INFO :: 100 iterations of louvain on the network of 1058 contigs and 13415 edges.
+INFO :: louvain: 100/100 iterations, done in 0h 0m 1s.
+INFO :: 420 core clusters, merged into 229 overlapping clusters.
+INFO :: [3/3] validation: miComplete checks the clusters, and the contaminated ones are partitioned again
+INFO :: 26 of the 229 overlapping clusters reach 20000 bp, 0.764 Mb in all: miComplete checks them.
+INFO :: miComplete checked the 26 clusters in 0h 0m 3s, and found 0 of them contaminated, which the recursive steps partition again.
+INFO :: Recursive step 1/9: no cluster is contaminated, so no recursive step is needed.
+INFO :: 26 clusters kept after the recursive steps, 764377 bp in all:
 INFO :: HQ MAGs: 0	Total Size: 0
 INFO :: MQ MAGs: 0	Total Size: 0
 INFO :: LQ MAGs: 0	Total Size: 0
 INFO :: Contaminated potential MAGs: 0	Total Size: 0
-INFO :: Other clusters: 24	Total Size: 679917
-INFO :: Writing sample.metacool from the contact map sample.metacool: 1219 contigs, 301 of them in 24 clusters.
-INFO :: sample.metacool is written: the contact map of the clusters.
+INFO :: Other clusters: 26	Total Size: 764377
+INFO :: Writing binning/sample.metacool from sample.metacool: 1219 contigs, 347 of them in 26 clusters.
+INFO :: The temporary directory of the run, ./tmp/7891e04f, and its files are kept (-N).
+INFO :: Final contact map written after 0h 0m 5s: binning/sample.metacool
 ```
+
+On a large sample the partition takes minutes: the log counts its iterations
+as they go, and each recursive step of the validation (`Recursive step 2/9:
+...`), and says when no further step is needed.
 
 The Louvain algorithm is randomised: another run finds about as many clusters,
 not always the same.
@@ -106,23 +122,26 @@ not always the same.
 ```console
 $ ls binning
 final_clusters
-metator_pipeline_20261121023231.log
+metator_pipeline_20261123152335.log
+sample.metacool
 ```
 
-The run stored everything else in the map: its network, its clusters and
-their summary. Its tables are in its temporary directory, which
-`--no-clean-up` kept (`ls tmp/*/`; the log names it); without it, the run
-removes them, and `metator dump` writes them from the map:
+The run stored everything else in the map of the clusters,
+`binning/sample.metacool`: its network, its clusters and their summary. Its
+tables are in its temporary directory, which `--no-clean-up` kept
+(`ls tmp/*/`; the log names it); without it, the run removes them, and
+`metator dump` writes them from the map:
 
 ```console
-$ metator dump sample.metacool -o binning/tables
+$ metator dump binning/sample.metacool -o binning/tables
 $ ls binning/tables
 binning.txt  cluster_members.txt  cluster_summary.txt  clusters.txt
-contig_data_final.txt  metator_dump_20261121023301.log  network.txt
+contig_data_final.txt  metator_dump_20261123152345.log  network.txt
 ```
 
 | File | What it holds |
 |---|---|
+| `sample.metacool` | The contact map of the clusters (see below) |
 | `final_clusters/` | One FASTA file per final cluster: the result |
 | `metator_pipeline_<date>.log` | The log of the run |
 | `cluster_summary.txt` (in `tmp/*/`) | One row per final cluster: size, GC content, completeness, redundancy, N50, Hi-C abundance… |
@@ -130,9 +149,10 @@ contig_data_final.txt  metator_dump_20261121023301.log  network.txt
 | `contig_data_final.txt` (in `tmp/*/`) | One row per contig: its size, GC content, hits, and the clusters it went through |
 | `binning.txt` (in `tmp/*/`) | The contigs of the final clusters and their cluster, as anvi'o imports a binning |
 
-`sample.metacool`, next to them, is now the contact map of all the contigs,
-grouped by cluster, with the network of the run: what metaTOR measured on
-each contig, and the weights of the normalization of the network. [Running the pipeline](guides/pipeline.md#outputs) lists
+`binning/sample.metacool` is the contact map of all the contigs, grouped by
+cluster, with the network of the run: what metaTOR measured on each contig,
+and the weights of the normalization of the network. `sample.metacool`, which
+the run started from, is left as it was. [Running the pipeline](guides/pipeline.md#outputs) lists
 every output, and [File formats](formats.md) describes the tables.
 
 ## Step 4: read the cluster summary
@@ -153,14 +173,14 @@ counts the high-, medium- and low-quality MAGs.
 
 ## Step 5: open the contact map
 
-`sample.metacool` is a [metacooler](https://github.com/js2264/metacooler)
+`binning/sample.metacool` is a [metacooler](https://github.com/js2264/metacooler)
 file: a [cooler](https://github.com/open2c/cooler) whose chromosomes are the
 contigs, grouped into one genome per final cluster. metacooler reads its
 genomes:
 
 ```bash
-metacooler info sample.metacool
-metacooler dump -t genomes -H sample.metacool
+metacooler info binning/sample.metacool
+metacooler dump -t genomes -H binning/sample.metacool
 ```
 
 The genomes table holds the columns of `cluster_summary.txt`, and the contigs
@@ -181,7 +201,7 @@ clusters = pd.read_csv(f"{tables}/cluster_summary.txt", sep="\t", index_col=0)
 contigs = pd.read_csv(f"{tables}/contig_data_final.txt", sep="\t", index_col=0, dtype={"Name": str})
 contigs = contigs.set_index("Name", drop=False)
 
-mc = metacooler.MetaCooler("sample.metacool")
+mc = metacooler.MetaCooler("binning/sample.metacool")
 mc.genomes   # one row per cluster, and __unbinned__, with the columns of cluster_summary.txt
 mc.contigs   # one row per contig: GC content, hits, coverage, restriction sites
 ```

@@ -5,6 +5,7 @@
 import json
 import os
 import random
+import re
 import shlex
 import shutil
 import subprocess
@@ -52,8 +53,8 @@ def _kept(out):
     end of its log (two runs may share a -T)."""
     logs = sorted(Path(out).glob("metator_*.log"), key=os.path.getmtime)
     for log in reversed(logs):
-        line = next(line for line in log.read_text().splitlines() if line.startswith("## Command used: "))
-        command = shlex.split(line[len("## Command used: ") :])
+        line = next(line for line in log.read_text().splitlines() if line.startswith("## cmd: "))
+        command = shlex.split(line[len("## cmd: ") :])
         tmp = Path(command[command.index("-T") + 1] if "-T" in command else "./tmp")
         if not tmp.is_absolute():
             tmp = Path(out).resolve().parent / tmp
@@ -210,7 +211,8 @@ def _map_with_merged_partition(metagenome, metagenome_network, path, merged):
 def _network_map(metagenome_network, path):
     """A copy of the map of the mock community in which metator network stored its
     network, at path: validation MAP and partition MAP read it, and write the
-    map of their clusters over it."""
+    map of their clusters to their output directory (over it, with
+    --inplace)."""
     return Path(shutil.copyfile(metagenome_network["map"], path))
 
 
@@ -267,8 +269,9 @@ def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenom
     # The bins of the split are recursive bins, of step 1; the others are not.
     assert list(summary.recursive) == list(summary.step > 0)
     assert summary.recursive.any() and not summary.recursive.all()
-    # The map alone writes the summary again, byte for byte.
-    assert _summary_from_the_map(metacool) == (_kept(out) / "cluster_summary.txt").read_text()
+    # The map alone writes the summary again, byte for byte: the map of the
+    # clusters, in the output directory.
+    assert _summary_from_the_map(out / metacool.name) == (_kept(out) / "cluster_summary.txt").read_text()
     # metacooler wrote the FASTA files of the clusters of the recursive step,
     # and indexed nothing beside the assembly.
     assert not os.path.exists(f"{metagenome_inputs['assembly']}.fxi")
@@ -382,7 +385,8 @@ def test_validation_again_on_the_map_of_its_clusters(
         ], names
 
     before, names = named(metacool)
-    common = ["-a", metagenome_inputs["assembly"], "-T", tmp_path / "tmp", "-s", "50000", "-i", "10", "-t", "1"]
+    # In place: the second run validates the map of the clusters of the first.
+    common = ["-a", metagenome_inputs["assembly"], "-T", tmp_path / "tmp", "-s", "50000", "-i", "10", "-t", "1", "--inplace"]
     finals = {}
     for run in ["first", "second"]:
         random.seed(0)
@@ -422,6 +426,9 @@ def test_contigs_named_by_numbers(tmp_path, monkeypatch, run_cli):
     common = ["-o", out, "-T", tmp_path / "tmp"]
     random.seed(0)
     run_cli("network", metacool, "-a", files["assembly"], "-e", "DpnII", *common)
+    # The map that network wrote in the output directory, which the next
+    # steps update in place.
+    metacool = common[1] / metacool.name
     run_cli("partition", metacool, "-i", "10", *common)
     run_cli("validation", metacool, "-a", files["assembly"], "-s", "50000", "-i", "5", *common)
     final = pd.read_csv(_kept(out) / "contig_data_final.txt", sep="\t", dtype={"Name": str}, keep_default_na=False)
@@ -463,6 +470,9 @@ def test_a_contig_named_na(tmp_path, monkeypatch, run_cli):
     common = ["-o", tmp_path / "out", "-T", tmp_path / "tmp"]
     random.seed(0)
     run_cli("network", metacool, "-a", files["assembly"], "-e", "DpnII", *common)
+    # The map that network wrote in the output directory, which the next
+    # steps update in place.
+    metacool = common[1] / metacool.name
     run_cli("partition", metacool, "-i", "10", *common)
     run_cli("validation", metacool, "-a", files["assembly"], "-s", "50000", "-i", "5", *common)
     final = pd.read_csv(_kept(tmp_path / "out") / "contig_data_final.txt", sep="\t", keep_default_na=False)
@@ -496,6 +506,8 @@ def test_validation_without_bin_above_the_size_threshold(metagenome_inputs, meta
     monkeypatch.setattr("metator.validation.micomplete_quality", lambda *args: calls.append(args))
     metacool = _network_map(metagenome_network, tmp_path / "network.metacool")
     run_cli("partition", str(metacool), "-o", str(tmp_path / "out"), "-T", str(tmp_path / "tmp"), "-i", "2")
+    # The map of the output directory, with the partition.
+    metacool = tmp_path / "out" / metacool.name
     mc = metacooler.MetaCooler(str(metacool))
     assert len(mc.clusters[mc.clusters["round"] == "overlapping"]) > 0
     before = metacool.read_bytes()
@@ -568,14 +580,15 @@ def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, tmp_path, 
     bases = (truth.Length * truth.Abundance).groupby(final.set_index("Name").Final_cluster).sum()
     expected = 100 * bases / (truth.Length * truth.Abundance).sum()
     assert summary.SG_abundance.astype(float).to_numpy() == pytest.approx(expected[summary.index].to_numpy(), rel=0.1)
-    # The contact map, updated in place: one bin per contig, one genome per
-    # cluster (the cluster summary columns with it), and every pair a
-    # contact.
-    metacooler.validate(str(metacool))
-    clr = cooler.Cooler(str(metacool))
+    # The contact map of the clusters, in the output directory: one bin per
+    # contig, one genome per cluster (the cluster summary columns with it),
+    # and every pair a contact.
+    written = out / metacool.name
+    metacooler.validate(str(written))
+    clr = cooler.Cooler(str(written))
     assert clr.pixels()[:]["count"].sum() == len(metagenome.pairs)
     assert clr.info["metadata"]["metator"]["validation"]["parameters"]["map"] == str(metacool)
-    mc = metacooler.MetaCooler(str(metacool))
+    mc = metacooler.MetaCooler(str(written))
     assert sorted(mc.contigs.name) == sorted(final.Name)
     assert dict(zip(mc.contigs.name, mc.contigs.genome_id.map(mc.genomes.name), strict=True)) == dict(host_bin)
     assert sorted(mc.genomes.name) == sorted(summary.index)
@@ -591,7 +604,7 @@ def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, tmp_path, 
     # directory (the tables of the validation stay in the temporary
     # directory, kept here as -N keeps it: see _keep_the_tables).
     assert not os.path.exists(f"{metagenome_inputs['assembly']}.fxi")
-    assert sorted(path.name for path in out.iterdir() if not path.name.endswith(".log")) == ["final_clusters"]
+    assert sorted(path.name for path in out.iterdir() if not path.name.endswith(".log")) == [metacool.name, "final_clusters"]
     assert not (out / "contig_data_partition.txt").exists()
 
 
@@ -608,14 +621,16 @@ def test_pipeline_map_is_the_map_of_the_pairs(metagenome, metagenome_inputs, tmp
         maps.append(str(uri))
         return from_pairs(uri, *args, **kwargs)
 
-    written = _contig_map(metagenome_inputs, tmp_path / "inputs" / "contigs.metacool")
+    metacool = _contig_map(metagenome_inputs, tmp_path / "inputs" / "contigs.metacool")
     monkeypatch.setattr(metacooler, "from_pairs", counted_from_pairs)
     out = tmp_path / "out"
-    args = [str(written), "-a", str(metagenome_inputs["assembly"]), "-d", str(metagenome_inputs["depth"]),
+    args = [str(metacool), "-a", str(metagenome_inputs["assembly"]), "-d", str(metagenome_inputs["depth"]),
             "-e", "DpnII", "-s", "50000", "-i", "10", "-j", "5", "-o", str(out), "-T", str(tmp_path / "tmp")]  # fmt: skip
     random.seed(0)
     run_cli("pipeline", *args)
     assert maps == []
+    # The map of the clusters, in the output directory.
+    written = out / metacool.name
     metacooler.validate(str(written), full=True)
     clr = cooler.Cooler(str(written))
     expected = tmp_path / "pairs.metacool"
@@ -646,7 +661,7 @@ def test_pipeline_map_is_the_map_of_the_pairs(metagenome, metagenome_inputs, tmp
     assert {key for key in info.keys() | ref_info.keys() if info.get(key) != ref_info.get(key)} <= {"creation-date"}
     differ = {key for key in metadata.keys() | ref_metadata.keys() if metadata.get(key) != ref_metadata.get(key)}
     assert differ == {"annotate", "metator", "reassign"}
-    assert [entry["source"] for entry in metadata["reassign"]] == [str(written)]
+    assert [entry["source"] for entry in metadata["reassign"]] == [str(metacool)]
     # The columns of the input map (tests.maps.contig_map), then those that
     # the run stores, once, as metator network stores them (dropped, then
     # added).
@@ -676,9 +691,10 @@ def _assert_normalized_as_the_network(written, tmp_path):
 
 def test_pipeline_restarts_from_the_map_of_a_stopped_run(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli):
     """A run that stops with an error (miComplete fails in the validation, here)
-    leaves its map as it was, in no cluster."""
+    leaves its map as it was, in no cluster, even one that it updates in place
+    (--inplace), from which a run starts again."""
     common = ["-a", str(metagenome_inputs["assembly"]), "-d", str(metagenome_inputs["depth"]), "-e", "DpnII", "-s", "50000",
-              "-i", "10", "-j", "5", "-T", str(tmp_path / "tmp")]  # fmt: skip
+              "-i", "10", "-j", "5", "-T", str(tmp_path / "tmp"), "--inplace"]  # fmt: skip
     clean, out = tmp_path / "clean", tmp_path / "out"
     clean_map = _contig_map(metagenome_inputs, tmp_path / "clean.metacool")
     metacool = Path(shutil.copyfile(clean_map, tmp_path / "contigs.metacool"))
@@ -772,8 +788,10 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, tmp_path, monke
     the same clusters, but for the order of the contigs, which is that of the
     map (see _assert_same_clusters)."""
     monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
+    # In place (--inplace): the first run makes its map the map of its
+    # clusters, which the second starts from.
     common = ["-a", str(metagenome_inputs["assembly"]), "-d", str(metagenome_inputs["depth"]), "-e", "DpnII", "-s", "50000",
-              "-i", "10", "-j", "5", "-T", str(tmp_path / "tmp")]  # fmt: skip
+              "-i", "10", "-j", "5", "-T", str(tmp_path / "tmp"), "--inplace"]  # fmt: skip
     expected = _contig_map(metagenome_inputs, tmp_path / "first.metacool")
     random.seed(0)
     run_cli("pipeline", str(expected), "-o", str(tmp_path / "pair"), *common)
@@ -884,23 +902,21 @@ def test_pipeline_from_the_columns_of_a_metacool(metagenome, metagenome_inputs, 
     runs = {"options": options, "map": []}
     for name, given in runs.items():
         random.seed(0)
-        # Each run writes its own map (--output-map): a run from a map
-        # updates it in place otherwise, and the second would start from
-        # the first's.
-        run_cli("pipeline", str(metacool), "-o", str(tmp_path / name),
-                "--output-map", str(tmp_path / name / "metator.metacool"), *common, *given)  # fmt: skip
+        # Each run writes its own map, in its output directory: both start
+        # from the same map.
+        run_cli("pipeline", str(metacool), "-o", str(tmp_path / name), *common, *given)  # fmt: skip
 
     by_options, by_map = tmp_path / "options", tmp_path / "map"
     for name in ["contig_data_final.txt", "cluster_summary.txt", "binning.txt"]:
         assert (_kept(by_map) / name).read_bytes() == (_kept(by_options) / name).read_bytes(), name
     # The same network, stored in each map.
-    networks = [mtn.map_network(str(run / "metator.metacool")) for run in (by_options, by_map)]
+    networks = [mtn.map_network(str(run / metacool.name)) for run in (by_options, by_map)]
     pd.testing.assert_frame_equal(networks[0], networks[1])
     assert "SG_abundance" in pd.read_csv(_kept(by_map) / "cluster_summary.txt", sep="\t").columns
     (log,) = by_map.glob("metator_pipeline_*.log")
     assert f"INFO :: The shotgun coverage of the contigs: the Shotgun_coverage column of {metacool}." in log.read_text()
     # Stored back: the map of the bins holds the values that the run read.
-    for written in [by_map / "metator.metacool", by_options / "metator.metacool"]:
+    for written in [by_map / metacool.name, by_options / metacool.name]:
         metacooler.validate(str(written), full=True)
         stored = metacooler.MetaCooler(str(written)).contigs.set_index("name")
         pd.testing.assert_frame_equal(stored.loc[columns.name, columns.columns[1:]], columns.set_index("name"))
@@ -935,7 +951,7 @@ def test_pipeline_from_a_filtered_metacool(metagenome, metagenome_inputs, tmp_pa
               "-i", "10", "-j", "5", "-T", str(tmp_path / "tmp")]  # fmt: skip
     random.seed(0)
     kept_map = _contig_map(metagenome_inputs, tmp_path / "kept.metacool", pairs=pairs)
-    run_cli("pipeline", str(kept_map), "-o", str(tmp_path / "pair"), "--output-map", str(tmp_path / "pair.metacool"), *common)
+    run_cli("pipeline", str(kept_map), "-o", str(tmp_path / "pair"), *common)
     contacts = cooler.Cooler(str(metacool)).pixels()[:]["count"].sum()
     random.seed(0)
     run_cli("pipeline", str(metacool), "-o", str(tmp_path / "metacool"), *common)
@@ -953,8 +969,9 @@ def test_pipeline_from_a_filtered_metacool(metagenome, metagenome_inputs, tmp_pa
     assert len(pd.read_csv(_kept(mcool) / "cluster_summary.txt", sep="\t")) > 0
     (log,) = mcool.glob("metator_pipeline_*.log")
     assert f"INFO :: {len(lacking)} contig(s) of the assembly are not in {metacool}: they get no contacts" in log.read_text()
-    # The map, updated in place: its contigs, at 1 kb, in their clusters.
-    written = metacool
+    # The map of the clusters, in the output directory: its contigs, at 1 kb,
+    # in their clusters.
+    written = mcool / metacool.name
     metacooler.validate(str(written), full=True)
     _read_by_cooler_and_metacooler(written)
     mc = metacooler.MetaCooler(str(written))
@@ -1046,7 +1063,7 @@ def test_a_cluster_partitioned_again_but_kept_whole(metagenome, metagenome_input
     assert len(kept_whole) and set(kept_whole.Final_cluster) == {"metator_00001_00000"}
     binning = pd.read_csv(_kept(out) / "binning.txt", sep="\t", header=None, names=["Name", "Bin"], dtype=str)
     assert list(binning.Name) == list(final.Name[final.Final_cluster != "ND"])
-    mc = metacooler.MetaCooler(str(metacool))
+    mc = metacooler.MetaCooler(str(out / metacool.name))
     assert "recursive_1" in [entry["name"] for entry in mc.cluster_rounds]
     members = mc.cluster_members("final")
     in_cluster = set(members.contig[members.cluster == "metator_00001_00000"])
@@ -1075,9 +1092,11 @@ def test_steps_on_a_map_give_the_map_of_pipeline(metagenome, metagenome_inputs, 
     for directory in runs.values():
         directory.mkdir()
         shutil.copyfile(contig_map, directory / "input.metacool")
-    common = ["-a", assembly, "-o", "out", "-T", "tmp", "-s", "20000"]
+    # In place (--inplace): both runs update their input.metacool, whose
+    # history of reassignments names it.
+    common = ["-a", assembly, "-o", "out", "-T", "tmp", "-s", "20000", "--inplace"]
     # partition reads no assembly, and keeps every cluster.
-    partition_args = ["-o", "out", "-T", "tmp"]
+    partition_args = ["-o", "out", "-T", "tmp", "--inplace"]
 
     monkeypatch.chdir(runs["pipeline"])
     random.seed(0)
@@ -1087,7 +1106,7 @@ def test_steps_on_a_map_give_the_map_of_pipeline(metagenome, metagenome_inputs, 
     metacool = runs["steps"] / "input.metacool"
     random.seed(0)
     run_cli("network", "input.metacool", "-a", assembly, "-o", "out", "-T", "tmp", "-d", metagenome_inputs["depth"],
-            "-e", "DpnII")  # fmt: skip
+            "-e", "DpnII", "--inplace")  # fmt: skip
     metacooler.validate(str(metacool), full=True)
     # The network, and nothing else.
     before, after = walk(contig_map), walk(metacool)
@@ -1199,3 +1218,103 @@ def _read_by_cooler_and_metacooler(path):
     for table in ("chroms", "bins", "pixels"):
         subprocess.run(["cooler", "dump", "-t", table, str(path)], check=True, capture_output=True)
     subprocess.run(["metacooler", "check", "--deep", str(path)], check=True, capture_output=True)
+
+
+# The lines of the log of the recursive steps of a validation, for each way
+# they end (see metator.validation.recursive_decontamination): the step, of
+# RECURSIVE_STEPS at most, what it partitions again, what replaces it, and when
+# no further step is needed.
+STEP_TIME = r"\(0h 0m [0-9]+s\)"
+RECURSIVE_LOGS = {
+    "no cluster contaminated": (
+        "fake",
+        0,
+        [r"Recursive step 1/9: no cluster is contaminated, so no recursive step is needed\."],
+    ),
+    "contaminated twice": (
+        "twice",
+        1,
+        [
+            r"Recursive step 1/9: 1 contaminated cluster\(s\) to partition again\.",
+            rf"Recursive step 1/9: 1 of them replaced by the [0-9]+ cluster\(s\) of more than 20000 bp that they split into {STEP_TIME}\.",
+            r"Recursive step 2/9: 1 contaminated cluster\(s\) to partition again\.",
+            rf"Recursive step 2/9: 1 of them replaced by the [0-9]+ cluster\(s\) of more than 20000 bp that they split into {STEP_TIME}\.",
+            r"Recursive step 3/9: no contaminated cluster left, so no further recursive step is needed\.",
+        ],
+    ),
+    "kept whole": (
+        "kept whole",
+        1,
+        [
+            r"Recursive step 1/9: 1 contaminated cluster\(s\) to partition again\.",
+            rf"Recursive step 1/9: none of them is replaced, as the [0-9]+ cluster\(s\) they split into lose too much of their completeness {STEP_TIME}, so no further recursive step is needed\.",
+        ],
+    ),
+    "no part larger than --size": (
+        "twice",
+        1,
+        [
+            r"Recursive step 1/9: 1 contaminated cluster\(s\) to partition again\.",
+            r"Recursive step 1/9: none of them splits into clusters of more than 20000 bp, so no further recursive step is needed\.",
+        ],
+    ),
+    "the last step": (
+        "twice",
+        1,
+        [
+            r"Recursive step 1/2: 1 contaminated cluster\(s\) to partition again\.",
+            rf"Recursive step 1/2: 1 of them replaced by the [0-9]+ cluster\(s\) of more than 20000 bp that they split into {STEP_TIME}\.",
+            r"Recursive step 2/2: 1 contaminated cluster\(s\) to partition again\.",
+            rf"Recursive step 2/2: 1 of them replaced by the [0-9]+ cluster\(s\) of more than 20000 bp that they split into {STEP_TIME}\.",
+            r"Recursive step 2/2 was the last: its clusters are kept as they are\.",
+        ],
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(RECURSIVE_LOGS))
+def test_the_log_follows_the_steps_of_the_run(case, metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli, logged):
+    """The log of a pipeline run marks its three steps ([1/3] network...), says
+    how many clusters miComplete found contaminated, then follows each
+    recursive step of the validation (Recursive step 1/9...), what it
+    partitions again and replaces, and says when no further step is needed:
+    no contaminated cluster, none left, parts too incomplete to replace their
+    cluster, or none larger than --size (here a partition into none, as the
+    stub recursive clustering gives it); or that the last step allowed was
+    the last (here 2). It ends with the map that the run wrote, and how long
+    it took."""
+    stub = {
+        "fake": synthetic.fake_micomplete(metagenome),
+        "twice": synthetic.contaminated_twice(metagenome),
+        "kept whole": synthetic.first_cluster_contaminated(metagenome, kept_whole=True),
+    }[RECURSIVE_LOGS[case][0]]
+    monkeypatch.setattr("metator.validation.micomplete_quality", stub)
+    if case == "no part larger than --size":
+        clustering = mtv.recursive_clustering
+
+        def into_none(*args, **kwargs):
+            _, contigs_data, _, _ = clustering(*args, **kwargs)
+            return False, contigs_data, {}, {}
+
+        monkeypatch.setattr(mtv, "recursive_clustering", into_none)
+    if case == "the last step":
+        monkeypatch.setattr(mtv, "RECURSIVE_STEPS", 2)
+    metacool = _contig_map(metagenome_inputs, tmp_path / "contigs.metacool")
+    out = tmp_path / "out"
+    random.seed(0)
+    run_cli("pipeline", metacool, "-a", metagenome_inputs["assembly"], "-o", out, "-T", tmp_path / "tmp", "-s", "20000",
+            "-i", "10", "-j", "5")  # fmt: skip
+    messages = [message for level, message in logged() if level == "INFO"]
+    stages = [message for message in messages if message.startswith("[")]
+    assert [stage[:5] for stage in stages] == ["[1/3]", "[2/3]", "[3/3]"]
+    assert messages.index(stages[0]) < messages.index(stages[1]) < messages.index(stages[2])
+    _, contaminated, expected = RECURSIVE_LOGS[case]
+    checked = [message for message in messages if message.startswith("miComplete checked")]
+    assert len(checked) == 1 and re.fullmatch(
+        rf"miComplete checked the 5 clusters in 0h 0m [0-9]+s, and found {contaminated} of them contaminated, which the "
+        r"recursive steps partition again\.",
+        checked[0],
+    )
+    steps = [message for message in messages if message.startswith("Recursive step")]
+    assert len(steps) == len(expected) and all(re.fullmatch(pattern, step) for pattern, step in zip(expected, steps, strict=True))
+    assert re.fullmatch(rf"Final contact map written after 0h 0m [0-9]+s: {re.escape(str(out / metacool.name))}", messages[-1])
