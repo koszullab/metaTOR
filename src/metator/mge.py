@@ -228,7 +228,7 @@ def generate_bin_summary(contigs_data: "pd.DataFrame", mge_bins: dict) -> "pd.Da
         "Contigs": pd.Series(dtype="str"),
     }
 
-    summary = pd.DataFrame(cols, index=mge_bins.keys())
+    summary = pd.DataFrame(cols, index=list(mge_bins))
     contigs_data = contigs_data.set_index("Name", drop=False)
     # Iterates on the bins to fill the table.
     for bin_id in mge_bins.keys():
@@ -468,7 +468,7 @@ def shuffle_mge_bins(
     return mges_data, mges_bins
 
 
-def update_mge_data(mges_data: pd.DataFrame, bins: List[Tuple]) -> pd.DataFrame:
+def update_mge_data(mges_data: pd.DataFrame, bins: List[Tuple]) -> Tuple[pd.DataFrame, dict]:
     """Function to update the mge bins data.
 
     Parameters

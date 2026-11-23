@@ -247,6 +247,10 @@ each removed command.
   directory, which needs room for it. No pyfastx index is made.
 - metaTOR reads back the numbers of the tables it wrote exactly, under
   pandas 2 as under pandas 3: the map stores the run's numbers.
+- The partition computes the distances between the core clusters in
+  `--threads` threads, where it forked as many processes: Python warned that a
+  fork of the run, which runs threads, may deadlock. SciPy computes the
+  distances without holding the GIL, so the threads run in parallel.
 - Python's warnings (cooler gives the problems of a map with them) are shown
   and written to the log of a run, as metaTOR's own messages.
 - **The log of a run.** Its header gives, as hicstuff's does, the version,
