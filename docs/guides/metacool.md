@@ -240,7 +240,7 @@ reason (Ctrl-C included). A symbolic link is replaced, not its target.
 `.mmetacool` collection needs it, as a run does not update a collection in
 place, and a FILE that exists is replaced only with `-F`.
 
-While a run writes a map, a lock file next to it (`<map>.lock`) holds it: a
+While a run writes a map, a lock file next to it (`<map>.metator.lock`) holds it: a
 second run that would write the same map stops before any work, naming the run
 that holds it. A lock that a run left behind on the same host when it died is
 removed, with a warning; one from another host is not: remove it once that

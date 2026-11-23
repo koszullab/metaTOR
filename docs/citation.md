@@ -49,7 +49,11 @@ The meta3C method, and studies of microbial communities made with it:
 A run also relies on the tools it runs, which deserve a citation too:
 
 - [miComplete](https://pypi.org/project/micomplete/) (Hugoson, Lam and Guy,
-  *Bioinformatics* 2020), with prodigal and hmmer, which validates the bins;
+  *Bioinformatics* 2020), which validates the bins, with Prodigal (Hyatt et
+  al., 2010) and HMMER (Eddy, 2011), through their Python bindings
+  [pyrodigal](https://doi.org/10.21105/joss.04296) (Larralde, *JOSS* 2022)
+  and [pyhmmer](https://doi.org/10.1093/bioinformatics/btad214) (Larralde et
+  al., *Bioinformatics* 2023);
 - the [Louvain](https://doi.org/10.1088/1742-5468/2008/10/P10008) (Blondel
   et al., 2008) or [Leiden](https://doi.org/10.1038/s41598-019-41695-z)
   (Traag, Waltman and van Eck, 2019) algorithm, which partitions the

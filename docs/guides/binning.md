@@ -39,8 +39,9 @@ metator validation -a assembly.fa -c binning/contig_data_partition.txt \
 ```
 
 Validation runs [miComplete](https://pypi.org/project/micomplete/) on every
-bin: prodigal predicts its genes, and hmmer finds among them the single-copy
-marker genes of bacteria (105 markers) and of archaea (131 markers). Each bin
+bin: Prodigal predicts its genes, and HMMER finds among them the single-copy
+marker genes of bacteria (105 markers) and of archaea (131 markers), through
+pyrodigal and pyhmmer, their Python bindings. Each bin
 keeps the set that gives it the higher weighted completeness.
 
 A bin is **contaminated** when its weighted completeness reaches 33% and its
