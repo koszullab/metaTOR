@@ -268,6 +268,26 @@ def check_metacool_start(start, scaffold=False):
         raise ValueError
 
 
+<<<<<<< 673d6c453fc3073e7dd01dd4f2d951cf9499a169
+=======
+def check_pipeline_edge(edge):
+    """No edge region in pipeline, whatever the start: --edge is 0, or the
+    run is refused, a negative --edge too (it counted every pair, as 0
+    does). pipeline counts every pair, as its contact map does, which
+    holds the contacts of bins, not the positions of the reads, so that it
+    can read its network from a map. metator network still applies --edge
+    to pairs files."""
+    if edge != 0:
+        logger.error(
+            "--edge %d cannot be applied by pipeline, which counts every pair, as its contact map does: a map holds "
+            "the contacts of bins, not the positions of the reads. Leave --edge at 0, or build the network with "
+            "metator network, then run metator partition and metator validation.",
+            edge,
+        )
+        raise ValueError
+
+
+>>>>>>> origin/master
 # The compressions that metaTOR finds from the first bytes of a file
 # (metator.io.file_compression), whatever its name: it reads no zstd or lz4.
 SNIFFED_CODECS = {"gz": "gzip", "bz2": "bzip2", "zip": "zip"}
@@ -1635,6 +1655,7 @@ def pipeline(
     [cyan]metator metacool[/] and the README): a map that cannot be built
     stops the run. The run reads its network from it; with several
     libraries, the map of each library (<prefix>.mmetacool) gives the
+<<<<<<< 673d6c453fc3073e7dd01dd4f2d951cf9499a169
     network of each. At the end, the map of the clusters (the contigs
     grouped by cluster) is written over it or, with --no-metacool, it is
     removed.
@@ -1642,6 +1663,15 @@ def pipeline(
     Whatever the input, the network counts every pair, as a contact map
     does. A validation step decontaminates the clusters when it's
     necessary; it is the critical step for memory usage (~40G).
+=======
+    network of each. At the end, the map of the bins (the contigs
+    grouped by bin) is written over it or, with --no-metacool, it is
+    removed. A run from a .metacool file reads its network from that map,
+    and the restriction sites and the coverage of the contigs from its
+    Restriction_site and Shotgun_coverage columns, unless --enzyme and
+    --depth are given; it updates that map in place with the map of its
+    clusters (or writes --output-map), and cannot scaffold.
+>>>>>>> origin/master
     """
     # Private temporary directory inside --tmpdir, and the lock of the map
     # the run writes, held until its end.
@@ -1667,7 +1697,12 @@ def pipeline(
         # once its path is resolved (run_map_path, below).
         if start != "metacool":
             check_normalization(normalization, enzyme, depth)
+<<<<<<< 673d6c453fc3073e7dd01dd4f2d951cf9499a169
         check_metacool_start(start, scaffold)
+=======
+        check_pipeline_edge(edge)
+        check_metacool_start(start, forward, edge, scaffold)
+>>>>>>> origin/master
         metacool_file = run_map_path(start, forward, outdir, prefix, output_map, force, no_metacool)
         if start == "metacool":
             check_normalization(normalization, enzyme, depth, forward)

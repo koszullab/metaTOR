@@ -30,6 +30,7 @@ All notable changes to this project will be documented in this file.
   none. Python API: `metator.clusters`.
 - `pipeline --output-map FILE` writes the map of the clusters to FILE
   (replaced only with `-F`).
+<<<<<<< 673d6c453fc3073e7dd01dd4f2d951cf9499a169
 - `network` and `pipeline` start from a `.metacool` contact map, their
   first argument (`metator pipeline MAP -a ASSEMBLY`: a file, or an entry
   `file.mmetacool::entries/<name>`), at any bin size, in place of `-1`,
@@ -41,6 +42,17 @@ All notable changes to this project will be documented in this file.
   no map, and `pipeline --scaffold`. A map sums its libraries: no
   `network_{i}.txt` or `hit_data_alignment.txt`. `-1` is no longer
   required: a run takes a map or reads, alignments or pairs. Python API:
+=======
+- `network` and `pipeline` start from a `.metacool` contact map with
+  `--start metacool`, the map given to `-1` (a file, or an entry
+  `file.mmetacool::entries/<name>`), at any bin size. The network is that
+  of the pairs the map was made of, byte for byte at `--edge 0` (see
+  Changed). A map may lack contigs of the assembly, which get no
+  contacts; a map of other contigs or lengths, or that stores both
+  triangles, is refused, and so are `--edge` above 0, several maps and
+  `pipeline --scaffold`. A map sums its libraries: no `network_{i}.txt`
+  or `hit_data_alignment.txt`. Python API:
+>>>>>>> origin/master
   `metator.network.metacool_to_contacts`, `read_metacool_contacts`.
 - A `pipeline` run from a map writes the map of its bins from it, with
   `metacooler reassign`: its bins and contacts, grouped by final bin as
@@ -156,6 +168,14 @@ All notable changes to this project will be documented in this file.
   the same number of fields on every row (their header lines may come
   anywhere, so files of one assembly concatenated are one library), and one
   file per library, given comma-separated.
+<<<<<<< 673d6c453fc3073e7dd01dd4f2d951cf9499a169
+=======
+- `pipeline` refuses an `--edge` other than 0 before any work, whatever
+  the start (it refused one above 0 with `--start metacool` only, and
+  took a negative one as 0): it counts every pair, as its contact map
+  does, which holds the contacts of bins, not the positions of
+  the reads. `metator network` still applies `--edge` to pairs files.
+>>>>>>> origin/master
 - `pipeline` from reads, alignments or pairs with one library reads
   `network.txt` and `contig_data_network.txt` from its map of the
   contigs, as a run from a map does, instead of parsing its pairs files
