@@ -185,8 +185,8 @@ of the run before any clustering, every contig in `__unbinned__` (by `hicstuff p
 network from the map (see [Starting from a contact map](#starting-from-a-contact-map)) and, at its end,
 writes the map of the clusters over it, from the final tables, with `metacooler reassign`
 (`--output-map` writes it to another file; `--no-metacool` writes none, and leaves the map as it was). It
-is written through a fresh file, which holds none of the space that the edits making it leave behind, so
-a map updated in place does not grow with each run. The map also stores the clustering rounds of the
+is written through metacooler, from a fresh copy of the map, so a map updated in place holds at most the
+space that the edits of its last run left behind: it does not grow with each run. The map also stores the clustering rounds of the
 run (the overlapping, recursive and final clusters, with their contigs), which the run writes as
 `clusters.txt` and `cluster_members.txt` too. For a run whose `partition` and `validation` were not given
 the map, `metacooler reassign` writes the map of its clusters from the map of its contigs and its tables
@@ -224,8 +224,8 @@ and the tools built on it read it as any `.cool` file, and `metacooler` adds the
   from the `Hit`, `Shotgun_coverage` and `Restriction_site` columns of the contigs table, which the
   column records, so that metacooler drops it when an edit changes one of them. A run whose map lacks
   a column that the normalization reads (`Restriction_site` without `--enzyme`) stores none, with a
-  warning, and so does `--normalization None`, without one. It needs `metacooler.store_weights`, from
-  metacooler's next release: with metacooler 0.3.0, the map stores none, which the log says;
+  warning, and so does `--normalization None`, without one; a normalization that metacooler fails to
+  store fails the map, which is then not written, with the reason;
 * the metadata of the file hold the version of metaTOR, the command line and its parameters, under
   the `metator` key.
 
@@ -319,34 +319,47 @@ On a map with one bin per contig of all the contigs of the assembly, the map of
 the clusters is the map of the pairs of the map with the final clusters as its
 genomes (`metacooler create pairs` with `--contigs`), contact statistics
 included, but for its assembly name and its history. The new map is
-written next to the map it replaces and checked (`metacooler`'s full
-validation) before it replaces it; when it cannot be written, the run stops
-with the reason, and the map is left as it was, as it is when the run stops for
-any other reason (Ctrl-C included). A symbolic link is replaced, not its target
-(an input map stored elsewhere, for example). A run from an entry of a
-`.mmetacool` collection needs `--output-map`, and a FILE that exists is
-replaced only with `-F`. A run that updates a map in place warns, before any
-work, of the clusters and the clustering rounds of an earlier run (or of
-another binner) that it replaces there: `--output-map` keeps them, as it
-leaves the map as it was. While a run writes a map, `<map>.metator.lock` holds it: a
-second run that would write the same map stops before any work, naming the run
-that holds it (a lock that a run left behind on the same host when it died is
-removed, with a warning). Only the runs that write a map take its lock: a
-command that reads a map (`network MAP`, the input map of a run with
-`--output-map`) stops with an error when another run
-replaces it as it reads it, rather than mix the two maps; run it again once
-that run has ended. A run stopped by Ctrl-C or SIGTERM (a job scheduler's time
-limit) removes its lock and the files of the map it was writing next to the
-map, and ends miComplete if it runs; its temporary directory, and the working
-directory of miComplete in the output directory, stay, as after any failure.
-One killed outright (`kill -9`), or stopped where Python cannot stop it
-cleanly (as a pool of processes starts or ends: it then dies of the signal at
-once), can leave its lock, and the files of the map it was writing next to the
-map, which can be deleted: `.<map>.<random>.tmp` or
-`.<map>.<random>.tmp.<random>.fresh`, and those that metacooler and cooler
-write while it is written (`.<map>.<random>.tmp.partial`,
-`.<map>.<random>.tmp.partial.__writing__`, `tmp<random>.multi.cool`). The map
-is left as it was.
+written through metacooler, in an edit session (`metacooler.staged_edit`): every
+edit of the step goes into one copy of the map, staged in a private directory
+next to it (`.<map>.<uuid>.<n>.d/`), which `metacooler` validates in full, then
+renames over the map. The copy starts fresh, so the map holds at most the space
+that the edits of the last run left behind, and a map updated run after run
+does not grow. When the map cannot be written, the run stops with the reason, and the
+map is left as it was, as it is when the run stops for any other reason (Ctrl-C
+included). A map given through a symbolic link is updated where the link
+points (the link keeps pointing at it), and its lock and its staged copy are
+next to that file. `--output-map FILE` is a map of its own unless it names that
+file: a symbolic link there is replaced, not its target, and a hard link of
+the input map (the same file under another name) is refused before any work.
+The map keeps its mode, owner, group and extended attributes, where the run
+may set them (a warning names those it cannot keep). The directory of the map
+must be writable, with room, beside the map, for its copy and for the new map
+that `metacooler reassign` writes from it, plus cooler's temporary files, and a
+map without write permission is refused before any work. A run from an entry of a `.mmetacool` collection needs `--output-map`,
+and a FILE that exists, a symbolic link too, is replaced only with `-F`. A run that updates a map in place warns, before any work, of the
+clusters and the clustering rounds of an earlier run (or of another binner)
+that it replaces there: `--output-map` keeps them, as it leaves the map as it
+was. A run holds metacooler's lock, `<map>.lock`, of the map it writes, from
+its checks to its end, and reads the map under it: a second run, or a
+metacooler command that writes the map in place (`annotate --inplace`,
+`normalize`...), stops before any work, naming the process that holds it. With
+`--output-map`, that is FILE, so runs from one map, each with its own
+`--output-map`, run side by side. A map that changed since the run read it
+(another run replaced it, or a program that takes no metacooler lock, `cooler
+balance` or a script, wrote it) is refused when the run writes its map, rather
+than mixed with it: the run stops with the reason, and the map keeps that
+change. A command that reads a map (`network MAP`, the input map of
+a run with `--output-map`) stops with an error when another run replaces it as
+it reads it, rather than mix the two maps; run it again once that run has
+ended. Neither metaTOR nor metacooler handles signals: a run stopped by Ctrl-C
+removes its staged copy and its lock; one killed by SIGTERM (a job scheduler's
+time limit) or SIGKILL leaves them, and the next run (or metacooler command)
+that writes the map on the same host takes the lock over and removes what the
+killed run staged, with a warning each. A lock of another host (or another
+machine or PID namespace of the same host name) is never taken over: once that
+run is over, delete the lock file and the staging directories that the error
+names. miComplete runs in the process group of the run, so a Ctrl-C, or a job
+scheduler's signal to the job, reaches it too.
 
 #### Step by step on a contact map
 

@@ -61,7 +61,7 @@ error, before any work unless said otherwise:
 
 | metaTOR 1.x | metaTOR 2.0 |
 |---|---|
-| | The contact map of the contigs, grouped by cluster: `pipeline MAP`, and the steps `partition MAP` and `validation MAP`, update the map of the run in place (staged, validated, then renamed over it), and lock it while they run (`<map>.metator.lock`); `--output-map FILE` writes FILE instead. |
+| | The contact map of the contigs, grouped by cluster: `pipeline MAP`, and the steps `partition MAP` and `validation MAP`, update the map of the run in place, through metacooler (in an edit session: staged, validated, then renamed over it; through a symbolic link, the file it points to), and lock it while they run (metacooler's `<map>.lock`); `--output-map FILE` writes FILE instead. |
 | | `clusters.txt` and `cluster_members.txt`: the clusters of every clustering round, and their contigs, also stored in the `/clusters` group of the map. |
 | | `mge --map`: the round `mge` of the clustering rounds of the map, its MGE clusters, after those of the run. |
 | `alignment_<i>.bam` (`--aligner bwa`), `alignment_<i>_for.bam` and `alignment_<i>_rev.bam` (bowtie2): the alignments of library `i` | None: hicstuff aligns the reads (and keeps its alignments with `-n`). |

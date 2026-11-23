@@ -50,8 +50,6 @@ dependencies = [
     "pypairix",
     "rich-click>=1.9",
     "metacooler>=0.4.0",
-    # The map of a run is copied into a fresh file (metacool.py).
-    "h5py>=3.8",
 ]
 
 [project.optional-dependencies]
@@ -69,6 +67,9 @@ dev = [
     "pre-commit>=3",
     "pytest>=8",
     "pytest-cov>=5",
+    # The tests read maps object by object (tests/hdf5.py); metaTOR itself
+    # reads and writes them through metacooler.
+    "h5py>=3.8",
     "ruff>=0.8",
     "ty>=0.0.38",
 ]

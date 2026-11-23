@@ -370,7 +370,7 @@ def test_mge_stores_its_clusters_in_the_map(output, mge_run, tmp_path, monkeypat
     monkeypatch.setattr("metator.metacool.write_round", locked)
     run_cli("mge", *args, "--map", source, *options)
     written = metacool if output == "in place" else output_map
-    assert locks == [[f"{written.name}.metator.lock"]] and not list(tmp_path.glob("*.lock"))
+    assert locks == [[f"{written.name}.lock"]] and not list(tmp_path.glob("*.lock"))
     metacooler.validate(str(written), full=True)
     mc = metacooler.MetaCooler(str(written))
     _check_mge_round(mc, tmp_path / "out" / "mges_cluster_summary.tsv")
@@ -414,17 +414,6 @@ def test_mge_rerun_replaces_its_round(mge_run, tmp_path, run_cli):
     assert len(second) == 3 and len(first) == 2
     _check_binning_rounds(held, mc)
     assert _outside_clusters(metacool) == before
-
-
-def _lock(metacool, pid):
-    """A lock of the map metacool, as a run of pid on this host holds it."""
-    import json
-    import socket
-
-    holder = {"pid": pid, "host": socket.gethostname(), "started": "2026-11-18T10:00:00+0000", "command": "metator mge"}
-    lock = Path(f"{metacool}.metator.lock")
-    lock.write_text(json.dumps(holder))
-    return lock
 
 
 def _map_of(path, lengths):
@@ -528,9 +517,8 @@ MGE_MAP_ERRORS = {
     ),
     "a lock held by another run": (
         ["--map", "{map}"],
-        "{map} is being written by another metaTOR run (pid {pid} on {host}, since 2026-11-18T10:00:00+0000): wait "
-        "for it to end, write this run's map elsewhere with --output-map, or, if no such run is going on, remove "
-        "{map}.metator.lock.",
+        # metacooler's reason (see tests.locks.refusal).
+        "{refusal} Or write this run's map elsewhere with --output-map.",
     ),
 }
 
@@ -548,9 +536,11 @@ def test_mge_on_a_map_refused(case, mge_run, metagenome_indexed_pairs, tmp_path,
     holds). The reason is logged as an error in the log file of the run,
     then raised as a MetacoolError. The map, the inputs, an existing
     --output-map and the lock of another run are left as they were."""
-    import socket
+    from contextlib import ExitStack
 
     import metacooler
+
+    from tests.locks import held_lock, lock_file, refusal
 
     import metator.metacool as mtmc
 
@@ -563,16 +553,12 @@ def test_mge_on_a_map_refused(case, mge_run, metagenome_indexed_pairs, tmp_path,
         "collection": tmp_path / "maps.mmetacool",
         "colon_map": tmp_path / "run::1.metacool",
         "copy": tmp_path / "copy.metacool",
-        "pid": os.getpid(),
-        "host": socket.gethostname(),
     }
     names["directory"].mkdir()
     metacooler.create_mmetacool(names["collection"], {"lib1": metacool})
     names["entry"] = f"{names['collection']}::entries/lib1"
     shutil.copyfile(metacool, names["colon_map"])
     names["copy"].write_text("an older map")
-    if case == "a lock held by another run":
-        _lock(metacool, os.getpid())
     names.update(zip(["assembly", "contigs", "binning", "mges"], args[1:8:2], strict=True))
     names["pairs_index"] = f"{names['pairs']}.px2"
     names["index"] = f"{names['assembly']}.fxi"
@@ -587,16 +573,22 @@ def test_mge_on_a_map_refused(case, mge_run, metagenome_indexed_pairs, tmp_path,
     inputs = {name: Path(names[name]).read_bytes() for name in MGE_INPUTS.values()}
     before = metacool.read_bytes()
     options, message = MGE_MAP_ERRORS[case]
-    message = message.format(**names)
-    if case == "a map in place of the pairs files":
-        args = [*args[:-1], str(metacool)]
-    pattern = f"^{re.escape(message)}" + (".*entries/lib1" if case == "a collection" else "$")
-    with pytest.raises(mtmc.MetacoolError, match=pattern):
-        run_cli("mge", *args, *[option.format(**names) for option in options])
+    with ExitStack() as held:
+        if case == "a lock held by another run":
+            # Another run holds the map: another process holds its lock.
+            holder = held.enter_context(held_lock(metacool, command="metator mge"))
+            names["refusal"] = refusal(metacool, holder)
+        message = message.format(**names)
+        if case == "a map in place of the pairs files":
+            args = [*args[:-1], str(metacool)]
+        pattern = f"^{re.escape(message)}" + (".*entries/lib1" if case == "a collection" else "$")
+        with pytest.raises(mtmc.MetacoolError, match=pattern):
+            run_cli("mge", *args, *[option.format(**names) for option in options])
+        assert (case == "a lock held by another run") == lock_file(metacool).exists()
     assert not (tmp_path / "out").exists()
     assert metacool.read_bytes() == before and names["copy"].read_text() == "an older map"
     assert {name: Path(names[name]).read_bytes() for name in MGE_INPUTS.values()} == inputs
-    assert (case == "a lock held by another run") == Path(f"{metacool}.metator.lock").exists()
+    assert not lock_file(metacool).exists()
     (log,) = tmp_path.glob("metator_mge_*.log")
     assert f"ERROR :: {message}" in log.read_text()
 
@@ -618,7 +610,9 @@ def test_mge_on_a_map_that_cannot_be_written(error, mge_run, tmp_path, monkeypat
     def validate(*args, **kwargs):
         raise error
 
-    monkeypatch.setattr("metacooler.validate", validate)
+    # The full validation of the staged map, before metacooler renames it
+    # over the map.
+    monkeypatch.setattr("metacooler.schema.validate", validate)
     message = (
         f"{metacool} is not written: not valid. It is still the input map of the run, as it was. The other outputs of "
         "the run are kept."

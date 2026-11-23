@@ -26,7 +26,6 @@ Functions in this module:
     - recursive_clustering
     - recursive_clustering_worker
     - recursive_decontamination
-    - run_in_its_own_group
     - update_contigs_data_recursive
     - write_bins_contigs
 """
@@ -39,11 +38,9 @@ import os
 import pandas as pd
 import pyfastx
 import shutil
-import signal
 import subprocess as sp
 import sys
 import tempfile
-from contextlib import suppress
 from functools import partial
 from importlib.metadata import version
 from metator.log import logger
@@ -371,41 +368,13 @@ def micomplete_quality(fasta_dir, outfile, threads):
             "--threads", str(threads),
             "--outfile", out,
         ]  # fmt: skip
-        run_in_its_own_group(cmd, workdir)
+        # In the process group of the run: a Ctrl-C, or the signal that a job
+        # scheduler sends to the job, reaches it too.
+        sp.run(cmd, cwd=workdir, check=True)
 
     # Merge bacteria and archaea
     merge_micomplete(out_bact105, out_arch131, outfile)
     shutil.rmtree(workdir)
-
-
-def run_in_its_own_group(cmd, cwd):
-    """Run cmd (miComplete) in cwd to its end, in a session of its own, hence
-    in a process group of its own: when the run stops meanwhile (Ctrl-C,
-    SIGTERM: any exception raised while it waits for cmd), the whole group
-    is killed, the processes that cmd started with it, before the exception
-    goes on. subprocess.run killed cmd only: the workers of the pool of
-    miComplete lived on, orphaned and blocked for good, after a SIGTERM sent
-    to the run alone (kill <pid>). A signal sent to the process group of
-    the run (a terminal's Ctrl-C, Ctrl-Z or hangup, a kill of the group)
-    reaches the run only: stopped (Ctrl-C, SIGTERM), it kills the group of
-    cmd; killed (SIGKILL, a hangup), it leaves cmd to run to its end.
-
-    Raises
-    ------
-    subprocess.CalledProcessError
-        If cmd exits with a non-zero status, as subprocess.run(check=True).
-    """
-    process = sp.Popen(cmd, cwd=cwd, start_new_session=True)
-    try:
-        returncode = process.wait()
-    except BaseException:
-        # Killed before it is waited for: the group of cmd is still its own.
-        with suppress(ProcessLookupError):
-            os.killpg(process.pid, signal.SIGKILL)
-        process.wait()
-        raise
-    if returncode:
-        raise sp.CalledProcessError(returncode, cmd)
 
 
 def recursive_clustering(

@@ -1876,7 +1876,6 @@ name = "metator"
 source = { editable = "." }
 dependencies = [
     { name = "biopython" },
-    { name = "h5py" },
     { name = "igraph" },
     { name = "matplotlib", version = "3.10.9", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "matplotlib", version = "3.11.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -1908,6 +1907,7 @@ docs = [
 [package.dev-dependencies]
 dev = [
     { name = "bump-my-version" },
+    { name = "h5py" },
     { name = "pre-commit", version = "4.6.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pre-commit", version = "4.7.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pytest" },
@@ -1919,7 +1919,6 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "biopython", specifier = ">=1.80" },
-    { name = "h5py", specifier = ">=3.8" },
     { name = "igraph", specifier = ">=0.10.3" },
     { name = "matplotlib", specifier = ">=3.9" },
     { name = "metacooler", specifier = ">=0.4.0" },
@@ -1940,6 +1939,7 @@ provides-extras = ["docs"]
 [package.metadata.requires-dev]
 dev = [
     { name = "bump-my-version", specifier = ">=0.28" },
+    { name = "h5py", specifier = ">=3.8" },
     { name = "pre-commit", specifier = ">=3" },
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-cov", specifier = ">=5" },
