@@ -111,11 +111,12 @@ def test_micomplete_quality(tmp_path, monkeypatch):
 
 def _alive(pid):
     """Whether the process pid runs: a zombie, whose status no parent has
-    read yet, has ended."""
+    read yet, has ended, and so has one reaped between the open of its
+    /proc file and the read (ProcessLookupError)."""
     try:
         with open(f"/proc/{pid}/stat") as handle:
             return handle.read().rsplit(")", 1)[1].split()[0] not in ("Z", "X")
-    except FileNotFoundError:
+    except (FileNotFoundError, ProcessLookupError):
         return False
 
 
