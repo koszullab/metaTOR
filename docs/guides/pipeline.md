@@ -83,8 +83,6 @@ The pipeline writes into `--outdir` (`-o`, the current directory by default):
 | `recursive_micomplete_step_<n>.txt` | miComplete's results on the recursive clusters of step `n` |
 | `clusters.txt`, `cluster_members.txt` | Every cluster of every round (overlapping, recursive, final), with its parent and miComplete's columns, and the contigs of each: see [Clustering rounds](metacool.md#clustering-rounds) |
 | `clustering_matrix*.npz` | With `--cluster-matrix`: how often each two contigs were clustered together |
-| `scaffolded_clusters/` | With `--scaffold`: the final clusters, scaffolded |
-| `plot/` | Plots of the clusters' quality, size, GC content and coverage, and the heatmap of the clusters' network |
 | `metator_pipeline_<date>.log` | The log of the run |
 
 The pairs files of each library are written to the temporary directory as
@@ -92,9 +90,7 @@ they are made, read once for the contact map of the contigs and the
 network, then removed. With `--no-clean-up` (`-N`), the run sorts,
 compresses and indexes them in the output directory instead,
 `alignment_<i>_sorted.pairs.gz` and their index, and keeps them, for
-`metator mge` or `scaffold` later, or `contactmap` and `qc` from the pairs
-files; `--scaffold`, which reads them so, has them sorted too, and removes
-them at the end of the run. Without `-N` or `--scaffold`, a run that stops
+`metator mge` later. Without `-N`, a run that stops
 before its network is built leaves them in its temporary directory; one
 that stops later leaves none, but leaves the contact map of its contigs,
 which a run restarts from (`metator pipeline binning/metator.metacool … -F`,
@@ -117,7 +113,7 @@ A run refuses to overwrite the clusters of an earlier one unless given
 | `--size` | 500000 | The size, in base pairs, a cluster must reach to be kept |
 | `--prefix` | none | Names the clusters `<prefix>_metator_…`, the map `<prefix>.metacool` of a run from reads, alignments or pairs and, with several libraries, the maps of the libraries `<prefix>.mmetacool` |
 | `--threads` | 1 | Threads for the alignment and the partition |
-| `--tmpdir` | `./tmp` | Where the index, the pairs files (without `--no-clean-up` or `--scaffold`) and the temporary files go; deleted at the end, unless `--no-clean-up` |
+| `--tmpdir` | `./tmp` | Where the index, the pairs files (without `--no-clean-up`) and the temporary files go; deleted at the end, unless `--no-clean-up` |
 
 The validation is the step that needs the most memory and time: miComplete
 runs Prodigal and HMMER (pyrodigal and pyhmmer) on every cluster.
@@ -143,12 +139,10 @@ metator validation -a assembly.fa -c binning/contig_data_partition.txt \
 ```
 
 Run step by step, the final clusters go to `final_clusters/`, and the
-intermediate tables stay. `metator network` keeps the pairs files;
-`metator metacool` writes the contact map of the clusters from them (see
-[The contact map of the clusters](metacool.md)). From a contact map of the
-contigs, each step takes the map as its first argument, and the steps write
-the map that `metator pipeline MAP` writes from the same clusters: see
-[Step by step](metacool.md#step-by-step).
+intermediate tables stay. `metator network` keeps the pairs files. From a
+contact map of the contigs, each step takes the map as its first argument,
+and the steps write the map that `metator pipeline MAP` writes from the same
+clusters: see [Step by step](metacool.md#step-by-step).
 
 To cluster without validating, run the first two steps alone: the clusters
 are then the overlapping clusters of `overlapping_clusters/`, and

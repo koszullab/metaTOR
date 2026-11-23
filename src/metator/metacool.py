@@ -16,21 +16,19 @@ contamination, abundances...) are stored in the genomes table, and what
 metaTOR measured on each contig (GC content and Hi-C hits, plus shotgun
 coverage and restriction sites when it measured them) in the contigs table.
 
-Each pairs file row whose two ends lie on contigs of the contig data file
-(within their length) is one contact between the two contigs, an
-intra-contig contact when both ends are on one contig: the map holds the
-raw contacts, without the filters and normalization of the network. The
-pairs files of several libraries are summed into one map.
-
-A run that started from a .metacool map of the contigs (made before any
-binning) has no pairs files: its map is written from that map instead, with
-its bins and contacts, grouped by final bin in the same way. A pipeline run
-from reads or pairs builds such a map itself, from its pairs files, as soon
-as it has them, reads its network from it (with several libraries, from one
-map per library and the map of their sum, see write_library_maps), and
-writes the map of its bins from it at the end. A run step by step from a
-map stores the overlapping clusters of its partition in the map first, as a
-clustering round, then its validation writes the map of the clusters.
+The map of the bins is written from a .metacool map of the contigs, made
+before any binning, with its bins and contacts, grouped by final bin: the
+map that a run started from, or the map that a pipeline run from reads or
+pairs builds from its pairs files, as soon as it has them, and reads its
+network from (with several libraries, from one map per library and the map
+of their sum, see write_library_maps). There, each pairs file row whose two
+ends lie on contigs of the assembly (within their length) is one contact
+between the two contigs, an intra-contig contact when both ends are on one
+contig: the map holds the raw contacts, without the filters and
+normalization of the network. The pairs files of several libraries are
+summed into one map. A run step by step from a map stores the overlapping
+clusters of its partition in the map first, as a clustering round, then its
+validation writes the map of the clusters.
 
 The map of the clusters of a pipeline run also stores the normalization of
 its network, as a weight column of its bins table (see
@@ -39,7 +37,6 @@ normalized contact of two bins is their count times both weights, the
 way cooler stores its balancing weights.
 
 Core functions to write the file:
-    - write_metacool, from the pairs files
     - write_contig_map, the map of the contigs in no bin yet, from the pairs
       files
     - reassign_metacool, from a .metacool map
@@ -122,7 +119,7 @@ class MetacoolError(ValueError):
 def _as_metacool_errors():
     """Raise the ValueError, OSError (FileExistsError among them) and
     KeyError of writing the map, metacooler's above all, as a MetacoolError,
-    its message kept: metator metacool logs the reason, then raises the
+    its message kept: the command logs the reason, then raises the
     error."""
     try:
         yield
@@ -338,164 +335,6 @@ def check_map_lengths(metacool, contigs, lengths, of, where):
         )
 
 
-def _contigs_in_map(mc, metacool, contigs, of, what):
-    """The contigs of contigs (their lengths, by name, as the contig data
-    file of gives them) that the map mc (that of metacool, a
-    metacooler.MetaCooler) holds, in the order of the map, once the map is
-    checked for reading their contacts.
-
-    Refused: a map that stores both triangles of the matrix (storage-mode
-    square), where each contact between two bins would be read twice, and
-    a map that gives one of the contigs another length (see
-    check_map_lengths), which is no map of them. The contigs that the map
-    lacks (a map made with a contig filter, for example) are left out, with
-    a warning (what: what the contigs are, for it): they have no contacts
-    there, as contigs that no read maps to."""
-    storage_mode = mc.info.get("storage-mode", "symmetric-upper")
-    if storage_mode != "symmetric-upper":
-        raise MetacoolError(
-            f"{metacool} stores its contacts with storage-mode {storage_mode!r}: the contacts of contigs are read "
-            "from a map that stores each contact once, in the upper triangle (storage-mode 'symmetric-upper'), as "
-            "metacooler writes them."
-        )
-    check_map_lengths(metacool, mc.contigs, contigs, of, of)
-    names = [str(name) for name in mc.contigs["name"]]
-    in_map = set(names)
-    absent = [name for name in contigs if name not in in_map]
-    if absent:
-        logger.warning(
-            f"{len(absent)} of {what} are not in {metacool}: they have no contacts there, as contigs that no read maps "
-            f"to: {_shown(absent)}."
-        )
-    return [name for name in names if name in contigs]
-
-
-def contig_contacts(metacool, contigs, of, what, chunksize=1_000_000):
-    """The contacts between contigs in a .metacool contact map, summed by
-    pair of contigs: those between their bins, whatever the bin size of the
-    map. The pixels are read at most chunksize at a time, and only those of
-    the contigs are kept: the memory used grows with the number of their
-    pairs in contact. metator qc reads the contacts of the large contigs of
-    its high-quality MAGs so.
-
-    Parameters
-    ----------
-    metacool : str
-        Path to the .metacool file, or URI of an entry of a .mmetacool
-        collection: ``file.mmetacool::entries/<name>``.
-    contigs : dict
-        The lengths of the contigs, by name, as the contig data file of
-        gives them.
-    of : str
-        The contig data file, for the messages.
-    what : str
-        What the contigs are, for the warning about those that the map
-        lacks (see _contigs_in_map), which have no contacts.
-    chunksize : int
-        Number of pixels read at a time.
-
-    Returns
-    -------
-    pandas.DataFrame
-        One row per pair of contigs in contact: contig1 and contig2 (their
-        names, the first one first in the map, the same one for the contacts
-        within a contig) and count, their contacts.
-
-    Raises
-    ------
-    MetacoolError
-        If the map cannot be read, stores both triangles of the matrix, or
-        gives a contig another length than contigs.
-    """
-    import numpy as np
-
-    with _metacooler_logging(), unchanged_while_read(metacool):
-        mc = open_map(metacool)
-        held = _contigs_in_map(mc, metacool, contigs, of, what)
-        names = mc.contigs["name"].astype(str).to_numpy()
-        selected = np.isin(names, held)
-        sums = [pd.DataFrame({"id1": [], "id2": [], "count": []}, dtype="int64")]
-        # No pixel to read when the map holds none of the contigs.
-        if held:
-            for chunk in mc.iter_pixels(chunksize=chunksize, contig_ids=True):
-                pixels = pd.DataFrame({"id1": chunk["contig1_id"], "id2": chunk["contig2_id"], "count": chunk["count"]})
-                pixels = pixels[selected[pixels["id1"].to_numpy()] & selected[pixels["id2"].to_numpy()]]
-                sums.append(pixels.groupby(["id1", "id2"], as_index=False)["count"].sum())
-    summed = pd.concat(sums).groupby(["id1", "id2"], as_index=False)["count"].sum()
-    return pd.DataFrame(
-        {
-            "contig1": names[summed["id1"].to_numpy()],
-            "contig2": names[summed["id2"].to_numpy()],
-            "count": summed["count"].to_numpy(),
-        }
-    )
-
-
-def held_contigs(metacool, contigs, of, what):
-    """The contigs of contigs that the .metacool contact map metacool holds,
-    in the order of the map, once the map is checked for reading their
-    contacts (see _contigs_in_map): those that extract_contigs writes the
-    contact map of. metator contactmap checks the map so before it writes
-    any output.
-
-    Parameters
-    ----------
-    metacool : str
-        Path to the .metacool file, or URI of an entry of a .mmetacool
-        collection: ``file.mmetacool::entries/<name>``.
-    contigs : dict
-        The lengths of the contigs, by name, as the contig data file of
-        gives them.
-    of : str
-        The contig data file, for the messages.
-    what : str
-        What the contigs are, for the warning about those that the map
-        lacks, which are left out.
-
-    Returns
-    -------
-    list of str
-        The contigs of contigs that the map holds, in its order.
-
-    Raises
-    ------
-    MetacoolError
-        If the map cannot be read, stores both triangles of the matrix, or
-        gives a contig another length than contigs.
-    """
-    with _metacooler_logging():
-        return _contigs_in_map(open_map(metacool), metacool, contigs, of, what)
-
-
-def extract_contigs(metacool, contigs, outfile):
-    """Write the contact map of contigs, from the .metacool contact map
-    metacool, as metacooler extract writes it: a .cool file at outfile (a
-    cooler, not a .metacool map) of their bins in the map, one per contig
-    in a map of metaTOR, in the order of the map, with their contacts.
-    metator contactmap writes the contact map of a bin so, from a map.
-
-    Parameters
-    ----------
-    metacool : str
-        Path to the .metacool file, or URI of an entry of a .mmetacool
-        collection: ``file.mmetacool::entries/<name>``.
-    contigs : list of str
-        The contigs, which the map holds (see held_contigs).
-    outfile : str
-        Path to the .cool file to write, replaced if it exists.
-
-    Raises
-    ------
-    MetacoolError
-        If metacooler cannot write the file (a ValueError, OSError or
-        KeyError, message kept).
-    """
-    import metacooler
-
-    with _metacooler_logging(), _as_metacool_errors(), unchanged_while_read(metacool, outputs=[outfile]):
-        metacooler.extract(metacool, contigs=list(contigs), output=outfile)
-
-
 def check_map_of_contigs(metacool, contig_data):
     """Refuse a map that is not a map of the contigs of a run: contigs that
     contig_data, a contig data file of the run (its Name and Size columns),
@@ -622,123 +461,15 @@ def _check_paths(outfile, force, inputs):
 
 
 def _checked_inputs(contig_data, outfile, force, inputs):
-    """What both writers of the map of the bins check before any work, in
-    this order: the outfile and the input files (see _check_paths), then
-    the contig data and its names. Returns what read_contig_data reads."""
+    """What the writer of the map of the bins (reassign_metacool) checks
+    before any work, in this order: the outfile and the input files (see
+    _check_paths), then the contig data and its names. Returns what
+    read_contig_data reads."""
     _check_paths(outfile, force, inputs)
     bins, contig_bin, contig_columns, header = read_contig_data(contig_data)
     check_ascii_names(bins["chrom"], contig_bin.values())
     check_bin_names(contig_bin.values())
     return bins, contig_bin, contig_columns, header
-
-
-def write_metacool(
-    pairs_files,
-    contig_data,
-    outfile,
-    bin_summary=None,
-    assembly_name=None,
-    threads=1,
-    force=False,
-    metadata=None,
-):
-    """Write the contact map of the contigs as a .metacool file.
-
-    One bin per contig, one genome per final bin, plus metacooler's
-    ``__unbinned__`` genome for the unbinned contigs, which keep their
-    contacts. The contigs are ordered by genome, then from the longest
-    (metacooler's genome-then-length ordering).
-
-    Parameters
-    ----------
-    pairs_files : str or list of str
-        Pairs file(s) of the Hi-C libraries, plain or compressed: their
-        contacts are summed. Each row whose two ends lie on contigs of the
-        contig data file (within their length) counts once; the other rows
-        are left out, with a warning.
-    contig_data : str
-        Path to the contig_data_final.txt file: the contigs (Name, Size)
-        and their final bins (Final_cluster). Its GC_content, Hit,
-        Shotgun_coverage and Restriction_site columns (CONTIG_COLUMNS) are
-        stored in the contigs table, those it has and fills (see
-        read_contig_data).
-    outfile : str
-        Path to the .metacool file to write.
-    bin_summary : str, optional
-        Path to the cluster_summary.txt file: its columns are added to the
-        genomes table, one row per bin, named by its first column. Each row
-        must have as many fields as the header. Not read when no contig is
-        in a final bin: the map has no genome but ``__unbinned__``.
-    assembly_name : str, optional
-        Name of the assembly, stored in the file.
-    threads : int
-        Number of threads binning the pairs.
-    force : bool
-        Whether to replace an existing outfile.
-    metadata : dict, optional
-        Parameters of the run, stored with the version of metaTOR under the
-        "metator" key of the file metadata.
-
-    Raises
-    ------
-    MetacoolError
-        If threads is below 1, the outfile exists (without force), an input
-        file is missing, the contig data cannot be read as a table or has
-        no Name, Size or Final_cluster column or a Size that is not a whole
-        number, a contig or bin name is not ASCII, a bin name is one that
-        metacooler reads as no bin (NA, nan, -1...), or metacooler cannot
-        write the map or store the contig columns (a ValueError, OSError or
-        KeyError, message kept: for example, a bin summary whose rows and
-        header have different numbers of fields, or an outfile in a
-        directory that cannot be made). No map is left when the contig
-        columns cannot be stored, and no partial file of metacooler when it
-        cannot write the map.
-    """
-    pairs_files = [str(pairs_files)] if isinstance(pairs_files, (str, os.PathLike)) else [str(p) for p in pairs_files]
-    if threads < 1:
-        raise MetacoolError(f"The number of threads must be at least 1, got {threads}.")
-    bins, contig_bin, contig_columns, header = _checked_inputs(
-        contig_data, outfile, force, [*pairs_files, contig_data, bin_summary]
-    )
-
-    import metacooler
-
-    logger.info(
-        f"Writing {outfile}: contact map of {len(bins)} contigs, {len(contig_bin)} of them in "
-        f"{len(set(contig_bin.values()))} clusters."
-    )
-    with _metacooler_logging(), _as_metacool_errors():
-        if os.path.dirname(outfile):
-            os.makedirs(os.path.dirname(outfile), exist_ok=True)
-        metacooler.from_pairs(
-            outfile,
-            bins=bins,
-            pairs=pairs_files,
-            # Every contig, the unbinned ones as ND (no genome for
-            # metacooler): a run with no final bin gives a table all ND,
-            # not an empty table, which metacooler 0.2.0 refuses.
-            contig_genome_map={name: contig_bin.get(name, "ND") for name in bins["chrom"]},
-            assembly_name=assembly_name,
-            # The cluster names are the first column of cluster_summary.txt, unnamed.
-            # No final bin, no bin summary row: its columns would only be
-            # empty columns of __unbinned__.
-            genomes_table=bin_summary if bin_summary and contig_bin else None,
-            genomes_table_format="1",
-            metadata={"metator": {"version": __version__, **(metadata or {})}},
-            # No P(s) table next to the file: metaTOR writes the map only.
-            ps=False,
-            nproc=threads,
-            # On a failure, metacooler removes the partial file it writes
-            # next to the outfile.
-            keep_partial=False,
-        )
-        try:
-            _write_back_columns(outfile, contig_data, contig_columns, header)
-            _rewrite_in_a_fresh_file(outfile)
-        except BaseException:
-            # No map without the columns of its contigs.
-            os.remove(outfile)
-            raise
 
 
 def write_contig_map(
@@ -756,18 +487,13 @@ def write_contig_map(
     it has them. A run with one library reads its network from it
     (metator.network.metacool_to_contacts: the network of its pairs files,
     byte for byte). At the end of the run, reassign_metacool
-    writes the map of its bins from it, which is the map that
-    write_metacool writes from the same pairs files and the final tables,
-    but for its history (and, when the final bins leave the contigs in the
-    order of this map, for example with no final bin or one bin holding
-    every contig, the place of the genome_id column: metacooler then
-    relabels the contigs where they are, and writes genome_id again, after
-    the QC columns).
+    writes the map of its bins from it.
 
     One bin per contig, every contig in metacooler's ``__unbinned__``
     genome, from the longest (metacooler's genome-then-length ordering,
-    with one genome), and the contacts of the pairs files as write_metacool
-    counts them, with the contact statistics that metacooler measures on
+    with one genome), and the contacts of the pairs files, each row whose
+    two ends lie on contigs of the contig data counted once, with the
+    contact statistics that metacooler measures on
     the reads (the QC block, and the ``qc_*`` columns of the contigs, which
     reassign_metacool carries over to the bins). The contigs table holds
     what metaTOR measured on the assembly (ASSEMBLY_COLUMNS): GC_content,
@@ -1019,14 +745,12 @@ def reassign_metacool(
     metacooler create pairs without --contigs, for example). Each contig
     goes to its final bin, the unbinned ones and those that the contig data
     lacks to ``__unbinned__``, and the contigs are grouped by genome, then
-    from the longest, as write_metacool groups them (metacooler reassign,
-    layout genome-then-length): a map of the same genomes, in the same
-    order. The genomes table holds the columns of the bin summary, and the
-    contigs table the columns of the contig data that write_metacool stores
-    (see read_contig_data), last, as write_metacool stores them: they
-    replace those that the input map carried, metaTOR's own as those of the
-    bins of an earlier run. Its other columns of the contigs table are
-    kept. The QC block of the input map, when it has one, is carried over
+    from the longest (metacooler reassign, layout genome-then-length). The
+    genomes table holds the columns of the bin summary, and the contigs
+    table the columns of the contig data that metaTOR measured (see
+    read_contig_data), last: they replace those that the input map carried,
+    metaTOR's own as those of the bins of an earlier run. Its other columns
+    of the contigs table are kept. The QC block of the input map, when it has one, is carried over
     to the bins: metacooler keeps the counts within each contig (measured
     on the reads, for a map made from pairs files) and counts the contacts
     between contigs again. A map written by metacooler 0.2.0, with no count
@@ -1149,8 +873,8 @@ def reassign_metacool(
                     metacool,
                     assignment,
                     staged,
-                    # Grouped as write_metacool groups the contigs, whatever
-                    # the order of the input map: the pixels are remapped.
+                    # Grouped by genome, then from the longest, whatever the
+                    # order of the input map: the pixels are remapped.
                     layout="genome-then-length",
                     # The bin names are the first column of the table,
                     # unnamed in cluster_summary.txt. It replaces the columns
@@ -1426,19 +1150,16 @@ def _drop_earlier_normalizations(path):
 
 def _write_back_columns(path, contig_data, contig_columns, header):
     """Give a map the metadata columns of this run, as metacooler annotate
-    edits them: the map that write_metacool has just written, or the map
-    written back from an input map.
+    edits them: the map written back from an input map.
 
     The columns of the contig data that metaTOR measured (contig_columns)
-    are stored last, in their order, as write_metacool stores them in the
-    map it writes from the pairs files: the columns of a contig data file
+    are stored last, in their order: the columns of a contig data file
     (header: all of them) that the map carried are dropped first, then
     those of this run are added. metacooler reassign stores the columns
     that it carries from its input map before genome_id or before the QC
-    columns of the contigs: replaced where they were, they would list the
-    columns of the map of the bins in another order than in the map of the
-    pairs. The dropped columns are also those that this run does not
-    store: the bins of each step, the contig ids, Size..., which a map made
+    columns of the contigs: replaced where they were, they would come in
+    another order in each map, as the input map had them. The dropped
+    columns are also those that this run does not store: the bins of each step, the contig ids, Size..., which a map made
     with the contig data of an earlier run as its contigs table holds
     (metacooler create pairs --contigs-format Name,Final_cluster), and one of
     CONTIG_COLUMNS that this run had no values for (Shotgun_coverage

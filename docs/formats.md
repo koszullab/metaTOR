@@ -45,9 +45,8 @@ H9:1:HGJYYBBXY:8:1102:3792:13693	NODE_100063	161	NODE_100063	402	-	-
 ```
 
 metaTOR writes them sorted, compressed with bgzip and indexed with pairix
-(`alignment_<i>_sorted.pairs.gz` and `.px2`), as `metator pairs` does for
-other pairs files: `metator network` does, and `metator pipeline` with
-`--no-clean-up` or `--scaffold`. Without, the pairs files of a `pipeline`
+(`alignment_<i>_sorted.pairs.gz` and `.px2`): `metator network` does, and
+`metator pipeline` with `--no-clean-up`. Without, the pairs files of a `pipeline`
 run are temporary: `alignment_<i>.pairs`, plain text, its pairs in the order
 of the reads of the alignments, not by position, in its temporary directory.
 
@@ -88,8 +87,7 @@ with a header. Each step adds its columns to those of the step before:
 from 0. A contig with no edge in the network (no hits, or no contact with
 another contig) has `-` in the columns of its core and overlapping clusters. As
 inputs, the tables are read by the headers of their columns: other columns
-may be added, in any order, such as the bins of another binning for
-`metator contactmap --object`.
+may be added, in any order, such as the bins of another binning.
 
 With several libraries, `hit_data_alignment.txt` holds the hits of each
 contig in each library: its ID, its name, then one column per library,
@@ -136,8 +134,8 @@ metator_00001_00000	49021.00	62.03	1.00	0.01	1.00	0.02	1.00	15.00	9019.00	2.00	1
 
 Each marker set, bacterial (105 markers) and archaeal (131), is tried on
 every cluster, which keeps the one that gives it the higher weighted
-completeness. The quality classes of the log and of the plots take the
-weighted redundancy minus one as the contamination of a cluster; the recursive
+completeness. The quality classes of the log take the weighted redundancy
+minus one as the contamination of a cluster; the recursive
 partition divides it by the weighted completeness (see
 [Cluster quality](concepts.md#cluster-quality)).
 
@@ -207,25 +205,6 @@ which the validation leaves there.
 contig, whose contigs are grouped into one genome per final cluster. See
 [The contact map of the clusters](guides/metacool.md).
 
-## Scaffolds
-
-`<cluster>_scaffolded.fa` holds one record per scaffold, named
-`metator_scaffold_0001` and on, with its shape and the length of its contigs:
-
-```text
->metator_scaffold_0001 linear length: 12167
-```
-
-`<cluster>_info_frags.txt` lists the contigs of each scaffold, in order, after
-the same header line: the name, start (0), end and orientation (`1`, or `-1`
-for a reversed contig) of each.
-
-```text
->metator_scaffold_0001 linear length: 12167
-NODE_2487	0	11273	1
-NODE_202465	0	894	1
-```
-
 ## MGE cluster summary
 
 `mges_cluster_summary.tsv` holds one row per MGE cluster, with a header:
@@ -254,5 +233,4 @@ other columns as written, but `BinLength` and `ContigsNumber`, which are the
 ## Logs
 
 Each command writes its log, `metator_<command>_<date>.log`: the version of
-metaTOR, the date and the command line, then what the run did. hicstuff's
-own log goes next to it when a command runs hicstuff (`contactmap`).
+metaTOR, the date and the command line, then what the run did.

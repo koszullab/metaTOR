@@ -34,7 +34,7 @@ metator mge -a assembly.fa -c binning/contig_data_final.txt -b binning/binning.t
 
 | Input | What it is |
 |---|---|
-| The pairs files | The pairs files of the run, sorted and indexed with pairix as `metator network` writes them (`metator pipeline` deletes them, unless `--no-clean-up`). An uncompressed pairs file without index is read whole, which is slower: `metator pairs` indexes it |
+| The pairs files | The pairs files of the run, sorted and indexed with pairix as `metator network` writes them (`metator pipeline` deletes them, unless `--no-clean-up`). An uncompressed pairs file without index is read whole, which is slower: pairix's tools index it (see [Other tools](../other-tools.md)) |
 | `--assembly` (`-a`) | The assembly, as a FASTA file |
 | `--contigs` (`-c`) | The contig data table of the run: the size, GC content and hits of each contig |
 | `--binning` (`-b`) | The clusters of the contigs, two columns: the contig, and its cluster. `binning.txt`, or the collection exported by anvi'o, whose split names (`NODE_1_split_00001`) are read as their contig (`NODE_1`) |
@@ -116,8 +116,8 @@ reads the pairs files, with or without `--map`.
 
 The round `mge` belongs to the clustering that it was made with (`-b`, the
 final clusters of the run). A run that replaces the clusters of the map
-drops it, with a warning that says so: `partition MAP`, `validation MAP`,
-`pipeline MAP` and `metator metacool MAP`. Run `mge --map` again with the
+drops it, with a warning that says so: `partition MAP`, `validation MAP`
+and `pipeline MAP`. Run `mge --map` again with the
 new clusters to store their MGE clusters.
 
 ## The hosts

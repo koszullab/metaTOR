@@ -112,7 +112,7 @@ was not split. The contigs in no final cluster are marked `ND`, not determined.
 
 At the end of the validation, the log counts the final clusters in five classes,
 from their weighted completeness and their contamination, the weighted
-redundancy − 1, and the plot `plot/bins_size_distribution.png` shows them:
+redundancy − 1:
 
 | Class | Completeness | Contamination |
 |---|---|---|

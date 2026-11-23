@@ -15,14 +15,16 @@ metator --version
 |---|---|
 | Several libraries | Comma-separated lists, in the same order in `--forward` and `--reverse`: `-1 L1_R1.fq.gz,L2_R1.fq.gz -2 L1_R2.fq.gz,L2_R2.fq.gz`. |
 | Several enzymes | Separated by commas: `DpnII,HinfI`. |
-| Pairs files | `qc`, `contactmap`, `metacool`, `scaffold` and `mge` take the pairs files of a run as arguments: `alignment_<i>_sorted.pairs.gz`, which `metator network` writes and `metator pipeline` keeps with `--no-clean-up`. `qc`, `contactmap` and `metacool` take one `.metacool` contact map in their place, for what a map gives; `mge` stores its MGE clusters in the map given with `--map`. |
+| Pairs files | `mge` takes the pairs files of a run as arguments: `alignment_<i>_sorted.pairs.gz`, which `metator network` writes and `metator pipeline` keeps with `--no-clean-up`; it stores its MGE clusters in the map given with `--map`. |
 | `-F, --force` | Replace the outputs of an earlier run, in the output directory and at `--output-map`. Without it, a command refuses to overwrite them. A run from a map updates that map in place without it, and warns, before any work, of the clusters and clustering rounds that it replaces there: `--output-map` writes the map of the run to another file instead, and leaves the map as it was. |
-| `-T, --tmpdir` | Each run works in a directory of its own inside it, removed at the end, unless `--no-clean-up` or the run fails. In `scaffold`, `-T` is `--threshold`. |
-| `-N, --no-clean-up` | Keep the temporary files. In `qc`, it is `-n`. |
-| Log files | Each command writes its log, `metator_<command>_<date>.log`, into its output directory; `metacool`, `scaffold`, `pairs` and `mge`, into the current directory. |
+| `-T, --tmpdir` | Each run works in a directory of its own inside it, removed at the end, unless `--no-clean-up` or the run fails. |
+| `-N, --no-clean-up` | Keep the temporary files. |
+| Log files | Each command writes its log, `metator_<command>_<date>.log`, into its output directory; `mge`, into the current directory. |
 
 New to metaTOR? Start with the [Quickstart](quickstart.md); for hits, core,
-overlapping and recursive clusters, see [Concepts](concepts.md).
+overlapping and recursive clusters, see [Concepts](concepts.md). metaTOR 2.0
+removed `qc`, `contactmap`, `metacool`, `scaffold` and `pairs`, and the plots:
+[Other tools](other-tools.md) says what replaces each one.
 
 ## Clustering
 
@@ -45,7 +47,7 @@ the reads, alignments or pairs of `-1` (and `-2`, `--start`): one or the other.
 | Option | Default | Description |
 |---|---|---|
 | `MAP` | none | A `.metacool` contact map of the contigs, or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`): the run starts from it, in place of `-1`, `-2` and `--start`. See [Starting from a contact map](guides/metacool.md#starting-from-a-contact-map). |
-| `-1, --forward` | none | The R1 reads (FASTQ), or their alignments (BAM), or the pairs files, of each library, separated by commas. Pairs files may be plain or compressed with gzip, bzip2, zstd or LZ4, whatever their name; zstd and LZ4 not with `--scaffold`. Without `MAP`, needed. |
+| `-1, --forward` | none | The R1 reads (FASTQ), or their alignments (BAM), or the pairs files, of each library, separated by commas. Pairs files may be plain or compressed with gzip, bzip2, zstd or LZ4, whatever their name. Without `MAP`, needed. |
 | `-2, --reverse` | none | The R2 reads, or their alignments, in the same order. Not needed from pairs files, or the BAM files of bwa, which hold both mates. |
 | `-a, --assembly` | *required* | The assembly: a FASTA file, or the basename of its bowtie2 or bwa index. |
 | `-S, --start` | `fastq` | What `--forward` and `--reverse` are: `fastq`, `bam` or `pair`. Not with `MAP`. |
@@ -63,14 +65,12 @@ the reads, alignments or pairs of `-1` (and `-2`, `--start`): one or the other.
 | `-C, --cluster-matrix` | off | Write the clustering matrices (`clustering_matrix*.npz`). |
 | `-j, --rec-iter` | `10` | The iterations of the recursive partition of the contaminated clusters. |
 | `-P, --rec-overlap` | `90` | The overlap threshold of the recursive partition, in percent. |
-| `-v, --scaffold` | off | Scaffold the final clusters, into `scaffolded_clusters/`. Refused from a map. |
-| `-J, --junctions` | `NNNNN` | The sequence between two contigs of a scaffold. |
 | `-o, --outdir` | the current directory | The output directory. |
 | `-p, --prefix` | none | Name the clusters `<prefix>_metator_…`, the map `<prefix>.metacool` and, with several libraries, the maps of the libraries `<prefix>.mmetacool`. Letters, digits, `_` and `-` only. |
-| `-F, --force` | off | Replace the directories of clusters of an earlier run, and an existing `--output-map` file. Removes the outputs of a run of metaTOR 1.x: `overlapping_bin/`, `recursive_bin/`, `final_bin/`, `final_bin_unscaffold/`, `bin_summary.txt`, and `scaffold_bin/` with `--scaffold`. |
+| `-F, --force` | off | Replace the directories of clusters of an earlier run, and an existing `--output-map` file. Removes the outputs of a run of metaTOR 1.x: `overlapping_bin/`, `recursive_bin/`, `final_bin/`, `final_bin_unscaffold/` and `bin_summary.txt`, and the plots of an earlier run, `plot/`, which metaTOR 2.0 no longer draws. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory, where the index of the assembly is built, and the pairs files written (see `-N`). |
 | `-t, --threads` | `1` | Threads for the alignment, the partition and miComplete. |
-| `-N, --no-clean-up` | off | Keep the temporary files, and the pairs files of the run, sorted, compressed and indexed in the output directory (`alignment_<i>_sorted.pairs.gz`). Without `-N`, nor `--scaffold`, which reads them so, the run writes them to its temporary directory as they are made, and removes them once its network is built. |
+| `-N, --no-clean-up` | off | Keep the temporary files, and the pairs files of the run, sorted, compressed and indexed in the output directory (`alignment_<i>_sorted.pairs.gz`). Without `-N`, the run writes them to its temporary directory as they are made, and removes them once its network is built. |
 | `--no-metacool` | off | Do not keep the contact map of the contigs, grouped by cluster: a run from reads, alignments or pairs still builds the map of its contigs from the pairs files (a map that cannot be built stops the run), reads its networks from it, and removes it at the end, with the maps of its libraries (`<prefix>.mmetacool`) when it has several; a run from a map leaves that map as it was. |
 | `--output-map` | none | Write the contact map of the clusters to this file (replaced only with `-F`), a `.metacool` file, not a `.mmetacool` collection. A run from reads, alignments or pairs writes the maps of its libraries next to it, `<name>.mmetacool`, with several, and removes an earlier run's there with one: replaced only with `-F` too. By default, a run from a `.metacool` map updates that map in place, and any other run writes `<outdir>/<prefix>.metacool` (`metator.metacool` without `--prefix`). |
 
@@ -208,7 +208,7 @@ does at its end: in place, or to `--output-map`. See
 | `-C, --cluster-matrix` | off | Write `clustering_matrix_recursive.npz`. |
 | `-o, --outdir` | `./` | The output directory. |
 | `-p, --prefix` | none | Name the clusters `<prefix>_metator_…`. |
-| `-F, --force` | off | Replace `recursive_clusters/` and `final_clusters/`, and an existing `--output-map` file. Removes the outputs of a run of metaTOR 1.x: `recursive_bin/`, `final_bin/`, `final_bin_unscaffold/` and `bin_summary.txt`. Refused when `--fasta` is in one of these directories. |
+| `-F, --force` | off | Replace `recursive_clusters/` and `final_clusters/`, and an existing `--output-map` file. Removes the outputs of a run of metaTOR 1.x: `recursive_bin/`, `final_bin/`, `final_bin_unscaffold/` and `bin_summary.txt`, and the plots of an earlier run, `plot/`, which metaTOR 2.0 no longer draws. Refused when `--fasta` is in one of these directories. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory. |
 | `-t, --threads` | `1` | Threads for the partition and miComplete. |
 | `-N, --no-clean-up` | off | Keep the temporary files. |
@@ -224,175 +224,6 @@ metator validation sample.metacool -a assembly.fa -c binning/contig_data_partiti
 ```
 
 ## After the clustering
-
-### `metacool` { #metacool }
-
-Write the contact map of all the contigs, grouped by cluster, as a `.metacool`
-file, as `pipeline` does at the end of a run. **API:**
-`metator.metacool.write_metacool`. **Guide:**
-[The contact map of the clusters](guides/metacool.md).
-
-```console
-metator metacool [OPTIONS] PAIRSFILE...
-```
-
-`PAIRSFILE` is the pairs files of the run, whose contacts are summed, or, for
-a run that started from a contact map, that `.metacool` map.
-
-| Option | Default | Description |
-|---|---|---|
-| `-c, --contig-data` | *required* | `contig_data_final.txt`: the contigs, their final clusters, and what metaTOR measured on them. |
-| `-b, --bin-summary` | none | `cluster_summary.txt`, whose columns are added to the genomes table. |
-| `-o, --outfile` | *required* | The `.metacool` file to write: a file, not a group inside one (a path that holds `::`, which metacooler reads as `file::group`, is refused). |
-| `-n, --assembly-name` | none | The name of the assembly, stored in the file. Refused for a map written from a map, which keeps its own. |
-| `-t, --threads` | `1` | Threads binning the pairs. |
-| `-F, --force` | off | Replace the output file. |
-
-```bash
-metator metacool -c binning/contig_data_final.txt -b binning/cluster_summary.txt \
-    -o sample.metacool binning/alignment_0_sorted.pairs.gz
-```
-
-### `contactmap` { #contactmap }
-
-Build the contact map of one contig or cluster, with hicstuff from the pairs
-files, or from a contact map. **API:**
-`metator.contact_map.generate_contact_map`,
-`metator.contact_map.extract_contact_map`. **Guide:**
-[Viewing and scaffolding MAGs](guides/visualisation.md#the-contact-map-of-a-cluster).
-
-```console
-metator contactmap [OPTIONS] PAIRSFILE...
-```
-
-`PAIRSFILE` is the pairs files of the run, or, in their place, one
-`.metacool` contact map of the run (or an entry of a `.mmetacool`
-collection, `file.mmetacool::entries/<name>`). From the pairs files, the map
-is at the resolution of the restriction fragments of `--enzyme`; from a map,
-it is the map of the contigs as `metacooler extract` writes it,
-`<name>.cool`, at the bins of the map (one per contig in a map of metaTOR),
-with the contacts of the pairs that the map holds. A map holds no read
-positions: `--filter`, `--pcr-dup` and a `--mat-fmt` other than `cool` are
-refused, and `--enzyme` is not used. A map with pairs files, several maps, a
-map of other contig lengths than the contig data table, and a map that
-stores both triangles of the matrix are refused too.
-
-| Option | Default | Description |
-|---|---|---|
-| `-a, --assembly` | *required* | A FASTA file holding the contigs of the map: the assembly, or the cluster. |
-| `-c, --contig-data` | *required* | `contig_data_final.txt`, or a contig data table with a column of other clusters. |
-| `-e, --enzyme` | *required* | The restriction enzymes of the library: the map is at the resolution of their fragments. Not used from a map. |
-| `-n, --name` | *required* | The name of the contig or cluster, or the numeric ID of a core or overlapping cluster. A recursive cluster needs its name (`metator_00012_00003`): recursive clusters are numbered within their overlapping cluster. |
-| `-O, --object` | `final_bin` | What `--name` is: `contig`, `core_bin`, `overlapping_bin`, `recursive_bin`, `final_bin`, or the header of a column of the contig data table. The header that metaTOR 1.x gave a column (`Final_bin`) reads its 2.0 column (`Final_cluster`), unless the table has a column of that header. |
-| `-m, --mat-fmt` | `graal` | The format of the map: `graal`, `bg2` or `cool`. From a map, `cool` only, the default then. |
-| `-f, --filter` | off | Leave out the uncuts and loops. Refused from a map. |
-| `-D, --pcr-dup` | off | Leave out the PCR duplicates. Refused from a map. |
-| `-s, --min-size` | `5000` | Leave out the contigs shorter than this, in bp. |
-| `-o, --outdir` | `./contact_map_<name>` | The output directory. |
-| `-F, --force` | off | Replace the outputs. |
-| `-T, --tmpdir` | `./tmp` | The temporary directory. |
-| `-t, --threads` | `1` | Threads. |
-| `-N, --no-clean-up` | off | Keep the temporary files. |
-
-```bash
-metator contactmap -a assembly.fa -c binning/contig_data_final.txt -e DpnII \
-    -n metator_00007_00000 binning/alignment_0_sorted.pairs.gz
-
-# From the map of the run: metator_00007_00000/metator_00007_00000.cool
-metator contactmap -a assembly.fa -c binning/contig_data_final.txt -e DpnII \
-    -n metator_00007_00000 -o metator_00007_00000 binning/metator.metacool
-```
-
-### `scaffold` { #scaffold }
-
-Order and orient the contigs of a cluster into scaffolds, from the contacts
-between their ends. **API:** `metator.scaffold.get_scaffolds`. **Guide:**
-[Viewing and scaffolding MAGs](guides/visualisation.md#scaffolding-a-cluster).
-
-```console
-metator scaffold [OPTIONS] PAIRSFILE...
-```
-
-| Option | Default | Description |
-|---|---|---|
-| `-b, --bin-name` | *required* | The name of the cluster. |
-| `-i, --input-fasta` | *required* | The FASTA file of the cluster. |
-| `-T, --threshold` | `0.05` | The score above which the ends of two contigs are joined. |
-| `-w, --window-size` | `5000` | The size, in bp, of the ends of the contigs. |
-| `-j, --junctions` | `NNNNN` | The sequence between two contigs of a scaffold. |
-| `-o, --out-fasta` | `./<cluster>_scaffolded.fa` | The FASTA file of the scaffolds. |
-| `-O, --out-frags` | `./<cluster>_info_frags.txt` | The table of the contigs of each scaffold. |
-| `-t, --threads` | `1` | Threads to sort pairs files that are not sorted yet. |
-
-```bash
-metator scaffold -b metator_00007_00000 -i binning/final_clusters/metator_00007_00000.fa \
-    binning/alignment_0_sorted.pairs.gz
-```
-
-### `pairs` { #pairs }
-
-Sort pairs files by contig and position, compress them with bgzip and index
-them with pairix, for the commands that read them. **API:**
-`metator.io.sort_and_index_pairs`.
-
-```console
-metator pairs [OPTIONS] PAIRSFILE...
-```
-
-Each output goes next to its input, named after it without its last
-extension: `sample.pairs` gives `sample_sorted.pairs.gz` and its index
-`sample_sorted.pairs.gz.px2`; `sample.pairs.gz` gives
-`sample.pairs_sorted.pairs.gz`.
-
-| Option | Default | Description |
-|---|---|---|
-| `-F, --force` | off | Replace the outputs. |
-| `-r, --remove` | off | Delete each input once it is sorted and indexed. |
-| `-t, --threads` | `1` | Threads for the sort. |
-
-### `qc` { #qc }
-
-Measure the quality of the library on the large contigs of the good MAGs:
-uncuts, loops, informative contacts, noise. **API:**
-`metator.quality_check.quality_check`. **Guide:**
-[Checking a library](guides/qc.md).
-
-```console
-metator qc [OPTIONS] PAIRSFILE...
-```
-
-`PAIRSFILE` is the pairs files of the run, or, in their place, one
-`.metacool` contact map of the run (or an entry of a `.mmetacool`
-collection). From a map, `qc` measures the noise of the library only, that of
-the pairs the map holds: the contacts within contigs, within MAGs and between
-MAGs, the noise contact ratio and the noise score. The events of the pairs
-within a contig (uncuts, loops, weirds, informative contacts) need the
-positions and strands of their reads, which a map does not hold: they are not
-measured, the log says so, and `--threshold` and `--plot` are refused;
-`--assembly` and `--enzyme` are not used. A map with pairs files, several
-maps, a map of other contig lengths than the contig data table, and a map
-that stores both triangles of the matrix are refused too.
-
-| Option | Default | Description |
-|---|---|---|
-| `-a, --assembly` | *required* | The assembly, as a FASTA file. Not read from a map. |
-| `-e, --enzyme` | *required* | The restriction enzymes of the library. Not used from a map. |
-| `-O, --metator-dir` | the current directory | The output directory of the run, where `cluster_summary.txt` (or the `bin_summary.txt` of a run of metaTOR 1.x) and `contig_data_final.txt` are. |
-| `-b, --bin-summary` | `<metator-dir>/cluster_summary.txt` | The cluster summary. |
-| `-c, --contig-data` | `<metator-dir>/contig_data_final.txt` | The contig data table. |
-| `-t, --threshold` | set from the library | The uncut and loop thresholds, in restriction sites: `uncuts,loops`. Refused from a map. |
-| `-P, --plot` | off | Write the plots of the events. Refused from a map. |
-| `-p, --prefix` | none | The name of the sample, on the plots and their files. |
-| `-o, --outdir` | `./metator_qc` or `./metator_qc_<prefix>` | The output directory. |
-| `-T, --tmpdir` | `./tmp` | The temporary directory. |
-| `-n, --no-clean-up` | off | Keep the temporary files. |
-
-```bash
-metator qc -a assembly.fa -e DpnII -O binning -p sample -P binning/alignment_0_sorted.pairs.gz
-
-# The noise only, from the map of the run
-metator qc -a assembly.fa -e DpnII -O binning -p sample binning/metator.metacool
-```
 
 ### `mge` { #mge }
 

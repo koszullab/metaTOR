@@ -88,7 +88,6 @@ network.txt
 network_0.txt
 overlapping_clusters
 overlapping_micomplete_results.txt
-plot
 recursive_clusters
 ```
 
@@ -101,7 +100,6 @@ recursive_clusters
 | `binning.txt` | The contigs of the final clusters and their cluster, as anvi'o imports a binning |
 | `metator.metacool` | The contact map of all the contigs, grouped by cluster |
 | `network.txt` | The normalised network of contigs |
-| `plot/` | Plots of the clusters' quality and size, and the heatmap of the clusters' network |
 | `metator_pipeline_<date>.log` | The log of the run |
 
 [Running the pipeline](guides/pipeline.md#outputs) lists every output, and
@@ -144,8 +142,9 @@ that are in no cluster are in the `__unbinned__` genome.
 ```python
 import metacooler
 import metator.io as mio
+import pandas as pd
 
-clusters = mio.read_bin_summary("binning/cluster_summary.txt")   # pandas.DataFrame
+clusters = pd.read_csv("binning/cluster_summary.txt", sep="\t", index_col=0)
 contigs = mio.read_contig_data("binning/contig_data_final.txt")
 
 mc = metacooler.MetaCooler("binning/metator.metacool")
@@ -158,6 +157,7 @@ mc.contigs   # one row per contig: GC content, hits, coverage, restriction sites
 - [Concepts](concepts.md): the network, the partition, the validation.
 - [Running the pipeline](guides/pipeline.md): every input, output and option,
   and the steps run one by one.
-- [Viewing and scaffolding MAGs](guides/visualisation.md): the contact map of
-  one cluster, and its scaffold.
+- [Other tools](other-tools.md): the contact map of one cluster, its
+  scaffold, and the quality of a library, with metacooler, hicstuff and
+  instaGRAAL.
 - [CLI reference](cli.md): every command.

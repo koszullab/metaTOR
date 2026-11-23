@@ -92,29 +92,21 @@ metacooler dump -t genomes -H binning/metator.metacool
 metacooler network binning/metator.metacool --level contig --balance metator_empirical_hit
 ```
 
-## `metator metacool`
+## The map of a run made without it
 
-`metator metacool` writes the same file from the pairs files,
-`contig_data_final.txt` and `cluster_summary.txt` of a run, for a run made step by
-step, or one that skipped the map, but for the clustering rounds, which it does
-not store, the history that it stores (the
-`annotate` and `reassign` keys of its metadata) and the type of its counts with
-several libraries (64-bit integers, which `metator metacool` stores as 32-bit
-ones):
+A run whose `partition` and `validation` were not given the map has no map of
+its clusters: `metacooler reassign` writes it from the map of its contigs,
+`contig_data_final.txt` and `cluster_summary.txt`, and `metacooler annotate`
+adds the columns that metaTOR measured on the contigs (see
+[Other tools](../other-tools.md)):
 
 ```bash
-metator metacool -c binning/contig_data_final.txt -b binning/cluster_summary.txt \
-    -o sample.metacool binning/alignment_0_sorted.pairs.gz binning/alignment_1_sorted.pairs.gz
-```
-
-For a run that started from a contact map, it writes the map from that map,
-as `metator pipeline MAP` and `metator validation MAP` do (see
-[Step by step](#step-by-step)), but for the clustering rounds: for a run whose
-`partition` and `validation` were not given the map, for example. The map
-keeps its assembly name, so `--assembly-name` is refused:
-
-```bash
-metator metacool -c contig_data_final.txt -b cluster_summary.txt -o binning.metacool sample.metacool
+metacooler reassign sample.metacool --contigs binning/contig_data_final.txt \
+    --contigs-format Name,Final_cluster --genomes binning/cluster_summary.txt \
+    --genomes-format 1 -o binning/clusters.metacool
+metacooler annotate binning/clusters.metacool --contigs binning/contig_data_final.txt \
+    --contigs-format Name --inplace \
+    --columns contigs.GC_content,contigs.Hit,contigs.Shotgun_coverage,contigs.Restriction_site
 ```
 
 ## Names and failures
@@ -127,9 +119,8 @@ names never are, but those of a hand-edited `contig_data_final.txt` can be.
 Each row of `cluster_summary.txt` must have as many fields as its header, as
 metaTOR writes it.
 
-When the map of the clusters cannot be written, `metator pipeline` and
-`metator metacool` log the reason as an error and stop with it; `pipeline`
-keeps its other outputs. `pipeline` removes a map that
+When the map of the clusters cannot be written, `metator pipeline` logs the
+reason as an error and stops with it, and keeps its other outputs. `pipeline` removes a map that
 an earlier run left in the output directory before it builds the map of the
 contigs in its place (`--no-metacool` or not), as it no longer matches the
 clusters: from then on, the map there is this run's, or there is none. So a run
@@ -146,8 +137,7 @@ error once it is built (in the partition or the validation, for example),
 `--no-metacool` or not: a new run can start from it, without aligning the
 reads again, with `metator pipeline <outdir>/metator.metacool`
 (`<outdir>/<prefix>.metacool` with `--prefix`) and `-F`, which replaces the
-cluster directories that the stopped run left in the output directory;
-`--scaffold` is not available then
+cluster directories that the stopped run left in the output directory
 (see [Starting from a contact map](#starting-from-a-contact-map)).
 
 `pipeline` checks what the map of the contigs needs before any work. Its
@@ -156,14 +146,11 @@ with other contig names, which it gives, before it builds the index of the
 assembly or aligns a read; rename these contigs to ASCII names, in the
 assembly and in the alignments or pairs files made from it (and build its
 index again, for an assembly given as an index). metacooler, which builds the
-map, and metaTOR, which reads the pairs files of `--scaffold`, both find the
-compression of a pairs file from its first bytes, whatever its name:
-metacooler reads plain, gzip, bzip2, zstd and LZ4 files, metaTOR plain, gzip,
-bzip2 and zip ones. So a run from pairs refuses, before any work, an empty
-pairs file; a zip archive, which metacooler cannot read; and, with
-`--scaffold`, a zstd or LZ4 file, which metaTOR cannot read: decompress the
-file, or compress it with gzip. zstd and LZ4 files work without `--scaffold`:
-the networks come from the maps. metacooler also needs the same number of
+map, finds the compression of a pairs file from its first bytes, whatever its
+name: it reads plain, gzip, bzip2, zstd and LZ4 files. So a run from pairs
+refuses, before any work, an empty pairs file, and a zip archive, which
+metacooler cannot read: decompress the file, or compress it with gzip.
+metacooler also needs the same number of
 fields on every row of a pairs file; its header lines (those that start with
 `#`) may come anywhere, so pairs files of one assembly concatenated with `cat`
 are one library. Give the pairs files of several libraries comma-separated,
@@ -226,9 +213,6 @@ refused before any work.
     replaces anything: before any work when the map has no such column, once
     the assembly is read when the column lacks contigs.
 - **Its libraries are already summed**: no `network_<i>.txt` is written.
-  `pipeline --scaffold`, which reads the pairs files, is refused.
-- **The heatmap** of the network of the final clusters is drawn from the
-  map, as for every run of `pipeline` (see [Plots](binning.md#plots)).
 
 At the end of such a run, `pipeline` updates the input map in place with the
 map of its clusters, with `metacooler reassign` (`--output-map FILE` writes it
@@ -270,8 +254,7 @@ second run that would write the same map stops before any work, naming the run
 that holds it. A lock that a run left behind on the same host when it died is
 removed, with a warning; one from another host is not: remove it once that
 run is over. Only the runs that write a map take its lock: a command that reads
-a map (`network MAP`, `qc MAP`, `contactmap MAP`, the heatmap, the input map
-of a run with `--output-map`) stops with an error when another run replaces it,
+a map (`network MAP`, the input map of a run with `--output-map`) stops with an error when another run replaces it,
 or writes it, as it reads it. metacooler opens the map for each chunk of
 pixels that it reads, and a map updated in place has its bins in another
 order: such a read mixed the two maps, and gave wrong contacts. Run it again
@@ -358,7 +341,7 @@ A run reaches its final clusters in rounds:
   it comes from.
 
 `metator mge --map` adds one more after them, `mge`: the MGE clusters (see
-[qc, contactmap and mge on the map](#qc-contactmap-and-mge-on-the-map)).
+[mge on the map](#mge-on-the-map)).
 
 The validation writes them all next to its other tables, in the output
 directory: `clusters.txt`, one row per cluster of every round (its round and
@@ -371,46 +354,22 @@ The map of the clusters stores both in its `/clusters` group (metacooler
 `metacooler dump -t clusters` and `-t members` write them out, and
 `MetaCooler.clusters` and `MetaCooler.cluster_members()` read them. A map
 holds the rounds of the run that wrote it, and those only: `metator
-metacool`, which writes a map from the tables of a run, stores none, and
-`metator partition MAP` stores the round `overlapping` alone, until
+partition MAP` stores the round `overlapping` alone, until
 `metator validation MAP` stores every round (see [Step by step](#step-by-step)).
 `metator mge --map` then adds the round `mge`, or replaces the one of an
 earlier `mge` run, and keeps the others.
 
-## qc, contactmap and mge on the map
+## mge on the map
 
-Three commands of a finished run read individual reads in their pairs files.
-From the map of the run, given in place of the pairs files, `qc` and
-`contactmap` give what a map gives, the contacts between contigs, which are
-those of the pairs it was made of; `mge` still reads the pairs files, and
-stores its results in the map:
-
-- `metator qc MAP` measures the noise of the library: the contacts within
-  contigs, within MAGs and between MAGs of the high-quality MAGs, the noise
-  contact ratio and the noise score, which are those that `qc` measures from
-  the pairs files that metaTOR's alignment writes. The events of the pairs
-  within a contig need the positions and strands of their reads: they are
-  not measured (see [Checking a library](qc.md#from-a-contact-map)).
-- `metator contactmap MAP` writes the contact map of a cluster as
-  `metacooler extract` writes it, `<name>.cool`, at the bins of the map (one
-  per contig in a map of metaTOR): the map of the restriction fragments that
-  hicstuff builds from the pairs files, summed by pair of contigs. The
-  filters of hicstuff need the read positions (see
-  [Viewing and scaffolding MAGs](visualisation.md#from-a-contact-map)).
-- `metator mge --map MAP` counts the contacts within each MGE contig between
-  reads more than 1 kb apart, which a map does not tell: it reads the pairs
-  files, and refuses a map in their place. It stores its MGE clusters in the
-  map, as the round `mge` of its clustering rounds, after those of the run;
-  the genomes and contigs tables, the final clusters, are left as they were.
-  A run that replaces the clusters of the map drops the round `mge`, with a
-  warning.
-  The map is written as `partition MAP` writes it: in place, or to
-  `--output-map FILE` (see
-  [Clustering mobile genetic elements](mge.md#in-the-contact-map-of-the-run)).
-
-`qc` and `contactmap` refuse a map with pairs files or another map, a map
-that gives a contig another length than the contig data table, and a map
-that stores both triangles of its matrix, with the reason in the log.
+`metator mge --map MAP` counts the contacts within each MGE contig between
+reads more than 1 kb apart, which a map does not tell: it reads the pairs
+files, and refuses a map in their place. It stores its MGE clusters in the
+map, as the round `mge` of its clustering rounds, after those of the run; the
+genomes and contigs tables, the final clusters, are left as they were. A run
+that replaces the clusters of the map drops the round `mge`, with a warning.
+The map is written as `partition MAP` writes it: in place, or to
+`--output-map FILE` (see
+[Clustering mobile genetic elements](mge.md#in-the-contact-map-of-the-run)).
 
 ## From hicstuff to metaTOR through metacooler
 

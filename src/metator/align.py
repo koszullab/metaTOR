@@ -153,11 +153,10 @@ def get_contact_pairs(
     The function writes the pairs of each library i, with 7 columns: readID,
     chr1, pos1, chr2, pos2, strand1, strand2. With sort_pairs, in the output
     directory, sorted, compressed and indexed: alignment_<i>_sorted.pairs.gz,
-    which the commands that query the pairs of a contig read (scaffold, mge,
-    qc and contactmap from pairs files). Without, in the temporary
-    directory, as they are made, in the order of the reads of the
-    alignments: alignment_<i>.pairs, for a run that reads them once, in any
-    order (the contact map of its contigs, the network of
+    which the commands that query the pairs of a contig read (mge). Without,
+    in the temporary directory, as they are made, in the order of the reads
+    of the alignments: alignment_<i>.pairs, for a run that reads them once,
+    in any order (the contact map of its contigs, the network of
     several libraries), then removes them. The tables of the alignments of
     the mates of a library (bowtie2, or bwa in iterative mode), written to
     the temporary directory, are removed once its pairs are written, unless

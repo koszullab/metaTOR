@@ -15,6 +15,7 @@ the new bins, 9 times at most.
 
 
 Functions in this module:
+    - bin_quality
     - correct_final_bin
     - get_bin_coverage
     - give_results_info
@@ -33,7 +34,6 @@ Functions in this module:
 import logging
 import metator.clusters as mtc
 import metator.io as mio
-import metator.figures as mtf
 import metator.partition as mtp
 import numpy as np
 import os
@@ -53,6 +53,43 @@ from scipy import sparse
 
 # The fasta files of the bins that miComplete evaluates.
 FASTA_EXTENSIONS = (".fa", ".fasta", ".fna")
+
+
+def bin_quality(completeness, redundancy):
+    """The quality class of a bin, from miComplete's weighted completeness and
+    weighted redundancy, its contamination being the redundancy minus 1:
+
+        - "HQ" (high quality MAG): >= 90% completion ; <= 5% contamination
+        - "MQ" (medium quality MAG): >= 70% completion ; <= 10% contamination
+        - "LQ" (low quality MAG): >= 50% completion ; <= 10% contamination
+        - "Contaminated": >= 50% completion ; > 10% contamination
+        - "Other": < 50% completion
+
+    The log of the validation counts the bins in these classes (see
+    give_results_info).
+
+    Parameters:
+    -----------
+    completeness : float
+        Weighted completeness of the bin, from 0 to 1.
+    redundancy : float
+        Weighted redundancy of the bin, 1 for no duplicated marker.
+
+    Returns:
+    --------
+    str:
+        The class of the bin: "HQ", "MQ", "LQ", "Contaminated" or "Other".
+    """
+    completeness, redundancy = float(completeness), float(redundancy)
+    if completeness < 0.5:
+        return "Other"
+    if redundancy > 1.1:
+        return "Contaminated"
+    if completeness >= 0.9 and redundancy <= 1.05:
+        return "HQ"
+    if completeness >= 0.7:
+        return "MQ"
+    return "LQ"
 
 
 def correct_final_bin(contigs_data, final_fasta_dir, bin_summary):
@@ -137,7 +174,7 @@ def get_bin_coverage(bin_summary, contigs_data):
 def give_results_info(bin_summary):
     """Function to return the general information about the binning results:
     the number and total size of the bins of each quality class (see
-    metator.figures.bin_quality), in the log.
+    bin_quality), in the log.
 
     Parameters:
     -----------
@@ -147,7 +184,7 @@ def give_results_info(bin_summary):
     # Count the bins and their size in each quality class.
     counts = {quality: [0, 0] for quality in ("HQ", "MQ", "LQ", "Contaminated", "Other")}
     for info in bin_summary.values():
-        quality = mtf.bin_quality(info["Weighted completeness"], info["Weighted redundancy"])
+        quality = bin_quality(info["Weighted completeness"], info["Weighted redundancy"])
         counts[quality][0] += 1
         counts[quality][1] += int(info["Length"])
     total = sum(count for count, _ in counts.values())
@@ -660,7 +697,6 @@ def recursive_decontamination(
     temp_directory,
     threads,
     prefix,
-    metacool=None,
 ):
     """Function to validate bins do the recursive decontamination using Louvain
     or Leiden algorithm
@@ -704,10 +740,6 @@ def recursive_decontamination(
         Number of threads to use.
     prefix : str
         Sample prefix to use.
-    metacool : str or None
-        The .metacool map of the contigs of the run, which the heatmap of the
-        clusters is drawn from (see metator.figures.plot_figures): without
-        one, from the pairs files of outdir.
 
     Returns:
     --------
@@ -932,10 +964,6 @@ def recursive_decontamination(
     # Write the new file
     contig_data_file_final = join(outdir, "contig_data_final.txt")
     contigs_data.to_csv(contig_data_file_final, sep="\t", header=True, index=True)
-
-    # Plot some figures of contigs distribution inside bins: the heatmap from
-    # the map of the contigs of the run, when it has one.
-    mtf.plot_figures(outdir, contigs_data, bin_summary, size, metacool=metacool)
 
     return clustering_matrix_file
 
