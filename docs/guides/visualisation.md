@@ -20,7 +20,8 @@ metator pairs -t 16 sample.pairs
 ```
 
 `--remove` (`-r`) deletes each input once it is indexed. With its index, a
-command reads only the contacts of the contigs it needs.
+command reads only the contacts of the contigs it needs. `contactmap` can read
+the contact map of the run instead (see [From a contact map](#from-a-contact-map)).
 
 ## The contact map of a bin
 
@@ -70,6 +71,36 @@ The outputs are named after the bin:
 
 `--mat-fmt cool` runs the `cooler` command, installed with metaTOR: run it in
 the environment that metaTOR is installed in.
+
+### From a contact map
+
+`contactmap` also takes the `.metacool` contact map of the run (or an entry
+of a `.mmetacool` collection) in place of its pairs files:
+
+```bash
+metator contactmap -a assembly.fa -c binning/contig_data_final.txt -e DpnII \
+    -n metator_00007_00000 -s 1000 -o metator_00007_00000 binning/metator.metacool
+```
+
+It takes the same contigs, and writes the map of these contigs as
+`metacooler extract` writes it, `<name>.cool`, at the bins of the map: one
+bin per contig in a map of metaTOR, where hicstuff maps the restriction
+fragments of the contigs from the pairs files. Its contacts are those of the
+pairs the map holds: the map of the restriction fragments of the pairs files
+it was made of, summed by pair of contigs. It also writes `<name>.fa`, the
+contigs of the map, and its log says what it wrote: the bins and contigs of
+the map, its pixels (`NNZ`) and its contacts (`sum`).
+
+A map holds no read positions: `--filter`, `--pcr-dup` and a `--mat-fmt`
+other than `cool` (the default, then) are refused, and `--enzyme` is not
+used. A map with pairs files or another map, a map that gives one of the
+contigs another length than the contig data table, and a map that stores
+both triangles of its matrix are refused too, with the reason in the log,
+before `<name>.fa` is written and an earlier `<name>.cool` replaced (`-F`).
+A contig that the map lacks (a map made with a contig filter) is left out,
+with a warning; with none of them, no map is written, and an earlier
+`<name>.cool` is removed (`-F`). `cooler show` and `cooler dump`, installed
+with metaTOR, read the map, as `hicstuff view` does.
 
 ## Drawing the map
 

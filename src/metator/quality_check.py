@@ -7,10 +7,16 @@ General utilities functions to extract high  quality contigs which will be used
 to estimate the quality of the metaHiC librairies nad generates some plots to
 illustrate it.
 
+From a .metacool contact map instead of the pairs files, the noise of the
+library is measured, and only it: the contacts within contigs, within MAGs
+and between MAGs, the noise ratio and the noise score, which are those of
+the pairs that the map holds. The events of the pairs within a contig need
+the positions and strands of their reads, which a map does not hold.
+
 Core functions to assess the quality:
     - extract_hq_contigs
-    - extract_pairs
-    - hic_quality
+    - extract_pairs, extract_map_pairs
+    - hic_quality, map_quality
     - quality_check
 """
 
@@ -18,10 +24,18 @@ import hicstuff.digest as hcd
 import hicstuff.filter as hcf
 import metator.figures as mtf
 import metator.io as mio
+import metator.metacool as mtmc
 import numpy as np
 from Bio import SeqIO
 from metator.log import logger
 from os.path import join
+
+# What a map does not give, which the log says when the quality is measured
+# from one.
+NOT_FROM_A_MAP = (
+    "The religated, loop and weirds ratios, the informative contacts estimation and the ratio inter/intra contigs are "
+    "not measured from a contact map: they need the positions and strands of the reads, which only pairs files hold."
+)
 
 
 def extract_hq_contigs(bin_summary, contigs_data):
@@ -110,6 +124,48 @@ def extract_pairs(pairs_files, out_file, contigs, contigs_data):
     return n_pairs
 
 
+def extract_map_pairs(metacool, contigs, contigs_data, contig_data_file):
+    """The pairs between given contigs in a .metacool contact map: the
+    counterpart of extract_pairs, without the reads. The map holds the
+    number of pairs between each two bins: those between the bins of two
+    contigs, or within the bins of one, are summed (see
+    metator.metacool.contig_contacts). They are the pairs that extract_pairs
+    extracts from the pairs files that the map was made of: each pair whose
+    two reads lie on the contigs, within their length (a read at position 0
+    counts on the first base).
+
+    Parameters
+    ----------
+    metacool : str
+        Path to the .metacool file, or URI of an entry of a .mmetacool
+        collection: ``file.mmetacool::entries/<name>``.
+    contigs : List of str
+        List of contigs name to extract.
+    contigs_data : pandas.DataFrame
+        Table with contig information from metator pipeline: the lengths of
+        the contigs (Size), which must be theirs in the map.
+    contig_data_file : str
+        The file of contigs_data, for the messages.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per pair of contigs in contact: contig1, contig2 (the same
+        contig for the pairs within a contig) and count, their pairs.
+
+    Raises
+    ------
+    metator.metacool.MetacoolError
+        If the map cannot be read, stores both triangles of the matrix, or
+        gives one of the contigs another length than contigs_data. The
+        contigs that it lacks have no pairs, with a warning.
+    """
+    sizes = {name: int(contigs_data.loc[name, "Size"]) for name in contigs}
+    contacts = mtmc.contig_contacts(metacool, sizes, contig_data_file, "the contigs longer than 100 kb of the high-quality MAGs")
+    logger.info(f"{int(contacts['count'].sum())} pairs have been extracted from {metacool}.")
+    return contacts
+
+
 def parse_fasta(fasta):
     """Iterate over the records of a FASTA file, compressed or not.
 
@@ -147,6 +203,53 @@ def parse_fasta(fasta):
 def _percent(part, whole):
     """part as a percentage of whole, 0 when whole is 0."""
     return 100 * part / whole if whole else 0
+
+
+def noise_metrics(n_mags, n_intra_mags, n_inter_mags):
+    """The noise of a library: the noise contact ratio, the pairs between
+    two MAGs in percent of the pairs within or between the MAGs, and the
+    noise score, x / (y + x), with x the pairs between MAGs per pair of
+    MAGs and y the pairs within MAGs per MAG. Both are 0 without a pair,
+    and the score is 0 with fewer than two MAGs.
+
+    Parameters
+    ----------
+    n_mags : int
+        Number of MAGs selected as high-quality.
+    n_intra_mags : int
+        The pairs within the MAGs: within a contig, or between two contigs
+        of the same MAG.
+    n_inter_mags : int
+        The pairs between two MAGs.
+
+    Returns
+    -------
+    tuple of float
+        The noise contact ratio, in percent, and the noise score.
+    """
+    if n_intra_mags + n_inter_mags == 0:
+        return 0, 0
+    noise_ratio = 100 * n_inter_mags / (n_inter_mags + n_intra_mags)
+    if n_mags < 2:
+        return noise_ratio, 0
+    pairs_of_mags = n_mags * (n_mags - 1) * 0.5
+    return noise_ratio, (n_inter_mags / pairs_of_mags) / (n_intra_mags / n_mags + n_inter_mags / pairs_of_mags)
+
+
+def _log_contacts(n_mags, n_intra_contigs, n_intra_mags, n_inter_mags):
+    """Log the MAGs and their pairs: those within contigs, within MAGs (a
+    contig, or two contigs of a MAG) and between MAGs."""
+    logger.info(f"Number of MAGs: {n_mags}")
+    logger.info(f"Contacts within contigs: {n_intra_contigs}.")
+    logger.info(f"Contacts within MAGs: {n_intra_mags}.")
+    logger.info(f"Contacts between MAGs: {n_inter_mags}.")
+
+
+def _log_noise(n_mags, n_intra_mags, n_inter_mags):
+    """Log the noise contact ratio and the noise score (see noise_metrics)."""
+    noise_ratio, noise_score = noise_metrics(n_mags, n_intra_mags, n_inter_mags)
+    logger.info(f"Noise contact ratio: {noise_ratio:.2f}%")
+    logger.info(f"Noise score: {noise_score:.2E}")
 
 
 def hic_quality(
@@ -261,28 +364,19 @@ def hic_quality(
                     n_inter_mags += 1
     if n_intra_mags + n_inter_mags > 0:
         rat_info = 100 * (n_informative_intra + n_informative_inter) / (n_intra_mags + n_inter_mags)
-        noise_ratio = 100 * n_inter_mags / (n_inter_mags + n_intra_mags)
     else:
         logger.warning("No pairs have been extracted. All scores set to 0.")
         rat_info = 0
-        noise_ratio = 0
     # No pair at all (or none within the MAGs, or none informative): the
     # scores and ratios that would divide by 0 are 0.
-    if n_mags > 1 and n_intra_mags + n_inter_mags > 0:
-        noise_score = (n_inter_mags / (n_mags * (n_mags - 1) * 0.5)) / (
-            n_intra_mags / n_mags + n_inter_mags / (n_mags * (n_mags - 1) * 0.5)
-        )
-    else:
-        noise_score = 0
     n_informative = n_informative_intra + n_informative_inter
-    logger.info(f"Number of MAGs: {n_mags}")
+    _log_contacts(n_mags, n_intra_contigs, n_intra_mags, n_inter_mags)
     logger.info(f"Religated ratio: {_percent(n_religated, n_intra_mags):.2f}%.")
     logger.info(f"Loop ratio: {_percent(n_loops, n_intra_mags):.2f}%.")
     logger.info(f"Weirds ratio: {_percent(n_weirds, n_intra_mags):.2f}%.")
     logger.info(f"Informative contacts estimation: {rat_info:.2f}%.")
     logger.info(f"Ratio inter/intra contigs: {_percent(n_informative_inter, n_informative):.2f}%.")
-    logger.info(f"Noise contact ratio: {noise_ratio:.2f}%")
-    logger.info(f"Noise score: {noise_score:.2E}")
+    _log_noise(n_mags, n_intra_mags, n_inter_mags)
 
     if plot:
         mtf.figure_camembert_quality(
@@ -309,6 +403,45 @@ def hic_quality(
     )
 
 
+def map_quality(contigs, n_mags, contacts):
+    """The noise of the library, from the pairs that a .metacool contact
+    map holds between the contigs of the high-quality MAGs (see
+    extract_map_pairs): the pairs within contigs, within MAGs (a contig, or
+    two contigs of a MAG) and between MAGs, the noise contact ratio and the
+    noise score, logged as hic_quality logs them from the pairs files, which
+    give the same numbers. The events of the pairs within a contig (uncuts,
+    loops, weirds and informative pairs) need the positions and strands of
+    their reads, which a map does not hold: neither they nor the ratios
+    made of them are measured, which the log says.
+
+    Parameters
+    ----------
+    contigs : dict
+        Dictionnary with the list of contigs as keys and the final MAGs as
+        values.
+    n_mags : int
+        Number of MAGs selected as high-quality.
+    contacts : pandas.DataFrame
+        The pairs between the contigs, by pair of contigs: contig1, contig2
+        and count (see extract_map_pairs).
+
+    Returns
+    -------
+    tuple of 3 int:
+        The pairs within contigs, within MAGs and between MAGs.
+    """
+    count = contacts["count"].to_numpy()
+    same_contig = (contacts["contig1"] == contacts["contig2"]).to_numpy()
+    same_mag = (contacts["contig1"].map(contigs) == contacts["contig2"].map(contigs)).to_numpy()
+    n_intra_contigs = int(count[same_contig].sum())
+    n_intra_mags = int(count[same_mag].sum())
+    n_inter_mags = int(count[~same_mag].sum())
+    _log_contacts(n_mags, n_intra_contigs, n_intra_mags, n_inter_mags)
+    _log_noise(n_mags, n_intra_mags, n_inter_mags)
+    logger.info(NOT_FROM_A_MAP)
+    return n_intra_contigs, n_intra_mags, n_inter_mags
+
+
 def quality_check(
     contig_data_file,
     bin_summary_file,
@@ -320,6 +453,7 @@ def quality_check(
     plot,
     enzyme,
     threshold,
+    metacool=None,
 ):
     """Main function to compute the quality of the metaHiC library and to
     display some metrics about it.
@@ -336,6 +470,18 @@ def quality_check(
     plot : bool
     enzyme : List of str
     threshold : Tuple of int
+    metacool : str, optional
+        A .metacool contact map of the run (or an entry of a .mmetacool
+        collection), read instead of the pairs files: the noise of the
+        library only (see map_quality), which is that of the pairs the map
+        holds. fasta_file, enzyme, threshold and plot are then not used.
+
+    Raises
+    ------
+    metator.metacool.MetacoolError
+        If the map cannot be read, stores both triangles of the matrix, or
+        gives a contig of the high-quality MAGs another length than the
+        contig data.
     """
     # Import contigs data.
     contigs_data = mio.read_contig_data(contig_data_file)
@@ -355,11 +501,18 @@ def quality_check(
 
     # Extract high quality contigs.
     hq_contigs, n_mags = extract_hq_contigs(bin_summary, contigs_data)
-    # Extract pairs
-    n_pairs = extract_pairs(pairs_files, pairs, list(hq_contigs.keys()), contigs_data)
+    # Extract pairs, from the pairs files or from the map.
+    contacts = None
+    if metacool is None:
+        n_pairs = extract_pairs(pairs_files, pairs, list(hq_contigs.keys()), contigs_data)
+    else:
+        contacts = extract_map_pairs(metacool, list(hq_contigs.keys()), contigs_data, contig_data_file)
+        n_pairs = int(contacts["count"].sum())
 
-    # Estimate HiC quality.
-    if n_pairs > 0:
+    # Estimate HiC quality: only the noise from a map.
+    if n_pairs > 0 and contacts is not None:
+        map_quality(hq_contigs, n_mags, contacts)
+    elif n_pairs > 0:
         _ = hic_quality(
             hq_contigs,
             n_mags,

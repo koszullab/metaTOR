@@ -310,12 +310,13 @@ def assembly_files(assembly):
     return [assembly, *(path for path in named if not mtmc.is_map(path))]
 
 
-def step_map(command, input_map, output_map, force, held, contigs=None, inputs=()):
-    """The map that a partition or validation run (command) writes, or None
-    for a run without one. A run step by step from a map (network MAP, then
-    partition MAP and validation MAP) updates the map, its first argument
-    (input_map), in place, or writes output_map (--output-map) instead (see
-    run_map_path), as pipeline MAP does.
+def step_map(command, input_map, output_map, force, held, contigs=None, inputs=(), option=None):
+    """The map that a partition, validation or mge run (command) writes, or
+    None for a run without one. A run step by step from a map (network MAP,
+    then partition MAP and validation MAP) updates the map, its first
+    argument (input_map), in place, or writes output_map (--output-map)
+    instead (see run_map_path), as pipeline MAP does. mge updates the map
+    given with an option (option: --map) so.
 
     The map is checked as run_input checks the map of a network or pipeline
     run, then the run holds the lock of the map that it writes until its
@@ -332,21 +333,23 @@ def step_map(command, input_map, output_map, force, held, contigs=None, inputs=(
     output_map that is an entry, a directory, the collection of the input
     entry, or that exists and is not the input map, without force); and a
     map that another run holds."""
+    if option is None:
+        updates, given, map_of = (
+            f"{command} MAP",
+            "as the first argument",
+            f"the map of the contigs of the run as the first argument of {command}",
+        )
+    else:
+        updates, given, map_of = f"{command} {option} MAP", f"with {option}", f"the map of the run with {option}"
     if input_map is None:
         if output_map is not None:
-            reason = (
-                f"--output-map writes the map that {command} MAP updates: give the map as the first argument, or "
-                "drop --output-map."
-            )
+            reason = f"--output-map writes the map that {updates} updates: give the map {given}, or drop --output-map."
             logger.error(reason)
             raise mtmc.MetacoolError(reason)
         return None
     path = refuse_missing_map(input_map)
     if not mtmc.is_map(input_map):
-        reason = (
-            f"{input_map} is not a .metacool contact map: give the map of the contigs of the run as the first "
-            f"argument of {command}, or leave it out."
-        )
+        reason = f"{input_map} is not a .metacool contact map: give {map_of}, or leave it out."
         logger.error(reason)
         raise mtmc.MetacoolError(reason)
     refuse_a_map_named_as_a_uri(input_map, path)
@@ -362,6 +365,44 @@ def step_map(command, input_map, output_map, force, held, contigs=None, inputs=(
     held.enter_context(terminated_as_interrupted())
     held.enter_context(mtmc.map_lock(outfile))
     return outfile
+
+
+def map_in_place_of_pairs(command, pairsfile):
+    """The .metacool contact map given to qc or contactmap (command) in
+    place of its pairs files (pairsfile, the files given), as metator
+    metacool takes one: a map is an HDF5 file, which a pairs file never is
+    (see metator.metacool.is_map), or an entry of a .mmetacool collection.
+    None for pairs files.
+
+    Refused before any work, the reason logged as an error, as
+    MetacoolError: a map with pairs files or with other maps, a map whose
+    file name holds :: (which metacooler reads as file::group), and a map
+    that metacooler cannot open (a .mmetacool collection rather than one of
+    its entries, for example)."""
+    maps = [path for path in pairsfile if mtmc.is_map(path)]
+    if not maps:
+        return None
+    if len(pairsfile) > 1:
+        reason = (
+            f"metator {command} reads pairs files, or one .metacool map: got {len(pairsfile)} files, {len(maps)} of them "
+            ".metacool maps."
+        )
+        logger.error(reason)
+        raise mtmc.MetacoolError(reason)
+    refuse_a_map_named_as_a_uri(maps[0], refuse_missing_map(maps[0]))
+    open_input_map(maps[0])
+    return maps[0]
+
+
+def refuse_options_of_pairs(command, input_map, given, why):
+    """Refuse, before any work, the options of qc or contactmap (command)
+    that only pairs files serve (given: those given, as written), given
+    with a map (input_map) in place of the pairs files, with why (why): the
+    reason is logged as an error, then MetacoolError is raised."""
+    if given:
+        reason = f"metator {command} from the contact map {input_map} takes no {' or '.join(given)}: {why}"
+        logger.error(reason)
+        raise mtmc.MetacoolError(reason)
 
 
 def start_step(command, outdir, cluster_dirs, input_map, output_map, force, held, prefix=None, contigs=None, inputs=()):
@@ -1007,6 +1048,28 @@ def partition_metacool(metacool, outfile, contig_data_file, size, prefix):
         mtmc.write_rounds(metacool, outfile, rounds, names=[mtcl.OVERLAPPING], force=True)
 
 
+def mge_metacool(metacool, outfile, summary_file):
+    """Store the MGE clusters of an mge run in the map at outfile (see
+    writing_map): the round mge of its clustering rounds (see
+    metator.clusters.mge_round), from the summary that the run wrote
+    (summary_file), in place of the round mge that the map held, after the
+    rounds of the binning run, which are kept as they were. Its genomes and
+    contigs tables, the final clusters, are left as they were, and so is
+    everything else (see metator.metacool.write_round). The round records
+    the version of metaTOR, and the command line and the parameters of the
+    run.
+
+    Raises
+    ------
+    MetacoolError
+        If the map cannot be written: the reason, and what is kept, is
+        logged as an error first. The other outputs of the run are kept.
+    """
+    with writing_map(metacool, outfile, what="the map with its MGE clusters"):
+        entry = {"name": mtcl.MGE, "tool": "metaTOR", "version": __version__, "step": "mge", **run_metadata()}
+        mtmc.write_round(metacool, outfile, mtcl.mge_round(summary_file), entry, force=True)
+
+
 # ---------------------------------------------------------------------------
 # Options shared by several commands
 # ---------------------------------------------------------------------------
@@ -1028,8 +1091,15 @@ def _options(*decorators):
     return decorate
 
 
-def pairsfile_argument():
-    return click.argument("pairsfile", nargs=-1, required=True, help="File(s) containing pairs information.", panel="Input")
+def pairsfile_argument(help="File(s) containing pairs information."):
+    return click.argument("pairsfile", nargs=-1, required=True, help=help, panel="Input")
+
+
+# The PAIRSFILE argument of qc and contactmap, which take a map in its place.
+PAIRS_OR_MAP_HELP = (
+    "Pairs file(s) of the run, or one .metacool contact map of the run (or an entry of a .mmetacool collection: "
+    "file.mmetacool::entries/NAME) in their place: {}"
+)
 
 
 ASSEMBLY_INDEX_HELP = (
@@ -2114,14 +2184,19 @@ def pipeline(
 
 
 @cli.command(short_help="Generate some quality checks on the output of metaTOR.")
-@pairsfile_argument()
+@pairsfile_argument(
+    help=PAIRS_OR_MAP_HELP.format(
+        "from a map, the noise of the library only, without the events of the pairs, which need their reads."
+    )
+)
 @_option(
     "-a",
     "--assembly",
     required=True,
     metavar="FILE",
     panel="Input",
-    help="Path to the fasta file containing the contigs of interest. Could be the whole or the extracted contigs of one bin.",
+    help="Path to the fasta file containing the contigs of interest. Could be the whole or the extracted contigs of one bin. "
+    "Not read from a map.",
 )
 @_option(
     "-e",
@@ -2129,7 +2204,8 @@ def pipeline(
     required=True,
     metavar="STR",
     panel="Input",
-    help="The list of restriction enzyme used to digest the contigs separated by a comma. Example: HpaII,MluCI.",
+    help="The list of restriction enzyme used to digest the contigs separated by a comma. Example: HpaII,MluCI. Not "
+    "used from a map.",
 )
 @_option(
     "-O",
@@ -2157,9 +2233,9 @@ def pipeline(
     "--threshold",
     metavar="STR",
     panel="Quality check",
-    help="Hicstuff religation and loop thresholds. Two integers separated by a comma.",
+    help="Hicstuff religation and loop thresholds. Two integers separated by a comma. Refused from a map.",
 )
-@_option("-P", "--plot", is_flag=True, panel="Quality check", help="If enabled, display some plots.")
+@_option("-P", "--plot", is_flag=True, panel="Quality check", help="If enabled, display some plots. Refused from a map.")
 @_option("-p", "--prefix", metavar="STR", panel="Quality check", help="Name of the sample to add on plot and files.")
 @outdir_option(help="Directory to save output plots and log. Default: ./metator_qc or ./metator_qc_<prefix>.")
 @tmpdir_option(default=None, help="Temporary directory to save pairs files. Default to ./tmp in the current directory.")
@@ -2187,6 +2263,16 @@ def qc(
 
     If the plot are set it will return some plot of the event distribution
     on the high quality contigs.
+
+    [cyan]metator qc MAP ...[/] reads a .metacool contact map of the run in
+    place of its pairs files, and measures the noise of the library only:
+    the contacts within contigs, within MAGs and between MAGs, the noise
+    contact ratio and the noise score, which are those of the pairs that
+    the map holds. The events of the pairs within a contig (uncuts, loops,
+    weirds, informative contacts) need the positions and strands of their
+    reads, which a map does not hold: they are not measured, and
+    --threshold and --plot are refused. --assembly and --enzyme are not
+    used.
     """
     # Private temporary directory inside --tmpdir.
     with private_tmp_dir(tmpdir, clean_up=not no_clean_up) as tmp_dir:
@@ -2198,6 +2284,18 @@ def qc(
         # Enable file logging
         log_file = log_file_name(outdir, "qc")
         generate_log_header(log_file)
+
+        # A map in place of the pairs files: the noise only.
+        input_map = map_in_place_of_pairs("qc", pairsfile)
+        if input_map is not None:
+            given = [option for option, value in [("-t/--threshold", threshold is not None), ("-P/--plot", plot)] if value]
+            refuse_options_of_pairs(
+                "qc",
+                input_map,
+                given,
+                "they set and draw the events of the pairs within a contig (uncuts, loops, weirds), which need the "
+                "positions and strands of their reads, which only pairs files hold.",
+            )
 
         # Try to find input files.
         metator_dir = metator_dir or "."
@@ -2223,18 +2321,24 @@ def qc(
                 raise FileNotFoundError
 
         # Launch quality check
-        mtq.quality_check(
-            contig_data_file,
-            bin_summary_file,
-            assembly,
-            list(pairsfile),
-            outdir,
-            tmp_dir,
-            prefix or "metator_qc",
-            plot,
-            enzyme=enzyme.split(",") if enzyme else enzyme,
-            threshold=threshold.split(",") if threshold else threshold,
-        )
+        try:
+            mtq.quality_check(
+                contig_data_file,
+                bin_summary_file,
+                assembly,
+                list(pairsfile),
+                outdir,
+                tmp_dir,
+                prefix or "metator_qc",
+                plot,
+                enzyme=enzyme.split(",") if enzyme else enzyme,
+                threshold=threshold.split(",") if threshold else threshold,
+                metacool=input_map,
+            )
+        except mtmc.MetacoolError as error:
+            # A map that cannot give the noise: the reason in the log file.
+            logger.error(str(error))
+            raise
 
     generate_log_footer(log_file)
 
@@ -2245,7 +2349,9 @@ def qc(
 
 
 @cli.command(short_help="Generate the HiC contact map of one metaTOR object (contig or bin).")
-@pairsfile_argument()
+@pairsfile_argument(
+    help=PAIRS_OR_MAP_HELP.format("from a map, the contact map of the contigs, as metacooler extract writes it (a .cool file).")
+)
 @_option(
     "-a",
     "--assembly",
@@ -2268,7 +2374,8 @@ def qc(
     required=True,
     metavar="STR",
     panel="Input",
-    help="The list of restriction enzyme used to digest the contigs separated by a comma. Example: HpaII,MluCI.",
+    help="The list of restriction enzyme used to digest the contigs separated by a comma. Example: HpaII,MluCI. Not "
+    "used from a map.",
 )
 @_option(
     "-n",
@@ -2299,7 +2406,7 @@ def qc(
     show_default=True,
     panel="Contact map",
     help='The format of the output sparse matrix: "bg2" for 2D Bedgraph format, "cool" for Mirnylab\'s cooler '
-    'software, or "graal" for graal-compatible plain text COO format.',
+    'software, or "graal" for graal-compatible plain text COO format. From a map, "cool" only, the default then.',
 )
 @_option(
     "-f",
@@ -2308,14 +2415,14 @@ def qc(
     is_flag=True,
     panel="Contact map",
     help="Filter out spurious 3C events (loops and uncuts) using hicstuff filter. For more informations, see Cournac "
-    "et al. BMC Genomics, 2012.",
+    "et al. BMC Genomics, 2012. Refused from a map.",
 )
 @_option(
     "-D",
     "--pcr-dup",
     is_flag=True,
     panel="Contact map",
-    help="Filter out PCR duplicates based on read positions.",
+    help="Filter out PCR duplicates based on read positions. Refused from a map.",
 )
 @_option(
     "-s",
@@ -2366,6 +2473,15 @@ def contactmap(
     such hicstuff view or cooler show depending on the matrix format chosen.
     It's also possible to try to scaffold the bin using instagraal pipeline
     using the output.
+
+    [cyan]metator contactmap MAP ...[/] reads a .metacool contact map of the
+    run in place of its pairs files: it writes the contact map of the
+    contigs of the object as metacooler extract writes it, <name>.cool, at
+    the bins of the map (one per contig in a map of metaTOR), where hicstuff
+    builds that of their restriction fragments from the pairs files. Its
+    contacts are those of the pairs that the map holds. A map holds no read
+    positions: --filter, --pcr-dup and a --mat-fmt other than cool are
+    refused. --enzyme is not used.
     """
     # Defined the output directory first: the log file is written there.
     outdir = outdir or join(".", "contact_map_" + name)
@@ -2375,24 +2491,55 @@ def contactmap(
     log_file = log_file_name(outdir, "contactmap")
     generate_log_header(log_file)
 
+    # A map in place of the pairs files: the contact map of the contigs.
+    input_map = map_in_place_of_pairs("contactmap", pairsfile)
+    if input_map is not None:
+        ctx = click.get_current_context(silent=True)
+        explicit_format = ctx is not None and ctx.get_parameter_source("mat_fmt") != ParameterSource.DEFAULT
+        given = [
+            option
+            for option, value in [
+                ("-f/--filter", filter_events),
+                ("-D/--pcr-dup", pcr_dup),
+                (f"-m/--mat-fmt {mat_fmt}", explicit_format and mat_fmt != "cool"),
+            ]
+            if value
+        ]
+        refuse_options_of_pairs(
+            "contactmap",
+            input_map,
+            given,
+            "it writes the contact map of the contigs as metacooler extract writes it, a .cool file, from a map that "
+            "holds no read positions, which the filters of hicstuff and its maps of restriction fragments need.",
+        )
+
     # Private temporary directory inside --tmpdir.
     with private_tmp_dir(tmpdir, clean_up=not no_clean_up) as tmp_dir:
-        mtc.generate_contact_map(
-            assembly,
-            contig_data,
-            enzyme,
-            name,
-            list(pairsfile),
-            outdir,
-            tmp_dir,
-            filter_events,
-            force,
-            mat_fmt,
-            metator_object,
-            min_size,
-            pcr_dup,
-            threads,
-        )
+        if input_map is None:
+            mtc.generate_contact_map(
+                assembly,
+                contig_data,
+                enzyme,
+                name,
+                list(pairsfile),
+                outdir,
+                tmp_dir,
+                filter_events,
+                force,
+                mat_fmt,
+                metator_object,
+                min_size,
+                pcr_dup,
+                threads,
+            )
+        else:
+            try:
+                mtc.extract_contact_map(assembly, contig_data, name, input_map, outdir, force, metator_object, min_size)
+            except mtmc.MetacoolError as error:
+                # A map that cannot give the contact map: the reason in the
+                # log file.
+                logger.error(str(error))
+                raise
 
     if not no_clean_up:
         # Delete pyfastx index:
@@ -2634,7 +2781,10 @@ def pairs(pairsfile, force, remove, threads):
 
 
 @cli.command(short_help="Bin the MGE contigs in MGE MAGs from the metaHiC pairs.")
-@pairsfile_argument()
+@pairsfile_argument(
+    help="Pairs file(s) of the run: the contacts within each MGE contig are counted from the positions of their reads, "
+    "which a .metacool map does not hold (give the map to store the MGE clusters in with --map)."
+)
 @_option("-a", "--assembly", required=True, metavar="FILE", panel="Input", help="Path to the assembly fasta file.")
 @_option("-c", "--contigs", required=True, metavar="FILE", panel="Input", help="Path to the MetaTOR contig data file.")
 @_option("-b", "--binning", required=True, metavar="FILE", panel="Input", help="Path to the anvio binning file.")
@@ -2647,6 +2797,17 @@ def pairs(pairsfile, force, remove, threads):
     help="Path to the file listing MGE-containing contigs.",
 )
 @_option(
+    "--map",
+    # A file, or an entry of a collection (file::group), which is no path:
+    # step_map checks it.
+    type=click.Path(dir_okay=False),
+    metavar="MAP",
+    panel="Input",
+    help="A .metacool contact map of the run (that of pipeline, for example), or an entry of a .mmetacool collection "
+    "(file.mmetacool::entries/NAME): the MGE clusters are stored in its clustering rounds, as the round mge, in place "
+    "of an earlier one, in place (or in --output-map). Its genomes and contigs tables are left as they were.",
+)
+@_option(
     "-s",
     "--threshold-bin",
     type=click.FLOAT,
@@ -2656,11 +2817,30 @@ def pairs(pairsfile, force, remove, threads):
     panel="Binning",
     help="Threshold to use for binning.",
 )
-@_option("-r", "--random", is_flag=True, panel="Binning", help="If enabled, make a random binning.")
+@_option("-r", "--random", is_flag=True, panel="Binning", help="If enabled, make a random binning. Refused with --map.")
 @outdir_option(help="Path to the output directory where the output will be written. Default: current directory.")
+@force_option("Replace an existing --output-map.")
 @tmpdir_option(help="Path to temporary directory.")
 @no_clean_up_option(help="If enabled, intermediary files will be kept.")
-def mge(pairsfile, assembly, contigs, binning, mges, threshold_bin, random, outdir, tmpdir, no_clean_up):
+@output_map_option(
+    help="Store the MGE clusters in a copy of MAP written to FILE (replaced only with -F), and leave MAP as it was. Only "
+    "with --map, whose map is updated in place by default.",
+)
+def mge(
+    pairsfile,
+    assembly,
+    contigs,
+    binning,
+    mges,
+    map,  # --map
+    threshold_bin,
+    random,
+    outdir,
+    force,
+    tmpdir,
+    no_clean_up,
+    output_map,
+):
     """Bin MGE contigs.
 
     Bin the MGE contigs in MGE MAGs using pairs, host MAG sequence and
@@ -2670,13 +2850,54 @@ def mge(pairsfile, assembly, contigs, binning, mges, threshold_bin, random, outd
 
     The MGE fasta will contain one entry by MGE MAG, with 200 "N" spacers
     between contigs.
+
+    [cyan]metator mge ... --map MAP[/] also stores the MGE clusters in the
+    .metacool contact map of the run, MAP: as the round mge of its
+    clustering rounds (its /clusters group), with their contigs and the
+    columns of mges_bin_summary.tsv, in place of an earlier round mge, after
+    the rounds of the binning run, which are kept. Its genomes and contigs
+    tables, the final clusters, are left as they were. MAP is updated in
+    place (or written to --output-map), and locked while the run writes it.
+    The contacts of the MGE contigs still come from the pairs files: those
+    within a contig are counted only between reads more than 1 kb apart,
+    which a map does not tell.
     """
     # Generate log
     log_file = log_file_name("", "mge")
     generate_log_header(log_file)
 
-    # Private temporary directory inside --tmpdir.
-    with private_tmp_dir(tmpdir, clean_up=not no_clean_up):
+    # The contacts within each MGE contig need the positions of the reads.
+    maps = [path for path in pairsfile if mtmc.is_map(path)]
+    if maps:
+        reason = (
+            f"{maps[0]} is a contact map, not a pairs file: metator mge counts the contacts within each MGE contig "
+            "between reads more than 1 kb apart, which a map does not tell. Give the pairs files of the run, and the "
+            "map to store the MGE clusters in with --map."
+        )
+        logger.error(reason)
+        raise mtmc.MetacoolError(reason)
+    if random and map is not None:
+        reason = "--random makes a random binning, to compare the MGE clusters with: it is not stored in a map. Drop --map."
+        logger.error(reason)
+        raise mtmc.MetacoolError(reason)
+
+    # Private temporary directory inside --tmpdir, and the lock of the map
+    # the run writes, held until its end.
+    with private_tmp_dir(tmpdir, clean_up=not no_clean_up), ExitStack() as held:
+        # The map that the run stores its MGE clusters in, checked and
+        # locked.
+        metacool_file = step_map(
+            "mge",
+            map,
+            output_map,
+            force,
+            held,
+            contigs,
+            # The pairs files and their pypairix index too.
+            [*assembly_files(assembly), binning, mges, *pairsfile, *(f"{path}.px2" for path in pairsfile)],
+            option="--map",
+        )
+
         # Defined the output directory and output file names.
         outdir = outdir or "."
         os.makedirs(outdir, exist_ok=True)
@@ -2696,6 +2917,10 @@ def mge(pairsfile, assembly, contigs, binning, mges, threshold_bin, random, outd
             threshold_bin=threshold_bin,
             random=random,
         )
+
+        # The MGE clusters, stored in the map.
+        if metacool_file is not None:
+            mge_metacool(map, metacool_file, join(outdir, "mges_bin_summary.tsv"))
 
     if not no_clean_up:
         # Delete pyfastx index:

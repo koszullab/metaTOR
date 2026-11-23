@@ -105,9 +105,9 @@ There are a number of other, optional, miscellaneous actions:
 
 * `pipeline` : Run all three of the above actions sequentially or only some of them depending on the arguments given. This can take a while.
 * `mge` : Perform the binning over mge contigs. A specific section is dedicated to this tool below.
-* `contactmap` : Generates a contact map from one bin from the final ouptut of metator.
+* `contactmap` : Generates a contact map from one bin from the final ouptut of metator, from the pairs files or from the `.metacool` contact map of the run.
 * `metacool` : Writes the contact map of all the contigs, grouped by bin, as a `.metacool` file (see [Contact map](#contact-map)). `pipeline` writes it at the end of a run.
-* `qc` : Generates some quality check on the input/output of metator.
+* `qc` : Generates some quality check on the input/output of metator, from the pairs files or, for the noise of the library only, from the `.metacool` contact map of the run.
 * `scaffold` : Scaffolds a bin from the pairs files.
 * `pairs` : Sorts, compresses and indexes pairs files.
 
@@ -415,6 +415,27 @@ before any work and before `-F` replaces the directories of clusters of an earli
 `partition` and `validation` run as before, but for an invalid `--prefix`, now refused before `-F`
 replaces those directories.
 
+#### qc, contactmap and mge on a contact map
+
+`qc` and `contactmap` take the `.metacool` contact map of the run in place of its pairs files, for what a
+map gives, the contacts between contigs, which are those of the pairs it was made of: `metator qc MAP`
+measures the noise of the library (the contacts within contigs, within MAGs and between MAGs of the
+high-quality MAGs, the noise contact ratio and the noise score), the numbers that `qc` measures from the
+pairs files (written in the upper triangle, as metaTOR's alignment writes them), but not the events of the
+pairs within a contig (uncuts, loops, weirds, informative contacts), which need the positions and strands
+of their reads; `metator contactmap MAP` writes the contact map of a cluster as `metacooler extract`
+writes it, `<name>.cool`, at the bins of the map (one per contig), where hicstuff maps the restriction
+fragments from the pairs files. Their options that need the read positions are refused then
+(`qc --threshold` and `--plot`, `contactmap --filter`, `--pcr-dup` and a `--mat-fmt` other than `cool`), and
+`--enzyme` is not used. `mge` reads the pairs files, as it counts the contacts within each MGE contig
+between reads more than 1 kb apart, which a map does not tell, but `metator mge ... --map MAP` stores its
+MGE clusters in the map: as the round `mge` of its clustering rounds, with the columns of
+`mges_bin_summary.tsv` and the contigs of each cluster, after the rounds of the binning run, which are
+kept, and in place of the round `mge` of an earlier run; a run that replaces the clusters of the map drops
+it, with a warning. The genomes and contigs tables of the map, the final MAGs, are left as they were. The
+map is written as `partition MAP` writes it (in place, or to `--output-map FILE`), and refused as it
+refuses it, before any work.
+
 #### From hicstuff to metaTOR through metacooler
 
 A map to start from can be made from the pairs files of
@@ -453,6 +474,9 @@ metator pipeline sample.metacool -a assembly.fa -e DpnII -o binning
 #### Usage of mge
 
 `metator mge` : given a list of contigs previously identified as MGE, this command will bin the specific given contigs and return a fasta files as well as a summary file. 
+
+With `--map MAP`, the MGE clusters are also stored in the `.metacool` contact map of the run, as the round `mge`
+of its clustering rounds (see [qc, contactmap and mge on a contact map](#qc-contactmap-and-mge-on-a-contact-map)).
 
 #### Output
 

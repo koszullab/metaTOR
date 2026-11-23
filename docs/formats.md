@@ -240,6 +240,13 @@ MetaTOR_MGE_00064	30610.00	68.93	18383.00	1.20	2.00	NODE_8199_len_17842,NODE_101
 MetaTOR_MGE_00105	23587.00	37.36	2662.00	NA	1.00	NODE_10949_len_23587	None	NA	NA
 ```
 
+With `--map`, the map of the run stores these rows as the round `mge` of its
+clustering rounds (see
+[Binning mobile genetic elements](guides/mge.md#in-the-contact-map-of-the-run)):
+one cluster per row, named `BinName`, with the contigs of `Contigs` and the
+other columns as written, but `BinLength` and `ContigsNumber`, which are the
+`length` and `n_contigs` that metacooler computes from the contigs.
+
 ## Logs
 
 Each command writes its log, `metator_<command>_<date>.log`: the version of

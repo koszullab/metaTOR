@@ -63,6 +63,9 @@ metagenome of two genomes, in contigs larger than 100 kb:
 INFO :: 30000 pairs have been extracted.
 INFO :: Filtering with thresholds: uncuts=2 loops=2
 INFO :: Number of MAGs: 2
+INFO :: Contacts within contigs: 27188.
+INFO :: Contacts within MAGs: 29736.
+INFO :: Contacts between MAGs: 264.
 INFO :: Religated ratio: 4.77%.
 INFO :: Loop ratio: 4.73%.
 INFO :: Weirds ratio: 3.77%.
@@ -75,6 +78,7 @@ INFO :: Noise score: 1.74E-02
 | Line | What it is |
 |---|---|
 | `Number of MAGs` | The MAGs selected |
+| `Contacts within contigs`, `Contacts within MAGs`, `Contacts between MAGs` | The pairs extracted within a contig; within the MAGs (within a contig, or between two contigs of the same MAG); and between two MAGs |
 | `Religated ratio`, `Loop ratio`, `Weirds ratio` | The uncuts, loops and weirds, in percent of the pairs within the MAGs (within a contig, or between two contigs of the same MAG) |
 | `Informative contacts estimation` | The informative pairs, in percent of all the pairs extracted |
 | `Ratio inter/intra contigs` | The share of the informative pairs that join two contigs |
@@ -85,3 +89,47 @@ When no MAG passes, or none has a contig longer than 100 kb, as on the small
 test library of the [Quickstart](../quickstart.md), no pair is extracted, and
 the log says why, such as `The 2 high-quality MAGs have no contig longer than
 100 kb: no quality check.`
+
+## From a contact map
+
+`qc` also takes the `.metacool` contact map of the run (or an entry of a
+`.mmetacool` collection) in place of its pairs files, and measures from it
+the noise of the library, and only it:
+
+```bash
+metator qc -a assembly.fa -e DpnII -O binning -p sample binning/metator.metacool
+```
+
+The map holds the number of pairs between each two of its bins: those
+between the contigs of the MAGs, summed by pair of contigs, are the pairs
+that `qc` extracts from the pairs files the map was made of (each pair whose
+two reads lie on the contigs, within their length), when their pairs are in
+the upper triangle, as metaTOR's alignment writes them. So the contacts
+within contigs, within MAGs and between MAGs, the noise contact ratio and
+the noise score are those of these pairs files, line for line. From pairs
+files with the reads of some pairs in the other order, `qc` reads the pairs
+of two contigs in one order only and leaves out the others, which the map
+counts. On the simulated metagenome above:
+
+```console
+INFO :: 30000 pairs have been extracted from binning/metator.metacool.
+INFO :: Number of MAGs: 2
+INFO :: Contacts within contigs: 27188.
+INFO :: Contacts within MAGs: 29736.
+INFO :: Contacts between MAGs: 264.
+INFO :: Noise contact ratio: 0.88%
+INFO :: Noise score: 1.74E-02
+INFO :: The religated, loop and weirds ratios, the informative contacts estimation and the ratio inter/intra contigs are not measured from a contact map: they need the positions and strands of the reads, which only pairs files hold.
+```
+
+The events of the pairs within a contig (uncuts, loops, weirds and
+informative pairs) need the positions and strands of their reads, which a
+map does not hold: they are not measured, and `--threshold` and `--plot`,
+which set and draw them, are refused. `--assembly` and `--enzyme` are not
+used. Refused too, with the reason in the log: a map with pairs files, or
+with another map; a map that metacooler cannot open (a `.mmetacool`
+collection rather than one of its entries, for example); a map that gives a
+contig of the MAGs another length than the contig data table (a map of
+another assembly); and a map that stores both triangles of its matrix. A
+contig of the MAGs that the map lacks (a map made with a contig filter) has
+no contacts there, with a warning that names it.
