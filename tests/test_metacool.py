@@ -1461,8 +1461,9 @@ def test_a_map_replaced_while_read_is_refused(reader, metagenome, metagenome_fil
     there left as it was. metacooler opens the file of a map for each chunk
     of pixels that it reads: these reads (qc MAP, network MAP, the heatmap,
     contactmap MAP, a run from a map that writes --output-map) mixed the
-    bins of one map with the pixels of the other, silently (see
-    test_a_read_that_spans_a_replacement_mixes_two_maps)."""
+    bins of one map with the pixels of the other, silently, before
+    metacooler 0.4.0, which refuses them too (see
+    test_a_read_that_spans_a_replacement_is_refused_by_metacooler)."""
     import metator.figures as mtf
 
     unbinned, clusters = _map_and_its_clusters(metagenome, binning, tmp_path)
@@ -1516,11 +1517,12 @@ def test_a_read_that_fails_on_a_replaced_map_says_why(metagenome, binning, tmp_p
     assert isinstance(raised.value.__cause__, OSError)
 
 
-def test_a_read_that_spans_a_replacement_mixes_two_maps(metagenome, binning, tmp_path, monkeypatch):
-    """A guard of the premise of test_a_map_replaced_while_read_is_refused
-    (it passes without the change): without the check, the contacts read
-    from a map replaced by the map of its clusters as it is read are those
-    of neither map."""
+def test_a_read_that_spans_a_replacement_is_refused_by_metacooler(metagenome, binning, tmp_path, monkeypatch):
+    """The premise of test_a_map_replaced_while_read_is_refused, without
+    metaTOR's check: the contacts read from a map replaced by the map of
+    its clusters as it is read were those of neither map, before
+    metacooler 0.4.0, which checks the file of a map around each read and
+    refuses such a read itself."""
     unbinned, clusters = _map_and_its_clusters(metagenome, binning, tmp_path)
     truth = metagenome.truth
     lengths = dict(zip(truth.Name, truth.Length.astype(int), strict=True))
@@ -1536,7 +1538,8 @@ def test_a_read_that_spans_a_replacement_mixes_two_maps(metagenome, binning, tmp
     assert read(clusters) == expected
     monkeypatch.setattr(mtmc, "unchanged_while_read", lambda metacool, outputs=(): contextlib.nullcontext(), raising=False)
     _replaced_while_read(monkeypatch, unbinned, clusters)
-    assert read(unbinned) != expected
+    with pytest.raises(metacooler.MapChangedError):
+        read(unbinned)
 
 
 def _stopped_as_cooler_writes(uri, table, output, **kwargs):

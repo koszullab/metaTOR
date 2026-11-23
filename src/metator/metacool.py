@@ -1752,10 +1752,13 @@ def _write_with_rounds(metacool, outfile, force, store, writing, written):
 
 
 def lock_path(path):
-    """The lock file of the map at path: <path>.lock, next to it (next to a
-    symbolic link, not its target, as the link is what a run replaces). A
-    map given as file::/ is the file itself."""
-    return f"{map_file(path)}.lock"
+    """The lock file of the map at path: <path>.metator.lock, next to it
+    (next to a symbolic link, not its target, as the link is what a run
+    replaces). A map given as file::/ is the file itself. Not <path>.lock,
+    the lock that metacooler takes to write a map: metacooler refuses to
+    write a map whose lock names a process that it cannot check, as this
+    lock does (it names no machine nor PID namespace)."""
+    return f"{map_file(path)}.metator.lock"
 
 
 def _pid_is_running(pid):
@@ -1826,13 +1829,14 @@ def map_lock(path, elsewhere="--output-map"):
     """Hold the lock of the map at path for the time of a run that writes it.
 
     Two runs that write one map, at once, would each replace it with its own
-    clusters, the last one winning. The lock, <path>.lock, is created before
-    any work, and removed at the end of the run, whatever its end, by the run
-    that holds it only. It names that run (its pid, host, start and command,
-    and a uuid of its own, which the release compares): a lock whose process
-    no longer runs on this host (a run killed with SIGKILL) is removed, with
-    a warning, and taken (see _take_stale_lock). The refusals say how to
-    write the map elsewhere: with elsewhere, the option of the command.
+    clusters, the last one winning. The lock, <path>.metator.lock (see
+    lock_path), is created before any work, and removed at the end of the
+    run, whatever its end, by the run that holds it only. It names that
+    run (its pid, host, start and command, and a uuid of its own, which
+    the release compares): a lock whose process no longer runs on this
+    host (a run killed with SIGKILL) is removed, with a warning, and taken
+    (see _take_stale_lock). The refusals say how to write the map
+    elsewhere: with elsewhere, the option of the command.
 
     Raises
     ------
