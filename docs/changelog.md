@@ -279,8 +279,8 @@ each removed command.
   the date, the command line (`## cmd:`, where it said `## Command used:`)
   and the value of each option (`## <option>: <value>`), then a line of
   dashes, without the empty lines around it; the log ends with what the run
-  wrote and how long it took (`Final contact map written after 0h 8m 31s:
-  <map>`), where it ended with a line of dashes and the date. `pipeline`
+  wrote and how long it took (`Final contact map written after 0h 8m 31s: <map>`),
+  where it ended with a line of dashes and the date. `pipeline`
   marks its three steps (`[1/3] network`, `[2/3] partition`,
   `[3/3] validation`), and no longer logs its parameters, which the header
   gives. The partition counts its iterations as they go, at each tenth of
