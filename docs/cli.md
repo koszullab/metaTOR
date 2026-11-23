@@ -75,7 +75,7 @@ the reads, alignments or pairs of `-1` (and `-2`, `--start`): one or the other.
 | `--output-map` | none | Write the contact map of the clusters to this file (replaced only with `-F`). By default, a run from a `.metacool` map updates that map in place, and any other run writes `<outdir>/<prefix>.metacool` (`metator.metacool` without `--prefix`). |
 
 The validation is the step that needs the most memory: miComplete runs
-prodigal and hmmer on every bin.
+Prodigal and HMMER (pyrodigal and pyhmmer) on every bin.
 
 ```bash
 # Reads to bins, with the recommended aligner
