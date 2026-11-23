@@ -963,14 +963,8 @@ def test_pipeline_from_a_map_keeps_the_contig_names(stub_pipeline, tmp_path, run
     assembly, as it builds no map of the contigs."""
     fasta = tmp_path / "assembly.fa"
     fasta.write_text(NON_ASCII_ASSEMBLY)
-<<<<<<< 673d6c453fc3073e7dd01dd4f2d951cf9499a169
     metacool = _contig_map(tmp_path / "map.metacool")
     run_cli("pipeline", metacool, "-a", fasta, "-o", tmp_path / "out", "-T", tmp_path / "tmp")
-=======
-    metacool = tmp_path / "map.metacool"
-    metacool.write_text("map")
-    run_cli("pipeline", "-1", metacool, "-a", fasta, "-S", "metacool", "-o", tmp_path / "out", "-T", tmp_path / "tmp")
->>>>>>> origin/master
     assert stub_pipeline["metacool_to_contacts"][0] == str(metacool)
 
 
@@ -1140,11 +1134,7 @@ def test_pipeline_from_a_map_leaves_another_map_of_its_output_directory(stub_pip
         seen.append(outfile)
 
     monkeypatch.setattr("metator.metacool.reassign_metacool", reassign_metacool)
-<<<<<<< 673d6c453fc3073e7dd01dd4f2d951cf9499a169
     run_cli("pipeline", metacool, "-a", _assembly(tmp_path), "-o", out, "-T", tmp_path / "tmp")
-=======
-    run_cli("pipeline", "-1", metacool, "-a", _assembly(tmp_path), "-S", "metacool", "-o", out, "-T", tmp_path / "tmp")
->>>>>>> origin/master
     assert seen == [str(metacool)] and earlier.read_text() == "earlier run"
     assert "write_contig_map" not in stub_pipeline
     (log,) = out.glob("metator_pipeline_*.log")
@@ -1573,7 +1563,6 @@ def test_run_from_a_map_unreadable_for_its_columns(command, stub_pipeline, tmp_p
     assert f"ERROR :: Cannot read the contact map {metacool}: gone.\n" in log.read_text()
 
 
-<<<<<<< 673d6c453fc3073e7dd01dd4f2d951cf9499a169
 def _collection(path, *entries):
     """A .mmetacool collection at path, with a map of the contigs
     (_contig_map) as each entry of entries."""
@@ -1584,8 +1573,6 @@ def _collection(path, *entries):
     return path
 
 
-=======
->>>>>>> origin/master
 @pytest.mark.parametrize("where", ["elsewhere", "outdir", "output-map"])
 def test_pipeline_metacool_written_from_a_map(where, stub_pipeline, tmp_path, monkeypatch, run_cli):
     """With the real writer, from the tables of the (stub) validation: the
@@ -1600,11 +1587,7 @@ def test_pipeline_metacool_written_from_a_map(where, stub_pipeline, tmp_path, mo
     before = metacool.read_bytes()
     output_map = tmp_path / "copy.metacool"
     options = ["--output-map", output_map] if where == "output-map" else []
-<<<<<<< 673d6c453fc3073e7dd01dd4f2d951cf9499a169
     run_cli("pipeline", metacool, "-a", _assembly(tmp_path), "-o", out, "-T", tmp_path / "tmp",
-=======
-    run_cli("pipeline", "-1", metacool, "-a", _assembly(tmp_path), "-S", "metacool", "-o", out, "-T", tmp_path / "tmp",
->>>>>>> origin/master
             *options)  # fmt: skip
     import cooler
     import metacooler
@@ -1641,11 +1624,7 @@ def test_pipeline_metacool_from_a_map_failure_keeps_it(stub_pipeline, tmp_path, 
         "contig data). It is still the input map of the run, as it was. The other outputs of the run are kept."
     )
     with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
-<<<<<<< 673d6c453fc3073e7dd01dd4f2d951cf9499a169
         run_cli("pipeline", metacool, "-a", _assembly(tmp_path), "-o", out, "-T", tmp_path / "tmp")
-=======
-        run_cli("pipeline", "-1", metacool, "-a", _assembly(tmp_path), "-S", "metacool", "-o", out, "-T", tmp_path / "tmp")
->>>>>>> origin/master
     assert metacool.read_bytes() == before
     assert sorted(path.name for path in out.iterdir() if "metacool" in path.name) == ["metator.metacool"]
     assert (out / "network.txt").exists() and (out / "bin_summary.txt").exists()
@@ -1677,11 +1656,7 @@ def test_pipeline_metacool_from_a_map_metacooler_failure(error, stub_pipeline, t
 
     monkeypatch.setattr("metacooler.io.reassign.validate", validate)
     with pytest.raises(mtmc.MetacoolError, match=r" is not written: "):
-<<<<<<< 673d6c453fc3073e7dd01dd4f2d951cf9499a169
         run_cli("pipeline", metacool, "-a", _assembly(tmp_path), "-o", out, "-T", tmp_path / "tmp")
-=======
-        run_cli("pipeline", "-1", metacool, "-a", _assembly(tmp_path), "-S", "metacool", "-o", out, "-T", tmp_path / "tmp")
->>>>>>> origin/master
     assert metacool.read_bytes() == before
     assert sorted(path.name for path in out.iterdir() if "metacool" in path.name) == ["metator.metacool"]
     (log,) = out.glob("metator_pipeline_*.log")
@@ -1701,11 +1676,7 @@ def test_pipeline_metacool_from_a_map_metacooler_failure(error, stub_pipeline, t
 def _map_run(metacool, tmp_path, *options):
     """The arguments of a pipeline run from the map metacool."""
     out = tmp_path / "out"
-<<<<<<< 673d6c453fc3073e7dd01dd4f2d951cf9499a169
     return [metacool, "-a", _assembly(tmp_path), "-o", out, "-T", tmp_path / "tmp", *options]
-=======
-    return ["-1", metacool, "-a", _assembly(tmp_path), "-S", "metacool", "-o", out, "-T", tmp_path / "tmp", *options]
->>>>>>> origin/master
 
 
 def _lock(metacool, pid, host=None, started="2026-11-18T10:00:00+0000"):
@@ -1820,12 +1791,7 @@ def test_pipeline_from_a_map_to_itself_as_output_map(stub_pipeline, tmp_path, mo
 def test_pipeline_from_an_entry_needs_an_output_map(stub_pipeline, tmp_path, run_cli):
     """An entry of a .mmetacool collection is not updated in place: that
     would rewrite the collection. Refused before any work."""
-<<<<<<< 673d6c453fc3073e7dd01dd4f2d951cf9499a169
     entry = f"{_collection(tmp_path / 'maps.mmetacool', 'rep1')}::entries/rep1"
-=======
-    (tmp_path / "maps.mmetacool").write_text("collection")
-    entry = f"{tmp_path / 'maps.mmetacool'}::entries/rep1"
->>>>>>> origin/master
     message = (
         f"{entry} is an entry of a .mmetacool collection, which a run does not update in place: write the map of its "
         "clusters to another file with --output-map."
@@ -2039,12 +2005,7 @@ def test_pipeline_output_map_refusals(case, stub_pipeline, tmp_path, run_cli):
         options = ["--output-map", output, "-F"]
         message = f"{output} is a directory: --output-map takes the path of a .metacool file."
     else:
-<<<<<<< 673d6c453fc3073e7dd01dd4f2d951cf9499a169
         collection = _collection(tmp_path / "maps.mmetacool", "rep1")
-=======
-        collection = tmp_path / "maps.mmetacool"
-        collection.write_text("collection")
->>>>>>> origin/master
         given = f"{collection}::entries/rep1"
         options = ["--output-map", collection, "-F"]
         message = (

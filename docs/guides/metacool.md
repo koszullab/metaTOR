@@ -297,11 +297,7 @@ metacooler create pairs --pairs hicstuff_L1/L1.valid_idx.pairs.gz \
     --assembly-name assembly -o sample.metacool
 
 # 3. Cluster the contigs: sample.metacool becomes the map of the clusters, in place.
-<<<<<<< 673d6c453fc3073e7dd01dd4f2d951cf9499a169
 metator pipeline sample.metacool -a assembly.fa -e DpnII -o binning
-=======
-metator pipeline -S metacool -1 sample.metacool -a assembly.fa -e DpnII -o binning
->>>>>>> origin/master
 ```
 
 !!! note "Mapping mode `5spm` needs a hicstuff release after 3.3.0"

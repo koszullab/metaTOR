@@ -575,11 +575,7 @@ def test_pipeline_from_the_columns_of_a_metacool(
         # Each run writes its own map (--output-map): a run from a map
         # updates it in place otherwise, and the second would start from
         # the first's.
-<<<<<<< 673d6c453fc3073e7dd01dd4f2d951cf9499a169
         run_cli("pipeline", str(metacool), "-o", str(tmp_path / name),
-=======
-        run_cli("pipeline", "-1", str(metacool), "-S", "metacool", "-o", str(tmp_path / name),
->>>>>>> origin/master
                 "--output-map", str(tmp_path / name / "metator.metacool"), *common, *given)  # fmt: skip
 
     by_options, by_map = tmp_path / "options", tmp_path / "map"

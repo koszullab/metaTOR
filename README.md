@@ -392,11 +392,7 @@ awk -v OFS='\t' '{print $1, 0, $2}' assembly.fa.fai > contigs.bed
 metacooler create pairs --pairs hicstuff_L1/L1.valid_idx.pairs.gz --pairs hicstuff_L2/L2.valid_idx.pairs.gz \
     --bins contigs.bed --no-ps --assembly-name assembly -o sample.metacool
 # 3. Cluster the contigs: sample.metacool becomes the map of the clusters, in place.
-<<<<<<< 673d6c453fc3073e7dd01dd4f2d951cf9499a169
 metator pipeline sample.metacool -a assembly.fa -e DpnII -o binning
-=======
-metator pipeline -S metacool -1 sample.metacool -a assembly.fa -e DpnII -o binning
->>>>>>> origin/master
 ```
 
 * `--bins 1000` makes bins of 1 kb instead, taking the lengths of the contigs from the `#chromsize`
