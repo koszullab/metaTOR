@@ -58,14 +58,15 @@ contig.
 
 ```bash
 metator pipeline sample.metacool --assembly assembly.fa --enzyme DpnII \
-    --depth depth.txt --size 20000 --threads 4 --outdir binning
+    --depth depth.txt --size 20000 --threads 4 --outdir binning --no-clean-up
 ```
 
 The run reads the network of the contigs from the map. `--enzyme` and
 `--depth` add the restriction sites and the shotgun coverage of each contig to
 its data; the default normalisation needs neither. At its end, the run writes
 the contact map of the clusters over the map: `--output-map` writes it to
-another file, and leaves the map as it was.
+another file, and leaves the map as it was. `--no-clean-up` keeps its
+temporary directory, in `tmp/`, with the tables of the run.
 
 !!! note "`--size 20000` is for this test library only"
 
@@ -106,25 +107,24 @@ not always the same.
 
 ```console
 $ ls binning
-binning.txt
-cluster_members.txt
-cluster_summary.txt
-clusters.txt
-contig_data_final.txt
 final_clusters
 metator_pipeline_20261121023231.log
-overlapping_micomplete_results.txt
-recursive_clusters
 ```
+
+The run stored everything else in the map: its network, its clusters and
+their summary. Its tables are in its temporary directory, which
+`--no-clean-up` kept (`ls tmp/*/`; the log names it); without it, the run
+removes them, and `metator dump` (coming in metaTOR 2.0) writes them from the
+map.
 
 | File | What it holds |
 |---|---|
 | `final_clusters/` | One FASTA file per final cluster: the result |
-| `cluster_summary.txt` | One row per final cluster: size, GC content, completeness, redundancy, N50, Hi-C abundance… |
-| `clusters.txt`, `cluster_members.txt` | Every cluster of every round (core, overlapping, recursive, final), with its parent and miComplete's columns, and the contigs of each |
-| `contig_data_final.txt` | One row per contig: its size, GC content, hits, and the clusters it went through |
-| `binning.txt` | The contigs of the final clusters and their cluster, as anvi'o imports a binning |
 | `metator_pipeline_<date>.log` | The log of the run |
+| `cluster_summary.txt` (in `tmp/*/`) | One row per final cluster: size, GC content, completeness, redundancy, N50, Hi-C abundance… |
+| `clusters.txt`, `cluster_members.txt` (in `tmp/*/`) | Every cluster of every round (core, overlapping, recursive, final), with its parent and miComplete's columns, and the contigs of each |
+| `contig_data_final.txt` (in `tmp/*/`) | One row per contig: its size, GC content, hits, and the clusters it went through |
+| `binning.txt` (in `tmp/*/`) | The contigs of the final clusters and their cluster, as anvi'o imports a binning |
 
 `sample.metacool`, next to them, is now the contact map of all the contigs,
 grouped by cluster, with the network of the run: what metaTOR measured on
@@ -134,7 +134,7 @@ every output, and [File formats](formats.md) describes the tables.
 ## Step 4: read the cluster summary
 
 ```console
-$ cut -f 1-6,9,10 binning/cluster_summary.txt | head -4
+$ cut -f 1-6,9,10 tmp/*/cluster_summary.txt | head -4
 	Length	GC-content	Present Markers	Completeness	Redundancy	Contigs	N50
 metator_00001_00000	36399.00	62.14	1.00	0.01	1.00	9.00	22786.00
 metator_00006_00000	30476.00	61.77	1.00	0.01	1.00	9.00	7448.00
@@ -166,11 +166,16 @@ that are in no cluster are in the `__unbinned__` genome.
 ## The same from Python
 
 ```python
+import glob
+
 import metacooler
 import pandas as pd
 
-clusters = pd.read_csv("binning/cluster_summary.txt", sep="\t", index_col=0)
-contigs = pd.read_csv("binning/contig_data_final.txt", sep="\t", index_col=0).set_index("Name", drop=False)
+# The tables of the run, in its temporary directory, which --no-clean-up kept
+(tables,) = glob.glob("tmp/*/")
+clusters = pd.read_csv(f"{tables}/cluster_summary.txt", sep="\t", index_col=0)
+contigs = pd.read_csv(f"{tables}/contig_data_final.txt", sep="\t", index_col=0, dtype={"Name": str})
+contigs = contigs.set_index("Name", drop=False)
 
 mc = metacooler.MetaCooler("sample.metacool")
 mc.genomes   # one row per cluster, and __unbinned__, with the columns of cluster_summary.txt

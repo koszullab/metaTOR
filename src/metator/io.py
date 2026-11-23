@@ -16,7 +16,6 @@ This mdoule contains all core I/O functions:
     - remove_pyfastx_index
     - rename_1x_columns
     - write_bin_summary
-    - write_contigs
     - write_mge_data
 """
 
@@ -31,6 +30,7 @@ from Bio.Restriction import RestrictionBatch
 from metator.log import logger
 from os.path import join, exists
 from secrets import randbits
+from typing import NamedTuple
 
 
 def check_is_fasta(in_file):
@@ -376,7 +376,8 @@ def rename_1x_columns(contig_data):
 
 def remove_pyfastx_index(fasta):
     """Remove the index pyfastx writes next to a fasta file, if there is
-    one: pyfastx only indexes the assembly when a bin is extracted from it.
+    one: pyfastx only indexes the assembly when metator mge writes the
+    FASTA of its MGE clusters from it (see metator.mge.generate_mges_fasta).
 
     Parameters:
     -----------
@@ -389,30 +390,50 @@ def remove_pyfastx_index(fasta):
         pass
 
 
-def write_contigs(fasta, names, out_file):
-    """Write the records of some contigs of a fasta file, in the given order,
-    each as it is in the file, as `pyfastx extract` writes them.
+# The columns of the summary of the clusters that write_bin_summary writes with
+# four decimals: the abundances. Its other decimal numbers have two, and its
+# whole numbers none.
+ABUNDANCE_COLUMNS = ("HiC_abundance", "SG_abundance")
 
-    Parameters:
-    -----------
-    fasta : pyfastx.Fasta
-        The fasta file, read through its pyfastx index (<fasta>.fxi, which
-        pyfastx writes next to it).
-    names : iterable
-        Names of the contigs. Read as text: pyfastx reads an integer key as
-        the index of a record, and pandas reads a column of names such as
-        1, 2... as integers.
-    out_file : str
-        Path to the fasta file to write.
 
-    Raises:
-    -------
-    KeyError
-        If a contig is not in the fasta file.
+class SummaryLayout(NamedTuple):
+    """How write_bin_summary wrote the summary of the final clusters
+    (cluster_summary.txt), which the map of the clusters records with its
+    values (see metator.cli.validation_entry), to write it again: a header
+    line, an empty field then the columns, then a line per row, its name
+    then a field per column, tab-separated.
+
+    Attributes
+    ----------
+    rows : list of str
+        The names of the clusters, in the order of the lines.
+    columns : list of str
+        The columns, in order, after the name of the cluster.
+    formats : dict
+        The format of each column, by name, as printf writes it: "%.2f" (a
+        number with two decimals), "%.4f" (four: the abundances), "%d" (a
+        whole number) or "%s" (text as it is: True or False for a boolean).
+        A missing value is an empty field.
     """
-    with open(out_file, "w") as out:
-        for name in names:
-            out.write(fasta[str(name)].raw)
+
+    rows: list
+    columns: list
+    formats: dict
+
+
+def _summary_format(column, values):
+    """The format of a column of the summary of the clusters, as
+    write_bin_summary writes it (see SummaryLayout): values, the column
+    before it is written."""
+    if column in ABUNDANCE_COLUMNS:
+        return "%.4f"
+    if pd.api.types.is_bool_dtype(values):
+        return "%s"
+    if pd.api.types.is_integer_dtype(values):
+        return "%d"
+    if pd.api.types.is_float_dtype(values):
+        return "%.2f"
+    return "%s"
 
 
 def write_bin_summary(bin_summary, bin_summary_file):
@@ -424,10 +445,17 @@ def write_bin_summary(bin_summary, bin_summary_file):
         Dictionnary with the output of the miComplete of the bins.
     bin_summary_file : str
         Path to the output file to write the summary informations of the bins.
+
+    Returns
+    -------
+    SummaryLayout
+        How the summary is written: its rows, its columns and their format,
+        which the map of the clusters records (see metator.cli.validation_entry).
     """
 
     # Transform dictionnary to pandas DataFrame.
     bin_summary = pd.DataFrame.from_dict(bin_summary, orient="index")
+    formats = {str(column): _summary_format(column, bin_summary[column]) for column in bin_summary.columns}
 
     # Change float format of the coverage.
     bin_summary["HiC_abundance"] = bin_summary["HiC_abundance"].map(lambda x: "%.4f" % x)
@@ -438,6 +466,7 @@ def write_bin_summary(bin_summary, bin_summary_file):
 
     # Write the file.
     bin_summary.to_csv(bin_summary_file, sep="\t", float_format="%.2f")
+    return SummaryLayout([str(row) for row in bin_summary.index], list(formats), formats)
 
 
 def write_mge_data(mge_data, out_file):

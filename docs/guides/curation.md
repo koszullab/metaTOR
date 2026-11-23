@@ -12,7 +12,10 @@ The commands below were written for anvi'o 7. They run on the output
 directory `binning` of a run on the map of two libraries, `L1` and `L2`, each
 made with `hicstuff pipeline -M metacool -n`, from hicstuff's next release (see
 [Other tools](../other-tools.md#from-the-reads-to-the-map)): `-n` keeps the
-alignments of hicstuff, which give the coverage of the contigs.
+alignments of hicstuff, which give the coverage of the contigs. The tables of
+the run, `binning.txt` and `contig_data_final.txt`, are in its temporary
+directory, which `-N` keeps (its log names it; `metator dump`, coming in
+metaTOR 2.0, writes them from the map): `$tables` below.
 
 ## 1. The contigs database
 
@@ -21,8 +24,10 @@ The database holds only the contigs of the final clusters, those of
 which is installed with metaTOR:
 
 ```bash
+# The temporary directory of the run, which -N kept
+tables=tmp/3f9c2a1b
 mkdir -p anvio
-cut -f 1 binning/binning.txt > anvio/contigs.txt
+cut -f 1 $tables/binning.txt > anvio/contigs.txt
 pyfastx extract -l anvio/contigs.txt -o anvio/contigs.fa assembly.fa
 ```
 
@@ -78,7 +83,7 @@ anvi-merge -c anvio/contigs.db -o anvio/merged -S HiC -W anvio/HiC_*/PROFILE.db
 `binning.txt` is an anvi'o collection, a contig and its cluster per line:
 
 ```bash
-anvi-import-collection binning/binning.txt -c anvio/contigs.db -p anvio/merged/PROFILE.db \
+anvi-import-collection $tables/binning.txt -c anvio/contigs.db -p anvio/merged/PROFILE.db \
     -C metator --contigs-mode
 ```
 
@@ -116,21 +121,18 @@ cluster, checks the clusters with miComplete as `metator validation` does, and
 counts them in the quality classes of its log:
 
 ```python
-import os
-
+import metacooler
 import metator.io as mio
 import metator.validation as mtv
 import pandas as pd
-import pyfastx
 
 # The collection exported by anvi'o: each contig and its cluster.
 binning = pd.Series(mio.import_anvio_binning("anvio/curated.txt"))
 
-# One FASTA file per curated cluster.
-assembly = pyfastx.Fasta("assembly.fa")
-os.makedirs("anvio/fasta", exist_ok=True)
-for bin_name, contigs in binning.groupby(binning):
-    mio.write_contigs(assembly, contigs.index, f"anvio/fasta/{bin_name}.fa")
+# One FASTA file per curated cluster, the records of its contigs as they are
+# in the assembly, written by metacooler from the contact map of the run.
+groups = {bin_name: list(contigs.index) for bin_name, contigs in binning.groupby(binning)}
+metacooler.write_fasta("sample.metacool", "assembly.fa", "anvio/fasta", groups=groups)
 
 # miComplete on every cluster, with the bacterial and the archaeal markers.
 mtv.micomplete_quality("anvio/fasta", "anvio/micomplete.txt", threads=16)
@@ -148,7 +150,8 @@ contig data table as a column, give them to the contact map of the run with
 
 ```python
 binning = mio.import_anvio_binning("anvio/curated.txt")
-contigs = pd.read_csv("binning/contig_data_final.txt", sep="\t", index_col=0)
+# The temporary directory of the run, which -N kept
+contigs = pd.read_csv("tmp/3f9c2a1b/contig_data_final.txt", sep="\t", index_col=0, dtype={"Name": str})
 contigs["Anvio"] = contigs["Name"].map(binning).fillna("ND")
 contigs.to_csv("binning/contig_data_anvio.txt", sep="\t")
 ```

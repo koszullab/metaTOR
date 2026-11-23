@@ -147,6 +147,16 @@ minus one as the contamination of a cluster; the recursive
 partition divides it by the weighted completeness (see
 [Cluster quality](concepts.md#cluster-quality)).
 
+miComplete's numbers have two decimals, whole ones too (`Length`), the
+abundances four, and `step` none. The map of the clusters holds the same
+values, in its genomes table,
+and records how the table is written, under the `validation` entry of the
+`metator` key of its metadata: `summary_rows`, the clusters in the order of
+the lines; `summary_columns`, the columns in order; and `summary_formats`,
+the format of each column as printf writes it (`%.2f`, `%.4f`, `%d`, or
+`%s` for text and booleans), a missing value being an empty field. From
+them, the map alone writes the table again, byte for byte.
+
 ### binning.txt
 
 Each contig of a final cluster and its cluster, without header: the collection
@@ -188,17 +198,16 @@ clusters stores both (see
 
 ### FASTA files of the clusters
 
-`recursive_clusters/step_<n>/` (the recursive clusters of step `n`) and
-`final_clusters/` hold one FASTA file per cluster, `<cluster>.fa`, with the
-records of its contigs as they are in the assembly. The overlapping clusters
-that the validation checks are written so, by metacooler
-(`metacooler.write_fasta`), in `overlapping_clusters/` of its temporary
-directory (`-N` keeps it), in the order of the partition: by core cluster,
-then by ID. From a gzip-compressed assembly, metacooler writes them through
-a decompressed copy of it, in the temporary directory too, which it removes
-once they are written.
-The final clusters also hold the pyfastx index of each, `<cluster>.fa.fxi`,
-which the validation leaves there.
+`final_clusters/`, in the output directory, holds one FASTA file per final
+cluster, `<cluster>.fa`, with the records of its contigs as they are in the
+assembly. metacooler writes the files of the clusters that the validation
+checks (`metacooler.write_fasta`), in its temporary directory (`-N` keeps
+it): the overlapping clusters in `overlapping_clusters/`, in the order of
+the partition (by core cluster, then by ID), and the recursive clusters of
+step `n` in `recursive_clusters/step_<n>/`. A final cluster is a copy of the
+file that miComplete checked. A gzip-compressed assembly is decompressed
+once per run, in the temporary directory, and every file is written from
+that copy. No pyfastx index is made, beside the assembly or the clusters.
 
 ## The contact map of the clusters
 

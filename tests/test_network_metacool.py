@@ -435,7 +435,7 @@ def test_small_map_network(tmp_path):
 def _stored_network(tmp_path, halves=False, normalization="length"):
     """A map of the contigs a, b and c, with the network (normalization
     length) that metator network stores in it (see
-    metator.metacool.store_network): one bin per contig, or two (halves)."""
+    metator.metacool.write_map): one bin per contig, or two (halves)."""
     contigs = {"a": 100, "b": 200, "c": 300}
     if halves:
         pairs_file = tmp_path / "map.pairs"
@@ -456,7 +456,7 @@ def _stored_network(tmp_path, halves=False, normalization="length"):
     names = [str(name) for name in metacooler.MetaCooler(str(metacool)).contigs["name"]]
     hits = mtn.contig_hits(mtn.contig_contacts(str(metacool)), len(names))
     table = mtn.contig_data_table(_contig_data(tmp_path, contigs), names, hits)
-    mtmc.store_network(str(metacool), str(metacool), mtmc.Network(table, normalization), force=True)
+    mtmc.write_map(str(metacool), str(metacool), network=mtmc.Network(table, normalization), force=True)
     return str(metacool)
 
 
@@ -474,15 +474,14 @@ def test_network_digest_is_that_of_the_network(tmp_path, normalization):
     weights = mtn.stored_weights(metacool)
     names = list(stored.table.Name)
     assert stored.digest == mtn.network_digest(contacts, weights, names, normalization)
-    # The map of the clusters c, then a and b: genome-then-length.
-    table = stored.table.assign(Final_cluster=["m_2", "m_2", "m_1"])
-    table.to_csv(tmp_path / "contig_data_final.txt", sep="\t", index=False)
+    # The map of the clusters c, then a and b: genome-then-length, written
+    # as a validation writes it, with the network of the map stored again.
     regrouped = tmp_path / "regrouped.metacool"
-    mtmc.reassign_metacool(
+    mtmc.write_map(
         metacool,
-        str(tmp_path / "contig_data_final.txt"),
         str(regrouped),
-        normalization=None if normalization == "None" else normalization,
+        clusters=mtmc.FinalClusters({"a": "m_2", "b": "m_2", "c": "m_1"}, None, None, {"version": "x"}),
+        network=mtmc.Network(stored.table, stored.normalization, entry=None),
     )
     again = mtn.stored_network(str(regrouped))
     assert list(again.table.Name) == ["c", "b", "a"]

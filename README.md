@@ -119,18 +119,18 @@ each one.
 
 ### Output files
 
-The output files will be in the ouput directory given as parmater or in working directory if no paramater were given. Depending on the command used, different files will be in the ouptut:
+The output files will be in the ouput directory given as parmater or in working directory if no paramater were given. Depending on the command used, different files will be in the ouptut. The tables of a validation (marked *tmp*) are written in the temporary directory of the run (`-T`, in a directory of its own, which the log names), which `-N` keeps: the map holds what they hold, and `metator dump` (coming in metaTOR 2.0) writes them from it. An earlier version wrote them in the output directory: there, they are refused without `-F`, which removes them.
 
 | Files/Commands | description | network | partition | validation | pipeline |
 | - | :-: | :-: | :-: | :-: | :-: |
-| overlapping_micomplete_results.txt |miComplete results summary file from the partition step|||X|X|
-| recursive_micomplete_stepN.txt |miComplete results summary file from the recursive step N|||X|X|
-| contig_data_final.txt |Information on contigs after whole pipeline|||X|X|
-| **cluster_summary.txt** |**Information on the final clusters**|||**X**|**X**|
-| clusters.txt |Every cluster of every round (core, overlapping, recursive, final), with its parent and miComplete's columns|||X|X|
-| cluster_members.txt |The contigs of each cluster of `clusters.txt`|||X|X|
-| binning.txt |File with contigs names and their final clustering|||X|X|
-| recursive_clusters |Directory with the fasta of the recursive clusters|||X|X|
+| overlapping_micomplete_results.txt (*tmp*) |miComplete results summary file from the partition step|||X|X|
+| recursive_micomplete_step_N.txt (*tmp*) |miComplete results summary file from the recursive step N|||X|X|
+| contig_data_final.txt (*tmp*) |Information on contigs after whole pipeline|||X|X|
+| cluster_summary.txt (*tmp*) |Information on the final clusters, which the genomes table of the map holds|||X|X|
+| clusters.txt (*tmp*) |Every cluster of every round (core, overlapping, recursive, final), with its parent and miComplete's columns|||X|X|
+| cluster_members.txt (*tmp*) |The contigs of each cluster of `clusters.txt`|||X|X|
+| binning.txt (*tmp*) |File with contigs names and their final clustering|||X|X|
+| recursive_clusters (*tmp*) |Directory with the fasta of the recursive clusters|||X|X|
 | **final_clusters** |**Directory with the fasta of the final clusters**|||**X**|**X**|
 | The input map |The network of the contigs (`network`); its partition, the core and overlapping clusters (`partition`); the contact map of the contigs, grouped by cluster (`validation`, `pipeline`): updated in place, or written to `--output-map` (see [Starting from a contact map](#starting-from-a-contact-map))|X|X|X|X|
 
@@ -191,12 +191,13 @@ Completeness, Redundancy, Weighted completeness	and Weighted redundancy).
 of the run before any clustering, every contig in `__unbinned__` (by `hicstuff pipeline -M metacool`, or
 `metacooler create pairs`: see [From hicstuff to metaTOR](#from-hicstuff-to-metator)). It reads its
 network from the map (see [Starting from a contact map](#starting-from-a-contact-map)) and, at its end,
-writes the map of the clusters over it, from the final tables, with `metacooler reassign`
-(`--output-map` writes it to another file; `--no-metacool` writes none, and leaves the map as it was). It
-is written through metacooler, from a fresh copy of the map, so a map updated in place holds at most the
-space that the edits of its last run left behind: it does not grow with each run. The map also stores the clustering rounds of the
-run (the overlapping, recursive and final clusters, with their contigs), which the run writes as
-`clusters.txt` and `cluster_members.txt` too. For a run whose `partition` and `validation` were not given
+writes the map of the clusters over it, once: what `network`, `partition` and `validation` store one by
+one, its final clusters, which `metacooler reassign` writes anew from the map, then the network of its
+contigs (`--output-map` writes it to another file). It is written through metacooler, so a map updated in
+place holds at most the space that the edits of its last run left behind: it does not grow with each run. The map also stores the
+clustering rounds of the run (the core, overlapping, recursive and final clusters, with their contigs),
+which the run writes as `clusters.txt` and `cluster_members.txt` in its temporary directory too (`-N`
+keeps them). For a run whose `partition` and `validation` were not given
 the map, `metacooler reassign` writes the map of its clusters from the map of its contigs and its tables
 (see [Other tools](docs/other-tools.md)).
 
@@ -234,9 +235,12 @@ and the tools built on it read it as any `.cool` file, and `metacooler` adds the
   from the `Hit`, `Shotgun_coverage` and `Restriction_site` columns of the contigs table, which the
   column records, so that metacooler drops it when an edit changes one of them; a normalization that
   metacooler fails to store fails the map, which is then not written, with the reason;
-* the metadata of the file hold the version of metaTOR, the command line and its parameters, under
-  the `metator` key, and those of the run that stored the network, with its normalization, under its
-  `network` entry.
+* the metadata of the file hold, under the `metator` key, one entry per step (`network`,
+  `partition`, `validation`), each with the version of metaTOR, the command line and its parameters
+  of the run that made it, and what it read of the map (`read`); the `network` entry records its
+  normalization, the `partition` entry the network it partitioned, and the `validation` entry how
+  the summary of the clusters is written from the genomes table (`summary_rows`,
+  `summary_columns`, `summary_formats`).
 
 ```python
 import cooler
@@ -282,8 +286,8 @@ point, as jgi's depth files have: metacooler can store a longer one one unit off
 which changes the last digits of the contig data files and of a network normalized by it, and has
 `--depth` warn that it replaces the map's value). `--enzyme` and `--depth` fill in a
 column that the map lacks, and replace one that it has (a warning counts the contigs whose value
-differs); the map of the clusters stores what the run used, and the metadata of the map that `pipeline`
-writes which columns it read (`columns_from_map`). A column is read only if it gives every contig of the assembly a value (a number
+differs); the map of the clusters stores what the run used, and its metadata which columns it read
+(`read`, under the `network` entry). A column is read only if it gives every contig of the assembly a value (a number
 of restriction sites, plus one, of at least 1; a coverage of at least 0; a contig of no length, which
 no map holds, gets 1 and 0): one with no valid value, such as one of `-`, as metaTOR writes what it did
 not measure, is as no column, and one that lacks some contigs is not read, with a warning that names

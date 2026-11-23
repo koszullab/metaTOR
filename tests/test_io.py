@@ -7,7 +7,6 @@ import zipfile
 
 import metator.io as mio
 import pandas as pd
-import pyfastx
 import pytest
 
 
@@ -178,12 +177,41 @@ def test_bin_summary_round_trip(tmp_path, shotgun):
     if shotgun:
         for i, values in enumerate(summary.values()):
             values["SG_abundance"] = 10.0 / (i + 1)
-    mio.write_bin_summary(summary, str(tmp_path / "cluster_summary.txt"))
+    layout = mio.write_bin_summary(summary, str(tmp_path / "cluster_summary.txt"))
     table = pd.read_csv(tmp_path / "cluster_summary.txt", sep="\t", index_col=0)
     assert list(table.index) == ["bin_1", "bin_2"]
     assert table.loc["bin_1", "Weighted completeness"] == 0.91
     assert table.loc["bin_1", "HiC_abundance"] == 1.2346
     assert ("SG_abundance" in table.columns) == shotgun
+    assert layout.rows == ["bin_1", "bin_2"] and layout.columns == list(table.columns)
+
+
+def test_bin_summary_layout_writes_it_again(tmp_path):
+    """The layout of the summary (its rows, columns and formats) writes it
+    again, byte for byte, from its values as they were (or as the genomes
+    table of the map gives them back: numbers, and text): two decimals for
+    the decimals, four for the abundances, the whole numbers as they are,
+    the text and the booleans as written, and an empty field for a missing
+    value."""
+    summary = {
+        "b_2": {"Length": 1500.0, "GC-content": 40.123, "recursive": True, "step": 1, "parent": "b_1",
+                "HiC_abundance": 1.234567, "SG_abundance": 2.5},
+        "b_1": {"Length": 3000.0, "GC-content": float("nan"), "recursive": False, "step": 0, "parent": None,
+                "HiC_abundance": 0.1, "SG_abundance": 0.0},
+    }  # fmt: skip
+    path = tmp_path / "cluster_summary.txt"
+    layout = mio.write_bin_summary(summary, str(path))
+    assert layout.rows == ["b_2", "b_1"]
+    assert layout.formats == {
+        "Length": "%.2f", "GC-content": "%.2f", "recursive": "%s", "step": "%d", "parent": "%s",
+        "HiC_abundance": "%.4f", "SG_abundance": "%.4f",
+    }  # fmt: skip
+    lines = ["\t".join(["", *layout.columns])]
+    for row in layout.rows:
+        values = [summary[row][column] for column in layout.columns]
+        lines.append("\t".join([row, *("" if pd.isna(value) else layout.formats[column] % value
+                                        for column, value in zip(layout.columns, values, strict=True))]))  # fmt: skip
+    assert path.read_text() == "\n".join(lines) + "\n"
 
 
 @pytest.mark.parametrize("with_tmp_column", [True, False])
@@ -193,28 +221,3 @@ def test_write_mge_data(tmp_path, with_tmp_column):
         data["tmp"] = "c1_1"
     mio.write_mge_data(data, str(tmp_path / "mges.tsv"))
     assert (tmp_path / "mges.tsv").read_text() == "Name\tScore\nc1\t0.12\n"
-
-
-def test_write_contigs(tmp_path):
-    """The records of the contigs, in the order given, each as it is in the
-    fasta file (description and line breaks kept), as `pyfastx extract`
-    writes them. A contig that is not in the file is an error, not a missing
-    record."""
-    fasta = tmp_path / "assembly.fa"
-    fasta.write_text(">c1 first contig\nACGT\nAC\n>c2\nGGGG\n>c3\nTT\n")
-    out = tmp_path / "out.fa"
-    mio.write_contigs(pyfastx.Fasta(str(fasta)), ["c3", "c1"], str(out))
-    assert out.read_text() == ">c3\nTT\n>c1 first contig\nACGT\nAC\n"
-    with pytest.raises(KeyError, match="c4"):
-        mio.write_contigs(pyfastx.Fasta(str(fasta)), ["c2", "c4"], str(out))
-
-
-def test_write_contigs_numeric_names(tmp_path):
-    """Contigs named by numbers, as pandas reads them from a contig data
-    file (integers): written by name, not taken for the index of a record
-    (pyfastx reads an integer key so)."""
-    fasta = tmp_path / "assembly.fa"
-    fasta.write_text(">1\nAAAA\n>2\nCCCC\n>3\nGGGG\n")
-    out = tmp_path / "out.fa"
-    mio.write_contigs(pyfastx.Fasta(str(fasta)), pd.Series([1, 2]), str(out))
-    assert out.read_text() == ">1\nAAAA\n>2\nCCCC\n"

@@ -5,15 +5,18 @@
 import json
 import os
 import random
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
 
 import cooler
 import metacooler
+import numpy as np
 import pandas as pd
 import pytest
 
+import metator.cli as mtcli
 import metator.clusters as mtcl
 import metator.metacool as mtmc
 import metator.network as mtn
@@ -25,6 +28,63 @@ from tests.hdf5 import walk
 from tests.maps import contig_map, pairs_map
 
 NORMALIZATIONS = ["None", "abundance", "length", "RS", "empirical_hit", "theoritical_hit"]
+
+
+# The tables of a validation (contig_data_final.txt, cluster_summary.txt,
+# binning.txt, clusters.txt, cluster_members.txt) are in the temporary
+# directory of the run, which -N keeps: every run of this module keeps it,
+# and the tests read them there (see _kept).
+TABLES = ["contig_data_final.txt", "cluster_summary.txt", "binning.txt", "clusters.txt", "cluster_members.txt"]
+
+
+@pytest.fixture(autouse=True)
+def _keep_the_tables(monkeypatch):
+    """Keep the temporary directory of every run, as -N does."""
+    private_tmp_dir = mtcli.private_tmp_dir
+    monkeypatch.setattr(mtcli, "private_tmp_dir", lambda tmpdir, clean_up=True: private_tmp_dir(tmpdir, clean_up=False))
+
+
+def _kept(out):
+    """The directory of the tables of the latest validation or pipeline run
+    whose output directory is out: the temporary directory of the run (in
+    the -T of its command line, which its log records; a relative one from
+    the directory of out, where the tests run) that holds them, the last
+    written before the end of its log (two runs may share a -T)."""
+    logs = sorted(Path(out).glob("metator_*.log"), key=os.path.getmtime)
+    for log in reversed(logs):
+        line = next(line for line in log.read_text().splitlines() if line.startswith("## Command used: "))
+        command = shlex.split(line[len("## Command used: ") :])
+        tmp = Path(command[command.index("-T") + 1] if "-T" in command else "./tmp")
+        if not tmp.is_absolute():
+            tmp = Path(out).resolve().parent / tmp
+        ended = os.path.getmtime(log)
+        found = sorted(
+            (table for table in tmp.glob("*/contig_data_final.txt") if os.path.getmtime(table) <= ended),
+            key=os.path.getmtime,
+        )
+        if found:
+            return found[-1].parent
+    raise FileNotFoundError(f"No tables of a validation of {out}")
+
+
+def _summary_from_the_map(path):
+    """The summary of the final clusters of the run that wrote the map of the
+    clusters at path (cluster_summary.txt), as the map alone writes it
+    again: its genomes table holds the values, and its entry validation how
+    they are written (its rows, columns and their formats, see
+    metator.cli.validation_entry), an empty field for a missing value."""
+    mc = metacooler.MetaCooler(str(path))
+    entry = mc.metadata["metator"]["validation"]
+    genomes = mc.genomes.set_index("name")
+    columns, formats = entry["summary_columns"], entry["summary_formats"]
+
+    def field(value, written):
+        return "" if value is None or value == "" or (isinstance(value, float) and np.isnan(value)) else written % value
+
+    lines = ["\t".join(["", *columns])]
+    for row in entry["summary_rows"]:
+        lines.append("\t".join([row, *(field(genomes.loc[row, column], formats[column]) for column in columns)]))
+    return "\n".join(lines) + "\n"
 
 
 def _named_edges(network, contig_data):
@@ -136,13 +196,13 @@ def _map_with_merged_partition(metagenome, metagenome_network, path, merged):
         "normalization": "empirical_hit",
         mtmc.NETWORK_DIGEST: mtn.stored_network(str(metacool)).digest,
     }
-    mtmc.write_rounds(
+    mtmc.write_map(
         str(metacool),
         str(metacool),
-        mtcl.partition_rounds(clusters, list(data.Name)),
-        names=list(mtmc.PARTITION_ROUNDS),
+        partition=entry,
+        rounds=mtcl.partition_rounds(clusters, list(data.Name)),
+        round_names=list(mtmc.PARTITION_ROUNDS),
         force=True,
-        entries={"partition": entry},
     )
     return metacool
 
@@ -165,7 +225,7 @@ def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenom
     )
     out = tmp_path / "out"
     # Outputs of an earlier run, replaced thanks to --force.
-    for stale in ["recursive_clusters", "final_clusters"]:
+    for stale in ["final_clusters"]:
         (out / stale).mkdir(parents=True)
         (out / stale / "metator_00009_00000.fa").write_text(">old\nACGT\n")
     args = [
@@ -179,17 +239,17 @@ def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenom
         "-F",
     ]  # fmt: skip
     run_cli("validation", *args)
-    assert not (out / "recursive_clusters" / "metator_00009_00000.fa").exists()
+    assert not (out / "final_clusters" / "metator_00009_00000.fa").exists()
 
     # miComplete ran on the partition bins, then on the bins of the first
     # recursive step only: the split bins are clean.
     assert [Path(c[0]).name for c in calls] == ["overlapping_clusters", "step_1"]
-    final = pd.read_csv(out / "contig_data_final.txt", sep="\t")
+    final = pd.read_csv(_kept(out) / "contig_data_final.txt", sep="\t")
     truth, found = _genome_labels(final, metagenome, "Final_cluster")
     assert "ND" not in found
     assert synthetic.adjusted_rand(truth, found) >= 0.9
     assert synthetic.purity(truth, found) >= 0.9
-    summary = pd.read_csv(out / "cluster_summary.txt", sep="\t", index_col=0)
+    summary = pd.read_csv(_kept(out) / "cluster_summary.txt", sep="\t", index_col=0)
     assert len(summary) == len(metagenome.genomes)
     assert "metator_00001_00000" not in summary.index
     assert summary["Weighted redundancy"].max() == 1.0
@@ -199,7 +259,7 @@ def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenom
     assert (hic / hic.sum()).to_numpy() == pytest.approx((hits / hits.sum()).to_numpy(), rel=1e-3)
     # The final fasta files are the final bins, and nothing else.
     assert sorted(p.name for p in (out / "final_clusters").iterdir()) == sorted(f"{name}.fa" for name in summary.index)
-    binning = pd.read_csv(out / "binning.txt", sep="\t", header=None, names=["Name", "Bin"])
+    binning = pd.read_csv(_kept(out) / "binning.txt", sep="\t", header=None, names=["Name", "Bin"])
     assert set(binning.Bin) == set(summary.index)
     assert sorted(binning.Name) == sorted(final.Name[final.Final_cluster != "ND"])
     # No plots: metaTOR draws none since 2.0.
@@ -207,6 +267,49 @@ def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenom
     # The bins of the split are recursive bins, of step 1; the others are not.
     assert list(summary.recursive) == list(summary.step > 0)
     assert summary.recursive.any() and not summary.recursive.all()
+    # The map alone writes the summary again, byte for byte.
+    assert _summary_from_the_map(metacool) == (_kept(out) / "cluster_summary.txt").read_text()
+    # metacooler wrote the FASTA files of the clusters of the recursive step,
+    # and indexed nothing beside the assembly.
+    assert not os.path.exists(f"{metagenome_inputs['assembly']}.fxi")
+
+
+def test_validation_decompresses_the_assembly_once(
+    metagenome, metagenome_inputs, metagenome_network, tmp_path, monkeypatch, run_cli
+):
+    """An assembly compressed with gzip is decompressed once for the run, in
+    its temporary directory: every FASTA file of the clusters (the
+    overlapping clusters, each recursive step) is written from that copy,
+    where metacooler copied it again for each write. The final clusters are
+    those of the run from the plain assembly."""
+    import gzip
+
+    monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
+    written = []
+    write_fasta = metacooler.write_fasta
+
+    def recorded(uri, fasta, out, **kwargs):
+        written.append(Path(fasta))
+        return write_fasta(uri, fasta, out, **kwargs)
+
+    monkeypatch.setattr(metacooler, "write_fasta", recorded)
+    compressed = tmp_path / "assembly.fa.gz"
+    compressed.write_bytes(gzip.compress(Path(metagenome_inputs["assembly"]).read_bytes()))
+    finals = {}
+    for name, assembly in [("plain", metagenome_inputs["assembly"]), ("gz", compressed)]:
+        metacool = _map_with_merged_partition(
+            metagenome, metagenome_network, tmp_path / f"{name}.metacool", merged=("genome_1", "genome_2")
+        )
+        written.clear()
+        random.seed(0)
+        run_cli("validation", metacool, "-a", assembly, "-o", tmp_path / name, "-T", tmp_path / f"tmp_{name}",
+                "-s", "50000", "-i", "10", "-t", "1")  # fmt: skip
+        finals[name] = {path.name: path.read_bytes() for path in (tmp_path / name / "final_clusters").iterdir()}
+    # The overlapping clusters, then the clusters of the recursive step.
+    assert len(written) == 2 and len(set(written)) == 1
+    (plain,) = set(written)
+    assert plain.name == "assembly.fa" and plain.parent.parent == tmp_path / "tmp_gz"
+    assert finals["gz"] == finals["plain"]
 
 
 def test_validation_checks_the_clusters_in_the_order_of_the_partition(
@@ -232,13 +335,13 @@ def test_validation_checks_the_clusters_in_the_order_of_the_partition(
     assert overlapping[1] != sorted(overlapping[1])
     metacool = _network_map(metagenome_network, tmp_path / "network.metacool")
     entry = {mtmc.NETWORK_DIGEST: mtn.stored_network(str(metacool)).digest}
-    mtmc.write_rounds(
+    mtmc.write_map(
         str(metacool),
         str(metacool),
-        mtcl.partition_rounds(clusters, list(data.Name)),
-        names=list(mtmc.PARTITION_ROUNDS),
+        partition=entry,
+        rounds=mtcl.partition_rounds(clusters, list(data.Name)),
+        round_names=list(mtmc.PARTITION_ROUNDS),
         force=True,
-        entries={"partition": entry},
     )
     assert mtmc.read_partition(str(metacool)) == clusters
     checked = {}
@@ -287,7 +390,7 @@ def test_validation_again_on_the_map_of_its_clusters(
     for run in ["first", "second"]:
         random.seed(0)
         run_cli("validation", metacool, "-o", tmp_path / run, *common)
-        finals[run] = pd.read_csv(tmp_path / run / "contig_data_final.txt", sep="\t")
+        finals[run] = pd.read_csv(_kept(tmp_path / run) / "contig_data_final.txt", sep="\t")
     after, regrouped = named(metacool)
     assert regrouped != names and sorted(regrouped) == sorted(names)
     assert after == before
@@ -298,12 +401,58 @@ def test_validation_again_on_the_map_of_its_clusters(
     assert found["second"].equals(found["first"])
 
 
+def test_contigs_named_by_numbers(tmp_path, monkeypatch, run_cli):
+    """Contigs named by numbers (000017, 1e5, 2.50), which pandas reads as
+    numbers unless told otherwise: a run reads every table of names as
+    text, and each contig goes by its name, as the map names it, to the
+    final cluster of the FASTA file that lists it (read as numbers, the
+    names lost their leading zeros, or their form, and the clusters their
+    contigs)."""
+    from tests.conftest import SYNTHETIC_SEED
+
+    metagenome = synthetic.make_metagenome(seed=SYNTHETIC_SEED)
+    renamed = {}
+    for i, contig in enumerate(metagenome.contigs):
+        renamed[contig.name] = {0: "1e5", 1: "2.50"}.get(i, f"{i:06d}")
+        contig.name = renamed[contig.name]
+    for column in ["chr1", "chr2"]:
+        metagenome.pairs[column] = metagenome.pairs[column].map(renamed)
+    files = metagenome.write_all(tmp_path / "inputs")
+    metacool = contig_map(
+        files["pairs"], mtn.create_contig_data(str(files["assembly"])), tmp_path / "input.metacool", columns=False
+    )
+    monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
+    out = tmp_path / "out"
+    common = ["-o", out, "-T", tmp_path / "tmp"]
+    random.seed(0)
+    run_cli("network", metacool, "-a", files["assembly"], "-e", "DpnII", *common)
+    run_cli("partition", metacool, "-i", "10", *common)
+    run_cli("validation", metacool, "-a", files["assembly"], "-s", "50000", "-i", "5", *common)
+    final = pd.read_csv(_kept(out) / "contig_data_final.txt", sep="\t", dtype={"Name": str}, keep_default_na=False)
+    assert sorted(final.Name) == sorted(renamed.values())
+    mc = metacooler.MetaCooler(str(metacool))
+    genome_of = dict(zip(mc.contigs["name"], mc.genomes["name"].to_numpy()[mc.contigs["genome_id"]], strict=True))
+    binned = final[final.Final_cluster != "ND"]
+    assert len(binned) and {name: genome_of[name] for name in binned.Name} == dict(
+        zip(binned.Name, binned.Final_cluster, strict=True)
+    )
+    # Each FASTA file of a final cluster lists the contigs of its cluster in
+    # the map.
+    files = sorted((out / "final_clusters").glob("*.fa"))
+    assert sorted(path.stem for path in files) == sorted(set(binned.Final_cluster))
+    for path in files:
+        listed = [line[1:].split()[0] for line in path.read_text().splitlines() if line.startswith(">")]
+        assert sorted(listed) == sorted(name for name, genome in genome_of.items() if genome == path.stem)
+
+
 def test_a_contig_named_na(tmp_path, monkeypatch, run_cli):
     """A contig named NA, which pandas reads as a missing value unless told
     otherwise, is a contig as any other: validation reads it by name from
     the partition table of the run, and writes it into the map of the
     clusters, in its final cluster, with its size (a missing name made the
-    Size column of contig_data_final.txt a float, which the map refused)."""
+    Size column of contig_data_final.txt a float, which the map refused;
+    the run keeps its tables in its temporary directory: see
+    _keep_the_tables)."""
     from tests.conftest import SYNTHETIC_SEED
 
     metagenome = synthetic.make_metagenome(seed=SYNTHETIC_SEED)
@@ -321,7 +470,7 @@ def test_a_contig_named_na(tmp_path, monkeypatch, run_cli):
     run_cli("network", metacool, "-a", files["assembly"], "-e", "DpnII", *common)
     run_cli("partition", metacool, "-i", "10", *common)
     run_cli("validation", metacool, "-a", files["assembly"], "-s", "50000", "-i", "5", *common)
-    final = pd.read_csv(tmp_path / "out" / "contig_data_final.txt", sep="\t", keep_default_na=False)
+    final = pd.read_csv(_kept(tmp_path / "out") / "contig_data_final.txt", sep="\t", keep_default_na=False)
     row = final[final.Name == "NA"]
     assert len(row) == 1 and pd.api.types.is_integer_dtype(final.Size) and int(row.Size.iloc[0]) == contig.length
     mc = metacooler.MetaCooler(str(metacool))
@@ -341,7 +490,7 @@ def test_validation_without_contaminated_bin(metagenome, metagenome_inputs, meta
         "-s", "50000",
     ]  # fmt: skip
     run_cli("validation", *args)
-    assert len(pd.read_csv(out / "cluster_summary.txt", sep="\t", index_col=0)) == len(metagenome.genomes)
+    assert len(pd.read_csv(_kept(out) / "cluster_summary.txt", sep="\t", index_col=0)) == len(metagenome.genomes)
 
 
 def test_validation_without_bin_above_the_size_threshold(metagenome_inputs, metagenome_network, tmp_path, monkeypatch, run_cli):
@@ -408,11 +557,11 @@ def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, tmp_path, 
     ]  # fmt: skip
     run_cli("pipeline", *args)
 
-    final = pd.read_csv(out / "contig_data_final.txt", sep="\t")
+    final = pd.read_csv(_kept(out) / "contig_data_final.txt", sep="\t")
     truth, found = _genome_labels(final, metagenome, "Final_cluster")
     assert "ND" not in found
     assert synthetic.adjusted_rand(truth, found) >= 0.9
-    summary = pd.read_csv(out / "cluster_summary.txt", sep="\t", index_col=0)
+    summary = pd.read_csv(_kept(out) / "cluster_summary.txt", sep="\t", index_col=0)
     assert len(summary) == len(metagenome.genomes)
     # MGE contigs are binned with their host.
     host_bin = final.set_index("Name").Final_cluster
@@ -430,7 +579,7 @@ def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, tmp_path, 
     metacooler.validate(str(metacool))
     clr = cooler.Cooler(str(metacool))
     assert clr.pixels()[:]["count"].sum() == len(metagenome.pairs)
-    assert clr.info["metadata"]["metator"]["parameters"]["map"] == str(metacool)
+    assert clr.info["metadata"]["metator"]["validation"]["parameters"]["map"] == str(metacool)
     mc = metacooler.MetaCooler(str(metacool))
     assert sorted(mc.contigs.name) == sorted(final.Name)
     assert dict(zip(mc.contigs.name, mc.contigs.genome_id.map(mc.genomes.name), strict=True)) == dict(host_bin)
@@ -443,9 +592,11 @@ def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, tmp_path, 
     measured = final.set_index("Name").loc[mc.contigs.name, columns]
     for column in columns:
         assert mc.contigs[column].tolist() == measured[column].tolist(), column
-    # Clean-up: no temporary directory, no pyfastx index, no intermediate table.
-    assert not (tmp_path / "tmp").exists()
+    # Clean-up: no pyfastx index, no intermediate table in the output
+    # directory (the tables of the validation stay in the temporary
+    # directory, kept here as -N keeps it: see _keep_the_tables).
     assert not os.path.exists(f"{metagenome_inputs['assembly']}.fxi")
+    assert sorted(path.name for path in out.iterdir() if not path.name.endswith(".log")) == ["final_clusters"]
     assert not (out / "contig_data_partition.txt").exists()
 
 
@@ -479,9 +630,9 @@ def test_pipeline_map_is_the_map_of_the_pairs(metagenome, metagenome_inputs, tmp
     expected = tmp_path / "pairs.metacool"
     pairs_map(
         metagenome_inputs["pairs"],
-        out / "contig_data_final.txt",
+        _kept(out) / "contig_data_final.txt",
         expected,
-        bin_summary=str(out / "cluster_summary.txt"),
+        bin_summary=str(_kept(out) / "cluster_summary.txt"),
         assembly_name=clr.info["genome-assembly"],
         metadata={key: value for key, value in clr.info["metadata"]["metator"].items() if key != "version"},
     )
@@ -503,12 +654,12 @@ def test_pipeline_map_is_the_map_of_the_pairs(metagenome, metagenome_inputs, tmp
     assert metadata["qc"] == ref_metadata["qc"] and metadata["qc"]["n_pairs_read"] == len(metagenome.pairs)
     assert {key for key in info.keys() | ref_info.keys() if info.get(key) != ref_info.get(key)} <= {"creation-date"}
     differ = {key for key in metadata.keys() | ref_metadata.keys() if metadata.get(key) != ref_metadata.get(key)}
-    assert differ == {"annotate", "reassign"}
+    assert differ == {"annotate", "metator", "reassign"}
     assert [entry["source"] for entry in metadata["reassign"]] == [str(written)]
-    # The columns of the input map (tests.maps.contig_map), those that the
-    # run stores as metator network stores them (dropped, then added), and
-    # those of its contig data (again).
-    assert len(metadata["annotate"]) == 5 and len(ref_metadata["annotate"]) == 1
+    # The columns of the input map (tests.maps.contig_map), then those that
+    # the run stores, once, as metator network stores them (dropped, then
+    # added).
+    assert len(metadata["annotate"]) == 3 and len(ref_metadata["annotate"]) == 1
 
 
 def _assert_normalized_as_the_network(written, tmp_path):
@@ -562,7 +713,7 @@ def test_pipeline_restarts_from_the_map_of_a_stopped_run(metagenome, metagenome_
     run_cli("pipeline", str(metacool), "-o", str(out), "-F", *common)
 
     for name in ["contig_data_final.txt", "cluster_summary.txt", "binning.txt"]:
-        assert (out / name).read_text() == (clean / name).read_text(), name
+        assert (_kept(out) / name).read_text() == (_kept(clean) / name).read_text(), name
     final_bins = [{path.name: path.read_bytes() for path in (run / "final_clusters").iterdir()} for run in [out, clean]]
     assert final_bins[0] == final_bins[1] and final_bins[0]
     # The map of the clusters, written over the map that the stopped run
@@ -598,7 +749,7 @@ def _assert_same_clusters(out, ref, contigs=None):
     counted."""
 
     def table(run, name, **kwargs):
-        return pd.read_csv(run / name, sep="\t", **kwargs)
+        return pd.read_csv(_kept(run) / name, sep="\t", **kwargs)
 
     binning = [table(run, "binning.txt", header=None, names=["Name", "Bin"]) for run in (out, ref)]
     if contigs is not None:
@@ -652,7 +803,7 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, tmp_path, monke
 
     pair, mcool = tmp_path / "pair", tmp_path / "metacool"
     _assert_same_clusters(mcool, pair)
-    final = pd.read_csv(mcool / "contig_data_final.txt", sep="\t")
+    final = pd.read_csv(_kept(mcool) / "contig_data_final.txt", sep="\t")
     truth, found = _genome_labels(final, metagenome, "Final_cluster")
     assert synthetic.adjusted_rand(truth, found) >= 0.9
     # The same network, stored in both maps: the same edges, by contig name.
@@ -684,7 +835,7 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, tmp_path, monke
     genomes, ref_genomes = metacooler.MetaCooler(str(written)).genomes, metacooler.MetaCooler(str(expected)).genomes
     pd.testing.assert_frame_equal(genomes, ref_genomes)
     metadata = clr.info["metadata"]
-    parameters = metadata["metator"]["parameters"]
+    parameters = metadata["metator"]["validation"]["parameters"]
     assert parameters["map"] == str(metacool) and "start" not in parameters and "forward" not in parameters
     assert metadata["qc"] == ref.info["metadata"]["qc"] and metadata["qc"]["source"] == "pairs"
     # The history of the input map: the map of the clusters of the first
@@ -703,7 +854,7 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, tmp_path, monke
     # Every overlapping cluster, those that reach --size with the columns of
     # miComplete, which checked them; no FASTA file of them in the output
     # directory.
-    final = pd.read_csv(mcool / "contig_data_final.txt", sep="\t", dtype=str)
+    final = pd.read_csv(_kept(mcool) / "contig_data_final.txt", sep="\t", dtype=str)
     overlapping = mc.clusters[mc.clusters["round"] == "overlapping"]
     assert set(overlapping.name) == {f"metator_{number}_00000" for number in set(final.Overlapping_cluster_ID) - {"-"}}
     checked = overlapping["Weighted completeness"].notna()
@@ -715,12 +866,17 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, tmp_path, monke
     assert all(genome_of[contig] == cluster for cluster, contig in zip(final_members.cluster, final_members.contig, strict=True))
 
     # The same map, written from the map and the tables of the run, without
-    # rounds (metator.metacool.reassign_metacool, as metator metacool of
-    # metaTOR 1.4.0 wrote it from a map).
+    # rounds (metator.metacool.write_map, with the columns of the contig
+    # data, as metator metacool of metaTOR 1.4.0 wrote it from a map).
     command = tmp_path / "command.metacool"
-    mtmc.reassign_metacool(
-        str(expected), str(mcool / "contig_data_final.txt"), str(command), bin_summary=str(mcool / "cluster_summary.txt")
+    table = pd.read_csv(
+        _kept(mcool) / "contig_data_final.txt", sep="\t", dtype={"Name": str, "Final_cluster": str}, keep_default_na=False
     )
+    final = table["Final_cluster"].str.strip()
+    binned = ~final.isin(mtmc.UNBINNED)
+    summary = str(_kept(mcool) / "cluster_summary.txt")
+    clusters = mtmc.FinalClusters(dict(zip(table["Name"][binned], final[binned], strict=True)), summary, None, {})
+    mtmc.write_map(str(expected), str(command), network=mtmc.Network(table, "None"), clusters=clusters)
     metacooler.validate(str(command), full=True)
     clr = cooler.Cooler(str(command))
     run_map = cooler.Cooler(str(written))
@@ -757,11 +913,11 @@ def test_pipeline_from_the_columns_of_a_metacool(metagenome, metagenome_inputs, 
 
     by_options, by_map = tmp_path / "options", tmp_path / "map"
     for name in ["contig_data_final.txt", "cluster_summary.txt", "binning.txt"]:
-        assert (by_map / name).read_bytes() == (by_options / name).read_bytes(), name
+        assert (_kept(by_map) / name).read_bytes() == (_kept(by_options) / name).read_bytes(), name
     # The same network, stored in each map.
     networks = [mtn.map_network(str(run / "metator.metacool")) for run in (by_options, by_map)]
     pd.testing.assert_frame_equal(networks[0], networks[1])
-    assert "SG_abundance" in pd.read_csv(by_map / "cluster_summary.txt", sep="\t").columns
+    assert "SG_abundance" in pd.read_csv(_kept(by_map) / "cluster_summary.txt", sep="\t").columns
     (log,) = by_map.glob("metator_pipeline_*.log")
     assert f"INFO :: The shotgun coverage of the contigs: the Shotgun_coverage column of {metacool}." in log.read_text()
     # Stored back: the map of the bins holds the values that the run read.
@@ -800,22 +956,22 @@ def test_pipeline_from_a_filtered_metacool(metagenome, metagenome_inputs, tmp_pa
               "-i", "10", "-j", "5", "-T", str(tmp_path / "tmp")]  # fmt: skip
     random.seed(0)
     kept_map = _contig_map(metagenome_inputs, tmp_path / "kept.metacool", pairs=pairs)
-    run_cli("pipeline", str(kept_map), "-o", str(tmp_path / "pair"), "--no-metacool", *common)
+    run_cli("pipeline", str(kept_map), "-o", str(tmp_path / "pair"), "--output-map", str(tmp_path / "pair.metacool"), *common)
     contacts = cooler.Cooler(str(metacool)).pixels()[:]["count"].sum()
     random.seed(0)
     run_cli("pipeline", str(metacool), "-o", str(tmp_path / "metacool"), *common)
 
     pair, mcool = tmp_path / "pair", tmp_path / "metacool"
     _assert_same_clusters(mcool, pair, contigs=kept)
-    final = pd.read_csv(mcool / "contig_data_final.txt", sep="\t")
+    final = pd.read_csv(_kept(mcool) / "contig_data_final.txt", sep="\t")
     assert set(final.Name) == kept
     # The contigs that the map lacks: no hit, in no cluster, in the run from
     # the map of all the contigs.
     lacking = set(truth.Name) - kept
-    pair_final = pd.read_csv(pair / "contig_data_final.txt", sep="\t").set_index("Name")
+    pair_final = pd.read_csv(_kept(pair) / "contig_data_final.txt", sep="\t").set_index("Name")
     assert 0 < len(lacking) < len(truth)
     assert (pair_final.Hit[sorted(lacking)] == 0).all() and (pair_final.Final_cluster[sorted(lacking)] == "ND").all()
-    assert len(pd.read_csv(mcool / "cluster_summary.txt", sep="\t")) > 0
+    assert len(pd.read_csv(_kept(mcool) / "cluster_summary.txt", sep="\t")) > 0
     (log,) = mcool.glob("metator_pipeline_*.log")
     assert f"INFO :: {len(lacking)} contig(s) of the assembly are not in {metacool}: they get no contacts" in log.read_text()
     # The map, updated in place: its contigs, at 1 kb, in their clusters.
@@ -828,15 +984,15 @@ def test_pipeline_from_a_filtered_metacool(metagenome, metagenome_inputs, tmp_pa
     assert dict(zip(mc.contigs.name, mc.contigs.genome_id.map(mc.genomes.name), strict=True)) == final_bin.to_dict()
     assert cooler.Cooler(str(written)).pixels()[:]["count"].sum() == contacts
     # What metaTOR measured on the contigs of the map, which
-    # contig_data_final.txt lists: metacooler annotate reads it, as the
-    # history of the map says.
+    # contig_data_final.txt lists: metacooler annotate read the network's
+    # table, as the history of the map says.
     columns = ["GC_content", "Hit", "Shotgun_coverage", "Restriction_site"]
     assert [column for column in mc.contigs.columns if not column.startswith("qc_")] == ["name", "length", "genome_id", *columns]
     measured = final.set_index("Name").loc[mc.contigs.name, columns]
     for column in columns:
         assert mc.contigs[column].tolist() == measured[column].tolist(), column
     assert "Contigs table" not in log.read_text()
-    assert mc.metadata["annotate"][-1]["contigs_table"] == str(mcool / "contig_data_final.txt")
+    assert mc.metadata["annotate"][-1]["contigs_table"].endswith("contig_data_network.txt")
     assert not [path.name for path in mcool.iterdir() if path.name.startswith(".")]
 
 
@@ -849,6 +1005,19 @@ def _contig_map(metagenome_inputs, path, pairs=None):
     return contig_map(pairs or metagenome_inputs["pairs"], contig_data, path, assembly_name="synthetic")
 
 
+def _annotated(objects):
+    """The history of the metacooler annotate edits of a map (see
+    tests.hdf5.walk), the temporary table that the network was stored from
+    masked (the contigs_table of the entries that name one in the temporary
+    directory of the run, whose name is drawn at random)."""
+    (metadata,) = [json.loads(value) for key, _, value in objects["/"][2] if key == "metadata"]
+    entries = metadata.get("annotate", [])
+    for entry in entries:
+        if str(entry.get("contigs_table")).endswith("/contig_data_network.txt"):
+            entry["contigs_table"] = "<the temporary contig data of the network>"
+    return entries
+
+
 def _without_run(objects):
     """The objects of a map (see tests.hdf5.walk) but what differs between two
     runs of the same clusters: the date the map was written
@@ -856,22 +1025,18 @@ def _without_run(objects):
     parameters of the run that wrote it and of the runs that stored its
     network and its partition (the command and parameters of the metator
     key of its metadata, a JSON text, and of its entries network and
-    partition), and the temporary
-    table that the network was stored from (the contigs_table of the
-    metacooler annotate entries of the history that name one in the
-    temporary directory of the run, whose name is drawn at random)."""
+    partition), and the history of its metacooler annotate edits, which
+    records each store of the network (see _annotated): the steps store it
+    twice, with network and validation, pipeline once."""
     kind, members, attributes = objects["/"]
     kept = []
     for key, dtype, value in attributes:
         if key == "metadata":
             metadata = json.loads(value)
             for run in ["command", "parameters"]:
-                del metadata["metator"][run]
-                del metadata["metator"]["network"][run]
-                del metadata["metator"]["partition"][run]
-            for entry in metadata.get("annotate", []):
-                if str(entry.get("contigs_table")).endswith("/contig_data_network.txt"):
-                    entry["contigs_table"] = "<the temporary contig data of the network>"
+                for step in ["network", "partition", "validation"]:
+                    del metadata["metator"][step][run]
+            del metadata["annotate"]
             value = metadata
         if key != "creation-date":
             kept.append((key, dtype, value))
@@ -884,21 +1049,51 @@ def _metator_metadata(objects):
     return json.loads(metadata)["metator"]
 
 
-def _first_cluster_contaminated(metagenome):
+def _first_cluster_contaminated(metagenome, kept_whole=False):
     """A stub miComplete (see synthetic.fake_micomplete) that finds the first
     overlapping cluster contaminated (a weighted redundancy of 1.5): the
-    validation partitions it again, which makes the round recursive_1 (its
-    parts, too incomplete for one of them to replace it)."""
+    validation partitions it again, which makes the round recursive_1, whose
+    clusters replace it; with kept_whole, they are too incomplete for that
+    (a weighted completeness of 0.1), and the cluster is kept whole."""
 
     def micomplete_quality(fasta_dir, outfile, threads):
         synthetic.write_micomplete_summary(fasta_dir, outfile, metagenome)
+        # Three comment lines, the header, then a row per cluster.
+        lines = [line.split("\t") for line in Path(outfile).read_text().splitlines()]
         if Path(fasta_dir).name == "overlapping_clusters":
-            # Three comment lines, the header, then a row per cluster.
-            lines = [line.split("\t") for line in Path(outfile).read_text().splitlines()]
             lines[4][lines[3].index("Weighted redundancy")] = "1.5"
-            Path(outfile).write_text("".join("\t".join(line) + "\n" for line in lines))
+        elif kept_whole:
+            for line in lines[4:]:
+                line[lines[3].index("Weighted completeness")] = "0.1"
+        Path(outfile).write_text("".join("\t".join(line) + "\n" for line in lines))
 
     return micomplete_quality
+
+
+def test_a_cluster_partitioned_again_but_kept_whole(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli):
+    """A contaminated cluster that the recursive step partitions again, into
+    clusters too incomplete to replace it, is kept whole: its contigs keep
+    the IDs of their recursive clusters in contig_data_final.txt, and are in
+    it, in binning.txt (which left them out) and in the map of the clusters
+    as in the round final, its FASTA file listing them."""
+    monkeypatch.setattr("metator.validation.micomplete_quality", _first_cluster_contaminated(metagenome, kept_whole=True))
+    metacool = _contig_map(metagenome_inputs, tmp_path / "contigs.metacool")
+    out = tmp_path / "out"
+    random.seed(0)
+    run_cli("pipeline", metacool, "-a", metagenome_inputs["assembly"], "-o", out, "-T", tmp_path / "tmp", "-s", "20000",
+            "-i", "10", "-j", "5")  # fmt: skip
+    final = pd.read_csv(_kept(out) / "contig_data_final.txt", sep="\t", dtype=str, keep_default_na=False)
+    kept_whole = final[(final.Recursive_cluster_ID != "00000") & (final.Final_cluster != "ND")]
+    assert len(kept_whole) and set(kept_whole.Final_cluster) == {"metator_00001_00000"}
+    binning = pd.read_csv(_kept(out) / "binning.txt", sep="\t", header=None, names=["Name", "Bin"], dtype=str)
+    assert list(binning.Name) == list(final.Name[final.Final_cluster != "ND"])
+    mc = metacooler.MetaCooler(str(metacool))
+    assert "recursive_1" in [entry["name"] for entry in mc.cluster_rounds]
+    members = mc.cluster_members("final")
+    in_cluster = set(members.contig[members.cluster == "metator_00001_00000"])
+    assert set(kept_whole.Name) <= in_cluster
+    listed = (out / "final_clusters" / "metator_00001_00000.fa").read_text().splitlines()
+    assert in_cluster == {line[1:].split()[0] for line in listed if line.startswith(">")}
 
 
 def test_steps_on_a_map_give_the_map_of_pipeline(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli):
@@ -911,11 +1106,13 @@ def test_steps_on_a_map_give_the_map_of_pipeline(metagenome, metagenome_inputs, 
     written (creation-date), the command line and parameters of the runs
     that wrote it (the command and parameters of the metator key of its
     metadata and of its entries network and partition: pipeline's,
-    network's, partition's and validation's), and the temporary table that
-    its network was stored from, which the history of the map names (see
-    _without_run). Each run is made in a directory of its own, with the same
-    relative paths, which the history of the map records (the input map of
-    metacooler reassign, the tables of metacooler annotate). The rounds are
+    network's, partition's and validation's), and the history of its
+    metacooler annotate edits (see _without_run), in which the steps store
+    the network twice, network MAP then validation MAP, which stores it
+    again after its regroup, and pipeline once. Each run is made in a
+    directory of its own, with the same relative paths, which the history of
+    the map records (the input map of metacooler reassign, the tables of
+    metacooler annotate). The rounds are
     core, overlapping, recursive_1 (a cluster that the stub miComplete finds
     contaminated, partitioned again) and final.
 
@@ -1001,28 +1198,38 @@ def test_steps_on_a_map_give_the_map_of_pipeline(metagenome, metagenome_inputs, 
 
     pipeline, steps = runs["pipeline"] / "out", runs["steps"] / "out"
     for name in ["cluster_summary.txt", "contig_data_final.txt", "binning.txt", "clusters.txt", "cluster_members.txt"]:
-        assert (steps / name).read_bytes() == (pipeline / name).read_bytes(), name
+        assert (_kept(steps) / name).read_bytes() == (_kept(pipeline) / name).read_bytes(), name
     written = {name: directory / "input.metacool" for name, directory in runs.items()}
     for path in written.values():
         metacooler.validate(str(path), full=True)
     found = {name: walk(path) for name, path in written.items()}
     assert "/bins/metator_empirical_hit" in found["steps"]
     assert _without_run(found["steps"]) == _without_run(found["pipeline"])
+    # The history of the edits: the validation stores again the network that
+    # network MAP stored, once it regrouped the map, which put the network
+    # before the QC columns (see metator.metacool.write_map); pipeline
+    # stores it once, after its regroup. The network comes last in both.
+    network = [f"contigs.{column}" for column in ["GC_content", "Hit", "Shotgun_coverage", "Restriction_site"]]
+    annotated = {name: _annotated(objects) for name, objects in found.items()}
+    assert annotated["steps"][:-2] == annotated["pipeline"]
+    assert [(entry["dropped"], entry["added"]) for entry in annotated["steps"][-2:]] == [(network, []), ([], network)]
+    assert annotated["pipeline"][-1]["added"] == network
+    assert list(metacooler.MetaCooler(str(written["steps"])).contigs.columns)[-4:] == [name[8:] for name in network]
     # What differs: the command lines and their parameters, those of
     # pipeline, and of network and validation.
     metator = {name: _metator_metadata(objects) for name, objects in found.items()}
-    assert metator["pipeline"]["command"].startswith("metator pipeline input.metacool")
-    assert metator["pipeline"]["network"]["command"].startswith("metator pipeline input.metacool")
-    assert metator["steps"]["command"].startswith("metator validation input.metacool")
-    assert metator["steps"]["network"]["command"].startswith("metator network input.metacool")
-    assert metator["steps"]["partition"]["command"].startswith("metator partition input.metacool")
-    assert metator["pipeline"]["partition"]["command"].startswith("metator pipeline input.metacool")
-    # Both partitioned the network that both maps store, which the regroup
-    # of the map of the clusters left as it was: a validation reads it.
+    for step in ["network", "partition", "validation"]:
+        assert metator["pipeline"][step]["command"].startswith("metator pipeline input.metacool")
+        assert metator["steps"][step]["command"].startswith(f"metator {step} input.metacool")
+    validation = {name: entries["validation"] for name, entries in metator.items()}
+    assert validation["steps"]["parameters"]["map"] == validation["pipeline"]["parameters"]["map"] == "input.metacool"
+    assert "start" not in validation["steps"]["parameters"]
+    assert validation["steps"]["summary_columns"] == validation["pipeline"]["summary_columns"]
+    # Both partitioned the network that both maps store, which the
+    # reassignment of the map of the clusters left as it was: a validation
+    # reads it.
     digests = {name: metator[name]["partition"][mtmc.NETWORK_DIGEST] for name in runs}
     assert digests["steps"] == digests["pipeline"] == mtn.stored_network(str(written["pipeline"])).digest
-    assert metator["steps"]["parameters"]["map"] == metator["pipeline"]["parameters"]["map"] == "input.metacool"
-    assert "start" not in metator["steps"]["parameters"]
     # The rounds of the run, the final clusters those of the genomes of the
     # map.
     mc = metacooler.MetaCooler(str(written["steps"]))

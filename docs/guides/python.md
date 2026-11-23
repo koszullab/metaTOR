@@ -20,13 +20,18 @@ This page shows the pieces to put together; the
 ## Reading the outputs
 
 pandas reads `cluster_summary.txt`, indexed by cluster name, and the contig
-data table, indexed here by contig name:
+data table, indexed here by contig name, its names as text: the tables of a
+`validation` or `pipeline` run, in its temporary directory, which `-N` keeps
+(its log names it; `metator dump`, coming in metaTOR 2.0, writes them from
+the map):
 
 ```python
 import pandas as pd
 
-summary = pd.read_csv("binning/cluster_summary.txt", sep="\t", index_col=0)
-contigs = pd.read_csv("binning/contig_data_final.txt", sep="\t", index_col=0).set_index("Name", drop=False)
+tables = "tmp/3f9c2a1b"  # The temporary directory of the run, which -N kept
+summary = pd.read_csv(f"{tables}/cluster_summary.txt", sep="\t", index_col=0)
+contigs = pd.read_csv(f"{tables}/contig_data_final.txt", sep="\t", index_col=0, dtype={"Name": str})
+contigs = contigs.set_index("Name", drop=False)
 
 # The high-quality MAGs, and their contigs.
 hq = summary[(summary["Weighted completeness"] >= 0.9) & (summary["Weighted redundancy"] <= 1.05)]
@@ -73,16 +78,16 @@ clusters = mtp.partition(
 )
 # The core and the overlapping clusters, by number, each the IDs of its
 # contigs: metator partition stores them in the map
-# (metator.clusters.partition_rounds, metator.metacool.write_rounds), and
+# (metator.clusters.partition_rounds, metator.metacool.write_map), and
 # the validation reads them back (metator.metacool.read_partition).
 clusters.core, clusters.overlapping, clusters.names
 ```
 
 | Command | Function |
 |---|---|
-| `metator network` | `metator.network.create_contig_data` and `contig_data_from_map`, `contig_contacts` and `contig_data_table`, then `metator.metacool.store_network` |
-| `metator partition` | `metator.partition.partition`, then `metator.metacool.write_rounds` |
-| `metator validation` | `metator.metacool.read_partition`, `metator.validation.write_overlapping_fasta`, then `metator.validation.recursive_decontamination` |
+| `metator network` | `metator.network.create_contig_data` and `contig_data_from_map`, `contig_contacts` and `contig_data_table`, then `metator.metacool.write_map` (`network=`) |
+| `metator partition` | `metator.partition.partition`, then `metator.metacool.write_map` (`partition=`, `rounds=`) |
+| `metator validation` | `metator.metacool.read_partition`, `metator.validation.write_overlapping_fasta` and `recursive_decontamination`, then `metator.metacool.write_map` (`clusters=`, a `FinalClusters`, and `network=`) |
 | `metator mge` | `metator.mge.mge_binning` |
 
 The commands also check their inputs, write their log file and clean up

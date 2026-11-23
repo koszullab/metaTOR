@@ -32,7 +32,11 @@ Each contig that was never merged is an MGE cluster of its own.
 # pypairix, which comes with metaTOR (or pairix -p pairs, with pairix's tools)
 python -c 'import pypairix; pypairix.build_index("hicstuff/sample.valid_idx.pairs.gz", "pairs")'
 
-metator mge -a assembly.fa -c binning/contig_data_final.txt -b binning/binning.txt \
+# The tables of the clustering run: in its temporary directory, which -N
+# kept (the log of the run names it); metator dump (coming in metaTOR 2.0)
+# writes them from the map
+tables=tmp/3f9c2a1b
+metator mge -a assembly.fa -c $tables/contig_data_final.txt -b $tables/binning.txt \
     -m mges.txt -o mge hicstuff/sample.valid_idx.pairs.gz
 ```
 
@@ -71,7 +75,7 @@ the run, that of `metator pipeline` (see
 [The contact map of the clusters](metacool.md)):
 
 ```bash
-metator mge -a assembly.fa -c binning/contig_data_final.txt -b binning/binning.txt \
+metator mge -a assembly.fa -c $tables/contig_data_final.txt -b $tables/binning.txt \
     -m mges.txt -o mge --map hicstuff/sample.metacool hicstuff/sample.valid_idx.pairs.gz
 ```
 

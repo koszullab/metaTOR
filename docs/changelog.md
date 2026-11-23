@@ -5,6 +5,56 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
+- **Breaking:** what `validation` finds lives in the map, and `pipeline`
+  runs the three steps on one map. `validation` and `pipeline` write the
+  FASTA files of the final clusters in the output directory
+  (`final_clusters/`) and store the rest in the map: the final cluster of
+  each contig, the summary of the clusters in the genomes table, every
+  clustering round, and the `validation` entry of the `metator` key of the
+  metadata (version, command line, parameters, normalization, what it read
+  of the map, `read`, and how `cluster_summary.txt` is written from the
+  genomes table: `summary_rows`, the cluster names in the order of its
+  lines; `summary_columns`, its columns in order; `summary_formats`, the
+  printf format of each column, `%.2f`, `%.4f` for the abundances, `%d` or
+  `%s`, a missing value an empty field). The map alone writes the summary
+  again, byte for byte. The tables of the validation
+  (`contig_data_final.txt`, `cluster_summary.txt`, `binning.txt`,
+  `clusters.txt`, `cluster_members.txt`, miComplete's results) and
+  `recursive_clusters/` are written in the temporary directory of the run,
+  which `-N` keeps and the log names, not in the output directory;
+  `metator dump` (coming in metaTOR 2.0) writes the tables from the map. An
+  earlier run's tables and `recursive_clusters/` in the output directory
+  are refused without `-F`, before any work, and `-F` removes them: left
+  there, they passed for the run's. The map of the clusters is written anew
+  from the input map by `metacooler reassign` (what its regroup does not
+  carry, an extra group or attribute, is left out with its warning), then
+  the network is stored last in the contigs and bins tables: `pipeline`
+  stores what the three steps store one by one, in one edit session, and
+  the steps one by one still give its map, `validation` storing again the
+  network that `network` stored. The FASTA files of the recursive clusters
+  are written by `metacooler.write_fasta`, as those of the overlapping
+  ones, from an assembly decompressed once per run when it is compressed:
+  the validation no longer indexes the assembly with pyfastx, and no longer
+  removes an `<assembly>.fxi`. `pipeline --no-metacool` is gone. Every
+  step's entry of the `metator` key records what it read of the map under
+  `read` (`columns_from_map` of the `network` entry is now its
+  `read.contigs`). Python API: `metator.metacool.write_map`, the one writer
+  of the maps of the steps, which refuses clusters given with rounds or
+  `round_names`, and a clustered contig that the map lacks; `FinalClusters`;
+  `Network.entry` None keeps the map's entry; `CLUSTER_COLUMNS` and
+  `METATOR_TABLE_COLUMNS`, metaTOR's own columns, which a run drops from
+  the contigs table of its map, 1.x names included;
+  `metator.io.SummaryLayout`, which `write_bin_summary` returns;
+  `metator.validation.write_recursive_fasta`, `name_recursive_clusters` and
+  `plain_assembly`; `correct_final_bin(contigs_data, written, bin_summary)`
+  takes the contigs written in each FASTA file (no directory), and refuses
+  one that the contig data lacks; `recursive_clustering` returns the
+  contigs of the new clusters too; `recursive_decontamination` takes
+  `metacool=` (the map) and `written=` (the contigs of each FASTA file
+  written), and returns the contig data and the `SummaryLayout` of the
+  summary; `write_overlapping_fasta` returns the contigs of each file;
+  `metator.cli.check_final_clusters`, `refuse_earlier_outputs`,
+  `remove_earlier_outputs` and `EARLIER_OUTPUTS`.
 - **Breaking:** the map is the network that the steps share: `network MAP`
   stores the network of the contigs in the map, which `partition` and
   `validation` read. It stores what it measured on each contig in the
@@ -364,6 +414,12 @@ All notable changes to this project will be documented in this file.
   corrected.
 
 ### Removed
+- `metator.metacool.reassign_metacool`, `store_network`, `write_rounds` and
+  `write_round` (all now `write_map`), `read_contig_data` and
+  `PANDAS_COMPRESSIONS`; `metator.validation.update_contigs_data_recursive`
+  and `write_bins_contigs`; `metator.io.write_contigs`;
+  `metator.cli.run_metadata`'s `columns_from_map` (see `network_entry`);
+  `pipeline --no-metacool`.
 - **Breaking:** `network.txt` and `contig_data_network.txt`: the network is
   in the map (see Added). `metacooler network MAP --level contig --balance
   metator_<normalization>` writes it, by contig names, with the contacts
@@ -498,6 +554,12 @@ All notable changes to this project will be documented in this file.
   `save_sparse_matrix`; and `metator.cli.check_output_path`.
 
 ### Fixed
+- `validation` reads the contig names of its tables as text: contigs named
+  by numbers (`000017`, `1e5`) kept their names, where they were read as
+  numbers and lost their clusters. A contig of a final FASTA file that the
+  contig data lacks, final clusters that are not those of the FASTA files
+  of `final_clusters/`, and a clustered contig that the map lacks are
+  refused, named, rather than written into a wrong map.
 - `-F` replaces a directory of clusters of an earlier run that is a
   symbolic link (`validation`, `pipeline`): the link is removed, not its
   target, where the run failed with `OSError`, some of the directories

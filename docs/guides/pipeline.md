@@ -46,9 +46,9 @@ commands, and [Starting from a contact map](metacool.md#starting-from-a-contact-
 for what the run reads from the map.
 
 `--assembly` (`-a`) is the assembly that the map was made from, as a FASTA
-file, plain or compressed with gzip. A compressed one is decompressed into
-the temporary directory while the run writes the clusters that miComplete
-checks: see `--tmpdir` below.
+file, plain or compressed with gzip. A compressed one is decompressed once,
+into the temporary directory of the run, for the FASTA files of the
+clusters: see `--tmpdir` below.
 
 ## Outputs
 
@@ -57,30 +57,40 @@ The pipeline writes into `--outdir` (`-o`, the current directory by default):
 | File | What it holds |
 |---|---|
 | `final_clusters/` | One FASTA file per final cluster |
+| `metator_pipeline_<date>.log` | The log of the run |
+
+What the run finds is in the map. At its end, the run writes the contact map
+of all the contigs, grouped by cluster, over `MAP` (see
+[The contact map of the clusters](metacool.md)): the summary of the clusters
+in its genomes table, every clustering round (core, overlapping, recursive,
+final), and the network of the contigs, as `metator network` stores it (see
+[Building the network](network.md#building-the-network)). `--output-map FILE`
+writes it to FILE and leaves `MAP` as it was. A run that stops before leaves
+`MAP` as it was, which a run restarts from (`-F` to replace the final
+clusters it began).
+
+The tables of the run are written in its temporary directory (`--tmpdir`, in
+a directory of its own, which the log names), which `--no-clean-up` (`-N`)
+keeps:
+
+| File | What it holds |
+|---|---|
 | `cluster_summary.txt` | One row per final cluster: size, GC content, miComplete's completeness and redundancy, N50, abundance… |
 | `contig_data_final.txt` | One row per contig: its measures, and the core, overlapping, recursive and final clusters it belongs to |
 | `binning.txt` | The contigs of the final clusters and their cluster |
-| `recursive_clusters/` | The FASTA files of the recursive clusters, in `step_<n>/` for step `n` |
-| `overlapping_micomplete_results.txt` | miComplete's results on the overlapping clusters |
-| `recursive_micomplete_step_<n>.txt` | miComplete's results on the recursive clusters of step `n` |
-| `clusters.txt`, `cluster_members.txt` | Every cluster of every round (core, overlapping, recursive, final), with its parent and miComplete's columns, and the contigs of each: see [Clustering rounds](metacool.md#clustering-rounds) |
-| `metator_pipeline_<date>.log` | The log of the run |
+| `clusters.txt`, `cluster_members.txt` | Every cluster of every round, with its parent and miComplete's columns, and the contigs of each: see [Clustering rounds](metacool.md#clustering-rounds) |
+| `overlapping_clusters/`, `recursive_clusters/` | The FASTA files of the clusters that miComplete checked: the overlapping clusters, and the recursive clusters, in `step_<n>/` for step `n` |
+| `overlapping_micomplete_results.txt`, `recursive_micomplete_step_<n>.txt` | miComplete's results |
+| `contig_data_partition.txt` | The contig data of the partition |
 
-The network is no table: the run stores it in its map, as `metator network`
-does (see [Building the network](network.md#building-the-network)), and so
-is the partition, as `metator partition` stores it. The FASTA files of the
-overlapping clusters that miComplete checks, and the contig data of the
-partition, go to the temporary directory (`--no-clean-up` keeps them). The tables
-list the contigs of the map, in its order, by their position in it (`ID`).
-At its end, the run writes the contact map of all the contigs, grouped by
-cluster, over `MAP` (see [The contact map of the clusters](metacool.md)):
-`--output-map FILE` writes it to FILE and leaves `MAP` as it was, and
-`--no-metacool` writes none. A run that stops before leaves `MAP` as it was,
-which a run restarts from (`-F` to replace the directories of clusters it
-began). [File formats](../formats.md) describes each table.
+The tables list the contigs of the map, in its order, by their position in it
+(`ID`). The map holds what they hold: `metator dump MAP` (coming in metaTOR
+2.0) writes them from it. [File formats](../formats.md) describes each
+table.
 
-A run refuses to overwrite the clusters of an earlier one unless given
-`--force` (`-F`).
+A run refuses to overwrite the final clusters of an earlier one unless given
+`--force` (`-F`), and the tables and `recursive_clusters/` that an earlier
+version wrote in the output directory too, which `-F` removes.
 
 ## Choosing the options
 
@@ -94,7 +104,7 @@ A run refuses to overwrite the clusters of an earlier one unless given
 | `--size` | 500000 | The size, in base pairs, an overlapping cluster must reach to be checked with miComplete, and a recursive cluster must exceed |
 | `--prefix` | none | Names the clusters `<prefix>_metator_…` |
 | `--threads` | 1 | Threads for the partition and the validation |
-| `--tmpdir` | `./tmp` | Where the temporary files go; deleted at the end, unless `--no-clean-up`. It holds the FASTA files of the clusters that miComplete checks (at most the size of the assembly) and, from a compressed assembly, its decompressed copy while they are written: give it room for both. Not in `recursive_clusters/` or `final_clusters/` of `--outdir`, which the run makes anew |
+| `--tmpdir` | `./tmp` | Where the temporary files go; deleted at the end, unless `--no-clean-up`. It holds the tables of the run, the FASTA files of the clusters that miComplete checks (at most the size of the assembly) and, from a compressed assembly, its decompressed copy: give it room for both. Not in `final_clusters/` of `--outdir`, which the run makes anew, nor in `recursive_clusters/`, which `-F` removes |
 
 The validation is the step that needs the most memory and time: miComplete
 runs Prodigal and HMMER (pyrodigal and pyhmmer) on every cluster.
@@ -112,7 +122,7 @@ metator network sample.metacool -a assembly.fa -e DpnII -d depth.txt -o binning
 # 2. Partition it: the map stores its core and overlapping clusters
 metator partition sample.metacool -t 16 -o binning
 
-# 3. Validate the clusters: final_clusters/, cluster_summary.txt, contig_data_final.txt
+# 3. Validate the clusters: final_clusters/, and the map of the clusters
 metator validation sample.metacool -a assembly.fa -t 16 -o binning
 ```
 

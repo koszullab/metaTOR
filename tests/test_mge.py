@@ -381,13 +381,13 @@ def test_mge_stores_its_clusters_in_the_map(output, mge_run, tmp_path, monkeypat
         output_map.write_text("an older map")
         options.append("-F")
     locks = []
-    write_round = mtmc.write_round
+    write_map = mtmc.write_map
 
     def locked(*args, **kwargs):
         locks.append(sorted(path.name for path in tmp_path.glob("*.lock")))
-        return write_round(*args, **kwargs)
+        return write_map(*args, **kwargs)
 
-    monkeypatch.setattr("metator.metacool.write_round", locked)
+    monkeypatch.setattr("metator.metacool.write_map", locked)
     run_cli("mge", *args, "--map", source, *options)
     written = metacool if output == "in place" else output_map
     assert locks == [[f"{written.name}.lock"]] and not list(tmp_path.glob("*.lock"))
@@ -683,24 +683,24 @@ def _dropped(where, rounds):
     )
 
 
-def _final_contig_data(metagenome, path, shorter=0):
-    """A contig data file of the mock metagenome with no binned contig, as a
-    validation writes it, its contigs shorter by shorter bp."""
-    truth = metagenome.truth
-    table = {"ID": range(1, len(truth) + 1), "Name": truth.Name, "Size": truth.Length - shorter, "Final_cluster": "ND"}
-    pd.DataFrame(table).to_csv(path, sep="\t", index=False)
-    return path
+def _final_clusters(metagenome):
+    """The final clusters of a validation of the mock metagenome (see
+    metator.metacool.FinalClusters): its first contig in a cluster, the
+    others in none, no summary and no round."""
+    import metator.metacool as mtmc
+
+    return mtmc.FinalClusters({str(metagenome.truth.Name.iloc[0]): "metator_00001_00000"}, None, None, {})
 
 
 @pytest.mark.parametrize("with_mge", [True, False], ids=["with the round mge", "without"])
-@pytest.mark.parametrize("writer", ["write_rounds", "reassign_metacool"])
+@pytest.mark.parametrize("writer", ["rounds", "clusters"])
 def test_new_clusters_drop_the_round_mge_with_a_warning(writer, with_mge, metagenome, mge_run, tmp_path, run_cli, logged):
     """The map of the clusters of a new binning run on the map does not keep
     the round mge, which mge --map made from the clusters that it replaces:
     once the map is written, a warning says so, and to run mge again on the
-    new clusters. So writes write_rounds the map of partition MAP (in
-    place, here), and reassign_metacool those of validation MAP and
-    pipeline MAP (to another file, here). Without the round
+    new clusters. So writes write_map the map of partition MAP (its rounds:
+    in place, here), and those of validation MAP and pipeline MAP (its final
+    clusters: to another file, here). Without the round
     mge, the rounds of the binning are replaced with no warning: a guard,
     which passes without the warning too."""
     import metacooler
@@ -711,15 +711,13 @@ def test_new_clusters_drop_the_round_mge_with_a_warning(writer, with_mge, metage
     metacool, args = mge_run
     if with_mge:
         run_cli("mge", *args, "--map", metacool)
-    if writer == "write_rounds":
+    if writer == "rounds":
         outfile = metacool
-        mtmc.write_rounds(str(metacool), str(outfile), mtcl.Rounds().tables(), names=[mtcl.OVERLAPPING], force=True)
+        mtmc.write_map(str(metacool), str(outfile), rounds=mtcl.Rounds().tables(), round_names=[mtcl.OVERLAPPING], force=True)
         where = f"{metacool} no longer holds"
     else:
         outfile = tmp_path / "new.metacool"
-        mtmc.reassign_metacool(
-            str(metacool), str(_final_contig_data(metagenome, tmp_path / "contig_data_final.txt")), str(outfile)
-        )
+        mtmc.write_map(str(metacool), str(outfile), clusters=_final_clusters(metagenome))
         where = f"{outfile} does not keep, of {metacool},"
     warning = _dropped(where, "mge (by metaTOR mge)")
     assert (warning in logged()) == with_mge
@@ -744,19 +742,19 @@ def test_new_clusters_name_what_made_each_round_they_drop(mge_run, tmp_path, log
     for entry in [{"name": "dastool", "tool": "DAS_Tool"}, {"name": "custom"}]:
         rounds = mtcl.Rounds()
         rounds.add(entry["name"], f"{entry['name']}_1", [contig])
-        mtmc.write_round(str(metacool), str(metacool), rounds.tables(), entry, force=True)
-    mtmc.write_rounds(str(metacool), str(metacool), mtcl.Rounds().tables(), names=[mtcl.OVERLAPPING], force=True)
+        mtmc.write_map(str(metacool), str(metacool), mge=(rounds.tables(), entry), force=True)
+    mtmc.write_map(str(metacool), str(metacool), rounds=mtcl.Rounds().tables(), round_names=[mtcl.OVERLAPPING], force=True)
     rounds = "dastool (by DAS_Tool), custom (by a tool it does not name)"
     assert _dropped(f"{metacool} no longer holds", rounds) in logged()
 
 
-@pytest.mark.parametrize("writer", ["write_rounds", "reassign_metacool"])
+@pytest.mark.parametrize("writer", ["rounds", "clusters"])
 def test_a_refused_map_of_new_clusters_drops_no_round(writer, metagenome, mge_run, tmp_path, run_cli, logged):
-    """A map of new clusters that is refused (here, a contig data of other
-    contig lengths, or an existing file without force) is not written: the
-    map keeps its round mge, and no warning says that it is dropped.
-    reassign_metacool said it before its checks; write_rounds refused the
-    file before it, as here: a guard, which passes without the fix too."""
+    """A map of new clusters that is refused (here, a cluster named as
+    metacooler marks a contig in no cluster, or an existing file without
+    force) is not written: the map keeps its round mge, and no warning says
+    that it is dropped. The writer of the map of the clusters said it before
+    its checks: a guard, which passes without the fix too."""
     import metator.clusters as mtcl
     import metator.metacool as mtmc
 
@@ -766,10 +764,11 @@ def test_a_refused_map_of_new_clusters_drops_no_round(writer, metagenome, mge_ru
     outfile = tmp_path / "new.metacool"
     outfile.write_text("an older map")
     with pytest.raises(mtmc.MetacoolError):
-        if writer == "write_rounds":
-            mtmc.write_rounds(str(metacool), str(outfile), mtcl.Rounds().tables(), names=[mtcl.OVERLAPPING])
+        if writer == "rounds":
+            mtmc.write_map(str(metacool), str(outfile), rounds=mtcl.Rounds().tables(), round_names=[mtcl.OVERLAPPING])
         else:
-            contig_data = _final_contig_data(metagenome, tmp_path / "contig_data_final.txt", shorter=7)
-            mtmc.reassign_metacool(str(metacool), str(contig_data), str(outfile), force=True)
+            clusters = _final_clusters(metagenome)
+            clusters.assignment[str(metagenome.truth.Name.iloc[0])] = "NA"
+            mtmc.write_map(str(metacool), str(outfile), clusters=clusters, force=True)
     assert metacool.read_bytes() == before
     assert not [message for level, message in logged() if level == "WARNING" and "clustering round" in message]
