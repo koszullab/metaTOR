@@ -30,14 +30,19 @@ not use it.
 
 ## Inputs
 
-`--start` (`-S`) says what `--forward` (`-1`) and `--reverse` (`-2`) are:
+A run starts from the reads, their alignments or their pairs, given to
+`--forward` (`-1`) and `--reverse` (`-2`), as `--start` (`-S`) says:
 
 | `--start` | `--forward`, `--reverse` | The run starts with |
 |---|---|---|
 | `fastq` (default) | The R1 and R2 reads, in FASTQ files | Aligning the reads |
 | `bam` | The alignments: with bowtie2, one BAM file per mate; with bwa (`--aligner bwa`), one BAM file of both mates, given to `--forward` | Pairing the mates |
 | `pair` | One pairs file per library, given to `--forward` | Building the network |
-| `metacool` | One `.metacool` contact map of the contigs, given to `--forward` | Building the network |
+
+Or it starts from a `.metacool` contact map of the contigs, its first
+argument, in place of `--forward`, `--reverse` and `--start`
+(`metator pipeline sample.metacool -a assembly.fa`): it starts with building
+the network.
 
 Several libraries are given as comma-separated lists, in the same order in
 `--forward` and `--reverse`: `-1 L1_R1.fq.gz,L2_R1.fq.gz -2 L1_R2.fq.gz,L2_R2.fq.gz`.

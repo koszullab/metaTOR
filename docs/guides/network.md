@@ -58,11 +58,9 @@ several libraries, the hits of each contig in each library go to
 ## Building the network
 
 Each pair with its mates on two different contigs adds a contact between
-them. `--edge` (`-E`, 0 by default) leaves out the pairs with a mate within
-that many base pairs of the end of its contig (in `metator network` only:
-`pipeline` refuses any other value than 0, as it counts every pair, as its
-contact map does); `--self-contacts` (`-s`) adds
-the contacts of each contig with itself, which `--edge` does not concern.
+them: every pair counts, as in a contact map (metaTOR 2.0 removed `--edge`,
+which left out the pairs with a mate near the end of its contig).
+`--self-contacts` (`-s`) adds the contacts of each contig with itself.
 
 `network.txt` holds the network, one line per pair of contigs in contact: the
 IDs of the two contigs (as in the contig data table, from 1) and the
@@ -109,6 +107,6 @@ metator validation -a assembly.fa -c binning/contig_data_partition.txt \
 
 ## From a contact map
 
-`--start metacool` builds the network from a `.metacool` contact map of the
-contigs instead of from reads: see
+`metator network MAP` builds the network from a `.metacool` contact map of
+the contigs, its first argument, instead of from reads: see
 [Starting from a contact map](metacool.md#starting-from-a-contact-map).

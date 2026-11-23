@@ -191,8 +191,8 @@ longest first), with their contacts, the contact statistics that metacooler meas
 what metaTOR measures on the assembly (`GC_content`, and `Shotgun_coverage` and `Restriction_site` with
 `--depth` and `--enzyme`). A run with one library reads its network from this map, as a run from a map
 does (see [Starting from a contact map](#starting-from-a-contact-map)): `network.txt` and
-`contig_data_network.txt` are those of its pairs files, byte for byte, as `pipeline` counts every pair
-(`--edge` must be 0, whatever the start). It still writes `network_0.txt`, the network of its library, as
+`contig_data_network.txt` are those of its pairs files, byte for byte, as `pipeline` counts every pair,
+whatever the input. It still writes `network_0.txt`, the network of its library, as
 a copy of `network.txt`: its pairs files give the same bytes. A run with several libraries builds the map
 of each library, the entries `library_0`, `library_1`... of `metator.mmetacool` (`<prefix>.mmetacool`:
 maps of the contigs in no bin, without the columns measured on the assembly, which they stay at the end),
@@ -215,8 +215,8 @@ integers, which `metator metacool` stores as 32-bit ones):
 metator metacool -c contig_data_final.txt -b bin_summary.txt -o sample.metacool alignment_0_sorted.pairs.gz alignment_1_sorted.pairs.gz
 ```
 
-or, for a run that started from a contact map step by step (`network -S metacool`, `partition`,
-`validation`), from that map, as `pipeline -S metacool` writes it (the map keeps its assembly name, so
+or, for a run that started from a contact map step by step (`metator network MAP`, `partition`,
+`validation`), from that map, as `metator pipeline MAP` writes it (the map keeps its assembly name, so
 `--assembly-name` is refused):
 
 ```sh
@@ -269,14 +269,14 @@ be written, `metator pipeline` and `metator metacool` log the reason as an error
 earlier run left in the output directory before it builds the map of the contigs in its place
 (`--no-metacool` or not), as it no longer matches the bins: from then on, the map there is this run's,
 or there is none. So a run from reads, alignments or pairs refuses, before any work, an input that is
-that map (or a symbolic link to it or from it), and, from pairs, a contact map: start from a map with
-`--start metacool`. A map of the contigs that cannot be built (for example, from pairs files that
+that map (or a symbolic link to it or from it), and, from pairs, a contact map: start from a map by
+giving it as the first argument. A map of the contigs that cannot be built (for example, from pairs files that
 metacooler cannot read, see below) stops the run before its network, `--no-metacool` or not, whatever the
 number of libraries: the reason is logged as an error, in the log file of the run, and no map is left.
 When the map of the bins cannot be written over it (for example, from a misaligned `bin_summary.txt`),
 the map of the contigs stays, in no bin. So it does when the run stops with an error once it is built
 (in the partition or the validation, for example), `--no-metacool` or not: a new run can start from it,
-without aligning the reads again, with `--start metacool -1 <outdir>/metator.metacool`
+without aligning the reads again, with `metator pipeline <outdir>/metator.metacool`
 (`<outdir>/<prefix>.metacool` with `--prefix`) and `-F`, which replaces the bin directories that the
 stopped run left in the output directory; `--scaffold` is not available then (see
 [Starting from a contact map](#starting-from-a-contact-map)).
@@ -299,11 +299,12 @@ cannot read stops with the reason and these needs.
 #### Starting from a contact map
 
 `metator network` and `metator pipeline` can build the network from a `.metacool` contact map of the
-contigs of the assembly, instead of reads, alignments or pairs: `--start metacool`, with the map given
-to `-1` (one file, or an entry of a `.mmetacool` collection, `file.mmetacool::entries/<name>`):
+contigs of the assembly, instead of reads, alignments or pairs: the map is their first argument (one
+file, or an entry of a `.mmetacool` collection, `file.mmetacool::entries/<name>`), in place of `-1`,
+`-2` and `--start`:
 
 ```sh
-metator pipeline -S metacool -1 sample.metacool -a assembly.fa -d depth.txt -e DpnII -o binning
+metator pipeline sample.metacool -a assembly.fa -d depth.txt -e DpnII -o binning
 ```
 
 The map can have any bin size, from one bin per contig (as the maps written by metaTOR) to fixed bins.
@@ -330,12 +331,10 @@ example, which also leaves out the pairs with a read on the contigs that it drop
 contacts and no hits, as contigs that no read maps to, and the log file says how many they are. The
 contacts between two contigs are those between their bins, and the hits of a contig those of its bins,
 so that the network and `contig_data_network.txt` are those of the pairs the map holds, byte for byte,
-at `--edge 0`. A map that cannot give this network (contigs that are not in the assembly or that have
+as both count every pair. A map that cannot give this network (contigs that are not in the assembly or that have
 other lengths, or both triangles of the matrix stored) stops the run with an error, whose reason is
 logged in the log file of the run. The libraries of a map are already summed: no `network_N.txt` is
-written. `--edge` must be 0, as a map holds no read positions (`pipeline` refuses any other value,
-whatever the start: it counts every pair, as its map does; `metator network` applies it to pairs files);
-`pipeline --scaffold`, which reads the pairs files, is refused. The heatmap of the final bin network
+written. `pipeline --scaffold`, which reads the pairs files, is refused. The heatmap of the network of the final clusters
 (`plot/network_heatmap.png`) is drawn from
 the `.pairs.gz` files of the output directory: a run from a map draws none, and its log warns that no
 pairs alignment files were found, unless the output directory holds those of an earlier run (a rebinning
@@ -393,7 +392,7 @@ awk -v OFS='\t' '{print $1, 0, $2}' assembly.fa.fai > contigs.bed
 metacooler create pairs --pairs hicstuff_L1/L1.valid_idx.pairs.gz --pairs hicstuff_L2/L2.valid_idx.pairs.gz \
     --bins contigs.bed --no-ps --assembly-name assembly -o sample.metacool
 # 3. Cluster the contigs: sample.metacool becomes the map of the clusters, in place.
-metator pipeline -S metacool -1 sample.metacool -a assembly.fa -e DpnII -o binning
+metator pipeline sample.metacool -a assembly.fa -e DpnII -o binning
 ```
 
 * `--bins 1000` makes bins of 1 kb instead, taking the lengths of the contigs from the `#chromsize`

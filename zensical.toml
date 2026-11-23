@@ -46,6 +46,7 @@ nav = [
   ]},
   { "Contributing" = "contributing.md" },
   { "Citing metaTOR" = "citation.md" },
+  { "Migrating to 2.0" = "migration.md" },
   { "Changelog" = "changelog.md" }
 ]
 

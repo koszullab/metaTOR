@@ -10,8 +10,8 @@ and `Shotgun_coverage` and `Restriction_site` with `--depth` and `--enzyme`). A
 run with one library reads its network from this map, as a run from a map does
 (see [Starting from a contact map](#starting-from-a-contact-map)):
 `network.txt` and `contig_data_network.txt` are those of its pairs files, byte
-for byte, as `pipeline` counts every pair (`--edge` must be 0, whatever the
-start). It still writes `network_0.txt`, the network of its library, as a copy
+for byte, as `pipeline` counts every pair, whatever the input. It still
+writes `network_0.txt`, the network of its library, as a copy
 of `network.txt`: its pairs files give the same bytes. A run with several
 libraries builds the map of each library, the entries `library_0`,
 `library_1`... of `metator.mmetacool` (`<prefix>.mmetacool`), and the map of
@@ -89,9 +89,9 @@ metator metacool -c binning/contig_data_final.txt -b binning/bin_summary.txt \
     -o sample.metacool binning/alignment_0_sorted.pairs.gz binning/alignment_1_sorted.pairs.gz
 ```
 
-For a run that started from a contact map step by step (`network -S
-metacool`, `partition`, `validation`), it writes the map from that map, as
-`pipeline -S metacool` does; the map keeps its assembly name, so
+For a run that started from a contact map step by step (`metator network
+MAP`, `partition`, `validation`), it writes the map from that map, as
+`metator pipeline MAP` does; the map keeps its assembly name, so
 `--assembly-name` is refused:
 
 ```bash
@@ -116,7 +116,7 @@ contigs in its place (`--no-metacool` or not), as it no longer matches the
 bins: from then on, the map there is this run's, or there is none. So a run
 from reads, alignments or pairs refuses, before any work, an input that is
 that map (or a symbolic link to it or from it), and, from pairs, a contact
-map: start from a map with `--start metacool`. A map of the contigs that
+map: start from a map by giving it as the first argument. A map of the contigs that
 cannot be built (for example, from pairs files that metacooler cannot read,
 see below) stops the run before its network, `--no-metacool` or not, whatever
 the number of libraries: the reason is logged as an error, in the log file of
@@ -125,7 +125,7 @@ it (for example, from a misaligned `bin_summary.txt`), the map of the contigs
 stays, in no bin. So it does when the run stops with an error once it is
 built (in the partition or the validation, for example), `--no-metacool` or
 not: a new run can start from it, without aligning the reads again, with
-`--start metacool -1 <outdir>/metator.metacool` (`<outdir>/<prefix>.metacool`
+`metator pipeline <outdir>/metator.metacool` (`<outdir>/<prefix>.metacool`
 with `--prefix`) and `-F`, which replaces the bin directories that the
 stopped run left in the output directory; `--scaffold` is not available then
 (see [Starting from a contact map](#starting-from-a-contact-map)).
@@ -154,19 +154,23 @@ the reason and these needs.
 
 `metator network` and `metator pipeline` can build the network from a
 `.metacool` contact map of the contigs of the assembly, instead of reads,
-alignments or pairs: `--start metacool`, with the map given to `--forward`
-(one file, or an entry of a `.mmetacool` collection,
-`file.mmetacool::entries/<name>`):
+alignments or pairs: the map is their first argument (one file, or an entry
+of a `.mmetacool` collection, `file.mmetacool::entries/<name>`), in place of
+`-1`, `-2` and `--start`:
 
 ```bash
-metator pipeline -S metacool -1 sample.metacool -a assembly.fa -d depth.txt -e DpnII -o binning
+metator pipeline sample.metacool -a assembly.fa -d depth.txt -e DpnII -o binning
 ```
+
+A first argument that is not there, or that metacooler cannot open as one map
+(a collection rather than one of its entries, which the error names), is
+refused before any work.
 
 - **Any bin size**, from one bin per contig (as the maps written by metaTOR)
   to fixed bins. The contacts between two contigs are those between their
   bins, and the hits of a contig those of its bins: the network and
   `contig_data_network.txt` are those of the pairs the map holds, byte for
-  byte, at `--edge 0`.
+  byte, as both count every pair.
 - **Its contigs must be contigs of the assembly**, with their lengths: the
   contig IDs and GC contents still come from the assembly. It may lack some
   of them, as a map made with a contig filter does (`metacooler create pairs
@@ -200,10 +204,7 @@ metator pipeline -S metacool -1 sample.metacool -a assembly.fa -d depth.txt -e D
     replaces anything: before any work when the map has no such column, once
     the assembly is read when the column lacks contigs.
 - **Its libraries are already summed**: no `network_<i>.txt` is written.
-  `--edge` must be 0, as a map holds no read positions (`pipeline` refuses
-  any other value, whatever the start: it counts every pair, as its map does;
-  `metator network` applies it to pairs files), and `pipeline --scaffold`,
-  which reads the pairs files, is refused.
+  `pipeline --scaffold`, which reads the pairs files, is refused.
 - **The heatmap** of the bins' network is drawn from the `.pairs.gz` files of
   the output directory: a run from a map draws none, and warns that no pairs
   file was found, unless an earlier run left its pairs files there.
@@ -296,7 +297,7 @@ metacooler create pairs --pairs hicstuff_L1/L1.valid_idx.pairs.gz \
     --assembly-name assembly -o sample.metacool
 
 # 3. Cluster the contigs: sample.metacool becomes the map of the clusters, in place.
-metator pipeline -S metacool -1 sample.metacool -a assembly.fa -e DpnII -o binning
+metator pipeline sample.metacool -a assembly.fa -e DpnII -o binning
 ```
 
 !!! note "Mapping mode `5spm` needs a hicstuff release after 3.3.0"

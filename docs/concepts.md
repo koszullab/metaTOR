@@ -18,8 +18,9 @@ joined finds the genomes.
 ## The pipeline
 
 `metator pipeline` runs these steps (rounded) in order, and writes the files
-(slanted) between them. `--start` starts it from one of those files instead
-of from the reads:
+(slanted) between them. `--start` starts it from the alignments or the pairs
+instead of from the reads, and a contact map given as its first argument
+from the map:
 
 ```mermaid
 ---
@@ -33,7 +34,7 @@ flowchart TD
     bams[/"BAM files · start bam"/]
     pair("Pair the mates")
     pairs[/"Pairs · start pair"/]
-    map[/"A .metacool contact map · start metacool"/]
+    map[/"A .metacool contact map · the first argument"/]
     network("Build the network of contigs")
     partition("Partition the network, many times")
     validation("Validate the bins, partition the contaminated ones again")

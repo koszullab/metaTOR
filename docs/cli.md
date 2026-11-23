@@ -33,25 +33,28 @@ in one command, and write the contact map of the bins. **Guide:**
 [Running the pipeline](guides/pipeline.md).
 
 ```console
-metator pipeline [OPTIONS]
+metator pipeline [OPTIONS] [MAP]
 ```
+
+The run starts from a `.metacool` contact map of the contigs, `MAP`, or from
+the reads, alignments or pairs of `-1` (and `-2`, `--start`): one or the other.
 
 **Recommended:** `--aligner bwa`. See
 [Aligning the reads](guides/network.md#aligning-the-reads).
 
 | Option | Default | Description |
 |---|---|---|
-| `-1, --forward` | *required* | The R1 reads (FASTQ), or their alignments (BAM), or the pairs files, of each library, separated by commas. Pairs files may be plain or compressed with gzip, bzip2, zstd or LZ4, whatever their name; zstd and LZ4 not with `--scaffold`. With `--start metacool`, one `.metacool` contact map, or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`). |
-| `-2, --reverse` | none | The R2 reads, or their alignments, in the same order. Not needed from pairs files, a contact map, or the BAM files of bwa, which hold both mates. |
+| `MAP` | none | A `.metacool` contact map of the contigs, or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`): the run starts from it, in place of `-1`, `-2` and `--start`. See [Starting from a contact map](guides/metacool.md#starting-from-a-contact-map). |
+| `-1, --forward` | none | The R1 reads (FASTQ), or their alignments (BAM), or the pairs files, of each library, separated by commas. Pairs files may be plain or compressed with gzip, bzip2, zstd or LZ4, whatever their name; zstd and LZ4 not with `--scaffold`. Without `MAP`, needed. |
+| `-2, --reverse` | none | The R2 reads, or their alignments, in the same order. Not needed from pairs files, or the BAM files of bwa, which hold both mates. |
 | `-a, --assembly` | *required* | The assembly: a FASTA file, or the basename of its bowtie2 or bwa index. |
-| `-S, --start` | `fastq` | What `--forward` and `--reverse` are: `fastq`, `bam`, `pair` or `metacool`. |
-| `-d, --depth` | none | The coverage of the contigs, from `jgi_summarize_bam_contig_depths` of MetaBAT2. From a map (`-S metacool`), its `Shotgun_coverage` column gives it without `--depth`, which replaces it: see [Starting from a contact map](guides/metacool.md#starting-from-a-contact-map). |
+| `-S, --start` | `fastq` | What `--forward` and `--reverse` are: `fastq`, `bam` or `pair`. Not with `MAP`. |
+| `-d, --depth` | none | The coverage of the contigs, from `jgi_summarize_bam_contig_depths` of MetaBAT2. From a map, its `Shotgun_coverage` column gives it without `--depth`, which replaces it: see [Starting from a contact map](guides/metacool.md#starting-from-a-contact-map). |
 | `-b, --aligner` | `bowtie2` | `bwa`, the recommended one, or `bowtie2`. |
 | `-B, --aligner-mode` | `normal` | `normal`, `iterative` or `cutsite`. `cutsite` needs `--enzyme`: without it, the reads are aligned iteratively. |
-| `-e, --enzyme` | none | The restriction enzymes of the library. From a map (`-S metacool`), its `Restriction_site` column gives the restriction sites without `--enzyme`, which replaces it. |
+| `-e, --enzyme` | none | The restriction enzymes of the library. From a map (`MAP`), its `Restriction_site` column gives the restriction sites without `--enzyme`, which replaces it. |
 | `-q, --min-quality` | `30` | The minimum mapping quality of both mates of a pair. |
 | `-m, --normalization` | `empirical_hit` | `None`, `abundance`, `length`, `RS`, `empirical_hit` or `theoritical_hit`. `RS` and `theoritical_hit` need `--enzyme`; `abundance` and `theoritical_hit` need `--depth`, or, from a map, the columns that give them. See [Normalising the network](guides/network.md#normalising-the-network). |
-| `-E, --edge` | `0` | Only 0 in `pipeline`, whatever the start: it counts every pair, as its contact map does (`metator network` applies `--edge` to pairs files). |
 | `-A, --algorithm` | `louvain` | The partition algorithm: `louvain` or `leiden`. |
 | `-i, --iterations` | `100` | The iterations of the partition. |
 | `-O, --overlap` | `80` | The percentage of iterations in which two core bins must fall together to be merged into one overlapping bin. |
@@ -60,7 +63,7 @@ metator pipeline [OPTIONS]
 | `-C, --cluster-matrix` | off | Write the clustering matrices (`clustering_matrix*.npz`). |
 | `-j, --rec-iter` | `10` | The iterations of the recursive partition of the contaminated bins. |
 | `-P, --rec-overlap` | `90` | The overlap threshold of the recursive partition, in percent. |
-| `-v, --scaffold` | off | Scaffold the final bins, into `scaffold_bin/`. Refused with `--start metacool`. |
+| `-v, --scaffold` | off | Scaffold the final clusters, into `scaffold_bin/`. Refused from a map. |
 | `-J, --junctions` | `NNNNN` | The sequence between two contigs of a scaffold. |
 | `-o, --outdir` | the current directory | The output directory. |
 | `-p, --prefix` | none | Name the bins `<prefix>_metator_…`, the map `<prefix>.metacool` and, with several libraries, the maps of the libraries `<prefix>.mmetacool`. Letters, digits, `_` and `-` only. |
@@ -84,7 +87,7 @@ metator pipeline -b bwa -e DpnII -t 16 -1 L1_R1.fq.gz,L2_R1.fq.gz \
     -2 L1_R2.fq.gz,L2_R2.fq.gz -a assembly.fa -N -o binning
 
 # From a contact map of the contigs
-metator pipeline -S metacool -1 sample.metacool -a assembly.fa -e DpnII -o binning
+metator pipeline sample.metacool -a assembly.fa -e DpnII -o binning
 ```
 
 ### `network` { #network }
@@ -95,22 +98,22 @@ pairs files. **Guide:**
 [Aligning reads and building the network](guides/network.md).
 
 ```console
-metator network [OPTIONS]
+metator network [OPTIONS] [MAP]
 ```
 
 | Option | Default | Description |
 |---|---|---|
-| `-1, --forward` | *required* | As in `pipeline`, but not zstd or LZ4 pairs files: `network` reads pairs files itself. |
+| `MAP` | none | As in `pipeline`. |
+| `-1, --forward` | none | As in `pipeline`, but not zstd or LZ4 pairs files: `network` reads pairs files itself. |
 | `-2, --reverse` | none | As in `pipeline`. |
 | `-a, --assembly` | *required* | As in `pipeline`. |
-| `-S, --start` | `fastq` | `fastq`, `bam`, `pair` or `metacool`. |
+| `-S, --start` | `fastq` | `fastq`, `bam` or `pair`. Not with `MAP`. |
 | `-d, --depth` | none | As in `pipeline`. |
 | `-b, --aligner` | `bowtie2` | `bwa`, the recommended one, or `bowtie2`. |
 | `-B, --aligner-mode` | `normal` | `normal`, `iterative` or `cutsite`. |
-| `-e, --enzyme` | none | The restriction enzymes of the library. From a map (`-S metacool`), its `Restriction_site` column gives the restriction sites without `--enzyme`, which replaces it. |
+| `-e, --enzyme` | none | The restriction enzymes of the library. From a map (`MAP`), its `Restriction_site` column gives the restriction sites without `--enzyme`, which replaces it. |
 | `-q, --min-quality` | `30` | The minimum mapping quality of both mates of a pair. |
 | `-n, --normalization` | `empirical_hit` | As `--normalization` (`-m`) in `pipeline`. |
-| `-E, --edge` | `0` | Leave out the pairs with a mate within this many bp of the end of its contig. Not available with `--start metacool`. |
 | `-s, --self-contacts` | off | Count the contacts of each contig with itself. |
 | `-o, --outdir` | the current directory | The output directory. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory. |
