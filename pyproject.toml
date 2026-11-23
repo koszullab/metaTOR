@@ -47,6 +47,13 @@ dependencies = [
     "pyrodigal>=3.0",
     "pyhmmer>=0.10.11",
     "rich-click>=1.9",
+    # metaTOR 2.0 needs metacooler 0.4.0: the map's lock and edit sessions,
+    # metacooler fasta, the contig network as a table of ids, the QC split
+    # at 1001 bp. The bioconda recipe of metaTOR, which the docs recommend,
+    # must require metacooler>=0.4.0 too, pyrodigal and pyhmmer, and drop
+    # hicstuff, pysam, pypairix, pyfastx, prodigal and hmmer: metacooler
+    # must be on bioconda or conda-forge first (submit its recipe if it is
+    # not), or the conda package of 2.0 cannot be built.
     "metacooler>=0.4.0",
 ]
 

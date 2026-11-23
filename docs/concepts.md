@@ -43,7 +43,6 @@ The three steps are also three commands, `metator network`,
 `metator partition` and `metator validation`, run one after the other; see
 [Running the pipeline](guides/pipeline.md#running-the-steps-one-by-one).
 
-![The steps of metaTOR](images/pipeline.png)
 
 ## Contig data and hits
 

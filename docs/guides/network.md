@@ -88,13 +88,3 @@ The `Shotgun_coverage` and `Restriction_site` columns of the map stand for
 
 `empirical_hit` needs no model of the library and works best in our
 benchmarks.
-
-### Your own normalisation
-
-`partition` and `validation` read the normalisation that `metator network`
-stored in the map, by its name: they take no network file. metaTOR 2.0 removed
-`partition -n` and `validation -n`, which read a network of your own (the
-weights of a model such as [HiCzin](https://github.com/dyxstat/HiCzin)).
-metacooler computes such normalisations as weights of the map
-(`metacooler normalize hiczin`, `normcc`), which its own commands read, but
-metaTOR partitions only its own.

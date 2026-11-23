@@ -55,7 +55,7 @@ metator pipeline hicstuff/sample.metacool --enzyme DpnII --depth depth.txt --thr
 metacooler dump -t genomes -H hicstuff/sample.metacool
 ```
 
-`-M metacool` comes with hicstuff's next release: see
+`-M metacool` needs hicstuff 4.0.0 or later: see
 [Other tools](other-tools.md#from-the-reads-to-the-map). The
 [Quickstart](quickstart.md) runs the same steps on the test data of the
 repository, and [Concepts](concepts.md) explains the network, the partition

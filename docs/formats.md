@@ -153,7 +153,7 @@ column. Its first columns are those of miComplete:
 
 ```text
 	Length	GC-content	Present Markers	Completeness	Redundancy	Weighted completeness	Weighted redundancy	Contigs	N50	L50	N90	L90	CDs	recursive	step	parent	HiC_abundance	SG_abundance
-metator_00001_00000	49021.00	62.03	1.00	0.01	1.00	0.02	1.00	15.00	9019.00	2.00	1390.00	9.00	70.00	True	0		2.4736	2.6314
+metator_00001_00000	49021.00	62.03	1.00	0.01	1.00	0.02	1.00	15.00	9019.00	2.00	1390.00	9.00	70.00	False	0		2.4736	2.6314
 ```
 
 Each marker set, bacterial (105 markers) and archaeal (131), is tried on

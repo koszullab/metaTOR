@@ -13,7 +13,7 @@ cluster of it, and `R1.fq.gz` and `R2.fq.gz` the Hi-C reads of the run.
 | `metator qc` | `metacooler qc MAP --per-genome qc.tsv`: the contacts within contigs, within clusters (the genomes of the map) and between them, per cluster. For the uncut, loop and weird events of a library: hicstuff's `pipeline -g assembly.fa -e ENZYME -f --plot R1.fq.gz R2.fq.gz`, whose `plots/` show them. |
 | `metator contactmap` | `metacooler extract MAP --genomes NAME -o NAME.cool`: the contact map of a cluster, a `.cool` file, at the bin size of the map. A map of restriction fragments: hicstuff's `pipeline -g NAME.fa -e ENZYME R1.fq.gz R2.fq.gz` on the FASTA file of the cluster. |
 | The plots of `pipeline` and `validation`, the heatmap included | `metacooler show MAP -o map.png`: the contacts between the clusters (`--level genome`, the default); between the contigs of some of them with `--genomes NAME,... --level contig`. The genomes table of the map (`metacooler dump -t genomes -H MAP`) gives the completeness, redundancy and size of each cluster, as `cluster_summary.txt`. |
-| `metator metacool` | `pipeline` and `validation` write the map of the clusters. By hand, from the map of the contigs (`contigs.metacool`) and the tables of a run of an earlier version: `metacooler reassign contigs.metacool --contigs contig_data_final.txt --contigs-format Name,Final_cluster --genomes cluster_summary.txt --genomes-format 1 -o clusters.metacool`, then `metacooler annotate clusters.metacool --contigs contig_data_final.txt --contigs-format Name --columns contigs.GC_content,contigs.Hit,contigs.Shotgun_coverage,contigs.Restriction_site --inplace` for the columns of the contigs. |
+| `metator metacool` | `pipeline` and `validation` write the map of the clusters. By hand, from the map of the contigs (`contigs.metacool`) and the tables of a run of 1.x: `metacooler reassign contigs.metacool --contigs contig_data_final.txt --contigs-format metator --genomes bin_summary.txt --genomes-format 1 -o clusters.metacool` (`--contigs-format metator` reads the cluster of a contig in `Final_cluster`, then in 1.x's `Final_bin`; the summary of a 2.0 development build is `cluster_summary.txt`), then `metacooler annotate clusters.metacool --contigs contig_data_final.txt --contigs-format Name --columns contigs.GC_content,contigs.Hit,contigs.Shotgun_coverage,contigs.Restriction_site --inplace` for the columns of the contigs. |
 | `metator scaffold`, `pipeline --scaffold` | hicstuff's `pipeline -g NAME.fa -e ENZYME -M graal -o NAME R1.fq.gz R2.fq.gz` on the FASTA file of a cluster, then instaGRAAL on its matrix (`NAME/abs_fragments_contacts_weighted.txt`, `fragments_list.txt` and `info_contigs.txt`). |
 | `metator pairs` | hicstuff's `pipeline` writes its pairs sorted by `chr1`, `chr2`, `pos1` and `pos2`, and compressed with bgzip (`valid_idx.pairs.gz`, `valid_idx_filtered.pairs.gz` with `-f`): `pairix -p pairs` indexes them as they are. Another pairs file: sort it so, compress it with `bgzip`, then index it with `pairix -p pairs`. metaTOR reads no pairs file, and no longer comes with `pypairix`: `metacooler create pairs` makes the map from a pairs file, sorted or not. |
 
@@ -37,12 +37,12 @@ metacooler merge hicstuff_L1/L1.metacool hicstuff_L2/L2.metacool -o sample.metac
 metator pipeline sample.metacool -a assembly.fa -e DpnII -o binning
 ```
 
-!!! note "`-M metacool` comes with hicstuff's next release"
+!!! note "`-M metacool` needs hicstuff 4.0.0"
 
     `hicstuff pipeline -M metacool`, and its mapping mode `5spm`, come with
-    hicstuff's next release: 3.3.0, the latest so far, has neither. Until
-    then, install hicstuff from its master branch, or make the map from the
-    pairs files of hicstuff 3.3.0 with `metacooler create pairs`, as below.
+    hicstuff 4.0.0: 3.3.0 and earlier have neither. With an earlier
+    hicstuff, make the map from its pairs files with `metacooler create
+    pairs`, as below.
 
 hicstuff aligns the reads with bowtie2 by default; `-m 5spm` aligns them with
 `bwa mem -5SPM`, close to metaTOR 1.x's `--aligner bwa`, which ran

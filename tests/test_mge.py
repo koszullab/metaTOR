@@ -600,36 +600,26 @@ def test_mge_random_is_a_round_of_its_own(mge_run, tmp_path, monkeypatch, run_cl
 @pytest.mark.parametrize("name", ["mges_bin_summary.tsv", "mges_cluster_summary.tsv"])
 @pytest.mark.parametrize("force", [False, True], ids=["refused", "-F"])
 def test_the_summary_of_an_earlier_version(name, force, mge_run, tmp_path, run_cli):
-    """The summary of the MGE clusters that an earlier version wrote in the output
-    directory (that of 1.x, mges_bin_summary.tsv, or of a development build,
-    mges_cluster_summary.tsv), which the round mge of the map holds, is refused
-    without -F, before any work, named, and the log says why; -F removes it."""
-    import metacooler
-
+    """An earlier MGE summary (1.x's mges_bin_summary.tsv, a development build's
+    mges_cluster_summary.tsv), or a user's own file of that name, is refused with
+    or without -F, before any work, and left as it is."""
     metacool, args = mge_run
     out = tmp_path / "out"
     out.mkdir()
     (out / name).write_text("an earlier run's\n")
     (out / "mges_other.tsv").write_text("another tool's\n")
     before = metacool.read_bytes()
-    if not force:
-        with pytest.raises(ValueError):
-            run_cli("mge", metacool, *args)
-        assert metacool.read_bytes() == before
-        assert sorted(path.name for path in out.iterdir()) == sorted([name, "mges_other.tsv"])
-        assert not list(tmp_path.glob("*.lock"))
-        (log,) = tmp_path.glob("metator_mge_*.log")
-        assert (
-            f"ERROR :: {out} holds what an earlier run wrote there, which metaTOR 2.0 no longer writes in the output "
-            f"directory: {name!r}. The round mge of the map holds what the summary held (metator dump writes the "
-            "rounds). Remove them, or give -F to remove them."
-        ) in log.read_text()
-        return
-    run_cli("mge", metacool, *args, "-F")
-    assert sorted(path.name for path in out.iterdir()) == ["mges_binned.fa", "mges_other.tsv"]
-    assert [entry["name"] for entry in metacooler.MetaCooler(str(metacool)).cluster_rounds][-1] == "mge"
+    with pytest.raises(ValueError):
+        run_cli("mge", metacool, *args, *(["-F"] if force else []))
+    assert metacool.read_bytes() == before
+    assert sorted(path.name for path in out.iterdir()) == sorted([name, "mges_other.tsv"])
+    assert (out / name).read_text() == "an earlier run's\n"
+    assert not list(tmp_path.glob("*.lock"))
     (log,) = tmp_path.glob("metator_mge_*.log")
-    assert f"INFO :: Removing {out / name}, which an earlier run wrote." in log.read_text()
+    assert (
+        f"ERROR :: {out} holds results of an earlier run, which this run does not write and does not replace: "
+        f"{name!r}. Move them away, or give the run another output directory with -o."
+    ) in log.read_text()
 
 
 @pytest.mark.parametrize("assembly", ["bzip2", "zip", "no FASTA"])
@@ -637,7 +627,7 @@ def test_mge_refuses_an_assembly_that_metacooler_cannot_read(assembly, mge_run, 
     """An assembly that metacooler cannot write mges_binned.fa from (compressed
     with bzip2 or zip, or no FASTA file) is refused before any work, as the
     network, the validation and the pipeline refuse it: the map is left as it
-    was, nothing is written, and -F removes no summary of an earlier version."""
+    was, nothing is written, and nothing is removed."""
     import bz2
     import zipfile
 

@@ -2047,83 +2047,100 @@ def _earlier_run(command, tmp_path):
     return files
 
 
-# What a validation or pipeline run of an earlier version wrote in its output
-# directory (see metator.cli.EARLIER_OUTPUTS): files, and a directory.
-EARLIER_OUTPUTS = [
+# The results of a run of an earlier version in the output directory of a
+# validation or pipeline run (see metator.cli.EARLIER_OUTPUTS): the tables of
+# 2.0's development builds, and the outputs of 1.x, files and directories.
+EARLIER_FILES = [
+    "bin_summary.txt",
     "binning.txt",
     "cluster_members.txt",
     "cluster_summary.txt",
+    "clustering_matrix.npz",
     "clusters.txt",
     "contig_data_final.txt",
+    "contig_data_network.txt",
+    "contig_data_partition.txt",
+    "network.txt",
     "overlapping_micomplete_results.txt",
-    "recursive_clusters",
     "recursive_micomplete_step_1.txt",
 ]
+EARLIER_DIRECTORIES = [
+    "final_bin",
+    "final_bin_unscaffold",
+    "overlapping_bin",
+    "plot",
+    "recursive_bin",
+    "recursive_clusters",
+    "scaffold_bin",
+]
+EARLIER_OUTPUTS = sorted([*EARLIER_FILES, *EARLIER_DIRECTORIES])
 
 
 @pytest.mark.parametrize("command", ["validation", "pipeline"])
 @pytest.mark.parametrize("force", [False, True], ids=["refused", "-F"])
 def test_the_outputs_of_an_earlier_version(command, force, stub_pipeline, tmp_path, run_cli):
-    """What a run of an earlier version wrote in the output directory, which
-    a run now keeps in its temporary directory (its tables, miComplete's, the
-    recursive clusters, a symbolic link of them too), is refused without
-    -F, before any work, named, and the log says why; -F removes it, a link
-    and not its target. Left there, an earlier run's tables passed for this
-    run's."""
+    """An earlier run's results in the output directory, or a user's own files
+    of those names, are refused with or without -F, before any work, and
+    nothing is removed, a link's target included."""
     metacool = _contig_map(tmp_path / "network.metacool", network=True, partition=True)
     out = tmp_path / "out"
-    (out / "recursive_clusters" / "step_1").mkdir(parents=True)
-    (out / "recursive_clusters" / "step_1" / "earlier.fa").write_text(">c1\nACGT\n")
-    for name in EARLIER_OUTPUTS:
-        if name != "recursive_clusters":
-            (out / name).write_text("an earlier run's\n")
-    # The tables of another tool are left alone.
+    for directory in EARLIER_DIRECTORIES:
+        (out / directory).mkdir(parents=True)
+        (out / directory / "earlier.fa").write_text(">c1\nACGT\n")
+    for name in EARLIER_FILES:
+        (out / name).write_text("an earlier run's\n")
     (out / "binning_other.txt").write_text("another tool's\n")
     (tmp_path / "kept.txt").write_text("the target of a link\n")
     (out / "cluster_summary.txt").unlink()
     (out / "cluster_summary.txt").symlink_to(tmp_path / "kept.txt")
+    before = sorted(path.relative_to(out) for path in out.rglob("*"))
     if command == "validation":
         args = _step_run("validation", metacool, tmp_path, *(["-F"] if force else []))
     else:
         args = _map_run(metacool, tmp_path, *(["-F"] if force else []))
-    if not force:
-        with pytest.raises(ValueError):
-            run_cli(command, *args)
-        assert sorted(path.name for path in out.iterdir() if not path.name.endswith(".log")) == sorted(
-            [*EARLIER_OUTPUTS, "binning_other.txt"]
-        )
-        assert _no_step(stub_pipeline)
-        (log,) = out.glob(f"metator_{command}_*.log")
-        shown = ", ".join(repr(name) for name in EARLIER_OUTPUTS[:5])
-        assert (
-            f"ERROR :: {out} holds what an earlier run wrote there, which metaTOR 2.0 no longer writes in the output "
-            f"directory: {shown}, ... (+3 more). The map of the clusters holds what the tables held (metator dump "
-            "writes them from it), and -N keeps the tables of a run in its temporary directory. Remove them, or give "
-            "-F to remove them."
-        ) in log.read_text()
-        return
-    run_cli(command, *args)
-    assert sorted(path.name for path in out.iterdir() if not path.name.endswith(".log")) == [
-        "binning_other.txt", "final_clusters"
-    ]  # fmt: skip
+    with pytest.raises(ValueError):
+        run_cli(command, *args)
+    assert sorted(path.relative_to(out) for path in out.rglob("*") if not path.name.endswith(".log")) == before
     assert (tmp_path / "kept.txt").read_text() == "the target of a link\n"
+    assert _no_step(stub_pipeline)
     (log,) = out.glob(f"metator_{command}_*.log")
-    assert f"INFO :: Removing {out / 'recursive_clusters'}, which an earlier run wrote." in log.read_text()
+    shown = ", ".join(repr(name) for name in EARLIER_OUTPUTS[:5])
+    assert (
+        f"ERROR :: {out} holds results of an earlier run, which this run does not write and does not replace: "
+        f"{shown}, ... (+{len(EARLIER_OUTPUTS) - 5} more). Move them away, or give the run another output directory "
+        "with -o."
+    ) in log.read_text()
+
+
+@pytest.mark.parametrize("command", ["validation", "pipeline"])
+def test_the_map_of_the_run_is_no_earlier_output(command, stub_pipeline, tmp_path, run_cli):
+    """The map of the run, in a directory named as a 1.x output, is no earlier result."""
+    out = tmp_path / "out"
+    (out / "final_bin").mkdir(parents=True)
+    metacool = _contig_map(out / "final_bin" / "network.metacool", network=True, partition=True)
+    if command == "validation":
+        args = _step_run("validation", metacool, tmp_path)
+    else:
+        args = _map_run(metacool, tmp_path)
+    run_cli(command, *args)
+    assert (out / "final_clusters").is_dir()
 
 
 @pytest.mark.parametrize("command", ["validation", "pipeline"])
 @pytest.mark.parametrize(
-    "where", ["in final_clusters", "recursive_clusters", "through a link of -o", "through a link of final_clusters"]
+    "where",
+    [
+        "in final_clusters",
+        "recursive_clusters",
+        "recursive_bin",
+        "through a link of -o",
+        "through a link of final_clusters",
+    ],
 )
 def test_tmpdir_in_the_clusters_refused(command, where, stub_pipeline, tmp_path, run_cli):
-    """A --tmpdir in a directory of the clusters that a validation or
-    pipeline run writes, which it makes anew (-F removes it, and the
-    temporary directory of the run with it), is refused as a usage error
-    before the run creates or removes anything: the clusters of an earlier
-    run stay, and no temporary directory is made. It is in it as written, or
-    once the symbolic links are resolved (an output directory given through
-    a link), or through a directory of the clusters that is a link, which -F
-    removes, not its target."""
+    """A --tmpdir in final_clusters or in a directory of an earlier run's results,
+    as written or through links, is refused as a usage error before anything is
+    created or removed."""
     metacool = _contig_map(tmp_path / "network.metacool", network=True, partition=True)
     earlier = _earlier_run("validation", tmp_path)
     out = tmp_path / "out"
@@ -2137,10 +2154,11 @@ def test_tmpdir_in_the_clusters_refused(command, where, stub_pipeline, tmp_path,
     tmpdir = {
         "in final_clusters": out / "final_clusters" / "tmp",
         "recursive_clusters": out / "recursive_clusters",
+        "recursive_bin": out / "recursive_bin" / "tmp",
         "through a link of -o": out / "final_clusters" / "tmp",
         "through a link of final_clusters": out / "final_clusters" / "tmp",
     }[where]
-    clusters = outdir / ("recursive_clusters" if where == "recursive_clusters" else "final_clusters")
+    clusters = outdir / (where if where in ("recursive_clusters", "recursive_bin") else "final_clusters")
     if command == "validation":
         args = _step_run("validation", metacool, tmp_path, "-o", outdir, "-T", tmpdir, "-F")
     else:
@@ -2150,8 +2168,8 @@ def test_tmpdir_in_the_clusters_refused(command, where, stub_pipeline, tmp_path,
     stub_pipeline.clear()
     result = run_cli(command, *args, exit_code=2)
     where = (
-        "where an earlier version wrote its recursive clusters, which -F removes"
-        if where == "recursive_clusters"
+        "where an earlier version wrote its results, which the run refuses"
+        if where in ("recursive_clusters", "recursive_bin")
         else "where the run writes its clusters, which it makes anew (-F replaces an earlier one)"
     )
     message = f"Invalid value for '-T' / '--tmpdir': {tmpdir} is in {clusters}, {where}: give a temporary directory outside it."

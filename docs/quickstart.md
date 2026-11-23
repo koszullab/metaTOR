@@ -44,9 +44,9 @@ contig.
     hicstuff pipeline -g assembly.fa -e DpnII -M metacool -o hicstuff -P sample R1.fq.gz R2.fq.gz
     ```
 
-    `-M metacool` comes with hicstuff's next release: until then, install
-    hicstuff from its master branch, or make the map from the pairs files of
-    hicstuff 3.3.0 with `metacooler create pairs`, as above.
+    `-M metacool` needs hicstuff 4.0.0 or later: with an earlier hicstuff,
+    make the map from its pairs files with `metacooler create pairs`, as
+    above.
 
     It writes the map `hicstuff/sample.metacool`, with one bin per restriction
     fragment, and the pairs `hicstuff/sample.valid_idx.pairs.gz`.
@@ -85,7 +85,6 @@ INFO :: Detect core clusters:
 INFO :: 429 core clusters were found.
 INFO :: Detect overlapping clusters:
 INFO :: 230 overlapping clusters were found.
-INFO :: Extract clusters:
 INFO :: 24 clusters have been extracted
 INFO :: Lauch miComplete quality check.
 INFO :: No more contaminated cluster has been found after 1 steps.

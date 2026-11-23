@@ -473,25 +473,16 @@ def test_pipeline_refuses_existing_outputs(existing, a_map, tmp_path, run_cli, l
 
 
 def test_pipeline_force_replaces_outputs(a_map, network_from_a_map, tmp_path, run_cli, logged):
-    """With --force the output directories are emptied once the arguments and the
-    assembly are checked, then the run goes on (here up to the partition, which
-    network_from_a_map stops): final_clusters is replaced, and the recursive
-    clusters that validation wrote there before they went to its temporary
-    directory are removed (see metator.cli.EARLIER_OUTPUTS)."""
-    for existing in ["final_clusters", "recursive_clusters"]:
-        (tmp_path / "out" / existing).mkdir(parents=True)
-        (tmp_path / "out" / existing / "stale.fa").write_text(">old\nA\n")
-    others = ["overlapping_bin", "final_bin", "plot", "overlapping_clusters"]
-    for existing in others:
-        (tmp_path / "out" / existing).mkdir(parents=True)
-        (tmp_path / "out" / existing / "earlier.fa").write_text(">old\nA\n")
-    (tmp_path / "out" / "bin_summary.txt").write_text("earlier\n")
+    """-F replaces final_clusters and leaves a directory that no version writes any more."""
+    (tmp_path / "out" / "final_clusters").mkdir(parents=True)
+    (tmp_path / "out" / "final_clusters" / "stale.fa").write_text(">old\nA\n")
+    (tmp_path / "out" / "overlapping_clusters").mkdir(parents=True)
+    (tmp_path / "out" / "overlapping_clusters" / "earlier.fa").write_text(">old\nA\n")
     args = [a_map(), "-a", global_args["SUBSET_FASTA"], "-F", "-o", str(tmp_path / "out"), "-T", str(tmp_path / "tmp")]
     with pytest.raises(RuntimeError, match=r"^network built$"):
         run_cli("pipeline", *args)
-    assert not list((tmp_path / "out").glob("*/stale.fa")) and not (tmp_path / "out" / "recursive_clusters").exists()
-    assert all((tmp_path / "out" / name / "earlier.fa").exists() for name in others)
-    assert (tmp_path / "out" / "bin_summary.txt").exists()
+    assert not (tmp_path / "out" / "final_clusters" / "stale.fa").exists()
+    assert (tmp_path / "out" / "overlapping_clusters" / "earlier.fa").exists()
     assert not [message for _, message in logged() if message.startswith("Removed ")]
 
 

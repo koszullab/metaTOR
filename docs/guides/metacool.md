@@ -99,13 +99,16 @@ metacooler network sample.metacool --level contig --balance metator_empirical_hi
 
 A run of an earlier version whose `partition` and `validation` were not given
 the map has no map of its clusters: `metacooler reassign` writes it from the map of its contigs,
-`contig_data_final.txt` and `cluster_summary.txt`, and `metacooler annotate`
-adds the columns that metaTOR measured on the contigs (see
-[Other tools](../other-tools.md)):
+`contig_data_final.txt` and the summary of the clusters, and `metacooler
+annotate` adds the columns that metaTOR measured on the contigs (see
+[Other tools](../other-tools.md)). For the tables of a run of 1.x, the summary
+is `bin_summary.txt`, and `--contigs-format metator` reads the cluster of each
+contig in `Final_cluster`, then in 1.x's `Final_bin` (the summary of a 2.0
+development build is `cluster_summary.txt`):
 
 ```bash
 metacooler reassign sample.metacool --contigs binning/contig_data_final.txt \
-    --contigs-format Name,Final_cluster --genomes binning/cluster_summary.txt \
+    --contigs-format metator --genomes binning/bin_summary.txt \
     --genomes-format 1 -o binning/clusters.metacool
 metacooler annotate binning/clusters.metacool --contigs binning/contig_data_final.txt \
     --contigs-format Name --inplace \
@@ -381,11 +384,13 @@ A run reaches its final clusters in rounds:
 `mge_random`, a random clustering of the same shape, with `--random`; see
 [mge on the map](#mge-on-the-map)).
 
-The validation writes them all next to its other tables, in the output
-directory: `clusters.txt`, one row per cluster of every round (its round and
-name, the round and name of its parent, `NA` for none, and the columns of
-miComplete), and `cluster_members.txt`, one row per contig of a cluster (its
-round, cluster and contig). A contig is in at most one cluster of a round.
+The validation writes them all next to its other tables, in its temporary
+directory, which `-N` keeps, and `metator dump MAP -o DIR` writes them from
+the map of the clusters: `clusters.txt`, one row per cluster of every round
+(its round and name, the round and name of its parent, `NA` for none, and the
+columns of miComplete), and `cluster_members.txt`, one row per contig of a
+cluster (its round, cluster and contig). A contig is in at most one cluster of
+a round.
 
 The map of the clusters stores both in its `/clusters` group (metacooler
 0.4.0), next to the final clusters, which its genomes and contigs tables hold:
@@ -450,11 +455,11 @@ metacooler create pairs --pairs hicstuff_L1/L1.valid_idx.pairs.gz \
     --assembly-name assembly -o sample.metacool
 ```
 
-!!! note "`-M metacool` and mapping mode `5spm` need a hicstuff release after 3.3.0"
+!!! note "`-M metacool` and mapping mode `5spm` need hicstuff 4.0.0"
 
-    hicstuff 3.3.0, the latest release so far, writes no `.metacool` map and
-    has no mapping mode `5spm`: with it, make the map from its pairs files
-    with `metacooler create pairs`.
+    hicstuff 3.3.0 and earlier write no `.metacool` map and have no mapping
+    mode `5spm`: with them, make the map from their pairs files with
+    `metacooler create pairs`.
 
 - `--bins 1000` makes bins of 1 kb instead, taking the lengths of the contigs
   from the `#chromsize` lines of hicstuff's pairs files, or from `--fasta`.
