@@ -5,13 +5,33 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
+- **Breaking:** the map is the network that the steps share: `network MAP`
+  stores the network of the contigs in the map, which `partition` and
+  `validation` read. It stores what it measured on each contig in the
+  contigs table of the map (`GC_content`, `Hit`, and `Shotgun_coverage` and
+  `Restriction_site` when it has them), the normalization of the network as
+  the weights `metator_<normalization>` of its bins (none for `None`), and
+  its command line, parameters, normalization and the columns of the map
+  that it read, under the `network` entry of the `metator` key of the
+  metadata of the map; they replace those of an earlier network. The map is
+  updated in place, under its lock, or written to the new `--output-map`
+  (`-F` to replace it), which an entry of a collection needs. `pipeline`
+  stores the network of its contigs in the map of its clusters as `network`
+  does, so that the steps run one by one on a map give the map of
+  `pipeline`, normalization included. Python API:
+  `metator.metacool.store_network` and `Network`, and `network` of
+  `reassign_metacool`; `metator.network.contig_contacts`, `contig_hits`,
+  `log_contacts`, `contig_data_table`, `contig_table`, `map_contig_table`,
+  `map_network`, `network_weights`, `network_normalization`,
+  `stored_network` and `StoredNetwork`, `stored_weights` and
+  `relabel_network`; `metator.partition.network_graph`.
 - The map of the clusters of a `pipeline` run stores the normalization of its
   network (`--normalization`, `empirical_hit` by default), as the weights
   `metator_<normalization>` of its bins, the way cooler stores balancing
   weights: `cooler` reads them (`matrix(balance="metator_empirical_hit")`),
   and so do `metacooler show`, `dump` and `network` with `--balance`. The
   contacts of the map normalized by them and summed by pair of contigs are
-  the edges of `network.txt`, but those of weight 0. They are computed from the `Hit`,
+  the edges of the network, but those of weight 0. They are computed from the `Hit`,
   `Shotgun_coverage` and `Restriction_site` columns of its contigs table,
   which the column records (`depends_on`), so that metacooler drops it when
   an edit changes one of them. A map without a column that the
@@ -37,12 +57,11 @@ All notable changes to this project will be documented in this file.
   first argument (`metator pipeline MAP -a ASSEMBLY`: a file, or an entry
   `file.mmetacool::entries/<name>`), at any bin size: a map that hicstuff
   makes from the reads, or metacooler from pairs files (see Removed). The
-  network is that of the pairs the map was made of, byte for byte, as both
-  count every pair (see Changed). A map may lack contigs of the assembly,
-  which get no contacts; a map of other contigs or lengths, or that stores
-  both triangles, is refused, and so is a first argument that is a file
-  but no map. Python API:
-  `metator.network.metacool_to_contacts`, `read_metacool_contacts`.
+  contacts of the network are those of the pairs the map was made of, as
+  both count every pair (see Changed). A map may lack contigs of the
+  assembly, which get no contacts; a map of other contigs or lengths, or
+  that stores both triangles, is refused, and so is a first argument that
+  is a file but no map. Python API: `metator.network.contig_contacts`.
 - A `pipeline` run from a map writes the map of its bins from it, with
   `metacooler reassign`: its bins and contacts, grouped by final bin,
   with this run's genome and contig columns (the contig columns last,
@@ -130,6 +149,40 @@ All notable changes to this project will be documented in this file.
   `metator.clusters.mge_round`.
 
 ### Changed
+- **Breaking:** `partition` and `validation` require the map, `MAP`, and read
+  the network that `metator network` stored in it, and `partition` the data of
+  its contigs too. They read it in full before they replace the outputs of an
+  earlier run (`-F`), and refuse a map without it, or whose network an edit
+  changed since (a column, a value or the weights dropped, or contacts whose
+  hits are no longer its `Hit` column, as after `metacooler merge`, which
+  keeps the contigs table of the first map), with the step to run again.
+  `partition` loses `-c, --contigs` and `-n, --network`,
+  `validation` loses `-n, --network`; `network` loses `-t, --threads`, as
+  there is no network file to sort. The network is in memory: each edge
+  weighs the contacts of two contigs times the weights of the normalization
+  of each, `n × w_i × w_j`, which differ from `n / √(h_i × h_j)` in their last
+  bits, and the edges of weight 0 are left out.
+- **Breaking:** the contigs of a run are those of its map, in its order
+  (longest first, as hicstuff and metacooler make it), and the ID of a contig
+  is its position in the map: the rows of `contig_data_partition.txt` and
+  `contig_data_final.txt`, the numbers of the clusters and the order of the
+  records of their FASTA files follow it, where they followed the
+  assembly. The contigs of the assembly that the map lacks are in no table
+  of the run, and the shotgun abundance of a cluster is its share of the
+  sequenced bases of the contigs of the map: the clusters of a map made with
+  a contig filter add up to 100%, where 1.x counted every contig of the
+  assembly. `mge -c` reads these tables: it leaves out an MGE contig that
+  the map lacks, with a warning that names it. `metator.network.create_contig_data`
+  gives no `id` and `hit` of a contig: its ID is its position in the map,
+  and its hits are counted on the map. `validation` reads the contigs
+  of `contig_data_partition.txt` by their IDs, in the order of the map when
+  `partition` wrote it: a validation run again on the map of the clusters,
+  whose contigs are grouped by cluster, reads the same network.
+- `validation MAP` stores the normalization of the network that `network`
+  stored in the map in the map of its clusters, where it dropped it.
+- The columns of the map that a run read (`columns_from_map`) are recorded
+  under the `network` entry of the `metator` key of its metadata, where
+  `pipeline` recorded them under the `metator` key.
 - **Breaking:** metaTOR calls its groups of contigs clusters, as its contact
   map does: the bins are those of the map. The outputs of a run are renamed:
   `bin_summary.txt` is `cluster_summary.txt`; `overlapping_bin/` and
@@ -147,8 +200,7 @@ All notable changes to this project will be documented in this file.
   a contig data table of 1.x: `partition` keeps them as extra columns, which
   `validation` carries into `contig_data_final.txt`; `validation` refuses a
   table without the columns of a partition (`Overlapping_cluster_ID`...),
-  before miComplete runs, naming them; `mge` reads only `Name`, `Size`,
-  `Hit` and `GC_content`, the same in both versions; and `metator.host`
+  before miComplete runs, naming them; and `metator.host`
   still reads the tables of 1.x (`metator.io.rename_1x_columns`). A run in the
   output directory of a run of 1.x leaves the outputs that 1.x named after
   bins as they are, with or without `-F`. metacooler's
@@ -253,7 +305,7 @@ All notable changes to this project will be documented in this file.
   position 0 (which a 1-based pairs file should not hold, but some do), is
   a contact, which `--edge 0`, the default, left out; a pair with a read
   past the end of its contig is none, and its hits no longer count. The
-  network of a `.metacool` map is then that of its pairs, byte for byte.
+  contacts of a `.metacool` map are then those of its pairs, exactly.
   On `tests_data/alignment.pairs`, 360 of 13,415 edges change (298 new,
   62 of another weight), from its 472 pairs between two contigs with a
   read at position 0.
@@ -272,6 +324,17 @@ All notable changes to this project will be documented in this file.
   corrected.
 
 ### Removed
+- **Breaking:** `network.txt` and `contig_data_network.txt`: the network is
+  in the map (see Added). `metacooler network MAP --level contig --balance
+  metator_<normalization>` writes it, by contig names, with the contacts
+  within each contig, which are no edge: drop them (see
+  [The network](formats.md#the-network)). A network of your
+  own, given to `partition -n` and `validation -n`, is gone with them. The
+  network is no longer sorted with the external `sort`, nor written to
+  temporary files, and the validation no longer writes the subnetwork of
+  each cluster it partitions again to its temporary directory. Python API:
+  `metator.network.normalize_pair`, `write_edge` and `write_contig_data`;
+  `metator.partition.read_network`; `metator.io.sort_pairs`.
 - **Breaking:** the commands that did what hicstuff, metacooler, instaGRAAL
   or pairix do, and the plots: metaTOR clusters contigs, and nothing else.
   The [Other tools](other-tools.md) page says what replaces each one:

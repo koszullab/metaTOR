@@ -47,13 +47,12 @@ The three steps are also three commands, `metator network`,
 
 ## Contig data and hits
 
-metaTOR first measures every contig of the assembly: its size, its GC
-content, its number of restriction fragments (with `--enzyme`), its shotgun
-coverage (with `--depth`), and its number of **hits**, the ends of the
-contacts of the map that lie on it (a contact within the contig counts
-twice). These go to the
-**contig data** table, which every step reads and extends with the clusters of
-the contig.
+metaTOR first measures every contig of the map: its size, its GC content,
+its number of restriction fragments (with `--enzyme`), its shotgun coverage
+(with `--depth`), and its number of **hits**, the ends of the contacts of the
+map that lie on it (a contact within the contig counts twice). These, the
+**contig data**, go to the contigs table of the map, which the next steps
+read and extend with the clusters of the contig.
 
 ## The network
 
@@ -62,7 +61,8 @@ between them. The contigs are the nodes of the network, and its edges hold
 the contacts between two contigs, **normalised** so that a large or abundant
 contig does not attract every other one. The default normalisation,
 `empirical_hit`, divides the contacts between two contigs by the geometric
-mean of their hits. [Building the network](guides/network.md)
+mean of their hits. The map holds the network: its contacts, and the weights
+of the normalisation of its contigs. [Building the network](guides/network.md)
 lists the other normalisations.
 
 ## Partition: core and overlapping clusters

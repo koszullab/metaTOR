@@ -123,8 +123,6 @@ The output files will be in the ouput directory given as parmater or in working 
 
 | Files/Commands | description | network | partition | validation | pipeline |
 | - | :-: | :-: | :-: | :-: | :-: |
-| network.txt |Normalized network of the metaHiC library|X|||X|
-| contig_data_network.txt |Information on contigs after network step|X||||
 | contig_data_partition.txt |Information on contigs after partition step||X|||
 | overlapping_micomplete_results.txt |miComplete results summary file from the partition step|||X|X|
 | recursive_micomplete_stepN.txt |miComplete results summary file from the recursive step N|||X|X|
@@ -136,10 +134,16 @@ The output files will be in the ouput directory given as parmater or in working 
 | overlapping_clusters |Directory with the fasta of the partition clusters||X|X|X|
 | recursive_clusters |Directory with the fasta of the recursive clusters|||X|X|
 | **final_clusters** |**Directory with the fasta of the final clusters**|||**X**|**X**|
-| The input map |Contact map of the contigs, grouped by cluster: updated in place, or written to `--output-map` (see [Starting from a contact map](#starting-from-a-contact-map))||||X|
+| The input map |The network of the contigs (`network`); the contact map of the contigs, grouped by cluster (`validation`, `pipeline`): updated in place, or written to `--output-map` (see [Starting from a contact map](#starting-from-a-contact-map))|X|X|X|X|
 
-**Network file**
-This is a tsv file of the network with edgelist form: Id of the first contig, id of the second contig and the weigth of edge normalized.
+**The network**
+`metator network` stores the network in the map: what it measured on each contig, in the contigs table
+of the map, and the weights of its normalization, in its bins table. `partition` and `validation` read
+it there. metacooler writes it out, one line per pair of contigs in contact, by their names, with
+the normalised weight of their edge (columns `node1`, `node2` and `value`), once the contacts within
+each contig, which it writes too and are no edge, are dropped:
+`metacooler network MAP --level contig --balance metator_empirical_hit --header | awk -F '\t' '$1 != $2 && $3 != 0'`.
+`metator dump` will write `network.txt`.
 
 **Contig data files**
 These are the files with all the informations from the contigs:
@@ -150,11 +154,12 @@ These are the files with all the informations from the contigs:
 |3|NODE_3|540571|42.305266098255366|2188|14.5855|3405|3|127|6409484|3|431|13615480|1|112|6385126|MetaTOR_3_1|
 
 They have to have the header when they are use as input but the order of the columns nd if they are others columns doesn't matter when they are used as input files.
+Their rows are the contigs of the map, in its order, and the ID of a contig is its position in the map.
 Depending on which step of the pipeline have been launch they just have some of these columns:
 
-* `contig_data_network.txt`: columns: ID, Name, Size, GC content, Hit, Shotgun_coverage and Restriction Site only.
-* `contig_data_partition.txt`: The same as the previous with the information of
-  core clusters and overlapping clusters.
+* `contig_data_partition.txt`: ID, Name, Size, GC content, Hit, Shotgun_coverage and Restriction Site,
+  which the network step stores in the map, with the information of core clusters and overlapping
+  clusters.
 * `contig_data_final.txt`: All the columns.
 
 The shotgun coverage will be filled only if the depth.txt file is given, otherwise it will be filled with `-`. This column is only necessarry for the *abundance* and the *theoritical_hit* normalization. The restriction will also be filled with `-` if no enzyme are given. This column is only necessary for the *RS* and the *theoritical_hit* normalization. A run from a contact map reads both columns from the map when the options are not given (see [Starting from a contact map](#starting-from-a-contact-map)).
@@ -215,19 +220,20 @@ and the tools built on it read it as any `.cool` file, and `metacooler` adds the
   from does not give them either), and the contact statistics that
   metacooler computes within each contig (`qc_intra_contig_short`, `qc_intra_contig_long`). The clusters
   of the contigs are not stored there: the genome of a contig is its final cluster;
-* the bins table of the map of a `pipeline` run holds the normalization of its network
-  (`--normalization`, `empirical_hit` by default) as the weights `metator_<normalization>` of its
-  bins, the way `cooler` stores balancing weights: the normalized contact of two bins is their raw
-  count times both weights, so the contacts normalized and summed by pair of contigs are the edges of
-  `network.txt`, but those of weight 0 (a contig without hits, or without coverage, has no weight). `cooler` reads them (`clr.matrix(balance="metator_empirical_hit")`), and so do
+* the bins table of the map holds the normalization of its network (`--normalization`,
+  `empirical_hit` by default; none for `None`), which `metator network` stores, as `pipeline` does,
+  as the weights `metator_<normalization>` of its bins, the way `cooler` stores balancing weights:
+  the normalized contact of two bins is their raw count times both weights, so the contacts
+  normalized and summed by pair of contigs are the edges of the network that `partition` and
+  `validation` read, but those of weight 0 (a contig without hits, or without coverage, has no
+  weight). `cooler` reads them (`clr.matrix(balance="metator_empirical_hit")`), and so do
   `metacooler show`, `dump` and `network` with `--balance metator_empirical_hit`. They are computed
   from the `Hit`, `Shotgun_coverage` and `Restriction_site` columns of the contigs table, which the
-  column records, so that metacooler drops it when an edit changes one of them. A run whose map lacks
-  a column that the normalization reads (`Restriction_site` without `--enzyme`) stores none, with a
-  warning, and so does `--normalization None`, without one; a normalization that metacooler fails to
-  store fails the map, which is then not written, with the reason;
+  column records, so that metacooler drops it when an edit changes one of them; a normalization that
+  metacooler fails to store fails the map, which is then not written, with the reason;
 * the metadata of the file hold the version of metaTOR, the command line and its parameters, under
-  the `metator` key.
+  the `metator` key, and those of the run that stored the network, with its normalization, under its
+  `network` entry.
 
 ```python
 import cooler
@@ -284,10 +290,10 @@ no such column, once the assembly is read when the column lacks contigs. The map
 the assembly,
 as a map made with a contig filter does (`metacooler create pairs --filter 'contigs.length >= 1kb'`, for
 example, which also leaves out the pairs with a read on the contigs that it drops): those get no
-contacts and no hits, as contigs that no read maps to, and the log file says how many they are. The
-contacts between two contigs are those between their bins, and the hits of a contig those of its bins,
-so that the network and `contig_data_network.txt` are those of the pairs the map holds, each counted
-once. A map that cannot give this network (contigs that are not in the assembly or that have
+contacts, as contigs that no read maps to, and are in no table of the run, and the log file says how
+many they are. The contacts between two contigs are those between their bins, and the hits of a
+contig those of its bins, so that the network and the hits are those of the pairs the map holds,
+each counted once. A map that cannot give this network (contigs that are not in the assembly or that have
 other lengths, or both triangles of the matrix stored) stops the run with an error, whose reason is
 logged in the log file of the run.
 
@@ -363,26 +369,29 @@ scheduler's signal to the job, reaches it too.
 
 #### Step by step on a contact map
 
-The three steps of `pipeline MAP` take the map as their first argument too. Run one after the other on
-one map, they read and update it as `pipeline MAP` does, and write the map that it writes from the same
-clusters, but for the date the map was written and the command line and parameters that it stores (those
-of `validation`). Louvain draws random numbers: two runs give the same clusters only from the same random
+The three steps of `pipeline MAP` take the map as their first argument too: the map is the network
+that they share. Run one after the other on one map, they read and update it as `pipeline MAP` does,
+and write the map that it writes from the same clusters, but for the date the map was written and the
+command lines and parameters that it stores (those of `network` and `validation`). Louvain draws random numbers: two runs give the same clusters only from the same random
 stream, as the tests check in one process, so steps run as separate commands differ from `pipeline` as
 two `pipeline` runs do. `partition MAP` on a map that holds the clusters of an earlier run replaces its
 clustering rounds with its own, and leaves its genomes, contigs and the `metator` key of its metadata as
 the earlier run wrote them, until `validation MAP` writes the new ones:
 
 ```sh
-# 1. The network: network.txt and contig_data_network.txt. The map is only read.
+# 1. The network, stored in the map.
 metator network sample.metacool -a assembly.fa -d depth.txt -e DpnII -o binning
 # 2. The partition: overlapping_clusters/ and contig_data_partition.txt. The map stores the overlapping clusters.
-metator partition sample.metacool -a assembly.fa -c binning/contig_data_network.txt -n binning/network.txt -o binning
+metator partition sample.metacool -a assembly.fa -o binning
 # 3. The validation: the final clusters. The map becomes the map of the clusters.
-metator validation sample.metacool -a assembly.fa -c binning/contig_data_partition.txt -n binning/network.txt \
+metator validation sample.metacool -a assembly.fa -c binning/contig_data_partition.txt \
     -f binning/overlapping_clusters -o binning
 ```
 
-`partition MAP` stores its overlapping clusters that reach `--size`, those of `overlapping_clusters/`, with
+`network MAP` stores the network of the contigs in the map (the `GC_content`, `Hit`,
+`Shotgun_coverage` and `Restriction_site` columns of its contigs table, the weights of its
+normalization and the `network` entry of its metadata), in place of an earlier one; `partition` and
+`validation` refuse a map without it. `partition MAP` stores its overlapping clusters that reach `--size`, those of `overlapping_clusters/`, with
 their contigs, as the round `overlapping` of the clustering rounds of the map, in place of the rounds
 that it held (without the columns of miComplete, which the validation runs), and leaves the genomes
 and contigs tables of the map as they were. `validation MAP` writes the map of the clusters, as
@@ -393,9 +402,8 @@ of a `.mmetacool` collection needs it). They lock the map while they run, and re
 MAP` refuses (a map that is not there or that metacooler cannot open, a lock that another run holds, a
 FILE that exists without `-F`...), a map that is no map of the contigs of their contig data (`-c`:
 other contigs or lengths), an `--output-map` that is one of their inputs, and an invalid `--prefix`,
-before any work and before `-F` replaces the directories of clusters of an earlier run. Without the map,
-`partition` and `validation` run as before, but for an invalid `--prefix`, now refused before `-F`
-replaces those directories.
+before any work and before `-F` replaces the directories of clusters of an earlier run. Both need the
+map: metaTOR 2.0 removed their runs from the tables of the network (`-n`, `-c`).
 
 #### mge on a contact map
 

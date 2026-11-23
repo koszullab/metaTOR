@@ -40,7 +40,7 @@ metator mge -a assembly.fa -c binning/contig_data_final.txt -b binning/binning.t
 |---|---|
 | The pairs files | The pairs files of the run: those that hicstuff writes with the map, `<prefix>.valid_idx.pairs.gz`, sorted and compressed, once indexed with pairix (`pairix -p pairs FILE`; from Python, `pypairix.build_index(FILE, "pairs")`, as pypairix comes with metaTOR). A compressed pairs file needs the index; an uncompressed one without index is read whole, which is slower |
 | `--assembly` (`-a`) | The assembly, as a FASTA file |
-| `--contigs` (`-c`) | The contig data table of the run: the size, GC content and hits of each contig |
+| `--contigs` (`-c`) | The contig data table of the run: the size, GC content and hits of each contig of its map. The tables of a run list the contigs of its map only: an MGE contig that the map lacks (a map made with a contig filter) is in none, and `mge` leaves it out, with a warning that names it |
 | `--binning` (`-b`) | The clusters of the contigs, two columns: the contig, and its cluster. `binning.txt`, or the collection exported by anvi'o, whose split names (`NODE_1_split_00001`) are read as their contig (`NODE_1`) |
 | `--mges` (`-m`) | The MGE contigs, one name per line |
 
@@ -132,7 +132,13 @@ and `AssociatedBins`, are for the host MAGs of each MGE cluster: `metator mge`
 leaves them empty (`None`, `NA`, `NA`). The Python module `metator.host`
 (see [the API](../api/mge.md)) holds the functions, still in development, that
 associate MGE clusters with their hosts from the network; no command runs them
-yet.
+yet. They join the network to `contig_data_final.txt` by the IDs of the
+contigs. The IDs of the network of a map (`metator.network.map_network`) are
+the positions of its contigs in the map as it is read, and a run that
+regroups the map (`validation`, `pipeline`) moves them: the network of the
+map of the clusters has other IDs than the tables of the run. Give the
+network the IDs of the table first, by contig name, with
+`metator.network.relabel_network`.
 
 The phages of a community and their hosts are the subject of two of the
 studies listed in [Citing metaTOR](../citation.md): Marbouty et al., 2021,
