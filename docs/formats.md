@@ -23,7 +23,10 @@ metaTOR reads the length and the coverage of each contig, by name, from the
 first three columns. It must hold every contig of the assembly, with its
 length, as `jgi_summarize_bam_contig_depths` writes it from reads aligned on
 that assembly: a run with the depth file of another assembly stops with an
-error.
+error. `jgi_summarize_bam_contig_depths` writes the length of a contig of a
+million bases or more in scientific notation, to 6 significant digits
+(`1.21754e+06` for 1,217,543 bases): metaTOR reads it as the length of the
+contig rounded so.
 
 ### Pairs
 
