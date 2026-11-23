@@ -40,6 +40,23 @@ metator pipeline AB.metacool --assembly assembly.fa \
     --enzyme DpnII,HinfI --outdir out/
 ```
 
+MGE clusters, from the outputs of a run: in 1.x, its tables and its pairs
+files, which `pipeline` removes without `--no-clean-up`; in 2.0, the map of
+its clusters, whose MGE clusters `metator dump` writes in `clusters.txt` and
+`cluster_members.txt`:
+
+```bash
+# 1.x
+metator mge --contigs out/contig_data_final.txt \
+    --binning out/binning.txt --mges mges.txt --assembly assembly.fa \
+    --outdir mge/ out/alignment_0_sorted.pairs.gz
+
+# 2.0
+metator mge out/sample.metacool --mges mges.txt \
+    --assembly assembly.fa --outdir mge/
+metator dump mge/sample.metacool --outdir tables/
+```
+
 ### Same network, equivalent clusters
 
 On a mock community of 39 genomes (12.8 M read pairs, 174 Mb assembly):
