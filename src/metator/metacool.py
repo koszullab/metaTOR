@@ -38,11 +38,17 @@ Core functions to write the file:
 """
 
 import gzip
+import json
 import logging
 import os
+import shutil
+import socket
+import sys
 import tempfile
-from pathlib import Path
+import time
+import uuid
 from contextlib import contextmanager
+from pathlib import Path
 
 import pandas as pd
 
@@ -341,8 +347,14 @@ def check_bin_names(bins):
 
 
 def _check_paths(outfile, force, inputs):
-    """What every writer checks first, in this order: the outfile (replaced
-    only with force), then the input files (None for one not given)."""
+    """What every writer checks first, in this order: the outfile (a file:
+    not a URI, file::group, which metacooler would read as a group inside
+    the file and write there, truncating it; replaced only with force), then
+    the input files (None for one not given)."""
+    if "::" in str(outfile):
+        raise MetacoolError(
+            f"{outfile} is not the path of a file: a map is written to a file of its own, not to a group inside one."
+        )
     if os.path.exists(outfile) and not force:
         raise MetacoolError(f"{outfile} already exists. Use --force to overwrite it.")
     missing = [path for path in inputs if path and not os.path.isfile(path)]
@@ -463,6 +475,7 @@ def write_metacool(
         )
         try:
             _write_back_columns(outfile, contig_data, contig_columns, header)
+            _rewrite_in_a_fresh_file(outfile)
         except BaseException:
             # No map without the columns of its contigs.
             os.remove(outfile)
@@ -736,7 +749,7 @@ def _named_library(i, pairs_file):
         raise MetacoolError(f"Library {i}, {pairs_file}: {reason}") from error
 
 
-def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=False, metadata=None):
+def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=False, metadata=None, rounds=None):
     """Write the contact map of the final bins from a .metacool map of the
     contigs, without pairs files.
 
@@ -794,6 +807,11 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
     metadata : dict, optional
         Parameters of the run, stored with the version of metaTOR under the
         "metator" key of the file metadata.
+    rounds : tuple of pandas.DataFrame, optional
+        The clustering rounds of the run, as metator.clusters.read_rounds
+        reads them: stored in the /clusters group of the map (see
+        store_rounds), which replaces the rounds that the input map held.
+        Without them, the map keeps none.
 
     Raises
     ------
@@ -839,7 +857,7 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
     final_bins = set(assignment.values()) - {"ND"}
     logger.info(
         f"Writing {outfile} from the contact map {metacool}: {len(names)} contigs, "
-        f"{sum(value != 'ND' for value in assignment.values())} of them in {len(final_bins)} bins."
+        f"{sum(value != 'ND' for value in assignment.values())} of them in {len(final_bins)} clusters."
     )
     with _metacooler_logging():
         with _as_metacool_errors():
@@ -880,13 +898,56 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
                     keep_partial=False,
                 )
                 _write_back_columns(staged, contig_data, contig_columns, header)
+                store_rounds(staged, rounds)
+                _rewrite_in_a_fresh_file(staged)
                 metacooler.validate(staged, full=True)
+                # The map keeps the mode of the file it replaces (that of the
+                # target of a symbolic link): a private map stays private.
+                if os.path.exists(outfile):
+                    shutil.copymode(outfile, staged)
                 os.replace(staged, outfile)
-            logger.info(f"{outfile} is written: the contact map of the bins.")
+            logger.info(f"{outfile} is written: the contact map of the clusters.")
         except BaseException:
             if os.path.lexists(staged):
                 os.remove(staged)
             raise
+
+
+def _rewrite_in_a_fresh_file(path):
+    """Copy the map at path into a fresh file, which takes its place.
+
+    metacooler reassign copies a map it relabels as it is, and metacooler
+    annotate and the clustering rounds edit it in place: each leaves the
+    space of what it replaces in the file, which HDF5 does not reclaim. A
+    map updated run after run grew with every run (from 129 kB to 272 kB
+    over four updates of the map of the synthetic test data). Every object
+    is copied as stored, with its dtype, chunks, filters and attributes,
+    the columns of a table in their order, and the soft link /chroms as a
+    link; the file keeps its mode.
+    """
+    import shutil
+
+    import h5py
+
+    directory = os.path.dirname(os.path.abspath(path))
+    handle, fresh = tempfile.mkstemp(prefix=f"{os.path.basename(path)}.", suffix=".fresh", dir=directory)
+    os.close(handle)
+    try:
+        with h5py.File(path, "r") as source, h5py.File(fresh, "w") as target:
+            for key in source:
+                link = source.get(key, getlink=True)
+                if isinstance(link, h5py.SoftLink):
+                    target[key] = h5py.SoftLink(link.path)
+                else:
+                    source.copy(source[key], target, name=key)
+            for key in source.attrs:
+                target.attrs.create(key, source.attrs[key], dtype=source.attrs.get_id(key).dtype)
+        shutil.copymode(path, fresh)
+        os.replace(fresh, path)
+    except BaseException:
+        if os.path.lexists(fresh):
+            os.remove(fresh)
+        raise
 
 
 def _write_back_columns(path, contig_data, contig_columns, header):
@@ -937,3 +998,185 @@ def _write_back_columns(path, contig_data, contig_columns, header):
         unmatched="ignore",
         inplace=True,
     )
+
+
+def store_rounds(path, rounds):
+    """Store the clustering rounds of a run in the /clusters group of a map,
+    in place of those it held: the overlapping, recursive and final clusters
+    of metator.clusters, with their contigs, their parents and their columns
+    (those of miComplete, and of the bin summary for the final clusters).
+
+    Each round is stored with the tool and the version that made it. A text
+    column holds an empty text where a round has no value, as HDF5 stores no
+    missing text. The contigs of a cluster that the map lacks (a map made
+    with a contig filter) are left out, with a warning.
+
+    Parameters
+    ----------
+    path : str
+        Path to the .metacool file, written in place.
+    rounds : tuple of pandas.DataFrame, or None
+        The clusters and their contigs (see metator.clusters.read_rounds).
+        None removes the rounds that the map held.
+    """
+    import metacooler
+
+    if rounds is None:
+        metacooler.drop_clusters(path)
+        return
+    clusters, members = rounds
+    names = set(metacooler.MetaCooler(path).contigs["name"].astype(str))
+    absent = members["contig"].astype(str).map(lambda name: name not in names)
+    if absent.any():
+        logger.warning(
+            f"{int(absent.sum())} contig(s) of the clusters of the run are not in {path}, and not in its clusters "
+            f"either: {_shown(sorted(set(members.loc[absent, 'contig'])))}."
+        )
+        members = members[~absent]
+    order = list(dict.fromkeys(clusters["round"]))
+    steps = {name: "partition" if name == "overlapping" else "validation" for name in order}
+    stored = clusters.copy()
+    for column in stored.columns:
+        if column not in ("parent_round", "parent") and not pd.api.types.is_numeric_dtype(stored[column]):
+            stored[column] = stored[column].astype(object).where(stored[column].notna(), "").astype(str)
+    metacooler.write_clusters(
+        path,
+        [{"name": name, "tool": "metaTOR", "version": __version__, "step": steps[name]} for name in order],
+        stored,
+        members,
+    )
+
+
+def lock_path(path):
+    """The lock file of the map at path: <path>.metator.lock, next to it
+    (next to a symbolic link, not its target, as the link is what a run
+    replaces). A map given as file::/ is the file itself. Not <path>.lock,
+    the lock that metacooler takes to write a map: metacooler refuses to
+    write a map whose lock names a process that it cannot check, as this
+    lock does (it names no machine nor PID namespace)."""
+    return f"{map_file(path)}.metator.lock"
+
+
+def _pid_is_running(pid):
+    """Whether the process pid runs on this host."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _create_lock(lock, holder):
+    """Create the lock file, with what says who holds it (holder); False when
+    it exists already. Any other failure (a directory that is missing or
+    not writable) is raised as it is."""
+    try:
+        handle = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+    except FileExistsError:
+        return False
+    with os.fdopen(handle, "w") as stream:
+        json.dump(holder, stream)
+    return True
+
+
+def _lock_holder(lock):
+    """What a lock file says of its holder: {} when it cannot be read, or
+    does not hold a JSON object."""
+    try:
+        with open(lock) as stream:
+            holder = json.load(stream)
+    except (OSError, ValueError):
+        return {}
+    return holder if isinstance(holder, dict) else {}
+
+
+def _take_stale_lock(lock, stale, holder):
+    """Replace a lock whose holder is gone (stale, what it says) by this run's
+    (holder), unless another run did first: True when this run holds it.
+
+    The stale lock is moved aside first, which only one run can do: a run
+    that moved another run's lock instead (taken in the meantime) puts it
+    back, and has not taken it. One case is left open: a third run that
+    creates the lock while it is moved aside holds it with the run whose
+    lock was moved, which cannot be put back. Both then run, the last to
+    end replacing the map: each map is whole, as each is staged and
+    validated before it replaces the map."""
+    aside = f"{lock}.{os.getpid()}.{uuid.uuid4().hex}"
+    try:
+        os.rename(lock, aside)
+    except FileNotFoundError:
+        # Another run moved it aside first: the lock is that run's to take.
+        return _create_lock(lock, holder)
+    if _lock_holder(aside) != stale:
+        try:
+            os.link(aside, lock)
+        except FileExistsError:
+            pass
+        os.remove(aside)
+        return False
+    os.remove(aside)
+    return _create_lock(lock, holder)
+
+
+@contextmanager
+def map_lock(path, elsewhere="--output-map"):
+    """Hold the lock of the map at path for the time of a run that writes it.
+
+    Two runs that write one map, at once, would each replace it with its own
+    clusters, the last one winning. The lock, <path>.metator.lock (see
+    lock_path), is created before any work, and removed at the end of the
+    run, whatever its end, by the run that holds it only. It names that
+    run (its pid, host, start and command, and a uuid of its own, which
+    the release compares): a lock whose process no longer runs on this
+    host (a run killed with SIGKILL) is removed, with a warning, and taken
+    (see _take_stale_lock). The refusals say how to write the map
+    elsewhere: with elsewhere, the option of the command.
+
+    Raises
+    ------
+    MetacoolError
+        If another run holds the lock, its holder cannot be told, or the lock
+        cannot be created (a directory that is missing or not writable).
+    """
+    lock = lock_path(path)
+    mine = {
+        "pid": os.getpid(),
+        "host": socket.gethostname(),
+        "started": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "command": " ".join(["metator", *sys.argv[1:]]),
+        "run": uuid.uuid4().hex,
+    }
+    try:
+        taken = _create_lock(lock, mine)
+        if not taken:
+            holder = _lock_holder(lock)
+            pid, host = holder.get("pid"), holder.get("host")
+            if isinstance(pid, int) and host == socket.gethostname() and not _pid_is_running(pid):
+                logger.warning(f"Removing {lock}: the run that held it (pid {pid}, since {holder.get('started')}) is gone.")
+                taken = _take_stale_lock(lock, holder, mine)
+    except OSError as error:
+        message = (
+            f"{lock} cannot be created ({error.strerror}): a run that writes {path} locks it there, so the directory "
+            f"of the map must exist and be writable; write this run's map elsewhere with {elsewhere}."
+        )
+        logger.error(message)
+        raise MetacoolError(message) from error
+    if not taken:
+        holder = _lock_holder(lock)
+        pid, host = holder.get("pid"), holder.get("host")
+        who = f"pid {pid} on {host}, since {holder.get('started')}" if holder else "a run that cannot be told"
+        message = (
+            f"{path} is being written by another metaTOR run ({who}): wait for it to end, write this run's map "
+            f"elsewhere with {elsewhere}, or, if no such run is going on, remove {lock}."
+        )
+        logger.error(message)
+        raise MetacoolError(message)
+    try:
+        yield lock
+    finally:
+        # This run's lock only: not one that another run took after it was
+        # removed by hand.
+        if _lock_holder(lock) == mine:
+            os.remove(lock)

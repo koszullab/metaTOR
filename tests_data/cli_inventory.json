@@ -550,6 +550,14 @@
       "required": false
      },
      {
+      "short": null,
+      "long": "--output-map",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": false
+     },
+     {
       "short": "-O",
       "long": "--overlap",
       "takes_value": true,

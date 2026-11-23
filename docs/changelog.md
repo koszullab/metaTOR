@@ -20,6 +20,16 @@ All notable changes to this project will be documented in this file.
   stopped on a `KeyError`. `--no-metacool` removes both files at the end.
   Python API: `metator.metacool.write_library_maps`, and `libraries` of
   `metator.network.metacool_to_contacts`.
+- The clustering rounds of a run: the validation writes `clusters.txt`,
+  every cluster of every round (`overlapping`, `recursive_<k>`, `final`)
+  with the round and name of its parent and miComplete's columns, and
+  `cluster_members.txt`, the contigs of each. The map of the clusters
+  stores both in its `/clusters` group (metacooler 0.4.0), so that the
+  intermediate clusters are kept without being written into its genomes
+  and contigs tables, which hold the final ones. `metator metacool` stores
+  none. Python API: `metator.clusters`.
+- `pipeline --output-map FILE` writes the map of the clusters to FILE
+  (replaced only with `-F`).
 - `network` and `pipeline` start from a `.metacool` contact map with
   `--start metacool`, the map given to `-1` (a file, or an entry
   `file.mmetacool::entries/<name>`), at any bin size. The network is that
@@ -70,6 +80,35 @@ All notable changes to this project will be documented in this file.
   `check_map_contigs`.
 
 ### Changed
+- **Breaking:** a `pipeline` run from a `.metacool` map updates that map
+  in place, where it wrote a new map at `<outdir>/<prefix>.metacool`: the
+  map of the clusters is written next to it, validated in full, then
+  renamed over it (a symbolic link is replaced, not its target), so a run
+  that stops, for any reason, leaves it as it was. `--output-map FILE`
+  writes it elsewhere and leaves the input map alone; a run from an entry
+  of a `.mmetacool` collection needs it. While a run writes a map,
+  `<map>.metator.lock` holds it: a second run that would write the same map stops
+  before any work, naming the run that holds it, and a lock left by a run
+  that died on the same host is removed with a warning; `metator metacool`
+  locks the map it writes too. So the directory of the map must be
+  writable, and a map whose directory is not is refused before any work:
+  write it elsewhere with `--output-map`. A map updated in place keeps its
+  mode. SIGTERM (a job scheduler's time limit) stops a run as
+  Ctrl-C does, so it cleans up after itself. `--output-map` refuses,
+  before any work: `--no-metacool`, which writes no map; an entry of a
+  collection, a directory, and the collection of an input entry.
+- The map of the clusters of a run, and the map of `metator metacool`, are
+  written through a fresh file: the edits that make it (metacooler's
+  relabelling, `annotate`, the clustering rounds) left the space of what
+  they replaced in it, which HDF5 does not reclaim, so a map updated in
+  place grew with each run (from 129 kB to 272 kB over four updates of the
+  map of the synthetic test data; within 8 kB now, the history of the
+  runs). The map of the contigs that a stopped run leaves is not
+  rewritten.
+- **Breaking:** a map of the clusters that cannot be written stops
+  `pipeline` with the reason, logged as an error (it was a warning, and
+  the run went on to exit 0). The other outputs of the run are kept, and
+  so is the map it would have replaced.
 - Validation runs Prodigal and HMMER through pyrodigal and pyhmmer, their
   Python bindings, which pip installs with metaTOR, in place of the
   prodigal and hmmsearch programs that miComplete runs
@@ -86,14 +125,9 @@ All notable changes to this project will be documented in this file.
   `metacooler reassign`, where `write_metacool` read every pairs file
   again: the map is the one it wrote before, and that `metator metacool`
   writes from the pairs, but for its history (the `annotate` and
-  `reassign` keys of its metadata), the type of its counts with several
+  `reassign` keys of its metadata) and the type of its counts with several
   libraries (64-bit integers, which `metator metacool` stores as 32-bit
-  ones) and, when the final bins leave the
-  contigs in the order of the map of the contigs (for example, no final
-  bin, or one bin holding every contig), the place of its `genome_id`
-  column, after the `qc_*` columns. Its file is larger, for the same data
-  (by 12 to 32% on our test data): the columns measured on the assembly,
-  dropped and written again at the end, leave free space in it.
+  ones).
   `--no-metacool` builds it all the same and removes it at the end. An
   earlier run's map at its path is removed before the build,
   `--no-metacool` or not (it was removed at the end, and left there with
@@ -111,19 +145,15 @@ All notable changes to this project will be documented in this file.
   not ASCII, which it gives, before it builds its index or aligns a read:
   the map, which needs ASCII names, could only be built once the reads
   were aligned. From pairs, it refuses an empty pairs file, and one that
-  metacooler, which builds the map, or metaTOR, which reads the network of
-  several libraries from their pairs files and the pairs files of
-  `--scaffold`, could not read (metacooler goes by the suffix of its name,
-  in any case, metaTOR by the first bytes of the file): a zip archive, a
-  gzip file whose name ends with neither `.gz` nor `.bgz`, a bzip2 file
-  whose name does not end with `.bz2`, a plain file named as one of them,
-  and, with `--scaffold`, a zstd or LZ4 file (`.zst`, `.zstd`, `.lz4`),
-  which the scaffolding cannot read: without it, they work, as the
-  networks come from the maps. A map that metacooler cannot
-  build from the pairs files of a run from pairs stops the run with what
-  it needs of them: their header lines at their top only, the same number
-  of fields on every row, one file per library given comma-separated
-  rather than files concatenated.
+  metacooler, which builds the map, or metaTOR, which reads the pairs files
+  of `--scaffold`, could not read (both go by the first bytes of the file,
+  whatever its name): a zip archive and, with `--scaffold`, a zstd or LZ4
+  file, which the scaffolding cannot read: without it, they work, as the
+  networks come from the maps. A map that metacooler cannot build from the
+  pairs files of a run from pairs stops the run with what it needs of them:
+  the same number of fields on every row (their header lines may come
+  anywhere, so files of one assembly concatenated are one library), and one
+  file per library, given comma-separated.
 - `pipeline` refuses an `--edge` other than 0 before any work, whatever
   the start (it refused one above 0 with `--start metacool` only, and
   took a negative one as 0): it counts every pair, as its contact map
@@ -145,7 +175,8 @@ All notable changes to this project will be documented in this file.
   past the end of their contig ("N pairs with a read past the end of its
   contig are left out."): metacooler's warning, which stays, counts them
   with the other pairs it leaves out.
-- metaTOR requires metacooler 0.3.0. The `.metacool` maps it writes also
+- metaTOR requires metacooler 0.4.0, whose `/clusters` group holds the
+  clustering rounds of the map. The `.metacool` maps it writes also
   store the contact statistics of each contig (the `qc_intra_contig_short`
   and `qc_intra_contig_long` columns of the contigs table), which
   `metacooler reassign` carries over to the bins.

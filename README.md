@@ -135,7 +135,7 @@ The output files will be in the ouput directory given as parmater or in working 
 | overlapping_bin |Directory with the fasta of the partition bins||X|X|X|
 | recursive_bin |Directory with the fasta of the recursive bins|||X|X|
 | **final_bin** |**Directory with the fasta of the final bins**|||**X**|**X**|
-| metator.metacool |Contact map of the contigs, grouped by bin (`<prefix>.metacool` with `--prefix`)||||X|
+| metator.metacool |Contact map of the contigs, grouped by bin (`<prefix>.metacool` with `--prefix`); a run from a map updates that map instead (see [Starting from a contact map](#starting-from-a-contact-map))||||X|
 | metator.mmetacool |With several libraries, the contact map of each library (`<prefix>.mmetacool` with `--prefix`)||||X|
 
 **Bam alignment files**
@@ -203,16 +203,13 @@ files give, byte for byte. So a pair on a contig that the assembly lacks is left
 (it counts them, with the pairs that have a read past the end of their contig), and the run goes on,
 whatever the number of libraries. At the end of the run, `pipeline` writes the map of the bins over the
 map of the contigs, from the final tables, with `metacooler reassign`; `--no-metacool` removes the maps
-instead (the `.mmetacool` collection too). Its file is larger than that of a map written from the pairs
-in one go (by 12 to 32% on our test data), for the same data: the columns measured on the assembly,
-dropped and written again at the end, leave free space in it. A run that started from a contact map
-writes the map of its bins from that map (see [Starting from a contact
-map](#starting-from-a-contact-map)). `metator metacool` writes the same file from the pairs files,
-`contig_data_final.txt` and `bin_summary.txt` of a run, but for the history that it stores (the
-`annotate` and `reassign` keys of its metadata), the type of its counts with several libraries (64-bit
-integers, which `metator metacool` stores as 32-bit ones) and, when the final bins leave the contigs in
-the order of the map of the contigs (for example, no final bin, or one bin holding every contig), the
-place of the `genome_id` column, which metacooler then writes after the `qc_*` columns:
+instead (the `.mmetacool` collection too). It is written through a fresh file, which holds none of the space that the edits making it leave behind, so a map updated in place does not grow with each run. A run that started from a contact map updates that map in place (or writes `--output-map`, see
+[Starting from a contact map](#starting-from-a-contact-map)). The map also stores the clustering rounds of the run (the
+overlapping, recursive and final clusters, with their contigs), which the run writes as `clusters.txt` and
+`cluster_members.txt` too. `metator metacool` writes the same file from the pairs files,
+`contig_data_final.txt` and `bin_summary.txt` of a run, but for the clustering rounds, which it does not store, the history that it stores (the
+`annotate` and `reassign` keys of its metadata) and the type of its counts with several libraries (64-bit
+integers, which `metator metacool` stores as 32-bit ones):
 
 ```sh
 metator metacool -c contig_data_final.txt -b bin_summary.txt -o sample.metacool alignment_0_sorted.pairs.gz alignment_1_sorted.pairs.gz
@@ -266,9 +263,9 @@ The contig and bin names must be ASCII, as `cooler` reads them as ASCII text. No
 metacooler marks a contig in no bin (`NA`, `NaN`, `N/A`, `N/D`, `-1` or `__unbinned__` in any case,
 and `nd` in any case other than `ND`, which marks a contig in no bin): metacooler would put its contigs
 in `__unbinned__`. metaTOR's own bin names never
-are, but those of a hand-edited `contig_data_final.txt` can be. When the map of the bins cannot be
-written, `metator pipeline` logs a warning saying why and keeps its other outputs and its exit status;
-`metator metacool` logs the reason as an error and stops with it. `pipeline` removes a map that an
+are, but those of a hand-edited `contig_data_final.txt` can be. When the map of the clusters cannot
+be written, `metator pipeline` and `metator metacool` log the reason as an error and stop with it;
+`pipeline` keeps its other outputs. `pipeline` removes a map that an
 earlier run left in the output directory before it builds the map of the contigs in its place
 (`--no-metacool` or not), as it no longer matches the bins: from then on, the map there is this run's,
 or there is none. So a run from reads, alignments or pairs refuses, before any work, an input that is
@@ -288,19 +285,16 @@ stopped run left in the output directory; `--scaffold` is not available then (se
 run that is not from a map refuses an assembly with other contig names, which it gives, before it builds
 the index of the assembly or aligns a read; rename these contigs to ASCII names, in the assembly and in
 the alignments or pairs files made from it (and build its index again, for an assembly given as an
-index). metacooler, which builds the map, finds the compression of a pairs file from the suffix of its
-name only, in any case: it reads a file named `.gz` or `.bgz` as gzip, `.bz2` as bzip2, `.zst` or `.zstd`
-as zstd and `.lz4` as LZ4, and a file of any other name as plain text. metaTOR, which reads the pairs
-files of `--scaffold`, finds the compression of a file from its first bytes, and reads plain, gzip, bzip2
-and zip files. So a run from pairs refuses, before any work, an empty pairs file; a zip archive, which
-metacooler cannot read; a gzip file whose name ends with neither `.gz` nor `.bgz`, and a bzip2 file whose
-name does not end with `.bz2`; a plain file named as a gzip or bzip2 file; and, with `--scaffold`, a zstd
-or LZ4 file, which metaTOR cannot read: rename, decompress or recompress the file (with gzip, named
-`.gz`). zstd and LZ4 files work without `--scaffold`: the networks come from the maps. metacooler also
-needs the header lines of a pairs file (those that start with `#`) at its top only, and the same number
-of fields on every row: give the pairs files of several libraries comma-separated, one file per library,
-rather than concatenated. A run from pairs that metacooler cannot read stops with the reason and these
-needs.
+index). metacooler, which builds the map, and metaTOR, which reads the pairs files of `--scaffold`, both
+find the compression of a pairs file from its first bytes, whatever its name: metacooler reads plain,
+gzip, bzip2, zstd and LZ4 files, metaTOR plain, gzip, bzip2 and zip ones. So a run from pairs refuses,
+before any work, an empty pairs file; a zip archive, which metacooler cannot read; and, with
+`--scaffold`, a zstd or LZ4 file, which metaTOR cannot read: decompress the file, or compress it with
+gzip. zstd and LZ4 files work without `--scaffold`: the networks come from the maps. metacooler also
+needs the same number of fields on every row of a pairs file; its header lines (those that start with
+`#`) may come anywhere, so pairs files of one assembly concatenated with `cat` are one library. Give the
+pairs files of several libraries comma-separated, one file per library. A run from pairs that metacooler
+cannot read stops with the reason and these needs.
 
 #### Starting from a contact map
 
@@ -347,8 +341,9 @@ the `.pairs.gz` files of the output directory: a run from a map draws none, and 
 pairs alignment files were found, unless the output directory holds those of an earlier run (a rebinning
 in the directory of a run from reads, for example), from which the heatmap is then drawn.
 
-At the end of such a run, `pipeline` writes the map of its bins (`metator.metacool`, or
-`<prefix>.metacool`) from the input map, with `metacooler reassign`, as a new file:
+At the end of such a run, `pipeline` updates the input map in place with the map of its clusters,
+with `metacooler reassign` (`--output-map FILE` writes it to FILE instead, and leaves the input map
+as it was):
 
 * the bins and contacts of the input map, at its bin size; one genome per final bin, `__unbinned__`
   for the other contigs; the contigs grouped genome by genome, the longest first, whatever the order
@@ -369,11 +364,18 @@ At the end of such a run, `pipeline` writes the map of its bins (`metator.metaco
 
 On a map with one bin per contig of all the contigs of the assembly, the map of the bins is the map
 that a run from the pairs of the map writes, contact statistics included, but for its assembly name and
-its history. The map of the bins may go where the input map is, to bin its contigs again in the same
-output directory (`-S metacool -1 binning/metator.metacool -o binning -F`, or a symbolic link to it):
-the new map is written next to the outfile and checked (`metacooler`'s full validation) before it
-replaces the outfile, which is left as it was, with a warning, when the new map cannot be written. A
-symbolic link at the outfile is replaced, not its target (an input map stored elsewhere, for example).
+its history. The new map is written next to the map it replaces and checked (`metacooler`'s full
+validation) before it replaces it; when it cannot be written, the run stops with the reason, and the
+map is left as it was, as it is when the run stops for any other reason (Ctrl-C included). A symbolic
+link is replaced, not its target (an input map stored elsewhere, for example). A run from an entry of a
+`.mmetacool` collection needs `--output-map`, and a FILE that exists is replaced only with `-F`. While
+a run writes a map, `<map>.metator.lock` holds it: a second run that would write the same map stops before any
+work, naming the run that holds it (a lock that a run left behind on the same host when it died is
+removed, with a warning). A run stopped by Ctrl-C or SIGTERM (a job scheduler's time limit) cleans up after
+itself; one killed outright (`kill -9`) can leave its lock, and the files of the map it was writing
+next to the map, which can be deleted: `.<map>.<random>.tmp` or `.<map>.<random>.tmp.<random>.fresh`,
+and those that metacooler and cooler write while it is written (`.<map>.<random>.tmp.partial`,
+`.<map>.<random>.tmp.partial.__writing__`, `tmp<random>.multi.cool`). The map is left as it was.
 
 #### From hicstuff to metaTOR through metacooler
 
@@ -390,7 +392,7 @@ samtools faidx assembly.fa
 awk -v OFS='\t' '{print $1, 0, $2}' assembly.fa.fai > contigs.bed
 metacooler create pairs --pairs hicstuff_L1/L1.valid_idx.pairs.gz --pairs hicstuff_L2/L2.valid_idx.pairs.gz \
     --bins contigs.bed --no-ps --assembly-name assembly -o sample.metacool
-# 3. Bin the contigs; binning/metator.metacool is the map of the bins.
+# 3. Cluster the contigs: sample.metacool becomes the map of the clusters, in place.
 metator pipeline -S metacool -1 sample.metacool -a assembly.fa -e DpnII -o binning
 ```
 

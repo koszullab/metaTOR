@@ -52,7 +52,9 @@ dependencies = [
     "pyhmmer>=0.10.11",
     "pypairix",
     "rich-click>=1.9",
-    "metacooler>=0.3.0",
+    "metacooler>=0.4.0",
+    # The map of a run is copied into a fresh file (metacool.py).
+    "h5py>=3.8",
 
     # NON PIP DEPENDENCIES
     #"bowtie2"
