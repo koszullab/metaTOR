@@ -42,12 +42,12 @@ dependencies = [
     "matplotlib>=3.9",
     "scipy",
     "micomplete",
+    # Prodigal and HMMER for miComplete, in place of the programs (see
+    # metator._micomplete).
+    "pyrodigal>=3.0",
+    "pyhmmer>=0.10.11",
     "rich-click>=1.9",
-    "metacooler>=0.3.0",
-
-    # NON PIP DEPENDENCIES (miComplete's)
-    #"prodigal"
-    #"hmmer"
+    "metacooler>=0.4.0",
 ]
 
 [project.optional-dependencies]
@@ -71,20 +71,6 @@ dev = [
     "ruff>=0.8",
     "ty>=0.0.38",
 ]
-
-[tool.uv.sources]
-# Temporary: metacooler 0.4.0 is not on PyPI yet. This pins the commit of
-# js2264/metacooler's js/network-contig-ids (#32), on js/fasta, the top of
-# the 0.4.0 stack: /clusters (#24, in devel), the normalization weights of
-# #19 and #25, and the changes of the metaTOR 2.0 plan, M1 to M5 (#27, #28,
-# #29, #31 and #30): the QC split at 1001 bp, the contig network as a table,
-# the metator alias of --contigs-format, the lock and the edit sessions
-# (staged_edit) that metaTOR's map writes go through, and metacooler fasta;
-# and the contigs of the network as their ids (#32). Once 0.4.0 is on PyPI,
-# delete this table, require metacooler>=0.4.0 and run
-# `uv lock --upgrade-package metacooler`. The repository is private, so CI
-# cannot install it until then.
-metacooler = { git = "https://github.com/js2264/metacooler", rev = "a38b038db6b857236b3734533cc6a8de2b70d19d" }
 
 [project.urls]
 homepage = "https://github.com/koszullab/metator"

@@ -56,12 +56,20 @@ def described(holder):
     return f"pid {holder['pid']} on {holder['host']}, since {holder['start']}: {holder['command']}"
 
 
-def refusal(metacool, holder):
-    """metacooler's refusal of the lock of the map metacool, which a live process
-    of this host holds (holder: what its lock file says)."""
-    path = lock_file(metacool).with_suffix("")
-    return (
-        f"{path} is being written by another process ({described(holder)}): wait for it to end, or, if no such "
-        f"process is running, delete {lock_file(metacool)} and {path.parent}/.{path.name}.{holder['uuid']}.*.d/ "
-        "(its staged copies)."
-    )
+def refusal(metacool, holder=None):
+    """metacooler's refusal of the lock of the map metacool, which another process
+    holds (holder: what its lock file says; None, if it says nothing readable).
+
+    The reason is asked of metacooler, as a run asks for the lock, not written
+    out here: a test of metaTOR checks that a run gives metacooler's reason,
+    whose words are metacooler's to change. It names the lock file to delete if
+    its holder is gone, and the holder, where the lock file says who it is."""
+    import metacooler
+    import pytest
+
+    with pytest.raises(metacooler.MapLockedError) as refused, metacooler.lock(metacool):
+        pass
+    reason = str(refused.value)
+    assert str(lock_file(metacool)) in reason
+    assert holder is None or described(holder) in reason
+    return reason
