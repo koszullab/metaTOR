@@ -108,9 +108,10 @@ def test_contig_names_that_read_as_missing_values_stay_names(tmp_path):
     assert clusters["parent"].isna().all()
 
 
-def test_the_tables_of_the_rounds_are_in_the_log_file(tmp_path):
+def test_the_tables_of_the_rounds_are_in_the_log_file(tmp_path, debug_log):
     """The tables of the rounds are logged with the other lines of a run, in its
-    log file: they were logged to a logger that no handler hears."""
+    log file, as a detail (DEBUG), which a log at DEBUG shows: they were
+    logged to a logger that no handler hears."""
     import logging
 
     import metator.log as mtl
@@ -127,7 +128,7 @@ def test_the_tables_of_the_rounds_are_in_the_log_file(tmp_path):
             if isinstance(handler, logging.FileHandler):
                 mtl.logger.removeHandler(handler)
                 handler.close()
-    assert "1 clusters in 1 rounds are written to" in log.read_text()
+    assert " :: DEBUG :: 1 clusters in 1 rounds are written to" in log.read_text()
 
 
 def test_the_tables_of_the_rounds_are_those_written(tmp_path):

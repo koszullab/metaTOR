@@ -7,6 +7,10 @@ Basic logging setup with two handlers (stdout and log file). By default the
 log file is disabled, but can be enabled or changed using set_file_handler.
 Python's warnings (warnings.warn, which cooler and pandas give theirs with)
 go to the same handlers, as metaTOR's own messages do.
+
+The messages at INFO tell what a run does and finds; those at DEBUG, its
+bookkeeping (the files it writes on the way, the temporary directory it
+removes...), are not shown: CURRENT_LOG_LEVEL shows them.
 """
 
 import logging
@@ -42,10 +46,17 @@ def set_file_handler(log_path, formatter=logfile_formatter):
     messages and of Python's warnings."""
 
     filehandler = logging.FileHandler(log_path, "a")
-    filehandler.setLevel(logging.INFO)
+    filehandler.setLevel(logging.DEBUG)
     filehandler.setFormatter(formatter)
     for _logger in (logger, warnings_logger):
         for hdlr in _logger.handlers[:]:  # remove the existing file handlers
             if isinstance(hdlr, logging.FileHandler):
                 _logger.removeHandler(hdlr)
         _logger.addHandler(filehandler)  # set the new handler
+
+
+def duration(seconds):
+    """A duration, in whole seconds, as hicstuff writes it in its log: 0h 17m 31s."""
+    hours, rest = divmod(round(seconds), 3600)
+    minutes, seconds = divmod(rest, 60)
+    return f"{hours}h {minutes}m {seconds}s"

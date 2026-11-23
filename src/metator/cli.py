@@ -75,7 +75,7 @@ def private_tmp_dir(tmpdir, clean_up=True):
     logger.debug("Temporary directory: %s", tmp_dir)
     yield tmp_dir
     if clean_up:
-        logger.info(f"The temporary directory of the run, {tmp_dir}, is removed with its files: -N keeps them.")
+        logger.debug(f"The temporary directory of the run, {tmp_dir}, is removed with its files: -N keeps them.")
         shutil.rmtree(tmp_dir)
         if base_created and not os.listdir(base):
             os.rmdir(base)
@@ -190,6 +190,18 @@ def refuse_output_dir(path, force):
         raise ValueError
 
 
+def make_outdir(outdir):
+    """Make the output directory of a run, outdir, if it is not there: one that
+    cannot be made (a file there, a directory that is not writable) is
+    refused before any work, and the reason is logged as an error."""
+    try:
+        os.makedirs(outdir, exist_ok=True)
+    except OSError as error:
+        message = f"The output directory {outdir} cannot be made ({error.strerror}): give the run another one with -o."
+        logger.error(message)
+        raise mtmc.MetacoolError(message) from error
+
+
 def make_output_dir(path, force):
     """Create an output directory of bins; an existing one is replaced with
     --force, or refused."""
@@ -296,17 +308,30 @@ def open_input_map(input_map):
         raise
 
 
-def refuse_an_input_as_the_map(output_map, inputs):
-    """Refuse, before any work, an --output-map that is one of the files of the
-    inputs of the run (the assembly, a table): the run would replace it with
-    its map."""
-    if output_map is None or not os.path.exists(output_map):
+def refuse_an_input_as_the_map(outfile, in_place, inputs):
+    """Refuse, before any work, a map that the run writes in its output directory
+    (outfile, unless it updates its input map in place) that is one of the
+    files of the inputs of the run (the assembly, a table): the run would
+    replace it with its map."""
+    if in_place or not os.path.exists(outfile):
         return
     for path in inputs:
-        if path is not None and os.path.isfile(path) and os.path.samefile(path, output_map):
-            reason = f"--output-map {output_map} is {path}, an input of the run: write the map elsewhere."
+        if path is not None and os.path.isfile(path) and os.path.samefile(path, outfile):
+            reason = (
+                f"{outfile}, where the run writes its map, is {path}, an input of the run: give the run another output "
+                "directory with -o."
+            )
             logger.error(reason)
             raise mtmc.MetacoolError(reason)
+
+
+def write_elsewhere(inplace):
+    """How a run that updates its input map in place would leave it as it is, for
+    the messages that refuse or warn of the update: without --inplace
+    (inplace), the run writes its map in its output directory; a run whose
+    output directory holds its input map already (see run_map_path) writes it
+    in another one."""
+    return "leave out --inplace" if inplace else "give the run another output directory with -o"
 
 
 # What a run that updates its map in place replaces of what the map holds
@@ -321,11 +346,12 @@ REPLACED_IN_PLACE = {
 }
 
 
-def warn_of_what_is_replaced(command, metacool, rounds=None):
+def warn_of_what_is_replaced(command, metacool, rounds=None, inplace=False):
     """Warn, before any work, that a run (command) that updates the map metacool
-    in place replaces what the map holds already: its clusters (the genomes
-    other than __unbinned__, of an earlier run, or of another binner), and its
-    clustering rounds made by an earlier run (see REPLACED_IN_PLACE).
+    in place (with --inplace: inplace, or as the map of its output directory)
+    replaces what the map holds already: its clusters (the genomes other than
+    __unbinned__, of an earlier run, or of another binner), and its clustering
+    rounds made by an earlier run (see REPLACED_IN_PLACE).
 
     Neither can be found again in the updated map."""
     clusters, steps = REPLACED_IN_PLACE[command]
@@ -345,13 +371,14 @@ def warn_of_what_is_replaced(command, metacool, rounds=None):
         held.append(f"the clustering round(s) {', '.join(rounds)}")
     if held:
         logger.warning(
-            f"{metacool} holds {' and '.join(held)}, which this run replaces, in place: give --output-map to write the "
-            f"map of this run to another file, and leave {metacool} as it is."
+            f"{metacool} holds {' and '.join(held)}, which this run replaces, in place: {write_elsewhere(inplace)} to "
+            f"write the map of this run to another file, and leave {metacool} as it is."
         )
 
 
-def step_map(command, input_map, output_map, force, held, inputs=(), rounds=None):
-    """The map that a partition, validation or mge run (command) writes."""
+def step_map(command, input_map, outdir, inplace, force, held, inputs=(), rounds=None):
+    """The map that a partition, validation or mge run (command) writes (see
+    run_map_path), and the map as it reads it (see hold_map)."""
     map_of = f"the map of the {'run' if command == 'mge' else 'contigs of the run'} as the first argument of {command}"
     path = refuse_missing_map(input_map)
     if not mtmc.is_map(input_map):
@@ -360,9 +387,9 @@ def step_map(command, input_map, output_map, force, held, inputs=(), rounds=None
         raise mtmc.MetacoolError(reason)
     refuse_a_map_named_as_a_uri(input_map, path)
     open_input_map(input_map)
-    refuse_an_input_as_the_map(output_map, inputs)
-    outfile, in_place = run_map_path(input_map, output_map, force)
-    return outfile, hold_map(held, command, input_map, outfile, in_place, rounds)
+    outfile, in_place = run_map_path(input_map, outdir, inplace, force)
+    refuse_an_input_as_the_map(outfile, in_place, inputs)
+    return outfile, hold_map(held, command, input_map, outfile, in_place, rounds, inplace)
 
 
 def start_step(
@@ -370,7 +397,7 @@ def start_step(
     outdir,
     cluster_dirs,
     input_map,
-    output_map,
+    inplace,
     force,
     held,
     prefix=None,
@@ -383,10 +410,10 @@ def start_step(
     (cluster_dirs, see make_output_dir), refused without force when an earlier
     run left them, as, with partition (a validation run), what a run of an
     earlier version wrote in outdir (see refuse_earlier_outputs), which force
-    removes."""
+    removes. Returns the time the run started too (see generate_log_header)."""
     log_file = log_file_name(outdir, command)
-    generate_log_header(log_file)
-    metacool_file, planned = step_map(command, input_map, output_map, force, held, inputs=inputs)
+    started = generate_log_header(log_file, outdir=outdir)
+    metacool_file, planned = step_map(command, input_map, outdir, inplace, force, held, inputs=inputs)
     stored = stored_network(input_map)
     clusters = map_partition(input_map, planned, stored.digest) if partition else None
     if assembly is not None:
@@ -396,10 +423,10 @@ def start_step(
     for path in cluster_dirs:
         refuse_output_dir(path, force)
     if partition:
-        refuse_earlier_outputs(outdir, keep=(input_map, output_map))
+        refuse_earlier_outputs(outdir, keep=(input_map, metacool_file))
     for path in cluster_dirs:
         make_output_dir(path, force)
-    return log_file, metacool_file, bins_prefix, planned, stored, clusters
+    return started, metacool_file, bins_prefix, planned, stored, clusters
 
 
 def stored_network(metacool):
@@ -498,20 +525,55 @@ def check_assembly(assembly):
         raise ValueError
 
 
-def generate_log_header(log_path):
-    """Start the log file with the version, the date and the command line."""
+def generate_log_header(log_path, **values):
+    """Start the log file of a run, as hicstuff starts its own: the version of
+    metaTOR, the date, the command line (cmd) and the value of each parameter
+    of the command (see command_parameters; values: the values that the run
+    resolved, by parameter name, such as its output directory), then a line of
+    dashes.
+
+    Returns the time the run started, which the last line of its log counts
+    from (see log_end)."""
+    started = time.monotonic()
     mtl.set_file_handler(log_path, formatter=logging.Formatter(""))
     logger.info(f"## MetaTOR: v{__version__} log file")
     logger.info(f"## date: {time.strftime('%Y-%m-%d %H:%M:%S')}")
-    logger.info(f"## Command used: {shlex.join(['metator', *sys.argv[1:]])}")
-    logger.info("\n---\n")
+    logger.info(f"## cmd: {shlex.join(['metator', *sys.argv[1:]])}")
+    for name, value in command_parameters(values):
+        logger.info(f"## {name}: {value}")
+    logger.info("---")
     mtl.set_file_handler(log_path, formatter=mtl.logfile_formatter)
+    return started
 
 
-def generate_log_footer(log_path):
-    mtl.set_file_handler(log_path, formatter=logging.Formatter(""))
-    logger.info("\n---")
-    logger.info(f"## date: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+def command_parameters(values=None):
+    """The parameters of the running command, as the header of its log lists
+    them: in the order of its help, the name of each (its long option without
+    the dashes, or MAP as map) and its value, as given or by default, or as the
+    run resolved it (values, by parameter name). None outside a command."""
+    ctx = click.get_current_context(silent=True)
+    if ctx is None:
+        return []
+    given = {**ctx.params, **(values or {})}
+    return [
+        (next((opt[2:] for opt in param.opts if opt.startswith("--")), param.name), given[param.name])
+        for param in ctx.command.params
+        if param.name in given
+    ]
+
+
+def log_end(started, what, where=None):
+    """End the log of a run, as hicstuff ends its own: what the run wrote (where:
+    the map, or the directory of the tables), and how long it took since it
+    started (see generate_log_header)."""
+    logger.info(f"{what} after {mtl.duration(time.monotonic() - started)}" + (f": {where}" if where else "."))
+
+
+def log_stage(number, name, what):
+    """The first line of the log of a step of a pipeline run, one of three
+    (network, partition, validation): which step, its name, and what it does,
+    so that the log of the run reads step by step."""
+    logger.info(f"[{number}/3] {name}: {what}")
 
 
 def log_file_name(directory, command):
@@ -530,15 +592,17 @@ def run_metadata():
     }
 
 
-def hold_lock(held, path, in_place):
+def hold_lock(held, path, in_place, inplace=False):
     """Hold the lock of the map at path until the end of the run (in held, an
     ExitStack): metacooler's (metacooler.lock), which every writer of the map
     takes too, and which the edit session that writes the map at the end of the
     run re-enters (see metator.metacool._staged_edit).
 
     In place, the lock is the file a symbolic link points to, as metacooler
-    edits it; with --output-map, FILE's own name, so runs from one map, each
-    with its own --output-map, run side by side."""
+    edits it; otherwise, the map of the output directory, its own name, so
+    runs from one map, each in its own output directory, run side by side.
+    inplace: whether the run updates its map in place by --inplace, for the
+    message that refuses it."""
     import metacooler
 
     try:
@@ -549,99 +613,137 @@ def hold_lock(held, path, in_place):
             held.enter_context(metacooler.lock(path, command=command, follow_symlinks=in_place))
     except OSError as error:
         # MapLockError, and MapLockedError: OSErrors of metacooler.
-        elsewhere = " Or write this run's map elsewhere with --output-map." if in_place else ""
+        elsewhere = f" Or write this run's map elsewhere: {write_elsewhere(inplace)}." if in_place else ""
         message = f"{str(error).rstrip('.')}.{elsewhere}"
         logger.error(message)
         raise mtmc.MetacoolError(message) from error
 
 
-def hold_map(held, command, input_map, outfile, in_place, rounds=None):
+def hold_map(held, command, input_map, outfile, in_place, rounds=None, inplace=False):
     """Hold the lock of the map that a run (command) writes, outfile, until the
     end of the run (see hold_lock), then open its input map: the map as the run
-    reads it, under that lock when the run updates it in place (in_place),
-    which the map of the run is refused to be written from if it changed since
-    (see metator.metacool.write_map's planned)."""
-    hold_lock(held, outfile, in_place)
+    reads it, under that lock when the run updates it in place (in_place; by
+    --inplace: inplace), which the map of the run is refused to be written
+    from if it changed since (see metator.metacool.write_map's planned)."""
+    hold_lock(held, outfile, in_place, inplace)
     planned = open_input_map(input_map)
     if in_place:
-        refuse_a_read_only_map(outfile)
-        warn_of_what_is_replaced(command, input_map, rounds)
+        refuse_a_read_only_map(outfile, inplace)
+        warn_of_what_is_replaced(command, input_map, rounds, inplace)
     return planned
 
 
-def refuse_a_read_only_map(path):
+def refuse_a_read_only_map(path, inplace=False):
     """Refuse, before any work, the map that a run updates in place (path, its
-    input map) when it has no write permission (judged by its mode too, as a
-    run as root may write any file): metacooler refuses to replace a read-only
-    map, which it would do at the end of the run."""
+    input map; by --inplace: inplace) when it has no write permission (judged
+    by its mode too, as a run as root may write any file): metacooler refuses
+    to replace a read-only map, which it would do at the end of the run."""
     mode = os.stat(path).st_mode
     if mode & (stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH) and os.access(path, os.W_OK):
         return
     message = (
         f"{path} is read-only (mode {stat.filemode(mode)}): the run would replace it with the map of its clusters. "
-        "Make it writable (chmod u+w), or write the map of the run to another file with --output-map."
+        f"Make it writable (chmod u+w), or write the map of the run to another file: {write_elsewhere(inplace)}."
     )
     logger.error(message)
     raise mtmc.MetacoolError(message)
 
 
-def run_map_path(input_map, output_map=None, force=False):
-    """The map a run writes, and whether it updates its input map in place:
-    output_map when given, else the file of its input map, the file that it
-    points to when it is a symbolic link, as metacooler edits that file (a map
-    given as file::/, the root of the file, is the file). output_map updates
-    the input map in place when it names that file itself (see
-    metator.metacool.is_input_map); any other output_map is a map of its own, a
-    symbolic link there replaced, not its target.
+def default_map(input_map, outdir="."):
+    """The map that a run writes by default (see run_map_path): in its output
+    directory, outdir, under the name of the file of its input map, or, for
+    an entry of a .mmetacool collection (file.mmetacool::entries/NAME),
+    NAME.metacool: a map of its own."""
+    if mtmc.is_entry(input_map):
+        name = str(input_map).split("::", 1)[1].strip().strip("/").rsplit("/", 1)[-1]
+        name = name if name.endswith(".metacool") else f"{name}.metacool"
+    else:
+        name = os.path.basename(mtmc.map_file(input_map))
+    # The current directory, as ., ./ or none: the name alone.
+    return name if os.path.normpath(outdir or ".") == "." else join(outdir, name)
+
+
+def run_map_path(input_map, outdir=".", inplace=False, force=False):
+    """The map a run writes, and whether it updates its input map in place.
+
+    By default, the map of the output directory of the run, outdir, of the name
+    of its input map (see default_map): a new map, which the run writes from a
+    copy of its input map, left as it was (metacooler stages the copy beside
+    it, and renames it there once it is written and validated). A symbolic
+    link there is a file of its own, which the map replaces, not its target.
+    When it is the input map's file itself (its symbolic links followed, see
+    metator.metacool.is_input_map), the run updates it in place: a run step by
+    step, on the map that the step before wrote in the same output directory.
+
+    With inplace (--inplace), the input map itself: the file that a symbolic
+    link points to, as metacooler edits that file (a map given as file::/,
+    the root of the file, is the file).
+
+    The log says which map the run writes, and whether it updates its input map.
 
     Raises
     ------
     MetacoolError
-        If output_map names an entry of a collection or a directory, is the
-        collection of the input map (an entry) or a hard link of the input map,
-        or exists and is not the input map, without force; if the input map is
-        an entry of a .mmetacool collection, without output_map; or if the
-        directory of output_map cannot be made. It is raised before the run does
+        With inplace, if the input map is an entry of a .mmetacool collection;
+        otherwise, if the map of the output directory holds ::, is a
+        directory, the collection of the input map (an entry) or a hard link of
+        the input map, or exists and is not the input map, without force, or if
+        the output directory cannot be made. It is raised before the run does
         any work, and its reason is logged as an error.
     """
+    if inplace:
+        if mtmc.is_entry(input_map):
+            message = (
+                f"{input_map} is an entry of a .mmetacool collection, which a run does not update in place: leave out "
+                "--inplace, and the run writes its map, a map of its own, in its output directory."
+            )
+            logger.error(message)
+            raise mtmc.MetacoolError(message)
+        logger.info(f"The run updates {input_map} in place (--inplace).")
+        # The file itself (file::/, the root of the file, names it too), or the
+        # file that a symbolic link points to, which metacooler edits.
+        path = mtmc.map_file(input_map)
+        return (os.path.realpath(path) if os.path.islink(path) else path), True
+    outfile = default_map(input_map, outdir)
     reason = None
-    if output_map and "::" in str(output_map):
-        reason = f"--output-map takes the path of a .metacool file, not an entry of a collection: {output_map}."
-    elif output_map and os.path.isdir(output_map):
-        reason = f"{output_map} is a directory: --output-map takes the path of a .metacool file."
-    elif output_map and mtmc.is_entry(input_map) and mtmc.is_input_map(input_map, output_map):
+    if "::" in outfile:
         reason = (
-            f"{output_map} is the collection of the input map {input_map}: a run does not replace a collection with "
-            "the map of its clusters; give --output-map another file."
+            f"{outfile}, the map of the run in its output directory, holds ::, which metacooler reads as file::group: "
+            "give the run another output directory with -o."
         )
-    elif output_map and mtmc.is_hard_link_of(input_map, output_map):
+    elif os.path.isdir(outfile):
         reason = (
-            f"--output-map {output_map} is a hard link of the input map {input_map}: the same file under another "
-            "name. Give --output-map another file, or leave it out to update the map in place."
+            f"{outfile} is a directory, where the run writes its map: move it away, or give the run another output "
+            "directory with -o."
         )
-    elif output_map and os.path.lexists(output_map) and not force and not mtmc.is_input_map(input_map, output_map):
-        reason = f"{output_map} exists: give -F to replace it with the map of this run, or another --output-map."
+    elif mtmc.is_entry(input_map) and mtmc.is_input_map(input_map, outfile):
+        reason = (
+            f"{outfile} is the collection of the input map {input_map}: a run does not replace a collection with its "
+            "map. Give the run another output directory with -o."
+        )
+    elif mtmc.is_hard_link_of(input_map, outfile):
+        reason = (
+            f"{outfile} is a hard link of the input map {input_map}: the same file under another name, where the run "
+            "writes its map. Give the run another output directory with -o, or --inplace to update the map in place."
+        )
+    elif os.path.lexists(outfile) and not force and not mtmc.is_input_map(input_map, outfile):
+        link = mtmc.is_input_map(input_map, os.path.realpath(outfile)) and os.path.islink(outfile)
+        what = " (a symbolic link to the input map, which -F replaces, not the map)" if link else ""
+        reason = f"{outfile} exists{what}: give -F to replace it with the map of this run, or another output directory with -o."
     if reason:
         logger.error(reason)
         raise mtmc.MetacoolError(reason)
-    if output_map:
-        try:
-            mtmc.make_map_directory(output_map, f"--output-map {output_map}")
-        except mtmc.MetacoolError as error:
-            logger.error(str(error))
-            raise
-        return output_map, mtmc.is_input_map(input_map, output_map)
-    if mtmc.is_entry(input_map):
-        message = (
-            f"{input_map} is an entry of a .mmetacool collection, which a run does not update in place: write the "
-            "map of its clusters to another file with --output-map."
+    # Where metacooler locks and stages the map, before it renames it there.
+    make_outdir(os.path.dirname(outfile) or ".")
+    in_place = mtmc.is_input_map(input_map, outfile)
+    if in_place:
+        logger.info(
+            f"The run updates {input_map} in place: it is the map of its output directory (give another one with -o to "
+            "leave it as it is)."
         )
-        logger.error(message)
-        raise mtmc.MetacoolError(message)
-    # The file itself (file::/, the root of the file, names it too), or the
-    # file that a symbolic link points to, which metacooler edits.
-    path = mtmc.map_file(input_map)
-    return (os.path.realpath(path) if os.path.islink(path) else path), True
+    else:
+        logger.info(f"The run writes its map to {outfile}, and leaves {input_map} as it is (--inplace updates it).")
+    return outfile, in_place
 
 
 def _failure(error):
@@ -674,7 +776,7 @@ def write_map(metacool, outfile, planned, what="the map of the clusters", **stor
     try:
         if mtmc.is_input_map(metacool, outfile):
             kept = "It is still the input map of the run, as it was. "
-            logger.info(f"{outfile} is the input map {metacool}: it is replaced once {what} is validated.")
+            logger.debug(f"{outfile} is the input map {metacool}: it is replaced once {what} is validated.")
         elif os.path.lexists(outfile):
             logger.info(f"Removing {outfile}, the contact map of an earlier run.")
             os.remove(outfile)
@@ -899,6 +1001,22 @@ MAP_HELP = (
 )
 
 
+def written_map_help(what):
+    """What the help of MAP says of the map that a run writes (see run_map_path):
+    what it stores in it."""
+    return (
+        f"The run writes it, with {what}, to the output directory, under its name (an entry as NAME.metacool), and "
+        "leaves MAP as it was; but MAP is updated in place when it is that map already (the steps of a run, one by "
+        "one, in one output directory), or with --inplace."
+    )
+
+
+INPLACE_HELP = (
+    "Update MAP in place, rather than write the map of the run to the output directory: refused for an entry of a "
+    ".mmetacool collection."
+)
+
+
 def map_argument(help=MAP_HELP, required=False):
     """The .metacool map of the contigs that a network or pipeline run starts
     from, its first argument (required); or that a partition or validation run
@@ -915,10 +1033,10 @@ def map_argument(help=MAP_HELP, required=False):
     )
 
 
-def output_map_option(help):
-    """--output-map: the file that a run writes the map to, instead of the map of
-    the run (see run_map_path)."""
-    return _option("--output-map", metavar="FILE", help=help)
+def inplace_option(help):
+    """--inplace: the run updates its map in place, rather than write the map of
+    its output directory (see run_map_path)."""
+    return _option("--inplace", is_flag=True, help=help)
 
 
 def network_options(normalization_short, assembly_help=ASSEMBLY_HELP):
@@ -1074,21 +1192,15 @@ def cli():
 
 
 @cli.command(short_help="Build the metaHiC network of the contigs of a .metacool map, and store it in the map.")
-@map_argument(
-    required=True,
-    help=MAP_HELP + " The network of the run is stored in it, in place, or in --output-map, which an entry needs.",
-)
+@map_argument(required=True, help=f"{MAP_HELP} {written_map_help('the network of its contigs')}")
 @network_options("-n")
-@outdir_option(help="The output directory, of the log of the run. Default: current directory.")
-@force_option("Replace an existing --output-map.")
+@outdir_option(help="The output directory, of the map of the run and of its log. Default: current directory.")
+@force_option("Replace the map of an earlier run in the output directory.")
 @tmpdir_option(
     help="Temporary directory, where the run writes, in a directory of its own, the contig data that it stores in the map (contig_data_network.txt)."
 )
 @no_clean_up_option(help="Keep the temporary directory of the run, which the log names, and its contig_data_network.txt.")
-@output_map_option(
-    help="Store the network in a copy of MAP written to FILE (replaced only with -F), and leave MAP as it was. By "
-    "default, the run updates MAP in place.",
-)
+@inplace_option(help=INPLACE_HELP)
 def network(
     map,  # the argument MAP
     assembly,
@@ -1099,7 +1211,7 @@ def network(
     force,
     tmpdir,
     no_clean_up,
-    output_map,
+    inplace,
 ):
     """Build the metaHiC network of the contigs, and store it in the map.
 
@@ -1126,8 +1238,9 @@ def network(
     network. The clusters of the map are kept: the partition of an earlier
     network too, with a warning, as [cyan]metator validation MAP[/] refuses
     it until [cyan]metator partition MAP[/] partitions the new network. The
-    map is updated in place (or written to --output-map), and locked while
-    the run writes it. [cyan]metator dump[/] writes the network, as
+    run writes the map to the output directory, under the name of MAP, which
+    it leaves as it was (--inplace updates MAP in place), and locks it while
+    it writes it. [cyan]metator dump[/] writes the network, as
     network.txt, from the map of the clusters of a run; from a map that only
     metator network has run on, which dump refuses, [cyan]metacooler network
     MAP --level contig --balance metator_<normalization>[/] writes it, with a
@@ -1138,28 +1251,24 @@ def network(
     with private_tmp_dir(tmpdir, clean_up=not no_clean_up) as tmp_dir, ExitStack() as held:
         # Defined the output directory.
         outdir = outdir or "."
-        os.makedirs(outdir, exist_ok=True)
+        make_outdir(outdir)
 
         # Enable file logging
         log_file = log_file_name(outdir, "network")
-        generate_log_header(log_file)
+        started = generate_log_header(log_file, outdir=outdir)
 
-        # The map, the map that the run writes (the map itself, by default),
-        # the normalization against its columns, and the assembly, checked
-        # before any work. The run holds the lock of the map it writes from
-        # now on: a second run on the same map is refused. It reads its map
-        # under that lock (planned): the map its network is written from,
-        # which is refused if it changed since.
+        # The map, the map that the run writes (that of the output directory,
+        # by default), the normalization against its columns, and the
+        # assembly, checked before any work. The run holds the lock of the map
+        # it writes from now on: a second run on the same map is refused. It
+        # reads its map under that lock (planned): the map its network is
+        # written from, which is refused if it changed since.
         run_input(map)
-        metacool_file, in_place = run_map_path(map, output_map, force)
-        refuse_an_input_as_the_map(output_map, [assembly, depth])
+        metacool_file, in_place = run_map_path(map, outdir, inplace, force)
+        refuse_an_input_as_the_map(metacool_file, in_place, [assembly, depth])
         check_normalization(normalization, enzyme, depth, map)
-        planned = hold_map(held, "network", map, metacool_file, in_place)
+        planned = hold_map(held, "network", map, metacool_file, in_place, inplace=inplace)
         check_assembly(assembly)
-
-        # Print information of the workflow:
-        logger.info("Enzyme: %s", enzyme)
-        logger.info("Normalization: %s", normalization)
 
         # The contig data, measured on the assembly and read from the map,
         # the hits of the contigs of the map, counted on its contacts, then
@@ -1176,7 +1285,7 @@ def network(
                 "partitions this network."
             )
 
-    generate_log_footer(log_file)
+    log_end(started, "Contact map with the network written", metacool_file)
 
 
 # ---------------------------------------------------------------------------
@@ -1188,8 +1297,8 @@ def network(
 @map_argument(
     required=True,
     help="The .metacool contact map of the contigs of the run, which metator network stored the network in, or an "
-    "entry of a .mmetacool collection (file.mmetacool::entries/NAME): the core and overlapping clusters of the run are "
-    "stored in its clustering rounds, in place, or in --output-map, which an entry needs.",
+    "entry of a .mmetacool collection (file.mmetacool::entries/NAME). "
+    + written_map_help("the core and overlapping clusters of the run in its clustering rounds"),
 )
 @partition_options(
     iterations=100,
@@ -1197,16 +1306,13 @@ def network(
     iterations_help="Number of iterations of Louvain or Leiden.",
     overlap_help="Hamming distance threshold to use to merge clusters (percentage).",
 )
-@outdir_option(default="./", help="The output directory, of the log of the run.")
+@outdir_option(default="./", help="The output directory, of the map of the run and of its log.")
 @prefix_option("the overlapping clusters")
-@force_option("Replace an existing --output-map.")
+@force_option("Replace the map of an earlier run in the output directory.")
 @tmpdir_option(help="Temporary directory: partition writes no temporary file in it.")
 @threads_option(help="Number of parallel threads allocated for the partition.")
 @no_clean_up_option(help="Keep the temporary directory of the run: partition leaves nothing in it.")
-@output_map_option(
-    help="Store the partition of the run in a copy of MAP written to FILE (replaced only with -F), and leave MAP as it "
-    "was. By default, the run updates MAP in place.",
-)
+@inplace_option(help=INPLACE_HELP)
 def partition(
     map,  # the argument MAP
     algorithm,
@@ -1219,7 +1325,7 @@ def partition(
     tmpdir,
     threads,
     no_clean_up,
-    output_map,
+    inplace,
 ):
     """Partition the network using the Louvain or Leiden algorithm.
 
@@ -1240,23 +1346,25 @@ def partition(
     run step by step ([cyan]metator network MAP[/], partition, validation):
     it stores every core and overlapping cluster, with its contigs, as the
     rounds core and overlapping of the clustering rounds of the map (its
-    /clusters group), in place of those it held, and updates the map in
-    place (or writes --output-map). Its genomes and contigs tables are left
-    as they were: [cyan]metator validation MAP[/] checks the overlapping
-    clusters that reach its --size, and writes the final clusters there.
+    /clusters group), in place of those it held, in the map that it writes
+    to the output directory (MAP itself when it is there already, as after
+    [cyan]metator network MAP -o DIR[/] with the same DIR, or with
+    --inplace). Its genomes and contigs tables are left as they were:
+    [cyan]metator validation MAP[/] checks the overlapping clusters that
+    reach its --size, and writes the final clusters there.
     """
     # Private temporary directory inside --tmpdir, and the lock of the map
     # the run writes, held until its end.
     with private_tmp_dir(tmpdir, clean_up=not no_clean_up), ExitStack() as held:
         # Defined the output directory.
         outdir = outdir or "."
-        os.makedirs(outdir, exist_ok=True)
+        make_outdir(outdir)
 
         # Enable file logging, the map of the run checked and locked, and
         # the network that metator network stored in it read, with the data
         # of its contigs (see start_step).
-        log_file, metacool_file, bins_prefix, planned, stored, _ = start_step(
-            "partition", outdir, [], map, output_map, force, held, prefix
+        started, metacool_file, bins_prefix, planned, stored, _ = start_step(
+            "partition", outdir, [], map, inplace, force, held, prefix
         )
 
         # Partition the network
@@ -1274,7 +1382,7 @@ def partition(
             round_names=list(mtmc.PARTITION_ROUNDS),
         )
 
-    generate_log_footer(log_file)
+    log_end(started, "Contact map with the partition written", metacool_file)
 
 
 # ---------------------------------------------------------------------------
@@ -1287,8 +1395,8 @@ def partition(
     required=True,
     help="The .metacool contact map of the contigs of the run (that of network MAP and partition MAP), which metator "
     "network stored the network in, and metator partition its partition, or an entry of a .mmetacool collection "
-    "(file.mmetacool::entries/NAME): it becomes the map of the clusters of the run, as pipeline MAP writes it, in place, "
-    "or in --output-map, which an entry needs.",
+    "(file.mmetacool::entries/NAME). "
+    + written_map_help("the clusters of the run, as pipeline MAP writes it (the map of the clusters)"),
 )
 @assembly_option(CHECKED_ASSEMBLY_HELP)
 @partition_options(
@@ -1298,20 +1406,17 @@ def partition(
     overlap_help="Hamming distance threshold to use to merge clusters (percentage).",
     size_help=SIZE_HELP,
 )
-@outdir_option(default="./", help="Path to the directory to write the output.")
+@outdir_option(default="./", help="The output directory, of the map of the clusters, final_clusters and the log.")
 @prefix_option("the recursive clusters")
 @force_option(
-    "Replace the final clusters of an earlier run in the output directory (final_clusters), and an existing "
-    "--output-map. The other results of an earlier run in the output directory (its tables, recursive_clusters, "
-    "1.x's outputs) are refused, with or without -F: they are never removed."
+    "Replace the final clusters (final_clusters) and the map of an earlier run in the output directory. The other "
+    "results of an earlier run in the output directory (its tables, recursive_clusters, 1.x's outputs) are refused, "
+    "with or without -F: they are never removed."
 )
 @tmpdir_option(help=TMPDIR_TABLES_HELP)
 @threads_option(help="Number of parallel threads, for the partition and miComplete.")
 @no_clean_up_option(help=NO_CLEAN_UP_TABLES_HELP)
-@output_map_option(
-    help="Write the contact map of the clusters to FILE (replaced only with -F), and leave MAP as it was. By default, "
-    "the run updates MAP in place.",
-)
+@inplace_option(help=INPLACE_HELP)
 def validation(
     map,  # the argument MAP
     assembly,
@@ -1326,7 +1431,7 @@ def validation(
     tmpdir,
     threads,
     no_clean_up,
-    output_map,
+    inplace,
 ):
     """Use miComplete to validate the clusters.
 
@@ -1352,8 +1457,8 @@ def validation(
     validation), whose network it partitions again: at its end, it writes
     the map of the clusters of the run, its contigs grouped by final cluster
     with the summary of the clusters and all its clustering rounds, as
-    [cyan]metator pipeline MAP[/] does, in place of the map (or to
-    --output-map).
+    [cyan]metator pipeline MAP[/] does, to the output directory (in place of
+    MAP when it is there already, or with --inplace).
     """
     # Launch miComplete to evaluate the completion and the contamination. If
     # asked rerun Louvain to try to reduce the contamination, rerun miComplete
@@ -1367,19 +1472,19 @@ def validation(
     with private_tmp_dir(tmpdir, clean_up=not no_clean_up) as tmp_dir, ExitStack() as held:
         # Defined the output directory and output file names.
         outdir = outdir or "."
-        os.makedirs(outdir, exist_ok=True)
+        make_outdir(outdir)
         final_fasta_dir = join(outdir, "final_clusters")
 
         # Enable file logging, the map of the run checked and locked, the
         # network that metator network stored in it and the partition that
         # metator partition stored in it read, the assembly checked, and the
         # directory of the final clusters made (see start_step).
-        log_file, metacool_file, bins_prefix, planned, stored, clusters = start_step(
+        started, metacool_file, bins_prefix, planned, stored, clusters = start_step(
             "validation",
             outdir,
             [final_fasta_dir],
             map,
-            output_map,
+            inplace,
             force,
             held,
             prefix,
@@ -1421,7 +1526,7 @@ def validation(
             network=mtmc.Network(stored.table, stored.normalization, entry=None, tmp_dir=tmp_dir),
         )
 
-    generate_log_footer(log_file)
+    log_end(started, "Final contact map written", metacool_file)
 
 
 # ---------------------------------------------------------------------------
@@ -1430,7 +1535,7 @@ def validation(
 
 
 @cli.command(short_help="Run network, partition and validation in one command line.")
-@map_argument(required=True)
+@map_argument(required=True, help=f"{MAP_HELP} {written_map_help('the clusters of the run (the map of the clusters)')}")
 @network_options("-m", CHECKED_ASSEMBLY_HELP)
 @partition_options(
     iterations=100,
@@ -1459,20 +1564,17 @@ def validation(
     panel="Validation",
     help="Hamming distance threshold to use to merge clusters for the recursive step (percentage).",
 )
-@outdir_option(help="The output directory. Default: current directory.")
+@outdir_option(help="The output directory, of the map of the clusters, final_clusters and the log. Default: current directory.")
 @prefix_option("the clusters")
 @force_option(
-    "Replace the final clusters of an earlier run in the output directory (final_clusters), and an existing "
-    "--output-map. The other results of an earlier run in the output directory (its tables, recursive_clusters, "
-    "1.x's outputs) are refused, with or without -F: they are never removed."
+    "Replace the final clusters (final_clusters) and the map of an earlier run in the output directory. The other "
+    "results of an earlier run in the output directory (its tables, recursive_clusters, 1.x's outputs) are refused, "
+    "with or without -F: they are never removed."
 )
 @tmpdir_option(help=TMPDIR_TABLES_HELP)
 @threads_option(help="Number of parallel threads allocated for the partition and the validation.")
 @no_clean_up_option(help=NO_CLEAN_UP_TABLES_HELP)
-@output_map_option(
-    help="Write the contact map of the clusters to FILE (replaced only with -F), and leave MAP as it was. By default, "
-    "the run updates MAP in place.",
-)
+@inplace_option(help=INPLACE_HELP)
 def pipeline(
     map,  # the argument MAP
     assembly,
@@ -1492,7 +1594,7 @@ def pipeline(
     tmpdir,
     threads,
     no_clean_up,
-    output_map,
+    inplace,
 ):
     """Launch the full metaTOR pipeline.
 
@@ -1504,8 +1606,9 @@ def pipeline(
     [cyan]metacooler create pairs[/]): the run reads its network from that
     map, and the restriction sites and the coverage of the contigs from its
     Restriction_site and Shotgun_coverage columns, unless --enzyme and
-    --depth are given; it updates the map in place with the map of its
-    clusters (or writes --output-map).
+    --depth are given. It writes the map of its clusters to the output
+    directory, under the name of MAP, which it leaves as it was (--inplace
+    updates MAP in place).
 
     The network counts every pair, as a contact map does. A validation step
     decontaminates the clusters when it's necessary; it is the critical step
@@ -1524,11 +1627,11 @@ def pipeline(
     with private_tmp_dir(tmpdir, clean_up=not no_clean_up) as tmp_dir, ExitStack() as held:
         # Defined the output directory and output file names.
         outdir = outdir or "."
-        os.makedirs(outdir, exist_ok=True)
+        make_outdir(outdir)
 
         # Enable file logging
         log_file = log_file_name(outdir, "pipeline")
-        generate_log_header(log_file)
+        started = generate_log_header(log_file, outdir=outdir)
 
         # Define variable
         overlapping_parameter = overlap / 100
@@ -1538,21 +1641,14 @@ def pipeline(
         # clusters of an earlier run (--force): a refused run leaves them as
         # they were.
         run_input(map)
-        metacool_file, in_place = run_map_path(map, output_map, force)
-        refuse_an_input_as_the_map(output_map, [assembly, depth])
+        metacool_file, in_place = run_map_path(map, outdir, inplace, force)
+        refuse_an_input_as_the_map(metacool_file, in_place, [assembly, depth])
         check_normalization(normalization, enzyme, depth, map)
         bins_prefix = bin_prefix(prefix)
         # The run holds the map's lock from now on: a second run on the same
         # map is refused before any work. It reads its map under that lock
         # (planned).
-        planned = hold_map(held, "pipeline", map, metacool_file, in_place)
-
-        # Print information of the workflow:
-        logger.info(f"Partition algorithm: {algorithm}")
-        logger.info(f"Partition iterations: {iterations}")
-        logger.info(f"Overlapping parameter: {overlapping_parameter}")
-        logger.info(f"Recursive partition iterations: {rec_iter}")
-        logger.info(f"Recursive overlapping parameter: {recursive_overlapping_parameter}\n")
+        planned = hold_map(held, "pipeline", map, metacool_file, in_place, inplace=inplace)
 
         # The final clusters of an earlier run, and what a run of an earlier
         # version wrote in the output directory: refused now without
@@ -1560,7 +1656,7 @@ def pipeline(
         # once it is checked.
         final_fasta_dir = join(outdir, "final_clusters")
         refuse_output_dir(final_fasta_dir, force)
-        refuse_earlier_outputs(outdir, keep=(map, output_map))
+        refuse_earlier_outputs(outdir, keep=(map, metacool_file))
 
         # The network, as metator network makes it: the contig data,
         # measured on the assembly and read from the map, before the clusters
@@ -1568,14 +1664,17 @@ def pipeline(
         # the normalization needs is refused once the assembly is read), and
         # the contacts of its contigs, weighed with the normalization.
         check_assembly(assembly)
+        log_stage(1, "network", f"the contigs of {map} and their contacts")
         network, contacts = run_network(map, planned, assembly, depth, enzyme, normalization, tmp_dir)
         make_output_dir(final_fasta_dir, force)
         edges = mtn.map_network(map, mtn.network_weights(network.table, normalization), contacts)
 
         # Partition the network, as metator partition does.
+        log_stage(2, "partition", "the clusters of the network")
         clusters = mtp.partition(algorithm, edges, iterations, overlapping_parameter, res_param, threads, bins_prefix)
 
         # Validate the partition, as metator validation does.
+        log_stage(3, "validation", "miComplete checks the clusters, and the contaminated ones are partitioned again")
         final = run_validation(
             map,
             assembly,
@@ -1611,7 +1710,7 @@ def pipeline(
             clusters=final,
         )
 
-    generate_log_footer(log_file)
+    log_end(started, "Final contact map written", metacool_file)
 
 
 # ---------------------------------------------------------------------------
@@ -1624,10 +1723,9 @@ def pipeline(
     required=True,
     help="The .metacool contact map of the run, which metator network stored the network of its contigs in (that of "
     "network MAP, pipeline MAP or validation MAP), or an entry of a .mmetacool collection "
-    "(file.mmetacool::entries/NAME): the contacts of the MGE contigs come from it, and the MGE clusters are stored in "
-    "its clustering rounds, in place, or in --output-map, which an entry needs. It must hold the contact statistics of "
-    "the reads of its contigs at 1001 bp (made from the pairs by hicstuff pipeline -M metacool or metacooler create "
-    "pairs, with metacooler 0.4.0 or later).",
+    "(file.mmetacool::entries/NAME): the contacts of the MGE contigs come from it. It must hold the contact statistics "
+    "of the reads of its contigs at 1001 bp (made from the pairs by hicstuff pipeline -M metacool or metacooler create "
+    "pairs, with metacooler 0.4.0 or later). " + written_map_help("the MGE clusters in its clustering rounds"),
 )
 @assembly_option(ASSEMBLY_HELP)
 @_option(
@@ -1656,20 +1754,18 @@ def pipeline(
     help="Make a random clustering of the same shape, to compare the MGE clusters with: stored as the round "
     "mge_random, which leaves the round mge as it was, and written to mges_binned_random.fa.",
 )
-@outdir_option(help="Path to the output directory where the output will be written. Default: current directory.")
+@outdir_option(help="The output directory, of the map of the run and of the MGE fasta. Default: current directory.")
 @force_option(
-    "Replace an existing --output-map. A summary of the MGE clusters that an earlier version wrote in the output "
-    "directory (mges_bin_summary.tsv or mges_cluster_summary.tsv) is refused, with or without -F: it is never removed."
+    "Replace the map of an earlier run in the output directory. A summary of the MGE clusters that an earlier version "
+    "wrote in the output directory (mges_bin_summary.tsv or mges_cluster_summary.tsv) is refused, with or without -F: "
+    "it is never removed."
 )
 @tmpdir_option(
     help="Path to temporary directory: where metacooler copies a compressed assembly, plain, while it reads it. mge "
     "writes no temporary file of its own."
 )
 @no_clean_up_option(help="Keep the temporary directory of the run: mge leaves nothing in it.")
-@output_map_option(
-    help="Store the MGE clusters in a copy of MAP written to FILE (replaced only with -F), and leave MAP as it was. By "
-    "default, the run updates MAP in place.",
-)
+@inplace_option(help=INPLACE_HELP)
 def mge(
     map,  # the argument MAP
     assembly,
@@ -1680,7 +1776,7 @@ def mge(
     force,
     tmpdir,
     no_clean_up,
-    output_map,
+    inplace,
 ):
     """Cluster MGE contigs.
 
@@ -1699,14 +1795,17 @@ def mge(
     length, GC content, hits and clustering score, in place of an earlier
     round mge, after the other rounds, which are kept (--random stores the
     round mge_random, and leaves the round mge as it was). Its genomes and
-    contigs tables are left as they were. MAP is updated in place (or
-    written to --output-map), and locked while the run writes it. A run
-    that replaces the clusters of the map (partition, validation, pipeline)
-    drops the rounds of mge, with a warning: run mge again then.
+    contigs tables are left as they were. The run writes the map to the
+    output directory, under the name of MAP, which it leaves as it was
+    (--inplace updates MAP in place, and so does a run in the directory of
+    MAP), and locks it while it writes it. A run that replaces the clusters
+    of the map (partition, validation, pipeline) drops the rounds of mge,
+    with a warning: run mge again then.
     """
     # Generate log
     log_file = log_file_name("", "mge")
-    generate_log_header(log_file)
+    outdir = outdir or "."
+    started = generate_log_header(log_file, outdir=outdir)
 
     # Private temporary directory inside --tmpdir, and the lock of the map
     # the run writes, held until its end.
@@ -1714,13 +1813,12 @@ def mge(
         # The map that the run stores its MGE clusters in, checked and
         # locked.
         name = mtcl.MGE_RANDOM if random else mtcl.MGE
-        metacool_file, planned = step_map("mge", map, output_map, force, held, inputs=[assembly, mges], rounds=[name])
+        metacool_file, planned = step_map("mge", map, outdir, inplace, force, held, inputs=[assembly, mges], rounds=[name])
         # The assembly that metacooler writes mges_binned.fa from, refused
         # as the network, the validation and the pipeline refuse it.
         check_assembly(assembly)
         # The summary of an earlier version, which would pass for this run's.
-        outdir = outdir or "."
-        refuse_earlier_outputs(outdir, MGE_EARLIER_OUTPUTS, keep=(map, output_map))
+        refuse_earlier_outputs(outdir, MGE_EARLIER_OUTPUTS, keep=(map, metacool_file))
 
         # The MGE contigs, and their clusters from the contacts of the map:
         # what the map cannot give is refused before anything is written.
@@ -1744,7 +1842,7 @@ def mge(
             map, metacool_file, planned, "the map with its MGE clusters", mge=(mtcl.mge_round(summary, name), mge_entry(name))
         )
 
-    generate_log_footer(log_file)
+    log_end(started, "Contact map with the MGE clusters written", metacool_file)
 
 
 def mge_entry(name):
@@ -1807,11 +1905,11 @@ def dump(
     that fails leaves them as they were.
     """
     outdir = outdir or "."
-    os.makedirs(outdir, exist_ok=True)
+    make_outdir(outdir)
 
     # Enable file logging
     log_file = log_file_name(outdir, "dump")
-    generate_log_header(log_file)
+    started = generate_log_header(log_file, outdir=outdir)
 
     # The map, checked before anything is read.
     run_input(map)
@@ -1821,4 +1919,4 @@ def dump(
         logger.error(str(error))
         raise
 
-    generate_log_footer(log_file)
+    log_end(started, "Tables written", outdir)

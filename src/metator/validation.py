@@ -7,7 +7,8 @@ Only bins with a weighted completeness of at least 33% and a contamination,
 (weighted redundancy - 1) / weighted completeness, of at least 5% go through
 the recursive step. Its bins replace the original when the most complete of
 them keeps more than 0.4 + (c - 0.4) / 1.6 of a completeness c; otherwise
-the original is kept. The step repeats on the new bins, 9 times at most.
+the original is kept. The step repeats on the new bins, 9 times at most
+(RECURSIVE_STEPS), and the log says when it stops sooner.
 
 miComplete checks the overlapping clusters of the map's partition that reach
 --size, then those of each recursive step, from FASTA files that metacooler
@@ -17,7 +18,6 @@ metator dump writes them from it.
 """
 
 import gzip
-import logging
 import metator.clusters as mtc
 import metator.io as mio
 import metator.partition as mtp
@@ -27,13 +27,17 @@ import shutil
 import subprocess as sp
 import sys
 import tempfile
+import time
 from functools import partial
 from importlib.metadata import version
-from metator.log import logger
+from metator.log import duration, logger
 from os.path import join
 
 # The fasta files of the bins that miComplete evaluates.
 FASTA_EXTENSIONS = (".fa", ".fasta", ".fna")
+
+# The most recursive steps of a validation (see recursive_decontamination).
+RECURSIVE_STEPS = 9
 
 
 def bin_quality(completeness, redundancy):
@@ -183,8 +187,7 @@ def give_results_info(bin_summary):
     total_size = sum(size for _, size in counts.values())
 
     # Return info in the logger:
-    logger.info("{0} clusters have been kept after the recursive iterations.".format(total))
-    logger.info("Total size of the extracted clusters: {0}".format(total_size))
+    logger.info(f"{total} clusters kept after the recursive steps, {total_size} bp in all:")
     for quality, label in (
         ("HQ", "HQ MAGs"),
         ("MQ", "MQ MAGs"),
@@ -385,9 +388,11 @@ def write_overlapping_fasta(metacool, assembly, partition, contig_data, size, ou
     sizes = partition.sizes(contig_data["Size"].to_numpy())
     kept = [number for number in partition.overlapping if sizes[number] >= size]
     groups = {partition.names[number]: [str(names[contig - 1]) for contig in partition.overlapping[number]] for number in kept}
+    logger.info(
+        f"{len(kept)} of the {len(partition.overlapping)} overlapping clusters reach {size} bp, "
+        f"{round(sum(sizes[number] for number in kept) / 10**6, 3)} Mb in all: miComplete checks them."
+    )
     _write_fasta(metacool, assembly, outdir, groups, temp_dir, "The clusters to check")
-    logger.info(f"{len(kept)} clusters have been extracted")
-    logger.info(f"Total size of the extracted clusters: {round(sum(sizes[number] for number in kept) / 10**6, 3)}Mb")
     return groups
 
 
@@ -504,18 +509,7 @@ def recursive_clustering(
         raise ValueError
 
     # Check bin_id to decontaminate.
-    bin_ids = []
-    for bin_id in bin_summary:
-        try:
-            completness = float(bin_summary[bin_id]["Weighted completeness"])
-            conta = float(bin_summary[bin_id]["Weighted redundancy"])
-            recursive = bin_summary[bin_id]["recursive"]
-            if recursive:
-                if completness >= 0.33:
-                    if (conta - 1) / completness >= 0.05:
-                        bin_ids.append(bin_id)
-        except KeyError:
-            continue
+    bin_ids = contaminated_bins(bin_summary)
 
     # Iterate on cmicomplete summary to find conatminated bins:
     # pool = multiprocessing.Pool(processes=threads)
@@ -572,9 +566,40 @@ def recursive_clustering(
             or contamination
         )
 
-        logger.info("Recursive step for {0} is done.".format(bin_id))
+        logger.debug("Recursive step for {0} is done.".format(bin_id))
 
     return contamination, contigs_data, parent_dict, groups
+
+
+def contaminated_bins(bin_summary):
+    """The bins that a recursive step partitions again (see
+    recursive_clustering): those that the step before made (their recursive
+    flag: the overlapping clusters at the first step), with a weighted
+    completeness of at least 33% and a contamination, (weighted redundancy -
+    1) / weighted completeness, of at least 5%.
+
+    Parameters
+    ----------
+    bin_summary : dict
+        Dictionary containing information about the bins.
+
+    Returns
+    -------
+    list of str
+        The names of the bins, in the order of bin_summary."""
+    bin_ids = []
+    for bin_id in bin_summary:
+        try:
+            completness = float(bin_summary[bin_id]["Weighted completeness"])
+            conta = float(bin_summary[bin_id]["Weighted redundancy"])
+            recursive = bin_summary[bin_id]["recursive"]
+            if recursive:
+                if completness >= 0.33:
+                    if (conta - 1) / completness >= 0.05:
+                        bin_ids.append(bin_id)
+        except KeyError:
+            continue
+    return bin_ids
 
 
 def _bin_contigs(bin_id, contigs_data):
@@ -633,7 +658,7 @@ def recursive_clustering_worker(
         Resolution parameter of Leiden algorithm.
     contigs_data : pandas.DataFrame
         The contig data of the partition, with the recursive bins so far."""
-    logger.info("Cluster in progress: {0}".format(bin_id))
+    logger.debug("Cluster in progress: {0}".format(bin_id))
 
     # Extract contigs
     list_contigs = bin_contig_ids(bin_id, contigs_data)
@@ -648,7 +673,7 @@ def recursive_clustering_worker(
         iterations,
         resolution_parameter,
     )
-    logger.info("Output partition done for {0}.".format(bin_id))
+    logger.debug("Output partition done for {0}.".format(bin_id))
 
     return output_partition
 
@@ -749,14 +774,14 @@ def recursive_decontamination(
     # Defined miComplete output file path
     overlapping_micomplete_file = join(outdir, "overlapping_micomplete_results.txt")
 
-    logger.info("Lauch miComplete quality check.")
-
     # Launch miComplete
+    started = time.monotonic()
     micomplete_quality(
         input_fasta_dir,
         overlapping_micomplete_file,
         threads,
     )
+    checked = time.monotonic() - started
 
     # Load contigs data:
     contigs_data = pd.read_csv(
@@ -801,21 +826,23 @@ def recursive_decontamination(
         bin_summary[bin_id]["recursive"] = True
         bin_summary[bin_id]["step"] = 0
         bin_summary[bin_id]["parent"] = None
+    logger.info(
+        f"miComplete checked the {len(bin_summary)} clusters in {duration(checked)}, and found "
+        f"{len(contaminated_bins(bin_summary))} of them contaminated, which the recursive steps partition again."
+    )
 
-    # Recursively remove contamination.
-    contamination = True
-    step = 1
-
-    logger.info("Starts recursive decontamition step:")
-
-    while contamination:
-        logger.info(f"------------------ Recursive step {step} started. --------------------- ")
+    # Recursively remove contamination: RECURSIVE_STEPS steps at most, each on
+    # the contaminated bins that the step before made, until a step makes no
+    # bin that replaces its own.
+    for step in range(1, RECURSIVE_STEPS + 1):
+        started = time.monotonic()
+        counted = f"Recursive step {step}/{RECURSIVE_STEPS}"
+        contaminated = len(contaminated_bins(bin_summary))
+        if contaminated:
+            logger.info(f"{counted}: {contaminated} contaminated cluster(s) to partition again.")
         # Create fasta dir.
         recursive_fasta_dir_step = join(recursive_fasta_dir, f"step_{step}")
         os.makedirs(recursive_fasta_dir_step, exist_ok=True)
-
-        # Stop to report info log
-        logger.setLevel(logging.WARNING)
 
         # Iterates Louvain or Leiden on contaminated and complete bins.
         (
@@ -840,52 +867,65 @@ def recursive_decontamination(
         write_recursive_fasta(metacool, assembly, groups, recursive_fasta_dir_step, temp_dir)
         written.update(groups)
 
-        # Put back the info log
-        logger.setLevel(logging.INFO)
+        # Keep the bins as they are: no contaminated bin, or none splits into
+        # bins larger than size.
+        if not contamination:
+            if not contaminated and step == 1:
+                found = "no cluster is contaminated, so no recursive step is needed"
+            elif not contaminated:
+                found = "no contaminated cluster left, so no further recursive step is needed"
+            else:
+                found = f"none of them splits into clusters of more than {size} bp, so no further recursive step is needed"
+            logger.info(f"{counted}: {found}.")
+            break
 
         # Recursive iterations of Louvain or Leiden on the contaminated bins.
         # Save bin information if the new bins have the same quality otherwise
         # keep the original bin information.
-        if contamination:
-            # Run miComplete on the recursive bins.
-            recursive_micomplete_file = join(outdir, f"recursive_micomplete_step_{step}.txt")
+        # Run miComplete on the recursive bins.
+        recursive_micomplete_file = join(outdir, f"recursive_micomplete_step_{step}.txt")
 
-            micomplete_quality(
-                recursive_fasta_dir_step,
-                recursive_micomplete_file,
-                threads,
+        micomplete_quality(
+            recursive_fasta_dir_step,
+            recursive_micomplete_file,
+            threads,
+        )
+
+        # The clusters of this step, with their contigs now: a later step
+        # gives the contigs of a cluster it splits other IDs.
+        step_round = mtc.recursive_round(step)
+        step_quality = mio.micomplete_results_to_dict(recursive_micomplete_file)
+        for bin_id, parent in parent_dict.items():
+            rounds.add(
+                step_round,
+                bin_id,
+                _bin_contigs(bin_id, contigs_data),
+                parent=parent,
+                columns=step_quality.get(bin_id),
             )
+        rounds.close_round(step_round)
 
-            # The clusters of this step, with their contigs now: a later step
-            # gives the contigs of a cluster it splits other IDs.
-            step_round = mtc.recursive_round(step)
-            step_quality = mio.micomplete_results_to_dict(recursive_micomplete_file)
-            for bin_id, parent in parent_dict.items():
-                rounds.add(
-                    step_round,
-                    bin_id,
-                    _bin_contigs(bin_id, contigs_data),
-                    parent=parent,
-                    columns=step_quality.get(bin_id),
-                )
-            rounds.close_round(step_round)
-
-            # Compare
-            bin_summary, contamination = micomplete_compare_bins(
-                recursive_micomplete_file,
-                bin_summary,
-                parent_dict,
-                step,
+        # Compare
+        before = set(bin_summary)
+        bin_summary, contamination = micomplete_compare_bins(
+            recursive_micomplete_file,
+            bin_summary,
+            parent_dict,
+            step,
+        )
+        took = duration(time.monotonic() - started)
+        if not contamination:
+            logger.info(
+                f"{counted}: none of them is replaced, as the {len(groups)} cluster(s) they split into lose too much "
+                f"of their completeness ({took}), so no further recursive step is needed."
             )
-
-        # Keep overlapping bin information
-        else:
-            logger.info(f"No more contaminated cluster has been found after {step} steps.")
-        # Increase count
-        logger.info(f"Recursive step {step} done.")
-        step += 1
-        if step == 10:
-            contamination = False
+            break
+        logger.info(
+            f"{counted}: {len(before - set(bin_summary))} of them replaced by the {len(set(bin_summary) - before)} "
+            f"cluster(s) of more than {size} bp that they split into ({took})."
+        )
+    else:
+        logger.info(f"Recursive step {RECURSIVE_STEPS}/{RECURSIVE_STEPS} was the last: its clusters are kept as they are.")
 
     # Whether each final bin comes from the recursive partition: the flag
     # marked the bins to examine at the next step.

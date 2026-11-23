@@ -50,7 +50,8 @@ cooler (see [The contact map of the clusters](metacool.md)):
 ```python
 import metacooler
 
-mc = metacooler.MetaCooler("sample.metacool")
+# The map of the clusters that metator pipeline sample.metacool -o binning wrote
+mc = metacooler.MetaCooler("binning/sample.metacool")
 mc.genomes  # one row per cluster, and __unbinned__, with the columns of cluster_summary.txt
 mc.contigs  # one row per contig
 ```
@@ -70,7 +71,7 @@ clusters = mtp.partition(
     # The network of the map: one edge per pair of contigs in contact, by
     # their positions in the map, weighed by the normalization that metator
     # network stored.
-    network=mtn.map_network("sample.metacool"),
+    network=mtn.map_network("binning/sample.metacool"),
     iterations=100,
     overlapping_parameter=0.8,  # --overlap 80
     resolution_parameter=1.0,

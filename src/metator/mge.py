@@ -39,10 +39,10 @@ HOW_TO_MAKE_A_MAP = (
 )
 
 # Where the network of a run is, said when mge refuses a map without it: in
-# the map that the run wrote, which --output-map put elsewhere.
+# the map that the run wrote in its output directory.
 WHERE_THE_NETWORK_IS = (
-    "run metator network on the map first (or pipeline), or give the map that such a run wrote (the --output-map "
-    "of network, pipeline or validation)."
+    "run metator network on the map first (or pipeline), or give the map that such a run wrote in its output "
+    "directory (network, pipeline or validation)."
 )
 
 

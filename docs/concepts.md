@@ -129,7 +129,8 @@ At the end of a run, metaTOR writes the contacts of all the contigs, grouped
 by cluster, as a `.metacool` file: the contact map format of
 [metacooler](https://github.com/js2264/metacooler), a
 [cooler](https://github.com/open2c/cooler) whose contigs are grouped into
-genomes, one per final cluster, over the map it started from: a map of the
+genomes, one per final cluster, in its output directory, from the map it
+started from (which it leaves as it was, but with `--inplace`): a map of the
 contigs, made before any clustering by
 [hicstuff](https://koszullab.github.io/hicstuff/) from the reads, or by
 metacooler from pairs files. See

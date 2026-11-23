@@ -73,24 +73,32 @@ each removed command.
     `overlapping_bin/`, `scaffold_bin/`, `plot/`). Left there, they would pass
     for the results of the run; a file of one of these names, a user's own
     too, is refused and left as it is. `-F` replaces only what a run writes
-    itself: `final_clusters/` and the `--output-map`.
-  - `pipeline MAP` runs the three steps on the map, and writes it once, at
-    its end: the steps run one by one on a map give the map of `pipeline`.
-    It no longer writes `<outdir>/metator.metacool`, as 1.4.0 did: the map of
-    the clusters goes over `MAP`, or to `--output-map`.
-- **The map is updated in place.** A run writes the map through metacooler,
-  in an edit session: every edit of a step goes into one copy of the map,
-  staged next to it (`.<map>.<uuid>.<n>.d/`), validated in full, then
-  renamed over it, so a run that stops for any reason leaves the map as it
-  was, and a map updated run after run does not grow. A run holds
-  metacooler's lock of the map it writes (`<map>.lock`) from its checks to
-  its end. `--output-map FILE`, on every command that writes the map, writes
-  it to FILE (replaced only with `-F`) and leaves `MAP` as it was; a run from
-  an entry of a collection needs it. Refused before any work: a map that
-  another process holds, a map without write permission or in a directory
-  that is not writable, a hard link of `MAP` at `--output-map`. A map given
-  through a symbolic link is updated where the link points; a symbolic link
-  at `--output-map` is replaced, not its target. A map that changed since the
+    itself: `final_clusters/` and the map of the output directory.
+  - `pipeline MAP` runs the three steps on the map, and writes the map of
+    the clusters once, at its end: the steps run one by one in one output
+    directory give the map of `pipeline`. It goes to the output directory,
+    under the name of `MAP` (`<outdir>/sample.metacool` from
+    `sample.metacool`), where 1.4.0 wrote `<outdir>/metator.metacool`.
+- **The map of a run goes to its output directory, and `MAP` is left as it
+  was.** A run writes its map to its output directory, under the name of
+  `MAP` (`NAME.metacool` for an entry of a collection): metacooler copies
+  `MAP` there, the run edits the copy, and metacooler renames it into place.
+  `--inplace`, on every command that writes the map, updates `MAP` itself
+  instead, and so does a run whose output directory holds `MAP` already: the
+  steps of a run, one by one, in one output directory (`network MAP -o DIR`,
+  then `partition DIR/MAP -o DIR`...). A run writes the map through
+  metacooler, in an edit session: every edit of a step goes into one copy of
+  the input map, staged next to the map that the run writes
+  (`.<map>.<uuid>.<n>.d/`), validated in full, then renamed onto it, so a
+  run that stops for any reason leaves the map as it was, and a map updated
+  run after run does not grow. A run holds metacooler's lock of the map it
+  writes (`<map>.lock`) from its checks to its end. A map of an earlier run
+  in the output directory is replaced only with `-F`. Refused before any
+  work: a map that another process holds, a map updated in place without
+  write permission, a directory that is not writable, a hard link of `MAP`
+  in the output directory, an entry of a collection with `--inplace`. A map
+  updated in place through a symbolic link is updated where the link points;
+  a symbolic link in the output directory is replaced, not its target. A map that changed since the
   run read it is refused when the run writes its map, and a read of a map
   that another run replaces is refused. Neither metaTOR nor metacooler
   handles signals: a run killed by SIGTERM (a job scheduler's time limit) or
@@ -145,8 +153,8 @@ each removed command.
   plots of `validation` and `pipeline` (`plot/`); `-C/--cluster-matrix` of
   `partition`, `validation` and `pipeline`, and the clustering matrices it
   wrote; `-s/--self-contacts` of `network`; `pipeline --no-metacool` of
-  1.4.0, as the map of the clusters is what a run writes (over `MAP`, or to
-  `--output-map`); and the module `metator.main` (`python -m metator.main`):
+  1.4.0, as the map of the clusters is what a run writes (to its output
+  directory, or over `MAP` with `--inplace`); and the module `metator.main` (`python -m metator.main`):
   run `metator`, or `python -m metator`.
 - **Seeded runs.** The temporary directory of a command is named from the
   random numbers of the system, not from Python's `random` module, which the
@@ -205,16 +213,21 @@ each removed command.
   the weights dropped, or contacts whose hits are no longer its `Hit` column
   (as after `metacooler merge`, which keeps the contigs table of its first
   map).
-- `--output-map FILE` on every command that writes the map (`network`,
-  `partition`, `validation`, `pipeline`, `mge`), and `-F` on `network` and
-  `mge` to replace it. `partition -F`, which replaced the outputs of an
-  earlier partition (it writes none now), replaces the `--output-map`.
+- `--inplace` on every command that writes the map (`network`, `partition`,
+  `validation`, `pipeline`, `mge`): the run updates `MAP` in place, rather
+  than write its map to the output directory; and `-F` on `network` and
+  `mge`, to replace the map of an earlier run in the output directory.
+  `partition -F`, which replaced the outputs of an earlier partition (it
+  writes none now), replaces the map of the output directory.
 - Python API: `metator.dump`; `metator.metacool.write_map`, the one writer of
   the maps of the steps, and `map_rounds`, `read_partition`; `metator.network`
   `map_network`, `stored_network`, `contig_contacts`, `contig_hits`,
   `normalization_weights` and `relabel_network`; `metator.clusters`
   (`Partition`, `Rounds`, `write_round_tables`); `metator.mge.check_mge_map`,
-  `map_matrix` and `write_mges_fasta`.
+  `map_matrix` and `write_mges_fasta`; `metator.validation.contaminated_bins`;
+  `metator.partition.iterate`, and the `progress` argument of
+  `algo_partition`, `louvain_iterations` and `leiden_iterations`, which logs
+  the iterations as they go; `metator.log.duration`.
 
 ### Changed
 - Validation runs Prodigal and HMMER through pyrodigal and pyhmmer, their
@@ -236,6 +249,25 @@ each removed command.
   pandas 2 as under pandas 3: the map stores the run's numbers.
 - Python's warnings (cooler gives the problems of a map with them) are shown
   and written to the log of a run, as metaTOR's own messages.
+- **The log of a run.** Its header gives, as hicstuff's does, the version,
+  the date, the command line (`## cmd:`, where it said `## Command used:`)
+  and the value of each option (`## <option>: <value>`), then a line of
+  dashes, without the empty lines around it; the log ends with what the run
+  wrote and how long it took (`Final contact map written after 0h 8m 31s:
+  <map>`), where it ended with a line of dashes and the date. `pipeline`
+  marks its three steps (`[1/3] network`, `[2/3] partition`,
+  `[3/3] validation`), and no longer logs its parameters, which the header
+  gives. The partition counts its iterations as they go, at each tenth of
+  them, 10 seconds apart at least, and how long they took; the validation
+  says how long miComplete took and how many clusters are contaminated, then
+  logs each recursive step (`Recursive step 2/9: ...`), how many clusters it
+  partitions again and replaces, and when no further step is needed, where
+  it printed each step in a banner of dashes. The counts of the contacts, of
+  the core and overlapping clusters, and of the clusters checked are one
+  line each. The bookkeeping of a run (the tables written in its temporary
+  directory, the temporary directory removed, the staged copy of the map,
+  and metacooler's accounts of what it reads and writes) is logged at the
+  DEBUG level, which the log does not show.
 - The documentation moves from Read the Docs to GitHub Pages, at
   <https://koszullab.github.io/metator/>: Markdown pages built with Zensical,
   a guide per step and command, the CLI reference (which `tests/test_docs.py`

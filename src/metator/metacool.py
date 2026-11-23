@@ -15,9 +15,10 @@ summary in the genomes table and every round. ``pipeline`` stores what the
 three steps store, in one map (see write_map).
 
 Every map is written in one metacooler edit session, validated in full
-once, then renamed over the map or onto ``--output-map``: the map is whole
-whatever stops the run and does not grow from run to run. A run holds the
-map's lock from its checks to its end (see metator.cli.hold_lock).
+once, then renamed onto the map of the output directory of the run (or over
+the input map, with ``--inplace``): the map is whole whatever stops the run
+and does not grow from run to run. A run holds the map's lock from its
+checks to its end (see metator.cli.hold_lock).
 """
 
 import logging
@@ -128,15 +129,18 @@ def _as_metacool_errors():
 @contextmanager
 def _metacooler_logging(level=None):
     """Send the messages of metacooler to the handlers of metaTOR (terminal and
-    log file) while the file is written: those of at least the level of
-    metaTOR's logger, or of level when it is higher (logging.WARNING: its
-    warnings, but not its accounts of what it reads)."""
+    log file) while the file is written: its warnings and errors; its
+    accounts of what it reads and writes (INFO: the staged copy of the map,
+    the contigs it reassigns...), which are details of a run of metaTOR, only
+    when metaTOR's logger shows its own (DEBUG). level, when higher, raises
+    the threshold (logging.WARNING: never its accounts)."""
     mc_logger = logging.getLogger("metacooler")
     saved = (mc_logger.level, mc_logger.propagate)
     handlers = [handler for handler in logger.handlers if handler not in mc_logger.handlers]
     for handler in handlers:
         mc_logger.addHandler(handler)
-    mc_logger.setLevel(logger.level if level is None else max(level, logger.level))
+    threshold = logger.level if logger.level <= logging.DEBUG else logging.WARNING
+    mc_logger.setLevel(threshold if level is None else max(level, threshold))
     mc_logger.propagate = False
     try:
         yield
@@ -487,7 +491,7 @@ def _store_normalization(metacool, normalization, weights):
         source=mc,
     )
     masked = int(np.count_nonzero(np.isnan(contig_weights)))
-    logger.info(
+    logger.debug(
         f"Stored the {normalization} normalization of the network in {metacool}, as the weights "
         f"{normalization_weight_name(normalization)} of its bins" + (f" ({masked} contig(s) without one)." if masked else ".")
     )
@@ -1056,7 +1060,8 @@ def write_map(
         if clusters is not None:
             _check_clustered_contigs(metacool, contigs, clusters)
         writing, written = _what_is_written(contigs, network, rounds, clusters, mge)
-        logger.info(f"Writing {outfile} from the contact map {metacool}{writing}.")
+        source = "in place" if in_place else f"from {metacool}"
+        logger.info(f"Writing {outfile} {source}{writing}.")
         with _as_metacool_errors(), ExitStack() as session:
             make_map_directory(outfile)
             # One staged copy, which replaces the map once it is valid (see
@@ -1082,7 +1087,7 @@ def write_map(
             # What made the rounds of metator mge that the map no longer
             # holds, which the clusters of a validation carried over.
             _drop_metator_entries(staged, [dropped["name"] for dropped in later if _made_by(dropped) == "metaTOR mge"])
-        logger.info(f"{outfile} is written: the contact map{written}.")
+        logger.debug(f"{outfile} is written: the contact map{written}.")
     _warn_dropped_rounds(later, metacool, outfile, in_place)
 
 

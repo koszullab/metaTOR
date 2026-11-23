@@ -11,7 +11,8 @@ principle; this page covers the parameters and the outputs.
 ## Partition
 
 ```bash
-metator partition sample.metacool -t 16 -o binning
+# The map that metator network sample.metacool -o binning wrote, updated in place
+metator partition binning/sample.metacool -t 16 -o binning
 ```
 
 | Option | Default | Effect |
@@ -30,7 +31,7 @@ FASTA file. The validation reads them there.
 ## Validation
 
 ```bash
-metator validation sample.metacool -a assembly.fa -t 16 -o binning
+metator validation binning/sample.metacool -a assembly.fa -t 16 -o binning
 ```
 
 The clusters to validate are the overlapping clusters of the partition of the
@@ -78,7 +79,8 @@ parts are left out of the final clusters (`ND`).
 ## Outputs
 
 `validation` and `pipeline` write the FASTA files of the final clusters in
-the output directory, and store the clusters in the map. The other files
+the output directory, and store the clusters in the map of the clusters,
+which they write there too (see [The contact map of the clusters](metacool.md)). The other files
 below are written in the temporary directory of the run (`-T`, in a
 directory of its own, which the log names), which `-N` keeps; `metator dump`
 writes the tables from the map (see [`dump`](../cli.md#dump)). An earlier
@@ -111,7 +113,7 @@ clusters from the contact map of the run (see
 [Other tools](../other-tools.md)):
 
 ```bash
-metacooler show sample.metacool -o clusters.png
+metacooler show binning/sample.metacool -o clusters.png
 ```
 
 ## What comes next

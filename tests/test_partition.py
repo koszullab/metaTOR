@@ -165,6 +165,40 @@ def test_louvain_iterations():
     assert len(partition[1].split(";")) == iterations
 
 
+@pytest.mark.parametrize("interval", [0, 10_000], ids=["slow iterations", "fast iterations"])
+def test_iterate_logs_the_iterations_as_they_go(interval, monkeypatch, logged):
+    """With progress, the log follows the iterations of a partition, which take
+    minutes on a large network: a line at each tenth of them, at least
+    PROGRESS_INTERVAL seconds after the line before (none for iterations
+    faster than that), and a line once they are all done, with the time they
+    took. Without progress (the recursive partitions of the validation), it
+    says nothing."""
+    monkeypatch.setattr(mtp, "PROGRESS_INTERVAL", interval)
+    done = []
+
+    def membership():
+        done.append(len(done))
+        return [len(done)]
+
+    assert mtp.iterate("louvain", 20, membership, progress=True) == [[n] for n in range(1, 21)]
+    tenths = [f"louvain: {n}/20 iterations (0h 0m 0s)." for n in range(2, 20, 2)] if interval == 0 else []
+    assert [message for _, message in logged()] == [*tenths, "louvain: 20/20 iterations, done in 0h 0m 0s."]
+    mtp.iterate("leiden", 3, membership)
+    assert len(logged()) == len(tenths) + 1
+
+
+def test_partition_logs_its_iterations_and_clusters(logged):
+    """partition logs its iterations (see iterate) and the clusters that it
+    found, in a line each, and the details at DEBUG only."""
+    clusters = mtp.partition("louvain", network, 3, 0.8, 1.0, 1, "metator")
+    messages = [message for _, message in logged()]
+    assert messages == [
+        "3 iterations of louvain on the network of 1058 contigs and 13415 edges.",
+        "louvain: 3/3 iterations, done in 0h 0m 0s.",
+        f"{len(clusters.core)} core clusters, merged into {len(clusters.overlapping)} overlapping clusters.",
+    ]
+
+
 def test_network_graph():
     """The vertices are the contigs of the edges, in the order of their IDs; the
     edges are the rows, in their order."""

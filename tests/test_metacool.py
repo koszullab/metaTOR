@@ -310,17 +310,22 @@ def test_outfile_in_a_file(metagenome, binning, tmp_path):
     assert isinstance(error.value.__cause__, FileExistsError)
 
 
-def test_metacooler_messages_go_to_the_log_file(metagenome, binning, tmp_path):
-    """metacooler's messages reach the log file of the run; its logger is left as
-    it was."""
+@pytest.mark.parametrize("level", [logging.INFO, logging.DEBUG])
+def test_metacooler_messages_go_to_the_log_file(level, metagenome, binning, tmp_path):
+    """metacooler's messages reach the log file of the run: its accounts of what
+    it does (INFO) only when the log shows the details of the run (DEBUG),
+    as they are details of metaTOR's work (the staged copy of the map...),
+    its warnings always; its logger is left as it was."""
     metacool = unbinned_map(tmp_path / "contigs.metacool", metagenome, binning["pairs"])
     log = tmp_path / "run.log"
     mc_logger = logging.getLogger("metacooler")
     before = (mc_logger.level, mc_logger.propagate, list(mc_logger.handlers))
     mtl.set_file_handler(str(log))
+    mtl.logger.setLevel(level)
     try:
         reassign(str(metacool), str(binning["contig_data"]), str(tmp_path / "map.metacool"))
     finally:
+        mtl.logger.setLevel(mtl.CURRENT_LOG_LEVEL)
         for handler in mtl.logger.handlers[:]:
             if isinstance(handler, logging.FileHandler):
                 mtl.logger.removeHandler(handler)
@@ -328,8 +333,14 @@ def test_metacooler_messages_go_to_the_log_file(metagenome, binning, tmp_path):
     logged = log.read_text()
     n_binned = sum(len(genome.contigs) for genome in metagenome.genomes)
     n_bins = len(metagenome.genomes)
-    assert f": {len(metagenome.contigs)} contigs, {n_binned} of them in {n_bins} clusters." in logged
-    assert "INFO :: Reassigned " in logged
+    assert (
+        f"INFO :: Writing {tmp_path / 'map.metacool'} from {metacool}: {len(metagenome.contigs)} contigs, {n_binned} of them in {n_bins} clusters."
+        in logged
+    )
+    assert ("INFO :: Reassigned " in logged) == (level == logging.DEBUG)
+    assert (f"DEBUG :: {tmp_path / 'map.metacool'} is written: the contact map of the clusters." in logged) == (
+        level == logging.DEBUG
+    )
     assert (mc_logger.level, mc_logger.propagate, list(mc_logger.handlers)) == before
 
 
@@ -687,7 +698,7 @@ def test_map_of_the_bins_from_the_map_of_an_earlier_run(earlier_bins, metagenome
 
 
 @pytest.mark.parametrize("how", ["path", "root URI", "link to the outfile", "outfile a link"])
-def test_map_of_the_bins_replaces_the_input_map(how, metagenome, binning, tmp_path, logged):
+def test_map_of_the_bins_replaces_the_input_map(how, metagenome, binning, tmp_path, logged, debug_log):
     """The outfile may be the input map itself (a rebinning into the same
     directory): the same path (also as the URI of its root, file::/), or the
     file that the input map, given as a symbolic link, points to."""
@@ -713,7 +724,9 @@ def test_map_of_the_bins_replaces_the_input_map(how, metagenome, binning, tmp_pa
     metacooler.validate(str(outfile), full=True)
     assert_same_map(outfile, mtmc_map(binning, tmp_path))
     assert sorted(path.name for path in out.iterdir()) == ["metator.metacool"]
-    assert ("INFO", f"{outfile} is written: the contact map of the clusters.") in logged()
+    assert ("DEBUG", f"{outfile} is written: the contact map of the clusters.") in logged()
+    writing = f"Writing {outfile} in place: " if in_place else f"Writing {outfile} from {metacool}: "
+    assert [message for level, message in logged() if level == "INFO" and message.startswith(writing)]
     # In place, the input map is the map edited (through a link, its
     # target); else it is left as it was.
     assert (Path(mtmc.map_file(metacool)).read_bytes() == before) != in_place
@@ -807,11 +820,14 @@ def removed_partial(messages):
 
 @pytest.mark.parametrize("failure", ["reassign", "validate", "in metacooler"])
 @pytest.mark.parametrize("how", ["path", "link to the outfile"])
-def test_input_map_kept_when_the_map_of_the_bins_fails(how, failure, metagenome, binning, tmp_path, monkeypatch, logged):
+def test_input_map_kept_when_the_map_of_the_bins_fails(
+    how, failure, metagenome, binning, tmp_path, monkeypatch, logged, debug_log
+):
     """When the map of the bins cannot be written or does not validate, the input
     map (the outfile) is left byte for byte as it was, and no temporary file
     stays next to it: metacooler removes the partial file it was writing, and
-    says so at INFO, not that it is left for inspection."""
+    says so at INFO (in a log of the details of the run), not that it is left
+    for inspection."""
     out = tmp_path / "out"
     out.mkdir()
     outfile = unbinned_map(out / "metator.metacool", metagenome, binning["pairs"])

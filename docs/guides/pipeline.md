@@ -3,7 +3,7 @@
 `metator pipeline` clusters the contigs of an assembly from the contact map of
 a metaHiC library, in one command: it builds the network of contigs from the
 map, partitions it, validates the clusters, and writes the contact map of the
-clusters over the map. This page lists its inputs, the files it writes, and
+clusters to its output directory. This page lists its inputs, the files it writes, and
 how to run its steps one by one. The [CLI reference](../cli.md#pipeline) lists
 every option, and [Concepts](../concepts.md) explains the steps.
 
@@ -56,18 +56,22 @@ The pipeline writes into `--outdir` (`-o`, the current directory by default):
 
 | File | What it holds |
 |---|---|
+| `<MAP>` | The contact map of the clusters, named as `MAP` (`sample.metacool` from `sample.metacool`) |
 | `final_clusters/` | One FASTA file per final cluster |
 | `metator_pipeline_<date>.log` | The log of the run |
 
 What the run finds is in the map. At its end, the run writes the contact map
-of all the contigs, grouped by cluster, over `MAP` (see
-[The contact map of the clusters](metacool.md)): the summary of the clusters
-in its genomes table, every clustering round (core, overlapping, recursive,
-final), and the network of the contigs, as `metator network` stores it (see
-[Building the network](network.md#building-the-network)). `--output-map FILE`
-writes it to FILE and leaves `MAP` as it was. A run that stops before leaves
-`MAP` as it was, which a run restarts from (`-F` to replace the final
-clusters it began).
+of all the contigs, grouped by cluster, to the output directory, under the
+name of `MAP` (see [The contact map of the clusters](metacool.md)): the
+summary of the clusters in its genomes table, every clustering round (core,
+overlapping, recursive, final), and the network of the contigs, as `metator
+network` stores it (see
+[Building the network](network.md#building-the-network)). `MAP` is left as it
+was: metacooler copies it next to the map of the run, which the run edits, and
+renames into place once it is validated. `--inplace` writes the map of the
+clusters over `MAP` instead, and so does a run whose output directory holds
+`MAP` already. A run that stops before leaves `MAP` as it was, which a run
+restarts from (`-F` to replace the map and the final clusters it began).
 
 The tables of the run are written in its temporary directory (`--tmpdir`, in
 a directory of its own, which the log names), which `--no-clean-up` (`-N`)
@@ -118,20 +122,21 @@ after the other, or to rerun the partition with other parameters without
 building the network again:
 
 ```bash
-# 1. Build the network from the map, and store it in the map
+# 1. Build the network from the map, and store it in binning/sample.metacool
 metator network sample.metacool -a assembly.fa -e DpnII -d depth.txt -o binning
 
-# 2. Partition it: the map stores its core and overlapping clusters
-metator partition sample.metacool -t 16 -o binning
+# 2. Partition it: the map stores its core and overlapping clusters, in place
+metator partition binning/sample.metacool -t 16 -o binning
 
 # 3. Validate the clusters: final_clusters/, and the map of the clusters
-metator validation sample.metacool -a assembly.fa -t 16 -o binning
+metator validation binning/sample.metacool -a assembly.fa -t 16 -o binning
 ```
 
 Run step by step, the final clusters go to `final_clusters/`. The map is
-what the steps share: `metator network` stores the network in the map,
-which `partition` and `validation` read, `partition` stores its partition
-there, which `validation` reads, and they write the map that
+what the steps share: `metator network` stores the network in the map of its
+output directory, which `partition` and `validation` read and update in
+place (it is the map of their output directory too), `partition` stores its
+partition there, which `validation` reads, and they write the map that
 `metator pipeline MAP` writes from the same clusters: see
 [Step by step](metacool.md#step-by-step).
 
@@ -143,16 +148,23 @@ as FASTA files.
 
 ## The log
 
-The log starts with the version of metaTOR, the date and the command, then
-the parameters, and records each step: the contacts of the map and those
-between contigs, the core and overlapping clusters found, the clusters
-validated, and at the end the number of clusters in each quality class (see
-[Cluster quality](../concepts.md#cluster-quality)).
+The log starts, as hicstuff's does, with the version of metaTOR, the date and
+the command line (`cmd`), then the value of each option, and a line of
+dashes. It then follows the three steps of the run, each from a line of its
+own (`[1/3] network`, `[2/3] partition`, `[3/3] validation`): the contacts of
+the map and those between contigs, the iterations of the partition as they
+go (a line every tenth of them, at least 10 seconds apart, on a large
+network), the core and overlapping clusters found, the clusters that
+miComplete checked, each recursive step of the validation (`Recursive step
+2/9: ...`, and when no further step is needed), and the number of clusters in
+each quality class (see [Cluster quality](../concepts.md#cluster-quality)). It
+ends with the map that the run wrote and how long it took:
 
 ```console
-INFO :: 41563 contacts in the library.
-INFO :: 18632 contacts inter-contigs in the library.
-INFO :: 3D ratio : 0.44828332892235884
+INFO :: [1/3] network: the contigs of sample.metacool and their contacts
+INFO :: 41563 contacts in sample.metacool, 18632 of them between contigs (3D ratio: 0.4483).
+...
+INFO :: Final contact map written after 0h 0m 5s: binning/sample.metacool
 ```
 
 The **3D ratio** is the share of the contacts that join two different

@@ -50,3 +50,12 @@ def test_python_warnings_are_shown_and_logged(tmp_path):
     assert result.stderr.startswith("WARNING :: ") and "UserWarning: a problem of the map" in result.stderr
     logged = log.read_text()
     assert " :: WARNING :: " in logged and "UserWarning: a problem of the map" in logged
+
+
+@pytest.mark.parametrize(
+    "seconds, written",
+    [(0, "0h 0m 0s"), (0.6, "0h 0m 1s"), (59.4, "0h 0m 59s"), (1051, "0h 17m 31s"), (3 * 3600 + 61, "3h 1m 1s")],
+)
+def test_duration(seconds, written):
+    """A duration as hicstuff writes it at the end of its log."""
+    assert mtl.duration(seconds) == written

@@ -14,7 +14,8 @@ made with `hicstuff pipeline -M metacool -n`, from hicstuff 4.0.0 (see
 [Other tools](../other-tools.md#from-the-reads-to-the-map)): `-n` keeps the
 alignments of hicstuff, which give the coverage of the contigs. The tables of
 the run, `binning.txt` and `contig_data_final.txt`, are written from the map
-of its clusters, `sample.metacool`, by `metator dump`, in `tables` below.
+of its clusters, `binning/sample.metacool`, by `metator dump`, in `tables`
+below.
 
 ## 1. The contigs database
 
@@ -24,7 +25,7 @@ per cluster:
 
 ```bash
 # The tables of the run, from the map of its clusters
-metator dump sample.metacool -o tables
+metator dump binning/sample.metacool -o tables
 mkdir -p anvio
 cut -f 1 tables/binning.txt > anvio/contigs.txt
 cat binning/final_clusters/*.fa > anvio/contigs.fa
@@ -133,7 +134,7 @@ binning = binning[~binning.index.duplicated(keep="last")]
 # One FASTA file per curated cluster, the records of its contigs as they are
 # in the assembly, written by metacooler from the contact map of the run.
 groups = {bin_name: list(contigs.index) for bin_name, contigs in binning.groupby(binning)}
-metacooler.write_fasta("sample.metacool", "assembly.fa", "anvio/fasta", groups=groups)
+metacooler.write_fasta("binning/sample.metacool", "assembly.fa", "anvio/fasta", groups=groups)
 
 # miComplete on every cluster, with the bacterial and the archaeal markers.
 mtv.micomplete_quality("anvio/fasta", "anvio/micomplete.txt", threads=16)
@@ -157,7 +158,7 @@ contigs.to_csv("binning/contig_data_anvio.txt", sep="\t", index=False)
 ```
 
 ```bash
-metacooler reassign sample.metacool --contigs binning/contig_data_anvio.txt \
+metacooler reassign binning/sample.metacool --contigs binning/contig_data_anvio.txt \
     --contigs-format Name,Anvio -o anvio/curated.metacool
 metacooler extract anvio/curated.metacool --genomes metator_00001_00000 -o metator_00001_00000.cool
 ```

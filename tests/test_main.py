@@ -73,14 +73,15 @@ def test_command_help(monkeypatch, capsys):
         _run(monkeypatch, "partition", "--help")
     assert not exit.value.code
     out = plain(capsys.readouterr().out)
-    for option in ["--force", "--output-map", "--threads"]:
+    for option in ["--force", "--inplace", "--threads"]:
         assert option in out
     assert "map" in out.lower() and "--network" not in out
 
 
 def test_command_runs(monkeypatch, tmp_path, metagenome_network):
     """partition MAP, on a map whose network metator network stored (see
-    metagenome_network): it stores its partition in the map."""
+    metagenome_network): it stores its partition in the map of its output
+    directory."""
     import shutil
 
     import metacooler
@@ -90,7 +91,10 @@ def test_command_runs(monkeypatch, tmp_path, metagenome_network):
     with pytest.raises(SystemExit) as exit:
         _run(monkeypatch, "partition", str(metacool), "-i", "2", "-o", str(out), "-T", str(tmp_path / "tmp"))
     assert not exit.value.code
-    assert [entry["name"] for entry in metacooler.MetaCooler(str(metacool)).cluster_rounds] == ["core", "overlapping"]
+    assert [entry["name"] for entry in metacooler.MetaCooler(str(out / "network.metacool")).cluster_rounds] == [
+        "core",
+        "overlapping",
+    ]
 
 
 def test_python_m(monkeypatch, capsys):

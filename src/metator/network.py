@@ -120,10 +120,10 @@ def log_contacts(source, contacts):
     inter_contacts = int(contacts["count"][contacts["id1"] != contacts["id2"]].sum())
     if not all_contacts:
         raise mtmc.MetacoolError(f"{source} holds no contact: there is no network to build.")
-    logger.info(f"Information of {source}:")
-    logger.info(f"{all_contacts} contacts in the library.")
-    logger.info(f"{inter_contacts} contacts inter-contigs in the library.")
-    logger.info(f"3D ratio : {inter_contacts / all_contacts}\n")
+    logger.info(
+        f"{all_contacts} contacts in {source}, {inter_contacts} of them between contigs (3D ratio: "
+        f"{inter_contacts / all_contacts:.4f})."
+    )
 
 
 def map_network(metacool, weights="stored", contacts=None):

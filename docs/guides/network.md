@@ -57,10 +57,11 @@ names, once the contacts within each contig, which metacooler writes too and
 are no edge, are dropped (see [The network](../formats.md#the-network)):
 
 ```bash
-# From the map of the clusters of a run: network.txt, among its tables
-metator dump sample.metacool -o tables
+# From the map of the clusters of a run (metator pipeline sample.metacool -o binning):
+# network.txt, among its tables
+metator dump binning/sample.metacool -o tables
 # From any map that holds it: node1, node2, value (the raw counts without --balance)
-metacooler network sample.metacool --level contig --balance metator_empirical_hit --header \
+metacooler network binning/sample.metacool --level contig --balance metator_empirical_hit --header \
     | awk -F '\t' '$1 != $2 && $3 != 0' > network.tsv
 ```
 

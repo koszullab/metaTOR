@@ -62,7 +62,8 @@ def run(metagenome, metagenome_files, tmp_path_factory):
         result = CliRunner().invoke(cli, args, catch_exceptions=False)
     assert result.exit_code == 0, result.output
     (kept,) = [path.parent for path in (directory / "tmp").glob("*/contig_data_final.txt")]
-    return {"map": metacool, "kept": kept, "assembly": assembly}
+    # The map of the clusters, in the output directory of the run.
+    return {"map": directory / "out" / metacool.name, "kept": kept, "assembly": assembly}
 
 
 @pytest.fixture
@@ -423,7 +424,7 @@ def test_dump_refuses_a_map_whose_network_changed(copied, run, tmp_path, run_cli
     dump refuses the map, naming metator network with the normalization of the
     run, which stores the network of the run again, and gives the tables of the
     run back."""
-    common = ["-a", run["assembly"], "-o", tmp_path / "logs", "-T", tmp_path / "tmp"]
+    common = ["-a", run["assembly"], "-o", tmp_path / "logs", "-T", tmp_path / "tmp", "--inplace"]
     run_cli("network", copied, "-n", "length", *common)
     with pytest.raises(mtmc.MetacoolError) as refused:
         mtd.dump(str(copied), str(tmp_path / "out"))

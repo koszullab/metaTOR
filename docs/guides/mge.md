@@ -46,13 +46,13 @@ metaTOR 1.x counted it from the pairs files.
 
 ```bash
 # The map of the run, once metator network stored its network in it (by
-# network, pipeline or validation)
-metator mge hicstuff/sample.metacool -a assembly.fa -m mges.txt -o mge
+# network, pipeline or validation, here in binning): updated in place
+metator mge binning/sample.metacool -a assembly.fa -m mges.txt -o binning
 ```
 
 | Input | What it is |
 |---|---|
-| `MAP` | The contact map of the run, which `metator network` stored the network of its contigs in (that of `metator network MAP`, `pipeline MAP` or `validation MAP`, or their `--output-map`): it gives the contacts of the MGE contigs, and the size, GC content and hits of each, which `metator network` stored in it. Its clusters, if it has any, are not read. It must hold the contact statistics of the reads of its contigs, at 1001 bp: `hicstuff pipeline -M metacool` and `metacooler create pairs` count them as they make the map from the pairs files, with metacooler 0.4.0 or later (`metacooler create pairs --qc-threshold 1001` with an earlier one) |
+| `MAP` | The contact map of the run, which `metator network` stored the network of its contigs in (the map that `metator network`, `pipeline` or `validation` wrote in its output directory): it gives the contacts of the MGE contigs, and the size, GC content and hits of each, which `metator network` stored in it. Its clusters, if it has any, are not read. It must hold the contact statistics of the reads of its contigs, at 1001 bp: `hicstuff pipeline -M metacool` and `metacooler create pairs` count them as they make the map from the pairs files, with metacooler 0.4.0 or later (`metacooler create pairs --qc-threshold 1001` with an earlier one) |
 | `--assembly` (`-a`) | The assembly that the map was made from, as a FASTA file, plain or compressed with gzip |
 | `--mges` (`-m`) | The MGE contigs, one name per line. Those that the map lacks (a map made with a contig filter) are left out, with a warning that names them |
 
@@ -60,15 +60,16 @@ metator mge hicstuff/sample.metacool -a assembly.fa -m mges.txt -o mge
 |---|---|---|
 | `--threshold-bin` (`-s`) | 0.8 | The score above which two contigs, or clusters, are merged. A lower threshold merges more |
 | `--random` (`-r`) | off | Shuffle the contigs between the clusters, keeping the number of contigs of each: a random clustering of the same shape, to compare the real one with. Stored as the round `mge_random`, and written to `mges_binned_random.fa` |
-| `--outdir` (`-o`) | current directory | Where `mges_binned.fa` goes |
-| `--output-map` | none | Write the map with the MGE clusters to this file, and leave `MAP` as it was (see [In the contact map of the run](#in-the-contact-map-of-the-run)) |
+| `--outdir` (`-o`) | current directory | Where `mges_binned.fa` and the map of the run go: `MAP` itself, updated in place, when it is there already |
+| `--inplace` | off | Store the MGE clusters in `MAP` itself, in place, rather than in the map of the output directory (see [In the contact map of the run](#in-the-contact-map-of-the-run)) |
 
 A map that `mge` cannot cluster the MGE contigs of is refused before anything
 is written, with the reason and how to make one: a map without the contact
 statistics of its reads, with them measured from its pixels (`metacooler qc
 --store`) or at another distance than 1001 bp, or without the columns of
-`metator network` (after a run with `--output-map`, give `mge` the map that
-the run wrote); and a map that holds none of the MGE contigs. So is an
+`metator network` (give `mge` the map that `network`, `pipeline` or
+`validation` wrote in its output directory); and a map that holds none of the
+MGE contigs. So is an
 assembly that is not a FASTA file, plain or compressed with gzip, as
 `network`, `validation` and `pipeline` refuse it.
 
@@ -132,17 +133,19 @@ clusters of a run, in `clusters.txt` and `cluster_members.txt` (see
 
 A second run replaces the round `mge`, and only it; `--random` stores the
 round `mge_random`, which replaces only an earlier `mge_random`. The map is
-updated as `metator partition MAP` updates it (see
+written as `metator partition MAP` writes it (see
 [Step by step](metacool.md#step-by-step)): in an edit session of metacooler,
-validated in full, then renamed over it, keeping its mode (through a symbolic
-link, the file it points to is updated), and locked while the run writes it;
-`--output-map FILE` writes the map to FILE instead (replaced only with `-F`),
-and leaves `MAP` as it was, which a run from an entry of a `.mmetacool`
-collection needs. What `partition MAP` refuses is refused before any work,
-with the reason in the log: a map that is not there or that metacooler cannot
-open, an entry without `--output-map`, an `--output-map` that is one of the
-inputs of the run (even with `-F`) or that exists without `-F`, and a map
-that another run holds.
+validated in full, then renamed into place, and locked while the run writes
+it. It goes to the output directory, under the name of `MAP`, which is left as
+it was (from an entry of a `.mmetacool` collection, `NAME.metacool`); it is
+`MAP` itself, updated in place, keeping its mode (through a symbolic link, the
+file it points to), when `MAP` is the map of the output directory already, or
+with `--inplace`. A map of an earlier run in the output directory is
+replaced only with `-F`. What `partition MAP` refuses is refused before any
+work, with the reason in the log: a map that is not there or that metacooler
+cannot open, an entry with `--inplace`, a map of the output directory that is
+one of the inputs of the run (even with `-F`) or that exists without `-F`,
+and a map that another run holds.
 
 `mge` reads no cluster of the map: it runs as well on the map of the contigs,
 once `metator network` stored its network there, as on the map of the
