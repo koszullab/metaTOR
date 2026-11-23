@@ -140,6 +140,29 @@ def test_dump_writes_the_tables_that_the_run_kept(run, tmp_path, run_cli):
     assert not (set(network.contig1) | set(network.contig2)) & set(ISOLATED)
 
 
+def test_dump_gives_each_cluster_its_size(copied, metagenome, run, tmp_path, run_cli):
+    """clusters.txt gives every cluster of every round its number of contigs and
+    their length, after its parent (n_contigs, length): those that the map
+    computes from its contigs, for the MGE clusters that metator mge stores
+    there too, which 1.x's mges_bin_summary.tsv gave as ContigsNumber and
+    BinLength."""
+    truth = metagenome.truth
+    mges = tmp_path / "mges.txt"
+    mges.write_text("".join(f"{name}\n" for name in truth.Name[truth.Kind == "mge"]))
+    run_cli("mge", copied, "-a", run["assembly"], "-m", mges, "-o", tmp_path / "mge", "-T", tmp_path / "tmp", "--inplace")
+    run_cli("dump", copied, "-o", tmp_path / "dump")
+    dumped = pd.read_csv(
+        tmp_path / "dump" / "clusters.txt", sep="\t", dtype={"name": str}, keep_default_na=False, na_values=["NA"]
+    )
+    assert list(dumped.columns[:6]) == ["round", "name", "parent_round", "parent", "n_contigs", "length"]
+    computed = metacooler.MetaCooler(str(copied)).clusters
+    assert list(dumped["round"]) == list(computed["round"]) and list(dumped["name"]) == list(computed["name"])
+    for column in ["n_contigs", "length"]:
+        assert dumped[column].tolist() == computed[column].astype("int64").tolist(), column
+    mge = dumped[dumped["round"] == "mge"]
+    assert len(mge) and (mge["n_contigs"] > 0).all() and (mge["length"] > 0).all()
+
+
 def test_dump_of_an_entry_is_that_of_its_map(run, tmp_path, run_cli):
     """An entry of a .mmetacool collection dumps as the map it holds."""
     collection = tmp_path / "maps.mmetacool"

@@ -210,7 +210,10 @@ each removed command.
   `overlapping`, `recursive_<k>`, `final`, `mge`, `mge_random`), with its
   parent and miComplete's columns, and the contigs of each, in the
   `/clusters` group of the map, which `clusters.txt` and
-  `cluster_members.txt` write out.
+  `cluster_members.txt` write out; `clusters.txt` gives each cluster its
+  number of contigs and their length (`n_contigs`, `length`, as the map
+  computes them), which `mges_bin_summary.tsv` gave the MGE clusters
+  (`ContigsNumber`, `BinLength`).
 - The normalization of the network is stored in the map, as the weights
   `metator_<normalization>` of its bins, the way cooler stores balancing
   weights: `cooler` (`matrix(balance="metator_empirical_hit")`) and

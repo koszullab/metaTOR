@@ -84,7 +84,7 @@ keeps:
 | `cluster_summary.txt` | One row per final cluster: size, GC content, miComplete's completeness and redundancy, N50, abundance… |
 | `contig_data_final.txt` | One row per contig: its measures, and the core, overlapping, recursive and final clusters it belongs to |
 | `binning.txt` | The contigs of the final clusters and their cluster |
-| `clusters.txt`, `cluster_members.txt` | Every cluster of every round, with its parent and miComplete's columns, and the contigs of each: see [Clustering rounds](metacool.md#clustering-rounds) |
+| `clusters.txt`, `cluster_members.txt` | Every cluster of every round, with its parent, its number of contigs and their length, and miComplete's columns, and the contigs of each: see [Clustering rounds](metacool.md#clustering-rounds) |
 | `overlapping_clusters/`, `recursive_clusters/` | The FASTA files of the clusters that miComplete checked: the overlapping clusters, and the recursive clusters, in `step_<n>/` for step `n` |
 | `overlapping_micomplete_results.txt`, `recursive_micomplete_step_<n>.txt` | miComplete's results |
 | `contig_data_partition.txt` | The contig data of the partition |

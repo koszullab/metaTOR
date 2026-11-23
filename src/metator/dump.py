@@ -8,8 +8,9 @@ temporary directory only. ``metator dump MAP -o DIR`` writes them from the
 map, read only: ``contig_data_final.txt`` (in the map's order, without the
 ``ID`` column, whose values were positions in the map the run read),
 ``cluster_summary.txt`` (rows, columns and formats as the validation
-recorded them), ``binning.txt``, ``clusters.txt``, ``cluster_members.txt``
-and ``network.txt``.
+recorded them), ``binning.txt``, ``clusters.txt`` (with the number of
+contigs and the length of each cluster, which the map computes),
+``cluster_members.txt`` and ``network.txt``.
 
 The map must be the map of the clusters as its run wrote it (see
 check_dumpable); every table is read through one opened map, and they are
@@ -416,6 +417,13 @@ def dump(metacool, outdir, force=False):
             data = contig_data_final(metacool, mc, stored.table)
             summary = cluster_summary(metacool, mc, layout)
             clusters, members = mtmc.map_rounds(mc)
+            # Each cluster with its number of contigs and their length, which
+            # the map computes, as the run wrote them in its clusters.txt: the
+            # MGE clusters too, which mges_bin_summary.tsv gave as
+            # ContigsNumber and BinLength.
+            contigs = mc.contigs
+            lengths = pd.Series(contigs["length"].to_numpy(), index=contigs["name"].astype(str).to_numpy())
+            clusters = mtcl.with_sizes(clusters, members, lengths)
     except mtmc.MapReplacedError as error:
         # A replacement found by a read of stored_network, which names
         # another remedy.
