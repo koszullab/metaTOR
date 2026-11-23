@@ -61,7 +61,7 @@ def patch_biopython_gc():
         except ZeroDivisionError:
             return 0.0
 
-    Bio.SeqUtils.GC = GC
+    Bio.SeqUtils.GC = GC  # ty: ignore[missing-attribute]
 
 
 def patch_distutils_spawn():
@@ -74,9 +74,9 @@ def patch_distutils_spawn():
             return shutil.which(executable, path=path)
 
         spawn = types.ModuleType("distutils.spawn")
-        spawn.find_executable = find_executable
+        spawn.find_executable = find_executable  # ty: ignore[missing-attribute]
         distutils = types.ModuleType("distutils")
-        distutils.spawn = spawn
+        distutils.spawn = spawn  # ty: ignore[missing-attribute]
         sys.modules["distutils"] = distutils
         sys.modules["distutils.spawn"] = spawn
 

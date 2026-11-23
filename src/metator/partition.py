@@ -12,11 +12,11 @@ rounds; the validation reads it back (partition_table).
 """
 
 import igraph as ig
-import multiprocessing
 import numpy as np
 import pandas as pd
 import time
 
+from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 import metator.clusters as mtc
 from metator.log import duration, logger
@@ -225,17 +225,14 @@ def get_hamming_distance(core_bins_iterations, threads):
     step = 1000
     steps = np.arange(step, len(core_bins_iterations.index) + step, step)
     split_core_bins = [core_bins_iterations[(k - step) : k] for k in steps]
-    pool = multiprocessing.Pool(processes=threads)
-    res = pool.map(
-        partial(
-            get_distances_splitmat,
-            core_bins_iterations=core_bins_iterations,
-        ),
-        split_core_bins,
-    )
-    res = sparse.hstack(res)
-    pool.close()
-    return res.tocsr()
+    distances = partial(get_distances_splitmat, core_bins_iterations=core_bins_iterations)
+    # Threads, not processes: SciPy computes the distances without holding the
+    # GIL, so the threads run in parallel, and no process is forked from this
+    # one, which runs threads and so may deadlock in a fork, nor spawned, which
+    # would import the script of a caller of the Python API again.
+    with ThreadPoolExecutor(max_workers=max(1, min(threads, len(split_core_bins)))) as executor:
+        res = list(executor.map(distances, split_core_bins))
+    return sparse.hstack(res).tocsr()
 
 
 def leiden_iterations(network, iterations, resolution_parameter, progress=False):

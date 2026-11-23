@@ -18,6 +18,7 @@ import sys
 import time
 from contextlib import ExitStack, contextmanager
 from os.path import exists, join
+from typing import cast
 
 import rich_click as click
 
@@ -585,7 +586,8 @@ def log_file_name(directory, command):
 def run_metadata():
     """The command line and the parameters of the running command, as stored in a
     .metacool file."""
-    params = dict(click.get_current_context().params)
+    # Outside a command, get_current_context raises: it never returns None here.
+    params = dict(cast(click.RichContext, click.get_current_context()).params)
     return {
         "command": shlex.join(["metator", *sys.argv[1:]]),
         "parameters": {name: list(value) if isinstance(value, tuple) else value for name, value in params.items()},

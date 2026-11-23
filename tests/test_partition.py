@@ -7,6 +7,7 @@ import metator.partition as mtp
 import numpy as np
 import pandas as pd
 import pytest
+from scipy.spatial.distance import cdist
 
 assembly = "tests_data/assembly.fa"
 # The network of a run, as metator.network.map_network gives it.
@@ -147,6 +148,18 @@ def test_get_hamming_distance():
     assert hamming_distance.shape == (8, 8)
     assert hamming_distance.nnz == 22
     np.testing.assert_allclose(hamming_distance.toarray(), shared_iterations / 5, rtol=0, atol=1e-12)
+
+
+def test_get_hamming_distance_workers():
+    """More than 1000 core bins: the slices of 1000 go to several threads, which
+    give the distances that one thread gives."""
+    many = pd.DataFrame(np.random.default_rng(0).integers(0, 20, size=(1500, 5)))
+    in_process = mtp.get_hamming_distance(many, 1)
+    in_workers = mtp.get_hamming_distance(many, 2)
+    assert in_workers.format == "csr"
+    assert in_workers.shape == (1500, 1500)
+    assert (in_workers != in_process).nnz == 0
+    np.testing.assert_allclose(in_workers.toarray(), 1 - cdist(many.values, many.values, metric="hamming"), rtol=0, atol=1e-12)
 
 
 def test_leiden_iterations():
