@@ -53,15 +53,13 @@ before installing `metator`:
 * The following dependencies should also be locally installed and available in the `$PATH`:
     * [`bowtie2`](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml) or `bwa`
     * [`samtools`](https://www.htslib.org/download/)
-    * [`hmmer`](http://hmmer.org/documentation.html)
-    * [`prodigal`](https://github.com/hyattpd/Prodigal)
 
 **Warning:** note that if you install `metator` with `pip`, this may upgrade/downgrade 
 versions of the above dependencies and may cause conflicts with other softwares.
 
 ```sh
-# Install bowtie2, bwa, samtools, hmmer and prodigal:
-sudo apt update && sudo apt install bowtie2 bwa samtools hmmer prodigal
+# Install bowtie2, bwa and samtools:
+sudo apt update && sudo apt install bowtie2 bwa samtools
 
 # Install metator from Pypi
 pip3 install metator
@@ -370,7 +368,7 @@ validation) before it replaces it; when it cannot be written, the run stops with
 map is left as it was, as it is when the run stops for any other reason (Ctrl-C included). A symbolic
 link is replaced, not its target (an input map stored elsewhere, for example). A run from an entry of a
 `.mmetacool` collection needs `--output-map`, and a FILE that exists is replaced only with `-F`. While
-a run writes a map, `<map>.lock` holds it: a second run that would write the same map stops before any
+a run writes a map, `<map>.metator.lock` holds it: a second run that would write the same map stops before any
 work, naming the run that holds it (a lock that a run left behind on the same host when it died is
 removed, with a warning). A run stopped by Ctrl-C or SIGTERM (a job scheduler's time limit) cleans up after
 itself; one killed outright (`kill -9`) can leave its lock, and the files of the map it was writing

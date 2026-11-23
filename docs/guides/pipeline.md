@@ -111,7 +111,7 @@ A run refuses to overwrite the bins of an earlier one unless given `--force`
 | `--tmpdir` | `./tmp` | Where the index and the temporary files go; deleted at the end, unless `--no-clean-up` |
 
 The validation is the step that needs the most memory and time: miComplete
-runs prodigal and hmmer on every bin.
+runs Prodigal and HMMER (pyrodigal and pyhmmer) on every bin.
 
 ## Running the steps one by one
 
