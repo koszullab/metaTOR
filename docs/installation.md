@@ -44,7 +44,7 @@ the assembly given as a FASTA file, needs no aligner. pip installs metaTOR's Pyt
 [miComplete](https://pypi.org/project/micomplete/), and
 [pyrodigal](https://pypi.org/project/pyrodigal/) and
 [pyhmmer](https://pypi.org/project/pyhmmer/), with which miComplete runs
-Prodigal and HMMER to validate the bins; install metaTOR in an
+Prodigal and HMMER to validate the clusters; install metaTOR in an
 environment of its own so that they do not change the versions other tools
 rely on.
 

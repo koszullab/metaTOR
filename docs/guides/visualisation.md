@@ -2,9 +2,9 @@
 
 A MAG can be looked at as a Hi-C map of its own contigs: its contacts show
 whether it is one genome, and in which order its contigs follow each other.
-`metator contactmap` builds the contact map of a bin, `hicstuff view` draws
-it, and `metator scaffold` orders and orients the contigs of a bin from its
-contacts.
+`metator contactmap` builds the contact map of a cluster, `hicstuff view` draws
+it, and `metator scaffold` orders and orients the contigs of a cluster from
+its contacts.
 
 ## The pairs files
 
@@ -23,14 +23,14 @@ metator pairs -t 16 sample.pairs
 command reads only the contacts of the contigs it needs. `contactmap` can read
 the contact map of the run instead (see [From a contact map](#from-a-contact-map)).
 
-## The contact map of a bin
+## The contact map of a cluster
 
 ```bash
 metator contactmap -a assembly.fa -c binning/contig_data_final.txt -e DpnII \
     -n metator_00007_00000 -s 1000 -o metator_00007_00000 binning/alignment_0_sorted.pairs.gz
 ```
 
-`contactmap` takes the contigs of the bin from the contig data table, keeps
+`contactmap` takes the contigs of the cluster from the contig data table, keeps
 those of at least `--min-size` (`-s`, 5 kb by default) base pairs, extracts the
 pairs between them, and builds their contact map with hicstuff, at the
 resolution of the restriction fragments of `--enzyme` (`-e`):
@@ -45,10 +45,10 @@ INFO :: 503 pairs used to build a contact map of 161 bins with 145 nonzero entri
 
 | `--object` (`-O`) | `--name` (`-n`) |
 |---|---|
-| `final_bin` (default) | The name of a final bin: `metator_00007_00000` |
+| `final_bin` (default) | The name of a final cluster: `metator_00007_00000` |
 | `contig` | The name of a contig |
-| `core_bin`, `overlapping_bin` | The numeric ID of the bin, as in the contig data table: `12`; or, for an overlapping bin, the name of a bin made from it: `metator_00012_00000` |
-| `recursive_bin` | The name of the bin, `metator_00012_00003`: recursive bins are numbered within their overlapping bin |
+| `core_bin`, `overlapping_bin` | The numeric ID of the cluster, as in the contig data table: `12`; or, for an overlapping cluster, the name of a cluster made from it: `metator_00012_00000` |
+| `recursive_bin` | The name of the cluster, `metator_00012_00003`: recursive clusters are numbered within their overlapping cluster |
 | The header of a column of the contig data table | A value of that column: to map bins made elsewhere, add them to the table as a column, `Other` for instance |
 
 | Option | Default | Effect |
@@ -58,7 +58,7 @@ INFO :: 503 pairs used to build a contact map of 161 bins with 145 nonzero entri
 | `--pcr-dup` (`-D`) | off | Leave out the PCR duplicates |
 | `--outdir` (`-o`) | `contact_map_<name>` | Where the outputs go |
 
-The outputs are named after the bin:
+The outputs are named after the cluster:
 
 | File | What it holds |
 |---|---|
@@ -118,12 +118,12 @@ order:
 
 ![The contact map of a MAG](../images/contact_map_MAG_18.png)
 
-## Scaffolding a bin
+## Scaffolding a cluster
 
-`metator scaffold` orders and orients the contigs of a bin into scaffolds:
+`metator scaffold` orders and orients the contigs of a cluster into scaffolds:
 
 ```bash
-metator scaffold -b metator_00007_00000 -i binning/final_bin_unscaffold/metator_00007_00000.fa \
+metator scaffold -b metator_00007_00000 -i binning/final_clusters/metator_00007_00000.fa \
     binning/alignment_0_sorted.pairs.gz
 ```
 
@@ -137,8 +137,8 @@ contigs are the scaffolds, circular when they close.
 
 | File | What it holds |
 |---|---|
-| `<bin>_scaffolded.fa` (`--out-fasta`, `-o`) | One record per scaffold, `metator_scaffold_0001` and on, its contigs joined by `--junctions` (`-j`, `NNNNN`) |
-| `<bin>_info_frags.txt` (`--out-frags`, `-O`) | For each scaffold, its contigs in order, with their length and orientation (`1` or `-1`) |
+| `<cluster>_scaffolded.fa` (`--out-fasta`, `-o`) | One record per scaffold, `metator_scaffold_0001` and on, its contigs joined by `--junctions` (`-j`, `NNNNN`) |
+| `<cluster>_info_frags.txt` (`--out-frags`, `-O`) | For each scaffold, its contigs in order, with their length and orientation (`1` or `-1`) |
 
 ```console
 >metator_scaffold_0001 linear length: 12167
@@ -150,8 +150,8 @@ NODE_442506	0	669	1
 ```
 
 The length of a scaffold is that of its contigs, without the junctions.
-`metator pipeline --scaffold` scaffolds every final bin this way, into
-`scaffold_bin/`, with the junctions of its `--junctions` (`-J`).
+`metator pipeline --scaffold` scaffolds every final cluster this way, into
+`scaffolded_clusters/`, with the junctions of its `--junctions` (`-J`).
 
 ## Scaffolding with instaGRAAL
 

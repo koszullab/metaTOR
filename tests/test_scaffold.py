@@ -125,7 +125,7 @@ def test_parallel_scaffold_default_outputs(tmp_path):
     <bin>_info_frags.txt."""
     community = _genome(seed=8, circular=True)
     assembly, pairs = _inputs(community, tmp_path / "inputs")
-    final_dir, out_dir = tmp_path / "final_bin", tmp_path / "scaffold_bin"
+    final_dir, out_dir = tmp_path / "final_clusters", tmp_path / "scaffolded_clusters"
     final_dir.mkdir()
     out_dir.mkdir()
     shutil.copyfile(assembly, final_dir / "bin_1.fa")

@@ -1,13 +1,13 @@
 # Checking a library
 
 `metator qc` measures the quality of a metaHiC library on the genomes that
-the binning recovered best. Within the contigs of good MAGs, each pair can be
+the clustering recovered best. Within the contigs of good MAGs, each pair can be
 told apart as a real contact or an artefact of the protocol, and a pair that
 joins two of these MAGs can only be noise.
 
 ## What it measures
 
-1. **The MAGs.** It takes the bins of `bin_summary.txt` with a weighted
+1. **The MAGs.** It takes the clusters of `cluster_summary.txt` with a weighted
    completeness above 70% and a weighted redundancy under 1.15, and their
    contigs longer than 100 kb.
 2. **The pairs.** It reads, from the pairs files, the pairs between these
@@ -36,10 +36,12 @@ sites: hicstuff sets them from the library (as `hicstuff filter` does), or
 metator qc -a assembly.fa -e DpnII -O binning -p sample -P binning/alignment_0_sorted.pairs.gz
 ```
 
-It reads `bin_summary.txt` and `contig_data_final.txt` in `--metator-dir`
+It reads `cluster_summary.txt` and `contig_data_final.txt` in `--metator-dir`
 (`-O`, the current directory by default), or where `--bin-summary` (`-b`) and
 `--contig-data` (`-c`) say, and the pairs files of the run (kept with
-`metator pipeline --no-clean-up`).
+`metator pipeline --no-clean-up`). In the directory of a run of metaTOR 1.x, it
+reads its `bin_summary.txt`, and its contig data under the 2.0 names of its
+columns.
 
 | Option | Default | Effect |
 |---|---|---|

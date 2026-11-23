@@ -105,7 +105,7 @@ metator network -1 R1.fq.gz -2 R2.fq.gz -a assembly.fa -b bwa -n None -o binning
 metator partition -a assembly.fa -c binning/contig_data_network.txt \
     -n binning/my_network.txt -o binning
 metator validation -a assembly.fa -c binning/contig_data_partition.txt \
-    -n binning/my_network.txt -f binning/overlapping_bin -o binning
+    -n binning/my_network.txt -f binning/overlapping_clusters -o binning
 ```
 
 ## From a contact map

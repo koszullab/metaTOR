@@ -1,4 +1,4 @@
-ID	Name	Size	GC_content	Hit	Shotgun_coverage	Restriction_site	Core_bin_ID	Core_bin_contigs	Core_bin_size	Overlapping_bin_ID	Overlapping_bin_contigs	Overlapping_bin_size
+ID	Name	Size	GC_content	Hit	Shotgun_coverage	Restriction_site	Core_cluster_ID	Core_cluster_contigs	Core_cluster_size	Overlapping_cluster_ID	Overlapping_cluster_contigs	Overlapping_cluster_size
 1	Contig_0	1253	41.4205905826017	1	-	5	00001	26	49671	00001	26	49671
 2	Contig_57977	551	36.8421052631578	20	-	1	00002	687	3361245	00002	687	3361245
 3	Contig_544869	6733	38.2147631070845	3	-	18	00003	18	43435	00003	27	57791

@@ -28,6 +28,7 @@ import igraph as ig
 import matplotlib.pyplot as plt
 
 # import pypairix
+import metator.io as mio
 from metator.log import logger
 import pandas as pd
 import numpy as np
@@ -96,12 +97,14 @@ def create_bins(contig_data: pd.DataFrame) -> tuple[dict, dict]:
         dict: A dictionary mapping MGE-MAG names to their corresponding MgeMag objects.
     """
 
+    # The contig data of metaTOR 1.x too.
+    contig_data = mio.rename_1x_columns(contig_data)
     mags = {}
     mge_mags = {}
-    logger.info("Instantiating bins (MAGs and MGE-MAGs)...")
+    logger.info("Instantiating clusters (MAGs and MGE-MAGs)...")
 
     for _, row in contig_data.iterrows():
-        contig_id, contig_name, bin_name = row["ID"], row["Name"], row["Final_bin"]
+        contig_id, contig_name, bin_name = row["ID"], row["Name"], row["Final_cluster"]
 
         if bin_name.startswith("MetaTOR_MGE_"):  # Identify MGE-MAGs
             if bin_name not in mge_mags:
@@ -399,7 +402,7 @@ def classify_mags(mags, bin_summary) -> dict:
             mag.contamination = mag_data["Redundancy"]
             mag.quality = classify_mag(mag)
         else:
-            logger.warning(f"Warning: {mag.name} not found in bin summary.")
+            logger.warning(f"Warning: {mag.name} not found in cluster summary.")
 
     quals = [x.quality for x in mags.values()]
     cnts = Counter(quals)
@@ -566,7 +569,7 @@ def annotate_hosts(
 if __name__ == "__main__":
     network_data_file = "network_1.txt"
     contig_data_file = "contig_data_final_reformated.txt"
-    bin_summary_file = "bin_summary.txt"
+    bin_summary_file = "cluster_summary.txt"
     interaction_threshold = 10
     min_interacting_contigs = 5
 

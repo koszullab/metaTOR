@@ -16,20 +16,20 @@ metator --version
 | Several libraries | Comma-separated lists, in the same order in `--forward` and `--reverse`: `-1 L1_R1.fq.gz,L2_R1.fq.gz -2 L1_R2.fq.gz,L2_R2.fq.gz`. |
 | Several enzymes | Separated by commas: `DpnII,HinfI`. |
 | Pairs files | `qc`, `contactmap`, `metacool`, `scaffold` and `mge` take the pairs files of a run as arguments: `alignment_<i>_sorted.pairs.gz`, which `metator network` writes and `metator pipeline` keeps with `--no-clean-up`. `qc`, `contactmap` and `metacool` take one `.metacool` contact map in their place, for what a map gives; `mge` stores its MGE clusters in the map given with `--map`. |
-| `-F, --force` | Replace the outputs of an earlier run. Without it, a command refuses to overwrite them. |
+| `-F, --force` | Replace the outputs of an earlier run, in the output directory and at `--output-map`. Without it, a command refuses to overwrite them. A run from a map updates that map in place without it, and warns, before any work, of the clusters and clustering rounds that it replaces there: `--output-map` writes the map of the run to another file instead, and leaves the map as it was. |
 | `-T, --tmpdir` | Each run works in a directory of its own inside it, removed at the end, unless `--no-clean-up` or the run fails. In `scaffold`, `-T` is `--threshold`. |
 | `-N, --no-clean-up` | Keep the temporary files. In `qc`, it is `-n`. |
 | Log files | Each command writes its log, `metator_<command>_<date>.log`, into its output directory; `metacool`, `scaffold`, `pairs` and `mge`, into the current directory. |
 
 New to metaTOR? Start with the [Quickstart](quickstart.md); for hits, core,
-overlapping and recursive bins, see [Concepts](concepts.md).
+overlapping and recursive clusters, see [Concepts](concepts.md).
 
-## Binning
+## Clustering
 
 ### `pipeline` { #pipeline }
 
-Run the three steps of the binning, `network`, `partition` and `validation`,
-in one command, and write the contact map of the bins. **Guide:**
+Run the three steps of the clustering, `network`, `partition` and `validation`,
+in one command, and write the contact map of the clusters. **Guide:**
 [Running the pipeline](guides/pipeline.md).
 
 ```console
@@ -57,28 +57,28 @@ the reads, alignments or pairs of `-1` (and `-2`, `--start`): one or the other.
 | `-m, --normalization` | `empirical_hit` | `None`, `abundance`, `length`, `RS`, `empirical_hit` or `theoritical_hit`. `RS` and `theoritical_hit` need `--enzyme`; `abundance` and `theoritical_hit` need `--depth`, or, from a map, the columns that give them. See [Normalising the network](guides/network.md#normalising-the-network). |
 | `-A, --algorithm` | `louvain` | The partition algorithm: `louvain` or `leiden`. |
 | `-i, --iterations` | `100` | The iterations of the partition. |
-| `-O, --overlap` | `80` | The percentage of iterations in which two core bins must fall together to be merged into one overlapping bin. |
+| `-O, --overlap` | `80` | The percentage of iterations in which two core clusters must fall together to be merged into one overlapping cluster. |
 | `-r, --res-param` | `1.0` | The resolution of the Leiden algorithm. |
-| `-s, --size` | `500000` | The size, in bp, a bin must reach to be kept. |
+| `-s, --size` | `500000` | The size, in bp, a cluster must reach to be kept. |
 | `-C, --cluster-matrix` | off | Write the clustering matrices (`clustering_matrix*.npz`). |
-| `-j, --rec-iter` | `10` | The iterations of the recursive partition of the contaminated bins. |
+| `-j, --rec-iter` | `10` | The iterations of the recursive partition of the contaminated clusters. |
 | `-P, --rec-overlap` | `90` | The overlap threshold of the recursive partition, in percent. |
-| `-v, --scaffold` | off | Scaffold the final clusters, into `scaffold_bin/`. Refused from a map. |
+| `-v, --scaffold` | off | Scaffold the final clusters, into `scaffolded_clusters/`. Refused from a map. |
 | `-J, --junctions` | `NNNNN` | The sequence between two contigs of a scaffold. |
 | `-o, --outdir` | the current directory | The output directory. |
-| `-p, --prefix` | none | Name the bins `<prefix>_metator_…`, the map `<prefix>.metacool` and, with several libraries, the maps of the libraries `<prefix>.mmetacool`. Letters, digits, `_` and `-` only. |
-| `-F, --force` | off | Replace the directories of clusters of an earlier run, and an existing `--output-map` file. |
+| `-p, --prefix` | none | Name the clusters `<prefix>_metator_…`, the map `<prefix>.metacool` and, with several libraries, the maps of the libraries `<prefix>.mmetacool`. Letters, digits, `_` and `-` only. |
+| `-F, --force` | off | Replace the directories of clusters of an earlier run, and an existing `--output-map` file. Removes the outputs of a run of metaTOR 1.x: `overlapping_bin/`, `recursive_bin/`, `final_bin/`, `final_bin_unscaffold/`, `bin_summary.txt`, and `scaffold_bin/` with `--scaffold`. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory, where the index of the assembly is built, and the pairs files written (see `-N`). |
 | `-t, --threads` | `1` | Threads for the alignment, the partition and miComplete. |
 | `-N, --no-clean-up` | off | Keep the temporary files, and the pairs files of the run, sorted, compressed and indexed in the output directory (`alignment_<i>_sorted.pairs.gz`). Without `-N`, nor `--scaffold`, which reads them so, the run writes them to its temporary directory as they are made, and removes them once its network is built. |
 | `--no-metacool` | off | Do not keep the contact map of the contigs, grouped by cluster: a run from reads, alignments or pairs still builds the map of its contigs from the pairs files (a map that cannot be built stops the run), reads its networks from it, and removes it at the end, with the maps of its libraries (`<prefix>.mmetacool`) when it has several; a run from a map leaves that map as it was. |
-| `--output-map` | none | Write the contact map of the clusters to this file (replaced only with `-F`). By default, a run from a `.metacool` map updates that map in place, and any other run writes `<outdir>/<prefix>.metacool` (`metator.metacool` without `--prefix`). |
+| `--output-map` | none | Write the contact map of the clusters to this file (replaced only with `-F`), a `.metacool` file, not a `.mmetacool` collection. A run from reads, alignments or pairs writes the maps of its libraries next to it, `<name>.mmetacool`, with several, and removes an earlier run's there with one: replaced only with `-F` too. By default, a run from a `.metacool` map updates that map in place, and any other run writes `<outdir>/<prefix>.metacool` (`metator.metacool` without `--prefix`). |
 
 The validation is the step that needs the most memory: miComplete runs
-Prodigal and HMMER (pyrodigal and pyhmmer) on every bin.
+Prodigal and HMMER (pyrodigal and pyhmmer) on every cluster.
 
 ```bash
-# Reads to bins, with the recommended aligner
+# Reads to clusters, with the recommended aligner
 metator pipeline -b bwa -e DpnII -d depth.txt -t 16 -1 R1.fq.gz -2 R2.fq.gz \
     -a assembly.fa -o binning
 
@@ -126,9 +126,9 @@ metator network -1 R1.fq.gz -2 R2.fq.gz -a assembly.fa -b bwa -e DpnII -t 16 -o 
 
 ### `partition` { #partition }
 
-Partition the network, many times, into core and overlapping bins: the second
-step. Writes `overlapping_bin/` and `contig_data_partition.txt`. **Guide:**
-[Partition and validation](guides/binning.md).
+Partition the network, many times, into core and overlapping clusters: the
+second step. Writes `overlapping_clusters/` and `contig_data_partition.txt`.
+**Guide:** [Partition and validation](guides/binning.md).
 
 ```console
 metator partition [OPTIONS] [MAP]
@@ -136,7 +136,7 @@ metator partition [OPTIONS] [MAP]
 
 With `MAP`, the map of the contigs of a run step by step (that of
 `metator network MAP`), the run also stores its overlapping clusters that
-reach `--size`, those of `overlapping_bin/`, with their contigs, in the
+reach `--size`, those of `overlapping_clusters/`, with their contigs, in the
 clustering rounds of the map, in place of those it held: the map is updated
 in place, or written to `--output-map`. Its genomes and contigs tables are
 left as they were. See
@@ -152,11 +152,11 @@ left as they were. See
 | `-i, --iterations` | `100` | The iterations of the partition. |
 | `-O, --overlap` | `80` | The overlap threshold, in percent. |
 | `-r, --res-param` | `1.0` | The resolution of the Leiden algorithm. |
-| `-s, --size` | `500000` | The size, in bp, an overlapping bin must reach to be written. |
+| `-s, --size` | `500000` | The size, in bp, an overlapping cluster must reach to be written. |
 | `-C, --cluster-matrix` | off | Write `clustering_matrix_partition.npz`. |
 | `-o, --outdir` | `./` | The output directory. |
-| `-p, --prefix` | none | Name the bins `<prefix>_metator_…`. |
-| `-F, --force` | off | Replace `overlapping_bin/`, and an existing `--output-map` file. |
+| `-p, --prefix` | none | Name the clusters `<prefix>_metator_…`. |
+| `-F, --force` | off | Replace `overlapping_clusters/`, and an existing `--output-map` file. Removes the `overlapping_bin/` of a run of metaTOR 1.x. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory. |
 | `-t, --threads` | `1` | Threads for the partition. |
 | `-N, --no-clean-up` | off | Keep the temporary files. |
@@ -173,18 +173,18 @@ metator partition sample.metacool -a assembly.fa -c binning/contig_data_network.
 
 ### `validation` { #validation }
 
-Check the bins with miComplete, and partition the contaminated ones again:
-the third step. Writes `final_bin/`, `recursive_bin/`, `bin_summary.txt`,
-`contig_data_final.txt` and `binning.txt`. **Guide:**
+Check the clusters with miComplete, and partition the contaminated ones
+again: the third step. Writes `final_clusters/`, `recursive_clusters/`,
+`cluster_summary.txt`, `contig_data_final.txt` and `binning.txt`. **Guide:**
 [Partition and validation](guides/binning.md#validation).
 
 ```console
 metator validation [OPTIONS] [MAP]
 ```
 
-A bin is partitioned again when its weighted completeness reaches 33% and its
-contamination, (weighted redundancy − 1) / weighted completeness, reaches 5%.
-Its parts replace it when the most complete of them keeps enough of its
+A cluster is partitioned again when its weighted completeness reaches 33% and
+its contamination, (weighted redundancy − 1) / weighted completeness, reaches
+5%. Its parts replace it when the most complete of them keeps enough of its
 completeness.
 
 With `MAP`, the map of the contigs of a run step by step (that of
@@ -198,17 +198,17 @@ does at its end: in place, or to `--output-map`. See
 | `MAP` | none | A `.metacool` contact map of the contigs of the run, which becomes the map of its clusters; or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`), with `--output-map`, the map it writes them to. |
 | `-a, --assembly` | *required* | The assembly, as a FASTA file. |
 | `-c, --contigs` | *required* | The contig data table of the partition, `contig_data_partition.txt`. |
-| `-f, --fasta` | *required* | The directory of the bins to check, `overlapping_bin/`. |
+| `-f, --fasta` | *required* | The directory of the clusters to check, `overlapping_clusters/`. |
 | `-n, --network` | *required* | The network, `network.txt`. |
 | `-A, --algorithm` | `louvain` | `louvain` or `leiden`. |
 | `-i, --iterations` | `10` | The iterations of the recursive partition. |
 | `-O, --overlap` | `90` | The overlap threshold of the recursive partition, in percent. |
 | `-r, --res-param` | `1.0` | The resolution of the Leiden algorithm. |
-| `-s, --size` | `500000` | The size, in bp, a bin must reach to be kept. |
+| `-s, --size` | `500000` | The size, in bp, a cluster must reach to be kept. |
 | `-C, --cluster-matrix` | off | Write `clustering_matrix_recursive.npz`. |
 | `-o, --outdir` | `./` | The output directory. |
-| `-p, --prefix` | none | Name the bins `<prefix>_metator_…`. |
-| `-F, --force` | off | Replace `recursive_bin/` and `final_bin/`, and an existing `--output-map` file. |
+| `-p, --prefix` | none | Name the clusters `<prefix>_metator_…`. |
+| `-F, --force` | off | Replace `recursive_clusters/` and `final_clusters/`, and an existing `--output-map` file. Removes the outputs of a run of metaTOR 1.x: `recursive_bin/`, `final_bin/`, `final_bin_unscaffold/` and `bin_summary.txt`. Refused when `--fasta` is in one of these directories. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory. |
 | `-t, --threads` | `1` | Threads for the partition and miComplete. |
 | `-N, --no-clean-up` | off | Keep the temporary files. |
@@ -216,21 +216,21 @@ does at its end: in place, or to `--output-map`. See
 
 ```bash
 metator validation -a assembly.fa -c binning/contig_data_partition.txt -n binning/network.txt \
-    -f binning/overlapping_bin -t 16 -o binning
+    -f binning/overlapping_clusters -t 16 -o binning
 
 # On the map of a run step by step: it becomes the map of the clusters
 metator validation sample.metacool -a assembly.fa -c binning/contig_data_partition.txt \
-    -n binning/network.txt -f binning/overlapping_bin -t 16 -o binning
+    -n binning/network.txt -f binning/overlapping_clusters -t 16 -o binning
 ```
 
-## After the binning
+## After the clustering
 
 ### `metacool` { #metacool }
 
-Write the contact map of all the contigs, grouped by bin, as a `.metacool`
+Write the contact map of all the contigs, grouped by cluster, as a `.metacool`
 file, as `pipeline` does at the end of a run. **API:**
 `metator.metacool.write_metacool`. **Guide:**
-[The contact map of the bins](guides/metacool.md).
+[The contact map of the clusters](guides/metacool.md).
 
 ```console
 metator metacool [OPTIONS] PAIRSFILE...
@@ -241,25 +241,25 @@ a run that started from a contact map, that `.metacool` map.
 
 | Option | Default | Description |
 |---|---|---|
-| `-c, --contig-data` | *required* | `contig_data_final.txt`: the contigs, their final bins, and what metaTOR measured on them. |
-| `-b, --bin-summary` | none | `bin_summary.txt`, whose columns are added to the genomes table. |
-| `-o, --outfile` | *required* | The `.metacool` file to write. |
+| `-c, --contig-data` | *required* | `contig_data_final.txt`: the contigs, their final clusters, and what metaTOR measured on them. |
+| `-b, --bin-summary` | none | `cluster_summary.txt`, whose columns are added to the genomes table. |
+| `-o, --outfile` | *required* | The `.metacool` file to write: a file, not a group inside one (a path that holds `::`, which metacooler reads as `file::group`, is refused). |
 | `-n, --assembly-name` | none | The name of the assembly, stored in the file. Refused for a map written from a map, which keeps its own. |
 | `-t, --threads` | `1` | Threads binning the pairs. |
 | `-F, --force` | off | Replace the output file. |
 
 ```bash
-metator metacool -c binning/contig_data_final.txt -b binning/bin_summary.txt \
+metator metacool -c binning/contig_data_final.txt -b binning/cluster_summary.txt \
     -o sample.metacool binning/alignment_0_sorted.pairs.gz
 ```
 
 ### `contactmap` { #contactmap }
 
-Build the contact map of one contig or bin, with hicstuff from the pairs
+Build the contact map of one contig or cluster, with hicstuff from the pairs
 files, or from a contact map. **API:**
 `metator.contact_map.generate_contact_map`,
 `metator.contact_map.extract_contact_map`. **Guide:**
-[Viewing and scaffolding MAGs](guides/visualisation.md#the-contact-map-of-a-bin).
+[Viewing and scaffolding MAGs](guides/visualisation.md#the-contact-map-of-a-cluster).
 
 ```console
 metator contactmap [OPTIONS] PAIRSFILE...
@@ -279,11 +279,11 @@ stores both triangles of the matrix are refused too.
 
 | Option | Default | Description |
 |---|---|---|
-| `-a, --assembly` | *required* | A FASTA file holding the contigs of the map: the assembly, or the bin. |
-| `-c, --contig-data` | *required* | `contig_data_final.txt`, or a contig data table with a column of other bins. |
+| `-a, --assembly` | *required* | A FASTA file holding the contigs of the map: the assembly, or the cluster. |
+| `-c, --contig-data` | *required* | `contig_data_final.txt`, or a contig data table with a column of other clusters. |
 | `-e, --enzyme` | *required* | The restriction enzymes of the library: the map is at the resolution of their fragments. Not used from a map. |
-| `-n, --name` | *required* | The name of the contig or bin, or the numeric ID of a core or overlapping bin. A recursive bin needs its name (`metator_00012_00003`): recursive bins are numbered within their overlapping bin. |
-| `-O, --object` | `final_bin` | What `--name` is: `contig`, `core_bin`, `overlapping_bin`, `recursive_bin`, `final_bin`, or the header of a column of the contig data table. |
+| `-n, --name` | *required* | The name of the contig or cluster, or the numeric ID of a core or overlapping cluster. A recursive cluster needs its name (`metator_00012_00003`): recursive clusters are numbered within their overlapping cluster. |
+| `-O, --object` | `final_bin` | What `--name` is: `contig`, `core_bin`, `overlapping_bin`, `recursive_bin`, `final_bin`, or the header of a column of the contig data table. The header that metaTOR 1.x gave a column (`Final_bin`) reads its 2.0 column (`Final_cluster`), unless the table has a column of that header. |
 | `-m, --mat-fmt` | `graal` | The format of the map: `graal`, `bg2` or `cool`. From a map, `cool` only, the default then. |
 | `-f, --filter` | off | Leave out the uncuts and loops. Refused from a map. |
 | `-D, --pcr-dup` | off | Leave out the PCR duplicates. Refused from a map. |
@@ -305,9 +305,9 @@ metator contactmap -a assembly.fa -c binning/contig_data_final.txt -e DpnII \
 
 ### `scaffold` { #scaffold }
 
-Order and orient the contigs of a bin into scaffolds, from the contacts
+Order and orient the contigs of a cluster into scaffolds, from the contacts
 between their ends. **API:** `metator.scaffold.get_scaffolds`. **Guide:**
-[Viewing and scaffolding MAGs](guides/visualisation.md#scaffolding-a-bin).
+[Viewing and scaffolding MAGs](guides/visualisation.md#scaffolding-a-cluster).
 
 ```console
 metator scaffold [OPTIONS] PAIRSFILE...
@@ -315,17 +315,17 @@ metator scaffold [OPTIONS] PAIRSFILE...
 
 | Option | Default | Description |
 |---|---|---|
-| `-b, --bin-name` | *required* | The name of the bin. |
-| `-i, --input-fasta` | *required* | The FASTA file of the bin. |
+| `-b, --bin-name` | *required* | The name of the cluster. |
+| `-i, --input-fasta` | *required* | The FASTA file of the cluster. |
 | `-T, --threshold` | `0.05` | The score above which the ends of two contigs are joined. |
 | `-w, --window-size` | `5000` | The size, in bp, of the ends of the contigs. |
 | `-j, --junctions` | `NNNNN` | The sequence between two contigs of a scaffold. |
-| `-o, --out-fasta` | `./<bin>_scaffolded.fa` | The FASTA file of the scaffolds. |
-| `-O, --out-frags` | `./<bin>_info_frags.txt` | The table of the contigs of each scaffold. |
+| `-o, --out-fasta` | `./<cluster>_scaffolded.fa` | The FASTA file of the scaffolds. |
+| `-O, --out-frags` | `./<cluster>_info_frags.txt` | The table of the contigs of each scaffold. |
 | `-t, --threads` | `1` | Threads to sort pairs files that are not sorted yet. |
 
 ```bash
-metator scaffold -b metator_00007_00000 -i binning/final_bin_unscaffold/metator_00007_00000.fa \
+metator scaffold -b metator_00007_00000 -i binning/final_clusters/metator_00007_00000.fa \
     binning/alignment_0_sorted.pairs.gz
 ```
 
@@ -377,8 +377,8 @@ that stores both triangles of the matrix are refused too.
 |---|---|---|
 | `-a, --assembly` | *required* | The assembly, as a FASTA file. Not read from a map. |
 | `-e, --enzyme` | *required* | The restriction enzymes of the library. Not used from a map. |
-| `-O, --metator-dir` | the current directory | The output directory of the run, where `bin_summary.txt` and `contig_data_final.txt` are. |
-| `-b, --bin-summary` | `<metator-dir>/bin_summary.txt` | The bin summary. |
+| `-O, --metator-dir` | the current directory | The output directory of the run, where `cluster_summary.txt` (or the `bin_summary.txt` of a run of metaTOR 1.x) and `contig_data_final.txt` are. |
+| `-b, --bin-summary` | `<metator-dir>/cluster_summary.txt` | The cluster summary. |
 | `-c, --contig-data` | `<metator-dir>/contig_data_final.txt` | The contig data table. |
 | `-t, --threshold` | set from the library | The uncut and loop thresholds, in restriction sites: `uncuts,loops`. Refused from a map. |
 | `-P, --plot` | off | Write the plots of the events. Refused from a map. |
@@ -396,9 +396,9 @@ metator qc -a assembly.fa -e DpnII -O binning -p sample binning/metator.metacool
 
 ### `mge` { #mge }
 
-Bin the contigs of mobile genetic elements from the contacts between them.
+Cluster the contigs of mobile genetic elements from the contacts between them.
 **API:** `metator.mge.mge_binning`, `metator.metacool.write_round`.
-**Guide:** [Binning mobile genetic elements](guides/mge.md).
+**Guide:** [Clustering mobile genetic elements](guides/mge.md).
 
 ```console
 metator mge [OPTIONS] PAIRSFILE...
@@ -408,9 +408,9 @@ metator mge [OPTIONS] PAIRSFILE...
 are counted between reads more than 1 kb apart, which a contact map does not
 tell, so a map given in their place is refused. With `--map MAP`, the run
 also stores its MGE clusters in the contact map of the run: as the round
-`mge` of its clustering rounds, with the columns of `mges_bin_summary.tsv`
+`mge` of its clustering rounds, with the columns of `mges_cluster_summary.tsv`
 and the contigs of each cluster, in place of the round `mge` of an earlier
-run, after the rounds of the binning run, which are kept; its genomes and
+run, after the rounds of the clustering run, which are kept; its genomes and
 contigs tables, the final clusters, are left as they were. The map is updated
 in place, or written to `--output-map`, as `metator partition MAP` writes it
 (see [Step by step](guides/metacool.md#step-by-step)), and refused as it
@@ -421,11 +421,11 @@ replaces the clusters of the map drops the round `mge`, with a warning.
 |---|---|---|
 | `-a, --assembly` | *required* | The assembly, as a FASTA file. |
 | `-c, --contigs` | *required* | The contig data table of the run. |
-| `-b, --binning` | *required* | The bins of the contigs: `binning.txt`, or a collection exported by anvi'o. |
+| `-b, --binning` | *required* | The clusters of the contigs: `binning.txt`, or a collection exported by anvi'o. |
 | `-m, --mges` | *required* | The MGE contigs, one name per line. |
 | `--map` | none | A `.metacool` contact map of the run, or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`), that the run stores its MGE clusters in. |
-| `-s, --threshold-bin` | `0.8` | The score above which two contigs, or bins, are merged. |
-| `-r, --random` | off | Shuffle the contigs between the bins: a random binning of the same shape. Refused with `--map`. |
+| `-s, --threshold-bin` | `0.8` | The score above which two contigs, or clusters, are merged. |
+| `-r, --random` | off | Shuffle the contigs between the clusters: a random clustering of the same shape. Refused with `--map`. |
 | `-o, --outdir` | the current directory | The output directory. |
 | `-F, --force` | off | Replace an existing `--output-map` file. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory. |

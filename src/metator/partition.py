@@ -179,7 +179,7 @@ def defined_overlapping_bins(
             overlapping_bins[oc_id + 1] += core_bin_contigs
         cc_id += 1
 
-    logger.info(f"{len(overlapping_bins)} overlapping bins were found.")
+    logger.info(f"{len(overlapping_bins)} overlapping clusters were found.")
 
     return overlapping_bins
 
@@ -235,7 +235,7 @@ def detect_core_bins(output_partition, iterations):
     # Transform the array in a dataframe
     core_bins_iterations = pd.DataFrame(np.array(core_bins_rows, dtype=int).reshape(-1, iterations))
 
-    logger.info(f"{len(core_bins)} core bins were found.")
+    logger.info(f"{len(core_bins)} core clusters were found.")
 
     return core_bins_contigs, core_bins_iterations
 
@@ -273,7 +273,7 @@ def generate_fasta(assembly, overlapping_bins, contigs_data, size, output_dir, p
         list_contigs_id = overlapping_bins[bin_id]
         list_contigs_name = []
         # Test if the bin is bigger than the size threshold given.
-        length_bin = int(contigs_data.loc[list_contigs_id[0] - 1, "Overlapping_bin_size"])
+        length_bin = int(contigs_data.loc[list_contigs_id[0] - 1, "Overlapping_cluster_size"])
         if length_bin >= size:
             nb_bins += 1
             length_bins += length_bin
@@ -283,8 +283,8 @@ def generate_fasta(assembly, overlapping_bins, contigs_data, size, output_dir, p
             if fasta is None:
                 fasta = pyfastx.Fasta(assembly)
             mio.write_contigs(fasta, list_contigs_name, join(output_dir, f"{prefix}_{bin_id:05d}_{0:05d}.fa"))
-    logger.info(f"{nb_bins} bins have been extracted")
-    logger.info(f"Total size of the extracted bins: {round(length_bins / 10**6, 3)}Mb")
+    logger.info(f"{nb_bins} clusters have been extracted")
+    logger.info(f"Total size of the extracted clusters: {round(length_bins / 10**6, 3)}Mb")
 
 
 def get_distances_splitmat(bins, core_bins_iterations):
@@ -488,14 +488,14 @@ def partition(
     output_partition = algo_partition(algorithm, network_file, iterations, resolution_parameter)
 
     # Detect core bins
-    logger.info("Detect core bins:")
+    logger.info("Detect core clusters:")
     (
         core_bins_contigs,
         core_bins_iterations,
     ) = detect_core_bins(output_partition, iterations)
 
     # Compute the Hamming distance between core bins.
-    logger.info("Detect overlapping bins:")
+    logger.info("Detect overlapping clusters:")
     hamming_distance = get_hamming_distance(
         core_bins_iterations,
         threads,
@@ -509,7 +509,7 @@ def partition(
     )
 
     # Update the contigs_data_file.
-    logger.info("Extract bins:")
+    logger.info("Extract clusters:")
     contigs_data, contigs_data_file = update_contigs_data(
         contig_data_file,
         core_bins_contigs,
@@ -598,16 +598,16 @@ def update_contigs_data(contig_data_file, core_bins_contigs, overlapping_bins, o
     """
 
     # Read the table
-    contigs_data = pd.read_csv(contig_data_file, sep="\t", header=0, index_col=False)
+    contigs_data = mio.rename_1x_columns(pd.read_csv(contig_data_file, sep="\t", header=0, index_col=False))
 
     # Add new empty columns. Use object dtype as they will mix "-" and ints.
     for col in [
-        "Core_bin_ID",
-        "Core_bin_contigs",
-        "Core_bin_size",
-        "Overlapping_bin_ID",
-        "Overlapping_bin_contigs",
-        "Overlapping_bin_size",
+        "Core_cluster_ID",
+        "Core_cluster_contigs",
+        "Core_cluster_size",
+        "Overlapping_cluster_ID",
+        "Overlapping_cluster_contigs",
+        "Overlapping_cluster_size",
     ]:
         contigs_data[col] = pd.Series("-", index=contigs_data.index, dtype=object)
 
@@ -619,9 +619,9 @@ def update_contigs_data(contig_data_file, core_bins_contigs, overlapping_bins, o
         core_bin_contigs_number = len(core_bin)
         core_bin_length = sum(core_bin_data.Size)
         # Write the new information
-        contigs_data.loc[core_bin, "Core_bin_ID"] = f"{i + 1:05d}"
-        contigs_data.loc[core_bin, "Core_bin_contigs"] = core_bin_contigs_number
-        contigs_data.loc[core_bin, "Core_bin_size"] = core_bin_length
+        contigs_data.loc[core_bin, "Core_cluster_ID"] = f"{i + 1:05d}"
+        contigs_data.loc[core_bin, "Core_cluster_contigs"] = core_bin_contigs_number
+        contigs_data.loc[core_bin, "Core_cluster_size"] = core_bin_length
 
     # Add overlapping information
     for i in overlapping_bins:
@@ -631,9 +631,9 @@ def update_contigs_data(contig_data_file, core_bins_contigs, overlapping_bins, o
         overlapping_bin_contigs_number = len(overlapping_bin)
         overlapping_bin_length = sum(overlapping_bin_data.Size)
         # Write the new information
-        contigs_data.loc[overlapping_bin, "Overlapping_bin_ID"] = f"{i:05d}"
-        contigs_data.loc[overlapping_bin, "Overlapping_bin_contigs"] = overlapping_bin_contigs_number
-        contigs_data.loc[overlapping_bin, "Overlapping_bin_size"] = overlapping_bin_length
+        contigs_data.loc[overlapping_bin, "Overlapping_cluster_ID"] = f"{i:05d}"
+        contigs_data.loc[overlapping_bin, "Overlapping_cluster_contigs"] = overlapping_bin_contigs_number
+        contigs_data.loc[overlapping_bin, "Overlapping_cluster_size"] = overlapping_bin_length
 
     # Write the new file
     contig_data_file_2 = join(outdir, "contig_data_partition.txt")

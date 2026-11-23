@@ -68,12 +68,12 @@ cols = [
     "Hit",
     "Shotgun_coverage",
     "Restriction_site",
-    "Core_bin_ID",
-    "Core_bin_contigs",
-    "Core_bin_size",
-    "Overlapping_bin_ID",
-    "Overlapping_bin_contigs",
-    "Overlapping_bin_size",
+    "Core_cluster_ID",
+    "Core_cluster_contigs",
+    "Core_cluster_size",
+    "Overlapping_cluster_ID",
+    "Overlapping_cluster_contigs",
+    "Overlapping_cluster_size",
 ]
 
 
@@ -125,7 +125,7 @@ def test_generate_fasta(tmp_path, monkeypatch):
     out = tmp_path / "bins"
     out.mkdir()
     mtp.generate_fasta(str(tmp_path / "assembly.fa"), overlapping_bins, contigs_data, 50_000, str(out), "MetaTOR")
-    big = [b for b, ids in overlapping_bins.items() if int(contigs_data.loc[ids[0] - 1, "Overlapping_bin_size"]) >= 50_000]
+    big = [b for b, ids in overlapping_bins.items() if int(contigs_data.loc[ids[0] - 1, "Overlapping_cluster_size"]) >= 50_000]
     assert sorted(os.listdir(out)) == [f"MetaTOR_{b:05d}_00000.fa" for b in sorted(big)]
     for path in out.iterdir():
         contigs = overlapping_bins[int(path.name.split("_")[1])]
@@ -210,7 +210,25 @@ def test_update_contigs_data():
         tmp_dir,
     )
     assert list(contigs_data.columns) == cols
-    assert contigs_data.loc[3, "Overlapping_bin_ID"] == "00002"
-    assert contigs_data.loc[0, "Overlapping_bin_contigs"] == 2
-    assert contigs_data.loc[1, "Overlapping_bin_size"] == 37801
+    assert contigs_data.loc[3, "Overlapping_cluster_ID"] == "00002"
+    assert contigs_data.loc[0, "Overlapping_cluster_contigs"] == 2
+    assert contigs_data.loc[1, "Overlapping_cluster_size"] == 37801
     shutil.rmtree(tmp_dir)
+
+
+def test_update_contigs_data_of_1x(tmp_path):
+    """A contig data table of a partition of metaTOR 1.x, its columns named
+    after bins, given in place of that of the network: its bin columns are
+    replaced, as 1.x replaced them, under their names of 2.0."""
+    network = pd.read_csv("tests_data/outdir/contig_data_network.txt", sep="\t")
+    old = network.assign(Core_bin_ID="x", Core_bin_contigs=0, Core_bin_size=0, Overlapping_bin_ID="x",
+                         Overlapping_bin_contigs=0, Overlapping_bin_size=0)  # fmt: skip
+    old.to_csv(tmp_path / "old.txt", sep="\t", index=False)
+    for name in ("a", "b"):
+        (tmp_path / name).mkdir()
+    expected, _ = mtp.update_contigs_data(
+        "tests_data/outdir/contig_data_network.txt", core_bins_contigs, overlapping_bins, str(tmp_path / "a")
+    )
+    got, path = mtp.update_contigs_data(str(tmp_path / "old.txt"), core_bins_contigs, overlapping_bins, str(tmp_path / "b"))
+    pd.testing.assert_frame_equal(got, expected)
+    assert list(pd.read_csv(path, sep="\t").columns) == cols
