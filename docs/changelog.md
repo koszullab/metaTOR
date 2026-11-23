@@ -17,9 +17,8 @@ All notable changes to this project will be documented in this file.
   an edit changes one of them. A map without a column that the
   normalization reads (`Restriction_site` without `--enzyme`) stores none,
   with a warning; a run from the map of an earlier run replaces the
-  normalization of that run. It needs `metacooler.store_weights`, from
-  metacooler's next release: with metacooler 0.3.0, the map stores none,
-  which the log says. Python API:
+  normalization of that run. It needs `metacooler.store_weights`, which
+  metacooler 0.4.0 has. Python API:
   `metator.metacool.store_normalization`,
   `metator.network.normalization_weights`, `metator.metacool.stores_weights`,
   and `normalization` of `metator.metacool.reassign_metacool`.
@@ -163,7 +162,7 @@ All notable changes to this project will be documented in this file.
   symbolic link is replaced, not its target), so a run that stops, for any
   reason, leaves it as it was. `--output-map FILE` writes it elsewhere and
   leaves the input map alone; a run from an entry of a `.mmetacool`
-  collection needs it. While a run writes a map, `<map>.lock` holds it: a
+  collection needs it. While a run writes a map, `<map>.metator.lock` holds it: a
   second run that would write the same map stops before any work, naming the
   run that holds it, and a lock left by a run that died on the same host is
   removed with a warning. So the directory of the map must be writable, and
@@ -197,6 +196,14 @@ All notable changes to this project will be documented in this file.
   `pipeline` with the reason, logged as an error (it was a warning, and
   the run went on to exit 0). The other outputs of the run are kept, and
   so is the map it would have replaced.
+- Validation runs Prodigal and HMMER through pyrodigal and pyhmmer, their
+  Python bindings, which pip installs with metaTOR, in place of the
+  prodigal and hmmsearch programs that miComplete runs
+  (`metator._micomplete`): prodigal and hmmer no longer need installing,
+  with pip, with conda (`metator.yaml`) or in the Docker image. miComplete
+  gives the bins of the tests the rows that prodigal 2.6.3 and HMMER 3.4
+  gave them, and a bin of less than 20 kb still gets no gene, as prodigal
+  finds none in it.
 - The temporary directory of a command is named from the random numbers
   of the system (`metator.io.generate_temp_dir`), not from Python's
   `random` module, which the partition draws from (igraph): the clusters
@@ -204,7 +211,8 @@ All notable changes to this project will be documented in this file.
   made, so that the steps run one by one in one process, after one seed,
   draw the stream that `pipeline` draws. A run seeded as before gives
   other clusters.
-- metaTOR requires metacooler 0.3.0. The `.metacool` maps it writes also
+- metaTOR requires metacooler 0.4.0, whose `/clusters` group holds the
+  clustering rounds of the map. The `.metacool` maps it writes also
   store the contact statistics of each contig (the `qc_intra_contig_short`
   and `qc_intra_contig_long` columns of the contigs table), which
   `metacooler reassign` carries over to the bins.

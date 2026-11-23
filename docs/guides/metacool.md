@@ -203,7 +203,7 @@ run left (or another binner): the clusters of the map (`pipeline MAP`,
 MAP`, the round `mge` for `mge --map`). The map keeps no record of them:
 `--output-map` writes the map of the run to another file instead.
 
-While a run writes a map, a lock file next to it (`<map>.lock`) holds it: a
+While a run writes a map, a lock file next to it (`<map>.metator.lock`) holds it: a
 second run that would write the same map stops before any work, naming the run
 that holds it. A lock that a run left behind on the same host when it died is
 removed, with a warning; one from another host is not: remove it once that

@@ -92,7 +92,7 @@ A run refuses to overwrite the clusters of an earlier one unless given
 | `--tmpdir` | `./tmp` | Where the temporary files go; deleted at the end, unless `--no-clean-up` |
 
 The validation is the step that needs the most memory and time: miComplete
-runs prodigal and hmmer on every cluster.
+runs Prodigal and HMMER (pyrodigal and pyhmmer) on every cluster.
 
 ## Running the steps one by one
 

@@ -45,34 +45,24 @@ conda create -n metator bioconda::metator
 
 ### With pip
 
-**Note:** although `metator` itself is available from Pypi, several additional libraries are 
-not available from Pypi and must be installed separately. Please consider the following 
-before installing `metator`:
+Before installing `metator`:
 
 * Python `3.10` to `3.14` is required.
-* The following dependencies of miComplete, which checks the clusters, should also be locally
-  installed and available in the `$PATH`:
-    * [`hmmer`](http://hmmer.org/documentation.html)
-    * [`prodigal`](https://github.com/hyattpd/Prodigal)
 * metaTOR starts from a `.metacool` contact map of the contigs, which
   [hicstuff](https://github.com/koszullab/hicstuff) makes from the reads (`hicstuff pipeline -M metacool`),
   or [metacooler](https://pypi.org/project/metacooler/) from pairs files (`metacooler create pairs`).
 
 **Warning:** note that if you install `metator` with `pip`, this may upgrade/downgrade 
-versions of the above dependencies and may cause conflicts with other softwares.
+versions of its dependencies and may cause conflicts with other softwares.
 
 ```sh
-# Install hmmer and prodigal:
-sudo apt update && sudo apt install hmmer prodigal
-
 # Install metator from Pypi
 pip3 install metator
 ```
 
 ### Development version 
 
-The development version is managed with [uv](https://docs.astral.sh/uv/). With the
-non-Python dependencies listed above installed:
+The development version is managed with [uv](https://docs.astral.sh/uv/):
 
 ```sh
 git clone https://github.com/koszullab/metaTOR
@@ -338,7 +328,7 @@ any other reason (Ctrl-C included). A symbolic link is replaced, not its target
 replaced only with `-F`. A run that updates a map in place warns, before any
 work, of the clusters and the clustering rounds of an earlier run (or of
 another binner) that it replaces there: `--output-map` keeps them, as it
-leaves the map as it was. While a run writes a map, `<map>.lock` holds it: a
+leaves the map as it was. While a run writes a map, `<map>.metator.lock` holds it: a
 second run that would write the same map stops before any work, naming the run
 that holds it (a lock that a run left behind on the same host when it died is
 removed, with a warning). Only the runs that write a map take its lock: a

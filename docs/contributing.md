@@ -10,13 +10,7 @@ the [fork and pull model](https://docs.github.com/en/pull-requests/collaborating
 
 metaTOR's development environment is managed by
 [uv](https://docs.astral.sh/uv/), and `uv.lock` pins every dependency. Install
-uv, and the programs metaTOR runs, which uv cannot install:
-
-```bash
-sudo apt install hmmer prodigal   # or: brew install hmmer prodigal
-```
-
-Then, from a clone of your fork:
+uv; then, from a clone of your fork:
 
 ```bash
 git clone https://github.com/koszullab/metaTOR.git
