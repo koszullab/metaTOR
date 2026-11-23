@@ -216,7 +216,9 @@ def _network_map(metagenome_network, path):
     return Path(shutil.copyfile(metagenome_network["map"], path))
 
 
-def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenome_network, tmp_path, monkeypatch, run_cli):
+def test_validation_splits_a_merged_bin(
+    metagenome, metagenome_inputs, metagenome_network, tmp_path, monkeypatch, run_cli, saved_figures
+):
     """A bin holding two genomes is reported contaminated by (stub) miComplete:
     the recursive decontamination splits it back into the two genomes."""
     random.seed(0)
@@ -226,10 +228,11 @@ def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenom
         metagenome, metagenome_network, tmp_path / "network.metacool", merged=("genome_1", "genome_2")
     )
     out = tmp_path / "out"
-    # Outputs of an earlier run, replaced thanks to --force.
-    for stale in ["final_clusters"]:
+    # Outputs of an earlier run, replaced thanks to --force: its final
+    # clusters, and its plots (those of 1.x, with its heatmap).
+    for stale, name in [("final_clusters", "metator_00009_00000.fa"), ("plot", "network_heatmap.png")]:
         (out / stale).mkdir(parents=True)
-        (out / stale / "metator_00009_00000.fa").write_text(">old\nACGT\n")
+        (out / stale / name).write_text(">old\nACGT\n")
     args = [
         str(metacool),
         "-a", str(metagenome_inputs["assembly"]),
@@ -264,8 +267,16 @@ def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenom
     binning = pd.read_csv(_kept(out) / "binning.txt", sep="\t", header=None, names=["Name", "Bin"])
     assert set(binning.Bin) == set(summary.index)
     assert sorted(binning.Name) == sorted(final.Name[final.Final_cluster != "ND"])
-    # No plots: metaTOR draws none since 2.0.
-    assert not (out / "plot").exists()
+    # The plots of the final clusters, in plot/, made anew: a dot of
+    # completeness per cluster, and a wedge per quality class and for the
+    # contigs in no cluster.
+    assert sorted(path.name for path in (out / "plot").iterdir()) == ["bins_distribution.png", "bins_size_distribution.png"]
+    completion, _ = saved_figures["bins_distribution.png"].axes[0].collections
+    dots = completion.get_offsets()[:, 1]
+    assert len(dots) == len(summary) and list(dots) == sorted(dots, reverse=True)
+    # miComplete's numbers, which the summary gives at two decimals.
+    np.testing.assert_allclose(sorted(dots), sorted(100 * summary["Weighted completeness"]), atol=0.5)
+    assert len(saved_figures["bins_size_distribution.png"].axes[0].patches) == 6
     # The bins of the split are recursive bins, of step 1; the others are not.
     assert list(summary.recursive) == list(summary.step > 0)
     assert summary.recursive.any() and not summary.recursive.all()
@@ -498,6 +509,41 @@ def test_validation_without_contaminated_bin(metagenome, metagenome_inputs, meta
     assert len(pd.read_csv(_kept(out) / "cluster_summary.txt", sep="\t", index_col=0)) == len(metagenome.genomes)
 
 
+def test_the_plots_count_the_clusters_as_the_log(
+    metagenome, metagenome_inputs, metagenome_network, tmp_path, monkeypatch, run_cli, saved_figures
+):
+    """validation draws the plots of its final clusters from miComplete's numbers,
+    which cluster_summary.txt and the map round to two decimals: a cluster of
+    a weighted completeness of 0.8996 is a MQ MAG in the pie chart, as in the
+    log, where its summary says 0.90, the completeness of a HQ MAG."""
+
+    def micomplete_quality(fasta_dir, outfile, threads):
+        synthetic.write_micomplete_summary(fasta_dir, outfile, metagenome)
+        # Three comment lines, the header, then a row per cluster.
+        with open(outfile) as table:
+            lines = [line.split("\t") for line in table.read().splitlines()]
+        lines[4][lines[3].index("Weighted completeness")] = "0.8996"
+        with open(outfile, "w") as table:
+            table.write("".join("\t".join(line) + "\n" for line in lines))
+
+    monkeypatch.setattr("metator.validation.micomplete_quality", micomplete_quality)
+    metacool = _map_with_merged_partition(metagenome, metagenome_network, tmp_path / "network.metacool", merged=())
+    out = tmp_path / "out"
+    run_cli("validation", metacool, "-a", metagenome_inputs["assembly"], "-o", out, "-T", tmp_path / "tmp", "-s", "50000")
+    summary = pd.read_csv(_kept(out) / "cluster_summary.txt", sep="\t", index_col=0, dtype=str)
+    (almost,) = summary.index[summary["Weighted completeness"] == "0.90"]
+    length = int(float(summary.loc[almost, "Length"]))
+    others = summary.drop(index=almost)
+    assert (others["Weighted completeness"] == "1.00").all() and (summary["Weighted redundancy"] == "1.00").all()
+    legend = [text.get_text() for text in saved_figures["bins_size_distribution.png"].axes[0].get_legend().get_texts()]
+    assert legend[0].startswith(f"HQ MAGs: {len(others)} - ")
+    assert legend[1] == f"MQ MAGs: 1 - {round(length / 1_000_000, 2)}Mb"
+    (log,) = out.glob("metator_validation_*.log")
+    assert f"MQ MAGs: 1\tTotal Size: {length}" in log.read_text()
+    completion, _ = saved_figures["bins_distribution.png"].axes[0].collections
+    assert completion.get_offsets()[-1, 1] == pytest.approx(89.96)
+
+
 def test_validation_without_bin_above_the_size_threshold(metagenome_inputs, metagenome_network, tmp_path, monkeypatch, run_cli):
     """partition MAP stores every overlapping cluster, whatever its size; a
     validation run of which none reaches --size stops before miComplete, saying
@@ -602,9 +648,12 @@ def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, tmp_path, 
         assert mc.contigs[column].tolist() == measured[column].tolist(), column
     # Clean-up: no pyfastx index, no intermediate table in the output
     # directory (the tables of the validation stay in the temporary
-    # directory, kept here as -N keeps it: see _keep_the_tables).
+    # directory, kept here as -N keeps it: see _keep_the_tables); the plots
+    # of the clusters in plot/.
     assert not os.path.exists(f"{metagenome_inputs['assembly']}.fxi")
-    assert sorted(path.name for path in out.iterdir() if not path.name.endswith(".log")) == [metacool.name, "final_clusters"]
+    outputs = sorted(path.name for path in out.iterdir() if not path.name.endswith(".log"))
+    assert outputs == [metacool.name, "final_clusters", "plot"]
+    assert sorted(path.name for path in (out / "plot").iterdir()) == ["bins_distribution.png", "bins_size_distribution.png"]
     assert not (out / "contig_data_partition.txt").exists()
 
 

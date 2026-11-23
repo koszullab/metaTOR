@@ -123,6 +123,7 @@ not always the same.
 $ ls binning
 final_clusters
 metator_pipeline_20261123152335.log
+plot
 sample.metacool
 ```
 
@@ -143,6 +144,7 @@ contig_data_final.txt  metator_dump_20261123152345.log  network.txt
 |---|---|
 | `sample.metacool` | The contact map of the clusters (see below) |
 | `final_clusters/` | One FASTA file per final cluster: the result |
+| `plot/` | The plots of the clusters: their completeness and contamination (`bins_distribution.png`), and the size of each quality class (`bins_size_distribution.png`) |
 | `metator_pipeline_<date>.log` | The log of the run |
 | `cluster_summary.txt` (in `tmp/*/`) | One row per final cluster: size, GC content, completeness, redundancy, N50, Hi-C abundance… |
 | `clusters.txt`, `cluster_members.txt` (in `tmp/*/`) | Every cluster of every round (core, overlapping, recursive, final), with its parent and miComplete's columns, and the contigs of each |
@@ -169,7 +171,8 @@ Completeness and redundancy are miComplete's, as fractions: a complete
 genome without contamination has a completeness and a redundancy of 1. The
 clusters of this test library hold a few marker genes at most (a completeness
 under 10%), so they are classed as *Other clusters*; on a real sample, the log
-counts the high-, medium- and low-quality MAGs.
+counts the high-, medium- and low-quality MAGs, and
+`binning/plot/bins_size_distribution.png` shows their share of the assembly.
 
 ## Step 5: open the contact map
 

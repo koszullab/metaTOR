@@ -117,11 +117,13 @@ anvi-export-collection -p anvio/merged/PROFILE.db -C metator -O anvio/curated
 ```
 
 From `anvio/curated.txt`, metaTOR's Python API writes one FASTA file per
-cluster, checks the clusters with miComplete as `metator validation` does, and
-counts them in the quality classes of its log:
+cluster, checks the clusters with miComplete as `metator validation` does,
+counts them in the quality classes of its log, and draws the plots of their
+quality, as the run draws those of its clusters in `binning/plot/`:
 
 ```python
 import metacooler
+import metator.figures as mtf
 import metator.validation as mtv
 import pandas as pd
 
@@ -143,7 +145,17 @@ mtv.micomplete_quality("anvio/fasta", "anvio/micomplete.txt", threads=16)
 summary = pd.read_csv("anvio/micomplete.txt", sep="\t", comment="#", index_col=0)
 quality = summary.apply(lambda row: mtv.bin_quality(row["Weighted completeness"], row["Weighted redundancy"]), axis=1)
 print(quality.value_counts())
+
+# The plots of metaTOR's validation, for the curated clusters: the pie chart
+# of the contigs of the map, as the run draws it.
+total = int(metacooler.MetaCooler("binning/sample.metacool").contigs["length"].sum())
+mtf.figures_bins_distribution(summary, "anvio/bins_distribution.png")
+mtf.figures_bins_size_distribution(summary, total, 500000, "anvio/bins_size_distribution.png")
 ```
+
+Compare them with `binning/plot/bins_distribution.png` and
+`binning/plot/bins_size_distribution.png`, those of the clusters before the
+curation.
 
 To look at the contacts of a curated cluster, add the curated clusters to the
 contig data table as a column, give them to the contact map of the run with

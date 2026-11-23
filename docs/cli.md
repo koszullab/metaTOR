@@ -16,7 +16,7 @@ metator --version
 | Several libraries | One map, which sums them: make the map of each library, then merge them with `metacooler merge` (see [Other tools](other-tools.md)). |
 | Several enzymes | Separated by commas: `DpnII,HinfI`. |
 | The map of a run | A run writes its map to its output directory (`-o`), under the name of `MAP` (`NAME.metacool` for an entry of a collection), and leaves `MAP` as it was: metacooler copies `MAP` next to that map, the run writes what it stores into the copy, and metacooler renames it into place once it is validated. `--inplace` updates `MAP` itself instead, and so does a run whose output directory holds `MAP` already: the steps of a run, one by one, in one output directory (`network MAP -o DIR`, then `partition DIR/MAP -o DIR`...). |
-| `-F, --force` | Replace what the command writes itself, when an earlier run left it: the map of the output directory, the final clusters (`final_clusters/`), the tables of a dump. Without it, a command refuses to overwrite them. The other results of an earlier run in the output directory (the tables of a development build of 2.0, the outputs of 1.x, an earlier summary of `mge`) are refused, with or without it, and never removed. A run that updates its map in place warns, before any work, of the clusters and clustering rounds that it replaces there. |
+| `-F, --force` | Replace what the command writes itself, when an earlier run left it: the map of the output directory, the final clusters (`final_clusters/`) and their plots (`plot/`), the tables of a dump. Without it, a command refuses to overwrite them. The other results of an earlier run in the output directory (the tables of a development build of 2.0, the outputs of 1.x, an earlier summary of `mge`) are refused, with or without it, and never removed. A run that updates its map in place warns, before any work, of the clusters and clustering rounds that it replaces there. |
 | Writing a map | Through metacooler: a run holds the lock of the map it writes, `<map>.lock` (that of the output directory, or `MAP` in place), from its checks to its end, and writes the map in an edit session, one staged copy next to it (`.<map>.<uuid>.<n>.d/`), validated, then renamed onto it, so a run that stops leaves the map as it was. `MAP` updated in place through a symbolic link is updated where the link points; a symbolic link in the output directory, where the map of the run goes, is replaced (`-F`), not its target, and a hard link of `MAP` there is refused. A map that another process holds, a map updated in place without write permission, or one whose directory is not writable (with room for a copy of the map and for the new map), is refused before any work. A run killed by SIGTERM (a job scheduler's time limit) or SIGKILL leaves its lock and its staged copy, which the next run that writes the map on the same host takes over and removes; on another host, delete the files that the error names. |
 | `-T, --tmpdir` | Each run works in a directory of its own inside it, removed at the end, unless `--no-clean-up` or the run fails: the log says which. |
 | `-N, --no-clean-up` | Keep the temporary directory of the run: that of a `validation` or `pipeline` run holds its tables. |
@@ -24,8 +24,9 @@ metator --version
 
 New to metaTOR? Start with the [Quickstart](quickstart.md); for hits, core,
 overlapping and recursive clusters, see [Concepts](concepts.md). metaTOR 2.0
-removed `qc`, `contactmap`, `metacool`, `scaffold` and `pairs`, and the plots:
-[Other tools](other-tools.md) says what replaces each one.
+removed `qc`, `contactmap`, `metacool`, `scaffold` and `pairs`, and the heatmap
+and the GC and coverage plots of the clusters: [Other tools](other-tools.md)
+says what replaces each one.
 
 ## Clustering
 
@@ -59,10 +60,10 @@ hicstuff 4.0.0), or metacooler from pairs files
 | `-s, --size` | `500000` | The size, in bp, that an overlapping cluster must reach to be checked with miComplete, and that a cluster of the recursive partition must exceed. |
 | `-j, --rec-iter` | `10` | The iterations of the recursive partition of the contaminated clusters. |
 | `-P, --rec-overlap` | `90` | The overlap threshold of the recursive partition, in percent. |
-| `-o, --outdir` | the current directory | The output directory: the map of the clusters, `final_clusters/` and the log. |
+| `-o, --outdir` | the current directory | The output directory: the map of the clusters, `final_clusters/`, `plot/` (see [`validation`](#validation)) and the log. |
 | `-p, --prefix` | none | Name the clusters `<prefix>_metator_…`. Letters, digits, `_` and `-` only. |
-| `-F, --force` | off | Replace the map and `final_clusters/` of an earlier run in the output directory. The other results of an earlier run in the output directory (the tables and `recursive_clusters/` of a development build of 2.0, the outputs of 1.x) are refused, with or without `-F`, and never removed. |
-| `-T, --tmpdir` | `./tmp` | The temporary directory, where the run works in a directory of its own: the FASTA files of the clusters that miComplete checks (at most the size of the assembly), miComplete's results, the tables of the validation, and, from a compressed assembly, its decompressed copy. Not in `final_clusters/`, which the run makes anew, nor in a directory of the results of an earlier run (`recursive_clusters/`, `final_bin/`...), which the run refuses. |
+| `-F, --force` | off | Replace the map, `final_clusters/` and `plot/` of an earlier run in the output directory. The other results of an earlier run in the output directory (the tables and `recursive_clusters/` of a development build of 2.0, the outputs of 1.x) are refused, with or without `-F`, and never removed. |
+| `-T, --tmpdir` | `./tmp` | The temporary directory, where the run works in a directory of its own: the FASTA files of the clusters that miComplete checks (at most the size of the assembly), miComplete's results, the tables of the validation, and, from a compressed assembly, its decompressed copy. Not in `final_clusters/` or `plot/`, which the run makes anew, nor in a directory of the results of an earlier run (`recursive_clusters/`, `final_bin/`...), which the run refuses. |
 | `-t, --threads` | `1` | Threads for the partition and the validation (miComplete). |
 | `-N, --no-clean-up` | off | Keep the temporary directory of the run, which the log names: the tables of the validation (`cluster_summary.txt`, `contig_data_final.txt`, `binning.txt`, `clusters.txt`, `cluster_members.txt`), miComplete's results and the FASTA files of the clusters that it checked. |
 | `--inplace` | off | Update `MAP` in place with the map of the clusters, rather than write it to the output directory: refused for an entry of a collection. A run whose output directory holds `MAP` already updates it in place without `--inplace`. |
@@ -176,7 +177,8 @@ metator partition binning/sample.metacool -t 16 -o binning
 ### `validation` { #validation }
 
 Check the clusters with miComplete, and partition the contaminated ones
-again: the third step. Writes `final_clusters/`, and stores the final
+again: the third step. Writes `final_clusters/` and the plots of the final
+clusters (`plot/`), and stores the final
 clusters, their summary and every clustering round in the map; the tables
 of the validation (`cluster_summary.txt`, `contig_data_final.txt`,
 `binning.txt`, `clusters.txt`, `cluster_members.txt`, miComplete's results)
@@ -201,6 +203,16 @@ contamination, (weighted redundancy − 1) / weighted completeness, reaches
 5%. Its parts replace it when the most complete of them keeps enough of its
 completeness.
 
+Once the clusters are final, the run draws two plots of them in `plot/`, in
+its output directory, from miComplete's numbers: `bins_distribution.png`, the
+completeness and the contamination (weighted redundancy − 1, drawn from 0 to
+105%) of each final cluster, the clusters by decreasing completeness; and
+`bins_size_distribution.png`, a pie chart of the size of the clusters of each
+quality class (HQ, MQ and LQ MAGs, contaminated clusters and the others, the
+classes that the log counts: see [Cluster quality](concepts.md#cluster-quality))
+and of the contigs in no cluster. A plot that cannot be drawn is a warning,
+and the run goes on.
+
 The run partitions again the network that `metator network MAP` stored in the
 map, and refuses a map without it, or without the partition of `metator
 partition MAP`, or whose partition was made on another network than the one
@@ -220,10 +232,10 @@ already, or with `--inplace`). See
 | `-O, --overlap` | `90` | The overlap threshold of the recursive partition, in percent. |
 | `-r, --res-param` | `1.0` | The resolution of the Leiden algorithm. |
 | `-s, --size` | `500000` | The size, in bp, that an overlapping cluster of the partition must reach to be checked, and that a cluster of the recursive partition must exceed. |
-| `-o, --outdir` | `./` | The output directory: the map of the clusters, `final_clusters/` and the log. |
+| `-o, --outdir` | `./` | The output directory: the map of the clusters, `final_clusters/`, `plot/` and the log. |
 | `-p, --prefix` | none | Name the recursive clusters `<prefix>_metator_…`. |
-| `-F, --force` | off | Replace the map and `final_clusters/` of an earlier run in the output directory. The other results of an earlier run in the output directory (the tables and `recursive_clusters/` of a development build of 2.0, the outputs of 1.x) are refused, with or without `-F`, and never removed. |
-| `-T, --tmpdir` | `./tmp` | The temporary directory, where the run writes, in a directory of its own, the clusters that miComplete checks (at most the size of the assembly), miComplete's results and the tables of the validation, and, from a compressed assembly, its decompressed copy. Not in `final_clusters/`, which the run makes anew, nor in a directory of the results of an earlier run (`recursive_clusters/`, `final_bin/`...), which the run refuses. |
+| `-F, --force` | off | Replace the map, `final_clusters/` and `plot/` of an earlier run in the output directory. The other results of an earlier run in the output directory (the tables and `recursive_clusters/` of a development build of 2.0, the outputs of 1.x) are refused, with or without `-F`, and never removed. |
+| `-T, --tmpdir` | `./tmp` | The temporary directory, where the run writes, in a directory of its own, the clusters that miComplete checks (at most the size of the assembly), miComplete's results and the tables of the validation, and, from a compressed assembly, its decompressed copy. Not in `final_clusters/` or `plot/`, which the run makes anew, nor in a directory of the results of an earlier run (`recursive_clusters/`, `final_bin/`...), which the run refuses. |
 | `-t, --threads` | `1` | Threads for the partition and miComplete. |
 | `-N, --no-clean-up` | off | Keep the temporary directory of the run, which the log names: the tables of the validation (`cluster_summary.txt`, `contig_data_final.txt`, `binning.txt`, `clusters.txt`, `cluster_members.txt`), miComplete's results and the FASTA files of the clusters that it checked. |
 | `--inplace` | off | Write the map of the clusters over `MAP`, in place, rather than to the output directory: refused for an entry of a collection. |

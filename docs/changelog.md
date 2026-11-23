@@ -53,7 +53,8 @@ each removed command.
     refuses a partition made on another network than the one stored there.
     Its `--size` chooses the overlapping clusters that miComplete checks. It
     writes the FASTA files of the final clusters in the output directory,
-    `final_clusters/`, and stores the rest in the map: the final cluster of
+    `final_clusters/`, with the plots of their quality, `plot/` (see Fixed),
+    and stores the rest in the map: the final cluster of
     each contig, as its genome, the summary of the clusters in the genomes
     table, every clustering round, and its run under the `validation` entry,
     with how the summary is written from the map (`summary_rows`,
@@ -70,10 +71,12 @@ each removed command.
     clusters of a development build of 2.0, and the outputs of 1.x (its
     tables and networks, `bin_summary.txt`, `network.txt`, the clustering
     matrices, `recursive_bin/`, `final_bin/`, `final_bin_unscaffold/`,
-    `overlapping_bin/`, `scaffold_bin/`, `plot/`). Left there, they would pass
+    `overlapping_bin/`, `scaffold_bin/`). Left there, they would pass
     for the results of the run; a file of one of these names, a user's own
     too, is refused and left as it is. `-F` replaces only what a run writes
-    itself: `final_clusters/` and the map of the output directory.
+    itself: `final_clusters/`, `plot/` and the map of the output directory.
+    An earlier run's `plot/`, 1.x's too, is refused without `-F`, where
+    1.4.0 wrote over it.
   - `pipeline MAP` runs the three steps on the map, and writes the map of
     the clusters once, at its end: the steps run one by one in one output
     directory give the map of `pipeline`. It goes to the output directory,
@@ -114,8 +117,10 @@ each removed command.
   `final_clusters/`, `recursive_bin/` is `recursive_clusters/`, and in the
   contig data tables `Core_bin_ID`, `Core_bin_contigs`, `Core_bin_size`,
   their overlapping and recursive equivalents and `Final_bin` are
-  `Core_cluster_ID`... and `Final_cluster`. `binning.txt` and the names of
-  the clusters are kept. `metator.host` still reads the tables of 1.x
+  `Core_cluster_ID`... and `Final_cluster`. `binning.txt`, the names of the
+  clusters and those of the plots are kept, and the texts of the plots name
+  clusters (`Contaminated clusters`, `Other clusters`, `Clusters
+  threshold`). `metator.host` still reads the tables of 1.x
   (`metator.io.rename_1x_columns`).
 - **The contigs of a run are those of its map, in its order.** The ID of a
   contig is its position in the map, and the rows of the tables, the numbers
@@ -150,7 +155,11 @@ each removed command.
 - **Removed commands and features**, with what replaces them in
   [Other tools](other-tools.md): `metator qc`, `contactmap`, `metacool`,
   `scaffold` and `pairs`; `pipeline -v/--scaffold` and `-J/--junctions`; the
-  plots of `validation` and `pipeline` (`plot/`); `-C/--cluster-matrix` of
+  heatmap of the clusters and the plots of the GC content and coverage of
+  their contigs, of `validation` and `pipeline` (`plot/network_heatmap.png`,
+  `MAGs_GC_distribution.png`, `MAGs_HiC_cov_distribution.png`,
+  `MAGs_SG_cov_distribution.png`), which still draw the plots of the
+  quality of the clusters; `-C/--cluster-matrix` of
   `partition`, `validation` and `pipeline`, and the clustering matrices it
   wrote; `-s/--self-contacts` of `network`; `pipeline --no-metacool` of
   1.4.0, as the map of the clusters is what a run writes (to its output
@@ -160,9 +169,15 @@ each removed command.
   random numbers of the system, not from Python's `random` module, which the
   partition draws from: a run seeded as before gives other clusters.
 - **Python API.** Removed: the modules `metator.align`, `metator.contact_map`,
-  `metator.figures` (`bin_quality` is now `metator.validation.bin_quality`),
   `metator.main`, `metator.quality_check`, `metator.regions` and
-  `metator.scaffold`; the readers and writers of the files 2.0 no longer reads
+  `metator.scaffold`; of `metator.figures`, all but the plots of the quality
+  of the clusters (`bin_quality` is now `metator.validation.bin_quality`):
+  `figures_bins_distribution` and `figures_bins_size_distribution`, which
+  take any table of clusters (the latter returns a copy of it, with its
+  `MAG_quality`), and `plot_figures(plot_dir, contigs_data, bin_summary,
+  threshold)`, which draws them in `plot_dir`, takes the summary of the
+  clusters as the validation holds it, and no map; the readers and writers
+  of the files 2.0 no longer reads
   or writes (`metator.io.sort_pairs`, `write_contigs`, `import_anvio_binning`,
   `read_contig_data`...; `metator.network.normalize_pair`, `write_edge`,
   `alignment_to_contacts`...; `metator.partition.read_network`,
@@ -175,7 +190,8 @@ each removed command.
   `metator.partition.partition` returns the partition, a
   `metator.clusters.Partition`, and writes nothing;
   `metator.validation.recursive_decontamination` takes the partition and the
-  map; `metator.mge.mge_binning` takes the map.
+  map, and draws the plots in `plot_dir`, when given; `metator.mge.mge_binning`
+  takes the map.
 
 ### Added
 - `metator dump MAP -o DIR` writes the tables of a run from the map of its
@@ -253,6 +269,11 @@ each removed command.
   distances without holding the GIL, so the threads run in parallel.
 - Python's warnings (cooler gives the problems of a map with them) are shown
   and written to the log of a run, as metaTOR's own messages.
+- The plots of the quality of the clusters (`plot/bins_distribution.png`,
+  `plot/bins_size_distribution.png`) are drawn with matplotlib's `Figure`,
+  without pyplot: no window, whatever the backend of matplotlib. A plot that
+  cannot be drawn is a warning, with its error, and the run goes on to write
+  the map of its clusters, where 1.4.0 stopped.
 - **The log of a run.** Its header gives, as hicstuff's does, the version,
   the date, the command line (`## cmd:`, where it said `## Command used:`)
   and the value of each option (`## <option>: <value>`), then a line of
@@ -296,8 +317,17 @@ each removed command.
 - `binning.txt` holds every contig of the final clusters: those of a cluster
   partitioned again but kept whole were left out.
 - The log of the validation counts the clusters in the quality classes of
-  `metator.validation.bin_quality`, the contamination being the weighted
-  redundancy − 1; it divided it by the completeness.
+  `metator.validation.bin_quality`, as the plot of their sizes does
+  (`plot/bins_size_distribution.png`), the contamination being the weighted
+  redundancy − 1; it divided it by the completeness, where the plot does not.
+- The plot of the completeness and the contamination of the clusters
+  (`plot/bins_distribution.png`) draws the contamination from 0 to 105%, as
+  it meant to: it compared the weighted redundancy, a ratio, with 105, which
+  no cluster reaches, so a contamination above 105% stretched its axis, and
+  a cluster in which miComplete finds no marker gene, of a redundancy of 0,
+  was drawn at −100%. Its axis reads `Completeness/Contamination (%)`
+  (`Completness`), and the pie chart of the sizes of the clusters `Other
+  contigs` (`Others contigs`).
 - The `recursive` column of `cluster_summary.txt` says whether the cluster
   comes from the recursive partition.
 - `metator validation --help` gives the rule of the recursive partition: a

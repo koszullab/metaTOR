@@ -14,11 +14,13 @@ miComplete checks the overlapping clusters of the map's partition that reach
 --size, then those of each recursive step, from FASTA files that metacooler
 writes in the run's temporary directory. The validation's tables go there
 too (-N keeps them); the map of the clusters stores what they hold, and
-metator dump writes them from it.
+metator dump writes them from it. The plots of the final clusters go to the
+output directory of the run (see metator.figures).
 """
 
 import gzip
 import metator.clusters as mtc
+import metator.figures as mtf
 import metator.io as mio
 import metator.partition as mtp
 import os
@@ -698,6 +700,7 @@ def recursive_decontamination(
     metacool,
     written,
     temp_dir=None,
+    plot_dir=None,
 ):
     """Function to validate bins do the recursive decontamination using Louvain or
     Leiden algorithm
@@ -753,6 +756,10 @@ def recursive_decontamination(
     temp_dir : str, optional
         Where metacooler copies a compressed assembly, plain: the temporary
         directory of the run.
+    plot_dir : str, optional
+        Where to draw the plots of the final clusters (see
+        metator.figures.plot_figures): ``plot/`` in the output directory of the
+        run. None draws none.
 
     Returns
     -------
@@ -978,6 +985,11 @@ def recursive_decontamination(
 
     # Write the new file
     contigs_data.to_csv(join(outdir, "contig_data_final.txt"), sep="\t", header=True, index=True)
+
+    # The plots of the final clusters, from the numbers of miComplete, which
+    # the summary rounds: their quality classes are those of the log.
+    if plot_dir is not None:
+        mtf.plot_figures(plot_dir, contigs_data, bin_summary, size)
     return contigs_data, summary
 
 

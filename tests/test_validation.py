@@ -252,8 +252,7 @@ def test_correct_final_bin_refuses_a_contig_that_the_table_lacks():
 @pytest.mark.parametrize(
     ("completeness", "redundancy", "quality"),
     [
-        # One bin of each class (the classes of the binning of the mock
-        # metagenome that tests/test_figures.py drew, before the plots went).
+        # One bin of each class (those of the plots of tests/test_figures.py).
         (0.95, 1.02, "HQ"),
         (0.80, 1.05, "MQ"),
         (0.60, 1.05, "LQ"),

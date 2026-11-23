@@ -84,13 +84,16 @@ def private_tmp_dir(tmpdir, clean_up=True):
         logger.info(f"The temporary directory of the run, {tmp_dir}, and its files are kept (-N).")
 
 
-# What a validation or pipeline run writes in its output directory besides its
-# log: final_clusters, which -F replaces.
-CLUSTER_DIRS = ("final_clusters",)
+# The directories that a validation or pipeline run writes in its output
+# directory, each made anew, which -F replaces, with what each holds: the FASTA
+# files of its final clusters, and the plots of the clusters (see
+# metator.figures).
+RUN_DIRS = {"final_clusters": "its clusters", "plot": "its plots"}
 
 # An earlier run's results in the output directory of a validation or pipeline
 # run (2.0 development builds' tables and recursive clusters, 1.x's outputs),
 # which would pass for this run's: refused with or without -F, never removed.
+# A plot/ of 1.x is a directory that the run writes (see RUN_DIRS).
 EARLIER_OUTPUTS = (
     "contig_data_*.txt",
     "cluster_summary.txt",
@@ -108,7 +111,6 @@ EARLIER_OUTPUTS = (
     "final_bin_unscaffold",
     "overlapping_bin",
     "scaffold_bin",
-    "plot",
 )
 
 # An earlier mge run's summary (1.x's, a development build's), which the round
@@ -129,21 +131,21 @@ def _earlier_directories():
 def refuse_tmpdir_in_the_clusters(tmpdir, outdir):
     """Refuse, as a usage error, before the run creates or removes anything,
     a --tmpdir in a directory of the output directory, outdir, that a
-    validation or pipeline run makes anew (final_clusters, which -F replaces,
-    with the temporary directory of the run in it) or refuses as the results
-    of an earlier run (see EARLIER_OUTPUTS: the run would make it, then
-    refuse it). --tmpdir is in it as written, or once the symbolic links of
-    both are resolved, but for that directory itself: -F replaces a symbolic
-    link, not its target."""
+    validation or pipeline run makes anew (final_clusters and plot, which -F
+    replaces, with the temporary directory of the run in it: see RUN_DIRS) or
+    refuses as the results of an earlier run (see EARLIER_OUTPUTS: the run
+    would make it, then refuse it). --tmpdir is in it as written, or once the
+    symbolic links of both are resolved, but for that directory itself: -F
+    replaces a symbolic link, not its target."""
     base = tmpdir or "./tmp"
-    for name in (*CLUSTER_DIRS, *_earlier_directories()):
+    for name in (*RUN_DIRS, *_earlier_directories()):
         directory = join(outdir or ".", name)
         as_written = _within(os.path.abspath(base), os.path.abspath(directory))
         resolved = _within(os.path.realpath(base), join(os.path.realpath(outdir or "."), name))
         if as_written or resolved:
             where = (
-                "where the run writes its clusters, which it makes anew (-F replaces an earlier one)"
-                if name in CLUSTER_DIRS
+                f"where the run writes {RUN_DIRS[name]}, which it makes anew (-F replaces an earlier one)"
+                if name in RUN_DIRS
                 else "where an earlier version wrote its results, which the run refuses"
             )
             raise click.BadParameter(
@@ -181,8 +183,8 @@ def refuse_earlier_outputs(outdir, outputs=EARLIER_OUTPUTS, keep=()):
 
 
 def refuse_output_dir(path, force):
-    """Refuse an existing output directory of bins, unless --force replaces it: a
-    symbolic link too, even one to nothing."""
+    """Refuse an existing directory that the run writes (see RUN_DIRS), unless
+    --force replaces it: a symbolic link too, even one to nothing."""
     if os.path.lexists(path) and not force:
         logger.error(
             "%s already existed. Remove directory or use -F argument to overwrite it.",
@@ -204,8 +206,8 @@ def make_outdir(outdir):
 
 
 def make_output_dir(path, force):
-    """Create an output directory of bins; an existing one is replaced with
-    --force, or refused."""
+    """Create a directory that the run writes (see RUN_DIRS); an existing one is
+    replaced with --force, or refused."""
     refuse_output_dir(path, force)
     if os.path.islink(path):
         os.remove(path)
@@ -396,7 +398,7 @@ def step_map(command, input_map, outdir, inplace, force, held, inputs=(), rounds
 def start_step(
     command,
     outdir,
-    cluster_dirs,
+    run_dirs,
     input_map,
     inplace,
     force,
@@ -407,11 +409,12 @@ def start_step(
     partition=False,
 ):
     """Start a partition or validation run (command) in outdir: its log file, the
-    map that it writes (see step_map) and its directories of clusters
-    (cluster_dirs, see make_output_dir), refused without force when an earlier
-    run left them, as, with partition (a validation run), what a run of an
-    earlier version wrote in outdir (see refuse_earlier_outputs), which force
-    removes. Returns the time the run started too (see generate_log_header)."""
+    map that it writes (see step_map) and the directories that it writes
+    (run_dirs: those of RUN_DIRS for a validation, see make_output_dir),
+    refused without force when an earlier run left them, as, with partition (a
+    validation run), what a run of an earlier version wrote in outdir, with or
+    without force (see refuse_earlier_outputs). Returns the time the run
+    started too (see generate_log_header)."""
     log_file = log_file_name(outdir, command)
     started = generate_log_header(log_file, outdir=outdir)
     metacool_file, planned = step_map(command, input_map, outdir, inplace, force, held, inputs=inputs)
@@ -421,11 +424,11 @@ def start_step(
         check_assembly(assembly)
     bins_prefix = bin_prefix(prefix)
     # Refused, all of them, before anything is replaced.
-    for path in cluster_dirs:
+    for path in run_dirs:
         refuse_output_dir(path, force)
     if partition:
         refuse_earlier_outputs(outdir, keep=(input_map, metacool_file))
-    for path in cluster_dirs:
+    for path in run_dirs:
         make_output_dir(path, force)
     return started, metacool_file, bins_prefix, planned, stored, clusters
 
@@ -834,6 +837,7 @@ def run_validation(
     threads,
     prefix,
     final_fasta_dir,
+    plot_dir,
     tmp_dir,
     normalization,
 ):
@@ -841,7 +845,8 @@ def run_validation(
     map (metacool): the contig data of the contigs of the map (table, in its
     order), their network (network, by their positions in the map) and its
     partition (partition, a metator.clusters.Partition: the overlapping
-    clusters that reach size are checked)."""
+    clusters that reach size are checked). The FASTA files of the final
+    clusters go to final_fasta_dir, and their plots to plot_dir."""
     partition_file = write_partition_table(table, partition, tmp_dir)
     # Decompressed once for the run, when it is compressed: the FASTA files
     # of the clusters are written from it at each step.
@@ -869,6 +874,7 @@ def run_validation(
         metacool=metacool,
         written=written,
         temp_dir=tmp_dir,
+        plot_dir=plot_dir,
     )
     final = contigs_data["Final_cluster"].astype(str).str.strip()
     binned = ~final.isin(mtmc.UNBINNED)
@@ -978,8 +984,14 @@ CHECKED_ASSEMBLY_HELP = (
 TMPDIR_TABLES_HELP = (
     "Temporary directory, where the run writes, in a directory of its own, the clusters that miComplete checks (at "
     "most the size of the assembly), miComplete's results and the tables of the validation, and, from a compressed "
-    "assembly, its decompressed copy: give it room for both. Not in final_clusters, which the run makes anew, nor in "
-    "a directory of the results of an earlier run (recursive_clusters, final_bin...), which the run refuses."
+    "assembly, its decompressed copy: give it room for both. Not in final_clusters or plot, which the run makes anew, "
+    "nor in a directory of the results of an earlier run (recursive_clusters, final_bin...), which the run refuses."
+)
+# -F of validation and pipeline (see RUN_DIRS and EARLIER_OUTPUTS).
+FORCE_RUN_HELP = (
+    "Replace the final clusters (final_clusters), the plots (plot) and the map of an earlier run in the output "
+    "directory. The other results of an earlier run in the output directory (its tables, recursive_clusters, 1.x's "
+    "outputs) are refused, with or without -F: they are never removed."
 )
 NO_CLEAN_UP_TABLES_HELP = (
     "Do not remove the temporary directory of the run, which the log names: it keeps miComplete's results, the FASTA "
@@ -1408,13 +1420,9 @@ def partition(
     overlap_help="Hamming distance threshold to use to merge clusters (percentage).",
     size_help=SIZE_HELP,
 )
-@outdir_option(default="./", help="The output directory, of the map of the clusters, final_clusters and the log.")
+@outdir_option(default="./", help="The output directory, of the map of the clusters, final_clusters, plot and the log.")
 @prefix_option("the recursive clusters")
-@force_option(
-    "Replace the final clusters (final_clusters) and the map of an earlier run in the output directory. The other "
-    "results of an earlier run in the output directory (its tables, recursive_clusters, 1.x's outputs) are refused, "
-    "with or without -F: they are never removed."
-)
+@force_option(FORCE_RUN_HELP)
 @tmpdir_option(help=TMPDIR_TABLES_HELP)
 @threads_option(help="Number of parallel threads, for the partition and miComplete.")
 @no_clean_up_option(help=NO_CLEAN_UP_TABLES_HELP)
@@ -1444,9 +1452,12 @@ def validation(
 
     Recursively decontaminate the contaminated clusters evaluated by
     miComplete. The command writes the FASTA files of the final clusters in
-    the output directory (final_clusters), and stores the clusters in the
-    map: the tables of the validation stay in its temporary directory, which
-    -N keeps, and [cyan]metator dump MAP[/] writes them from the map.
+    the output directory (final_clusters), and their plots (plot: the
+    completeness and contamination of each, bins_distribution.png, and the
+    size of each quality class, bins_size_distribution.png), and stores the
+    clusters in the map: the tables of the validation stay in its temporary
+    directory, which -N keeps, and [cyan]metator dump MAP[/] writes them
+    from the map.
 
     Only clusters with a weighted completeness of at least 33% and a
     contamination, (weighted redundancy - 1) / weighted completeness, of at
@@ -1476,15 +1487,17 @@ def validation(
         outdir = outdir or "."
         make_outdir(outdir)
         final_fasta_dir = join(outdir, "final_clusters")
+        plot_dir = join(outdir, "plot")
 
         # Enable file logging, the map of the run checked and locked, the
         # network that metator network stored in it and the partition that
         # metator partition stored in it read, the assembly checked, and the
-        # directory of the final clusters made (see start_step).
+        # directories of the final clusters and of their plots made (see
+        # start_step).
         started, metacool_file, bins_prefix, planned, stored, clusters = start_step(
             "validation",
             outdir,
-            [final_fasta_dir],
+            [final_fasta_dir, plot_dir],
             map,
             inplace,
             force,
@@ -1512,6 +1525,7 @@ def validation(
             threads,
             bins_prefix,
             final_fasta_dir,
+            plot_dir,
             tmp_dir,
             stored.normalization,
         )
@@ -1566,13 +1580,11 @@ def validation(
     panel="Validation",
     help="Hamming distance threshold to use to merge clusters for the recursive step (percentage).",
 )
-@outdir_option(help="The output directory, of the map of the clusters, final_clusters and the log. Default: current directory.")
-@prefix_option("the clusters")
-@force_option(
-    "Replace the final clusters (final_clusters) and the map of an earlier run in the output directory. The other "
-    "results of an earlier run in the output directory (its tables, recursive_clusters, 1.x's outputs) are refused, "
-    "with or without -F: they are never removed."
+@outdir_option(
+    help="The output directory, of the map of the clusters, final_clusters, plot and the log. Default: current directory."
 )
+@prefix_option("the clusters")
+@force_option(FORCE_RUN_HELP)
 @tmpdir_option(help=TMPDIR_TABLES_HELP)
 @threads_option(help="Number of parallel threads allocated for the partition and the validation.")
 @no_clean_up_option(help=NO_CLEAN_UP_TABLES_HELP)
@@ -1618,9 +1630,9 @@ def pipeline(
 
     The run does what [cyan]metator network MAP[/], partition MAP and
     validation MAP do one by one, and writes the map that they write, once,
-    at its end: the FASTA files of the final clusters go to the output
-    directory (final_clusters), and the tables of the validation stay in
-    its temporary directory, which -N keeps.
+    at its end: the FASTA files of the final clusters and their plots go to
+    the output directory (final_clusters, plot), and the tables of the
+    validation stay in its temporary directory, which -N keeps.
     """
     # Private temporary directory inside --tmpdir, out of the directories of
     # the clusters, and the lock of the map the run writes, held until its
@@ -1652,12 +1664,14 @@ def pipeline(
         # (planned).
         planned = hold_map(held, "pipeline", map, metacool_file, in_place, inplace=inplace)
 
-        # The final clusters of an earlier run, and what a run of an earlier
-        # version wrote in the output directory: refused now without
-        # --force, before the assembly is read, and replaced or removed only
-        # once it is checked.
+        # The final clusters and the plots of an earlier run: refused now
+        # without --force, before the assembly is read, and replaced only once
+        # it is checked. What a run of an earlier version wrote in the output
+        # directory is refused, with or without it.
         final_fasta_dir = join(outdir, "final_clusters")
-        refuse_output_dir(final_fasta_dir, force)
+        plot_dir = join(outdir, "plot")
+        for path in (final_fasta_dir, plot_dir):
+            refuse_output_dir(path, force)
         refuse_earlier_outputs(outdir, keep=(map, metacool_file))
 
         # The network, as metator network makes it: the contig data,
@@ -1668,7 +1682,8 @@ def pipeline(
         check_assembly(assembly)
         log_stage(1, "network", f"the contigs of {map} and their contacts")
         network, contacts = run_network(map, planned, assembly, depth, enzyme, normalization, tmp_dir)
-        make_output_dir(final_fasta_dir, force)
+        for path in (final_fasta_dir, plot_dir):
+            make_output_dir(path, force)
         edges = mtn.map_network(map, mtn.network_weights(network.table, normalization), contacts)
 
         # Partition the network, as metator partition does.
@@ -1691,6 +1706,7 @@ def pipeline(
             threads,
             bins_prefix,
             final_fasta_dir,
+            plot_dir,
             tmp_dir,
             normalization,
         )

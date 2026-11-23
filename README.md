@@ -150,7 +150,9 @@ metator validation binning/sample.metacool -a assembly.fa -o binning
 ### Outputs
 
 **In the output directory** (`-o`): the map of the run, named as `MAP`;
-`final_clusters/`, one FASTA file per final cluster; and the log of the run,
+`final_clusters/`, one FASTA file per final cluster; `plot/`, the plots of
+the quality of the clusters (their completeness and contamination, and the
+size of each quality class); and the log of the run,
 `metator_<command>_<date>.log`, which starts with the version, the command line
 and the value of each option, and ends with what the run wrote and how long it
 took.
@@ -214,7 +216,7 @@ directory, as the round `mge` of its clustering rounds (`-o binning` updates
 metaTOR 2.0 reads no reads, alignments or pairs files: hicstuff and metacooler
 make the map. It removed the commands that did what hicstuff, metacooler,
 instaGRAAL or pairix do (`qc`, `contactmap`, `metacool`, `scaffold`, `pairs`)
-and the plots: [Other tools](https://koszullab.github.io/metator/other-tools/) says what replaces each one.
+and the heatmap and the GC and coverage plots of the clusters: [Other tools](https://koszullab.github.io/metator/other-tools/) says what replaces each one.
 Its outputs are named after clusters, where 1.x named them after bins
 (`cluster_summary.txt` was `bin_summary.txt`). [Migrating to 2.0](https://koszullab.github.io/metator/migration/)
 lists every change to the command line and the outputs, and the
