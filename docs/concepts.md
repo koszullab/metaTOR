@@ -87,9 +87,10 @@ validate.
 ## Validation and recursive clusters
 
 Each cluster is checked with [miComplete](https://pypi.org/project/micomplete/),
-which counts single-copy marker genes, found by prodigal and hmmer: their
-share gives the **completeness** of the cluster, and their copies its
-**redundancy**. A cluster with a weighted completeness of at least 33% whose
+which counts single-copy marker genes, found by Prodigal and HMMER (through
+pyrodigal and pyhmmer): their share gives the **completeness** of the
+cluster, and their copies its **redundancy**. A cluster with a weighted
+completeness of at least 33% whose
 contamination, (redundancy − 1) / completeness, reaches 5% is partitioned
 again, on the network of its own contigs, with `--rec-iter` iterations (10)
 and an overlap of `--rec-overlap` percent (90). Its parts, the **recursive
