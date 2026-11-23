@@ -217,6 +217,14 @@ each removed command.
   `map_matrix` and `write_mges_fasta`.
 
 ### Changed
+- Validation runs Prodigal and HMMER through pyrodigal and pyhmmer, their
+  Python bindings, which pip installs with metaTOR, in place of the
+  prodigal and hmmsearch programs that miComplete runs
+  (`metator._micomplete`): metaTOR runs no program that pip does not
+  install, with pip, with conda (`metator.yaml`) or in the Docker image.
+  miComplete gives the clusters of the tests the rows that prodigal 2.6.3
+  and HMMER 3.4 gave them, and a cluster of less than 20 kb still gets no
+  gene, as prodigal finds none in it.
 - metaTOR requires metacooler 0.4.0: its contact statistics of each contig
   (`qc_intra_contig_short`, `qc_intra_contig_long`, split at 1001 bp), its
   clustering rounds, its locked edit sessions and its FASTA writer.

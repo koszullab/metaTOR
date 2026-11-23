@@ -109,7 +109,7 @@ them away, or give the run another `--outdir`.
 | `--tmpdir` | `./tmp` | Where the temporary files go; deleted at the end, unless `--no-clean-up`. It holds the tables of the run, the FASTA files of the clusters that miComplete checks (at most the size of the assembly) and, from a compressed assembly, its decompressed copy: give it room for both. Not in `final_clusters/` of `--outdir`, which the run makes anew, nor in a directory of the results of an earlier run there (`recursive_clusters/`, `final_bin/`...), which the run refuses |
 
 The validation is the step that needs the most memory and time: miComplete
-runs prodigal and hmmer on every cluster.
+runs Prodigal and HMMER (pyrodigal and pyhmmer) on every cluster.
 
 ## Running the steps one by one
 

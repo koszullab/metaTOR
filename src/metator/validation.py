@@ -323,7 +323,8 @@ def micomplete_quality(fasta_dir, outfile, threads):
                 tab.write(f"{join(fasta_dir, path)}\tfna\n")
 
     # Run miComplete (through metator._micomplete, which patches it for recent
-    # Biopython and Python) with the bacterial and the archaeal marker sets.
+    # Biopython and Python, and runs pyrodigal and pyhmmer in place of prodigal
+    # and hmmsearch) with the bacterial and the archaeal marker sets.
     out_bact105 = join(workdir, "micomplete_bact105.tsv")
     out_arch131 = join(workdir, "micomplete_arch131.tsv")
     for markers, out in (("Bact105", out_bact105), ("Arch131", out_arch131)):

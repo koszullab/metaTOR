@@ -42,25 +42,19 @@ conda create -n metator bioconda::metator
 
 ### With pip
 
-`metator` is on PyPI, but two programs that miComplete runs to check the
-clusters are not, and must be on the `$PATH`:
-[`hmmer`](http://hmmer.org/documentation.html) and
-[`prodigal`](https://github.com/hyattpd/Prodigal). metaTOR needs Python 3.10
-to 3.14. Install it in an environment of its own, as pip may change the
-versions of packages that other tools rely on.
+`metator` is on PyPI, with everything it runs: miComplete finds the marker
+genes of the clusters with Prodigal and HMMER through their Python bindings,
+pyrodigal and pyhmmer. metaTOR needs Python 3.10 to 3.14. Install it in an
+environment of its own, as pip may change the versions of packages that
+other tools rely on.
 
 ```sh
-# hmmer and prodigal
-sudo apt update && sudo apt install hmmer prodigal
-
-# metator
 pip3 install metator
 ```
 
 ### Development version
 
-The development version is managed with [uv](https://docs.astral.sh/uv/). With
-hmmer and prodigal installed:
+The development version is managed with [uv](https://docs.astral.sh/uv/):
 
 ```sh
 git clone https://github.com/koszullab/metaTOR
