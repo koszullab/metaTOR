@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
+- The map of the clusters of a `pipeline` run stores the normalization of its
+  network (`--normalization`, `empirical_hit` by default), as the weights
+  `metator_<normalization>` of its bins, the way cooler stores balancing
+  weights: `cooler` reads them (`matrix(balance="metator_empirical_hit")`),
+  and so do `metacooler show`, `dump` and `network` with `--balance`. The
+  contacts of the map normalized by them and summed by pair of contigs are
+  the edges of `network.txt`, but those of weight 0. They are computed from the `Hit`,
+  `Shotgun_coverage` and `Restriction_site` columns of its contigs table,
+  which the column records (`depends_on`), so that metacooler drops it when
+  an edit changes one of them. A map without a column that the
+  normalization reads (`Restriction_site` without `--enzyme`) stores none,
+  with a warning; a run from the map of an earlier run replaces the
+  normalization of that run. It needs `metacooler.store_weights`, which
+  metacooler 0.4.0 has. Python API:
+  `metator.metacool.store_normalization`,
+  `metator.network.normalization_weights`, `metator.metacool.stores_weights`,
+  and `normalization` of `metator.metacool.reassign_metacool`.
 - A `pipeline` run with several libraries builds the map of each library,
   the entries `library_0`, `library_1`... of `<prefix>.mmetacool`, and the
   map of their sum, `<prefix>.metacool`, merged from them with metacooler
