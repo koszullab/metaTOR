@@ -35,10 +35,8 @@ classifiers = [
     "Operating System :: Unix",
 ]
 dependencies = [
-    "hicstuff>=3.3.0",
     "igraph>=0.10.3",
     "biopython>=1.80",
-    "pysam",
     "pyfastx",
     "numpy",
     "pandas",
@@ -54,11 +52,6 @@ dependencies = [
     "metacooler>=0.4.0",
     # The map of a run is copied into a fresh file (metacool.py).
     "h5py>=3.8",
-
-    # NON PIP DEPENDENCIES
-    #"bowtie2"
-    #"bwa"
-    #"samtools"
 ]
 
 [project.optional-dependencies]

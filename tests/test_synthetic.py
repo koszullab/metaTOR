@@ -72,7 +72,7 @@ def test_contacts(metagenome):
     sizes = truth.Length
     assert (pairs.pos1 >= 1).all() and (pairs.pos1 <= pairs.chr1.map(sizes)).all()
     assert (pairs.pos2 >= 1).all() and (pairs.pos2 <= pairs.chr2.map(sizes)).all()
-    # Upper triangle, as written by metator.align.
+    # Upper triangle, as metaTOR 1.x wrote them.
     rank = {name: i for i, name in enumerate(truth.Name)}
     r1, r2 = pairs.chr1.map(rank), pairs.chr2.map(rank)
     assert ((r1 < r2) | ((r1 == r2) & (pairs.pos1 <= pairs.pos2))).all()

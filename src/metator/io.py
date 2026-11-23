@@ -4,11 +4,8 @@
 """Core tools to build I/O for metator
 
 This mdoule contains all core I/O functions:
-    - check_fasta_index
     - check_is_fasta
-    - check_pypairix
     - file_compression
-    - generate_fasta_index
     - generate_temp_dir
     - get_restriction_site
     - import_anvio_binning
@@ -17,11 +14,8 @@ This mdoule contains all core I/O functions:
     - process_ligation_sites
     - read_compressed
     - read_contig_data
-    - read_fasta_names
     - remove_pyfastx_index
     - rename_1x_columns
-    - retrieve_fasta
-    - sort_and_index_pairs
     - sort_pairs
     - write_bin_summary
     - write_contigs
@@ -30,66 +24,17 @@ This mdoule contains all core I/O functions:
 
 import bz2
 import gzip
-import hicstuff.io as hio
 import io
 import numpy as np
 import os
 import pandas as pd
-import pathlib
-import pypairix
-import pysam
-import shutil
 import subprocess as sp
 import zipfile
 from Bio import SeqIO
 from Bio.Restriction import RestrictionBatch
 from metator.log import logger
-from os.path import join, exists, isfile
+from os.path import join, exists
 from secrets import randbits
-
-
-def check_fasta_index(ref, mode="bowtie2"):
-    """
-    Function from hicstuff.io (https://github.com/koszullab/hicstuff/)
-    Checks for the existence of a bowtie2 or bwa index based on the reference
-    file name.
-
-    Parameters:
-    -----------
-    ref : str
-        Path to the reference genome.
-    mode : str
-        The alignment software used to build the index. bowtie2 or bwa. If any
-        other value is given, the function returns the reference path.
-
-    Returns:
-    --------
-    str
-        The bowtie2 or bwa index basename. None if no index was found
-    """
-    ref = pathlib.Path(ref)
-    # The files of the index of ref itself: those of another index of its
-    # directory (another assembly's) are not its index.
-    if mode == "bowtie2":
-        # Bowtie2 has 6 index files, .bt2l for a large index.
-        suffixes = ["1", "2", "3", "4", "rev.1", "rev.2"]
-        index = None
-        for ext in ["bt2", "bt2l"]:
-            bt2_idx_files = [pathlib.Path(f"{ref}.{suffix}.{ext}") for suffix in suffixes]
-            if all(path.is_file() for path in bt2_idx_files):
-                index = bt2_idx_files
-                break
-    elif mode == "bwa":
-        bwa_idx_files = [pathlib.Path(f"{ref}.{ext}") for ext in ["amb", "ann", "bwt", "pac", "sa"]]
-        index = bwa_idx_files if all(path.is_file() for path in bwa_idx_files) else None
-    else:
-        index = [ref]
-    if index is not None:
-        # Convert the PosixPath objects to strings and get the longest common
-        # prefix to obtain index basename (without the dot)
-        # A character-wise prefix is intended: "idx.1.bt2", "idx.rev.1.bt2"... -> "idx."
-        index = os.path.commonprefix(list(map(str, index))).rstrip(".")  # noqa: RUF071
-    return index
 
 
 def check_is_fasta(in_file):
@@ -119,21 +64,6 @@ def check_is_fasta(in_file):
     return test
 
 
-def check_pypairix():
-    """
-    Function to test if pypairix is available.
-
-    Returns:
-    --------
-    bool:
-        True if pypairix is available.
-    """
-    if not hasattr(pypairix, "build_index"):
-        logger.error("Cannot find 'pypairix' installed.")
-        raise AttributeError("pypairix has no build_index")
-    return True
-
-
 # The first bytes of the compressed files that read_compressed opens.
 COMPRESSION_MAGIC = {
     b"\x1f\x8b\x08": "gz",
@@ -157,34 +87,6 @@ def file_compression(filename):
     return "uncompressed"
 
 
-def generate_fasta_index(fasta, aligner, outdir):
-    """Generate fasta index.
-
-    Parameters:
-    -----------
-    fasta : str
-        Path to the fasta reference to index.
-    aligner : str
-        Aligner to use to build the index.
-    outdir : str
-        Path to the directory to write the index.
-
-    Returns:
-    --------
-    str:
-        Path to the bowtie2 index build
-    """
-    logger.info("Build index from the given fasta.\n")
-    index = join(outdir, "index")
-    if aligner == "bowtie2":
-        cmd = "bowtie2-build -q {0} {1}".format(fasta, index)
-    elif aligner == "bwa":
-        cmd = "bwa index -p {1} {0}".format(fasta, index)
-    process = sp.Popen(cmd, shell=True, stdout=sp.PIPE)
-    _out, _err = process.communicate()
-    return index
-
-
 def generate_temp_dir(path):
     """Temporary directory generation
 
@@ -195,8 +97,7 @@ def generate_temp_dir(path):
     Python's random module, which igraph draws from too: the partition of a
     run does not depend on how many of these directories it made (one per
     command), so that the steps run one by one in one process, after one
-    seed, draw the stream of pipeline. The alignment of hicstuff still
-    draws from it.
+    seed, draw the stream of pipeline.
 
     Parameters:
     -----------
@@ -477,18 +378,6 @@ def rename_1x_columns(contig_data):
     return contig_data.rename(columns=renamed)
 
 
-def read_fasta_names(fasta):
-    """The names of the sequences of a fasta file, in their order, as
-    Biopython names its records (SeqIO.parse, which create_contig_data reads
-    the assembly with): the first word of each header line. Only the header
-    lines are looked at."""
-    with open(fasta, "r") as handle:
-        for line in handle:
-            if line.startswith(">"):
-                words = line[1:].split(None, 1)
-                yield words[0] if words else ""
-
-
 def remove_pyfastx_index(fasta):
     """Remove the index pyfastx writes next to a fasta file, if there is
     one: pyfastx only indexes the assembly when a bin is extracted from it.
@@ -528,52 +417,6 @@ def write_contigs(fasta, names, out_file):
     with open(out_file, "w") as out:
         for name in names:
             out.write(fasta[str(name)].raw)
-
-
-def retrieve_fasta(in_file, aligner, tmpdir):
-    """
-    Function to retrieve fasta from the given reference file. If index is given
-    retrieve it using bowtie2 inspect. Thraw an error if not a fasta or bowtie2
-    index.
-
-    Parameters:
-    -----------
-    in_file : str
-        Path to the reference file given.
-    aligner : str
-        Name of the aligner used. Either 'bowtie2' or 'bwa'.
-    tmpdir : str
-        Path to the temp directory to write the fasta if necessary.
-
-    Returns:
-    --------
-    str:
-        Path to the fasta file.
-    """
-    if check_is_fasta(in_file):
-        fasta = in_file
-    else:
-        if check_fasta_index(in_file, aligner):
-            if aligner == "bowtie2":
-                logger.info("Retrieve fasta from bowtie2 index.\n")
-                fasta = join(tmpdir, "assembly.fa")
-                cmd = "bowtie2-inspect {0} > {1}".format(in_file, fasta)
-                process = sp.Popen(cmd, shell=True, stdout=sp.PIPE)
-                _out, _err = process.communicate()
-            elif aligner == "bwa":
-                if isfile(in_file + ".fa"):
-                    if check_is_fasta(in_file + ".fa"):
-                        fasta = in_file + ".fa"
-                elif isfile(in_file + ".fasta"):
-                    if check_is_fasta(in_file + ".fasta"):
-                        fasta = in_file + ".fasta"
-                else:
-                    logger.error("If you give bwa index, please make sure the fasta exists with the same prefix.")
-                    raise ValueError
-        else:
-            logger.error("Please give as a reference a bowtie2 index or a fasta.")
-            raise ValueError
-    return fasta
 
 
 def save_sparse_matrix(s_mat, path):
@@ -659,106 +502,6 @@ def sort_pairs(in_file, out_file, tmp_dir=None, threads=1, buffer="2G"):
             sort_cmd.append("--parallel={0}".format(threads))
         sort_proc = sp.Popen(sort_cmd, stdin=grep_proc.stdout, stdout=output)
         sort_proc.communicate()
-
-
-# The order pypairix needs: the pairs of each (chr1, chr2) block together,
-# sorted by pos1.
-PAIRS_SORT_KEYS = ["chr1", "chr2", "pos1", "pos2"]
-
-
-def sort_and_index_pairs(pairfile, threads=1, remove=False, force=False, tmp_dir=None):
-    """Sort a pairs file by chr1, chr2, pos1 and pos2 with hicstuff, compress
-    it with bgzip (or pysam if bgzip is not in the path) and index it with
-    pypairix, which only reads bgzip compressed pairs files.
-
-    Contig names sort byte by byte (chr1, chr10, chr2), as with pairtools
-    sort, so that each one forms a single block; positions sort as numbers.
-
-    The header of the input is kept, with "#sorted: chr1-chr2-pos1-pos2"
-    in place of its "#sorted" line. A header without one gets it after its
-    "## pairs format" line.
-
-    Parameters
-    ----------
-    pairfile : str
-        Path to the pairfile to sort, compress and index. It can be
-        compressed (gzip, bgzip, bzip2 or zip).
-    threads : int
-        Number of threads to use. [Default: 1]
-    remove : bool
-        If set to true, it will remove the unsorted pair file. [Default: False]
-    force : bool
-        If set overwrite existing files. [Default: False]
-    tmp_dir : str
-        Path to the directory where sort writes its temporary files.
-        [Default: None, the default of sort: $TMPDIR, else /tmp]
-
-    Returns
-    -------
-    str :
-        Path to the sorted and indexed pair file, named after the input
-        without its last extension ("sample_sorted.pairs.gz" for
-        "sample.pairs", "sample.pairs_sorted.pairs.gz" for
-        "sample.pairs.gz"), with its pypairix index (the same name with
-        ".px2") next to it.
-    """
-    # Extract basename of the file.
-    basename = os.path.splitext(pairfile)[0]
-    sorted_pairs = f"{basename}_sorted.pairs"
-
-    # Test if pypairix is installed.
-    _ = check_pypairix()
-
-    # Delete existing files or raise an error accordingly.
-    if force:
-        if os.path.isfile(sorted_pairs):
-            os.remove(sorted_pairs)
-    elif os.path.isfile(sorted_pairs) or os.path.isfile(f"{sorted_pairs}.gz"):
-        logger.error(f"The {sorted_pairs} exists. Do not overwrite existing, use --force to overwrite or use another location.")
-        raise ValueError
-
-    # Sort pairs using hicstuff. It rewrites the "#sorted" line of the header,
-    # but adds none.
-    hio.sort_pairs(pairfile, sorted_pairs, keys=PAIRS_SORT_KEYS, tmp_dir=tmp_dir, threads=threads)
-    if not any(line.startswith("#sorted") for line in hio.get_pairs_header(sorted_pairs)):
-        _add_sorted_line(sorted_pairs)
-
-    # Compress pairs.
-    if shutil.which("bgzip"):
-        sp.run(["bgzip", "-f", "-@", str(threads), sorted_pairs], check=True)
-    else:
-        pysam.tabix_compress(sorted_pairs, f"{sorted_pairs}.gz", force=True)
-        os.remove(sorted_pairs)
-
-    # Index pairs.
-    pypairix.build_index(f"{sorted_pairs}.gz", force=1 if force else 0)
-
-    # Remove original pairfile if remove setup.
-    if remove:
-        os.remove(pairfile)
-    return f"{sorted_pairs}.gz"
-
-
-def _add_sorted_line(pairs_file):
-    """Add "#sorted: chr1-chr2-pos1-pos2" to the header of a pairs file:
-    second, after the "## pairs format" line that starts a pairs file, or
-    first if there is none.
-
-    Parameters
-    ----------
-    pairs_file : str
-        Path to the uncompressed pairs file to rewrite.
-    """
-    sorted_line = "#sorted: {}\n".format("-".join(PAIRS_SORT_KEYS)).encode()
-    rewritten = f"{pairs_file}.tmp"
-    with open(pairs_file, "rb") as pairs, open(rewritten, "wb") as output:
-        first_line = pairs.readline()
-        if first_line.startswith(b"##"):
-            output.write(first_line + sorted_line)
-        else:
-            output.write(sorted_line + first_line)
-        shutil.copyfileobj(pairs, output)
-    os.replace(rewritten, pairs_file)
 
 
 def write_bin_summary(bin_summary, bin_summary_file):

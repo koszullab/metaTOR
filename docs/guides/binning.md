@@ -95,7 +95,7 @@ clusters from the contact map of the run (see
 [Other tools](../other-tools.md)):
 
 ```bash
-metacooler show binning/metator.metacool -o clusters.png
+metacooler show sample.metacool -o clusters.png
 ```
 
 ## What comes next

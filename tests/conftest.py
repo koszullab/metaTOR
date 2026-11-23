@@ -135,10 +135,9 @@ def run_cli(monkeypatch):
 
 @pytest.fixture
 def network_from_a_map(monkeypatch):
-    """Have a pipeline run stop once its network is built, which must be
-    read from a .metacool map: the partition raises RuntimeError("network
-    built"), and the network of pairs files (alignment_to_contacts) fails
-    the test. Returns the maps that metacool_to_contacts read, in order."""
+    """Have a pipeline run stop once its network is built from its .metacool
+    map: the partition raises RuntimeError("network built"). Returns the
+    maps that metacool_to_contacts read, in order."""
     import metator.network as mtn
 
     read = []
@@ -151,7 +150,6 @@ def network_from_a_map(monkeypatch):
     def partition(*args):
         raise RuntimeError("network built")
 
-    monkeypatch.setattr("metator.network.alignment_to_contacts", lambda *args: pytest.fail("network read from the pairs"))
     monkeypatch.setattr("metator.network.metacool_to_contacts", from_the_map)
     monkeypatch.setattr("metator.partition.partition", partition)
     return read
@@ -180,29 +178,49 @@ def metagenome_files(metagenome, tmp_path_factory):
 
 @pytest.fixture(scope="session")
 def metagenome_indexed_pairs(metagenome_files, tmp_path_factory):
-    """The pairs sorted, bgzipped and indexed for pypairix."""
-    import metator.io as mio
+    """The pairs sorted, compressed and indexed for pypairix, as metator mge
+    reads them: by chr1, chr2, pos1 and pos2 (the contig names byte by
+    byte, as pairtools sorts them, so that each forms one block; the
+    positions as numbers), with "#sorted: chr1-chr2-pos1-pos2" after the
+    "## pairs format" line, compressed with BGZF (Biopython) and indexed
+    with pypairix."""
+    import pypairix
+    from Bio import bgzf
 
-    directory = tmp_path_factory.mktemp("metagenome_pairs")
-    pairs = directory / "synthetic.pairs"
-    shutil.copyfile(metagenome_files["pairs"], pairs)
-    return Path(mio.sort_and_index_pairs(str(pairs), tmp_dir=str(directory)))
+    header, rows = [], []
+    with open(metagenome_files["pairs"]) as pairs:
+        for line in pairs:
+            (header if line.startswith("#") else rows).append(line)
+
+    def key(line):
+        fields = line.split("\t")
+        return fields[1].encode(), fields[3].encode(), int(fields[2]), int(fields[4])
+
+    rows.sort(key=key)
+    header = [line for line in header if not line.startswith("#sorted")]
+    header.insert(1 if header and header[0].startswith("##") else 0, "#sorted: chr1-chr2-pos1-pos2\n")
+    path = tmp_path_factory.mktemp("metagenome_pairs") / "synthetic_sorted.pairs.gz"
+    with bgzf.BgzfWriter(str(path), "wb") as out:
+        out.write("".join(header + rows).encode())
+    pypairix.build_index(str(path), force=1)
+    return path
 
 
 @pytest.fixture(scope="session")
 def metagenome_network(metagenome_files, tmp_path_factory):
-    """Network (empirical_hit) and contig data of the mock community."""
+    """Network (empirical_hit) and contig data of the mock community, read
+    from the map of its pairs (see tests.maps.contig_map)."""
     import metator.network as mtn
+    from tests.maps import contig_map
 
     directory = tmp_path_factory.mktemp("metagenome_network")
     tmp_dir = directory / "tmp"
     tmp_dir.mkdir()
-    contig_data, hit_data = mtn.create_contig_data(str(metagenome_files["assembly"]), 1, str(metagenome_files["depth"]), "DpnII")
-    network, contig_data_file = mtn.alignment_to_contacts(
-        [str(metagenome_files["pairs"])],
+    contig_data = mtn.create_contig_data(str(metagenome_files["assembly"]), str(metagenome_files["depth"]), "DpnII")
+    metacool = contig_map(metagenome_files["pairs"], contig_data, directory / "contigs.metacool", columns=False)
+    network, contig_data_file = mtn.metacool_to_contacts(
+        str(metacool),
         contig_data,
-        0,
-        hit_data,
         str(directory),
         "network.txt",
         "contig_data_network.txt",

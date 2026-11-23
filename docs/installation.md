@@ -1,11 +1,15 @@
 # Installation
 
-metaTOR needs Python 3.10 to 3.14, and two programs that are not on PyPI:
-an aligner (bwa, recommended, or bowtie2) and samtools.
+metaTOR needs Python 3.10 to 3.14, and no program that is not on PyPI. It
+starts from a contact map of the contigs, which
+[hicstuff](https://koszullab.github.io/hicstuff/) makes from the reads
+(`hicstuff pipeline -M metacool`), or
+[metacooler](https://github.com/js2264/metacooler) from pairs files
+(`metacooler create pairs`): see [Quickstart](quickstart.md).
 
 ## With conda (recommended)
 
-bioconda installs metaTOR with the programs it runs:
+bioconda installs metaTOR:
 
 ```bash
 conda create -n metator bioconda::metator
@@ -20,25 +24,11 @@ conda activate metator
 
 ## With pip
 
-Install the programs first, then metaTOR:
-
 ```bash
-# Debian or Ubuntu; on macOS: brew install bowtie2 bwa samtools
-sudo apt install bowtie2 bwa samtools
-
 pip install metator
 ```
 
-| Program | Used for |
-|---|---|
-| `bwa` | Aligning the reads with `--aligner bwa`, the recommended aligner |
-| `bowtie2` | Aligning the reads with `--aligner bowtie2`, the default |
-| `samtools` | Handling the alignments |
-
-Only the aligner a run uses is needed: `--aligner bwa` needs bwa, not
-bowtie2. A run that starts from BAM files, a pairs file or a contact map, with
-the assembly given as a FASTA file, needs no aligner. pip installs metaTOR's Python dependencies, among them
-[hicstuff](https://koszullab.github.io/hicstuff/),
+pip installs metaTOR's Python dependencies, among them
 [metacooler](https://github.com/js2264/metacooler),
 [cooler](https://github.com/open2c/cooler),
 [miComplete](https://pypi.org/project/micomplete/), and
@@ -46,12 +36,14 @@ the assembly given as a FASTA file, needs no aligner. pip installs metaTOR's Pyt
 [pyhmmer](https://pypi.org/project/pyhmmer/), with which miComplete runs
 Prodigal and HMMER to validate the clusters; install metaTOR in an
 environment of its own so that they do not change the versions other tools
-rely on.
+rely on. hicstuff, which makes the map from the reads, is not one of them:
+install it with its aligner, bowtie2 or bwa, where the reads are aligned (see
+[hicstuff's documentation](https://koszullab.github.io/hicstuff/)).
 
 ## With Docker
 
-Docker images, with metaTOR and the programs it runs, are published to the
-GitHub Container Registry when a release is tagged:
+Docker images of metaTOR are published to the GitHub Container Registry
+when a release is tagged:
 
 ```bash
 docker pull ghcr.io/koszullab/metator:latest
@@ -60,8 +52,7 @@ docker pull ghcr.io/koszullab/metator:v<version>
 
 ## Development version
 
-The development version is managed with [uv](https://docs.astral.sh/uv/).
-With the programs above installed:
+The development version is managed with [uv](https://docs.astral.sh/uv/):
 
 ```bash
 git clone https://github.com/koszullab/metator.git

@@ -9,13 +9,12 @@ This page shows the pieces to put together; the
 
 | Module | Usual name | What it holds |
 |---|---|---|
-| `metator.align` | `mta` | Aligning the reads and pairing the mates |
-| `metator.network` | `mtn` | The contig data table, and the network built from the pairs or a contact map |
+| `metator.network` | `mtn` | The contig data table, and the network built from a contact map |
 | `metator.partition` | `mtp` | Partitioning the network into core and overlapping clusters |
 | `metator.validation` | `mtv` | miComplete, and the recursive partition of contaminated clusters |
 | `metator.metacool` | `mtmc` | Writing the `.metacool` contact map of the clusters |
 | `metator.mge`, `metator.host` | `mtm` | Clustering MGE contigs, and finding their hosts |
-| `metator.io` | `mio` | Reading and writing tables, pairs and FASTA files |
+| `metator.io` | `mio` | Reading and writing tables and FASTA files |
 | `metator.log` | `mtl` | The logger, `metator.log.logger` |
 
 ## Reading the outputs
@@ -47,7 +46,7 @@ cooler (see [The contact map of the clusters](metacool.md)):
 ```python
 import metacooler
 
-mc = metacooler.MetaCooler("binning/metator.metacool")
+mc = metacooler.MetaCooler("sample.metacool")
 mc.genomes  # one row per cluster, and __unbinned__, with the columns of cluster_summary.txt
 mc.contigs  # one row per contig
 ```
@@ -100,7 +99,7 @@ clustering_matrix_file, contig_data_file = mtp.partition(
 
 | Command | Function |
 |---|---|
-| `metator network` | `metator.align.get_contact_pairs`, then `metator.network.alignment_to_contacts` (or `metacool_to_contacts`, from a contact map) |
+| `metator network` | `metator.network.create_contig_data` and `contig_data_from_map`, then `metator.network.metacool_to_contacts` |
 | `metator partition` | `metator.partition.partition` |
 | `metator validation` | `metator.validation.recursive_decontamination` |
 | `metator mge` | `metator.mge.mge_binning` |

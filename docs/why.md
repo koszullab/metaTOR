@@ -17,11 +17,11 @@ that signal. It was described in [Baudry *et al.*, *Frontiers in Genetics*,
 
 ## What it does
 
-- **One command, from reads to clusters.** `metator pipeline` aligns the metaHiC
-  reads on the assembly, builds the network of contigs from their contacts,
-  partitions it, validates the clusters, and writes one FASTA file per cluster
-  with a table of their quality. It can also start from BAM files, a pairs file
-  or a `.metacool` contact map.
+- **One command, from a contact map to clusters.** `metator pipeline` builds
+  the network of contigs from the `.metacool` contact map of a metaHiC
+  library, which hicstuff makes from the reads, partitions it, validates the
+  clusters, and writes one FASTA file per cluster with a table of their
+  quality.
 - **Robust partitions.** The network is partitioned many times with the
   Louvain (or Leiden) algorithm: the contigs that always fall together form
   core clusters, and the core clusters that fall together in most runs form a
@@ -43,17 +43,22 @@ that signal. It was described in [Baudry *et al.*, *Frontiers in Genetics*,
 ## A quick look
 
 ```bash
-# Reads and an assembly to clusters, with bwa
-metator pipeline --aligner bwa --enzyme DpnII --depth depth.txt --threads 16 \
-    --forward R1.fq.gz --reverse R2.fq.gz --assembly assembly.fa --outdir binning
+# The contact map of the contigs, from the reads, with hicstuff
+hicstuff pipeline -g assembly.fa -e DpnII -M metacool -o hicstuff -P sample R1.fq.gz R2.fq.gz
+
+# The map and the assembly to clusters
+metator pipeline hicstuff/sample.metacool --enzyme DpnII --depth depth.txt --threads 16 \
+    --assembly assembly.fa --outdir binning
 
 # The clusters, their completeness and contamination
 head binning/cluster_summary.txt
 
 # The contact map of the clusters, with metacooler
-metacooler dump -t genomes -H binning/metator.metacool
+metacooler dump -t genomes -H hicstuff/sample.metacool
 ```
 
-The [Quickstart](quickstart.md) runs the same steps on the test data of the
+`-M metacool` comes with hicstuff's next release: see
+[Other tools](other-tools.md#from-the-reads-to-the-map). The
+[Quickstart](quickstart.md) runs the same steps on the test data of the
 repository, and [Concepts](concepts.md) explains the network, the partition
 and the validation.

@@ -16,19 +16,13 @@ contamination, abundances...) are stored in the genomes table, and what
 metaTOR measured on each contig (GC content and Hi-C hits, plus shotgun
 coverage and restriction sites when it measured them) in the contigs table.
 
-The map of the bins is written from a .metacool map of the contigs, made
-before any binning, with its bins and contacts, grouped by final bin: the
-map that a run started from, or the map that a pipeline run from reads or
-pairs builds from its pairs files, as soon as it has them, and reads its
-network from (with several libraries, from one map per library and the map
-of their sum, see write_library_maps). There, each pairs file row whose two
-ends lie on contigs of the assembly (within their length) is one contact
-between the two contigs, an intra-contig contact when both ends are on one
-contig: the map holds the raw contacts, without the filters and
-normalization of the network. The pairs files of several libraries are
-summed into one map. A run step by step from a map stores the overlapping
-clusters of its partition in the map first, as a clustering round, then its
-validation writes the map of the clusters.
+A run starts from a .metacool map of the contigs, made before any binning
+(by hicstuff pipeline -M metacool, or metacooler create pairs, from the
+pairs of the Hi-C libraries): it reads its network from that map, and
+writes the map of its clusters from it at the end, with its bins and
+contacts, grouped by final cluster. A run step by step from a map stores
+the overlapping clusters of its partition in the map first, as a
+clustering round, then its validation writes the map of the clusters.
 
 The map of the clusters of a pipeline run also stores the normalization of
 its network, as a weight column of its bins table (see
@@ -37,8 +31,6 @@ normalized contact of two bins is their count times both weights, the
 way cooler stores its balancing weights.
 
 Core functions to write the file:
-    - write_contig_map, the map of the contigs in no bin yet, from the pairs
-      files
     - reassign_metacool, from a .metacool map
     - write_rounds, a .metacool map with the clustering rounds of a run
     - store_normalization, the normalization of the network in a map
@@ -55,7 +47,6 @@ import tempfile
 import time
 import uuid
 from contextlib import contextmanager, suppress
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -81,11 +72,6 @@ METACOOLER_UNBINNED = frozenset({"__unbinned__", "na", "nan", "n/a", "nd", "n/d"
 # reassign carries the contigs columns into the map of another binning, where
 # a bin column would be stale.
 CONTIG_COLUMNS = ["GC_content", "Hit", "Shotgun_coverage", "Restriction_site"]
-
-# Those that metaTOR measures on the assembly, by their key in the contig data
-# of metator.network.create_contig_data: all but Hit, which the network step
-# counts on the pairs.
-ASSEMBLY_COLUMNS = {"GC_content": "GC", "Shotgun_coverage": "coverage", "Restriction_site": "RS"}
 
 # The columns of the contigs table of a map that each normalization of the
 # network reads (see metator.network.normalize_pair), besides the length of
@@ -463,275 +449,16 @@ def _check_paths(outfile, force, inputs):
 def _checked_inputs(contig_data, outfile, force, inputs):
     """What the writer of the map of the bins (reassign_metacool) checks
     before any work, in this order: the outfile and the input files (see
-    _check_paths), then the contig data and its names. Returns what
-    read_contig_data reads."""
+    _check_paths), then the contig data and the names of its clusters.
+    Returns what read_contig_data reads. The contig names need no check:
+    those of the map are ASCII, as metacooler refuses others, and the
+    contigs of the contig data that the map lacks, a contig of the assembly
+    with another name among them, are left out of the map of the bins."""
     _check_paths(outfile, force, inputs)
     bins, contig_bin, contig_columns, header = read_contig_data(contig_data)
-    check_ascii_names(bins["chrom"], contig_bin.values())
+    check_ascii_names((), contig_bin.values())
     check_bin_names(contig_bin.values())
     return bins, contig_bin, contig_columns, header
-
-
-def write_contig_map(
-    pairs_files,
-    contig_data,
-    outfile,
-    assembly_name=None,
-    threads=1,
-    force=False,
-    metadata=None,
-    tmp_dir=None,
-):
-    """Write the contact map of the contigs, in no bin yet, as a .metacool
-    file: the map that a pipeline run builds from its pairs files as soon as
-    it has them. A run with one library reads its network from it
-    (metator.network.metacool_to_contacts: the network of its pairs files,
-    byte for byte). At the end of the run, reassign_metacool
-    writes the map of its bins from it.
-
-    One bin per contig, every contig in metacooler's ``__unbinned__``
-    genome, from the longest (metacooler's genome-then-length ordering,
-    with one genome), and the contacts of the pairs files, each row whose
-    two ends lie on contigs of the contig data counted once, with the
-    contact statistics that metacooler measures on
-    the reads (the QC block, and the ``qc_*`` columns of the contigs, which
-    reassign_metacool carries over to the bins). The contigs table holds
-    what metaTOR measured on the assembly (ASSEMBLY_COLUMNS): GC_content,
-    and Shotgun_coverage and Restriction_site when they were measured (with
-    a depth file, with an enzyme). Not Hit, which the network step counts:
-    the map of the bins takes it from the contig data file, with the other
-    columns.
-
-    Parameters
-    ----------
-    pairs_files : str or list of str
-        Pairs file(s) of the Hi-C libraries, plain or compressed: their
-        contacts are summed. Each row whose two ends lie on contigs of the
-        contig data (within their length) counts once; the other rows are
-        left out, with a warning.
-    contig_data : dict
-        The contigs of the assembly, by name, as
-        metator.network.create_contig_data returns them: their "length",
-        "GC", "coverage" and "RS" ("-" where nothing was measured). The bins
-        are given to metacooler in their order, that of the assembly;
-        metacooler orders the contigs from the longest. No fasta is given
-        to metacooler, which would write the index of the assembly (.fai)
-        next to it, and no P(s) table is written next to the map.
-    outfile : str
-        Path to the .metacool file to write.
-    assembly_name : str, optional
-        Name of the assembly, stored in the file: the map of the bins keeps
-        it.
-    threads : int
-        Number of threads binning the pairs.
-    force : bool
-        Whether to replace an existing outfile.
-    metadata : dict, optional
-        Parameters of the run, stored with the version of metaTOR under the
-        "metator" key of the file metadata.
-    tmp_dir : str, optional
-        Directory of the table of the contig columns, which metacooler
-        annotate reads: the temporary directory of the system by default.
-
-    Raises
-    ------
-    MetacoolError
-        If threads is below 1, the outfile exists (without force), a pairs
-        file is missing, a contig name is not ASCII, or metacooler cannot
-        write the map or store the contig columns (a ValueError, OSError or
-        KeyError, message kept). No map is left when the contig columns
-        cannot be stored, and no partial file of metacooler when it cannot
-        write the map.
-    """
-    pairs_files = [str(pairs_files)] if isinstance(pairs_files, (str, os.PathLike)) else [str(p) for p in pairs_files]
-    if threads < 1:
-        raise MetacoolError(f"The number of threads must be at least 1, got {threads}.")
-    _check_paths(outfile, force, pairs_files)
-    names = list(contig_data)
-    check_ascii_names(names, [])
-
-    import metacooler
-
-    logger.info(f"Writing {outfile}: contact map of {len(names)} contigs, in no cluster yet.")
-    with _metacooler_logging(), _as_metacool_errors():
-        if os.path.dirname(outfile):
-            os.makedirs(os.path.dirname(outfile), exist_ok=True)
-        metacooler.from_pairs(
-            outfile,
-            bins=pd.DataFrame({"chrom": names, "start": 0, "end": [contig_data[name]["length"] for name in names]}),
-            pairs=pairs_files,
-            # No binning yet: every contig in __unbinned__, the longest first.
-            # The order of the assembly (contig_ordering="fasta") would need
-            # the fasta, or #chromsize lines that pairs files may lack; the
-            # map of the bins is grouped by bin, whatever the order of this
-            # map.
-            contig_genome_map=None,
-            assembly_name=assembly_name,
-            metadata={"metator": {"version": __version__, **(metadata or {})}},
-            # The QC block, measured on the reads, which only the pairs give.
-            qc=True,
-            # No P(s) table next to the file: metaTOR writes the map only.
-            ps=False,
-            nproc=threads,
-            # On a failure, metacooler removes the partial file it writes
-            # next to the outfile.
-            keep_partial=False,
-        )
-        try:
-            _store_assembly_columns(outfile, contig_data, tmp_dir)
-        except BaseException:
-            # No map without the columns of its contigs.
-            os.remove(outfile)
-            raise
-    logger.info(f"{outfile} is written: the contact map of the contigs, in no cluster yet.")
-
-
-def library_entry(collection, i):
-    """The URI of the map of library i (from 0) in the collection of the
-    maps of the libraries of a run (see write_library_maps)."""
-    return f"{collection}::entries/library_{i}"
-
-
-def write_library_maps(
-    pairs_files,
-    contig_data,
-    outfile,
-    collection,
-    assembly_name=None,
-    threads=1,
-    force=False,
-    metadata=None,
-    tmp_dir=None,
-):
-    """Write the contact map of each library of a run, as the entries of a
-    .mmetacool collection, and the map of their sum, merged from them: the
-    maps that a pipeline run with several libraries builds from its pairs
-    files as soon as it has them.
-
-    The map of library i (library_entry(collection, i), from 0, in the
-    order of pairs_files) is the map that write_contig_map writes from its
-    pairs file alone, with the contact statistics measured on its reads,
-    but for the columns measured on the assembly, which the map of the sum
-    holds. The map of the sum (outfile) is merged from them with metacooler
-    merge, which sums their contacts and their contact statistics: the map
-    that write_contig_map writes from all the pairs files at once, but for
-    its history. A run reads its network from the sum, and the network and
-    the hits of each library from its map (see
-    metator.network.metacool_to_contacts). At the end of the run, the map of
-    the clusters is written over the sum.
-
-    Parameters
-    ----------
-    pairs_files : list of str
-        Pairs file of each Hi-C library.
-    contig_data, assembly_name, threads, metadata, tmp_dir
-        As for write_contig_map.
-    outfile : str
-        Path to the .metacool file of the sum.
-    collection : str
-        Path to the .mmetacool file of the libraries.
-    force : bool
-        Whether to replace an existing outfile or collection.
-
-    Raises
-    ------
-    MetacoolError
-        As write_contig_map, for either file. When a map cannot be written,
-        neither file is left.
-    """
-    pairs_files = [str(path) for path in pairs_files]
-    if threads < 1:
-        raise MetacoolError(f"The number of threads must be at least 1, got {threads}.")
-    _check_paths(outfile, force, pairs_files)
-    _check_paths(collection, force, [])
-    names = list(contig_data)
-    check_ascii_names(names, [])
-
-    import metacooler
-
-    bins = pd.DataFrame({"chrom": names, "start": 0, "end": [contig_data[name]["length"] for name in names]})
-    os.makedirs(os.path.dirname(os.path.abspath(collection)), exist_ok=True)
-    os.makedirs(os.path.dirname(os.path.abspath(outfile)), exist_ok=True)
-    logger.info(f"Writing {collection}: contact map of each of the {len(pairs_files)} libraries.")
-    run = {"metator": {"version": __version__, **(metadata or {})}}
-
-    def contig_map(path, pairs):
-        # As write_contig_map: no binning yet, the longest first.
-        metacooler.from_pairs(path, bins=bins, pairs=pairs, contig_genome_map=None, assembly_name=assembly_name,
-                              metadata=run, qc=True, ps=False, nproc=threads, keep_partial=False)  # fmt: skip
-
-    try:
-        # The map of each library is written in the run's temporary
-        # directory, then copied into the collection.
-        with _metacooler_logging(), _as_metacool_errors(), tempfile.TemporaryDirectory(dir=tmp_dir) as scratch:
-            maps, contacts = {}, []
-            for i, pairs_file in enumerate(pairs_files):
-                logger.info(f"Library {i} ({library_entry(collection, i)}): {pairs_file}.")
-                path = os.path.join(scratch, f"library_{i}.metacool")
-                with _named_library(i, pairs_file):
-                    contig_map(path, [pairs_file])
-                maps[f"library_{i}"] = Path(path)
-                contacts.append(int(metacooler.MetaCooler(path).info["nnz"]))
-            metacooler.create_mmetacool(Path(collection), maps, force=True)
-            logger.info(f"Writing {outfile}: contact map of the {len(pairs_files)} libraries, summed.")
-            if os.path.lexists(outfile):
-                os.remove(outfile)
-            if any(contacts):
-                metacooler.merge([library_entry(collection, i) for i in range(len(pairs_files))], outfile)
-            else:
-                # No library holds a contact, and cooler merges no map without
-                # one: the map of the sum is the map of all the pairs files at
-                # once, as write_contig_map writes it, with no contact either.
-                contig_map(outfile, pairs_files)
-            # The run's metadata, which metacooler merge does not carry over.
-            _store_assembly_columns(outfile, contig_data, tmp_dir, metadata=run)
-    except BaseException:
-        # Both or neither.
-        for path in (outfile, collection):
-            if os.path.lexists(path):
-                os.remove(path)
-        raise
-    logger.info(f"{outfile} is written: the contact map of the contigs, in no cluster yet.")
-
-
-def _store_assembly_columns(path, contig_data, tmp_dir=None, metadata=None):
-    """Give the map of the contigs the columns that metaTOR measured on the
-    assembly (ASSEMBLY_COLUMNS), as metacooler annotate adds them: those
-    measured on a contig at least (read_contig_data leaves out a column that
-    is ``-`` on every contig), GC_content always, with the values that the
-    contig data files of the run hold (write_contig_data writes their
-    str). metadata: keys to store in the metadata of the map, as metacooler
-    annotate merges them."""
-    import metacooler
-
-    columns = [column for column, key in ASSEMBLY_COLUMNS.items() if any(str(data[key]) != "-" for data in contig_data.values())]
-    with tempfile.TemporaryDirectory(dir=tmp_dir) as scratch:
-        table = os.path.join(scratch, "contig_columns.txt")
-        with open(table, "w") as handle:
-            handle.write("\t".join(["Name", *columns]) + "\n")
-            for name, data in contig_data.items():
-                handle.write("\t".join([name, *(str(data[ASSEMBLY_COLUMNS[column]]) for column in columns)]) + "\n")
-        metacooler.annotate(
-            path,
-            contigs_table=table,
-            contigs_table_format="Name",
-            # metacooler leaves out a contig of no length, which the
-            # assembly may hold: no warning about its row.
-            unmatched="ignore",
-            inplace=True,
-            metadata=metadata,
-        )
-
-
-@contextmanager
-def _named_library(i, pairs_file):
-    """Name the library and its pairs file in an error that its map raises:
-    each library is its own map, written from a temporary file."""
-    try:
-        yield
-    except (ValueError, OSError, KeyError) as error:
-        reason = error.args[0] if isinstance(error, KeyError) and len(error.args) == 1 else error
-        raise MetacoolError(f"Library {i}, {pairs_file}: {reason}") from error
 
 
 def reassign_metacool(

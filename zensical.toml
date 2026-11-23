@@ -23,7 +23,7 @@ nav = [
   ]},
   { "Guides" = [
     { "Running the pipeline" = "guides/pipeline.md" },
-    { "Aligning reads and building the network" = "guides/network.md" },
+    { "Building the network" = "guides/network.md" },
     { "Partition and validation" = "guides/binning.md" },
     { "The contact map of the clusters" = "guides/metacool.md" },
     { "Clustering mobile genetic elements" = "guides/mge.md" },
@@ -35,7 +35,7 @@ nav = [
     { "CLI reference" = "cli.md" },
     { "File formats" = "formats.md" },
     { "Python API" = [
-      { "Alignment and network" = "api/network.md" },
+      { "Network" = "api/network.md" },
       { "Partition and validation" = "api/binning.md" },
       { "Contact maps" = "api/metacool.md" },
       { "Mobile genetic elements" = "api/mge.md" },

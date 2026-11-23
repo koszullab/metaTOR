@@ -1,33 +1,19 @@
 # The contact map of the clusters
 
-`metator pipeline` writes the contact map of all the contigs, grouped by
-cluster, as `metator.metacool` in the output directory (`<prefix>.metacool`
-with `--prefix`). It reads the pairs files into the map once, as soon as it
-has them: the map of the contigs, in no cluster yet (every contig in
-`__unbinned__`, the longest first), with their contacts, the contact statistics
-that metacooler measures on the reads and what metaTOR measures on the assembly
-(`GC_content`, and `Shotgun_coverage` and `Restriction_site` with `--depth`
-and `--enzyme`). A run with one library reads its network from this map, as a
-run from a map does (see
-[Starting from a contact map](#starting-from-a-contact-map)):
-`network.txt` and `contig_data_network.txt` are those of its pairs files, byte
-for byte, as `pipeline` counts every pair, whatever the input. It still
-writes `network_0.txt`, the network of its library, as a copy
-of `network.txt`: its pairs files give the same bytes. A run with several
-libraries builds the map of each library, the entries `library_0`,
-`library_1`... of `metator.mmetacool` (`<prefix>.mmetacool`), and the map of
-their sum, `metator.metacool`, merged from them (their contacts and contact
-statistics summed; its counts are stored as 64-bit integers): it reads
-`network.txt` from the sum, and the network of each library (`network_N.txt`)
-and `hit_data_alignment.txt` from its map, the files that its pairs files give,
-byte for byte. So a pair on a contig that the assembly lacks is left out, as
-metacooler warns (it counts them, with the pairs that have a read past the end
-of their contig), and the run goes on, whatever the number of libraries. At the
-end of the run, `pipeline` writes the map of the clusters over the map of
-the contigs, from the final tables, with `metacooler reassign`; `--no-metacool`
-removes the maps instead (the `.mmetacool` collection too). The maps of the
-libraries stay maps of the contigs, in no cluster, without the columns measured on
-the assembly, which the sum holds. It is written through a fresh file, which holds none of the space that the edits making it leave behind, so a map updated in place does not grow with each run. A `.metacool` file is the contact map format of
+A run starts from a `.metacool` contact map of the contigs, made before any
+clustering: every contig in `__unbinned__`, with its contacts. hicstuff makes
+it from the reads of a library (`hicstuff pipeline -M metacool`), and
+metacooler from pairs files (`metacooler create pairs`), or from the maps of
+several libraries, which `metacooler merge` sums: see
+[From the reads to the map](#from-the-reads-to-the-map). `metator network`
+and `metator pipeline` read the network of the contigs from it (see
+[Starting from a contact map](#starting-from-a-contact-map)). At its end,
+`pipeline` writes the contact map of all the contigs, grouped by cluster, over
+it, from the final tables, with `metacooler reassign` (`--output-map` writes
+it to another file; `--no-metacool` writes none, and leaves the map as it
+was). It is written through a fresh file, which holds none of the space that
+the edits making it leave behind, so a map updated in place does not grow with
+each run. A `.metacool` file is the contact map format of
 [metacooler](https://github.com/js2264/metacooler): a
 [cooler](https://github.com/open2c/cooler) whose chromosomes are the contigs,
 grouped by genome. `cooler` and the tools built on it read it as any `.cool`
@@ -35,19 +21,17 @@ file, and metacooler adds the genomes.
 
 ## What it holds
 
-- **One bin per contig, and one genome per final cluster.** The contigs that
-  are in no final cluster (`ND` in `contig_data_final.txt`) are kept, with
-  all their contacts, in the `__unbinned__` genome: all the contigs, for a run
-  with no final cluster. The contigs come genome by genome, the longest first.
-- **The contacts.** Each pair whose two ends lie on contigs of the assembly is
-  one contact between these two contigs (an intra-contig contact when both
-  ends are on the same contig). These are the raw contacts of the pairs
-  files, without the filters and the normalisation of the network, and those
-  of several libraries are summed.
+- **The bins of the map the run started from, and one genome per final
+  cluster.** The contigs that are in no final cluster (`ND` in
+  `contig_data_final.txt`) are kept, with all their contacts, in the
+  `__unbinned__` genome: all the contigs, for a run with no final cluster. The
+  contigs come genome by genome, the longest first.
+- **The contacts** of the map the run started from: the raw contacts, without
+  the filters and the normalisation of the network.
 - **The genomes table** holds the columns of `cluster_summary.txt` (completeness,
   redundancy, Hi-C and shotgun abundances…), next to the length, contig and bin
-  counts of each genome and the contact statistics that metacooler computes
-  while reading the pairs.
+  counts of each genome and the contact statistics that metacooler computed
+  while making the map.
 - **The contigs table** (the chromosomes table of `cooler`) holds what
   metaTOR measured on each contig: the `GC_content`, `Hit`,
   `Shotgun_coverage` and `Restriction_site` columns of
@@ -78,18 +62,18 @@ file, and metacooler adds the genomes.
 import cooler
 import metacooler
 
-clr = cooler.Cooler("binning/metator.metacool")
-mc = metacooler.MetaCooler("binning/metator.metacool")
+clr = cooler.Cooler("sample.metacool")
+mc = metacooler.MetaCooler("sample.metacool")
 mc.genomes  # one row per cluster, and __unbinned__, with the columns of cluster_summary.txt
 mc.contigs  # one row per contig, with its GC content and Hi-C hits
 clr.matrix(balance="metator_empirical_hit")[:]  # the contacts, normalized as the network
 ```
 
 ```bash
-metacooler info binning/metator.metacool
-metacooler dump -t genomes -H binning/metator.metacool
+metacooler info sample.metacool
+metacooler dump -t genomes -H sample.metacool
 # The network of the contigs, normalized as metaTOR's
-metacooler network binning/metator.metacool --level contig --balance metator_empirical_hit
+metacooler network sample.metacool --level contig --balance metator_empirical_hit
 ```
 
 ## The map of a run made without it
@@ -120,52 +104,20 @@ Each row of `cluster_summary.txt` must have as many fields as its header, as
 metaTOR writes it.
 
 When the map of the clusters cannot be written, `metator pipeline` logs the
-reason as an error and stops with it, and keeps its other outputs. `pipeline` removes a map that
-an earlier run left in the output directory before it builds the map of the
-contigs in its place (`--no-metacool` or not), as it no longer matches the
-clusters: from then on, the map there is this run's, or there is none. So a run
-from reads, alignments or pairs refuses, before any work, an input that is
-that map (or a symbolic link to it or from it), and, from pairs, a contact
-map: start from a map by giving it as the first argument. A map of the contigs
-that cannot be built (for example, from pairs files that metacooler cannot
-read, see below) stops the run before its network, `--no-metacool` or not,
-whatever the number of libraries: the reason is logged as an error, in the log
-file of the run, and no map is left. When the map of the clusters cannot be
-written over it (for example, from a misaligned `cluster_summary.txt`), the
-map of the contigs stays, in no cluster. So it does when the run stops with an
-error once it is built (in the partition or the validation, for example),
-`--no-metacool` or not: a new run can start from it, without aligning the
-reads again, with `metator pipeline <outdir>/metator.metacool`
-(`<outdir>/<prefix>.metacool` with `--prefix`) and `-F`, which replaces the
-cluster directories that the stopped run left in the output directory
-(see [Starting from a contact map](#starting-from-a-contact-map)).
-
-`pipeline` checks what the map of the contigs needs before any work. Its
-contig names must be ASCII: a run that is not from a map refuses an assembly
-with other contig names, which it gives, before it builds the index of the
-assembly or aligns a read; rename these contigs to ASCII names, in the
-assembly and in the alignments or pairs files made from it (and build its
-index again, for an assembly given as an index). metacooler, which builds the
-map, finds the compression of a pairs file from its first bytes, whatever its
-name: it reads plain, gzip, bzip2, zstd and LZ4 files. So a run from pairs
-refuses, before any work, an empty pairs file, and a zip archive, which
-metacooler cannot read: decompress the file, or compress it with gzip.
-metacooler also needs the same number of
-fields on every row of a pairs file; its header lines (those that start with
-`#`) may come anywhere, so pairs files of one assembly concatenated with `cat`
-are one library. Give the pairs files of several libraries comma-separated,
-one file per library. A run from pairs that metacooler cannot read stops with
-the reason and these needs.
+reason as an error and stops with it, and keeps its other outputs. The map
+that the run started from is then left as it was, as it is when the run stops
+with an error before (in the partition or the validation, for example): a new
+run can start from it again, with `-F`, which replaces the cluster directories
+that the stopped run left in the output directory.
 
 ## Starting from a contact map
 
-`metator network` and `metator pipeline` can build the network from a
-`.metacool` contact map of the contigs of the assembly, instead of reads,
-alignments or pairs: the map is their first argument (one file, or an entry
-of a `.mmetacool` collection, `file.mmetacool::entries/<name>`), in place of
-`-1`, `-2` and `--start`. `metator partition` and `metator validation` take
-it as their first argument too, to run the steps one by one on the map (see
-[Step by step](#step-by-step)):
+`metator network` and `metator pipeline` build the network from a
+`.metacool` contact map of the contigs of the assembly, their first argument,
+which they require (one file, or an entry of a `.mmetacool` collection,
+`file.mmetacool::entries/<name>`). `metator partition` and `metator
+validation` take it as their first argument too, to run the steps one by one
+on the map (see [Step by step](#step-by-step)):
 
 ```bash
 metator pipeline sample.metacool -a assembly.fa -d depth.txt -e DpnII -o binning
@@ -175,11 +127,15 @@ A first argument that is not there, or that metacooler cannot open as one map
 (a collection rather than one of its entries, which the error names), is
 refused before any work.
 
-- **Any bin size**, from one bin per contig (as the maps written by metaTOR)
-  to fixed bins. The contacts between two contigs are those between their
-  bins, and the hits of a contig those of its bins: the network and
-  `contig_data_network.txt` are those of the pairs the map holds, byte for
-  byte, as both count every pair.
+- **Any bins**: one bin per restriction fragment (as hicstuff makes the
+  map), fixed bins (`metacooler create pairs --bins 1000`), or one bin per
+  contig. The contacts between two contigs are those between their bins, and
+  the hits of a contig those of its bins: the network and
+  `contig_data_network.txt` are those of the pairs the map holds, whatever its
+  bins. On the test reads of metaTOR 1.x, the map of hicstuff (bowtie2, one
+  bin per restriction fragment) and the map that metacooler makes from
+  `tests_data/alignment.pairs` (1 kb bins) give the same files, byte for
+  byte.
 - **Its contigs must be contigs of the assembly**, with their lengths: the
   contig IDs and GC contents still come from the assembly. It may lack some
   of them, as a map made with a contig filter does (`metacooler create pairs
@@ -212,18 +168,16 @@ refused before any work.
     give (`RS`, `abundance`, `theoritical_hit`) is refused before the run
     replaces anything: before any work when the map has no such column, once
     the assembly is read when the column lacks contigs.
-- **Its libraries are already summed**: no `network_<i>.txt` is written.
-
-At the end of such a run, `pipeline` updates the input map in place with the
-map of its clusters, with `metacooler reassign` (`--output-map FILE` writes it
-to FILE instead):
+At its end, `pipeline` updates the input map in place with the map of its
+clusters, with `metacooler reassign` (`--output-map FILE` writes it to FILE
+instead):
 
 - the bins and contacts of the input map, at its bin size; one genome per
   final cluster and `__unbinned__` for the other contigs, grouped genome by
-  genome, the longest first, as in the map of a run from pairs;
-- the columns of `cluster_summary.txt` and `contig_data_final.txt`, last, as in
-  the map of a run from pairs: they replace those the input map had (the map
-  of an earlier clustering, for example);
+  genome, the longest first;
+- the columns of `cluster_summary.txt` and `contig_data_final.txt`, last: they
+  replace those the input map had (the map of an earlier clustering, for
+  example);
 - the contact statistics (the `qc` block of the metadata and the `qc_*`
   columns of the genomes and contigs tables) of the input map, when it has
   them, carried over to the clusters: metacooler keeps the counts within each
@@ -371,35 +325,47 @@ The map is written as `partition MAP` writes it: in place, or to
 `--output-map FILE` (see
 [Clustering mobile genetic elements](mge.md#in-the-contact-map-of-the-run)).
 
-## From hicstuff to metaTOR through metacooler
+## From the reads to the map
 
-A map to start from can be made from the pairs files of
-[hicstuff](https://koszullab.github.io/hicstuff/), aligned in mapping mode
-`5spm`, with no clustering yet:
+hicstuff makes the map to start from, with no clustering yet, from the reads
+of a library: one bin per restriction fragment, and every contig in
+`__unbinned__`. metacooler sums the maps of several libraries:
 
 ```bash
-# 1. Align each library, without -f or -D: they leave out pairs (3C events that
-#    hicstuff filters, PCR duplicates) that metaTOR's own alignment keeps.
-hicstuff pipeline --mapping 5spm -g assembly.fa -e DpnII -o hicstuff_L1 -P L1 \
+# 1. The map of each library, without -f or -D: they leave out pairs (3C events
+#    that hicstuff filters, PCR duplicates) that metaTOR 1.x kept.
+hicstuff pipeline -g assembly.fa -e DpnII -M metacool -o hicstuff_L1 -P L1 \
     L1_R1.fq.gz L1_R2.fq.gz
-hicstuff pipeline --mapping 5spm -g assembly.fa -e DpnII -o hicstuff_L2 -P L2 \
+hicstuff pipeline -g assembly.fa -e DpnII -M metacool -o hicstuff_L2 -P L2 \
     L2_R1.fq.gz L2_R2.fq.gz
 
-# 2. One map of both libraries, one bin per contig, every contig in __unbinned__.
-samtools faidx assembly.fa
-awk -v OFS='\t' '{print $1, 0, $2}' assembly.fa.fai > contigs.bed
-metacooler create pairs --pairs hicstuff_L1/L1.valid_idx.pairs.gz \
-    --pairs hicstuff_L2/L2.valid_idx.pairs.gz --bins contigs.bed --no-ps \
-    --assembly-name assembly -o sample.metacool
+# 2. One map of both libraries, their contacts summed.
+metacooler merge hicstuff_L1/L1.metacool hicstuff_L2/L2.metacool -o sample.metacool
 
 # 3. Cluster the contigs: sample.metacool becomes the map of the clusters, in place.
 metator pipeline sample.metacool -a assembly.fa -e DpnII -o binning
 ```
 
-!!! note "Mapping mode `5spm` needs a hicstuff release after 3.3.0"
+hicstuff also writes the pairs of each library, `<prefix>.valid_idx.pairs.gz`,
+which `metator mge` reads (see
+[Clustering mobile genetic elements](mge.md#running-it)), and from which
+`metacooler create pairs` makes a map too, as it does from the pairs files of
+another aligner:
 
-    hicstuff 3.3.0, the latest release so far, has no mapping mode `5spm`:
-    with it, leave `--mapping 5spm` out.
+```bash
+# One map of both libraries, one bin per contig, every contig in __unbinned__.
+python -c 'import sys; from Bio import SeqIO; [print(r.id, 0, len(r), sep="\t") for r in SeqIO.parse(sys.argv[1], "fasta")]' \
+    assembly.fa > contigs.bed
+metacooler create pairs --pairs hicstuff_L1/L1.valid_idx.pairs.gz \
+    --pairs hicstuff_L2/L2.valid_idx.pairs.gz --bins contigs.bed --no-ps \
+    --assembly-name assembly -o sample.metacool
+```
+
+!!! note "`-M metacool` and mapping mode `5spm` need a hicstuff release after 3.3.0"
+
+    hicstuff 3.3.0, the latest release so far, writes no `.metacool` map and
+    has no mapping mode `5spm`: with it, make the map from its pairs files
+    with `metacooler create pairs`.
 
 - `--bins 1000` makes bins of 1 kb instead, taking the lengths of the contigs
   from the `#chromsize` lines of hicstuff's pairs files, or from `--fasta`.
@@ -413,6 +379,9 @@ metator pipeline sample.metacool -a assembly.fa -e DpnII -o binning
   `--fasta` writes the index of the assembly (`.fai`) next to it, in a
   directory that must be writable.
 
-On the test library of the [Quickstart](../quickstart.md), this route finds
-the same 28,510 contacts between contigs as metaTOR's own alignment with
-`--aligner bwa`.
+hicstuff aligns the reads with bowtie2 by default; `--mapping 5spm` aligns the
+mates with `bwa mem -5SPM`, close to metaTOR 1.x's `--aligner bwa`, which ran
+`bwa mem -5SP`. On the test reads of metaTOR 1.x, `--mapping 5spm` finds the
+same 28,510 contacts between contigs as metaTOR 1.x with `--aligner bwa`, and
+bowtie2 the 41,563 contacts of `tests_data/alignment.pairs`, 18,632 of them
+between contigs.

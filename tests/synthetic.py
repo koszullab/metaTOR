@@ -14,8 +14,9 @@ The generator builds a small community with a known answer:
   contacts the others, while a small share of random ligations ("noise")
   join two random molecules;
 * the files metaTOR reads: the assembly FASTA, a ``depth.txt`` in the format
-  of ``jgi_summarize_bam_contig_depths``, the pairs in the format written by
-  ``metator.align`` and the true contig table.
+  of ``jgi_summarize_bam_contig_depths``, the pairs in the format that the
+  alignment of metaTOR 1.x wrote (from which metacooler makes the map) and
+  the true contig table.
 
 Everything derives from a ``numpy.random.Generator`` seeded by the caller, so
 the same seed gives the same files byte for byte.
@@ -157,7 +158,7 @@ class Metagenome:
         Every contig, in assembly (FASTA) order.
     pairs : pandas.DataFrame
         Read pairs: readID, chr1, pos1, chr2, pos2, strand1, strand2 (1-based
-        positions, upper-triangle order as written by ``metator.align``).
+        positions, upper-triangle order as metaTOR 1.x wrote them).
     """
 
     def __init__(self, molecules: List[Molecule], contigs: List[Contig], pairs: pd.DataFrame):
@@ -241,7 +242,7 @@ class Metagenome:
         return Path(path)
 
     def write_pairs(self, path) -> Path:
-        """Write the pairs file with the header of ``metator.align``."""
+        """Write the pairs file with the header that metaTOR 1.x wrote."""
         with open(path, "w") as out:
             out.write("## pairs format v1.0\n")
             out.write("#columns: readID chr1 pos1 chr2 pos2 strand1 strand2\n")
@@ -459,7 +460,7 @@ def _simulate_pairs(molecules, contigs, rng, n_pairs, p_noise, mge_host_share, m
     strand1 = strands[rng.integers(0, 2, len(pos1))]
     strand2 = strands[rng.integers(0, 2, len(pos1))]
 
-    # Upper-triangle order, as in the pairs written by metator.align.
+    # Upper-triangle order, as in the pairs that metaTOR 1.x wrote.
     swap = (rank1 > rank2) | ((rank1 == rank2) & (pos1 > pos2))
     rank1, rank2 = np.where(swap, rank2, rank1), np.where(swap, rank1, rank2)
     pos1, pos2 = np.where(swap, pos2, pos1), np.where(swap, pos1, pos2)
