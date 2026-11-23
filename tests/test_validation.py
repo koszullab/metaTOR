@@ -9,10 +9,8 @@ import pytest
 import os
 
 threads = 8
-fasta_dir = "tests_data/outdir_validation/overlapping_clusters"
 arch_output = "tests_data/outdir_validation/tmp_micomplete/arch131.tsv"
 bact_output = "tests_data/outdir_validation/tmp_micomplete/bact105.tsv"
-assembly = "tests_data/outdir_validation/assembly_val.fa"
 bin_summary = mio.micomplete_results_to_dict("tests_data/outdir_validation/overlapping_micomplete_results.txt")
 iterations = 5
 resolution_parameter = 1.0
@@ -89,24 +87,34 @@ def test_micomplete_compare_bins_keeps_parent_over_worse_children(tmp_path):
     assert not contamination
 
 
+def _two_bins(directory, contigs=40):
+    """Two FASTA bins of the first contigs of tests_data/assembly.fa."""
+    records = open("tests_data/assembly.fa").read().split(">")[1:]
+    directory.mkdir()
+    for i, name in enumerate(["MetaTOR_00001_00000", "MetaTOR_00002_00000"]):
+        part = records[i * contigs : (i + 1) * contigs]
+        (directory / f"{name}.fa").write_text("".join(">" + record for record in part))
+    return str(directory)
+
+
 def test_micomplete_quality(tmp_path, monkeypatch):
-    bins = os.path.abspath(fasta_dir)
+    bins = _two_bins(tmp_path / "bins")
     before = sorted(os.listdir(bins))
-    monkeypatch.chdir(tmp_path)
+    (tmp_path / "run").mkdir()
+    monkeypatch.chdir(tmp_path / "run")
     mtv.micomplete_quality(bins, "results.tsv", threads)
     data = pd.read_csv("results.tsv", sep="\t", comment="#", index_col=0)
     assert len(data) == 2
     assert len(data.columns) == 14
     # miComplete's intermediate files are left neither here nor next to the bins.
-    assert sorted(os.listdir(tmp_path)) == ["results.tsv", "tests_data"]
+    assert sorted(os.listdir(tmp_path / "run")) == ["results.tsv"]
     assert sorted(os.listdir(bins)) == before
 
 
 def test_micomplete_runs_in_the_process_group_of_the_run(tmp_path, monkeypatch):
-    """miComplete runs in the process group of the run, not a session of its
-    own: a Ctrl-C in the terminal, or the signal that a job scheduler sends
-    to the job, reaches it too. A stand-in for miComplete writes its process
-    group, which Python itself reads (no ps)."""
+    """miComplete runs in the process group of the run, not a session of its own:
+    a Ctrl-C in the terminal, or the signal that a job scheduler sends to the
+    job, reaches it too."""
     import shlex
     import sys
 
@@ -124,9 +132,9 @@ def test_micomplete_runs_in_the_process_group_of_the_run(tmp_path, monkeypatch):
 
 
 def test_micomplete_failure_is_an_error(tmp_path, monkeypatch):
-    """A guard (subprocess.run(check=True) stopped it so too): miComplete
-    exiting with an error stops the validation, with its exit status and
-    its command line."""
+    """A guard (subprocess.run(check=True) stopped it so too): miComplete exiting
+    with an error stops the validation, with its exit status and its command
+    line."""
     import subprocess
 
     stand_in = tmp_path / "python"
@@ -155,10 +163,10 @@ def test_recursive_clustering_worker():
 
 
 def test_recursive_clustering_worker_subnetwork(monkeypatch):
-    """The subnetwork of a bin is the network rows between two of its
-    contigs, in the order of the network, which the partition reads in
-    memory: an edge listed in two rows (network.txt of 1.3.10 from two
-    libraries) keeps both, as in partition. No file is written."""
+    """The subnetwork of a bin is the network rows between two of its contigs, in
+    the order of the network, which the partition reads in memory: an edge
+    listed in two rows (network.txt of 1.3.10 from two libraries) keeps both,
+    as in partition."""
     network = pd.DataFrame(
         [(5, 2, 1.5), (1, 2, 0.25), (2, 9, 3.0), (3, 3, 2.0), (1, 3, 1e-05), (9, 8, 1.0), (2, 5, 0.5)],
         columns=["contig1", "contig2", "weight"],
@@ -181,9 +189,9 @@ def test_recursive_clustering_worker_subnetwork(monkeypatch):
 
 
 def test_name_recursive_clusters():
-    """The recursive bins larger than the size get their IDs in the contig
-    data, their parent, and their contigs, by name, for their FASTA files
-    (which metacooler writes: see write_recursive_fasta); the others none."""
+    """The recursive bins larger than the size get their IDs in the contig data,
+    their parent, and their contigs, by name, for their FASTA files (which
+    metacooler writes: see write_recursive_fasta); the others none."""
     data = contigs_data.copy()
     parents, groups = {}, {}
     contamination = mtv.name_recursive_clusters("MetaTOR_00002_00000", data, recursive_bins, 500000, parents, "MetaTOR", groups)
@@ -202,8 +210,8 @@ def test_name_recursive_clusters():
 
 def test_plain_assembly(tmp_path):
     """A plain assembly is given as it is; one compressed with gzip is
-    decompressed once in the directory, named after it without its .gz (or
-    with .fa, for another name)."""
+    decompressed once in the directory, named after it without its .gz (or with
+    .fa, for another name)."""
     import gzip
 
     plain = tmp_path / "contigs.fasta"
@@ -218,11 +226,8 @@ def test_plain_assembly(tmp_path):
 
 
 def test_correct_final_bin():
-    """The final bin of each contig: the bin of the FASTA file it was written
-    in (written, the contigs of each file by bin name). The contigs of a
-    bin partitioned again but kept whole, which keep the ID of their
-    recursive bin, are in it as the others are: binning.txt, which lists the
-    contigs by final bin, left them out."""
+    """The final bin of each contig: the bin of the FASTA file it was written in
+    (written, the contigs of each file by bin name)."""
     data = pd.DataFrame(
         {"Name": ["c1", "c2", "c3", "c4"], "Recursive_cluster_ID": ["00000", "00001", "00003", "00000"], "Final_cluster": "ND"}
     )
@@ -233,9 +238,9 @@ def test_correct_final_bin():
 
 
 def test_correct_final_bin_refuses_a_contig_that_the_table_lacks():
-    """A contig of a final FASTA file that the contig data lacks (a name
-    that the table read as another: 00123 as the number 123) is refused,
-    named, rather than added to the table without a value."""
+    """A contig of a final FASTA file that the contig data lacks (a name that the
+    table read as another: 00123 as the number 123) is refused, named, rather
+    than added to the table without a value."""
     data = pd.DataFrame({"Name": ["123", "c2"], "Final_cluster": "ND"})
     with pytest.raises(
         ValueError,
@@ -273,10 +278,9 @@ def test_bin_quality(completeness, redundancy, quality):
 
 
 def test_give_results_info(caplog):
-    """The log counts the bins in the quality classes of bin_quality: a bin of
-    95% completeness with a redundancy of 1.08 is a MQ MAG, which the log
-    counted as HQ, and a bin of 95% with 1.02 is a HQ MAG, which it counted
-    as MQ."""
+    """The log counts the bins in the quality classes of bin_quality: a bin of 95%
+    completeness with a redundancy of 1.08 is a MQ MAG, which the log counted
+    as HQ, and a bin of 95% with 1.02 is a HQ MAG, which it counted as MQ."""
     summary = {
         "hq": {"Weighted completeness": 0.95, "Weighted redundancy": 1.02, "Length": 3_000_000},
         "mq": {"Weighted completeness": 0.95, "Weighted redundancy": 1.08, "Length": 2_000_000},
@@ -314,11 +318,10 @@ def test_bin_abundances_are_percentages():
 
 
 def test_write_overlapping_fasta_needs_the_assembly_of_the_map(metagenome_network, tmp_path, logged):
-    """The FASTA files of the overlapping clusters to check come from the
-    assembly that the map was made from: one that lacks a contig of a
-    cluster is refused, with metacooler's reason, logged as an error, and no
-    file is written. No cluster that reaches the size: no file, and none
-    needed."""
+    """The FASTA files of the overlapping clusters to check come from the assembly
+    that the map was made from: one that lacks a contig of a cluster is
+    refused, with metacooler's reason, logged as an error, and no file is
+    written."""
     import metator.clusters as mtcl
 
     table = metagenome_network["contig_table"]
@@ -338,9 +341,8 @@ def test_write_overlapping_fasta_needs_the_assembly_of_the_map(metagenome_networ
 
 def test_write_recursive_fasta(metagenome_network, metagenome_files, tmp_path, logged):
     """The FASTA files of the clusters of a recursive step: those of their
-    contigs, through metacooler, each record as it is in the assembly, in
-    the order given; none for no cluster. An assembly that lacks a contig is
-    refused, with metacooler's reason, logged as an error."""
+    contigs, through metacooler, each record as it is in the assembly, in the
+    order given; none for no cluster."""
     table = metagenome_network["contig_table"]
     names = [str(name) for name in table.Name[:3]]
     groups = {"metator_00001_00001": names[::-1], "metator_00001_00002": names[:1]}

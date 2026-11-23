@@ -25,8 +25,8 @@ def _mge_contigs(metagenome):
 
 
 def _expected_matrix(metagenome, names):
-    """Contacts between the given contigs, counted from the simulated pairs,
-    as metator mge counted them in the pairs files: upper triangle, and
+    """Contacts between the given contigs, counted from the simulated pairs, as
+    metator mge counted them in the pairs files: upper triangle, and
     intra-contig contacts only beyond 1 kb."""
     pairs = metagenome.pairs
     mat = np.zeros((len(names), len(names)))
@@ -43,8 +43,8 @@ def _expected_matrix(metagenome, names):
 
 
 def _bins(metagenome, binsize=None):
-    """The bins of a map of the mock metagenome: one per contig (binsize
-    None), or of binsize bp, the last of each contig shorter."""
+    """The bins of a map of the mock metagenome: one per contig (binsize None), or
+    of binsize bp, the last of each contig shorter."""
     truth = metagenome.truth
     if binsize is None:
         return pd.DataFrame({"chrom": truth.Name, "start": 0, "end": truth.Length})
@@ -58,10 +58,10 @@ def _bins(metagenome, binsize=None):
 
 def _map_of_pairs(metagenome, metagenome_files, path, binsize=None, final=None):
     """The map of the pairs of the mock metagenome, as metacooler create pairs
-    makes it: with the contact statistics of its reads (the QC block, at
-    1001 bp, with the counts of each contig), one bin per contig (binsize
-    None) or of binsize bp, its contigs in the genomes of final (a contig
-    name: its genome; none by default)."""
+    makes it: with the contact statistics of its reads (the QC block, at 1001
+    bp, with the counts of each contig), one bin per contig (binsize None) or
+    of binsize bp, its contigs in the genomes of final (a contig name: its
+    genome; none by default)."""
     import metacooler
 
     metacooler.from_pairs(
@@ -77,12 +77,11 @@ def _map_of_pairs(metagenome, metagenome_files, path, binsize=None, final=None):
 
 @pytest.mark.parametrize("binsize", [None, 1000, 5000], ids=["one bin per contig", "1 kb", "5 kb"])
 def test_the_contacts_of_a_map_are_those_of_its_pairs(binsize, metagenome, metagenome_files, tmp_path):
-    """The contacts of the MGE contigs that mge reads from the map made from
-    the pairs (between two contigs, from its pixels; within a contig, from
-    its contact statistics at 1001 bp) are those that it read from the pairs
-    files: every pair between two MGE contigs, and, within a contig, the
-    pairs of reads more than 1 kb apart. At one bin per contig, at 1 kb and
-    at 5 kb: so are the MGE clusters and their scores."""
+    """The contacts of the MGE contigs that mge reads from the map made from the
+    pairs (between two contigs, from its pixels; within a contig, from its
+    contact statistics at 1001 bp) are those that it read from the pairs files:
+    every pair between two MGE contigs, and, within a contig, the pairs of
+    reads more than 1 kb apart."""
     import metacooler
 
     metacool = _map_of_pairs(metagenome, metagenome_files, tmp_path / "map.metacool", binsize)
@@ -141,15 +140,14 @@ def test_shuffle_mge_bins():
 
 @pytest.fixture(scope="module")
 def clusters_map(metagenome, metagenome_files, tmp_path_factory):
-    """The .metacool map of the clusters of a binning run of the mock
-    metagenome, from its pairs, one bin per contig, as metator validation
-    writes it: one genome per genome of the community, its final clusters,
-    the MGE contigs in none; the contact statistics of its reads (the QC
-    block, from the pairs, at 1001 bp); the network that metator network
-    stores (GC_content, Hit, the weights of empirical_hit); and the
-    clustering rounds of the run, overlapping and final (with columns of
-    text, decimals, whole numbers and booleans). With the MGE contigs of an
-    mge run on it."""
+    """The .metacool map of the clusters of a binning run of the mock metagenome,
+    from its pairs, one bin per contig, as metator validation writes it: one
+    genome per genome of the community, its final clusters, the MGE contigs in
+    none; the contact statistics of its reads (the QC block, from the pairs, at
+    1001 bp); the network that metator network stores (GC_content, Hit, the
+    weights of empirical_hit); and the clustering rounds of the run,
+    overlapping and final (with columns of text, decimals, whole numbers and
+    booleans)."""
     import metacooler
 
     import metator.clusters as mtcl
@@ -184,8 +182,8 @@ def clusters_map(metagenome, metagenome_files, tmp_path_factory):
 
 @pytest.fixture
 def mge_run(clusters_map, metagenome_inputs, tmp_path):
-    """A private copy of clusters_map, and the arguments of an mge run on it
-    but the map, its outputs in tmp_path/out."""
+    """A private copy of clusters_map, and the arguments of an mge run on it but
+    the map, its outputs in tmp_path/out."""
     source, mges = clusters_map
     metacool = tmp_path / "clusters.metacool"
     shutil.copyfile(source, metacool)
@@ -194,11 +192,7 @@ def mge_run(clusters_map, metagenome_inputs, tmp_path):
 
 
 def test_mge_binning(metagenome, clusters_map):
-    """The two contigs of the phage form one MGE cluster, the plasmid another.
-    The summary gives each its name, length, GC content and hits (from the
-    contigs table of the map, which metator network stored), its contigs,
-    the longest first (ties by name), and its score: only the phage's has
-    one, the lowest score at which its contigs were merged."""
+    """The two contigs of the phage form one MGE cluster, the plasmid another."""
     import metacooler
 
     metacool, _ = clusters_map
@@ -221,11 +215,10 @@ def test_mge_binning(metagenome, clusters_map):
 
 
 def _tie_community(directory):
-    """A small community whose MGE scores tie: MGE contigs A (8 kb), B (6 kb)
-    and C (4 kb), with 4, 1 and 16 contacts within them between reads more
-    than 1 kb apart, 2 between A and B and 8 between A and C: the scores of
-    A-B and A-C are both 1 (2 / sqrt(4 x 1), 8 / sqrt(4 x 16)). The genome
-    contigs G1 and G2 are their hosts. Returns the assembly and the pairs."""
+    """A small community whose MGE scores tie: MGE contigs A (8 kb), B (6 kb) and
+    C (4 kb), with 4, 1 and 16 contacts within them between reads more than 1
+    kb apart, 2 between A and B and 8 between A and C: the scores of A-B and
+    A-C are both 1 (2 / sqrt(4 x 1), 8 / sqrt(4 x 16))."""
     rng = np.random.default_rng(1)
     lengths = {"G1": 60_000, "G2": 50_000, "A": 8_000, "B": 6_000, "C": 4_000}
     assembly = directory / "assembly.fa"
@@ -256,9 +249,9 @@ def _tie_community(directory):
 
 
 def _network_map(path, pairs, contig_data, bins, final=None):
-    """The map of pairs, its network stored as metator network stores it,
-    its contigs in the genomes of final (none by default): grouped by
-    genome, then the longest first, as the map of the clusters of a run."""
+    """The map of pairs, its network stored as metator network stores it, its
+    contigs in the genomes of final (none by default): grouped by genome, then
+    the longest first, as the map of the clusters of a run."""
     import metacooler
 
     import metator.metacool as mtmc
@@ -281,11 +274,11 @@ def _clusters(summary):
 
 
 def test_the_order_of_the_map_changes_no_tie(tmp_path):
-    """The MGE contigs are taken the longest first, ties by name, whatever
-    the order of the map: a tie of scores is broken as on the map of the
-    contigs, longest first (as hicstuff and metacooler make it, and as the
-    contig data tables of a run followed it), where the map of the
-    clusters, grouped by cluster, put C before B and merged A with C."""
+    """The MGE contigs are taken the longest first, ties by name, whatever the
+    order of the map: a tie of scores is broken as on the map of the contigs,
+    longest first (as hicstuff and metacooler make it, and as the contig data
+    tables of a run followed it), where the map of the clusters, grouped by
+    cluster, put C before B and merged A with C."""
     import metacooler
 
     import metator.network as mtn
@@ -304,11 +297,11 @@ def test_the_order_of_the_map_changes_no_tie(tmp_path):
 
 
 def test_the_order_of_the_map_changes_no_name(metagenome, metagenome_files, clusters_map, tmp_path):
-    """The clusters of a single MGE contig are numbered the longest contig
-    first, whatever the order of the map: the map of the clusters of the
-    mock community, grouped by cluster, and the map of its contigs, the
-    longest first, give the MGE clusters the same names (here with two
-    genome contigs in the list of MGE contigs, each a cluster of its own)."""
+    """The clusters of a single MGE contig are numbered the longest contig first,
+    whatever the order of the map: the map of the clusters of the mock
+    community, grouped by cluster, and the map of its contigs, the longest
+    first, give the MGE clusters the same names (here with two genome contigs
+    in the list of MGE contigs, each a cluster of its own)."""
     import metacooler
 
     import metator.network as mtn
@@ -330,10 +323,9 @@ def test_the_order_of_the_map_changes_no_name(metagenome, metagenome_files, clus
 
 
 def test_mge_on_a_map_without_clusters(metagenome, metagenome_files, metagenome_inputs, tmp_path, run_cli):
-    """A map that holds the network of metator network and no cluster (the
-    map of the contigs of a run, before partition) gets the round mge alone:
-    mge reads no cluster of the map. The rest of the map is as it was, but
-    the entry mge of its metadata."""
+    """A map that holds the network of metator network and no cluster (the map of
+    the contigs of a run, before partition) gets the round mge alone: mge reads
+    no cluster of the map."""
     import metacooler
 
     import metator.network as mtn
@@ -365,9 +357,9 @@ def test_mge_binning_random(metagenome, clusters_map):
 
 
 def test_mge_contigs_that_the_map_lacks(metagenome, clusters_map, logged):
-    """An MGE contig that the map lacks (a map made with a contig filter) is
-    left out of the MGE clusters, with a warning that names it; none of the
-    MGE contigs in the map is refused: there is nothing to cluster."""
+    """An MGE contig that the map lacks (a map made with a contig filter) is left
+    out of the MGE clusters, with a warning that names it; none of the MGE
+    contigs in the map is refused: there is nothing to cluster."""
     import metator.metacool as mtmc
 
     metacool, _ = clusters_map
@@ -383,9 +375,8 @@ def test_mge_contigs_that_the_map_lacks(metagenome, clusters_map, logged):
 
 
 def test_write_mges_fasta(metagenome, metagenome_files, clusters_map, tmp_path):
-    """One record per MGE cluster, named after it: its contigs, in the order
-    given (that of the map), joined by 200 N, in lines of 80 bases. An
-    existing file is replaced."""
+    """One record per MGE cluster, named after it: its contigs, in the order given
+    (that of the map), joined by 200 N, in lines of 80 bases."""
     metacool, _ = clusters_map
     sequences = synthetic.read_fasta(metagenome_files["assembly"])
     phage, plasmid = ([c.name for c in mge.contigs] for mge in metagenome.mges)
@@ -410,12 +401,12 @@ def _round(mc, name="mge"):
 
 
 def _check_mge_round(mc, summary, name="mge"):
-    """The round name of the map mc is the summary of the MGE clusters of
-    the run: one cluster per row, in its order, named BinName, without a
-    parent, whose length and number of contigs are BinLength and
-    ContigsNumber, whose contigs are Contigs (in the order of the map, as
-    metacooler stores the members of a cluster), with its other columns: GC,
-    Hit and BinningScore (no host column: mge finds no host)."""
+    """The round name of the map mc is the summary of the MGE clusters of the run:
+    one cluster per row, in its order, named BinName, without a parent, whose
+    length and number of contigs are BinLength and ContigsNumber, whose contigs
+    are Contigs (in the order of the map, as metacooler stores the members of a
+    cluster), with its other columns: GC, Hit and BinningScore (no host column:
+    mge finds no host)."""
     stored = _round(mc, name)
     assert list(stored["name"]) == list(summary["BinName"]) and stored["parent"].isna().all()
     assert list(stored["length"]) == list(summary["BinLength"]) and list(stored["n_contigs"]) == list(summary["ContigsNumber"])
@@ -432,8 +423,8 @@ def _check_mge_round(mc, summary, name="mge"):
 
 
 def _expected_summary(metacool, args, random=False):
-    """The summary of the MGE clusters of an mge run on the map metacool
-    (args: see mge_run), computed before the run."""
+    """The summary of the MGE clusters of an mge run on the map metacool (args:
+    see mge_run), computed before the run."""
     mges = mio.import_mges_contigs(args[args.index("-m") + 1])
     if random:
         np.random.seed(7)
@@ -441,8 +432,8 @@ def _expected_summary(metacool, args, random=False):
 
 
 def _binning_rounds(mc):
-    """The rounds of the binning run that the map mc holds: their entries,
-    their clusters and their contigs."""
+    """The rounds of the binning run that the map mc holds: their entries, their
+    clusters and their contigs."""
     members = mc.cluster_members()
     binning = members["round"].isin(["overlapping", "final"]).to_numpy()
     return (
@@ -453,13 +444,9 @@ def _binning_rounds(mc):
 
 
 def _check_binning_rounds(held, mc):
-    """The rounds of the binning run that the map mc holds are those that it
-    held (held, see _binning_rounds): the same entries and contigs, and the
-    same values in the columns of their clusters. A column of whole numbers
-    is stored as decimals then, and one of booleans as text (True, False),
-    as the round mge has none of them: a column with a missing value can be
-    neither. The length and number of contigs of each cluster, which
-    metacooler computes, stay whole numbers."""
+    """The rounds of the binning run that the map mc holds are those that it held
+    (held, see _binning_rounds): the same entries and contigs, and the same
+    values in the columns of their clusters."""
     entries, clusters, members = _binning_rounds(mc)
     assert entries == held[0]
     expected = held[1].copy()
@@ -474,9 +461,9 @@ def _check_binning_rounds(held, mc):
 
 
 def _outside_clusters(path, *entries):
-    """Every group, dataset and attribute of a map, as stored, but its
-    clustering rounds, and the entries of the metator key of its metadata
-    (that of an mge run, by the name of its round)."""
+    """Every group, dataset and attribute of a map, as stored, but its clustering
+    rounds, and the entries of the metator key of its metadata (that of an mge
+    run, by the name of its round)."""
     found = {name: value for name, value in walk(path).items() if not name.startswith("/clusters")}
     kind, keys, attributes = found["/"]
     kept = []
@@ -492,19 +479,12 @@ def _outside_clusters(path, *entries):
 
 @pytest.mark.parametrize("output", ["in place", "--output-map", "-F --output-map", "an entry, --output-map"])
 def test_mge_stores_its_clusters_in_the_map(output, mge_run, tmp_path, monkeypatch, run_cli):
-    """mge MAP stores the MGE clusters of the run in the map: the round mge of
-    its clustering rounds, with the contigs of each cluster, after the
-    rounds of the binning run, which are kept as they were; the round
-    records the version, the command line and the parameters of the run,
-    and so does the entry mge of the metator metadata of the map, with the
-    columns of the map that the run read. Everything else is as it was: the
-    genomes and contigs tables (the final clusters), the bins, the contacts,
-    the rest of the metadata. The map is valid in full. In place, the map
-    keeps its mode; with --output-map, the map (or the collection of an
-    entry) is left as it was, and the map is written to the file (an
-    existing one, with -F, is replaced: removed first). The map is locked
-    while the run writes it. mges_binned.fa holds one record per MGE
-    cluster."""
+    """mge MAP stores the MGE clusters of the run in the map: the round mge of its
+    clustering rounds, with the contigs of each cluster, after the rounds of
+    the binning run, which are kept as they were; the round records the
+    version, the command line and the parameters of the run, and so does the
+    entry mge of the metator metadata of the map, with the columns of the map
+    that the run read."""
     import metacooler
 
     import metator.metacool as mtmc
@@ -566,10 +546,10 @@ def test_mge_stores_its_clusters_in_the_map(output, mge_run, tmp_path, monkeypat
 
 
 def test_mge_rerun_replaces_its_round(mge_run, tmp_path, run_cli):
-    """A second run of mge on the map replaces its round mge, and only it:
-    the map holds the MGE clusters of the second run (here with a threshold
-    that merges no contig: each MGE contig is a cluster of its own), and the
-    rounds of the binning run and everything else as they were."""
+    """A second run of mge on the map replaces its round mge, and only it: the map
+    holds the MGE clusters of the second run (here with a threshold that merges
+    no contig: each MGE contig is a cluster of its own), and the rounds of the
+    binning run and everything else as they were."""
     import metacooler
 
     metacool, args = mge_run
@@ -593,8 +573,7 @@ def test_mge_rerun_replaces_its_round(mge_run, tmp_path, run_cli):
 def test_mge_random_is_a_round_of_its_own(mge_run, tmp_path, monkeypatch, run_cli):
     """--random stores its random clustering as the round mge_random, with its
     entry in the metator metadata, and writes mges_binned_random.fa: the round
-    mge, its entry, and mges_binned.fa of an earlier run are left as they
-    were. A second --random replaces the round mge_random only."""
+    mge, its entry, and mges_binned.fa of an earlier run are left as they were."""
     import metacooler
 
     metacool, args = mge_run
@@ -621,12 +600,10 @@ def test_mge_random_is_a_round_of_its_own(mge_run, tmp_path, monkeypatch, run_cl
 @pytest.mark.parametrize("name", ["mges_bin_summary.tsv", "mges_cluster_summary.tsv"])
 @pytest.mark.parametrize("force", [False, True], ids=["refused", "-F"])
 def test_the_summary_of_an_earlier_version(name, force, mge_run, tmp_path, run_cli):
-    """The summary of the MGE clusters that an earlier version wrote in the
-    output directory (that of 1.x, mges_bin_summary.tsv, or of a development
-    build, mges_cluster_summary.tsv), which the round mge of the map holds,
-    is refused without -F, before any work, named, and the log says why;
-    -F removes it. Left there, it passed for the run's. A table of another
-    tool is left alone."""
+    """The summary of the MGE clusters that an earlier version wrote in the output
+    directory (that of 1.x, mges_bin_summary.tsv, or of a development build,
+    mges_cluster_summary.tsv), which the round mge of the map holds, is refused
+    without -F, before any work, named, and the log says why; -F removes it."""
     import metacooler
 
     metacool, args = mge_run
@@ -659,9 +636,8 @@ def test_the_summary_of_an_earlier_version(name, force, mge_run, tmp_path, run_c
 def test_mge_refuses_an_assembly_that_metacooler_cannot_read(assembly, mge_run, tmp_path, run_cli, logged):
     """An assembly that metacooler cannot write mges_binned.fa from (compressed
     with bzip2 or zip, or no FASTA file) is refused before any work, as the
-    network, the validation and the pipeline refuse it: the map is left as
-    it was, nothing is written, and -F removes no summary of an earlier
-    version."""
+    network, the validation and the pipeline refuse it: the map is left as it
+    was, nothing is written, and -F removes no summary of an earlier version."""
     import bz2
     import zipfile
 
@@ -692,8 +668,8 @@ def test_mge_refuses_an_assembly_that_metacooler_cannot_read(assembly, mge_run, 
 
 
 def _edit_metadata(path, change):
-    """Change the metadata of the map at path, as a program that takes no
-    lock of metacooler would (change: a function of the metadata)."""
+    """Change the metadata of the map at path, as a program that takes no lock of
+    metacooler would (change: a function of the metadata)."""
     import h5py
 
     with h5py.File(path, "r+") as handle:
@@ -703,8 +679,8 @@ def _edit_metadata(path, change):
 
 
 def _cannot_cluster(metacool, case):
-    """Make the map metacool one that mge cannot cluster the MGE contigs of
-    (case: see MGE_MAP_ERRORS)."""
+    """Make the map metacool one that mge cannot cluster the MGE contigs of (case:
+    see MGE_MAP_ERRORS)."""
     import metacooler
 
     if case == "a map without contact statistics":
@@ -802,17 +778,13 @@ MGE_MAP_ERRORS = {
 @pytest.mark.parametrize("case", list(MGE_MAP_ERRORS))
 def test_mge_refuses_a_map(case, mge_run, metagenome_files, tmp_path, run_cli):
     """mge refuses, before anything is written (no MGE fasta, no map): what
-    partition MAP refuses of the map that it updates (a map that is not
-    there, no map, one that metacooler cannot open, an entry without
-    --output-map, an --output-map that is a directory, an input of the run,
-    even with -F, or that exists, without -F, a map that another run
-    holds); and a map that it cannot cluster the MGE contigs of: without the
-    contact statistics of its pairs (or of its pixels, or at another
-    distance than 1001 bp), without the network of metator network, or
-    without any of the MGE contigs. The reason is logged
-    as an error in the log file of the run, then raised as a MetacoolError.
-    The map, the inputs, an existing --output-map and the lock of another
-    run are left as they were."""
+    partition MAP refuses of the map that it updates (a map that is not there,
+    no map, one that metacooler cannot open, an entry without --output-map, an
+    --output-map that is a directory, an input of the run, even with -F, or
+    that exists, without -F, a map that another run holds); and a map that it
+    cannot cluster the MGE contigs of: without the contact statistics of its
+    pairs (or of its pixels, or at another distance than 1001 bp), without the
+    network of metator network, or without any of the MGE contigs."""
     from contextlib import ExitStack
 
     import metacooler
@@ -866,11 +838,9 @@ def test_mge_refuses_a_map(case, mge_run, metagenome_files, tmp_path, run_cli):
 
 @pytest.mark.parametrize("error", [ValueError("not valid"), KeyboardInterrupt()], ids=["ValueError", "Ctrl-C"])
 def test_mge_on_a_map_that_cannot_be_written(error, mge_run, tmp_path, monkeypatch, run_cli):
-    """A map with the MGE clusters that cannot be written (here, its
-    validation fails) stops the run with an error that says why and that
-    the map is left as it was, as partition MAP says it; Ctrl-C stops it
-    too. The map is left byte for byte, with no file beside it (no staged
-    map, no lock); the other outputs of the run, the MGE fasta, are kept."""
+    """A map with the MGE clusters that cannot be written (here, its validation
+    fails) stops the run with an error that says why and that the map is left
+    as it was, as partition MAP says it; Ctrl-C stops it too."""
     import metator.metacool as mtmc
 
     metacool, args = mge_run
@@ -901,9 +871,8 @@ def test_mge_on_a_map_that_cannot_be_written(error, mge_run, tmp_path, monkeypat
 
 
 def _dropped(where, rounds):
-    """The warning about the clustering rounds that a map no longer holds
-    (where: the map, or the file written and the map), each named with what
-    made it."""
+    """The warning about the clustering rounds that a map no longer holds (where:
+    the map, or the file written and the map), each named with what made it."""
     return (
         "WARNING",
         f"{where} the clustering round(s) {rounds}, which this run does not make: a run that replaces the clusters of "
@@ -913,8 +882,8 @@ def _dropped(where, rounds):
 
 def _final_clusters(metagenome):
     """The final clusters of a validation of the mock metagenome (see
-    metator.metacool.FinalClusters): its first contig in a cluster, the
-    others in none, no summary and no round."""
+    metator.metacool.FinalClusters): its first contig in a cluster, the others
+    in none, no summary and no round."""
     import metator.metacool as mtmc
 
     return mtmc.FinalClusters({str(metagenome.truth.Name.iloc[0]): "metator_00001_00000"}, None, None, {})
@@ -923,14 +892,10 @@ def _final_clusters(metagenome):
 @pytest.mark.parametrize("with_mge", [True, False], ids=["with the round mge", "without"])
 @pytest.mark.parametrize("writer", ["rounds", "clusters"])
 def test_new_clusters_drop_the_round_mge_with_a_warning(writer, with_mge, metagenome, mge_run, tmp_path, run_cli, logged):
-    """The map of the clusters of a new binning run on the map does not keep
-    the round mge, which mge made from the map of the clusters that it replaces:
-    once the map is written, a warning says so, and to run mge again on the
-    new clusters. So writes write_map the map of partition MAP (its rounds:
-    in place, here), and those of validation MAP and pipeline MAP (its final
-    clusters: to another file, here). Without the round
-    mge, the rounds of the binning are replaced with no warning: a guard,
-    which passes without the warning too."""
+    """The map of the clusters of a new binning run on the map does not keep the
+    round mge, which mge made from the map of the clusters that it replaces:
+    once the map is written, a warning says so, and to run mge again on the new
+    clusters."""
     import metacooler
 
     import metator.clusters as mtcl
@@ -962,10 +927,10 @@ def test_new_clusters_drop_the_round_mge_with_a_warning(writer, with_mge, metage
 
 
 def test_new_clusters_name_what_made_each_round_they_drop(mge_run, tmp_path, logged):
-    """A round that another tool stored in the map, which the binning did
-    not make either, is dropped with a warning that names its tool, or says
-    that its entry names none: the warning does not take every such round
-    for the round mge."""
+    """A round that another tool stored in the map, which the binning did not make
+    either, is dropped with a warning that names its tool, or says that its
+    entry names none: the warning does not take every such round for the round
+    mge."""
     import metator.clusters as mtcl
     import metator.metacool as mtmc
 
@@ -982,11 +947,10 @@ def test_new_clusters_name_what_made_each_round_they_drop(mge_run, tmp_path, log
 
 @pytest.mark.parametrize("writer", ["rounds", "clusters"])
 def test_a_refused_map_of_new_clusters_drops_no_round(writer, metagenome, mge_run, tmp_path, run_cli, logged):
-    """A map of new clusters that is refused (here, a cluster named as
-    metacooler marks a contig in no cluster, or an existing file without
-    force) is not written: the map keeps its round mge, and no warning says
-    that it is dropped. The writer of the map of the clusters said it before
-    its checks: a guard, which passes without the fix too."""
+    """A map of new clusters that is refused (here, a cluster named as metacooler
+    marks a contig in no cluster, or an existing file without force) is not
+    written: the map keeps its round mge, and no warning says that it is
+    dropped."""
     import metator.clusters as mtcl
     import metator.metacool as mtmc
 

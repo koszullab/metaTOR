@@ -1,23 +1,11 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
-"""Module with the MGE clustering functions.
+"""Cluster the contigs of a .metacool map that are mobile genetic elements.
 
-It clusters the contigs of a .metacool contact map that are mobile genetic
-elements (MGEs) from the Hi-C contacts between them: those that the map
-holds between two contigs, and those that its contact statistics count
-within each contig, between reads more than 1 kb apart.
-
-Core functions to cluster the MGE contigs:
-    - check_mge_map
-    - generate_bin_summary
-    - map_matrix
-    - mge_binning
-    - mge_contigs
-    - resolve_matrix
-    - shuffle_mge_bins
-    - update_mge_data
-    - write_mges_fasta
+The MGE contigs are clustered from their Hi-C contacts: those the map holds
+between two contigs, and those its QC block counts within each contig,
+between reads at least 1001 bp apart.
 """
 
 import numpy as np
@@ -59,15 +47,11 @@ WHERE_THE_NETWORK_IS = (
 
 
 def check_mge_map(metacool, mc):
-    """Refuse a map that mge cannot cluster the MGE contigs of, before any
-    work.
+    """Refuse a map that mge cannot cluster the MGE contigs of, before any work.
 
-    The contacts within an MGE contig are those of its reads more than 1 kb
-    apart: the contact statistics of a map made from the pairs files of the
-    run tell them (its QC block, measured from the pairs, at 1001 bp, with
-    its counts per contig), which its pixels do not. The GC content and hits
-    of each contig are those that metator network stores in the map. A map
-    without clusters is fine: mge reads none of them.
+    The contacts within an MGE contig are its reads at least 1001 bp apart,
+    which only the map's QC block, measured from the pairs, gives; its pixels
+    do not.
 
     Parameters
     ----------
@@ -80,11 +64,10 @@ def check_mge_map(metacool, mc):
     Raises
     ------
     metator.metacool.MetacoolError
-        If the map holds no contact statistics of its pairs, has them
-        measured from its pixels or at another distance than 1001 bp, or
-        lacks the columns of metator network: the reason, and how to make a
-        map that mge reads.
-    """
+        If the map holds no contact statistics of its pairs, has them measured
+        from its pixels or at another distance than 1001 bp, or lacks the
+        columns of metator network: the reason, and how to make a map that mge
+        reads."""
     with mtmc.read_errors(metacool):
         qc = mc.metadata.get("qc")
         columns = set(mc.contigs.columns)
@@ -115,19 +98,12 @@ def check_mge_map(metacool, mc):
 
 
 def mge_contigs(metacool, mc, mges_list):
-    """The MGE contigs of a map, the longest first (ties by name), with the
-    values of each that mge reads.
+    """The MGE contigs of a map, the longest first (ties by name), with the values
+    of each that mge reads.
 
-    That order, which resolve_matrix breaks the ties of its scores in and
-    update_mge_data numbers the clusters of single contigs in, depends
-    neither on the order of the map nor on its clusters: a map of the
-    clusters, grouped by cluster, gives the MGE clusters, and their names,
-    of the map of the contigs it was written from, longest first, as hicstuff
-    and metacooler make it (which the contig data tables of a run followed).
-
-    An MGE contig that the map lacks (a map made with a contig filter, or
-    another assembly) is left out, with a warning that says how many and
-    names the first.
+    Longest first, ties by name: resolve_matrix breaks ties and update_mge_data
+    numbers single-contig clusters in that order, so the result depends on
+    neither the map's order nor its clusters.
 
     Parameters
     ----------
@@ -143,8 +119,8 @@ def mge_contigs(metacool, mc, mges_list):
     -------
     pandas.DataFrame
         One row per MGE contig of the map, the longest first, ties by name:
-        Name, Size (its length), GC_content and Hit (as metator network
-        stored them).
+        Name, Size (its length), GC_content and Hit (as metator network stored
+        them).
     numpy.ndarray
         Their positions in the map, from 0, in that order.
     numpy.ndarray
@@ -154,9 +130,7 @@ def mge_contigs(metacool, mc, mges_list):
     Raises
     ------
     metator.metacool.MetacoolError
-        If none of the MGE contigs is in the map: there is nothing to
-        cluster.
-    """
+        If none of the MGE contigs is in the map: there is nothing to cluster."""
     with mtmc.read_errors(metacool):
         contigs = mc.contigs
     names = contigs["name"].astype(str)
@@ -185,15 +159,10 @@ def mge_contigs(metacool, mc, mges_list):
 
 
 def map_matrix(metacool, n_contigs, positions, intra):
-    """The contacts of the MGE contigs of a map, as resolve_matrix reads
-    them: the matrix of their raw contacts, in the order of positions.
+    """The contacts of the MGE contigs of a map, as resolve_matrix reads them: the
+    matrix of their raw contacts, in the order of positions.
 
-    Between two contigs, the contacts are those of the map, summed by pair of
-    contigs (metator.network.map_network, without weights: the counts),
-    whatever its bin size; within a contig, those of its reads more than 1
-    kb apart (intra, see mge_contigs). Only the upper triangle is filled,
-    which resolve_matrix reads: the contacts of the i-th and j-th contigs
-    of positions at [min(i, j), max(i, j)], whatever their order in the map.
+    Only the upper triangle is filled, which resolve_matrix reads.
 
     Parameters
     ----------
@@ -211,8 +180,7 @@ def map_matrix(metacool, n_contigs, positions, intra):
     Returns
     -------
     numpy.ndarray
-        Raw matrix of contacts between the MGE contigs.
-    """
+        Raw matrix of contacts between the MGE contigs."""
     import metator.network as mtn
 
     network = mtn.map_network(metacool, None)
@@ -231,23 +199,23 @@ def map_matrix(metacool, n_contigs, positions, intra):
 
 
 def generate_bin_summary(contigs_data: "pd.DataFrame", mge_bins: dict) -> "pd.DataFrame":
-    """The summary of the MGE clusters: one row per cluster, with its length,
-    GC content, hits, clustering score and contigs.
+    """The summary of the MGE clusters: one row per cluster, with its length, GC
+    content, hits, clustering score and contigs.
 
     Parameters
     ----------
     contigs_data : pd.DataFrame
         The MGE contigs (see mge_contigs): Name, Size, GC_content and Hit.
     mge_bins : dict
-        Dictionary with the mge bin id as key and its contigs ("Contigs")
-        and score ("Score") as value.
+        Dictionary with the mge bin id as key and its contigs ("Contigs") and
+        score ("Score") as value.
 
-    Return
-    ------
-    pd.DataFrame :
-        Summary table of the MGE clusters, one row per cluster in the order
-        of mge_bins: BinName (MetaTOR_MGE_<ID>), BinLength, GC, Hit,
-        BinningScore, ContigsNumber and Contigs (by name, comma-separated).
+    Returns
+    -------
+    pandas.DataFrame
+        One row per cluster, in the order of mge_bins: BinName
+        (``MetaTOR_MGE_<ID>``), BinLength, GC, Hit, BinningScore, ContigsNumber and
+        Contigs (by name, comma-separated).
     """
     # Create output empty DataFrame
     cols = {
@@ -288,39 +256,34 @@ def mge_binning(
 ) -> Tuple[pd.DataFrame, dict]:
     """Main function to cluster the MGE contigs of a map.
 
-    The map is checked first (see check_mge_map): the refusals come before
-    any work. The MGE contigs that the map lacks are left out, with a
-    warning (see mge_contigs).
-
-    Parameters:
-    -----------
+    Parameters
+    ----------
     metacool : str
         Path to the .metacool file, or URI of an entry of a .mmetacool
         collection: ``file.mmetacool::entries/<name>``: a map that metator
-        network stored the network of its contigs in (that of a run of
-        network, pipeline or validation).
+        network stored the network of its contigs in (that of a run of network,
+        pipeline or validation).
     mges_list : list of str
         Names of the MGE contigs.
     threshold_bin : float
-        Threshold of score to bin contigs. [Default: .8]
+        Threshold of score to bin contigs.
     random : bool
         If enabled, make a random shuffling of the bins.
 
-    Returns:
-    --------
-    pandas.DataFrame:
-        The summary of the MGE clusters (see generate_bin_summary).
-    dict:
-        The MGE clusters: their id as key, their contigs ("Contigs", the
-        longest first, ties by name: see mge_contigs) and score ("Score")
-        as value.
-
-    Raises:
+    Returns
     -------
+    pandas.DataFrame
+        The summary of the MGE clusters (see generate_bin_summary).
+    dict
+        The MGE clusters: their id as key, their contigs ("Contigs", the
+        longest first, ties by name: see mge_contigs) and score ("Score") as
+        value.
+
+    Raises
+    ------
     metator.metacool.MetacoolError
-        If the map cannot be read, cannot be clustered (see check_mge_map),
-        or holds none of the MGE contigs.
-    """
+        If the map cannot be read, cannot be clustered (see check_mge_map), or
+        holds none of the MGE contigs."""
     with mtmc._metacooler_logging(), mtmc.read_errors(metacool):
         mc = mtmc.open_map(metacool)
         check_mge_map(metacool, mc)
@@ -348,34 +311,33 @@ def write_mges_fasta(metacool, assembly, mge_bins, out_file, temp_dir=None):
     """Write the FASTA file with one record per MGE cluster, so that the tools
     that check the quality of an MGE genome, which expect one sequence per
     genome, read each cluster as one: named after the cluster
-    (MetaTOR_MGE_<ID>), its contigs, in the order of the cluster (the
-    longest first, ties by name: see mge_binning), joined by 200 N, in lines
-    of 80 bases (metacooler.write_fasta, stitched). The file is replaced if
-    it exists.
+    (``MetaTOR_MGE_<ID>``), its contigs, in the order of the cluster (the longest
+    first, ties by name: see mge_binning), joined by 200 N, in lines of 80
+    bases (metacooler.write_fasta, stitched). The file is replaced if it
+    exists.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     metacool : str
         Path to the .metacool file, or URI of an entry of a .mmetacool
         collection: the map whose contigs the MGE clusters are.
     assembly : str
-        Path to the assembly the map was made from: FASTA, plain or
-        compressed with gzip.
+        Path to the assembly the map was made from: FASTA, plain or compressed
+        with gzip.
     mge_bins : dict
         The MGE clusters (see mge_binning).
     out_file : str
         Path to the FASTA file to write.
     temp_dir : str, optional
-        Where a compressed assembly is copied, plain: the temporary
-        directory of the run.
+        Where a compressed assembly is copied, plain: the temporary directory
+        of the run.
 
-    Raises:
-    -------
+    Raises
+    ------
     metator.metacool.MetacoolError
-        If the file cannot be written: the assembly lacks a contig, gives
-        one another length than the map, or is not FASTA (a ValueError,
-        KeyError or OSError of metacooler, message kept).
-    """
+        If the file cannot be written: the assembly lacks a contig, gives one
+        another length than the map, or is not FASTA (a ValueError, KeyError or
+        OSError of metacooler, message kept)."""
     import metacooler
 
     groups = {f"MetaTOR_MGE_{bin_id:05d}": [str(contig) for contig in cluster["Contigs"]] for bin_id, cluster in mge_bins.items()}
@@ -397,23 +359,21 @@ def write_mges_fasta(metacool, assembly, mge_bins, out_file, temp_dir=None):
 def resolve_matrix(mat: "np.ndarray", threshold: float = 0.8) -> List[Tuple]:
     """Main function to bin mges contigs.
 
-    From the marix of contacts associates the contigs with a lot of
-    interactions. To normalize the contacts we divide the contacts by the
-    geometric mean of the contacts in intra. To avoid the noise of the close
-    range contacts we have remove the contacts below 1000bp. When two contigs
-    are binned, they are fused together.
+    Contacts are divided by the geometric mean of the intra-contig contacts
+    (reads at least 1001 bp apart); two contigs binned together are fused.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     mat : np.array
-        Matrix of the raw contacts between the contigs. Upper triangle and the
-        contacts in intra below 1000bp are not kept.
+        Matrix of the raw contacts between the contigs.
     threshold : float
-        Threshold of score to bin contigs. [Default: .8]
+        Threshold of score to bin contigs.
 
-    Returns:
-    List of tuple:
-        List of the Tuple of the associated bins.
+    Returns
+    -------
+    list of list
+        Each binning, in the order made: the two rows of the matrix binned
+        together, then their score.
     """
 
     bins: list = []
@@ -478,20 +438,19 @@ def shuffle_mge_bins(
     """Function to shuffle id to imitate a random binning with the same bins
     distribution as the one created by Metator MGE.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     mges_data : pandas.DataFrame
-        Table with the contigs name as index and with information from
-        metator partition or validation.
+        Table with the contigs name as index and with information from metator
+        partition or validation.
 
-    Returns:
-    --------
-    pandas.DataFrame:
+    Returns
+    -------
+    pandas.DataFrame
         Input table with the mge bin id column randomly shuffled.
-    dict:
-        Dictionary with the mge bin id as key and the list of the contigs
-        name as value from the shuffle contigs bins.
-    """
+    dict
+        Dictionary with the mge bin id as key and the list of the contigs name
+        as value from the shuffle contigs bins."""
 
     # Shuffle the ids of the dataframe
     mges_bin_ids = mges_data.MetaTOR_MGE_bin
@@ -521,11 +480,10 @@ def update_mge_data(mges_data: pd.DataFrame, bins: List[Tuple]) -> pd.DataFrame:
 
     Returns
     -------
-    pandas.DataFrame :
+    pandas.DataFrame
         Table wit the mge contig information updated.
-    dictionnary :
-        Dictionary of the mge bins.
-    """
+    dictionnary
+        Dictionary of the mge bins."""
     # Initiation
     mges_data["MetaTOR_MGE_bin"] = 0
     mges_data["MetaTOR_MGE_Score"] = 0.0

@@ -1,5 +1,5 @@
-"""Locks of maps as metacooler writes them, held by another process, as by
-another run of metaTOR: alive, or killed while it held it."""
+"""Locks of maps as metacooler writes them, held by another process, as by another
+run of metaTOR: alive, or killed while it held it."""
 
 import json
 import subprocess
@@ -21,16 +21,16 @@ KILLED = "import os, sys, metacooler\nheld = metacooler.lock(sys.argv[1], comman
 
 
 def lock_file(metacool):
-    """The lock file of the map metacool: next to its file (next to the
-    target of a symbolic link)."""
+    """The lock file of the map metacool: next to its file (next to the target of
+    a symbolic link)."""
     return Path(f"{Path(str(metacool).split('::', 1)[0]).resolve()}.lock")
 
 
 @contextmanager
 def held_lock(metacool, command="metator pipeline"):
-    """Hold the lock of the map metacool in another process for the with
-    block: yields what its lock file says of the process (pid, host,
-    start, command, uuid...)."""
+    """Hold the lock of the map metacool in another process for the with block:
+    yields what its lock file says of the process (pid, host, start, command,
+    uuid...)."""
     process = subprocess.Popen(
         [sys.executable, "-c", HOLD, str(metacool), command], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True
     )
@@ -45,8 +45,8 @@ def held_lock(metacool, command="metator pipeline"):
 
 
 def killed_lock(metacool, command="metator pipeline"):
-    """The lock of the map metacool left by a process that held it, and is
-    gone: what its lock file says of the process."""
+    """The lock of the map metacool left by a process that held it, and is gone:
+    what its lock file says of the process."""
     subprocess.run([sys.executable, "-c", KILLED, str(metacool), command], check=True, timeout=60)
     return json.loads(lock_file(metacool).read_text())
 

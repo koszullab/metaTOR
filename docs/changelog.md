@@ -497,6 +497,9 @@ All notable changes to this project will be documented in this file.
   the CLI reference against the CLI. The docstring of
   `metator.validation.correct_final_bin`, which disagreed with its code, is
   corrected.
+- The docstrings of the Python API reference are shorter: a summary, then
+  numpy sections (Parameters, Returns, Raises), which the reference now
+  renders as tables.
 
 ### Removed
 - `metator.metacool.reassign_metacool`, `store_network`, `write_rounds` and

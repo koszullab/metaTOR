@@ -38,8 +38,8 @@ for _logger in (logger, warnings_logger):
 
 
 def set_file_handler(log_path, formatter=logfile_formatter):
-    """Change the file handler for custom log file location: that of
-    metaTOR's messages and of Python's warnings."""
+    """Change the file handler for custom log file location: that of metaTOR's
+    messages and of Python's warnings."""
 
     filehandler = logging.FileHandler(log_path, "a")
     filehandler.setLevel(logging.INFO)

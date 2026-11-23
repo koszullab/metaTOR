@@ -1,6 +1,6 @@
-"""Maps that metaTOR reads and writes, made from pairs files in the tests: the
-map of the contigs that a run starts from, and the map of a binning written
-from its pairs, the oracle of the maps that metaTOR writes from a map of the
+"""Maps that metaTOR reads and writes, made from pairs files in the tests: the map
+of the contigs that a run starts from, and the map of a binning written from
+its pairs, the oracle of the maps that metaTOR writes from a map of the
 contigs."""
 
 import os
@@ -20,28 +20,11 @@ ASSEMBLY_COLUMNS = {"GC_content": "GC", "Shotgun_coverage": "coverage", "Restric
 
 
 def contig_map(pairs, contig_data, outfile, assembly_name=None, columns=True, metadata=None):
-    """The map of the contigs that a run starts from, made from its pairs
-    files as metacooler create pairs makes it: one bin per contig (hicstuff
-    pipeline -M metacool makes one bin per restriction fragment, which gives
-    the same network), every contig in __unbinned__, the longest first, with
-    the contact statistics of the reads (the QC block). With
-    columns, its contigs table also holds what metaTOR measures on the
-    assembly (ASSEMBLY_COLUMNS: GC_content, and Shotgun_coverage and
-    Restriction_site where measured), added with metacooler annotate, as
-    metaTOR stored them in the maps it built before it read only maps.
-
-    Parameters
-    ----------
-    pairs : str or list of str
-        Pairs file(s) of the libraries, summed.
-    contig_data : dict
-        The contigs of the assembly, as metator.network.create_contig_data
-        returns them.
-    outfile : str or pathlib.Path
-        Path to the .metacool file to write.
-    metadata : dict, optional
-        The metadata of the map.
-    """
+    """The map of the contigs that a run starts from, made from its pairs files as
+    metacooler create pairs makes it: one bin per contig (hicstuff pipeline -M
+    metacool makes one bin per restriction fragment, which gives the same
+    network), every contig in __unbinned__, the longest first, with the contact
+    statistics of the reads (the QC block)."""
     pairs = [str(pairs)] if isinstance(pairs, (str, os.PathLike)) else [str(path) for path in pairs]
     names = list(contig_data)
     metacooler.from_pairs(
@@ -61,14 +44,11 @@ def contig_map(pairs, contig_data, outfile, assembly_name=None, columns=True, me
 
 
 def pairs_map(pairs, contig_data, outfile, bin_summary=None, assembly_name=None, metadata=None):
-    """The map of a binning written from its pairs, as metator metacool of
-    metaTOR 1.4.0 wrote it (metator.metacool.write_metacool): metacooler create pairs
-    with the final clusters (Final_cluster of the contig data file
-    contig_data, ND for none), then the contig columns that metaTOR measured
-    (those of CONTIG_COLUMNS that the table fills) stored as metaTOR stores
-    them. The oracle of the map that metaTOR writes from a map of the
-    contigs (metator.metacool.write_map): the same bins, contacts and
-    tables."""
+    """The map of a binning written from its pairs, as metator metacool of metaTOR
+    1.4.0 wrote it (metator.metacool.write_metacool): metacooler create pairs
+    with the final clusters (Final_cluster of the contig data file contig_data,
+    ND for none), then the contig columns that metaTOR measured (those of
+    CONTIG_COLUMNS that the table fills) stored as metaTOR stores them."""
     table = pd.read_csv(str(contig_data), sep="\t", dtype=str, keep_default_na=False)
     bins = pd.DataFrame({"chrom": table["Name"], "start": 0, "end": table["Size"].astype("int64")})
     final = table["Final_cluster"].str.strip()
@@ -95,11 +75,10 @@ def pairs_map(pairs, contig_data, outfile, bin_summary=None, assembly_name=None,
 
 
 def store_assembly_columns(metacool, contig_data):
-    """Add to the contigs table of a map what metaTOR measures on the
-    assembly (ASSEMBLY_COLUMNS: GC_content, and Shotgun_coverage and
-    Restriction_site where measured, as contig_data gives them), with
-    metacooler annotate, as metaTOR stored them in the maps it built from
-    the pairs before 2.0."""
+    """Add to the contigs table of a map what metaTOR measures on the assembly
+    (ASSEMBLY_COLUMNS: GC_content, and Shotgun_coverage and Restriction_site
+    where measured, as contig_data gives them), with metacooler annotate, as
+    metaTOR stored them in the maps it built from the pairs before 2.0."""
     measured = [column for column, key in ASSEMBLY_COLUMNS.items() if any(str(data[key]) != "-" for data in contig_data.values())]
     if not measured:
         return

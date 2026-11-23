@@ -3,37 +3,17 @@
 
 """The tables of a run, written from the map of its clusters: metator dump.
 
-A run of metaTOR (``metator pipeline``, or ``network``, ``partition`` and
-``validation`` one by one) keeps everything it finds in its map (see
-metator.metacool): the network of the contigs, every clustering round and the
-summary of the final clusters. It writes the tables of its validation in its
-temporary directory only, which ``-N`` keeps. ``metator dump MAP -o DIR``
-writes them from the map, read only:
+A run keeps everything it finds in its map and writes its tables in its
+temporary directory only. ``metator dump MAP -o DIR`` writes them from the
+map, read only: ``contig_data_final.txt`` (in the map's order, without the
+``ID`` column, whose values were positions in the map the run read),
+``cluster_summary.txt`` (rows, columns and formats as the validation
+recorded them), ``binning.txt``, ``clusters.txt``, ``cluster_members.txt``
+and ``network.txt``.
 
-- ``contig_data_final.txt``: one row per contig of the map, in its order:
-  ``Name``, ``Size``, ``GC_content``, ``Hit``, ``Shotgun_coverage``,
-  ``Restriction_site``, then the ID, the number of contigs and the size of
-  its core, overlapping and recursive clusters, then its ``Final_cluster``,
-  with the values that the validation writes (``-`` for no cluster,
-  ``00000`` for no recursive cluster, ``ND`` for no final cluster), but no
-  ``ID`` column: the ID of a contig was its position in the map that the
-  run read, which a run that writes the map of its clusters changes (see
-  :func:`contig_data_final`).
-- ``cluster_summary.txt``: one row per final cluster, as the validation
-  wrote it: the map records its rows, its columns and their formats, and
-  holds its values (see :func:`cluster_summary`).
-- ``binning.txt``: each contig of a final cluster, and its cluster.
-- ``clusters.txt`` and ``cluster_members.txt``: every clustering round of the
-  map, as the validation writes them (see metator.clusters).
-- ``network.txt``: the network of the contigs, as metator network stored it
-  (see :func:`network_table`).
-
-The map must be the map of the clusters as the run wrote it (see
-:func:`check_dumpable`, :func:`summary_layout` and :func:`check_network`),
-and the tables are of one state of it: every table is read through one
-opened map, and a map replaced while it is read is refused. The tables are
-written under temporary names, then renamed onto their own all at once: a
-dump that fails leaves the output directory as it was.
+The map must be the map of the clusters as its run wrote it (see
+check_dumpable); every table is read through one opened map, and they are
+renamed into place all at once.
 """
 
 import os
@@ -75,19 +55,12 @@ RECURSIVE_COLUMNS = ("Recursive_cluster_ID", "Recursive_cluster_contigs", "Recur
 
 
 def check_dumpable(metacool, mc):
-    """Refuse a map that holds no run to dump, or whose clusters were edited
-    since the run wrote them.
+    """Refuse a map that holds no run to dump, or whose clusters were edited since
+    the run wrote them.
 
-    A map without the validation entry of its metator metadata, or without
-    the clustering round final, which metator validation and pipeline write,
-    holds no run: the error names what is missing, and the step that writes
-    it. A map whose genomes are no longer the final clusters of its run (a
-    metacooler reassign of the map, a curation by hand) is refused too: the
-    summary of the clusters (its genomes table) and the clustering rounds
-    describe the clusters of the run, and the tables would contradict each
-    other. That is so when a final cluster is not exactly a genome of the map
-    (its contigs; metacooler computes the genome of each cluster, missing for
-    none), or when a genome is no final cluster (but __unbinned__).
+    A map whose genomes are no longer the final clusters of its run (a
+    metacooler reassign, a curation by hand) is refused too: its summary would
+    contradict its clusters.
 
     Returns
     -------
@@ -97,8 +70,7 @@ def check_dumpable(metacool, mc):
     Raises
     ------
     metator.metacool.MetacoolError
-        If the map lacks either, or its clusters were edited.
-    """
+        If the map lacks either, or its clusters were edited."""
     missing = []
     metator = mc.metadata.get("metator")
     validation = metator.get("validation") if isinstance(metator, dict) else None
@@ -141,21 +113,6 @@ def contig_data_final(metacool, mc, table):
     """The contig data of the final clusters of a run (contig_data_final.txt),
     from its map: one row per contig of the map, in its order.
 
-    The columns are those that the validation writes, but its ID: the
-    contig data that metator network stored (table, see
-    metator.network.map_contig_table), the core and the overlapping cluster
-    of each contig, from the partition that the map stores (see
-    metator.metacool.read_partition and metator.partition.partition_table),
-    its recursive cluster, from the rounds recursive_<k> of the map, and its
-    final cluster, its genome in the map (ND for none).
-
-    The values are written as the validation writes them: ``-`` for a
-    contig in no cluster, ``00000`` for one in no recursive cluster, the
-    IDs of the overlapping and recursive clusters with five digits. The ID
-    of a core cluster is a number when every contig is in one, as the
-    validation reads its table back (``00001`` reads as 1), and has five
-    digits when some contig is in none (``-``).
-
     Parameters
     ----------
     metacool : str
@@ -169,8 +126,7 @@ def contig_data_final(metacool, mc, table):
     Returns
     -------
     pandas.DataFrame
-        The table, without its ID column.
-    """
+        The table, without its ID column."""
     data = mtp.partition_table(table, mtmc.read_partition(metacool, mc))
     # As the validation reads contig_data_partition.txt (see
     # metator.validation.recursive_decontamination): the IDs of the core
@@ -200,15 +156,14 @@ def contig_data_final(metacool, mc, table):
 
 def _is_recursive_round(name):
     """Whether a clustering round is a step of the recursive partition of the
-    validation (recursive_<k>)."""
+    validation (``recursive_<k>``)."""
     prefix = mtcl.recursive_round("")
     return name.startswith(prefix) and name[len(prefix) :].isdigit()
 
 
 def final_clusters(mc):
-    """The final cluster of each contig of the map, in its order: the name of
-    its genome, ND for metacooler's __unbinned__ (a contig in no final
-    cluster)."""
+    """The final cluster of each contig of the map, in its order: the name of its
+    genome, ND for metacooler's __unbinned__ (a contig in no final cluster)."""
     names = mc.genomes["name"].astype(str).to_numpy()
     final = names[mc.contigs["genome_id"].to_numpy()]
     return np.where(final == UNBINNED_GENOME, "ND", final)
@@ -223,11 +178,11 @@ def binning(data):
 
 
 def summary_layout(metacool, validation):
-    """How the run wrote the summary of its final clusters
-    (cluster_summary.txt), as the validation entry of its map records it
-    (validation, see metator.cli.validation_entry): its rows, its columns and
-    their formats, with which the values in the genomes table of the map
-    write it again (see cluster_summary).
+    """How the run wrote the summary of its final clusters (cluster_summary.txt),
+    as the validation entry of its map records it (validation, see
+    metator.cli.validation_entry): its rows, its columns and their formats,
+    with which the values in the genomes table of the map write it again (see
+    cluster_summary).
 
     Returns
     -------
@@ -238,10 +193,9 @@ def summary_layout(metacool, validation):
     ------
     metator.metacool.MetacoolError
         If the entry lacks one of them, as that of a map that a development
-        build of metaTOR 2.0 validated does, or does not record them as
-        metator validation records them: each time, run metator validation
-        on the map again.
-    """
+        build of metaTOR 2.0 validated does, or does not record them as metator
+        validation records them: each time, run metator validation on the map
+        again."""
     missing = [key for key in SUMMARY_KEYS if key not in validation]
     if missing:
         raise mtmc.MetacoolError(
@@ -271,13 +225,12 @@ def _texts(values):
 
 
 def cluster_summary(metacool, mc, layout):
-    """The summary of the final clusters of a run (cluster_summary.txt), from
-    the genomes table of its map, as the validation wrote it (layout, see
-    summary_layout): a line per row of the summary, in its order, the name
-    of the cluster then the value of each column in the genomes table,
-    written with the format of the column (an empty field for a missing
-    value: NaN, None or an empty text), after a header, an empty field then
-    the columns.
+    """The summary of the final clusters of a run (cluster_summary.txt), from the
+    genomes table of its map, as the validation wrote it (layout, see
+    summary_layout): a line per row of the summary, in its order, the name of
+    the cluster then the value of each column in the genomes table, written
+    with the format of the column (an empty field for a missing value: NaN,
+    None or an empty text), after a header, an empty field then the columns.
 
     Returns
     -------
@@ -290,9 +243,8 @@ def cluster_summary(metacool, mc, layout):
     ------
     metator.metacool.MetacoolError
         If the genomes table lacks a column or a cluster of the summary, or
-        holds a value that the format of its column does not write (an edit
-        of the map changed them since the run).
-    """
+        holds a value that the format of its column does not write (an edit of
+        the map changed them since the run)."""
     genomes = mc.genomes.set_index(mc.genomes["name"].astype(str))
     missing = [column for column in layout.columns if column not in genomes.columns]
     if missing:
@@ -323,31 +275,29 @@ def cluster_summary(metacool, mc, layout):
 
 
 def _missing(value):
-    """Whether a value of the genomes table of a map is missing: NaN, None, or
-    an empty text, which metacooler stores for a missing text."""
+    """Whether a value of the genomes table of a map is missing: NaN, None, or an
+    empty text, which metacooler stores for a missing text."""
     if isinstance(value, str):
         return value == ""
     return bool(pd.isna(value))
 
 
 def check_network(metacool, mc, stored):
-    """Refuse a map whose network is not the one that its clusters were made
-    from: metator partition records the digest of the network that it
-    partitioned (see metator.metacool.partition_network), which that of the
-    network stored in the map (stored, see metator.network.stored_network)
-    must be. metator network, run on the map after the run that wrote its
-    clusters (with another normalization, or on the contacts of another
-    library), stores another network there and keeps the clusters: the
-    network and the clusters of the tables would not go together.
+    """Refuse a map whose network is not the one that its clusters were made from:
+    metator partition records the digest of the network that it partitioned
+    (see metator.metacool.partition_network), which that of the network stored
+    in the map (stored, see metator.network.stored_network) must be. metator
+    network, run on the map after the run that wrote its clusters (with another
+    normalization, or on the contacts of another library), stores another
+    network there and keeps the clusters: the network and the clusters of the
+    tables would not go together.
 
     Raises
     ------
     metator.metacool.MetacoolError
         With the remedies: metator network with the normalization of the run,
-        which stores its network again on the contacts that it read, or
-        metator partition and validation, which cluster the network stored
-        now.
-    """
+        which stores its network again on the contacts that it read, or metator
+        partition and validation, which cluster the network stored now."""
     made_on = mtmc.partition_network(mc)
     if made_on == stored.digest:
         return
@@ -372,13 +322,13 @@ def check_network(metacool, mc, stored):
 
 
 def network_table(table, network):
-    """The network of the contigs of a map (network.txt): one row per edge,
-    the names of its two contigs and its weight, without the contacts within
-    a contig, in the order of the map: from the first contig of the map to
-    the last, each with the contigs after it (see
-    metator.network.map_network). The weight is the count of the contacts
-    of the two contigs times the weight of each, for the normalization that
-    metator network stored, or the count for None.
+    """The network of the contigs of a map (network.txt): one row per edge, the
+    names of its two contigs and its weight, without the contacts within a
+    contig, in the order of the map: from the first contig of the map to the
+    last, each with the contigs after it (see metator.network.map_network). The
+    weight is the count of the contacts of the two contigs times the weight of
+    each, for the normalization that metator network stored, or the count for
+    None.
 
     Parameters
     ----------
@@ -386,8 +336,7 @@ def network_table(table, network):
         The contig data of the contigs of the map, in its order.
     network : pandas.DataFrame
         The network of the map, by the positions of its contigs (see
-        metator.network.map_network).
-    """
+        metator.network.map_network)."""
     names = table["Name"].astype(str).to_numpy()
     return pd.DataFrame(
         {
@@ -399,8 +348,7 @@ def network_table(table, network):
 
 
 def existing_tables(outdir):
-    """The tables of metator dump that outdir holds already (see TABLES), by
-    name."""
+    """The tables of metator dump that outdir holds already (see TABLES), by name."""
     return [name for name in TABLES if os.path.lexists(join(outdir, name))]
 
 
@@ -410,19 +358,18 @@ DUMP_AGAIN = "No table was written: run metator dump again once the run that wri
 
 def dump(metacool, outdir, force=False):
     """Write the tables of the run that wrote the map metacool (see the module's
-    docstring) in outdir, made if it is not there. The map is read only:
-    every table comes from one state of the map, read through one opened
-    map, which is refused if it was replaced or written while it was read.
+    docstring) in outdir, made if it is not there. The map is read only: every
+    table comes from one state of the map, read through one opened map, which
+    is refused if it was replaced or written while it was read.
 
-    The tables are written under temporary names in outdir, then renamed onto
-    their own: the tables of an earlier dump are replaced all at once, or
-    not at all.
+    The tables are written under temporary names, then renamed: an earlier
+    dump's tables are replaced all at once, or not at all.
 
     Parameters
     ----------
     metacool : str
-        Path to the .metacool file of the clusters of a run, or URI of an
-        entry of a .mmetacool collection: ``file.mmetacool::entries/<name>``.
+        Path to the .metacool file of the clusters of a run, or URI of an entry
+        of a .mmetacool collection: ``file.mmetacool::entries/<name>``.
     outdir : str
         The directory of the tables.
     force : bool
@@ -438,13 +385,11 @@ def dump(metacool, outdir, force=False):
     metator.metacool.MetacoolError
         If outdir holds one of the tables already (without force), or a
         directory in the place of one, the map cannot be read, holds no
-        clusters of a validation or clusters edited since (see
-        check_dumpable), no summary of them that metaTOR 2.0 records (see
-        summary_layout), no network, partition or summary that metaTOR
-        stored, or a network other than the one its clusters were made from
-        (see check_network), or was replaced while it was read, or a table
-        cannot be written.
-    """
+        clusters of a validation or clusters edited since (see check_dumpable),
+        no summary of them that metaTOR 2.0 records (see summary_layout), no
+        network, partition or summary that metaTOR stored, or a network other
+        than the one its clusters were made from (see check_network), or was
+        replaced while it was read, or a table cannot be written."""
     blocked = [name for name in TABLES if os.path.isdir(join(outdir, name)) and not os.path.islink(join(outdir, name))]
     if blocked:
         raise mtmc.MetacoolError(
@@ -497,12 +442,10 @@ def dump(metacool, outdir, force=False):
 
 
 def _write_all(metacool, outdir, writers, rounds):
-    """Write the tables of a dump in outdir (see dump): each under a
-    temporary name (.<table>.<random>.tmp), then each renamed onto its own,
-    once all are written, which replaces a table of an earlier dump, or a
-    symbolic link there, not its target. A table that cannot be written
-    removes the temporary files, and leaves the tables of outdir as they
-    were: MetacoolError, with the reason."""
+    """Write the tables of a dump in outdir (see dump): each under a temporary
+    name (``.<table>.<random>.tmp``), then each renamed onto its own, once all are
+    written, which replaces a table of an earlier dump, or a symbolic link
+    there, not its target."""
     token = uuid.uuid4().hex[:12]
     temporary = {name: join(outdir, f".{name}.{token}.tmp") for name in TABLES}
     clusters_file, members_file = temporary[mtcl.CLUSTERS_FILE], temporary[mtcl.CLUSTER_MEMBERS_FILE]

@@ -49,9 +49,8 @@ GENERAL = "Options"
 def bin_prefix(user_prefix):
     """Prefix of the bin names: "metator" or "<--prefix>_metator".
 
-    Bin names become fasta file names that miComplete renames (it drops
-    every dot), so only letters, digits, "_" and "-" are accepted.
-    """
+    miComplete drops every dot of a FASTA file name, so only letters, digits, _
+    and - are accepted."""
     if not user_prefix:
         return "metator"
     if not re.fullmatch(r"[A-Za-z0-9_-]+", user_prefix):
@@ -67,17 +66,9 @@ def bin_prefix(user_prefix):
 def private_tmp_dir(tmpdir, clean_up=True):
     """This run's private temporary directory, inside --tmpdir.
 
-    --tmpdir may be a directory the user already keeps files in (for
-    example /scratch/$USER), so the run works in a fresh random
-    subdirectory, and the clean-up at the end of the ``with`` block
-    removes only that. --tmpdir itself is removed only if this run created
-    it and nothing else is left in it.
-
-    Nothing is removed without clean_up (--no-clean-up), nor when the run
-    fails: its files are left for inspection. An empty --tmpdir (-T '') is
-    the default, ./tmp. The log says, at the end of a run, whether the
-    directory, and the tables that the log named in it, is removed or kept.
-    """
+    --tmpdir may hold the user's own files, so the run works in a fresh random
+    subdirectory and removes only that, and --tmpdir only if it made it and it
+    is empty."""
     base = tmpdir or "./tmp"
     base_created = not exists(base)
     tmp_dir = mio.generate_temp_dir(base)
@@ -132,14 +123,14 @@ def _within(path, directory):
 
 
 def refuse_tmpdir_in_the_clusters(tmpdir, outdir):
-    """Refuse, as a usage error, before the run creates or removes anything,
-    a --tmpdir in a directory of the clusters that a validation or pipeline
-    run writes in its output directory, outdir (see CLUSTER_DIRS): the run
-    makes that directory anew, which -F removes, with the temporary
-    directory of the run in it, where a run without -F would find the
-    directory of an earlier run. --tmpdir is in it as written, or once the
-    symbolic links of both are resolved, but for the directory of the
-    clusters itself: -F removes a symbolic link, not its target."""
+    """Refuse, as a usage error, before the run creates or removes anything, a
+    --tmpdir in a directory of the clusters that a validation or pipeline run
+    writes in its output directory, outdir (see CLUSTER_DIRS): the run makes
+    that directory anew, which -F removes, with the temporary directory of the
+    run in it, where a run without -F would find the directory of an earlier
+    run. --tmpdir is in it as written, or once the symbolic links of both are
+    resolved, but for the directory of the clusters itself: -F removes a
+    symbolic link, not its target."""
     base = tmpdir or "./tmp"
     for name in CLUSTER_DIRS:
         directory = join(outdir or ".", name)
@@ -171,10 +162,9 @@ EARLIER_OUTPUTS_HELD = {
 def refuse_earlier_outputs(outdir, force, outputs=EARLIER_OUTPUTS):
     """Refuse, without force (-F), before any work, what a run of an earlier
     version of metaTOR wrote in outdir, which a run no longer writes there
-    (outputs: those of a validation or pipeline run, EARLIER_OUTPUTS, or of
-    an mge run, MGE_EARLIER_OUTPUTS): the reason, which names them, is
-    logged as an error, then ValueError is raised. Returns them, a symbolic
-    link too, even one to nothing: see remove_earlier_outputs."""
+    (outputs: those of a validation or pipeline run, EARLIER_OUTPUTS, or of an
+    mge run, MGE_EARLIER_OUTPUTS): the reason, which names them, is logged as
+    an error, then ValueError is raised."""
     found = sorted({path for pattern in outputs for path in glob.glob(join(glob.escape(outdir), pattern))})
     if found and not force:
         logger.error(
@@ -188,8 +178,8 @@ def refuse_earlier_outputs(outdir, force, outputs=EARLIER_OUTPUTS):
 
 def remove_earlier_outputs(outdir, force, outputs=EARLIER_OUTPUTS):
     """Remove what a run of an earlier version wrote in outdir (see
-    refuse_earlier_outputs, which refuses it without force): a symbolic
-    link is removed, not its target."""
+    refuse_earlier_outputs, which refuses it without force): a symbolic link is
+    removed, not its target."""
     for path in refuse_earlier_outputs(outdir, force, outputs):
         logger.info(f"Removing {path}, which an earlier run wrote.")
         if os.path.isdir(path) and not os.path.islink(path):
@@ -199,8 +189,8 @@ def remove_earlier_outputs(outdir, force, outputs=EARLIER_OUTPUTS):
 
 
 def refuse_output_dir(path, force):
-    """Refuse an existing output directory of bins, unless --force replaces
-    it: a symbolic link too, even one to nothing."""
+    """Refuse an existing output directory of bins, unless --force replaces it: a
+    symbolic link too, even one to nothing."""
     if os.path.lexists(path) and not force:
         logger.error(
             "%s already existed. Remove directory or use -F argument to overwrite it.",
@@ -211,8 +201,7 @@ def refuse_output_dir(path, force):
 
 def make_output_dir(path, force):
     """Create an output directory of bins; an existing one is replaced with
-    --force, or refused. A symbolic link is removed, not its target.
-    """
+    --force, or refused."""
     refuse_output_dir(path, force)
     if os.path.islink(path):
         os.remove(path)
@@ -222,13 +211,10 @@ def make_output_dir(path, force):
 
 
 def check_normalization(normalization, enzyme, depth, metacool, read=None):
-    """The normalizations that need the restriction sites or the shotgun
-    coverage of the contigs: measured on the assembly with --enzyme and
-    --depth or read from the Restriction_site and Shotgun_coverage columns
-    of the contigs table of the map of the run, metacool (see
-    metator.network.contig_data_from_map). Before the run reads the
-    assembly, the map is checked for the column (read None); once it has,
-    read lists the columns that it could read."""
+    """The normalizations that need the restriction sites or the shotgun coverage
+    of the contigs: measured on the assembly with --enzyme and --depth or read
+    from the Restriction_site and Shotgun_coverage columns of the contigs table
+    of the map of the run, metacool (see metator.network.contig_data_from_map)."""
     needs = [
         (("RS", "theoritical_hit"), enzyme, "enzyme", "Restriction_site"),
         (("abundance", "theoritical_hit"), depth, "depth", "Shotgun_coverage"),
@@ -257,12 +243,10 @@ def check_normalization(normalization, enzyme, depth, metacool, read=None):
 
 
 def contig_data_from_map(metacool, contig_data, normalization, enzyme, depth):
-    """Read the restriction sites and the shotgun coverage of the contigs from
-    the .metacool map that a run starts from, where --enzyme and --depth
-    measure none (see metator.network.contig_data_from_map), then check the
-    normalization against what the run has. A map that cannot be read, or
-    that is not a map of the contigs of the assembly, stops the run, its
-    reason logged. Returns the columns read from the map."""
+    """Read the restriction sites and the shotgun coverage of the contigs from the
+    .metacool map that a run starts from, where --enzyme and --depth measure
+    none (see metator.network.contig_data_from_map), then check the
+    normalization against what the run has."""
     try:
         read = mtn.contig_data_from_map(metacool, contig_data, enzyme, depth)
     except mtmc.MetacoolError as error:
@@ -273,14 +257,8 @@ def contig_data_from_map(metacool, contig_data, normalization, enzyme, depth):
 
 
 def run_input(input_map):
-    """Check the .metacool map that a network or pipeline run starts from,
-    its first argument (input_map), before any work. Refused, the reason
-    logged as an error: a map that is not there or is no file (see
-    refuse_missing_map), a file that is no map, a map named as a URI (see
-    refuse_a_map_named_as_a_uri), and a map that metacooler cannot open,
-    with its reason (a .mmetacool collection rather than one of its entries,
-    for example), as MetacoolError. A pipeline run checks its map before it
-    replaces the clusters of an earlier run (-F)."""
+    """Check the .metacool map that a network or pipeline run starts from, its
+    first argument (input_map), before any work."""
     path = refuse_missing_map(input_map)
     if not mtmc.is_map(input_map):
         logger.error(
@@ -293,12 +271,9 @@ def run_input(input_map):
 
 
 def refuse_missing_map(input_map):
-    """Refuse a map whose file is not there, or is no file (a directory given
-    as dir::/), before any work: the reason is logged as an error, then
-    MetacoolError is raised. Returns the path of the file of the map:
-    input_map itself when it is a file (a file whose name holds :: is that
-    file, not the URI of a map inside one: see metator.metacool.is_map),
-    else its file part."""
+    """Refuse a map whose file is not there, or is no file (a directory given as
+    dir::/), before any work: the reason is logged as an error, then
+    MetacoolError is raised."""
     path = input_map if os.path.isfile(input_map) else mtmc.map_file(input_map)
     if not os.path.isfile(path):
         reason = "no such file" if not os.path.exists(path) else f"{path} is not a file"
@@ -309,9 +284,9 @@ def refuse_missing_map(input_map):
 
 
 def refuse_a_map_named_as_a_uri(input_map, path):
-    """Refuse, before any work, a map whose file name holds :: (path, its
-    file, is input_map itself), which metacooler reads as file::group: the
-    reason is logged as an error, then MetacoolError is raised."""
+    """Refuse, before any work, a map whose file name holds :: (path, its file, is
+    input_map itself), which metacooler reads as file::group: the reason is
+    logged as an error, then MetacoolError is raised."""
     if path == input_map and "::" in input_map:
         message = (
             f"Cannot read the contact map {input_map}: metacooler reads a path that holds :: as file::group. "
@@ -322,10 +297,7 @@ def refuse_a_map_named_as_a_uri(input_map, path):
 
 
 def open_input_map(input_map):
-    """The map, opened (a metacooler.MetaCooler). A map that metacooler
-    cannot open is refused, before any work: its reason (a .mmetacool
-    collection rather than one of its entries, which it names, for example)
-    is logged as an error, then MetacoolError is raised."""
+    """The map, opened (a metacooler.MetaCooler)."""
     try:
         return mtmc.open_map(input_map)
     except mtmc.MetacoolError as error:
@@ -334,10 +306,9 @@ def open_input_map(input_map):
 
 
 def refuse_an_input_as_the_map(output_map, inputs):
-    """Refuse, before any work, an --output-map that is one of the files of
-    the inputs of the run (the assembly, a table): the run would replace it
-    with its map. The reason is logged as an error, then MetacoolError is
-    raised."""
+    """Refuse, before any work, an --output-map that is one of the files of the
+    inputs of the run (the assembly, a table): the run would replace it with
+    its map."""
     if output_map is None or not os.path.exists(output_map):
         return
     for path in inputs:
@@ -360,16 +331,12 @@ REPLACED_IN_PLACE = {
 
 
 def warn_of_what_is_replaced(command, metacool, rounds=None):
-    """Warn, before any work, that a run (command) that updates the map
-    metacool in place replaces what the map holds already: its clusters (the
-    genomes other than __unbinned__, of an earlier run, or of another
-    binner), and its clustering rounds made by an earlier run (see
-    REPLACED_IN_PLACE). Neither can be found again in the updated map, whose
-    history says only that its contigs were reassigned. A run from a map
-    replaced them without -F, and without a warning. --output-map writes
-    the map of the run to another file instead, which leaves metacool as it
-    is. rounds names the clustering rounds that the run replaces, when it
-    knows them: mge replaces its round of one name (mge, or mge_random)."""
+    """Warn, before any work, that a run (command) that updates the map metacool
+    in place replaces what the map holds already: its clusters (the genomes
+    other than __unbinned__, of an earlier run, or of another binner), and its
+    clustering rounds made by an earlier run (see REPLACED_IN_PLACE).
+
+    Neither can be found again in the updated map."""
     clusters, steps = REPLACED_IN_PLACE[command]
     replaced = (lambda entry: entry.get("step") in steps) if rounds is None else (lambda entry: entry.get("name") in rounds)
     try:
@@ -393,30 +360,7 @@ def warn_of_what_is_replaced(command, metacool, rounds=None):
 
 
 def step_map(command, input_map, output_map, force, held, inputs=(), rounds=None):
-    """The map that a partition, validation or mge run (command) writes. A
-    run step by step from a map (network MAP, then partition MAP and
-    validation MAP; mge MAP after network) updates the map, its first
-    argument (input_map), in place, or writes output_map (--output-map)
-    instead (see run_map_path), as pipeline MAP does.
-
-    The map is checked as run_input checks the map of a network or pipeline
-    run, then the run holds the lock of the map that it writes until its
-    end, and opens its input map under it (in held, an ExitStack: see
-    hold_map). Refused before any work, the reason logged as an error, as
-    MetacoolError: an input map that is not there or is no file, is no map,
-    is named as a URI, or that metacooler cannot open (a .mmetacool
-    collection rather than one of its entries, for example); an output_map
-    that is one of the files of inputs (see refuse_an_input_as_the_map);
-    what run_map_path refuses (an entry of a collection without output_map,
-    an output_map that is an entry, a directory, the collection of the
-    input entry, a hard link of the input map, or that exists and is not
-    the input map, without force); a map that another run holds; and, in
-    place, a read-only map. A run that updates the map in place warns of the
-    clusters and the rounds that it replaces there (rounds: those of these
-    names, see warn_of_what_is_replaced). Returns the map to write and the
-    input map as the run read it once it held the lock (a
-    metacooler.MetaCooler), which its map is refused to be written from if
-    it changed since (see metator.metacool.write_map)."""
+    """The map that a partition, validation or mge run (command) writes."""
     map_of = f"the map of the {'run' if command == 'mge' else 'contigs of the run'} as the first argument of {command}"
     path = refuse_missing_map(input_map)
     if not mtmc.is_map(input_map):
@@ -443,24 +387,12 @@ def start_step(
     assembly=None,
     partition=False,
 ):
-    """Start a partition or validation run (command) in outdir: its log file,
-    the map that it writes (see step_map) and its directories of clusters
-    (cluster_dirs, see make_output_dir), refused without force when an
-    earlier run left them, as, with partition (a validation run), what a run
-    of an earlier version wrote in outdir (see refuse_earlier_outputs),
-    which force removes. The run checks its map, in its log file, before
-    it replaces the directories of an earlier run (-F): against inputs, the
-    other input files, which output_map must not be (see step_map); then it
-    reads the network of its contigs, which metator network stored in it,
-    and refuses one that it cannot read (see stored_network), and, with
-    partition (a validation run), the partition of that network, which
-    metator partition stored in it, refused when it was made on another
-    network (see map_partition). It checks the assembly (see check_assembly)
-    and the prefix of the clusters (--prefix, see bin_prefix) before it
-    replaces them. Returns the log file, the map to write, the prefix, the
-    input map as the run read it at its start (see step_map), the stored
-    network (see stored_network), and, with partition, the partition of the
-    map (None without)."""
+    """Start a partition or validation run (command) in outdir: its log file, the
+    map that it writes (see step_map) and its directories of clusters
+    (cluster_dirs, see make_output_dir), refused without force when an earlier
+    run left them, as, with partition (a validation run), what a run of an
+    earlier version wrote in outdir (see refuse_earlier_outputs), which force
+    removes."""
     log_file = log_file_name(outdir, command)
     generate_log_header(log_file)
     metacool_file, planned = step_map(command, input_map, output_map, force, held, inputs=inputs)
@@ -484,12 +416,10 @@ def start_step(
 def stored_network(metacool):
     """The network that metator network stored in the map of a partition or
     validation run, metacool, read in full before the run replaces anything
-    (see metator.network.stored_network): the contig data of its contigs,
-    the network and its normalization, by the positions of the contigs in
-    the map, which the partition that a validation run reads from the map
-    numbers them by too (see metator.metacool.read_partition). A map that
-    cannot give them stops the run: the reason, which names the step to run
-    again, is logged as an error, then its MetacoolError is raised."""
+    (see metator.network.stored_network): the contig data of its contigs, the
+    network and its normalization, by the positions of the contigs in the map,
+    which the partition that a validation run reads from the map numbers them
+    by too (see metator.metacool.read_partition)."""
     try:
         return mtn.stored_network(metacool)
     except mtmc.MetacoolError as error:
@@ -498,12 +428,9 @@ def stored_network(metacool):
 
 
 def map_contacts(metacool):
-    """The contacts of the map of a network or pipeline run, metacool,
-    summed by pair of contigs (see metator.network.contig_contacts), and
-    counted in its log. A map that cannot give them, or holds no contact,
-    stops the run, as metaTOR stops on an input it cannot use: the reason is
-    logged as an error, in the log file of the run, and its MetacoolError is
-    raised."""
+    """The contacts of the map of a network or pipeline run, metacool, summed by
+    pair of contigs (see metator.network.contig_contacts), and counted in its
+    log."""
     try:
         contacts = mtn.contig_contacts(metacool)
         mtn.log_contacts(metacool, contacts)
@@ -514,15 +441,10 @@ def map_contacts(metacool):
 
 
 def map_partition(metacool, planned, network):
-    """The partition that metator partition stored in the map of a validation
-    run, metacool, opened as planned (see
-    metator.metacool.read_partition): its core and overlapping clusters,
-    which must be those of the network stored in the map (network, its
-    digest: see metator.network.stored_network). A map without it, or whose
-    partition was made on another network (metator network ran on the map
-    since metator partition), is refused before any work: the reason, which
-    names the step to run, is logged as an error, then its MetacoolError is
-    raised."""
+    """The partition that metator partition stored in the map of a validation run,
+    metacool, opened as planned (see metator.metacool.read_partition): its core
+    and overlapping clusters, which must be those of the network stored in the
+    map (network, its digest: see metator.network.stored_network)."""
     try:
         return mtmc.read_partition(metacool, planned, network)
     except mtmc.MetacoolError as error:
@@ -531,14 +453,14 @@ def map_partition(metacool, planned, network):
 
 
 def partition_entry(normalization, digest, table):
-    """What a map records of the partition of its network, under the
-    partition key of its metator metadata (see
-    metator.metacool.write_map): the version of metaTOR, the command line
-    and the parameters of the run, what it read of the map (read: the
-    network, see map_read; table: the contig data of the network), and the
-    normalization and the digest of the network that it partitioned (see
-    metator.network.network_digest), which a validation checks against the
-    network stored in the map (see metator.metacool.read_partition)."""
+    """What a map records of the partition of its network, under the partition key
+    of its metator metadata (see metator.metacool.write_map): the version of
+    metaTOR, the command line and the parameters of the run, what it read of
+    the map (read: the network, see map_read; table: the contig data of the
+    network), and the normalization and the digest of the network that it
+    partitioned (see metator.network.network_digest), which a validation checks
+    against the network stored in the map (see
+    metator.metacool.read_partition)."""
     return {
         "version": __version__,
         **run_metadata(),
@@ -550,35 +472,31 @@ def partition_entry(normalization, digest, table):
 
 def write_partition_table(contig_data, clusters, directory):
     """Write the contig data table of a partition (see
-    metator.partition.partition_table) in directory, the temporary directory
-    of a validation or pipeline run, as contig_data_partition.txt, which
-    the validation reads (see metator.validation.recursive_decontamination).
-    Returns its path."""
+    metator.partition.partition_table) in directory, the temporary directory of
+    a validation or pipeline run, as contig_data_partition.txt, which the
+    validation reads (see metator.validation.recursive_decontamination)."""
     path = join(directory, "contig_data_partition.txt")
     mtp.partition_table(contig_data, clusters).to_csv(path, sep="\t", header=True, index=False)
     return path
 
 
 def network_entry(columns_from_map=()):
-    """What a map records of the run that stores the network of its contigs
-    in it, under the network key of its metator metadata (see
-    metator.metacool.Network): the version of metaTOR, the command line and
-    the parameters of the run, and what it read of the map (read): the
-    columns of its contigs table that it read in place of --enzyme and
-    --depth (contigs: columns_from_map, see
-    metator.network.contig_data_from_map), where the restriction sites and
-    the coverage that the map then stores came from. The network itself
-    comes from the contacts of the map."""
+    """What a map records of the run that stores the network of its contigs in it,
+    under the network key of its metator metadata (see
+    metator.metacool.Network): the version of metaTOR, the command line and the
+    parameters of the run, and what it read of the map (read): the columns of
+    its contigs table that it read in place of --enzyme and --depth (contigs:
+    columns_from_map, see metator.network.contig_data_from_map), where the
+    restriction sites and the coverage that the map then stores came from."""
     return {"version": __version__, **run_metadata(), "read": {"contigs": list(columns_from_map)}}
 
 
 def check_assembly(assembly):
-    """Refuse, before any work, an assembly (-a) that is not a FASTA file,
-    plain or compressed with gzip, as the network, the validation, the
-    pipeline and mge read it (Biopython, and metacooler, which writes the
-    FASTA files of the clusters; metator.io.check_is_fasta reads bzip2 and
-    zip files too): the reason is logged as an error, then ValueError is
-    raised."""
+    """Refuse, before any work, an assembly (-a) that is not a FASTA file, plain
+    or compressed with gzip, as the network, the validation, the pipeline and
+    mge read it (Biopython, and metacooler, which writes the FASTA files of the
+    clusters; metator.io.check_is_fasta reads bzip2 and zip files too): the
+    reason is logged as an error, then ValueError is raised."""
     compression = mio.file_compression(assembly) if os.path.isfile(assembly) else None
     if compression in ("bz2", "zip"):
         logger.error(
@@ -614,8 +532,8 @@ def log_file_name(directory, command):
 
 
 def run_metadata():
-    """The command line and the parameters of the running command, as stored
-    in a .metacool file."""
+    """The command line and the parameters of the running command, as stored in a
+    .metacool file."""
     params = dict(click.get_current_context().params)
     return {
         "command": shlex.join(["metator", *sys.argv[1:]]),
@@ -626,30 +544,12 @@ def run_metadata():
 def hold_lock(held, path, in_place):
     """Hold the lock of the map at path until the end of the run (in held, an
     ExitStack): metacooler's (metacooler.lock), which every writer of the map
-    takes too, and which the edit session that writes the map at the end of
-    the run re-enters (see metator.metacool._staged_edit). The run keeps the
-    other writers out from its checks to its end. path is the map that the
-    run writes: its input map, updated in place (in_place: the lock of the
-    file that a symbolic link points to, as metacooler edits it), or
-    --output-map's file, a map of its own, whose own name is locked (a
-    symbolic link there is replaced, not its target). A run with
-    --output-map does not lock its input map, so that runs from one map,
-    each with its own --output-map, run side by side: their input map is
-    refused at the end of the run if it changed since the run read it (see
-    metator.metacool.write_map's planned).
+    takes too, and which the edit session that writes the map at the end of the
+    run re-enters (see metator.metacool._staged_edit).
 
-    A map that another process holds, or whose lock cannot be created (a
-    directory that is missing or not writable), is refused before any
-    work: metacooler's reason (who holds the lock, or the files to delete)
-    is logged as an error, and, for a run in place, how to write its map
-    elsewhere, then a MetacoolError is raised. Taking the lock, metacooler
-    takes over a lock of a process of this host that is gone, and removes
-    what other writers left beside the map, with a warning each, in the log
-    of the run. Neither metaTOR nor metacooler handles signals: a run killed
-    outright (SIGKILL, or SIGTERM, as a job scheduler sends at its time
-    limit) leaves its lock and its staged copy, which the next writer of
-    the map on this host takes over and removes; a lock of another host is
-    never taken over, and the error names the files to delete."""
+    In place, the lock is the file a symbolic link points to, as metacooler
+    edits it; with --output-map, FILE's own name, so runs from one map, each
+    with its own --output-map, run side by side."""
     import metacooler
 
     try:
@@ -667,15 +567,11 @@ def hold_lock(held, path, in_place):
 
 
 def hold_map(held, command, input_map, outfile, in_place, rounds=None):
-    """Hold the lock of the map that a run (command) writes, outfile, until
-    the end of the run (see hold_lock), then open its input map: the map as
-    the run reads it, under that lock when the run updates it in place
-    (in_place), which the map of the run is refused to be written from if
-    it changed since (see metator.metacool.write_map's planned). A
-    run in place then refuses a read-only map, and warns of what it
-    replaces there (see refuse_a_read_only_map and warn_of_what_is_replaced:
-    rounds, the clustering rounds that the run replaces, by name). Returns
-    the input map, opened (a metacooler.MetaCooler)."""
+    """Hold the lock of the map that a run (command) writes, outfile, until the
+    end of the run (see hold_lock), then open its input map: the map as the run
+    reads it, under that lock when the run updates it in place (in_place),
+    which the map of the run is refused to be written from if it changed since
+    (see metator.metacool.write_map's planned)."""
     hold_lock(held, outfile, in_place)
     planned = open_input_map(input_map)
     if in_place:
@@ -685,11 +581,10 @@ def hold_map(held, command, input_map, outfile, in_place, rounds=None):
 
 
 def refuse_a_read_only_map(path):
-    """Refuse, before any work, the map that a run updates in place (path,
-    its input map) when it has no write permission (judged by its mode
-    too, as a run as root may write any file): metacooler refuses to
-    replace a read-only map, which it would do at the end of the run. The
-    reason is logged as an error, then MetacoolError is raised."""
+    """Refuse, before any work, the map that a run updates in place (path, its
+    input map) when it has no write permission (judged by its mode too, as a
+    run as root may write any file): metacooler refuses to replace a read-only
+    map, which it would do at the end of the run."""
     mode = os.stat(path).st_mode
     if mode & (stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH) and os.access(path, os.W_OK):
         return
@@ -704,23 +599,21 @@ def refuse_a_read_only_map(path):
 def run_map_path(input_map, output_map=None, force=False):
     """The map a run writes, and whether it updates its input map in place:
     output_map when given, else the file of its input map, the file that it
-    points to when it is a symbolic link, as metacooler edits that file (a
-    map given as file::/, the root of the file, is the file). output_map
-    updates the input map in place when it names that file itself (see
-    metator.metacool.is_input_map); any other output_map is a map of its
-    own, a symbolic link there replaced, not its target. The directory of
-    output_map is made, as the map will be written there.
+    points to when it is a symbolic link, as metacooler edits that file (a map
+    given as file::/, the root of the file, is the file). output_map updates
+    the input map in place when it names that file itself (see
+    metator.metacool.is_input_map); any other output_map is a map of its own, a
+    symbolic link there replaced, not its target.
 
     Raises
     ------
     MetacoolError
-        If output_map names an entry of a collection or a directory, is the collection of the
-        input map (an entry) or a hard link of the input map, or exists and
-        is not the input map, without force; if the input map is an entry
-        of a .mmetacool collection, without output_map: updating it in place
-        would rewrite the whole collection; or if the directory of
-        output_map cannot be made. The input map is there: run_input and
-        step_map refuse a missing one first.
+        If output_map names an entry of a collection or a directory, is the
+        collection of the input map (an entry) or a hard link of the input map,
+        or exists and is not the input map, without force; if the input map is
+        an entry of a .mmetacool collection, without output_map; or if the
+        directory of output_map cannot be made. It is raised before the run does
+        any work, and its reason is logged as an error.
     """
     reason = None
     if output_map and "::" in str(output_map):
@@ -763,38 +656,29 @@ def run_map_path(input_map, output_map=None, force=False):
 
 
 def _failure(error):
-    """What the failure of a map says: the message of a MetacoolError, or,
-    for another error, which is unexpected, its type and message. Returns
-    it without its final period, and whether the error is unexpected (its
-    traceback then goes to the log too)."""
+    """What the failure of a map says: the message of a MetacoolError, or, for
+    another error, which is unexpected, its type and message."""
     unexpected = not isinstance(error, mtmc.MetacoolError)
     reason = f"{type(error).__name__}: {error}" if unexpected else str(error)
     return reason.rstrip("."), unexpected
 
 
 def write_map(metacool, outfile, planned, what="the map of the clusters", **stores):
-    """Write the map of a run at outfile (see run_map_path and step_map),
-    from metacool, the input map of the run, which outfile is by default:
-    what the run stores in it (stores: its network, its partition, its final
-    clusters or its MGE clusters, see metator.metacool.write_map), in one
-    edit session of metacooler. The map is refused if it changed since
-    planned, the input map as the run read it at its start, was opened.
+    """Write the map of a run at outfile (see run_map_path and step_map), from
+    metacool, the input map of the run, which outfile is by default: what the
+    run stores in it (stores: its network, its partition, its final clusters or
+    its MGE clusters, see metator.metacool.write_map), in one edit session of
+    metacooler.
 
-    outfile is only replaced once the new map has been written and
-    validated: the input map, when outfile names its file (see
-    metator.metacool.is_input_map), stays as it was when the new map cannot
-    be written, and the log says what (what: the map of the clusters, by
-    default) replaces it. Another file at outfile (--output-map, which -F
-    lets a run replace: an earlier run's map) is removed first: it must not
-    stay behind, passing for this run's next to the other outputs of the run,
-    when the new map cannot be written. A symbolic link there is removed,
-    not its target.
+    The map is refused if it changed since planned was opened, and outfile is
+    only replaced once the new map is written and validated.
 
     Raises
     ------
     MetacoolError
-        If the map cannot be written: the reason, and what is kept, is
-        logged as an error first. The other outputs of the run are kept.
+        If the map cannot be written. The reason, and what is kept, is logged
+        as an error first: the input map stays as it was, and so do the other
+        outputs of the run.
     """
     # What the error adds when the new map is not written.
     kept = ""
@@ -816,12 +700,9 @@ def write_map(metacool, outfile, planned, what="the map of the clusters", **stor
 def run_network(metacool, planned, assembly, depth, enzyme, normalization, tmp_dir):
     """The network of the contigs of a network or pipeline run, from its map
     (metacool, as the run read it under its lock: planned): the contig data,
-    measured on the assembly and read from the map (see
-    contig_data_from_map), and the hits of the contigs of the map, counted
-    on its contacts (see map_contacts). Returns the network as the map
-    stores it (a metator.metacool.Network, its contig data written for
-    metacooler in tmp_dir, the temporary directory of the run) and the
-    contacts of the contigs."""
+    measured on the assembly and read from the map (see contig_data_from_map),
+    and the hits of the contigs of the map, counted on its contacts (see
+    map_contacts)."""
     contig_data = mtn.create_contig_data(assembly, depth, enzyme)
     columns_from_map = contig_data_from_map(metacool, contig_data, normalization, enzyme, depth)
     contacts = map_contacts(metacool)
@@ -833,13 +714,13 @@ def run_network(metacool, planned, assembly, depth, enzyme, normalization, tmp_d
 def stale_partition(planned, contacts, table, normalization):
     """Whether the input map of a network run, planned, holds a partition (the
     clustering rounds core and overlapping, which the run keeps, as it keeps
-    every round) that was made on another network than the one the run
-    stores (see metator.metacool.partition_network): its digest (see
+    every round) that was made on another network than the one the run stores
+    (see metator.metacool.partition_network): its digest (see
     metator.network.network_digest), from the contacts of the map and the
-    contig data of the run (table), with its normalization. Read before the
-    run writes the map: metator validation refuses such a partition until
-    metator partition runs on the map again. A network that is the one the
-    partition was made on leaves it as it was."""
+    contig data of the run (table), with its normalization.
+
+    Read before the run writes the map; metator validation refuses such a
+    partition until metator partition runs again."""
     if not mtmc.holds_partition(planned):
         return False
     digest = mtn.network_digest(contacts, mtn.network_weights(table, normalization), table["Name"], normalization)
@@ -863,25 +744,11 @@ def run_validation(
     tmp_dir,
     normalization,
 ):
-    """The validation of the partition of a validation or pipeline run, from
-    its map (metacool): the contig data of the contigs of the map (table, in
-    its order), their network (network, by their positions in the map) and
-    its partition (partition, a metator.clusters.Partition: the overlapping
-    clusters that reach size are checked).
-
-    The run works in its temporary directory (tmp_dir): the contig data of
-    the partition, the assembly decompressed, when it is compressed with
-    gzip (see metator.validation.plain_assembly), the FASTA files of the
-    clusters that miComplete checks, those of the recursive steps,
-    miComplete's results and the tables of the validation (see
-    metator.validation.recursive_decontamination), which -N keeps. The FASTA
-    files of the final clusters go to final_fasta_dir.
-
-    Returns the final clusters as the map stores them (a
-    metator.metacool.FinalClusters): the final cluster of each binned
-    contig, the summary of the clusters, every round of the run, and the
-    entry validation of the metator metadata (see validation_entry, the
-    normalization of the network: normalization)."""
+    """The validation of the partition of a validation or pipeline run, from its
+    map (metacool): the contig data of the contigs of the map (table, in its
+    order), their network (network, by their positions in the map) and its
+    partition (partition, a metator.clusters.Partition: the overlapping
+    clusters that reach size are checked)."""
     partition_file = write_partition_table(table, partition, tmp_dir)
     # Decompressed once for the run, when it is compressed: the FASTA files
     # of the clusters are written from it at each step.
@@ -923,14 +790,13 @@ def run_validation(
 
 
 def check_final_clusters(assignment, final_fasta_dir):
-    """Refuse the final clusters of a validation (assignment: the final
-    cluster of each binned contig, by name) that are not those of the FASTA
-    files it wrote in final_fasta_dir: a file of a cluster without a contig,
-    or a cluster without a file. The contigs of a cluster are found by name,
-    from its FASTA file to the contig data of the run: a name read as another
-    (00123 as the number 123) would leave its cluster without them. The
-    reason is logged as an error, then ValueError is raised: the map of the
-    clusters is not written."""
+    """Refuse the final clusters of a validation (assignment: the final cluster of
+    each binned contig, by name) that are not those of the FASTA files it wrote
+    in final_fasta_dir: a file of a cluster without a contig, or a cluster
+    without a file.
+
+    A name read as another (00123 as the number 123) would leave its cluster
+    without contigs."""
     written = {name[: -len(".fa")] for name in os.listdir(final_fasta_dir) if name.endswith(".fa")}
     clustered = set(assignment.values())
     if written == clustered:
@@ -949,17 +815,16 @@ def check_final_clusters(assignment, final_fasta_dir):
 
 
 def validation_entry(normalization, table, summary):
-    """What a map records of the validation of its clusters, under the
-    validation key of its metator metadata (see
-    metator.metacool.write_map): the version of metaTOR, the command line and
-    the parameters of the run, what it read of the map (read: the columns of
-    the network of its contigs, from the contig data table, the weights of
-    its normalization, and the rounds of its partition), and how the summary
-    of its clusters, cluster_summary.txt, is written (summary, a
-    metator.io.SummaryLayout), which its values in the genomes table of the
-    map write again: its rows (summary_rows, the names of the clusters in
-    order), its columns (summary_columns, in order) and their formats
-    (summary_formats)."""
+    """What a map records of the validation of its clusters, under the validation
+    key of its metator metadata (see metator.metacool.write_map): the version
+    of metaTOR, the command line and the parameters of the run, what it read of
+    the map (read: the columns of the network of its contigs, from the contig
+    data table, the weights of its normalization, and the rounds of its
+    partition), and how the summary of its clusters, cluster_summary.txt, is
+    written (summary, a metator.io.SummaryLayout), which its values in the
+    genomes table of the map write again: its rows (summary_rows, the names of
+    the clusters in order), its columns (summary_columns, in order) and their
+    formats (summary_formats)."""
     return {
         "version": __version__,
         **run_metadata(),
@@ -972,14 +837,14 @@ def validation_entry(normalization, table, summary):
 
 
 def map_read(table, normalization, rounds=()):
-    """What a partition or validation run read of its map, as its entry of
-    the metator metadata records it (read, see partition_entry and
-    validation_entry): the columns of the contigs table that hold the
-    network (contigs: those of table, the contig data of the network, that
-    the map stores, see metator.metacool.network_columns), the weights of
-    its normalization in the bins table (bins: none for "None"), and the
-    clustering rounds (rounds: the partition, for a validation). pipeline
-    records what its steps read, which it holds already."""
+    """What a partition or validation run read of its map, as its entry of the
+    metator metadata records it (read, see partition_entry and
+    validation_entry): the columns of the contigs table that hold the network
+    (contigs: those of table, the contig data of the network, that the map
+    stores, see metator.metacool.network_columns), the weights of its
+    normalization in the bins table (bins: none for "None"), and the clustering
+    rounds (rounds: the partition, for a validation). pipeline records what its
+    steps read, which it holds already."""
     weights = [] if normalization == "None" else [mtmc.normalization_weight_name(normalization)]
     read = {"contigs": mtmc.network_columns(table), "bins": weights}
     if rounds:
@@ -1047,8 +912,8 @@ MAP_HELP = (
 
 def map_argument(help=MAP_HELP, required=False):
     """The .metacool map of the contigs that a network or pipeline run starts
-    from, its first argument (required); or that a partition or validation
-    run updates (see step_map)."""
+    from, its first argument (required); or that a partition or validation run
+    updates (see step_map)."""
     return click.argument(
         # Shown as MAP: the parameter of these commands is named so.
         "map",
@@ -1062,15 +927,15 @@ def map_argument(help=MAP_HELP, required=False):
 
 
 def output_map_option(help):
-    """--output-map: the file that a run writes the map to, instead of the
-    map of the run (see run_map_path)."""
+    """--output-map: the file that a run writes the map to, instead of the map of
+    the run (see run_map_path)."""
     return _option("--output-map", metavar="FILE", help=help)
 
 
 def network_options(normalization_short, assembly_help=ASSEMBLY_HELP):
-    """Options of the network step: the assembly, what is measured on its
-    contigs, and the normalization; the short alias of --normalization is
-    -n in network, -m in pipeline."""
+    """Options of the network step: the assembly, what is measured on its contigs,
+    and the normalization; the short alias of --normalization is -n in network,
+    -m in pipeline."""
     return _options(
         assembly_option(assembly_help),
         _option(
@@ -1889,14 +1754,14 @@ def mge(
 
 
 def mge_entry(name):
-    """What a map records of the mge run that stores its round name in it
-    (mge, or mge_random), with the round and under the name of the round in
-    its metator metadata (see metator.metacool.write_map): the tool, the
-    version of metaTOR, the command line and the parameters of the run, and
-    what it read of the map (read): the columns of its contigs table that
-    metator network stored (metator.mge.MGE_COLUMNS), and the contact
-    statistics of its reads, the counts of each contig (its
-    qc_intra_contig_long column) and the QC block of its metadata."""
+    """What a map records of the mge run that stores its round name in it (mge, or
+    mge_random), with the round and under the name of the round in its metator
+    metadata (see metator.metacool.write_map): the tool, the version of
+    metaTOR, the command line and the parameters of the run, and what it read
+    of the map (read): the columns of its contigs table that metator network
+    stored (metator.mge.MGE_COLUMNS), and the contact statistics of its reads,
+    the counts of each contig (its qc_intra_contig_long column) and the QC
+    block of its metadata."""
     read = {"contigs": [*mtm.MGE_COLUMNS, mtm.INTRA_LONG], "metadata": ["qc"]}
     return {"name": name, "tool": "metaTOR", "version": __version__, "step": "mge", **run_metadata(), "read": read}
 

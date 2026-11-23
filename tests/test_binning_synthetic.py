@@ -45,11 +45,11 @@ def _keep_the_tables(monkeypatch):
 
 
 def _kept(out):
-    """The directory of the tables of the latest validation or pipeline run
-    whose output directory is out: the temporary directory of the run (in
-    the -T of its command line, which its log records; a relative one from
-    the directory of out, where the tests run) that holds them, the last
-    written before the end of its log (two runs may share a -T)."""
+    """The directory of the tables of the latest validation or pipeline run whose
+    output directory is out: the temporary directory of the run (in the -T of
+    its command line, which its log records; a relative one from the directory
+    of out, where the tests run) that holds them, the last written before the
+    end of its log (two runs may share a -T)."""
     logs = sorted(Path(out).glob("metator_*.log"), key=os.path.getmtime)
     for log in reversed(logs):
         line = next(line for line in log.read_text().splitlines() if line.startswith("## Command used: "))
@@ -69,9 +69,9 @@ def _kept(out):
 
 def _summary_from_the_map(path):
     """The summary of the final clusters of the run that wrote the map of the
-    clusters at path (cluster_summary.txt), as the map alone writes it
-    again: its genomes table holds the values, and its entry validation how
-    they are written (its rows, columns and their formats, see
+    clusters at path (cluster_summary.txt), as the map alone writes it again:
+    its genomes table holds the values, and its entry validation how they are
+    written (its rows, columns and their formats, see
     metator.cli.validation_entry), an empty field for a missing value."""
     mc = metacooler.MetaCooler(str(path))
     entry = mc.metadata["metator"]["validation"]
@@ -88,8 +88,8 @@ def _summary_from_the_map(path):
 
 
 def _named_edges(network, contig_data):
-    """Network edges with the names of their contigs (by their IDs in the
-    contig data)."""
+    """Network edges with the names of their contigs (by their IDs in the contig
+    data)."""
     names = contig_data.set_index("ID")["Name"]
     return network.assign(name1=network.contig1.map(names), name2=network.contig2.map(names))
 
@@ -123,8 +123,8 @@ def test_network_edges_follow_genomes(metagenome, metagenome_files, tmp_path, no
 
 
 def test_contig_data_matches_the_truth(metagenome, metagenome_network):
-    """Sizes, GC contents and shotgun coverages of the contig data, which
-    metator network stores in the map: its contigs, the longest first."""
+    """Sizes, GC contents and shotgun coverages of the contig data, which metator
+    network stores in the map: its contigs, the longest first."""
     data = metagenome_network["contig_table"].set_index("Name")
     truth = metagenome.truth.set_index("Name", drop=False).loc[data.index]
     assert sorted(data.index) == sorted(metagenome.truth.Name)
@@ -138,9 +138,9 @@ def test_contig_data_matches_the_truth(metagenome, metagenome_network):
 
 @pytest.mark.parametrize("algorithm", ["louvain", "leiden"])
 def test_partition_recovers_the_genomes(metagenome, metagenome_inputs, metagenome_network, tmp_path, algorithm):
-    """The overlapping clusters of the partition are the genomes, and those
-    that reach 50 kb, which the validation writes for miComplete to check
-    (see metator.validation.write_overlapping_fasta), one each."""
+    """The overlapping clusters of the partition are the genomes, and those that
+    reach 50 kb, which the validation writes for miComplete to check (see
+    metator.validation.write_overlapping_fasta), one each."""
     random.seed(0)  # igraph draws from Python's random module.
     contig_table = metagenome_network["contig_table"]
     clusters = mtp.partition(algorithm, metagenome_network["network_table"], 10, 0.8, 1.0, 1, "metator")
@@ -169,12 +169,12 @@ def test_partition_recovers_the_genomes(metagenome, metagenome_inputs, metagenom
 
 
 def _map_with_merged_partition(metagenome, metagenome_network, path, merged):
-    """A copy, at path, of the map of the mock community in which metator
-    network stored its network (see _network_map), with a partition stored
-    as metator partition stores it (see metator.metacool.write_rounds):
-    the genomes ``merged`` share a cluster while every other genome has its
-    own, MGE contigs going with their host, each cluster both a core and an
-    overlapping cluster."""
+    """A copy, at path, of the map of the mock community in which metator network
+    stored its network (see _network_map), with a partition stored as metator
+    partition stores it (see metator.metacool.write_rounds): the genomes
+    ``merged`` share a cluster while every other genome has its own, MGE
+    contigs going with their host, each cluster both a core and an overlapping
+    cluster."""
     truth = metagenome.truth
     bin_id = {}
     for genome in metagenome.genomes:
@@ -208,9 +208,9 @@ def _map_with_merged_partition(metagenome, metagenome_network, path, merged):
 
 
 def _network_map(metagenome_network, path):
-    """A copy of the map of the mock community in which metator network
-    stored its network, at path: validation MAP and partition MAP read it,
-    and write the map of their clusters over it."""
+    """A copy of the map of the mock community in which metator network stored its
+    network, at path: validation MAP and partition MAP read it, and write the
+    map of their clusters over it."""
     return Path(shutil.copyfile(metagenome_network["map"], path))
 
 
@@ -277,11 +277,10 @@ def test_validation_splits_a_merged_bin(metagenome, metagenome_inputs, metagenom
 def test_validation_decompresses_the_assembly_once(
     metagenome, metagenome_inputs, metagenome_network, tmp_path, monkeypatch, run_cli
 ):
-    """An assembly compressed with gzip is decompressed once for the run, in
-    its temporary directory: every FASTA file of the clusters (the
-    overlapping clusters, each recursive step) is written from that copy,
-    where metacooler copied it again for each write. The final clusters are
-    those of the run from the plain assembly."""
+    """An assembly compressed with gzip is decompressed once for the run, in its
+    temporary directory: every FASTA file of the clusters (the overlapping
+    clusters, each recursive step) is written from that copy, where metacooler
+    copied it again for each write."""
     import gzip
 
     monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
@@ -315,12 +314,10 @@ def test_validation_decompresses_the_assembly_once(
 def test_validation_checks_the_clusters_in_the_order_of_the_partition(
     metagenome, metagenome_inputs, metagenome_network, tmp_path, monkeypatch, run_cli
 ):
-    """The FASTA file of each overlapping cluster that miComplete checks lists
-    its contigs as metator partition lists them (see
-    metator.partition.partition): by core cluster, in the order of their
-    numbers, then by ID, as the files of overlapping_clusters/ did, not in
-    the order of the map. Here, an overlapping cluster of two core clusters,
-    the first of which holds the later contigs of the map."""
+    """The FASTA file of each overlapping cluster that miComplete checks lists its
+    contigs as metator partition lists them (see metator.partition.partition):
+    by core cluster, in the order of their numbers, then by ID, as the files of
+    overlapping_clusters/ did, not in the order of the map."""
     data = metagenome_network["contig_table"]
     host = data.Name.map(metagenome.truth.Host)
     # genome_1 and genome_2 in one overlapping cluster, the genome whose
@@ -365,11 +362,11 @@ def test_validation_again_on_the_map_of_its_clusters(
     metagenome, metagenome_inputs, metagenome_network, tmp_path, monkeypatch, run_cli
 ):
     """validation MAP runs again on the map of the clusters that it wrote, in
-    which it grouped the contigs by cluster: the partition stored in the map
-    is still that of its network, which the regroup left as it was (see
-    metator.network.network_digest), the same contig for contig, and the
-    run reads it with the IDs of the contigs in the regrouped map, their
-    positions in it, which number the rows of its tables."""
+    which it grouped the contigs by cluster: the partition stored in the map is
+    still that of its network, which the regroup left as it was (see
+    metator.network.network_digest), the same contig for contig, and the run
+    reads it with the IDs of the contigs in the regrouped map, their positions
+    in it, which number the rows of its tables."""
     monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
     metacool = _map_with_merged_partition(
         metagenome, metagenome_network, tmp_path / "network.metacool", merged=("genome_1", "genome_2")
@@ -402,12 +399,11 @@ def test_validation_again_on_the_map_of_its_clusters(
 
 
 def test_contigs_named_by_numbers(tmp_path, monkeypatch, run_cli):
-    """Contigs named by numbers (000017, 1e5, 2.50), which pandas reads as
-    numbers unless told otherwise: a run reads every table of names as
-    text, and each contig goes by its name, as the map names it, to the
-    final cluster of the FASTA file that lists it (read as numbers, the
-    names lost their leading zeros, or their form, and the clusters their
-    contigs)."""
+    """Contigs named by numbers (000017, 1e5, 2.50), which pandas reads as numbers
+    unless told otherwise: a run reads every table of names as text, and each
+    contig goes by its name, as the map names it, to the final cluster of the
+    FASTA file that lists it (read as numbers, the names lost their leading
+    zeros, or their form, and the clusters their contigs)."""
     from tests.conftest import SYNTHETIC_SEED
 
     metagenome = synthetic.make_metagenome(seed=SYNTHETIC_SEED)
@@ -447,12 +443,11 @@ def test_contigs_named_by_numbers(tmp_path, monkeypatch, run_cli):
 
 def test_a_contig_named_na(tmp_path, monkeypatch, run_cli):
     """A contig named NA, which pandas reads as a missing value unless told
-    otherwise, is a contig as any other: validation reads it by name from
-    the partition table of the run, and writes it into the map of the
-    clusters, in its final cluster, with its size (a missing name made the
-    Size column of contig_data_final.txt a float, which the map refused;
-    the run keeps its tables in its temporary directory: see
-    _keep_the_tables)."""
+    otherwise, is a contig as any other: validation reads it by name from the
+    partition table of the run, and writes it into the map of the clusters, in
+    its final cluster, with its size (a missing name made the Size column of
+    contig_data_final.txt a float, which the map refused; the run keeps its
+    tables in its temporary directory: see _keep_the_tables)."""
     from tests.conftest import SYNTHETIC_SEED
 
     metagenome = synthetic.make_metagenome(seed=SYNTHETIC_SEED)
@@ -495,8 +490,8 @@ def test_validation_without_contaminated_bin(metagenome, metagenome_inputs, meta
 
 def test_validation_without_bin_above_the_size_threshold(metagenome_inputs, metagenome_network, tmp_path, monkeypatch, run_cli):
     """partition MAP stores every overlapping cluster, whatever its size; a
-    validation run of which none reaches --size stops before miComplete,
-    saying why, and leaves its map as it was."""
+    validation run of which none reaches --size stops before miComplete, saying
+    why, and leaves its map as it was."""
     calls = []
     monkeypatch.setattr("metator.validation.micomplete_quality", lambda *args: calls.append(args))
     metacool = _network_map(metagenome_network, tmp_path / "network.metacool")
@@ -515,9 +510,9 @@ def test_validation_without_bin_above_the_size_threshold(metagenome_inputs, meta
 
 
 def test_pipeline_without_bin_above_the_size_threshold(metagenome_inputs, tmp_path, monkeypatch, run_cli):
-    """No bin of the partition reaches --size: the run stops before
-    miComplete (which found no bin, then failed to read its empty results),
-    saying why in its log file. It leaves its map as it was, in no cluster."""
+    """No bin of the partition reaches --size: the run stops before miComplete
+    (which found no bin, then failed to read its empty results), saying why in
+    its log file."""
     calls = []
     monkeypatch.setattr("metator.validation.micomplete_quality", lambda *args: calls.append(args))
     metacool = _contig_map(metagenome_inputs, tmp_path / "contigs.metacool")
@@ -601,14 +596,10 @@ def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, tmp_path, 
 
 
 def test_pipeline_map_is_the_map_of_the_pairs(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli):
-    """The map that a run leaves is the map of the pairs of its input map
-    and its final tables (see tests.maps.pairs_map): the same bins,
-    contacts, contigs table (column for column), genomes table (the columns
-    of the cluster summary and the contact statistics of each cluster) and
-    QC block. The run reads no pairs file: it writes the map of its
-    clusters over its map at the end with metacooler reassign. Only the
-    history of the map differs, the annotate and reassign keys of its
-    metadata (and the date of the file)."""
+    """The map that a run leaves is the map of the pairs of its input map and its
+    final tables (see tests.maps.pairs_map): the same bins, contacts, contigs
+    table (column for column), genomes table (the columns of the cluster
+    summary and the contact statistics of each cluster) and QC block."""
     monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
     from_pairs = metacooler.from_pairs
     maps = []
@@ -663,10 +654,10 @@ def test_pipeline_map_is_the_map_of_the_pairs(metagenome, metagenome_inputs, tmp
 
 
 def _assert_normalized_as_the_network(written, tmp_path):
-    """The contacts of the map of a run normalized by the weights it stores
-    and summed by pair of contigs (metacooler network --balance) are the
-    edges of its network (see metator.network.map_network: but those of
-    weight 0), whatever the order of its contigs."""
+    """The contacts of the map of a run normalized by the weights it stores and
+    summed by pair of contigs (metacooler network --balance) are the edges of
+    its network (see metator.network.map_network: but those of weight 0),
+    whatever the order of its contigs."""
     names = [str(name) for name in metacooler.MetaCooler(str(written)).contigs["name"]]
     network = mtn.map_network(str(written))
     expected_edges = {
@@ -684,11 +675,8 @@ def _assert_normalized_as_the_network(written, tmp_path):
 
 
 def test_pipeline_restarts_from_the_map_of_a_stopped_run(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli):
-    """A run that stops with an error (miComplete fails in the validation,
-    here) leaves its map as it was, in no cluster. A new run from it (with
-    -F in the same output directory, whose cluster directories the stopped
-    run left) gives the outputs of a run that does not stop, and its map,
-    but for the provenance of the map."""
+    """A run that stops with an error (miComplete fails in the validation, here)
+    leaves its map as it was, in no cluster."""
     common = ["-a", str(metagenome_inputs["assembly"]), "-d", str(metagenome_inputs["depth"]), "-e", "DpnII", "-s", "50000",
               "-i", "10", "-j", "5", "-T", str(tmp_path / "tmp")]  # fmt: skip
     clean, out = tmp_path / "clean", tmp_path / "out"
@@ -735,18 +723,12 @@ def test_pipeline_restarts_from_the_map_of_a_stopped_run(metagenome, metagenome_
 
 
 def _assert_same_clusters(out, ref, contigs=None):
-    """The outputs of two runs (out, ref: their output directories) of the
-    same clusters from maps whose contigs are in another order, or that
-    lack some of them (contigs: the contigs of the map of out, those of
-    ref by default): the IDs of the contigs are their positions in the map
-    of the run, and so are the rows of its tables, and the sums over the
-    contigs of a cluster (its abundances) are made in that order, so equal
-    to the last bits. The same clusters, of the same contigs, under the same
-    names, with the same values; the same final FASTA files, but for the
-    order of their records. With contigs, the shotgun abundance of the
-    clusters (SG_abundance), a share of the sequenced bases of the contigs
-    of the map, is not compared: those that the map lacks are not
-    counted."""
+    """The outputs of two runs (out, ref: their output directories) of the same
+    clusters from maps whose contigs are in another order, or that lack some of
+    them (contigs: the contigs of the map of out, those of ref by default): the
+    IDs of the contigs are their positions in the map of the run, and so are
+    the rows of its tables, and the sums over the contigs of a cluster (its
+    abundances) are made in that order, so equal to the last bits."""
 
     def table(run, name, **kwargs):
         return pd.read_csv(_kept(run) / name, sep="\t", **kwargs)
@@ -785,12 +767,10 @@ def _assert_same_clusters(out, ref, contigs=None):
 
 
 def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli):
-    """From the contact map of the clusters of a first run (one bin per
-    contig, its contigs grouped by cluster), the pipeline makes the same
-    network and the same clusters, but for the order of the contigs, which
-    is that of the map (see _assert_same_clusters). It updates the input map
-    in place (a copy of the map of the first run): the map of the first
-    run, QC and clustering rounds included, but for its provenance."""
+    """From the contact map of the clusters of a first run (one bin per contig,
+    its contigs grouped by cluster), the pipeline makes the same network and
+    the same clusters, but for the order of the contigs, which is that of the
+    map (see _assert_same_clusters)."""
     monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
     common = ["-a", str(metagenome_inputs["assembly"]), "-d", str(metagenome_inputs["depth"]), "-e", "DpnII", "-s", "50000",
               "-i", "10", "-j", "5", "-T", str(tmp_path / "tmp")]  # fmt: skip
@@ -889,13 +869,12 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, tmp_path, monke
 
 
 def test_pipeline_from_the_columns_of_a_metacool(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli):
-    """From a map of the contigs whose contigs table holds what metaTOR
-    measures with a depth file and an enzyme (see tests.maps.contig_map), a
-    run without --depth and --enzyme reads the restriction sites and the
-    coverage of the contigs from its Restriction_site and Shotgun_coverage
-    columns (theoritical_hit needs both): the same network, tables and
-    clusters as with them, byte for byte, and the map of its clusters
-    stores them back."""
+    """From a map of the contigs whose contigs table holds what metaTOR measures
+    with a depth file and an enzyme (see tests.maps.contig_map), a run without
+    --depth and --enzyme reads the restriction sites and the coverage of the
+    contigs from its Restriction_site and Shotgun_coverage columns
+    (theoritical_hit needs both): the same network, tables and clusters as with
+    them, byte for byte, and the map of its clusters stores them back."""
     monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
     common = ["-a", str(metagenome_inputs["assembly"]), "-m", "theoritical_hit", "-s", "50000", "-i", "10", "-j", "5",
               "-T", str(tmp_path / "tmp")]  # fmt: skip
@@ -928,11 +907,11 @@ def test_pipeline_from_the_columns_of_a_metacool(metagenome, metagenome_inputs, 
 
 
 def test_pipeline_from_a_filtered_metacool(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli):
-    """From a map that lacks contigs of the assembly (made with a contig
-    filter, which leaves out the pairs with a read on the contigs it drops),
-    the pipeline completes and makes the clusters of a run from the map of
-    the pairs that the map holds, every contig in it: the contigs it lacks
-    have no hits, and are in no cluster and in no table of the run (see
+    """From a map that lacks contigs of the assembly (made with a contig filter,
+    which leaves out the pairs with a read on the contigs it drops), the
+    pipeline completes and makes the clusters of a run from the map of the
+    pairs that the map holds, every contig in it: the contigs it lacks have no
+    hits, and are in no cluster and in no table of the run (see
     _assert_same_clusters)."""
     monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
     truth = metagenome.truth
@@ -997,10 +976,10 @@ def test_pipeline_from_a_filtered_metacool(metagenome, metagenome_inputs, tmp_pa
 
 
 def _contig_map(metagenome_inputs, path, pairs=None):
-    """The map of the contigs of the mock community at path, in no cluster
-    yet (see tests.maps.contig_map): one bin per contig, what metaTOR
-    measures on the assembly (with a depth file and an enzyme) and the
-    contact statistics of the pairs (those of the community, or pairs)."""
+    """The map of the contigs of the mock community at path, in no cluster yet
+    (see tests.maps.contig_map): one bin per contig, what metaTOR measures on
+    the assembly (with a depth file and an enzyme) and the contact statistics
+    of the pairs (those of the community, or pairs)."""
     contig_data = mtn.create_contig_data(str(metagenome_inputs["assembly"]), str(metagenome_inputs["depth"]), "DpnII")
     return contig_map(pairs or metagenome_inputs["pairs"], contig_data, path, assembly_name="synthetic")
 
@@ -1020,14 +999,13 @@ def _annotated(objects):
 
 def _without_run(objects):
     """The objects of a map (see tests.hdf5.walk) but what differs between two
-    runs of the same clusters: the date the map was written
-    (creation-date, an attribute of the file), the command line and the
-    parameters of the run that wrote it and of the runs that stored its
-    network and its partition (the command and parameters of the metator
-    key of its metadata, a JSON text, and of its entries network and
-    partition), and the history of its metacooler annotate edits, which
-    records each store of the network (see _annotated): the steps store it
-    twice, with network and validation, pipeline once."""
+    runs of the same clusters: the date the map was written (creation-date, an
+    attribute of the file), the command line and the parameters of the run that
+    wrote it and of the runs that stored its network and its partition (the
+    command and parameters of the metator key of its metadata, a JSON text, and
+    of its entries network and partition), and the history of its metacooler
+    annotate edits, which records each store of the network (see _annotated):
+    the steps store it twice, with network and validation, pipeline once."""
     kind, members, attributes = objects["/"]
     kept = []
     for key, dtype, value in attributes:
@@ -1051,10 +1029,10 @@ def _metator_metadata(objects):
 
 def test_a_cluster_partitioned_again_but_kept_whole(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli):
     """A contaminated cluster that the recursive step partitions again, into
-    clusters too incomplete to replace it, is kept whole: its contigs keep
-    the IDs of their recursive clusters in contig_data_final.txt, and are in
-    it, in binning.txt (which left them out) and in the map of the clusters
-    as in the round final, its FASTA file listing them."""
+    clusters too incomplete to replace it, is kept whole: its contigs keep the
+    IDs of their recursive clusters in contig_data_final.txt, and are in it, in
+    binning.txt (which left them out) and in the map of the clusters as in the
+    round final, its FASTA file listing them."""
     monkeypatch.setattr(
         "metator.validation.micomplete_quality", synthetic.first_cluster_contaminated(metagenome, kept_whole=True)
     )
@@ -1078,40 +1056,18 @@ def test_a_cluster_partitioned_again_but_kept_whole(metagenome, metagenome_input
 
 
 def test_steps_on_a_map_give_the_map_of_pipeline(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli):
-    """The steps run one by one on a map (network MAP, partition MAP,
-    validation MAP) give the map that pipeline MAP gives, from copies of the
-    same map of the contigs, and the same tables: every group, soft link,
-    dataset (its dtype, shape, chunks, compression and values) and attribute
-    of the HDF5 file, the network that both store included (the columns of
-    the contigs table and the weights of the bins), but the date it was
-    written (creation-date), the command line and parameters of the runs
-    that wrote it (the command and parameters of the metator key of its
-    metadata and of its entries network and partition: pipeline's,
-    network's, partition's and validation's), and the history of its
-    metacooler annotate edits (see _without_run), in which the steps store
-    the network twice, network MAP then validation MAP, which stores it
-    again after its regroup, and pipeline once. Each run is made in a
-    directory of its own, with the same relative paths, which the history of
-    the map records (the input map of metacooler reassign, the tables of
-    metacooler annotate). The rounds are
-    core, overlapping, recursive_1 (a cluster that the stub miComplete finds
-    contaminated, partitioned again) and final.
-
-    Run in one process after one random.seed(0), as igraph draws from
-    Python's random module: the steps draw the stream that pipeline draws
-    (the temporary directory of each command drew from it too, so a run
-    step by step, with three, drew another one than pipeline, with one).
-
-    Each step leaves a valid map: network MAP stores the network of the
-    contigs (the GC_content, Hit, Shotgun_coverage and Restriction_site
-    columns of the contigs table, the weights metator_empirical_hit of the
-    bins and the entry network of the metadata), and changes nothing else;
-    partition MAP stores the partition, every core and overlapping cluster
-    with its contigs, in its clustering rounds (the rounds core and
-    overlapping, without miComplete's columns, which the validation adds to
-    the overlapping clusters that it checks), and the entry partition of
-    the metadata, and changes nothing else; validation MAP writes the map
-    of the clusters, as pipeline MAP does at its end."""
+    """The steps run one by one on a map (network MAP, partition MAP, validation
+    MAP) give the map that pipeline MAP gives, from copies of the same map of
+    the contigs, and the same tables: every group, soft link, dataset (its
+    dtype, shape, chunks, compression and values) and attribute of the HDF5
+    file, the network that both store included (the columns of the contigs
+    table and the weights of the bins), but the date it was written
+    (creation-date), the command line and parameters of the runs that wrote it
+    (the command and parameters of the metator key of its metadata and of its
+    entries network and partition: pipeline's, network's, partition's and
+    validation's), and the history of its metacooler annotate edits (see
+    _without_run), in which the steps store the network twice, network MAP then
+    validation MAP, which stores it again after its regroup, and pipeline once."""
     monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.first_cluster_contaminated(metagenome))
     assembly = str(metagenome_inputs["assembly"])
     contig_map = _contig_map(metagenome_inputs, tmp_path / "contigs.metacool")

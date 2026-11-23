@@ -23,30 +23,15 @@ SYNTHETIC_SEED = int(os.environ.get("METATOR_TEST_SEED", "20251114"))
 
 @pytest.fixture(autouse=True)
 def _run_in_tmp_path(tmp_path, monkeypatch):
-    """Run each test from its own temporary directory.
-
-    Tests read their inputs as "tests_data/...": a symlink keeps those paths
-    valid, while everything a test or a command writes to the working
-    directory (logs, temporary directories, outputs) stays out of the
-    repository.
-    """
+    """Run each test from its own temporary directory."""
     os.symlink(TESTS_DATA, tmp_path / "tests_data")
     monkeypatch.chdir(tmp_path)
 
 
 @pytest.fixture
 def private_link(tmp_path):
-    """Make links to files of tests_data, each test its own, and check at
-    teardown that no file was written to through them.
-
-    pyfastx, which metaTOR read the assemblies with, wrote its index (.fxi)
-    next to the path it was given, and the commands removed it at the end,
-    so two test sessions reading one assembly of tests_data removed it from
-    under each other; no command writes beside an assembly now, which the
-    check at teardown keeps so. The links are
-    in a directory of their own: in tmp_path itself, a link would take the
-    name of a file the test writes there (a copy named assembly.fa), which
-    would then be written through the link, into tests_data."""
+    """Make links to files of tests_data, each test its own, and check at teardown
+    that no file was written to through them."""
     directory = tmp_path / "private_links"
     targets = {}
 
@@ -68,23 +53,14 @@ def private_link(tmp_path):
 
 @pytest.fixture(autouse=True)
 def _close_figures():
-    """Close the figures a test leaves open.
-
-    Some plotting functions draw on pyplot's current figure (and some never
-    close theirs): without this, a figure left open by one test ends up in
-    the plots of the next one.
-    """
+    """Close the figures a test leaves open."""
     yield
     plt.close("all")
 
 
 @pytest.fixture
 def saved_figures(monkeypatch):
-    """The figures saved during a test, by file name.
-
-    The plotting functions close the figures they save: this keeps them,
-    so that a test can check what they show.
-    """
+    """The figures saved during a test, by file name."""
     from matplotlib.figure import Figure
 
     saved = {}
@@ -111,13 +87,7 @@ class _PlainResult:
 
 @pytest.fixture
 def run_cli(monkeypatch):
-    """Run a metator command line in-process, as typed after ``metator``.
-
-    ``sys.argv`` is set as the shell would set it (the log files record the
-    command line from it). An exception raised by the command propagates;
-    a usage error (exit code 2) is returned as the click result, whose exit
-    code is checked against ``exit_code``.
-    """
+    """Run a metator command line in-process, as typed after ``metator``."""
     import sys
 
     from click.testing import CliRunner
@@ -136,8 +106,8 @@ def run_cli(monkeypatch):
 
 
 class _Read(list):
-    """The maps that a run read the contacts of, in order, the contig data of
-    the run, and what its partition was given (see network_from_a_map)."""
+    """The maps that a run read the contacts of, in order, the contig data of the
+    run, and what its partition was given (see network_from_a_map)."""
 
     table = None
     partitioned = None
@@ -145,12 +115,8 @@ class _Read(list):
 
 @pytest.fixture
 def network_from_a_map(monkeypatch):
-    """Have a pipeline run stop once its network is built from its .metacool
-    map: the partition raises RuntimeError("network built"). Returns the
-    maps whose contacts were read (metator.network.contig_contacts), in
-    order, with the contig data of the run (the last that
-    metator.network.contig_data_table made) and the network that the
-    partition was given (their attribute partitioned)."""
+    """Have a pipeline run stop once its network is built from its .metacool map:
+    the partition raises RuntimeError("network built")."""
     import metator.network as mtn
 
     read = _Read()
@@ -183,12 +149,7 @@ def metagenome():
 
 @pytest.fixture(scope="session")
 def metagenome_files(metagenome, tmp_path_factory):
-    """Assembly, depth.txt, pairs and truth of the mock community.
-
-    Shared by the whole session: tests must not write next to these files
-    (use ``metagenome_inputs`` for commands that do), which is checked at
-    the end of the session.
-    """
+    """Assembly, depth.txt, pairs and truth of the mock community."""
     directory = tmp_path_factory.mktemp("metagenome")
     files = metagenome.write_all(directory)
     yield files
@@ -200,14 +161,13 @@ def metagenome_files(metagenome, tmp_path_factory):
 def metagenome_network(metagenome_files, tmp_path_factory):
     """The network (empirical_hit) of the mock community, and the data of its
     contigs, as metator network stores them in the map of its pairs (see
-    tests.maps.contig_map and metator.metacool.write_map): the map
-    (map, which a test copies before it writes it), the network and the
-    contig data as the steps read them from the map (network_table, see
+    tests.maps.contig_map and metator.metacool.write_map): the map (map, which
+    a test copies before it writes it), the network and the contig data as the
+    steps read them from the map (network_table, see
     metator.network.map_network, and contig_table, see
-    metator.network.map_contig_table), and both written as tables
-    (network.txt and contig_data_network.txt: network and contig_data), for
-    the tests of the steps that read tables. The IDs are the positions of
-    the contigs in the map."""
+    metator.network.map_contig_table), and both written as tables (network.txt
+    and contig_data_network.txt: network and contig_data), for the tests of the
+    steps that read tables."""
     import metacooler
 
     import metator.metacool as mtmc
