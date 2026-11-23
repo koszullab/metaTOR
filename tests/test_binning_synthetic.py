@@ -229,10 +229,11 @@ def test_validation_splits_a_merged_bin(
     )
     out = tmp_path / "out"
     # Outputs of an earlier run, replaced thanks to --force: its final
-    # clusters, and its plots (those of 1.x, with its heatmap).
-    for stale, name in [("final_clusters", "metator_00009_00000.fa"), ("plot", "network_heatmap.png")]:
+    # clusters, and its plots, but a file of the user's in plot/, left there.
+    for stale, name in [("final_clusters", "metator_00009_00000.fa"), ("plot", "bins_distribution.png")]:
         (out / stale).mkdir(parents=True)
         (out / stale / name).write_text(">old\nACGT\n")
+    (out / "plot" / "notes.txt").write_text("the user's\n")
     args = [
         str(metacool),
         "-a", str(metagenome_inputs["assembly"]),
@@ -267,10 +268,13 @@ def test_validation_splits_a_merged_bin(
     binning = pd.read_csv(_kept(out) / "binning.txt", sep="\t", header=None, names=["Name", "Bin"])
     assert set(binning.Bin) == set(summary.index)
     assert sorted(binning.Name) == sorted(final.Name[final.Final_cluster != "ND"])
-    # The plots of the final clusters, in plot/, made anew: a dot of
-    # completeness per cluster, and a wedge per quality class and for the
-    # contigs in no cluster.
-    assert sorted(path.name for path in (out / "plot").iterdir()) == ["bins_distribution.png", "bins_size_distribution.png"]
+    # The plots of the final clusters, in plot/, the user's file left there: a
+    # dot of completeness per cluster, and a wedge per quality class and for
+    # the contigs in no cluster.
+    plots = ["bins_distribution.png", "bins_size_distribution.png"]
+    assert sorted(path.name for path in (out / "plot").iterdir()) == [*plots, "notes.txt"]
+    assert all((out / "plot" / name).read_bytes().startswith(b"\x89PNG") for name in plots)
+    assert (out / "plot" / "notes.txt").read_text() == "the user's\n"
     completion, _ = saved_figures["bins_distribution.png"].axes[0].collections
     dots = completion.get_offsets()[:, 1]
     assert len(dots) == len(summary) and list(dots) == sorted(dots, reverse=True)
@@ -542,6 +546,30 @@ def test_the_plots_count_the_clusters_as_the_log(
     assert f"MQ MAGs: 1\tTotal Size: {length}" in log.read_text()
     completion, _ = saved_figures["bins_distribution.png"].axes[0].collections
     assert completion.get_offsets()[-1, 1] == pytest.approx(89.96)
+
+
+def test_a_run_goes_on_when_a_plot_cannot_be_drawn(
+    metagenome, metagenome_inputs, metagenome_network, tmp_path, monkeypatch, run_cli
+):
+    """A plot that cannot be drawn is a warning in the log, with its error and its
+    traceback: the run draws the other one, writes the map of its clusters,
+    and exits 0."""
+    monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
+
+    def fails(*args):
+        raise ValueError("no pie")
+
+    monkeypatch.setattr("metator.figures.figures_bins_size_distribution", fails)
+    metacool = _map_with_merged_partition(metagenome, metagenome_network, tmp_path / "network.metacool", merged=())
+    out = tmp_path / "out"
+    run_cli("validation", metacool, "-a", metagenome_inputs["assembly"], "-o", out, "-T", tmp_path / "tmp", "-s", "50000")
+    assert [path.name for path in (out / "plot").iterdir()] == ["bins_distribution.png"]
+    metacooler.validate(str(out / metacool.name))
+    (log,) = out.glob("metator_validation_*.log")
+    logged = log.read_text()
+    assert f"WARNING :: {out / 'plot' / 'bins_size_distribution.png'} is not drawn: ValueError: no pie" in logged
+    assert "Traceback (most recent call last)" in logged
+    assert "Final contact map written after " in logged and logged.rstrip().endswith(str(out / metacool.name))
 
 
 def test_validation_without_bin_above_the_size_threshold(metagenome_inputs, metagenome_network, tmp_path, monkeypatch, run_cli):

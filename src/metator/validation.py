@@ -700,7 +700,7 @@ def recursive_decontamination(
     metacool,
     written,
     temp_dir=None,
-    plot_dir=None,
+    plot_outdir=None,
 ):
     """Function to validate bins do the recursive decontamination using Louvain or
     Leiden algorithm
@@ -756,10 +756,10 @@ def recursive_decontamination(
     temp_dir : str, optional
         Where metacooler copies a compressed assembly, plain: the temporary
         directory of the run.
-    plot_dir : str, optional
-        Where to draw the plots of the final clusters (see
-        metator.figures.plot_figures): ``plot/`` in the output directory of the
-        run. None draws none.
+    plot_outdir : str, optional
+        The output directory of the run, where the plots of the final clusters
+        are drawn, in ``plot/`` (see metator.figures.plot_figures). None draws
+        none.
 
     Returns
     -------
@@ -988,8 +988,8 @@ def recursive_decontamination(
 
     # The plots of the final clusters, from the numbers of miComplete, which
     # the summary rounds: their quality classes are those of the log.
-    if plot_dir is not None:
-        mtf.plot_figures(plot_dir, contigs_data, bin_summary, size)
+    if plot_outdir is not None:
+        mtf.plot_figures(plot_outdir, contigs_data, bin_summary, size)
     return contigs_data, summary
 
 

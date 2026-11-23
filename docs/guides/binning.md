@@ -79,8 +79,9 @@ parts are left out of the final clusters (`ND`).
 ## Outputs
 
 `validation` and `pipeline` write the FASTA files of the final clusters and
-their plots in the output directory, and store the clusters in the map of the clusters,
-which they write there too (see [The contact map of the clusters](metacool.md)). The other files
+their plots in the output directory, and store the clusters in the map of
+the clusters, which they write there too (see
+[The contact map of the clusters](metacool.md)). The other files
 below are written in the temporary directory of the run (`-T`, in a
 directory of its own, which the log names), which `-N` keeps; `metator dump`
 writes the tables from the map (see [`dump`](../cli.md#dump)). An earlier
@@ -114,11 +115,13 @@ plots of them in `plot/`, in the output directory:
 | Plot | Shows |
 |---|---|
 | `bins_distribution.png` | The completeness (red) and the contamination (black) of each final cluster, in percent, the clusters by decreasing completeness, with dashed lines at the thresholds of the quality classes. The contamination, the weighted redundancy − 1, is drawn from 0 to 105%: a cluster in which miComplete finds no marker gene at 0, and a contamination of more than 105% at 105% |
-| `bins_size_distribution.png` | The share of the contigs of the run in each quality class, and in no cluster: the number and the size of the clusters of each class, the total size of the contigs (the whole assembly, for a map of all its contigs) and the share of the MAGs (HQ, MQ and LQ) in it |
+| `bins_size_distribution.png` | The share of the contigs of the run in each quality class, and in no cluster: the number and the size of the clusters of each class, the total size of the contigs (those of the map: the whole assembly, for a map of all its contigs) and the share of the MAGs (HQ, MQ and LQ) in it |
 
 The plots count the clusters as the log does, from miComplete's numbers,
 which `cluster_summary.txt` gives at two decimals. A plot that cannot be
-drawn is a warning: the run goes on, and writes the map of its clusters.
+drawn is a warning: the run goes on, and writes the map of its clusters. A
+run replaces the plots of an earlier one with `-F` only, and leaves the
+other files of `plot/` as they are.
 `metacooler show` draws the contacts between the final clusters from the
 contact map of the run (see [Other tools](../other-tools.md)):
 

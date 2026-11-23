@@ -95,7 +95,8 @@ map of the clusters (see [`dump`](../cli.md#dump)), in the order of that map,
 without the `ID`. [File formats](../formats.md) describes each table.
 
 A run refuses to overwrite the final clusters and the plots of an earlier one
-unless given `--force` (`-F`). The other results of an earlier run in the output directory
+unless given `--force` (`-F`), which leaves the other files of `plot/` as
+they are. The other results of an earlier run in the output directory
 (the tables and `recursive_clusters/` of a development build of 2.0, the
 outputs of 1.x) are refused, with or without `-F`, and never removed: move
 them away, or give the run another `--outdir`.
@@ -112,7 +113,7 @@ them away, or give the run another `--outdir`.
 | `--size` | 500000 | The size, in base pairs, an overlapping cluster must reach to be checked with miComplete, and a recursive cluster must exceed |
 | `--prefix` | none | Names the clusters `<prefix>_metator_…` |
 | `--threads` | 1 | Threads for the partition and the validation |
-| `--tmpdir` | `./tmp` | Where the temporary files go; deleted at the end, unless `--no-clean-up`. It holds the tables of the run, the FASTA files of the clusters that miComplete checks (at most the size of the assembly) and, from a compressed assembly, its decompressed copy: give it room for both. Not in `final_clusters/` or `plot/` of `--outdir`, which the run makes anew, nor in a directory of the results of an earlier run there (`recursive_clusters/`, `final_bin/`...), which the run refuses |
+| `--tmpdir` | `./tmp` | Where the temporary files go; deleted at the end, unless `--no-clean-up`. It holds the tables of the run, the FASTA files of the clusters that miComplete checks (at most the size of the assembly) and, from a compressed assembly, its decompressed copy: give it room for both. Not in `final_clusters/` of `--outdir`, which the run makes anew, nor in a directory of the results of an earlier run there (`recursive_clusters/`, `final_bin/`...), which the run refuses |
 
 The validation is the step that needs the most memory and time: miComplete
 runs Prodigal and HMMER (pyrodigal and pyhmmer) on every cluster.

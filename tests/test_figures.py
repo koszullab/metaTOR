@@ -53,14 +53,32 @@ def _table(clusters):
 
 
 def test_plot_figures(tmp_path, saved_figures):
-    """Both plots, in the plot directory, made if missing: the total size is that
-    of the contigs of the run."""
-    plot_dir = tmp_path / "out" / "plot"
-    mtf.plot_figures(str(plot_dir), CONTIGS, _summary(CLUSTERS), 500_000)
-    assert sorted(path.name for path in plot_dir.iterdir()) == ["bins_distribution.png", "bins_size_distribution.png"]
-    assert all(path.stat().st_size > 0 for path in plot_dir.iterdir())
+    """Both plots, in plot/ of the output directory, made if missing (as 1.4.0
+    drew them, plot_figures takes the output directory): the total size is
+    that of the contigs of the run."""
+    out = tmp_path / "out"
+    mtf.plot_figures(str(out), CONTIGS, _summary(CLUSTERS), 500_000)
+    plots = [out / "plot" / "bins_distribution.png", out / "plot" / "bins_size_distribution.png"]
+    assert sorted(out.rglob("*")) == [out / "plot", *plots] and mtf.plot_paths(str(out)) == [str(path) for path in plots]
+    assert all(path.stat().st_size > 0 for path in plots)
     texts = [text.get_text() for text in saved_figures["bins_size_distribution.png"].axes[0].texts]
-    assert "Total size of the assembly: 15.0Mb" in texts
+    assert "Total size of the contigs: 15.0Mb" in texts
+
+
+def test_plot_figures_replaces_its_plots_only(tmp_path):
+    """The plots replace files of their names in plot/, a symbolic link there
+    too, not its target, and the other files there are left as they are."""
+    plot_dir = tmp_path / "plot"
+    plot_dir.mkdir()
+    (plot_dir / "bins_distribution.png").write_text("an earlier plot\n")
+    (tmp_path / "kept.png").write_text("the target of a link\n")
+    (plot_dir / "bins_size_distribution.png").symlink_to(tmp_path / "kept.png")
+    (plot_dir / "notes.txt").write_text("the user's\n")
+    mtf.plot_figures(str(tmp_path), CONTIGS, _summary(CLUSTERS), 500_000)
+    for name in ["bins_distribution.png", "bins_size_distribution.png"]:
+        assert not (plot_dir / name).is_symlink() and (plot_dir / name).read_bytes().startswith(b"\x89PNG")
+    assert (tmp_path / "kept.png").read_text() == "the target of a link\n"
+    assert (plot_dir / "notes.txt").read_text() == "the user's\n"
 
 
 def test_bins_distribution(tmp_path, saved_figures):
@@ -137,7 +155,7 @@ def test_bins_size_distribution(tmp_path, saved_figures):
     ]
     # The pie draws an empty label per wedge.
     assert [text.get_text() for text in ax.texts if text.get_text()] == [
-        "Total size of the assembly: 15.0Mb",
+        "Total size of the contigs: 15.0Mb",
         "Percentage of MAGs: 50.0%",
         "Clusters threshold: 500.0kb",
     ]
@@ -152,7 +170,7 @@ def test_the_quality_classes_of_the_pie_are_those_of_the_log(tmp_path, saved_fig
     summary = _summary({"almost": (0.8996, 1.0, 2_000_000), "complete": (0.97, 1.01, 3_000_000)})
     with caplog.at_level("INFO", logger="metator_logger"):
         mtv.give_results_info(summary)
-    mtf.plot_figures(str(tmp_path / "plot"), CONTIGS, summary, 500_000)
+    mtf.plot_figures(str(tmp_path), CONTIGS, summary, 500_000)
     legend = [text.get_text() for text in saved_figures["bins_size_distribution.png"].axes[0].get_legend().get_texts()]
     assert legend[:2] == ["HQ MAGs: 1 - 3.0Mb", "MQ MAGs: 1 - 2.0Mb"]
     assert "HQ MAGs: 1\tTotal Size: 3000000" in caplog.text and "MQ MAGs: 1\tTotal Size: 2000000" in caplog.text
@@ -161,7 +179,7 @@ def test_the_quality_classes_of_the_pie_are_those_of_the_log(tmp_path, saved_fig
 def test_the_plots_without_a_cluster(tmp_path, saved_figures):
     """Without a final cluster, the dot plot has no dot, and the pie chart is that
     of the contigs in no cluster."""
-    mtf.plot_figures(str(tmp_path / "plot"), CONTIGS, {}, 500_000)
+    mtf.plot_figures(str(tmp_path), CONTIGS, {}, 500_000)
     completion, contamination = saved_figures["bins_distribution.png"].axes[0].collections
     assert len(completion.get_offsets()) == len(contamination.get_offsets()) == 0
     ax = saved_figures["bins_size_distribution.png"].axes[0]
@@ -172,15 +190,16 @@ def test_the_plots_without_a_cluster(tmp_path, saved_figures):
 @pytest.mark.parametrize("broken", ["figures_bins_distribution", "figures_bins_size_distribution"])
 def test_a_plot_that_cannot_be_drawn_is_a_warning(broken, tmp_path, monkeypatch, caplog):
     """The plots are figures: one that cannot be drawn is a warning, with the type,
-    message and traceback of the error, and the other one is drawn. A run goes
-    on to write the map of its clusters."""
+    message and traceback of the error, and the other one is drawn (a run goes
+    on to write the map of its clusters: see
+    tests/test_binning_synthetic.py::test_a_run_goes_on_when_a_plot_cannot_be_drawn)."""
 
     def fails(*args):
         raise ValueError("no plot")
 
     monkeypatch.setattr(mtf, broken, fails)
     plot_dir = tmp_path / "plot"
-    mtf.plot_figures(str(plot_dir), CONTIGS, _summary(CLUSTERS), 500_000)
+    mtf.plot_figures(str(tmp_path), CONTIGS, _summary(CLUSTERS), 500_000)
     name = {"figures_bins_distribution": "bins_distribution.png", "figures_bins_size_distribution": "bins_size_distribution.png"}
     (warning,) = [record for record in caplog.records if record.levelname == "WARNING"]
     assert warning.getMessage() == f"{plot_dir / name[broken]} is not drawn: ValueError: no plot"
@@ -188,14 +207,26 @@ def test_a_plot_that_cannot_be_drawn_is_a_warning(broken, tmp_path, monkeypatch,
     assert [path.name for path in plot_dir.iterdir()] == [other for other in name.values() if other != name[broken]]
 
 
+def test_a_summary_that_the_plots_cannot_read_is_a_warning(tmp_path, caplog):
+    """A summary of the clusters without a column that the plots read (here, the
+    Length of a cluster) is a warning for each plot, as any plot that cannot
+    be drawn: plot_figures raises nothing, and draws none."""
+    summary = _summary(CLUSTERS)
+    del summary["metator_00001_00000"]["Length"]
+    mtf.plot_figures(str(tmp_path), CONTIGS, summary, 500_000)
+    warnings = [record.getMessage() for record in caplog.records if record.levelname == "WARNING"]
+    assert warnings == [f"{path} is not drawn: KeyError: 'Length'" for path in mtf.plot_paths(str(tmp_path))]
+    assert not list((tmp_path / "plot").iterdir())
+
+
 def test_a_plot_directory_that_cannot_be_made_is_a_warning(tmp_path, caplog):
-    """A plot directory that cannot be made (a file there) is a warning, and no
-    plot is drawn."""
+    """A plot directory that cannot be made (a file there) is a warning, which gives
+    the reason of the system, and no plot is drawn."""
     plot_dir = tmp_path / "plot"
     plot_dir.write_text("a file")
-    mtf.plot_figures(str(plot_dir), CONTIGS, _summary(CLUSTERS), 500_000)
+    mtf.plot_figures(str(tmp_path), CONTIGS, _summary(CLUSTERS), 500_000)
     (warning,) = [record for record in caplog.records if record.levelname == "WARNING"]
-    assert warning.getMessage().startswith(f"The plots of the clusters are not drawn: {plot_dir} cannot be made (")
+    assert warning.getMessage() == f"The plots of the clusters are not drawn: {plot_dir} cannot be made (File exists)."
     assert plot_dir.read_text() == "a file"
 
 
@@ -209,7 +240,7 @@ def test_the_plots_open_no_window(tmp_path, monkeypatch, caplog):
 
     monkeypatch.setattr(plt, "figure", figure)
     plot_dir = tmp_path / "plot"
-    mtf.plot_figures(str(plot_dir), CONTIGS, _summary(CLUSTERS), 500_000)
+    mtf.plot_figures(str(tmp_path), CONTIGS, _summary(CLUSTERS), 500_000)
     assert not [record for record in caplog.records if record.levelname == "WARNING"]
     assert sorted(path.name for path in plot_dir.iterdir()) == ["bins_distribution.png", "bins_size_distribution.png"]
     assert plt.get_fignums() == []

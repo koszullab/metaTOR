@@ -26,6 +26,11 @@ from matplotlib.figure import Figure
 
 from metator.log import logger
 
+# The directory of the plots, in the output directory of a run, and the plots
+# that a run draws there (see plot_paths).
+PLOT_DIR = "plot"
+PLOTS = ("bins_distribution.png", "bins_size_distribution.png")
+
 # The quality classes of the clusters (see metator.validation.bin_quality), in
 # the order of the plots, with their colour.
 MAG_QUALITY_COLOURS = {
@@ -155,7 +160,7 @@ def figures_bins_size_distribution(bin_summary, total_size, threshold, out_file)
     ]
     labels.append(f"Other contigs - {round(unclustered / 1_000_000, 2)}Mb")
     ax.legend(labels, bbox_to_anchor=(0.9, 0.0, 1.0, 1.0), loc="upper right")
-    ax.text(-1.5, -1.2, f"Total size of the assembly: {round(total_size / 1_000_000, 2)}Mb")
+    ax.text(-1.5, -1.2, f"Total size of the contigs: {round(total_size / 1_000_000, 2)}Mb")
     ax.text(-1.5, -1.35, f"Percentage of MAGs: {round(mags / total_size * 100, 2)}%")
     ax.text(-1.5, -1.5, f"Clusters threshold: {round(threshold / 1000, 2)}kb")
     ax.set_title("Size proportion of clusters depending on their quality")
@@ -163,20 +168,28 @@ def figures_bins_size_distribution(bin_summary, total_size, threshold, out_file)
     return bin_summary
 
 
-def plot_figures(plot_dir, contigs_data, bin_summary, threshold):
-    """Draw the plots of the final clusters of a validation in plot_dir, made if
-    missing: bins_distribution.png (see figures_bins_distribution) and
-    bins_size_distribution.png (see figures_bins_size_distribution).
+def plot_paths(out_dir):
+    """The plots that a run draws in its output directory, out_dir, in the order
+    of PLOTS: plot/bins_distribution.png and plot/bins_size_distribution.png."""
+    return [join(out_dir, PLOT_DIR, name) for name in PLOTS]
+
+
+def plot_figures(out_dir, contigs_data, bin_summary, threshold):
+    """Draw the plots of the final clusters of a validation in plot/ of its output
+    directory, out_dir, made if missing (see plot_paths):
+    bins_distribution.png (see figures_bins_distribution) and
+    bins_size_distribution.png (see figures_bins_size_distribution). They
+    replace files of their names; the other files of plot/ are left as they
+    are.
 
     They are figures: one that cannot be drawn is a warning, with the type,
-    message and traceback of the error, and the others are drawn; a run goes
+    message and traceback of the error, and the other one is drawn; a run goes
     on to write the map of its clusters.
 
     Parameters
     ----------
-    plot_dir : str
-        The directory of the plots: ``plot/`` in the output directory of the
-        run.
+    out_dir : str
+        The output directory of the run.
     contigs_data : pandas.DataFrame
         The contig data of the validation: the Size of each contig of the run,
         those of its map.
@@ -186,26 +199,36 @@ def plot_figures(plot_dir, contigs_data, bin_summary, threshold):
     threshold : int
         The size threshold of the clusters (--size), in bp.
     """
-    table = pd.DataFrame(
+    plot_dir = join(out_dir, PLOT_DIR)
+    try:
+        os.makedirs(plot_dir, exist_ok=True)
+    except OSError as error:
+        logger.warning(f"The plots of the clusters are not drawn: {plot_dir} cannot be made ({error.strerror or error}).")
+        return
+    dots, pie = plot_paths(out_dir)
+    _drawn(dots, lambda: figures_bins_distribution(_plotted(bin_summary), dots))
+    _drawn(pie, lambda: figures_bins_size_distribution(_plotted(bin_summary), int(contigs_data["Size"].sum()), threshold, pie))
+
+
+def _plotted(bin_summary):
+    """The final clusters as the plots read them (bin_summary, see plot_figures):
+    a row each, with the columns of PLOTTED_COLUMNS."""
+    return pd.DataFrame(
         [[info[column] for column in PLOTTED_COLUMNS] for info in bin_summary.values()],
         index=list(bin_summary),
         columns=PLOTTED_COLUMNS,
     )
-    total_size = int(contigs_data["Size"].sum())
-    plots = {
-        "bins_distribution.png": lambda path: figures_bins_distribution(table, path),
-        "bins_size_distribution.png": lambda path: figures_bins_size_distribution(table, total_size, threshold, path),
-    }
+
+
+def _drawn(path, draw):
+    """Draw the plot at path, with draw: a symbolic link there is replaced, not
+    its target. One that cannot be drawn, whatever the error, is a warning,
+    with the type, message and traceback of the error."""
     try:
-        os.makedirs(plot_dir, exist_ok=True)
-    except OSError as error:
-        logger.warning(f"The plots of the clusters are not drawn: {plot_dir} cannot be made ({error}).")
-        return
-    for name, draw in plots.items():
-        path = join(plot_dir, name)
-        try:
-            draw(path)
-        except Exception as error:
-            logger.warning(f"{path} is not drawn: {type(error).__name__}: {error}", exc_info=True)
-        else:
-            logger.debug(f"{path} is drawn.")
+        if os.path.islink(path):
+            os.remove(path)
+        draw()
+    except Exception as error:
+        logger.warning(f"{path} is not drawn: {type(error).__name__}: {error}", exc_info=True)
+    else:
+        logger.debug(f"{path} is drawn.")

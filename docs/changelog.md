@@ -71,12 +71,14 @@ each removed command.
     clusters of a development build of 2.0, and the outputs of 1.x (its
     tables and networks, `bin_summary.txt`, `network.txt`, the clustering
     matrices, `recursive_bin/`, `final_bin/`, `final_bin_unscaffold/`,
-    `overlapping_bin/`, `scaffold_bin/`). Left there, they would pass
+    `overlapping_bin/`, `scaffold_bin/`, and the plots of `plot/` that 2.0
+    no longer draws). Left there, they would pass
     for the results of the run; a file of one of these names, a user's own
     too, is refused and left as it is. `-F` replaces only what a run writes
-    itself: `final_clusters/`, `plot/` and the map of the output directory.
-    An earlier run's `plot/`, 1.x's too, is refused without `-F`, where
-    1.4.0 wrote over it.
+    itself: `final_clusters/`, the plots of the clusters in `plot/` (whose
+    other files it leaves as they are) and the map of the output directory.
+    The plots of an earlier run are refused without `-F`, where 1.4.0 wrote
+    over them.
   - `pipeline MAP` runs the three steps on the map, and writes the map of
     the clusters once, at its end: the steps run one by one in one output
     directory give the map of `pipeline`. It goes to the output directory,
@@ -174,10 +176,9 @@ each removed command.
   of the clusters (`bin_quality` is now `metator.validation.bin_quality`):
   `figures_bins_distribution` and `figures_bins_size_distribution`, which
   take any table of clusters (the latter returns a copy of it, with its
-  `MAG_quality`), and `plot_figures(plot_dir, contigs_data, bin_summary,
-  threshold)`, which draws them in `plot_dir`, takes the summary of the
-  clusters as the validation holds it, and no map; the readers and writers
-  of the files 2.0 no longer reads
+  `MAG_quality`), and `plot_figures`, which draws them in `plot/` of its
+  `out_dir`, as in 1.4.0, but takes no map (`metacool`); the readers and
+  writers of the files 2.0 no longer reads
   or writes (`metator.io.sort_pairs`, `write_contigs`, `import_anvio_binning`,
   `read_contig_data`...; `metator.network.normalize_pair`, `write_edge`,
   `alignment_to_contacts`...; `metator.partition.read_network`,
@@ -190,8 +191,8 @@ each removed command.
   `metator.partition.partition` returns the partition, a
   `metator.clusters.Partition`, and writes nothing;
   `metator.validation.recursive_decontamination` takes the partition and the
-  map, and draws the plots in `plot_dir`, when given; `metator.mge.mge_binning`
-  takes the map.
+  map, and draws the plots in `plot/` of `plot_outdir`, when given;
+  `metator.mge.mge_binning` takes the map.
 
 ### Added
 - `metator dump MAP -o DIR` writes the tables of a run from the map of its
@@ -327,7 +328,9 @@ each removed command.
   a cluster in which miComplete finds no marker gene, of a redundancy of 0,
   was drawn at −100%. Its axis reads `Completeness/Contamination (%)`
   (`Completness`), and the pie chart of the sizes of the clusters `Other
-  contigs` (`Others contigs`).
+  contigs` (`Others contigs`) and `Total size of the contigs`, where it read
+  `Total size of the assembly`: the pie counts the contigs of the map, the
+  whole assembly only for a map of all its contigs.
 - The `recursive` column of `cluster_summary.txt` says whether the cluster
   comes from the recursive partition.
 - `metator validation --help` gives the rule of the recursive partition: a
