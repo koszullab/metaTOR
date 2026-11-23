@@ -97,6 +97,10 @@ following order:
 * `partition` : Perform the Louvain or Leiden community detection algorithm many times to bin contigs according to the metaHiC signal between contigs.
 * `validation` : Use miComplete to validate the bins, then do a recursive decontamination step to remove contamination.
 
+From a `.metacool` contact map, the three steps take the map as their first argument: `network` reads it,
+and `partition` and `validation` update it as `pipeline` does (see
+[Step by step on a contact map](#step-by-step-on-a-contact-map)).
+
 There are a number of other, optional, miscellaneous actions:
 
 * `pipeline` : Run all three of the above actions sequentially or only some of them depending on the arguments given. This can take a while.
@@ -215,9 +219,10 @@ integers, which `metator metacool` stores as 32-bit ones):
 metator metacool -c contig_data_final.txt -b bin_summary.txt -o sample.metacool alignment_0_sorted.pairs.gz alignment_1_sorted.pairs.gz
 ```
 
-or, for a run that started from a contact map step by step (`metator network MAP`, `partition`,
-`validation`), from that map, as `metator pipeline MAP` writes it (the map keeps its assembly name, so
-`--assembly-name` is refused):
+or, for a run that started from a contact map, from that map, as `metator pipeline MAP` and `metator
+validation MAP` write it (see [Step by step on a contact map](#step-by-step-on-a-contact-map)), but
+for the clustering rounds: for a run whose `partition` and `validation` were not given the map, for
+example (the map keeps its assembly name, so `--assembly-name` is refused):
 
 ```sh
 metator metacool -c contig_data_final.txt -b bin_summary.txt -o binning.metacool sample.metacool
@@ -373,6 +378,42 @@ itself; one killed outright (`kill -9`) can leave its lock, and the files of the
 next to the map, which can be deleted: `.<map>.<random>.tmp` or `.<map>.<random>.tmp.<random>.fresh`,
 and those that metacooler and cooler write while it is written (`.<map>.<random>.tmp.partial`,
 `.<map>.<random>.tmp.partial.__writing__`, `tmp<random>.multi.cool`). The map is left as it was.
+
+#### Step by step on a contact map
+
+The three steps of `pipeline MAP` take the map as their first argument too. Run one after the other on
+one map, they read and update it as `pipeline MAP` does, and write the map that it writes from the same
+clusters, but for the date the map was written and the command line and parameters that it stores (those
+of `validation`). Louvain draws random numbers: two runs give the same clusters only from the same random
+stream, as the tests check in one process, so steps run as separate commands differ from `pipeline` as
+two `pipeline` runs do. `partition MAP` on a map that holds the clusters of an earlier run replaces its
+clustering rounds with its own, and leaves its genomes, contigs and the `metator` key of its metadata as
+the earlier run wrote them, until `validation MAP` writes the new ones:
+
+```sh
+# 1. The network: network.txt and contig_data_network.txt. The map is only read.
+metator network sample.metacool -a assembly.fa -d depth.txt -e DpnII -o binning
+# 2. The partition: overlapping_bin/ and contig_data_partition.txt. The map stores the overlapping clusters.
+metator partition sample.metacool -a assembly.fa -c binning/contig_data_network.txt -n binning/network.txt -o binning
+# 3. The validation: the final clusters. The map becomes the map of the clusters.
+metator validation sample.metacool -a assembly.fa -c binning/contig_data_partition.txt -n binning/network.txt \
+    -f binning/overlapping_bin -o binning
+```
+
+`partition MAP` stores its overlapping clusters that reach `--size`, those of `overlapping_bin/`, with
+their contigs, as the round `overlapping` of the clustering rounds of the map, in place of the rounds
+that it held (without the columns of miComplete, which the validation runs), and leaves the genomes
+and contigs tables of the map as they were. `validation MAP` writes the map of the clusters, as
+`pipeline MAP` does at its end, with every round (`overlapping`, `recursive_<k>`, `final`). Both write
+the map as `pipeline MAP` does: in place, through a map written next to it and validated in full, or to
+`--output-map FILE`, which leaves the map as it was (give the next step that FILE; a run from an entry
+of a `.mmetacool` collection needs it). They lock the map while they run, and refuse what `pipeline
+MAP` refuses (a map that is not there or that metacooler cannot open, a lock that another run holds, a
+FILE that exists without `-F`...), a map that is no map of the contigs of their contig data (`-c`:
+other contigs or lengths), an `--output-map` that is one of their inputs, and an invalid `--prefix`,
+before any work and before `-F` replaces the directories of clusters of an earlier run. Without the map,
+`partition` and `validation` run as before, but for an invalid `--prefix`, now refused before `-F`
+replaces those directories.
 
 #### From hicstuff to metaTOR through metacooler
 

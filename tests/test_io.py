@@ -85,6 +85,19 @@ def test_generate_temp_dir(tmp_path):
     assert first != second
 
 
+def test_generate_temp_dir_leaves_the_random_stream_of_igraph(tmp_path):
+    """The name of a temporary directory is not drawn from Python's random
+    module, which igraph draws from: each command makes one, so a run step
+    by step (network, partition, validation) drew another stream than
+    pipeline, and partitioned the network otherwise under one seed."""
+    import random
+
+    random.seed(0)
+    state = random.getstate()
+    mio.generate_temp_dir(str(tmp_path / "tmp"))
+    assert random.getstate() == state
+
+
 def test_get_restriction_site():
     assert mio.get_restriction_site("DpnII") == "GATC"
     assert mio.get_restriction_site("DpnII,HinfI") == "GA.TC|GATC"

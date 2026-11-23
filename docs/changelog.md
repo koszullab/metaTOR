@@ -54,9 +54,9 @@ All notable changes to this project will be documented in this file.
   `metator.metacool.reassign_metacool`. The README shows the route from
   the pairs of `hicstuff` through `metacooler create pairs`.
 - `metator metacool` writes this map from a `.metacool` map given in place
-  of the pairs files, so that a run step by step (`network MAP`,
-  `partition`, `validation`) can write the map that `pipeline MAP`
-  writes.
+  of the pairs files, so that a run step by step from a map (`network
+  MAP`, then `partition` and `validation`) can write the map that
+  `pipeline MAP` writes, but for its clustering rounds.
 - A run from a map (`network MAP` and `pipeline MAP`)
   reads the restriction sites and the shotgun coverage of the contigs from
   the `Restriction_site` and `Shotgun_coverage` columns of the map, which
@@ -80,6 +80,39 @@ All notable changes to this project will be documented in this file.
   then, leaves them (they were removed first). Python API:
   `metator.network.contig_data_from_map`, `map_columns`,
   `check_map_contigs`.
+- `partition` and `validation` take the map of a run step by step as
+  their first argument too (`metator partition MAP ...`, a file or an
+  entry of a collection), and update it as `pipeline MAP` does: the steps
+  run one by one on a map (`network MAP`, `partition MAP`, `validation
+  MAP`) write the map that `pipeline MAP` writes from the same clusters,
+  but for the command line and parameters it stores (Louvain draws random
+  numbers: steps run as separate commands differ from `pipeline` as two
+  `pipeline` runs do). `partition MAP` stores its overlapping clusters
+  that reach `--size`, with their contigs, as the round `overlapping` of
+  the clustering rounds of the map, in place of those it held, and leaves
+  its genomes and contigs tables and the `metator` key of its metadata as
+  they were (an earlier run's, until `validation MAP` writes the new
+  ones); the round records the step that made it. `validation MAP` writes
+  the map of the clusters, with every round, and draws the heatmap of the
+  clusters from the map.
+  Each writes the map in place (staged, validated in full, then renamed
+  over it, a symbolic link replaced, not its target, the mode kept) or to
+  `--output-map FILE` (replaced only with `-F`), and holds its lock while
+  it runs. Refused before any work, the reason logged as an error, and
+  before `-F` replaces the directories of clusters of an earlier run:
+  what `pipeline MAP` refuses (a map that is not there, is no map, or that
+  metacooler cannot open, such as a `.mmetacool` collection, an entry of a
+  collection without `--output-map`, an `--output-map` that exists without
+  `-F`, a map that another run holds), a map that is no map of the
+  contigs of their contig data (`-c`: other contigs or lengths), an
+  `--output-map` that is one of their inputs, `--output-map` without a
+  map, and an invalid `--prefix`. Without a map, they run as before, but
+  for an invalid `--prefix`, now refused before `-F` replaces their
+  directories of clusters; `pipeline` refuses an `--output-map` that is
+  its assembly or depth file, which the map replaced. Python API:
+  `metator.metacool.write_rounds`, `metator.clusters.overlapping_round`,
+  `Rounds.tables`, and the `names` of `metator.metacool.store_rounds` (a
+  round with no cluster).
 
 ### Changed
 - The heatmap of the network of the final clusters
@@ -96,9 +129,10 @@ All notable changes to this project will be documented in this file.
   and the heatmap step peaks at 1.8 GB of memory where the image at 2000
   dpi took it to 5.8 GB. The SCN normalization makes two copies of the
   matrix, where hicstuff's made several at each iteration. `metator
-  validation`, run step by step, still draws it from the pairs files of
-  its output directory. Python API: `metator.figures.build_matrix_map`,
-  `heatmap_windows`, `normalize_scn`, `plot_heatmap`; `plot_figures` and
+  validation MAP` draws it from the map; without a map, `metator
+  validation` draws it from the pairs files of its output directory.
+  Python API: `metator.figures.build_matrix_map`, `heatmap_windows`,
+  `normalize_scn`, `plot_heatmap`; `plot_figures` and
   `metator.validation.recursive_decontamination` take the map
   (`metacool`).
 - **Breaking:** a `pipeline` run from a `.metacool` map updates that map
@@ -191,6 +225,13 @@ All notable changes to this project will be documented in this file.
   past the end of their contig ("N pairs with a read past the end of its
   contig are left out."): metacooler's warning, which stays, counts them
   with the other pairs it leaves out.
+- The temporary directory of a command is named from the random numbers
+  of the system (`metator.io.generate_temp_dir`), not from Python's
+  `random` module, which the partition draws from (igraph): the clusters
+  of a run no longer depend on how many of its temporary directories it
+  made, so that the steps run one by one in one process, after one seed,
+  draw the stream that `pipeline` draws (the alignment of hicstuff still
+  draws from it). A run seeded as before gives other clusters.
 - metaTOR requires metacooler 0.4.0, whose `/clusters` group holds the
   clustering rounds of the map. The `.metacool` maps it writes also
   store the contact statistics of each contig (the `qc_intra_contig_short`

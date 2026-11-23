@@ -2,6 +2,7 @@
 # checked against its ground truth: network, partition, validation (with a
 # stub miComplete) and the whole pipeline.
 
+import json
 import os
 import random
 import shutil
@@ -17,7 +18,9 @@ from scipy import sparse
 import metator.metacool as mtmc
 import metator.network as mtn
 import metator.partition as mtp
+from metator.version import __version__
 from tests import synthetic
+from tests.hdf5 import walk
 
 NORMALIZATIONS = ["None", "abundance", "length", "RS", "empirical_hit", "theoritical_hit"]
 
@@ -664,6 +667,147 @@ def test_pipeline_from_a_filtered_metacool(metagenome, metagenome_inputs, tmp_pa
     assert "Contigs table" not in log.read_text()
     assert mc.metadata["annotate"][-1]["contigs_table"] == str(mcool / "contig_data_final.txt")
     assert not [path.name for path in mcool.iterdir() if path.name.startswith(".")]
+
+
+def _contig_map(metagenome_inputs, path):
+    """The map of the contigs of the mock community at path, in no cluster
+    yet, as a pipeline run from its pairs builds it: one bin per contig,
+    what metaTOR measures on the assembly (with a depth file and an enzyme)
+    and the contact statistics of the pairs."""
+    contig_data, _ = mtn.create_contig_data(str(metagenome_inputs["assembly"]), 1, str(metagenome_inputs["depth"]), "DpnII")
+    mtmc.write_contig_map([str(metagenome_inputs["pairs"])], contig_data, str(path), assembly_name="synthetic")
+    return path
+
+
+def _without_run(objects):
+    """The objects of a map (see tests.hdf5.walk) but what differs between two
+    runs of the same clusters: the date the map was written
+    (creation-date, an attribute of the file), and the command line and
+    the parameters of the run that wrote it (the command and parameters
+    of the metator key of its metadata, a JSON text)."""
+    kind, members, attributes = objects["/"]
+    kept = []
+    for key, dtype, value in attributes:
+        if key == "metadata":
+            metadata = json.loads(value)
+            for run in ["command", "parameters"]:
+                del metadata["metator"][run]
+            value = metadata
+        if key != "creation-date":
+            kept.append((key, dtype, value))
+    return {**objects, "/": (kind, members, kept)}
+
+
+def _metator_metadata(objects):
+    """The metator key of the metadata of a map (see tests.hdf5.walk)."""
+    (metadata,) = [value for key, _, value in objects["/"][2] if key == "metadata"]
+    return json.loads(metadata)["metator"]
+
+
+def _first_cluster_contaminated(metagenome):
+    """A stub miComplete (see synthetic.fake_micomplete) that finds the first
+    overlapping cluster contaminated (a weighted redundancy of 1.5): the
+    validation partitions it again, which makes the round recursive_1 (its
+    parts, too incomplete for one of them to replace it)."""
+
+    def micomplete_quality(fasta_dir, outfile, threads):
+        synthetic.write_micomplete_summary(fasta_dir, outfile, metagenome)
+        if Path(fasta_dir).name == "overlapping_bin":
+            # Three comment lines, the header, then a row per cluster.
+            lines = [line.split("\t") for line in Path(outfile).read_text().splitlines()]
+            lines[4][lines[3].index("Weighted redundancy")] = "1.5"
+            Path(outfile).write_text("".join("\t".join(line) + "\n" for line in lines))
+
+    return micomplete_quality
+
+
+def test_steps_on_a_map_give_the_map_of_pipeline(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli):
+    """The steps run one by one on a map (network MAP, partition MAP,
+    validation MAP) give the map that pipeline MAP gives, from copies of the
+    same map of the contigs, and the same tables: every group, soft link,
+    dataset (its dtype, shape, chunks, compression and values) and attribute
+    of the HDF5 file, but the date it was written (creation-date) and the
+    command line and parameters of the run that wrote it (the command and
+    parameters of the metator key of its metadata: pipeline's, validation's).
+    Each run is made in a directory of its own, with the same relative
+    paths, which the history of the map records (the input map of
+    metacooler reassign, the tables of metacooler annotate). The rounds are
+    overlapping, recursive_1 (a cluster that the stub miComplete finds
+    contaminated, partitioned again) and final.
+
+    Run in one process after one random.seed(0), as igraph draws from
+    Python's random module: the steps draw the stream that pipeline draws
+    (the temporary directory of each command drew from it too, so a run
+    step by step, with three, drew another one than pipeline, with one).
+
+    Each step leaves a valid map: network MAP reads it only; partition MAP
+    stores the overlapping clusters of the partition, those that reach
+    --size (one per FASTA file of overlapping_bin), in its clustering rounds
+    (the round overlapping, without miComplete's columns, which the
+    validation adds), and changes nothing else; validation MAP writes the
+    map of the clusters, as pipeline MAP does at its end."""
+    monkeypatch.setattr("metator.validation.micomplete_quality", _first_cluster_contaminated(metagenome))
+    assembly = str(metagenome_inputs["assembly"])
+    contig_map = _contig_map(metagenome_inputs, tmp_path / "contigs.metacool")
+    runs = {name: tmp_path / name for name in ["pipeline", "steps"]}
+    for directory in runs.values():
+        directory.mkdir()
+        shutil.copyfile(contig_map, directory / "input.metacool")
+    common = ["-a", assembly, "-o", "out", "-T", "tmp", "-s", "20000"]
+
+    monkeypatch.chdir(runs["pipeline"])
+    random.seed(0)
+    run_cli("pipeline", "input.metacool", *common, "-d", metagenome_inputs["depth"], "-e", "DpnII", "-i", "10", "-j", "5")
+
+    monkeypatch.chdir(runs["steps"])
+    metacool = runs["steps"] / "input.metacool"
+    random.seed(0)
+    run_cli("network", "input.metacool", "-a", assembly, "-o", "out", "-T", "tmp", "-d", metagenome_inputs["depth"],
+            "-e", "DpnII")  # fmt: skip
+    assert metacool.read_bytes() == contig_map.read_bytes()
+    run_cli("partition", "input.metacool", *common, "-c", "out/contig_data_network.txt", "-n", "out/network.txt", "-i", "10")
+    metacooler.validate(str(metacool), full=True)
+    mc = metacooler.MetaCooler(str(metacool))
+    assert mc.cluster_rounds == [{"name": "overlapping", "tool": "metaTOR", "version": __version__, "step": "partition"}]
+    fasta_files = sorted((runs["steps"] / "out" / "overlapping_bin").glob("*.fa"))
+    assert list(mc.clusters.name) == [path.stem for path in fasta_files] and fasta_files
+    # genome, which metacooler computes: no cluster is a genome of the map yet.
+    assert list(mc.clusters.columns) == ["round", "name", "parent_round", "parent", "n_contigs", "length", "genome"]
+    assert mc.clusters.genome.isna().all()
+    members = mc.cluster_members("overlapping")
+    for path in fasta_files:
+        assert sorted(members.contig[members.cluster == path.stem]) == sorted(synthetic.read_fasta(path)), path.name
+    # Nothing else of the map changed: its genomes and contigs tables, its
+    # contacts, its metadata.
+    before, after = walk(contig_map), walk(metacool)
+    kind, stored, attributes = after.pop("/")
+    assert (kind, [name for name in stored if name != "clusters"], attributes) == before.pop("/")
+    assert {name: value for name, value in after.items() if not name.startswith("/clusters")} == before
+    run_cli("validation", "input.metacool", *common, "-c", "out/contig_data_partition.txt", "-n", "out/network.txt",
+            "-f", "out/overlapping_bin", "-i", "5")  # fmt: skip
+
+    pipeline, steps = runs["pipeline"] / "out", runs["steps"] / "out"
+    for name in ["bin_summary.txt", "contig_data_final.txt", "binning.txt", "clusters.txt", "cluster_members.txt",
+                 "plot/network_heatmap.png"]:  # fmt: skip
+        assert (steps / name).read_bytes() == (pipeline / name).read_bytes(), name
+    written = {name: directory / "input.metacool" for name, directory in runs.items()}
+    for path in written.values():
+        metacooler.validate(str(path), full=True)
+    found = {name: walk(path) for name, path in written.items()}
+    assert _without_run(found["steps"]) == _without_run(found["pipeline"])
+    # What differs: the command lines and their parameters, those of
+    # pipeline and of validation.
+    metator = {name: _metator_metadata(objects) for name, objects in found.items()}
+    assert metator["pipeline"]["command"].startswith("metator pipeline input.metacool")
+    assert metator["steps"]["command"].startswith("metator validation input.metacool")
+    assert metator["steps"]["parameters"]["map"] == metator["pipeline"]["parameters"]["map"] == "input.metacool"
+    assert "start" not in metator["steps"]["parameters"]
+    # The rounds of the run, the final clusters those of the genomes of the
+    # map.
+    mc = metacooler.MetaCooler(str(written["steps"]))
+    assert [entry["name"] for entry in mc.cluster_rounds] == ["overlapping", "recursive_1", "final"]
+    assert set(mc.cluster_members("final").cluster) == set(mc.genomes.name) - {"__unbinned__"}
+    assert not list(tmp_path.rglob("*.lock")) and not list(tmp_path.rglob(".input.metacool.*"))
 
 
 def _members(mc):

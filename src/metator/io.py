@@ -46,7 +46,7 @@ from Bio import SeqIO
 from Bio.Restriction import RestrictionBatch
 from metator.log import logger
 from os.path import join, exists, isfile
-from random import getrandbits
+from secrets import randbits
 
 
 def check_fasta_index(ref, mode="bowtie2"):
@@ -192,6 +192,13 @@ def generate_temp_dir(path):
     Function from hicstuff.io (https://github.com/koszullab/hicstuff/)
     Generates a temporary file with a random name at the input path.
 
+    The name is drawn from the random numbers of the system, not from
+    Python's random module, which igraph draws from too: the partition of a
+    run does not depend on how many of these directories it made (one per
+    command), so that the steps run one by one in one process, after one
+    seed, draw the stream of pipeline. The alignment of hicstuff still
+    draws from it.
+
     Parameters:
     -----------
     path : str
@@ -205,7 +212,7 @@ def generate_temp_dir(path):
     exist = True
     while exist:
         # Keep trying random directory names if they already exist
-        directory = str(hex(getrandbits(32)))[2:]
+        directory = str(hex(randbits(32)))[2:]
         full_path = join(path, directory)
         if not exists(full_path):
             exist = False

@@ -28,13 +28,16 @@ its bins and contacts, grouped by final bin in the same way. A pipeline run
 from reads or pairs builds such a map itself, from its pairs files, as soon
 as it has them, reads its network from it (with several libraries, from one
 map per library and the map of their sum, see write_library_maps), and
-writes the map of its bins from it at the end.
+writes the map of its bins from it at the end. A run step by step from a
+map stores the overlapping clusters of its partition in the map first, as a
+clustering round, then its validation writes the map of the clusters.
 
 Core functions to write the file:
     - write_metacool, from the pairs files
     - write_contig_map, the map of the contigs in no bin yet, from the pairs
       files
     - reassign_metacool, from a .metacool map
+    - write_rounds, a .metacool map with the clustering rounds of a run
 """
 
 import gzip
@@ -265,6 +268,36 @@ def check_map_lengths(metacool, contigs, lengths, of, where):
             f"{metacool} is not a contact map of the contigs of {of}: {len(wrong)} contig(s) have another length in "
             f"it: {_shown(wrong, show=str)}."
         )
+
+
+def check_map_of_contigs(metacool, contig_data):
+    """Refuse a map that is not a map of the contigs of a run: contigs that
+    contig_data, a contig data file of the run (its Name and Size columns),
+    has not, or that have another length in it. The map may lack some of
+    them, as a map made with a contig filter does.
+
+    Raises
+    ------
+    MetacoolError
+        If the map holds other contigs or lengths, cannot be read, or the
+        contig data has no Name or Size column.
+    """
+    import pandas as pd
+
+    try:
+        table = pd.read_csv(contig_data, sep="\t", usecols=["Name", "Size"], dtype={"Name": str}, keep_default_na=False)
+        lengths = dict(zip(table["Name"], table["Size"].astype(int), strict=True))
+    except (OSError, ValueError) as error:
+        raise MetacoolError(f"Cannot read the contigs of {contig_data}: {error}") from error
+    with _metacooler_logging():
+        contigs = open_map(metacool).contigs
+    extra = [str(name) for name in contigs["name"] if str(name) not in lengths]
+    if extra:
+        raise MetacoolError(
+            f"{metacool} is not a contact map of the contigs of {contig_data}: {len(extra)} of its contig(s) are not "
+            f"in it: {_shown(extra)}."
+        )
+    check_map_lengths(metacool, contigs, lengths, contig_data, contig_data)
 
 
 def map_file(metacool):
@@ -860,57 +893,121 @@ def reassign_metacool(metacool, contig_data, outfile, bin_summary=None, force=Fa
         f"{sum(value != 'ND' for value in assignment.values())} of them in {len(final_bins)} clusters."
     )
     with _metacooler_logging():
+        with _staged_map(outfile) as staged, tempfile.TemporaryDirectory() as scratch:
+            if bin_summary and final_bins:
+                genomes_table = bin_summary
+            else:
+                # Without a bin summary or without a bin, the bin names
+                # alone: the genome columns that the input map carried
+                # (those of an earlier run's bins) are then replaced by
+                # none, where metacooler would keep them and warn that
+                # they no longer describe their bins.
+                genomes_table = os.path.join(scratch, "bins.txt")
+                with open(genomes_table, "w") as handle:
+                    handle.write("".join(f"{name}\n" for name in ["bin", *sorted(final_bins)]))
+            metacooler.reassign(
+                metacool,
+                assignment,
+                staged,
+                # Grouped as write_metacool groups the contigs, whatever
+                # the order of the input map: the pixels are remapped.
+                layout="genome-then-length",
+                # The bin names are the first column of the table,
+                # unnamed in bin_summary.txt. It replaces the columns of
+                # the genomes table that the input map carried.
+                genomes_table=genomes_table,
+                genomes_table_format="1",
+                metadata={"metator": {"version": __version__, **(metadata or {})}},
+                # Over the empty temporary file.
+                force=True,
+                # On a failure, metacooler removes the partial file it
+                # writes next to the temporary file.
+                keep_partial=False,
+            )
+            _write_back_columns(staged, contig_data, contig_columns, header)
+            store_rounds(staged, rounds, name=metacool)
+            _rewrite_in_a_fresh_file(staged)
+        logger.info(f"{outfile} is written: the contact map of the clusters.")
+
+
+@contextmanager
+def _staged_map(outfile):
+    """A map written next to outfile, then moved over it once it is valid.
+
+    Yields the path of an empty temporary file next to outfile, where the
+    map is written. Once it is, the map is given metacooler's full
+    validation, and only then moved to outfile, which it replaces
+    (os.replace): a symbolic link at outfile is replaced, not its target,
+    so outfile may be the input map of the run (the same path, or a
+    symbolic link to it or from it). The map keeps the mode of the file it
+    replaces (that of the target of a symbolic link): a private map stays
+    private. A new map gets the mode of any new file, from the umask, not
+    the private mode of the temporary file (mkstemp's 0600). On any
+    failure, Ctrl-C included, outfile is left as it was,
+    and the temporary file is removed. A ValueError, OSError or KeyError
+    (metacooler's above all) is raised as a MetacoolError, its message
+    kept.
+    """
+    import metacooler
+
+    with _as_metacool_errors():
+        directory = os.path.dirname(outfile) or "."
+        os.makedirs(directory, exist_ok=True)
+        handle, staged = tempfile.mkstemp(prefix=f".{os.path.basename(outfile)}.", suffix=".tmp", dir=directory)
+        os.close(handle)
+    try:
         with _as_metacool_errors():
-            directory = os.path.dirname(outfile) or "."
-            os.makedirs(directory, exist_ok=True)
-            handle, staged = tempfile.mkstemp(prefix=f".{os.path.basename(outfile)}.", suffix=".tmp", dir=directory)
-            os.close(handle)
-        try:
-            with _as_metacool_errors(), tempfile.TemporaryDirectory() as scratch:
-                if bin_summary and final_bins:
-                    genomes_table = bin_summary
-                else:
-                    # Without a bin summary or without a bin, the bin names
-                    # alone: the genome columns that the input map carried
-                    # (those of an earlier run's bins) are then replaced by
-                    # none, where metacooler would keep them and warn that
-                    # they no longer describe their bins.
-                    genomes_table = os.path.join(scratch, "bins.txt")
-                    with open(genomes_table, "w") as handle:
-                        handle.write("".join(f"{name}\n" for name in ["bin", *sorted(final_bins)]))
-                metacooler.reassign(
-                    metacool,
-                    assignment,
-                    staged,
-                    # Grouped as write_metacool groups the contigs, whatever
-                    # the order of the input map: the pixels are remapped.
-                    layout="genome-then-length",
-                    # The bin names are the first column of the table,
-                    # unnamed in bin_summary.txt. It replaces the columns of
-                    # the genomes table that the input map carried.
-                    genomes_table=genomes_table,
-                    genomes_table_format="1",
-                    metadata={"metator": {"version": __version__, **(metadata or {})}},
-                    # Over the empty temporary file.
-                    force=True,
-                    # On a failure, metacooler removes the partial file it
-                    # writes next to the temporary file.
-                    keep_partial=False,
-                )
-                _write_back_columns(staged, contig_data, contig_columns, header)
-                store_rounds(staged, rounds)
-                _rewrite_in_a_fresh_file(staged)
-                metacooler.validate(staged, full=True)
-                # The map keeps the mode of the file it replaces (that of the
-                # target of a symbolic link): a private map stays private.
-                if os.path.exists(outfile):
-                    shutil.copymode(outfile, staged)
-                os.replace(staged, outfile)
-            logger.info(f"{outfile} is written: the contact map of the clusters.")
-        except BaseException:
-            if os.path.lexists(staged):
-                os.remove(staged)
-            raise
+            yield staged
+            metacooler.validate(staged, full=True)
+            if os.path.exists(outfile):
+                shutil.copymode(outfile, staged)
+            else:
+                os.chmod(staged, 0o666 & ~_umask())
+            os.replace(staged, outfile)
+    except BaseException:
+        if os.path.lexists(staged):
+            os.remove(staged)
+        raise
+
+
+def _umask():
+    """The umask of the process, which can only be read by setting it: it
+    is set back at once."""
+    mask = os.umask(0o022)
+    os.umask(mask)
+    return mask
+
+
+def _map_group(metacool):
+    """The file of a map and the group of the map in it: "" for a map that
+    is its file (given as file, file::/ or file::), the group of an entry
+    of a .mmetacool collection (entries/NAME, from file::entries/NAME)."""
+    path, _, group = str(metacool).partition("::")
+    return path, group.strip().strip("/")
+
+
+def _copy_map(metacool, target, skip=()):
+    """Copy the map metacool, as stored, to the root of target, a new HDF5
+    file: every object of its group (the root of its file, or an entry of
+    a .mmetacool collection, which becomes a map of its own), with its
+    dtype, chunks, filters and attributes, the columns of a table in their
+    order, and the soft link /chroms as a link, then the attributes of the
+    group, with their dtypes; but the objects of the group named in skip."""
+    import h5py
+
+    path, group = _map_group(metacool)
+    with h5py.File(path, "r") as source, h5py.File(target, "w") as copy:
+        node = source[group] if group else source
+        for key in node:
+            if key in skip:
+                continue
+            link = node.get(key, getlink=True)
+            if isinstance(link, h5py.SoftLink):
+                copy[key] = h5py.SoftLink(link.path)
+            else:
+                source.copy(node[key], copy, name=key)
+        for key in node.attrs:
+            copy.attrs.create(key, node.attrs[key], dtype=node.attrs.get_id(key).dtype)
 
 
 def _rewrite_in_a_fresh_file(path):
@@ -921,27 +1018,13 @@ def _rewrite_in_a_fresh_file(path):
     space of what it replaces in the file, which HDF5 does not reclaim. A
     map updated run after run grew with every run (from 129 kB to 272 kB
     over four updates of the map of the synthetic test data). Every object
-    is copied as stored, with its dtype, chunks, filters and attributes,
-    the columns of a table in their order, and the soft link /chroms as a
-    link; the file keeps its mode.
+    is copied as stored (see _copy_map); the file keeps its mode.
     """
-    import shutil
-
-    import h5py
-
     directory = os.path.dirname(os.path.abspath(path))
     handle, fresh = tempfile.mkstemp(prefix=f"{os.path.basename(path)}.", suffix=".fresh", dir=directory)
     os.close(handle)
     try:
-        with h5py.File(path, "r") as source, h5py.File(fresh, "w") as target:
-            for key in source:
-                link = source.get(key, getlink=True)
-                if isinstance(link, h5py.SoftLink):
-                    target[key] = h5py.SoftLink(link.path)
-                else:
-                    source.copy(source[key], target, name=key)
-            for key in source.attrs:
-                target.attrs.create(key, source.attrs[key], dtype=source.attrs.get_id(key).dtype)
+        _copy_map(path, fresh)
         shutil.copymode(path, fresh)
         os.replace(fresh, path)
     except BaseException:
@@ -1000,16 +1083,18 @@ def _write_back_columns(path, contig_data, contig_columns, header):
     )
 
 
-def store_rounds(path, rounds):
+def store_rounds(path, rounds, names=None, name=None):
     """Store the clustering rounds of a run in the /clusters group of a map,
     in place of those it held: the overlapping, recursive and final clusters
     of metator.clusters, with their contigs, their parents and their columns
     (those of miComplete, and of the bin summary for the final clusters).
 
-    Each round is stored with the tool and the version that made it. A text
-    column holds an empty text where a round has no value, as HDF5 stores no
-    missing text. The contigs of a cluster that the map lacks (a map made
-    with a contig filter) are left out, with a warning.
+    Each round is stored with the tool and the version that made it, and
+    the step that made it: partition for the round overlapping, validation
+    for the others. A text column holds an empty text where a round has no
+    value, as HDF5 stores no missing text. The contigs of a cluster that
+    the map lacks (a map made with a contig filter) are left out, with a
+    warning.
 
     Parameters
     ----------
@@ -1018,6 +1103,14 @@ def store_rounds(path, rounds):
     rounds : tuple of pandas.DataFrame, or None
         The clusters and their contigs (see metator.clusters.read_rounds).
         None removes the rounds that the map held.
+    names : list of str, optional
+        The names of the rounds, in the order they were made: by default,
+        those of the clusters, in their order. A round named here may have
+        no cluster: the overlapping clusters of a partition when none of
+        them reaches its --size.
+    name : str, optional
+        The map that path is staged for, which the warnings name (path by
+        default).
     """
     import metacooler
 
@@ -1025,15 +1118,15 @@ def store_rounds(path, rounds):
         metacooler.drop_clusters(path)
         return
     clusters, members = rounds
-    names = set(metacooler.MetaCooler(path).contigs["name"].astype(str))
-    absent = members["contig"].astype(str).map(lambda name: name not in names)
+    contigs = set(metacooler.MetaCooler(path).contigs["name"].astype(str))
+    absent = members["contig"].astype(str).map(lambda name: name not in contigs)
     if absent.any():
         logger.warning(
-            f"{int(absent.sum())} contig(s) of the clusters of the run are not in {path}, and not in its clusters "
+            f"{int(absent.sum())} contig(s) of the clusters of the run are not in {name or path}, and not in its clusters "
             f"either: {_shown(sorted(set(members.loc[absent, 'contig'])))}."
         )
         members = members[~absent]
-    order = list(dict.fromkeys(clusters["round"]))
+    order = list(dict.fromkeys(clusters["round"])) if names is None else list(names)
     steps = {name: "partition" if name == "overlapping" else "validation" for name in order}
     stored = clusters.copy()
     for column in stored.columns:
@@ -1045,6 +1138,67 @@ def store_rounds(path, rounds):
         stored,
         members,
     )
+
+
+def write_rounds(metacool, outfile, rounds, names=None, force=False):
+    """Write the map metacool at outfile with the clustering rounds of a run
+    in its /clusters group (see store_rounds), in place of those it held,
+    and everything else as it was: its bins, contacts, genomes and contigs
+    tables, QC block and metadata. A partition run from a map stores its
+    overlapping clusters so, before its validation writes the map of the
+    final clusters (see reassign_metacool).
+
+    The map is copied as stored to a temporary file next to outfile, but
+    for its rounds, which are then stored there: the copy is given
+    metacooler's full validation and only then moved to outfile, which it
+    replaces, as reassign_metacool writes a map (see _staged_map). outfile
+    may thus be the input map itself (the same path, or a symbolic link to
+    it or from it): a symbolic link at outfile is replaced, not its target,
+    and the map keeps the mode of the file it replaces. On any failure,
+    outfile is left as it was, and the temporary file is removed. An entry
+    of a .mmetacool collection is written as a map of its own.
+
+    Parameters
+    ----------
+    metacool : str
+        Path to the input .metacool file, or URI of an entry of a
+        .mmetacool collection: ``file.mmetacool::entries/<name>``.
+    outfile : str
+        Path to the .metacool file to write.
+    rounds : tuple of pandas.DataFrame
+        The clusters and their contigs (see store_rounds).
+    names : list of str, optional
+        The names of the rounds, in their order (see store_rounds).
+    force : bool
+        Whether to replace an existing outfile: the input map itself, which
+        a run updates in place, or another file.
+
+    Raises
+    ------
+    MetacoolError
+        If the outfile is no file's path (a URI), exists (without force),
+        or is the .mmetacool collection of the input map, the input map is
+        missing or cannot be read, or the rounds cannot be stored (a
+        ValueError, OSError or KeyError of metacooler, message kept).
+    """
+    from metacooler.schema import CLUSTERS_GROUP
+
+    metacool, outfile = str(metacool), str(outfile)
+    if is_entry(metacool) and is_input_map(metacool, outfile):
+        raise MetacoolError(
+            f"{outfile} is the .mmetacool collection of the input map {metacool}: the map would replace the whole "
+            "collection. Write it to another file."
+        )
+    _check_paths(outfile, force, [map_file(metacool)])
+    with _metacooler_logging():
+        open_map(metacool)
+        logger.info(f"Writing {outfile} from the contact map {metacool}, with the {len(rounds[0])} clusters of the run.")
+        with _staged_map(outfile) as staged:
+            # The rounds that the map held are not copied: the new ones
+            # replace them.
+            _copy_map(metacool, staged, skip={CLUSTERS_GROUP})
+            store_rounds(staged, rounds, names, name=metacool)
+        logger.info(f"{outfile} is written: the contact map, with the clustering rounds of the run.")
 
 
 def lock_path(path):
