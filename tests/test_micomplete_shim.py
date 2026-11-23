@@ -38,7 +38,7 @@ REPLACED_NAMES = (
 )
 _ABSENT = object()
 
-BINS = Path(__file__).resolve().parent.parent / "tests_data" / "overlapping_clusters"
+BINS = Path(__file__).resolve().parent.parent / "tests_data" / "micomplete"
 
 # Python < 3.12 warns on every import of distutils, and the fixtures make the
 # shim import it afresh in each test.
@@ -431,7 +431,7 @@ def test_micomplete_finds_prodigal_and_hmmsearch(shim_state, tmp_path, monkeypat
     assert shutil.which is not shim.which
 
 
-# The rows of miComplete for three bins of tests_data/overlapping_clusters, and two
+# The rows of miComplete for three bins of tests_data/micomplete, and two
 # bins of the first contigs of metator_00009_00000, as prodigal 2.6.3 and
 # HMMER 3.4 gave them. too_short holds 13 351 bp, too little for prodigal to
 # train on; just_enough holds 19 914 bp, which is enough once prodigal joins
