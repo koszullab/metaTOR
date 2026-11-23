@@ -46,9 +46,13 @@ dependencies = [
     "matplotlib>=3.9",
     "scipy",
     "micomplete",
+    # Prodigal and HMMER for miComplete, in place of the programs (see
+    # metator._micomplete).
+    "pyrodigal>=3.0",
+    "pyhmmer>=0.10.11",
     "pypairix",
     "rich-click>=1.9",
-    "metacooler>=0.3.0",
+    "metacooler>=0.4.0",
     # The map of a run is copied into a fresh file (metacool.py).
     "h5py>=3.8",
 
@@ -56,8 +60,6 @@ dependencies = [
     #"bowtie2"
     #"bwa"
     #"samtools"
-    #"prodigal"
-    #"hmmer"
 ]
 
 [project.optional-dependencies]
@@ -78,14 +80,6 @@ dev = [
     "ruff>=0.8",
     "ty>=0.0.38",
 ]
-
-[tool.uv.sources]
-# Temporary: metacooler 0.4.0 is not on PyPI yet. This pins the commit of
-# js2264/metacooler#24 (/clusters, branch js/clusters). Once 0.4.0 is on PyPI,
-# delete this table, require metacooler>=0.4.0 and run
-# `uv lock --upgrade-package metacooler`. The repository is private, so CI
-# cannot install it until then.
-metacooler = { git = "https://github.com/js2264/metacooler", rev = "d7f4ce6162594d7b4c4d4d724ccdde2b9624d157" }
 
 [project.urls]
 homepage = "https://github.com/koszullab/metator"

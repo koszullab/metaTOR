@@ -108,7 +108,7 @@ All notable changes to this project will be documented in this file.
   that stops, for any reason, leaves it as it was. `--output-map FILE`
   writes it elsewhere and leaves the input map alone; a run from an entry
   of a `.mmetacool` collection needs it. While a run writes a map,
-  `<map>.lock` holds it: a second run that would write the same map stops
+  `<map>.metator.lock` holds it: a second run that would write the same map stops
   before any work, naming the run that holds it, and a lock left by a run
   that died on the same host is removed with a warning; `metator metacool`
   locks the map it writes too. So the directory of the map must be
@@ -130,6 +130,14 @@ All notable changes to this project will be documented in this file.
   `pipeline` with the reason, logged as an error (it was a warning, and
   the run went on to exit 0). The other outputs of the run are kept, and
   so is the map it would have replaced.
+- Validation runs Prodigal and HMMER through pyrodigal and pyhmmer, their
+  Python bindings, which pip installs with metaTOR, in place of the
+  prodigal and hmmsearch programs that miComplete runs
+  (`metator._micomplete`): prodigal and hmmer no longer need installing,
+  with pip, with conda (`metator.yaml`) or in the Docker image. miComplete
+  gives the bins of the tests the rows that prodigal 2.6.3 and HMMER 3.4
+  gave them, and a bin of less than 20 kb still gets no gene, as prodigal
+  finds none in it.
 - `pipeline` from reads, alignments or pairs reads its pairs files into
   its `.metacool` map once, as soon as it has them: the map of the
   contigs, every contig in `__unbinned__`, with their contacts, the
@@ -183,7 +191,8 @@ All notable changes to this project will be documented in this file.
   past the end of their contig ("N pairs with a read past the end of its
   contig are left out."): metacooler's warning, which stays, counts them
   with the other pairs it leaves out.
-- metaTOR requires metacooler 0.3.0. The `.metacool` maps it writes also
+- metaTOR requires metacooler 0.4.0, whose `/clusters` group holds the
+  clustering rounds of the map. The `.metacool` maps it writes also
   store the contact statistics of each contig (the `qc_intra_contig_short`
   and `qc_intra_contig_long` columns of the contigs table), which
   `metacooler reassign` carries over to the bins.
