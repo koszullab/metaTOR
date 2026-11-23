@@ -59,6 +59,11 @@ On a mock community of 39 genomes (12.8 M read pairs, 174 Mb assembly):
   assembly), each library gave the same pairs in both workflows, the map that
   `metacooler merge` sums gave the network that 1.3.10 partitioned from the
   two, and the clusters were of the same quality, alone or merged.
+- `metator mge`, on the 169 contigs of the mock's 13 plasmids and 5 phages:
+  the same contacts between them and within each, and the same 127 MGE
+  clusters, but for the score of one, whose contigs tied: 2.0 merges two
+  equal scores in the order of the contigs, the longest first, where 1.x
+  followed the assembly (see [What a run writes](#what-a-run-writes)).
 
 ### Comparing with the outputs of 1.x
 
