@@ -204,14 +204,17 @@ a contaminated cluster again) and `final`; that of `metator dump` holds the
 round `mge` that `metator mge` stores too (and `mge_random`, when
 `metator mge --random` stores one). Tab-separated, with a
 header: the round, the name, the round and name of its parent (the cluster it
-was split from, or for a final cluster the cluster it is; `NA` for none), then
-miComplete's columns, `NA` where the cluster has none.
+was split from, or for a final cluster the cluster it is; `NA` for none), its
+number of contigs and their length (`n_contigs`, `length`, as the map
+computes them from its contigs), then miComplete's columns, `NA` where the
+cluster has none (and those of an MGE cluster: see
+[MGE clusters](#mge-clusters)).
 
 ```text
-round	name	parent_round	parent	Length	GC-content	...	Completeness	...
-overlapping	metator_00001_00000	NA	NA	2817353.0	52.30	...	0.9655	...
-recursive_1	metator_00002_00001	overlapping	metator_00002_00000	1504321.0	41.80	...	0.7103	...
-final	metator_00001_00000	overlapping	metator_00001_00000	2817353.0	52.30	...	0.9655	...
+round	name	parent_round	parent	n_contigs	length	Length	GC-content	...	Completeness	...
+overlapping	metator_00001_00000	NA	NA	31	2817353	2817353.0	52.30	...	0.9655	...
+recursive_1	metator_00002_00001	overlapping	metator_00002_00000	18	1504321	1504321.0	41.80	...	0.7103	...
+final	metator_00001_00000	overlapping	metator_00001_00000	31	2817353	2817353.0	52.30	...	0.9655	...
 ```
 
 `cluster_members.txt` holds the contigs of each: one row per contig of a
@@ -257,9 +260,10 @@ clustering rounds (`mge_random` for `--random`), one cluster per MGE cluster
 Its contigs are the members of the round (`mc.cluster_members("mge")`), in
 the order of the map, as metacooler stores the members of every round:
 `mges_binned.fa` gives them the longest first, ties by name. `metator dump`
-writes the round with the others, in `clusters.txt` and
-`cluster_members.txt`. The round has no column for the hosts of the MGE
-clusters, which `metator mge` does not look for.
+writes the round with the others, in `clusters.txt` (with `n_contigs` and
+`length`, the `ContigsNumber` and `BinLength` of 1.x's
+`mges_bin_summary.tsv`) and `cluster_members.txt`. The round has no column
+for the hosts of the MGE clusters, which `metator mge` does not look for.
 
 ## Logs
 

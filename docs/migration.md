@@ -13,6 +13,87 @@ what a run writes and counts differently. The
 other changes to the clusters and outputs (those of 1.4.0, for example:
 Louvain and Leiden run through igraph).
 
+## From 1.x to 2.0
+
+metaTOR 2.0 no longer maps reads: hicstuff (from 4.0.0) maps them and writes
+a `.metacool` contact map, from which metaTOR clusters the contigs.
+
+```bash
+# 1.x
+metator pipeline --assembly assembly.fa \
+    --forward R1.fq.gz --reverse R2.fq.gz \
+    --enzyme DpnII,HinfI --outdir out/
+
+# 2.0
+hicstuff pipeline --genome assembly.fa --enzyme DpnII,HinfI \
+    --matrix metacool --prefix sample --outdir hic/ R1.fq.gz R2.fq.gz
+metator pipeline hic/sample.metacool --assembly assembly.fa \
+    --enzyme DpnII,HinfI --outdir out/
+```
+
+Several libraries, which 1.x took as comma-separated lists: one hicstuff run
+per library, then sum the maps:
+
+```bash
+metacooler merge hic_A/A.metacool hic_B/B.metacool -o AB.metacool
+metator pipeline AB.metacool --assembly assembly.fa \
+    --enzyme DpnII,HinfI --outdir out/
+```
+
+MGE clusters, from the outputs of a run: in 1.x, its tables and its pairs
+files, which `pipeline` removes without `--no-clean-up`; in 2.0, the map of
+its clusters, whose MGE clusters `metator dump` writes in `clusters.txt` and
+`cluster_members.txt`:
+
+```bash
+# 1.x
+metator mge --contigs out/contig_data_final.txt \
+    --binning out/binning.txt --mges mges.txt --assembly assembly.fa \
+    --outdir mge/ out/alignment_0_sorted.pairs.gz
+
+# 2.0
+metator mge out/sample.metacool --mges mges.txt \
+    --assembly assembly.fa --outdir mge/
+metator dump mge/sample.metacool --outdir tables/
+```
+
+### Same network, equivalent clusters
+
+On a mock community of 39 genomes (12.8 M read pairs, 174 Mb assembly):
+
+- hicstuff kept the same 10,894,611 read pairs as 1.3.10, each on the same two
+  contigs, and metaTOR 2.0 built the same network: 263,961 edges, their
+  weights equal to floating-point rounding, and the same hits on all 20,566
+  contigs.
+- The clusters differ from run to run in both versions (Louvain is random, and
+  2.0 runs it through igraph): 2.0 agreed with three 1.3.10 runs as closely as
+  these agreed with each other (adjusted Rand index over the contigs that
+  either run clusters, weighted by length: 0.977–0.992, against 0.971–0.992).
+- Same quality: 24 HQ and 7 MQ clusters in 2.0, as in each 1.3.10 run, and the
+  same genomes recovered: 29 of the 39 had at least 90% of their sequence in
+  one cluster of at least 95% purity, against 28–29 for 1.3.10.
+- Several libraries: on a metagenome sequenced in two libraries (355 Mb
+  assembly), each library gave the same pairs in both workflows, the map that
+  `metacooler merge` sums gave the network that 1.3.10 partitioned from the
+  two, and the clusters were of the same quality, alone or merged.
+- `metator mge`, on the 169 contigs of the mock's 13 plasmids and 5 phages:
+  the same contacts between them and within each, and the same 127 MGE
+  clusters, but for the score of one, whose contigs tied: 2.0 merges two
+  equal scores in the order of the contigs, the longest first, where 1.x
+  followed the assembly (see [What a run writes](#what-a-run-writes)).
+
+### Comparing with the outputs of 1.x
+
+- Count the quality classes of a 1.x run from its plot,
+  `plot/bins_size_distribution.png`, not from its log, which counted the HQ
+  clusters as MQ (see the [changelog](changelog.md#fixed)): on the mock, the
+  log of a run said 7 HQ and 24 MQ, its plot 24 and 7.
+- Take its clusters from `final_bin_unscaffold/` or `contig_data_final.txt`:
+  its `binning.txt` left out the contigs of the clusters partitioned again but
+  kept whole (27% of the binned bases on the mock).
+- To run 1.3.10 again, pin `pandas<3`: bioconda installs pandas 3, under which
+  1.3.10 stops in the partition.
+
 ## The command line
 
 <div class="mt-versions" markdown>
@@ -94,7 +175,7 @@ error, before any work unless said otherwise:
 | `final_bin/` (`validation`), `final_bin_unscaffold/` (`pipeline`) | `final_clusters/` |
 | | The results of a run of 1.x in the output directory of `validation` or `pipeline` (its tables, `contig_data_*.txt`, `bin_summary.txt`, `binning.txt`, `network.txt`, miComplete's and the clustering matrices, and `recursive_bin/`, `final_bin/`, `final_bin_unscaffold/`, `overlapping_bin/` and `scaffold_bin/`, and the plots of `plot/` that 2.0 no longer draws, `MAGs_*_distribution.png` and `network_heatmap.png`) are refused, with or without `-F`, and never removed, as the tables of 2.0's development builds are: left there, they would pass for the results of the run. `-F` replaces only what the run writes itself, `final_clusters/`, the two plots of `plot/` and the map of the output directory. Move them away, or give the run another output directory with `-o`. |
 | `scaffold_bin/` (`pipeline --scaffold`) | None: `--scaffold` is gone (see [Other tools](other-tools.md)). |
-| `mges_bin_summary.tsv` (`mge`) | None: the round `mge` of the map holds the MGE clusters, with their length, GC content, hits and score (see [MGE clusters](formats.md#mge-clusters)), unrounded where the table rounded `GC` and `BinningScore` to two decimals, and without the three columns of their hosts, which `mge` left empty (`None`, `NA`, `NA`). `metator dump MAP -o DIR` writes the round in `clusters.txt` and `cluster_members.txt`. An earlier run's `mges_bin_summary.tsv` in the output directory is refused, with or without `-F`, and never removed: left there, it would pass for the run's. |
+| `mges_bin_summary.tsv` (`mge`) | None: the round `mge` of the map holds the MGE clusters, with their length, GC content, hits and score (see [MGE clusters](formats.md#mge-clusters)), unrounded where the table rounded `GC` and `BinningScore` to two decimals, and without the three columns of their hosts, which `mge` left empty (`None`, `NA`, `NA`). `metator dump MAP -o DIR` writes the round in `clusters.txt` (`BinLength` and `ContigsNumber` as `length` and `n_contigs`) and `cluster_members.txt`. An earlier run's `mges_bin_summary.tsv` in the output directory is refused, with or without `-F`, and never removed: left there, it would pass for the run's. |
 | `mges_binned.fa` (`mge`): the lines of each contig as in the assembly, joined by 200 `N` | The same records, each cluster's contigs the longest first (ties by name), joined by 200 `N`, in lines of 80 bases (metacooler writes it). |
 | The order of the MGE contigs (`mge`): that of the rows of `contig_data_final.txt`, the order of the assembly | The longest first, ties by name, whatever the order of the map or of the assembly: two equal scores are merged in that order, and the clusters of one contig numbered in it. For an assembly sorted by length (SPAdes), the MGE clusters and their names are those of 1.x, but for contigs of the same length; for another, two clusters of one contig may swap names, and a tie of scores may merge other contigs. |
 | `<tmp>/recursive_clustering/recursive_bins/`, in the temporary directory (`validation`, `pipeline`; kept with `-N`): the subnetwork of each cluster that the validation partitioned again | None: the validation partitions the subnetwork of each cluster in memory, and writes none. |

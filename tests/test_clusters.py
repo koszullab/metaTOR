@@ -71,6 +71,35 @@ def test_the_rounds_are_written_and_read_back(tmp_path):
     assert all(pd.api.types.is_string_dtype(members[c]) for c in members)
 
 
+def test_the_rounds_are_written_with_the_size_of_each_cluster(tmp_path):
+    """Given the lengths of the contigs, the table of the clusters gives each its
+    number of contigs and their length (n_contigs, length: what the map
+    computes), after its parent; a cluster without contigs has none. read_rounds
+    drops them: the map stores neither."""
+    rounds = _rounds()
+    rounds.add(mtc.MGE, "M1", [])
+    rounds.write(tmp_path, pd.Series({"c1": 100, "c2": 20, "c3": 3, "c4": 4000}))
+    lines = [line.split("\t") for line in (tmp_path / mtc.CLUSTERS_FILE).read_text().splitlines()]
+    assert lines[0] == ["round", "name", "parent_round", "parent", "n_contigs", "length", "Completeness", "Contigs"]
+    assert [[row[1], row[4], row[5]] for row in lines[1:]] == [
+        ["O1", "3", "123"],
+        ["O2", "1", "4000"],
+        ["R1", "2", "120"],
+        ["R2", "1", "3"],
+        ["R1", "2", "120"],
+        ["O2", "1", "4000"],
+        ["M1", "0", "0"],
+    ]
+    clusters, _ = mtc.read_rounds(tmp_path)
+    assert list(clusters.columns) == list(rounds.tables()[0].columns)
+
+
+def test_a_contig_without_a_length_is_refused(tmp_path):
+    with pytest.raises(ValueError, match=r"No length is given for 1 contig\(s\) of the clusters: c4"):
+        _rounds().write(tmp_path, pd.Series({"c1": 100, "c2": 20, "c3": 3}))
+    assert not (tmp_path / mtc.CLUSTERS_FILE).exists()
+
+
 def test_names_that_read_as_numbers_stay_text(tmp_path):
     """Cluster and contig names are read as text: ``read_csv`` would make 1.0 of a
     cluster called 1 in a column that also holds NA."""

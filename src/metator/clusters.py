@@ -38,6 +38,13 @@ from metator.log import logger
 CLUSTERS_FILE = "clusters.txt"
 CLUSTER_MEMBERS_FILE = "cluster_members.txt"
 
+#: The columns of clusters.txt that give each cluster its number of contigs
+#: and their total length: those that metacooler computes from the contigs of
+#: a cluster of the map, under these names, and refuses as given. A run writes
+#: them from the lengths of its contigs, and metator dump from those of the
+#: map (see with_sizes); the map stores neither, and read_rounds drops them.
+SIZE_COLUMNS = ("n_contigs", "length")
+
 #: The keywords of pandas.read_csv with which metaTOR reads back the decimal
 #: numbers of the tables it wrote: exactly, each the number that was written.
 #: Under pandas 2, its round_trip parser: the default one may read the last
@@ -213,9 +220,18 @@ class Rounds:
         members = pd.DataFrame(self.members, columns=["round", "cluster", "contig"])
         return clusters, members
 
-    def write(self, outdir):
+    def write(self, outdir, lengths=None):
         """Write the two tables of the rounds in *outdir*: one row per cluster of
         every round, and one row per contig of a cluster.
+
+        Parameters
+        ----------
+        outdir : str
+            The directory of the tables.
+        lengths : pandas.Series, optional
+            The length of each contig, by name: each cluster then gets its
+            number of contigs and their length (see with_sizes), as a run
+            writes them, and as metator dump writes them from the map.
 
         Returns
         -------
@@ -223,8 +239,41 @@ class Rounds:
             The paths of the two tables."""
         clusters_file = join(outdir, CLUSTERS_FILE)
         members_file = join(outdir, CLUSTER_MEMBERS_FILE)
-        write_round_tables(*self.tables(), clusters_file, members_file)
+        clusters, members = self.tables()
+        if lengths is not None:
+            clusters = with_sizes(clusters, members, lengths)
+        write_round_tables(clusters, members, clusters_file, members_file)
         return clusters_file, members_file
+
+
+def with_sizes(clusters, members, lengths):
+    """The clusters table of the rounds with the number of contigs and the length
+    of each cluster (SIZE_COLUMNS), after its parent: what metacooler computes
+    from the contigs of a cluster of the map, a cluster without contigs having
+    none (0 and 0).
+
+    Parameters
+    ----------
+    clusters, members : pandas.DataFrame
+        The tables of the rounds (see Rounds.tables).
+    lengths : pandas.Series
+        The length of each contig, by name.
+
+    Returns
+    -------
+    pandas.DataFrame
+        A copy of clusters with the columns n_contigs and length."""
+    keys = pd.MultiIndex.from_frame(clusters[["round", "name"]].astype(str))
+    contigs = members.assign(length=members["contig"].astype(str).map(lengths))
+    if contigs["length"].isna().any():
+        unknown = sorted(set(contigs.loc[contigs["length"].isna(), "contig"]))
+        raise ValueError(f"No length is given for {len(unknown)} contig(s) of the clusters: {', '.join(unknown[:5])}.")
+    grouped = contigs.groupby([contigs["round"].astype(str), contigs["cluster"].astype(str)])
+    sized = clusters.copy()
+    position = list(sized.columns).index("parent") + 1
+    sized.insert(position, "n_contigs", grouped.size().reindex(keys, fill_value=0).to_numpy(dtype="int64"))
+    sized.insert(position + 1, "length", grouped["length"].sum().reindex(keys, fill_value=0).to_numpy(dtype="int64"))
+    return sized
 
 
 def write_round_tables(clusters, members, clusters_file, members_file):
@@ -250,7 +299,9 @@ def _columns(clusters):
 
 def read_rounds(outdir):
     """The two tables of the rounds that a run wrote in *outdir*, as
-    :meth:`Rounds.write` writes them.
+    :meth:`Rounds.write` writes them, without the number of contigs and the
+    length of each cluster (SIZE_COLUMNS), which the map computes: the tables
+    that :meth:`Rounds.tables` gives, which the map stores.
 
     Returns
     -------
@@ -278,7 +329,7 @@ def read_rounds(outdir):
         keep_default_na=False,
         na_values=["NA"],
         **EXACT_FLOATS,
-    )
+    ).drop(columns=list(SIZE_COLUMNS), errors="ignore")
     members = pd.read_csv(paths[1], sep="\t", dtype=str, keep_default_na=False)
     return clusters, members
 

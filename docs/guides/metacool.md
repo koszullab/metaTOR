@@ -396,10 +396,11 @@ A run reaches its final clusters in rounds:
 The validation writes them all next to its other tables, in its temporary
 directory, which `-N` keeps, and `metator dump MAP -o DIR` writes them from
 the map of the clusters: `clusters.txt`, one row per cluster of every round
-(its round and name, the round and name of its parent, `NA` for none, and the
-columns of miComplete), and `cluster_members.txt`, one row per contig of a
-cluster (its round, cluster and contig). A contig is in at most one cluster of
-a round.
+(its round and name, the round and name of its parent, `NA` for none, its
+number of contigs and their length, `n_contigs` and `length`, as the map
+computes them, and the columns of miComplete), and `cluster_members.txt`, one
+row per contig of a cluster (its round, cluster and contig). A contig is in at
+most one cluster of a round.
 
 The map of the clusters stores both in its `/clusters` group (metacooler
 0.4.0), next to the final clusters, which its genomes and contigs tables hold:

@@ -210,7 +210,10 @@ each removed command.
   `overlapping`, `recursive_<k>`, `final`, `mge`, `mge_random`), with its
   parent and miComplete's columns, and the contigs of each, in the
   `/clusters` group of the map, which `clusters.txt` and
-  `cluster_members.txt` write out.
+  `cluster_members.txt` write out; `clusters.txt` gives each cluster its
+  number of contigs and their length (`n_contigs`, `length`, as the map
+  computes them), which `mges_bin_summary.tsv` gave the MGE clusters
+  (`ContigsNumber`, `BinLength`).
 - The normalization of the network is stored in the map, as the weights
   `metator_<normalization>` of its bins, the way cooler stores balancing
   weights: `cooler` (`matrix(balance="metator_empirical_hit")`) and
@@ -279,8 +282,8 @@ each removed command.
   the date, the command line (`## cmd:`, where it said `## Command used:`)
   and the value of each option (`## <option>: <value>`), then a line of
   dashes, without the empty lines around it; the log ends with what the run
-  wrote and how long it took (`Final contact map written after 0h 8m 31s:
-  <map>`), where it ended with a line of dashes and the date. `pipeline`
+  wrote and how long it took (`Final contact map written after 0h 8m 31s: <map>`),
+  where it ended with a line of dashes and the date. `pipeline`
   marks its three steps (`[1/3] network`, `[2/3] partition`,
   `[3/3] validation`), and no longer logs its parameters, which the header
   gives. The partition counts its iterations as they go, at each tenth of
@@ -324,7 +327,13 @@ each removed command.
 - The log of the validation counts the clusters in the quality classes of
   `metator.validation.bin_quality`, as the plot of their sizes does
   (`plot/bins_size_distribution.png`), the contamination being the weighted
-  redundancy − 1; it divided it by the completeness, where the plot does not.
+  redundancy − 1; it divided it by the completeness, where the plot does not,
+  and, from 1.2.0 to 1.4.0, its test of the HQ class was inverted: a cluster
+  of at least 90% completeness was counted HQ when its contamination was over
+  5%, and MQ when it was 5% or less. Only the sum of the HQ and MQ counts of a
+  1.x log was right: on a mock community, the 31 HQ and MQ clusters of a
+  1.3.10 run, 7 HQ and 24 MQ in its log, are 24 HQ and 7 MQ for
+  `bin_quality`. From 1.2.3, the plot counted them right.
 - The plot of the completeness and the contamination of the clusters
   (`plot/bins_distribution.png`) draws the contamination from 0 to 105%, as
   it meant to: it compared the weighted redundancy, a ratio, with 105, which

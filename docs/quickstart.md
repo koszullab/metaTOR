@@ -147,7 +147,7 @@ contig_data_final.txt  metator_dump_20261123152345.log  network.txt
 | `plot/` | The plots of the clusters: their completeness and contamination (`bins_distribution.png`), and the size of each quality class (`bins_size_distribution.png`) |
 | `metator_pipeline_<date>.log` | The log of the run |
 | `cluster_summary.txt` (in `tmp/*/`) | One row per final cluster: size, GC content, completeness, redundancy, N50, Hi-C abundance… |
-| `clusters.txt`, `cluster_members.txt` (in `tmp/*/`) | Every cluster of every round (core, overlapping, recursive, final), with its parent and miComplete's columns, and the contigs of each |
+| `clusters.txt`, `cluster_members.txt` (in `tmp/*/`) | Every cluster of every round (core, overlapping, recursive, final), with its parent, its number of contigs and their length, and miComplete's columns, and the contigs of each |
 | `contig_data_final.txt` (in `tmp/*/`) | One row per contig: its size, GC content, hits, and the clusters it went through |
 | `binning.txt` (in `tmp/*/`) | The contigs of the final clusters and their cluster, as anvi'o imports a binning |
 

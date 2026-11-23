@@ -978,7 +978,9 @@ def recursive_decontamination(
             parent=bin_name,
             columns={key: value for key, value in info.items() if key not in ("parent", "recursive")},
         )
-    rounds.write(outdir)
+    # Each cluster with its number of contigs and their length, as the map
+    # computes them, and as metator dump writes them.
+    rounds.write(outdir, pd.Series(contigs_data["Size"].to_numpy(), index=contigs_data["Name"].astype(str).to_numpy()))
 
     # Save bin information in final file
     summary = mio.write_bin_summary(bin_summary, join(outdir, "cluster_summary.txt"))
