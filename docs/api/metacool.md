@@ -6,3 +6,8 @@ with its clustering rounds and the normalization of its network. See
 [The contact map of the clusters](../guides/metacool.md).
 
 ::: metator.metacool
+
+`metator.dump` writes the tables of a run from the map of its clusters, as
+`metator dump` does (see [`dump`](../cli.md#dump)).
+
+::: metator.dump

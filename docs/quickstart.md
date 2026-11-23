@@ -114,8 +114,14 @@ metator_pipeline_20261121023231.log
 The run stored everything else in the map: its network, its clusters and
 their summary. Its tables are in its temporary directory, which
 `--no-clean-up` kept (`ls tmp/*/`; the log names it); without it, the run
-removes them, and `metator dump` (coming in metaTOR 2.0) writes them from the
-map.
+removes them, and `metator dump` writes them from the map:
+
+```console
+$ metator dump sample.metacool -o binning/tables
+$ ls binning/tables
+binning.txt  cluster_members.txt  cluster_summary.txt  clusters.txt
+contig_data_final.txt  metator_dump_20261121023301.log  network.txt
+```
 
 | File | What it holds |
 |---|---|

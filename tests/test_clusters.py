@@ -1,5 +1,6 @@
 """The clustering rounds of a run (metator.clusters)."""
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -236,3 +237,33 @@ def test_the_mge_round_of_an_empty_summary(tmp_path):
     )
     clusters, members = mtc.mge_round(str(summary))
     assert clusters.empty and members.empty and list(members.columns) == ["round", "cluster", "contig"]
+
+
+# Decimal numbers whose last digit pandas 2's default parser reads off by one
+# (24.621666666666666 was the HiC_abundance of a final cluster of the suite's
+# run), and others of 17 significant digits, as the tables of a run write them.
+_LONG_NUMBERS = [24.621666666666666, *np.random.default_rng(0).uniform(0, 100, 200).tolist()]
+
+
+def test_the_numbers_of_the_rounds_are_read_back_exactly(tmp_path):
+    """Each number of clusters.txt reads back as the number written: the map
+    stores what read_rounds reads, and metator dump writes it again."""
+    rounds = mtc.Rounds()
+    for i, value in enumerate(_LONG_NUMBERS):
+        rounds.add(mtc.FINAL, f"metator_{i + 1:05d}_00000", [f"c{i}"], columns={"HiC_abundance": value})
+    rounds.write(tmp_path)
+    clusters, _ = mtc.read_rounds(tmp_path)
+    assert clusters["HiC_abundance"].tolist() == _LONG_NUMBERS
+
+
+def test_the_numbers_of_an_mge_summary_are_read_back_exactly(tmp_path):
+    """The round mge, which metator mge stores in the map, has the numbers of
+    its summary as written."""
+    summary = tmp_path / "mges_cluster_summary.tsv"
+    rows = [
+        f"MetaTOR_MGE_{i:05d}\t100\t{value!r}\t5\t{value!r}\t1\tNone\tNA\tNone\tc{i}" for i, value in enumerate(_LONG_NUMBERS)
+    ]
+    header = "BinName\tBinLength\tGC\tHit\tBinningScore\tContigsNumber\tMetagenomicBin\tAssociationScore\tAssociatedBins\tContigs"
+    summary.write_text("\n".join([header, *rows]) + "\n")
+    clusters, _ = mtc.mge_round(summary)
+    assert clusters["GC"].tolist() == _LONG_NUMBERS and clusters["BinningScore"].tolist() == _LONG_NUMBERS

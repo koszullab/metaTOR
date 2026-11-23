@@ -42,7 +42,8 @@ mtmc_write_map = mtmc.write_map
 # that partition and validation update is their first argument too; the
 # commands qc, contactmap, metacool, scaffold and pairs are gone, and so are
 # the --scaffold and --junctions options of pipeline, --self-contacts of
-# network and --cluster-matrix of partition, validation and pipeline.
+# network and --cluster-matrix of partition, validation and pipeline. 2.0
+# adds dump, which writes the tables of a run from its map.
 INVENTORY = json.loads((TESTS_DATA / "cli_inventory.json").read_text())["metator"]
 
 # Options whose value is one of a list, wherever they appear.
@@ -2147,9 +2148,9 @@ def test_the_outputs_of_an_earlier_version(command, force, stub_pipeline, tmp_pa
         shown = ", ".join(repr(name) for name in EARLIER_OUTPUTS[:5])
         assert (
             f"ERROR :: {out} holds what an earlier run wrote there, which metaTOR 2.0 no longer writes in the output "
-            f"directory: {shown}, ... (+3 more). The map of the clusters holds what the tables held (metator dump, in "
-            "metaTOR 2.0, writes them from it), and -N keeps the tables of a run in its temporary directory. Remove "
-            "them, or give -F to remove them."
+            f"directory: {shown}, ... (+3 more). The map of the clusters holds what the tables held (metator dump "
+            "writes them from it), and -N keeps the tables of a run in its temporary directory. Remove them, or give "
+            "-F to remove them."
         ) in log.read_text()
         return
     run_cli(command, *args)

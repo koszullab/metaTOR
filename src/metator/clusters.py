@@ -36,6 +36,7 @@ which it stores in the map next to those of the run (:func:`mge_round`,
 
 import csv
 from dataclasses import dataclass
+from typing import Any
 from os.path import exists, join
 
 import pandas as pd
@@ -46,6 +47,15 @@ from metator.log import logger
 #: The two tables of the rounds, in the output directory of a run.
 CLUSTERS_FILE = "clusters.txt"
 CLUSTER_MEMBERS_FILE = "cluster_members.txt"
+
+#: The keywords of pandas.read_csv with which metaTOR reads back the decimal
+#: numbers of the tables it wrote: exactly, each the number that was written.
+#: Under pandas 2, its round_trip parser: the default one may read the last
+#: digit of a number off (24.621666666666666 as 24.621666666666663), and the
+#: map would then store, and metator dump write, another number than the
+#: run's tables. Under pandas 3, none: its default parser reads them
+#: exactly, and it deprecates the keyword.
+EXACT_FLOATS: dict[str, Any] = {"float_precision": "round_trip"} if int(pd.__version__.split(".")[0]) < 3 else {}
 
 #: The names of the rounds.
 CORE = "core"
@@ -235,13 +245,20 @@ class Rounds:
         """
         clusters_file = join(outdir, CLUSTERS_FILE)
         members_file = join(outdir, CLUSTER_MEMBERS_FILE)
-        clusters, members = self.tables()
-        clusters.to_csv(clusters_file, sep="\t", index=False, na_rep="NA", quoting=csv.QUOTE_NONE)
-        members.to_csv(members_file, sep="\t", index=False, quoting=csv.QUOTE_NONE)
-        logger.info(
-            f"{len(clusters)} clusters in {clusters['round'].nunique()} rounds are written to {clusters_file} and {members_file}."
-        )
+        write_round_tables(*self.tables(), clusters_file, members_file)
         return clusters_file, members_file
+
+
+def write_round_tables(clusters, members, clusters_file, members_file):
+    """Write the two tables of clustering rounds (see :meth:`Rounds.tables`):
+    the clusters to clusters_file, a missing value written NA, and their
+    contigs to members_file. :meth:`Rounds.write` writes those of a run so,
+    and ``metator dump`` those of a map (see :func:`metator.dump.dump`)."""
+    clusters.to_csv(clusters_file, sep="\t", index=False, na_rep="NA", quoting=csv.QUOTE_NONE)
+    members.to_csv(members_file, sep="\t", index=False, quoting=csv.QUOTE_NONE)
+    logger.info(
+        f"{len(clusters)} clusters in {clusters['round'].nunique()} rounds are written to {clusters_file} and {members_file}."
+    )
 
 
 def _columns(clusters):
@@ -275,13 +292,15 @@ def read_rounds(outdir):
         missing = paths[found.index(False)]
         raise ValueError(f"{missing} is missing: the clustering rounds of the run need both of {', '.join(paths)}.")
     # Names as written: a contig called NA, None or nan is a contig. Only
-    # the missing values of the clusters table are NA (Rounds.write).
+    # the missing values of the clusters table are NA (Rounds.write). Its
+    # numbers are read back exactly (EXACT_FLOATS), as the map stores them.
     clusters = pd.read_csv(
         paths[0],
         sep="\t",
         dtype={"name": str, "parent": str, "round": str, "parent_round": str},
         keep_default_na=False,
         na_values=["NA"],
+        **EXACT_FLOATS,
     )
     members = pd.read_csv(paths[1], sep="\t", dtype=str, keep_default_na=False)
     return clusters, members
@@ -319,6 +338,7 @@ def mge_round(summary_file):
         dtype=dict.fromkeys(text, str),
         keep_default_na=False,
         na_values={column: ["NA"] for column in missing},
+        **EXACT_FLOATS,
     )
     clusters = pd.DataFrame({"round": MGE, "name": summary["BinName"], "parent_round": None, "parent": None})
     for column in summary.columns:

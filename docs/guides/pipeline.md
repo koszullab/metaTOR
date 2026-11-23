@@ -84,9 +84,9 @@ keeps:
 | `contig_data_partition.txt` | The contig data of the partition |
 
 The tables list the contigs of the map, in its order, by their position in it
-(`ID`). The map holds what they hold: `metator dump MAP` (coming in metaTOR
-2.0) writes them from it. [File formats](../formats.md) describes each
-table.
+(`ID`). The map holds what they hold: `metator dump MAP` writes them from the
+map of the clusters (see [`dump`](../cli.md#dump)), in the order of that map,
+without the `ID`. [File formats](../formats.md) describes each table.
 
 A run refuses to overwrite the final clusters of an earlier one unless given
 `--force` (`-F`), and the tables and `recursive_clusters/` that an earlier

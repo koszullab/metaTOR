@@ -37,3 +37,23 @@ def normalize_pair(contig_data, pair, n_occ, normalization):
         "theoritical_hit": lambda: mean(lambda c: c["coverage"] * 10 * np.sqrt(c["length"] * c["RS"])),
     }[normalization]()
     return 0 if factor == 0 else n_occ / factor
+
+
+def partition_table(contig_data, partition):
+    """The contig data table of a partition as metaTOR wrote it before it
+    vectorised it (metator.partition.partition_table, cluster by cluster
+    with pandas' .loc): the reference of its output, byte for byte."""
+    import pandas as pd
+
+    contigs_data = contig_data.reset_index(drop=True).copy()
+    for kind in ("Core", "Overlapping"):
+        for column in ("ID", "contigs", "size"):
+            contigs_data[f"{kind}_cluster_{column}"] = pd.Series("-", index=contigs_data.index, dtype=object)
+    for kind, clusters in (("Core", partition.core), ("Overlapping", partition.overlapping)):
+        for number, contigs in clusters.items():
+            rows = [contig - 1 for contig in contigs]
+            length = sum(contigs_data.iloc[rows].Size)
+            contigs_data.loc[rows, f"{kind}_cluster_ID"] = f"{number:05d}"
+            contigs_data.loc[rows, f"{kind}_cluster_contigs"] = len(rows)
+            contigs_data.loc[rows, f"{kind}_cluster_size"] = length
+    return contigs_data

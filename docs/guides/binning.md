@@ -81,9 +81,9 @@ parts are left out of the final clusters (`ND`).
 the output directory, and store the clusters in the map. The other files
 below are written in the temporary directory of the run (`-T`, in a
 directory of its own, which the log names), which `-N` keeps; `metator dump`
-(coming in metaTOR 2.0) writes the tables from the map. An earlier version
-wrote them in the output directory: a run refuses them there without `-F`,
-which removes them.
+writes the tables from the map (see [`dump`](../cli.md#dump)). An earlier
+version wrote them in the output directory: a run refuses them there without
+`-F`, which removes them.
 
 | File | What it holds |
 |---|---|

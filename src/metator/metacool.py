@@ -137,6 +137,11 @@ class MetacoolError(ValueError):
     """The inputs cannot give a .metacool file; the message says why."""
 
 
+class MapReplacedError(MetacoolError):
+    """A map was replaced or written while it was read (see read_errors): what
+    was read of it would mix two maps."""
+
+
 @contextmanager
 def _as_metacool_errors():
     """Raise the ValueError, OSError (FileExistsError among them) and
@@ -198,23 +203,28 @@ def open_map(metacool):
         raise MetacoolError(f"Cannot read the contact map {metacool}: {reason}") from error
 
 
+#: What to do about a map replaced while it was read (see read_errors).
+READ_AGAIN = "Read it again once that run has ended."
+
+
 @contextmanager
-def read_errors(metacool):
-    """Raise, as a MetacoolError, metacooler's refusal of a read of the map
-    metacool that spans a replacement of its file (MapChangedError): a run
-    that updates a map in place replaces it with the map of its clusters,
-    whose bins are in another order, and so are the bin ids of its pixels.
-    metacooler reads a map one chunk of pixels at a time, and checks its file
-    before and after each: a read that spanned the replacement would mix the
-    bins of one map with the pixels of the other."""
+def read_errors(metacool, remedy=READ_AGAIN):
+    """Raise, as a MapReplacedError (a MetacoolError), metacooler's refusal of
+    a read of the map metacool that spans a replacement of its file
+    (MapChangedError): a run that updates a map in place replaces it with the
+    map of its clusters, whose bins are in another order, and so are the bin
+    ids of its pixels. metacooler reads a map one chunk of pixels at a time,
+    and checks its file before and after each: a read that spanned the
+    replacement would mix the bins of one map with the pixels of the other.
+    The message ends with remedy: what the reader does about it."""
     import metacooler
 
     try:
         yield
     except metacooler.MapChangedError as error:
-        raise MetacoolError(
+        raise MapReplacedError(
             f"{metacool} was replaced or written while it was read, by a run that updated it: what was read of it "
-            "would mix two maps. Read it again once that run has ended."
+            f"would mix two maps. {remedy}"
         ) from error
 
 
@@ -889,6 +899,39 @@ def _store_clusters(path, entries, clusters, members, name=None):
     metacooler.write_clusters(path, entries, stored, members)
 
 
+def _computed_cluster_columns():
+    """The columns of the clustering rounds that metacooler computes from
+    their members (see metacooler.MetaCooler.clusters), which no tool stores,
+    and which metacooler refuses as given."""
+    from metacooler.schema import CLUSTER_GENOME_COLUMN
+
+    return ["n_contigs", "length", CLUSTER_GENOME_COLUMN]
+
+
+def map_rounds(mc):
+    """The clustering rounds of a map (mc, opened), as metator.clusters.Rounds
+    gives them (see Rounds.tables), and as _store_clusters stored them: every
+    cluster of every round, in the order of the rounds and of their
+    clusters, with its parent and the columns its round stored, not those
+    that metacooler computes; and every contig of a cluster, in the order of
+    the map. An empty text of a text column, which _store_clusters stores
+    for a missing value (HDF5 holds no missing text), is a missing value
+    again (None): a genuinely empty text too.
+
+    Returns
+    -------
+    tuple of pandas.DataFrame
+        The clusters and their contigs (columns round, cluster, contig).
+    """
+    clusters = mc.clusters.drop(columns=_computed_cluster_columns(), errors="ignore").reset_index(drop=True)
+    for column in clusters.columns:
+        if not pd.api.types.is_numeric_dtype(clusters[column]):
+            values = clusters[column].astype(object)
+            clusters[column] = values.where(values.notna() & (values.astype(str) != ""), None)
+    members = mc.cluster_members().reset_index(drop=True)
+    return clusters, members[["round", "cluster", "contig"]]
+
+
 def read_partition(metacool, mc=None, network=None):
     """The partition that a map stores, as metator partition MAP stores it
     (see write_map and metator.clusters.partition_rounds): its clustering
@@ -1348,8 +1391,6 @@ def _store_round(path, metacool, rounds, entry):
         The round as metacooler stores it: its name, and what is stored with
         it (tool, version, step, parameters...).
     """
-    from metacooler.schema import CLUSTER_GENOME_COLUMN
-
     clusters, members = rounds
     name = entry["name"]
     mc = open_map(path)
@@ -1357,8 +1398,7 @@ def _store_round(path, metacool, rounds, entry):
     held_members = mc.cluster_members()
     held_rounds = mc.cluster_rounds
     # The columns that metacooler computes, which it refuses as given.
-    computed = ["n_contigs", "length", CLUSTER_GENOME_COLUMN]
-    other = held[(held["round"] != name).to_numpy()].drop(columns=computed)
+    other = held[(held["round"] != name).to_numpy()].drop(columns=_computed_cluster_columns())
     other_members = held_members[(held_members["round"] != name).to_numpy()]
     entries = [stored for stored in held_rounds if stored["name"] != name]
     _store_clusters(path, [*entries, entry], _stacked(other, clusters), _stacked(other_members, members), name=metacool)
