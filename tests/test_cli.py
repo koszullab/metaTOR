@@ -194,15 +194,11 @@ def test_missing_required_option(command, missing, run_cli):
     [command for command, frozen in INVENTORY["commands"].items() if any(arg["required"] for arg in frozen["positional"])],
 )
 def test_missing_pairs_files(command, run_cli):
-    """A required argument left out: the map of network and pipeline, which
-    the arguments come after, or the pairs files of mge."""
+    """A required argument left out: the map, which the arguments come
+    after."""
     args = _required_args(command)
-    if command == "mge":
-        del args[-1]
-        missing = "PAIRSFILE..."
-    else:
-        del args[args.index("p.pairs")]
-        missing = "MAP"
+    del args[args.index("p.pairs")]
+    missing = "MAP"
     result = run_cli(command, *args, exit_code=2)
     assert f"Missing argument '{missing}'" in result.output
 
@@ -389,7 +385,7 @@ def _one_cluster(network):
 
 
 def _assembly(tmp_path):
-    """A copy of an assembly: the stub validation writes its pyfastx index."""
+    """A copy of an assembly of tests_data, of the test's own."""
     assembly = tmp_path / "assembly.fa"
     shutil.copyfile(TESTS_DATA / "subset.assembly.fa", assembly)
     return assembly
@@ -442,11 +438,11 @@ NON_ASCII_ASSEMBLY = ">NODE_1 a contig\n" + "ACGT" * 30 + "\n>NODE_522_é\n" + "
 
 @pytest.mark.parametrize("command", ["network", "pipeline"])
 @pytest.mark.parametrize("compression", ["bzip2", "zip"])
-def test_a_run_refuses_an_assembly_that_pyfastx_cannot_read(compression, command, stub_pipeline, tmp_path, run_cli, logged):
+def test_a_run_refuses_an_assembly_that_metacooler_cannot_read(compression, command, stub_pipeline, tmp_path, run_cli, logged):
     """An assembly compressed with bzip2 or zip, which metaTOR reads but
-    pyfastx, in the partition and the validation, does not, is refused
-    before any work: the clusters of an earlier run stay, even with -F
-    (pipeline)."""
+    metacooler, which writes the FASTA files of the clusters, does not, is
+    refused before any work: the clusters of an earlier run stay, even with
+    -F (pipeline)."""
     import bz2
     import zipfile
 
@@ -1151,7 +1147,7 @@ def test_warn_of_what_a_run_replaces_in_a_map(command, replaced, tmp_path, logge
     run (or another binner): pipeline MAP its clusters and its rounds of
     the binning; partition MAP its rounds of the binning; validation MAP its
     clusters and its rounds of validation, as partition MAP, step by step,
-    stores the round overlapping just before; mge --map its round mge. A map
+    stores the round overlapping just before; mge MAP its round mge. A map
     of no earlier run gives no warning."""
     metacool = _map_of_an_earlier_run(tmp_path / "input.metacool")
     mtcli.warn_of_what_is_replaced(command, str(metacool))
@@ -1186,16 +1182,15 @@ def test_pipeline_from_a_map_warns_of_what_it_replaces(output, stub_pipeline, tm
 
 @pytest.mark.parametrize("command", ["partition", "validation", "mge"])
 def test_a_step_warns_of_what_it_replaces_in_place(command, tmp_path, logged):
-    """partition MAP, validation MAP and mge --map MAP warn, as they take the
-    lock of the map, of what they replace in it in place (see
+    """partition MAP, validation MAP and mge MAP warn, as they take the lock
+    of the map, of what they replace in it in place (see
     warn_of_what_is_replaced); with --output-map, they do not."""
     from contextlib import ExitStack
 
     metacool = _map_of_an_earlier_run(tmp_path / "input.metacool")
-    option = "--map" if command == "mge" else None
     for output_map in [str(tmp_path / "copy.metacool"), None]:
         with ExitStack() as held:
-            mtcli.step_map(command, str(metacool), output_map, False, held, option=option)
+            mtcli.step_map(command, str(metacool), output_map, False, held)
         warned = [message for level, message in logged() if level == "WARNING"]
         assert len(warned) == (output_map is None) and all(message.startswith(f"{metacool} holds ") for message in warned)
 
@@ -1692,26 +1687,25 @@ REPLACED_WHILE_READ = (
 @pytest.mark.parametrize(
     ("reader", "command", "options"),
     [
-        ("check_map_of_contigs", "mge", ["--output-map", "out.metacool"]),
+        ("mge_binning", "mge", ["--output-map", "out.metacool"]),
         ("map_columns", "pipeline", ["--normalization", "RS"]),
         ("warn_of_what_is_replaced", "partition", []),
     ],
 )
 def test_a_map_replaced_as_the_run_checks_it(reader, command, options, stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """A map replaced as the run reads it to check it (its contigs against
-    the contig data of mge --map, its columns against the normalization,
-    what it holds that the run replaces) stops the run with metaTOR's error,
-    logged as an ERROR: it stopped on metacooler's MapChangedError, raised as
-    it is, with nothing in the log."""
+    """A map replaced as the run reads it to check it (what mge reads of it,
+    its columns against the normalization, what it holds that the run
+    replaces) stops the run with metaTOR's error, logged as an ERROR: it
+    stopped on metacooler's MapChangedError, raised as it is, with nothing
+    in the log."""
     metacool = _contig_map(tmp_path / "input.metacool")
     _replaced_once_opened_by(monkeypatch, metacool, reader)
     message = REPLACED_WHILE_READ.format(map=metacool)
     options = [tmp_path / option if option.endswith(".metacool") else option for option in options]
     if command == "mge":
-        contigs = tmp_path / "contig_data_final.txt"
-        contigs.write_text("Name\tSize\nc1\t100\nc2\t50\n")
-        arguments = ["-a", _assembly(tmp_path), "-c", contigs, "-b", TESTS_DATA / "binning.txt", "-m",
-                     TESTS_DATA / "subset.mges.txt", "-o", tmp_path / "out", "--map", metacool, *options, "a.pairs"]  # fmt: skip
+        mges = tmp_path / "mges.txt"
+        mges.write_text("c2\n")
+        arguments = [metacool, "-a", _assembly(tmp_path), "-m", mges, "-o", tmp_path / "out", *options]
     else:
         arguments = _output_map_run(command, metacool, tmp_path, *options)
     with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
@@ -2810,35 +2804,50 @@ def test_pipeline_leaves_the_directory_of_the_assembly_alone(stub_pipeline, tmp_
     ]  # fmt: skip
 
 
-def test_mge_without_pyfastx_index(tmp_path, monkeypatch, run_cli):
-    """No MGE bin, so pyfastx never indexed the assembly: mge ends without
-    removing an index that is not there."""
-    monkeypatch.setattr("metator.mge.mge_binning", lambda **kwargs: None)
-    assembly = tmp_path / "assembly.fa"
-    shutil.copyfile(TESTS_DATA / "subset.assembly.fa", assembly)
-    run_cli("mge", "-a", assembly, "-c", "tests_data/contig_data_final.txt", "-b", "tests_data/binning.txt",
-            "-m", "tests_data/subset.mges.txt", "a.pairs")  # fmt: skip
-    assert not Path(f"{assembly}.fxi").exists()
+@pytest.mark.parametrize("random", [False, True], ids=["mge", "--random"])
+def test_mge_default_outdir(random, tmp_path, monkeypatch, run_cli):
+    """Without --outdir, mge writes its MGE fasta to the current directory
+    (mges_binned_random.fa with --random), with the assembly that the map
+    was made from, and stores the round mge (mge_random) in the map; its
+    temporary directory is removed at its end, and nothing is written next
+    to the assembly."""
+    import metacooler
+    import pandas as pd
 
+    import metator.clusters as mtcl
 
-def test_mge_default_outdir(tmp_path, monkeypatch, run_cli):
-    """Without --outdir, mge writes to the current directory; the pyfastx
-    index of the assembly is removed at the end."""
-    calls = []
+    metacool = _contig_map(tmp_path / "map.metacool")
+    calls = {}
+    summary = pd.DataFrame({"BinName": ["MetaTOR_MGE_00001"], "Contigs": ["c2"]})
 
-    def mge_binning(**kwargs):
-        calls.append(kwargs)
-        Path(f"{kwargs['fasta_mges_contigs']}.fxi").write_text("x")
+    def mge_binning(metacool, mges_list, threshold_bin, random):
+        calls["binning"] = (metacool, mges_list, threshold_bin, random)
+        return summary, {1: {"Contigs": ["c2"], "Score": float("nan")}}
+
+    def write_mges_fasta(metacool, assembly, mge_bins, out_file, temp_dir):
+        calls["fasta"] = (metacool, assembly, out_file)
+        assert os.path.isdir(temp_dir)
+
+    def write_map(metacool, outfile, planned, what, mge):
+        (clusters, members), entry = mge
+        calls["map"] = (metacool, outfile, list(clusters["round"]), list(members["contig"]), entry["name"])
+        assert isinstance(planned, metacooler.MetaCooler)
 
     monkeypatch.setattr("metator.mge.mge_binning", mge_binning)
-    assembly = tmp_path / "assembly.fa"
+    monkeypatch.setattr("metator.mge.write_mges_fasta", write_mges_fasta)
+    monkeypatch.setattr("metator.cli.write_map", write_map)
+    assembly = tmp_path / "inputs" / "assembly.fa"
+    assembly.parent.mkdir()
     shutil.copyfile(TESTS_DATA / "subset.assembly.fa", assembly)
-    run_cli("mge", "-a", assembly, "-c", "tests_data/contig_data_final.txt", "-b", "tests_data/binning.txt",
-            "-m", "tests_data/subset.mges.txt", "a.pairs")  # fmt: skip
-    (kwargs,) = calls
-    assert kwargs["out_dir"] == "." and kwargs["pairs_files"] == ["a.pairs"]
-    assert kwargs["threshold_bin"] == 0.8 and kwargs["random"] is False
-    assert not Path(f"{assembly}.fxi").exists()
+    mges = tmp_path / "mges.txt"
+    mges.write_text("c2\n")
+    run_cli("mge", metacool, "-a", assembly, "-m", mges, *(["--random"] if random else []))
+    assert calls["binning"] == (str(metacool), ["c2"], 0.8, random)
+    fasta = "mges_binned_random.fa" if random else "mges_binned.fa"
+    assert calls["fasta"] == (str(metacool), str(assembly), os.path.join(".", fasta))
+    name = mtcl.MGE_RANDOM if random else mtcl.MGE
+    assert calls["map"] == (str(metacool), str(metacool), [name], ["c2"], name)
+    assert sorted(path.name for path in assembly.parent.iterdir()) == ["assembly.fa"]
     assert not (tmp_path / "tmp").exists()
 
 

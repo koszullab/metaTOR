@@ -245,36 +245,6 @@ def check_map_lengths(metacool, contigs, lengths, of, where):
         )
 
 
-def check_map_of_contigs(metacool, contig_data):
-    """Refuse a map that is not a map of the contigs of a run: contigs that
-    contig_data, a contig data file of the run (its Name and Size columns),
-    has not, or that have another length in it. The map may lack some of
-    them, as a map made with a contig filter does.
-
-    Raises
-    ------
-    MetacoolError
-        If the map holds other contigs or lengths, cannot be read, or the
-        contig data has no Name or Size column.
-    """
-    import pandas as pd
-
-    try:
-        table = pd.read_csv(contig_data, sep="\t", usecols=["Name", "Size"], dtype={"Name": str}, keep_default_na=False)
-        lengths = dict(zip(table["Name"], table["Size"].astype(int), strict=True))
-    except (OSError, ValueError) as error:
-        raise MetacoolError(f"Cannot read the contigs of {contig_data}: {error}") from error
-    with _metacooler_logging(), read_errors(metacool):
-        contigs = open_map(metacool).contigs
-    extra = [str(name) for name in contigs["name"] if str(name) not in lengths]
-    if extra:
-        raise MetacoolError(
-            f"{metacool} is not a contact map of the contigs of {contig_data}: {len(extra)} of its contig(s) are not "
-            f"in it: {_shown(extra)}."
-        )
-    check_map_lengths(metacool, contigs, lengths, contig_data, contig_data)
-
-
 def map_file(metacool):
     """The file of a .metacool map: the map, or the .mmetacool collection of
     an entry given as file.mmetacool::entries/NAME."""
@@ -754,6 +724,18 @@ def _store_metator_entries(path, entries):
     _store_metadata(path, {"metator": {**_metator_metadata(open_map(path)), **entries}})
 
 
+def _drop_metator_entries(path, names):
+    """Remove the entries names of the metator key of the metadata of the map
+    at path, the staged map of an edit session: what made the clustering
+    rounds of those names, which the map no longer holds (see write_map).
+    The map is opened for writing only when it holds one of them."""
+    if not names:
+        return
+    metator = _metator_metadata(open_map(path))
+    if any(name in metator for name in names):
+        _store_metadata(path, {"metator": {key: value for key, value in metator.items() if key not in names}})
+
+
 def _store_metadata(path, keys):
     """Set keys (a dict) in the metadata of the map at path, the staged map of
     an edit session, whose other keys are kept: a write of metacooler's
@@ -770,7 +752,7 @@ def _store_metadata(path, keys):
 
 # The steps of the binning, which make the clustering rounds that a run
 # replaces (see store_rounds): a round that another step made (that of
-# metator mge --map), or another tool, is dropped with them.
+# metator mge), or another tool, is dropped with them.
 BINNING_STEPS = ("partition", "validation")
 
 # The clustering rounds that metator partition stores (see write_map),
@@ -802,7 +784,7 @@ def partition_network(mc):
 
 def _later_rounds(mc):
     """The entries of the clustering rounds of the map mc that the binning
-    did not make: that of metator mge --map, or of another tool. A run that
+    did not make: those of metator mge, or of another tool. A run that
     replaces the clusters of the map stores its own rounds only, so its map
     does not keep them (see _warn_dropped_rounds)."""
     return [entry for entry in mc.cluster_rounds if entry.get("step") not in BINNING_STEPS]
@@ -1145,14 +1127,17 @@ def write_map(
       store_rounds). The validation reads them back (see read_partition).
       With clusters, the rounds are those of the run (FinalClusters.rounds),
       which replace those of the map.
-    - mge (metator mge): the round mge, (its tables, its entry), which
-      replaces the round of that name of the map, after the others (see
-      _store_round).
+    - mge (metator mge): the round mge, or mge_random, (its tables, its
+      entry), which replaces the round of that name of the map, after the
+      others (see _store_round), and the entry of that name of the metator
+      metadata: what the run was, and what it read of the map (its entry,
+      but its name, tool and step).
 
     A run that replaces the clustering rounds of the map (partition,
     validation) does not keep the rounds that the binning did not make
-    (that of metator mge, or of another tool): it warns of them, once the
-    map is written.
+    (those of metator mge, or of another tool): it warns of them, once the
+    map is written, and drops the entries of the metator metadata of the
+    rounds of metator mge that it drops.
 
     Parameters
     ----------
@@ -1173,8 +1158,9 @@ def write_map(
         store_rounds). Not with clusters.
     clusters : FinalClusters, optional
     mge : tuple, optional
-        The tables of the round mge (see metator.clusters.mge_round) and its
-        entry (its name, and what made it).
+        The tables of the round mge or mge_random (see
+        metator.clusters.mge_round) and its entry (its name, and what made
+        it: see metator.cli.mge_entry).
     force : bool
         Whether to replace an existing outfile: the input map itself, which a
         run updates in place, or another file.
@@ -1247,6 +1233,12 @@ def write_map(
                     _store_metator_entries(staged, {"partition": partition})
             if mge is not None:
                 _store_round(staged, metacool, *mge)
+                entry = mge[1]
+                run = {key: value for key, value in entry.items() if key not in ("name", "tool", "step")}
+                _store_metator_entries(staged, {entry["name"]: run})
+            # What made the rounds of metator mge that the map no longer
+            # holds, which the clusters of a validation carried over.
+            _drop_metator_entries(staged, [dropped["name"] for dropped in later if _made_by(dropped) == "metaTOR mge"])
         logger.info(f"{outfile} is written: the contact map{written}.")
     _warn_dropped_rounds(later, metacool, outfile, in_place)
 

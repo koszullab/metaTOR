@@ -11,9 +11,9 @@ All notable changes to this project will be documented in this file.
   run's, from the genomes table of the map, as its `validation` entry
   records it: `summary_rows`, `summary_columns` and `summary_formats`),
   `binning.txt`, `clusters.txt` and `cluster_members.txt` (every clustering
-  round of the map, the round `mge` of `metator mge` included), and
-  `network.txt` (the network that `metator network` stored, by contig
-  names: 1.x wrote their IDs). The values are those of the tables that the
+  round of the map, the rounds `mge` and `mge_random` of `metator mge`
+  included), and `network.txt` (the network that `metator network` stored,
+  by contig names: 1.x wrote their IDs). The values are those of the tables that the
   run keeps in its temporary directory with `-N`; the rows of
   `contig_data_final.txt`, `binning.txt` and `cluster_members.txt` come in
   the order of the map of the clusters. A map without the clusters of a
@@ -32,8 +32,8 @@ All notable changes to this project will be documented in this file.
   a map already opened (`mc`); `metator.metacool.MapReplacedError`.
 - metaTOR reads back the numbers of the tables it wrote exactly (pandas'
   `round_trip` parser, under pandas 2; pandas 3 reads them exactly by
-  default): the clustering rounds, the summary of `metator mge`,
-  miComplete's results and the contig data of the partition. pandas 2's
+  default): the clustering rounds, miComplete's results and the contig
+  data of the partition. pandas 2's
   default parser could read the last digit of one off, and the map would
   store another number than the run's tables.
 - **Breaking:** what `validation` finds lives in the map, and `pipeline`
@@ -220,28 +220,79 @@ All notable changes to this project will be documented in this file.
   `metator.metacool.store_rounds` (a round with no cluster), and the
   `partition` of `reassign_metacool`; `metator.partition.partition_table`;
   `metator.validation.write_overlapping_fasta`.
-- `mge --map MAP` stores the MGE clusters of the run in the contact map
-  of the run, as the round `mge` of its clustering rounds: one cluster
-  per row of `mges_cluster_summary.tsv`, with its contigs and its columns
-  (its length and number of contigs computed by metacooler), and the
-  version, command line and parameters of the run, after the rounds of
-  the binning run, which are kept, in place of the round `mge` of an
-  earlier run. A column of whole numbers, or of booleans, of the rounds
-  of the binning run, which the round `mge` lacks, is stored as
-  decimals, or as text, from then on, as any column with a missing value
-  is. The genomes and contigs tables, the final clusters, and the rest
-  of the map are left as they were. The map is written as
-  `partition MAP` writes it, in place or to `--output-map FILE`
-  (replaced only with `-F`, new to `mge`), and locked while it is
-  written; what `partition MAP` refuses is refused before any work (a
-  map of other contigs or lengths than the contig data, an
-  `--output-map` that is one of the inputs of the run), and so are a map
-  given in place of the pairs files, which `mge` reads for the contacts
-  within each MGE contig, and `--random` with `--map`. A run that
+- **Breaking:** `mge` reads the contact map of the run, `MAP`, its first
+  argument, which it requires (`metator mge MAP -m MGES -a ASSEMBLY`: a map
+  that `metator network` stored its network in, after `network`,
+  `pipeline` or `validation`, or an entry of a collection with
+  `--output-map`): the contacts between the MGE contigs are those of the
+  map, summed by pair of contigs, whatever its bin size, and those within
+  each contig, between reads more than 1 kb apart, are the contact
+  statistics of the map (metacooler's QC block, counted from the pairs at
+  1001 bp: `qc_intra_contig_long`). The size, GC content and hits of each
+  contig are those that `metator network` stored in the map; `mge` reads no
+  cluster of it. A map without those contact statistics, with them
+  measured from its pixels or at another distance than 1001 bp, or without
+  the columns of `network`, is refused before anything is written, with
+  how to make one (after a run with `--output-map`: the map that the run
+  wrote); so is a map that holds none of the MGE contigs, and an assembly
+  that is not a FASTA file, plain or compressed with gzip, as `network`,
+  `validation` and `pipeline` refuse it. An MGE contig that the map lacks
+  is left out, with a warning that names it. On the mock
+  community, at one bin per contig, 1 kb and 5 kb, the contacts, MGE
+  clusters and scores are those of the pairs. A pair within a contig with
+  a read at position 0 (which a 1-based pairs file should not hold) and its
+  mate 1001 bp away is no longer counted: metacooler counts that read on
+  the first base of its contig, 1000 bp from its mate.
+- **Breaking:** `mge` takes the MGE contigs the longest first, ties by
+  name, whatever the order of the map, where it took them in the order of
+  the rows of the `contig_data_final.txt` that it was given: that of the
+  map that the validation read, in the table of the run (which `-N`
+  keeps), or that of the map of the clusters, in the table that
+  `metator dump` writes, which numbered some clusters otherwise. Two equal
+  scores are merged in that order, and the clusters of one contig numbered
+  in it. The tables of a run from a map of the contigs
+  that hicstuff or metacooler made, longest first, gave the same order but
+  for contigs of the same length; those of 1.x, in the order of the
+  assembly, gave it for an assembly sorted by length (SPAdes). From another
+  order, two clusters of one contig may swap names, and a tie of scores
+  may merge other contigs. The contigs of each record of `mges_binned.fa`
+  come in that order too.
+- `mge` stores its MGE clusters in the map, as the round `mge` of its
+  clustering rounds: one cluster per MGE cluster, named as its record of
+  `mges_binned.fa`, with its contigs and its columns (its length and number
+  of contigs computed by metacooler, its GC content, hits and clustering
+  score), after the other rounds, which are kept, in place of the round
+  `mge` of an earlier run; `metator dump` writes it with them, in
+  `clusters.txt` and `cluster_members.txt`. The `mge` entry of the
+  `metator` key of the metadata of the map records the version, command
+  line and parameters of the run, and what it read of the map under `read`
+  (the `GC_content`, `Hit` and `qc_intra_contig_long` columns of its
+  contigs table, and the `qc` key of its metadata). A column of whole
+  numbers, or of booleans, of the rounds of the binning run, which the
+  round `mge` lacks, is stored as decimals, or as text, from then on, as
+  any column with a missing value is. The genomes and contigs tables and
+  the rest of the map are left as they were. The map is written as
+  `partition MAP` writes it, in place or to `--output-map FILE` (replaced
+  only with `-F`, new to `mge`), and locked while it is written; what
+  `partition MAP` refuses is refused before any work (an `--output-map`
+  that is one of the inputs of the run), and so is the summary of the MGE
+  clusters that an earlier version wrote in the output directory
+  (`mges_bin_summary.tsv`, or `mges_cluster_summary.tsv` of a development
+  build), without `-F`, which removes it: left there, it passed for the
+  run's. `--random` stores its random clustering as the round
+  `mge_random`, with its own entry, and writes `mges_binned_random.fa`:
+  the round `mge` and `mges_binned.fa` are left as they were. A run that
   replaces the clusters of the map (`partition MAP`, `validation MAP`,
-  `pipeline MAP`) drops the round `mge`, made with the clusters it replaces,
-  with a warning. Python API: `metator.metacool.write_round`,
-  `metator.clusters.mge_round`.
+  `pipeline MAP`) drops the rounds `mge` and `mge_random`, and their
+  entries, with a warning, as it drops every round that it does not make:
+  run `mge` again on its map. Python API: `metator.mge.check_mge_map`,
+  `mge_contigs`, `map_matrix` and `write_mges_fasta`;
+  `metator.mge.mge_binning` takes the map and the MGE contigs, and returns
+  the summary and the clusters; the `mge` of `metator.metacool.write_map`
+  stores the entry of its round in the metadata too;
+  `metator.clusters.mge_round` takes a summary, and the name of the round;
+  `metator.clusters.MGE_RANDOM`; `metator.cli.MGE_EARLIER_OUTPUTS`, and the
+  `outputs` of `refuse_earlier_outputs` and `remove_earlier_outputs`.
 
 ### Changed
 - **Breaking:** `partition` and `validation` require the map, `MAP`, and read
@@ -295,8 +346,7 @@ All notable changes to this project will be documented in this file.
   of the run, and the shotgun abundance of a cluster is its share of the
   sequenced bases of the contigs of the map: the clusters of a map made with
   a contig filter add up to 100%, where 1.x counted every contig of the
-  assembly. `mge -c` reads these tables: it leaves out an MGE contig that
-  the map lacks, with a warning that names it. `metator.network.create_contig_data`
+  assembly. `metator.network.create_contig_data`
   gives no `id` and `hit` of a contig: its ID is its position in the map,
   and its hits are counted on the map. `validation` numbers them in
   the order of the map as it reads it: a validation run again on the map of
@@ -313,8 +363,8 @@ All notable changes to this project will be documented in this file.
   `recursive_clusters/`, and `overlapping_bin/` is gone (the partition is
   in the map);
   `final_bin/` (`validation`) and `final_bin_unscaffold/` (`pipeline`) are
-  `final_clusters/`; `mges_bin_summary.tsv` (`mge`) is
-  `mges_cluster_summary.tsv`. In the contig data tables, `Core_bin_ID`,
+  `final_clusters/`; `mges_bin_summary.tsv` (`mge`) is gone (see
+  Removed). In the contig data tables, `Core_bin_ID`,
   `Core_bin_contigs` and `Core_bin_size`, and the columns of the overlapping
   and recursive bins, are `Core_cluster_ID`, `Core_cluster_contigs`,
   `Core_cluster_size` and so on, and `Final_bin` is `Final_cluster`.
@@ -367,7 +417,7 @@ All notable changes to this project will be documented in this file.
   whether a write updates the map in place, `is_hard_link_of` refuses the
   other names of its file, and `make_map_directory` makes the directory of
   a map. A run that updates a map in
-  place (`pipeline MAP`, `partition MAP`, `validation MAP`, `mge --map`)
+  place (`pipeline MAP`, `partition MAP`, `validation MAP`, `mge MAP`)
   warns, before any work, of the clusters and the clustering rounds of an
   earlier run (or of another binner) that it replaces there, of which the
   map keeps no record. `--output-map` refuses, before any work:
@@ -418,10 +468,14 @@ All notable changes to this project will be documented in this file.
   `metacooler reassign` carries over to the bins.
 - Python API: `metator.partition.partition` no longer takes
   `temp_directory`, nor
-  `metator.validation.update_contigs_data_recursive` `tmpdir`, nor
-  `metator.mge.mge_binning` and `generate_mges_fasta` `tmp_dir`: they only
-  held the contig lists of the `pyfastx` command. `partition` and `mge`
-  write no temporary file any more.
+  `metator.validation.update_contigs_data_recursive` `tmpdir`: they only
+  held the contig lists of the `pyfastx` command. `partition` writes no
+  temporary file any more.
+- `mges_binned.fa`: metacooler writes it, one record per MGE cluster as
+  before, its contigs the longest first, ties by name (see Added), joined
+  by 200 `N`, in lines of 80 bases, where the lines of each contig were
+  those of the assembly. Nothing is written next to the assembly: no
+  pyfastx index.
 - The network counts the pairs as metacooler counts them in a map: a pair with a read on the last base of a contig, or at
   position 0 (which a 1-based pairs file should not hold, but some do), is
   a contact, which `--edge 0`, the default, left out; a pair with a read
@@ -451,6 +505,23 @@ All notable changes to this project will be documented in this file.
   and `write_bins_contigs`; `metator.io.write_contigs`;
   `metator.cli.run_metadata`'s `columns_from_map` (see `network_entry`);
   `pipeline --no-metacool`.
+- **Breaking:** the pairs route of `mge`: its pairs files (`PAIRSFILE`),
+  `-c, --contigs` (`contig_data_final.txt`), `-b, --binning`
+  (`binning.txt`, or an anvi'o collection, which only set columns that no
+  output read) and `--map`, which the map, its first argument, replaces;
+  the summary of the MGE clusters, `mges_bin_summary.tsv`
+  (`mges_cluster_summary.tsv` in a development build), which the round
+  `mge` of the map holds (unrounded, where the table rounded `GC` and
+  `BinningScore` to two decimals), but for the three columns of the hosts
+  of the MGE clusters (`MetagenomicBin`, `AssociationScore`,
+  `AssociatedBins`), which `mge` always left empty; the dependency on
+  pypairix, whose index of the pairs it read, and the one on pyfastx, which
+  no step uses any more. Python API: `metator.mge.build_matrix` (by
+  `map_matrix`), `generate_mge_bins_pairs`, `generate_mges_fasta` (by
+  `write_mges_fasta`), and the `outfile` of `generate_bin_summary`, which
+  returns the summary; `metator.io.import_anvio_binning`,
+  `import_contig_data_mges`, `write_mge_data` and `remove_pyfastx_index`;
+  `metator.metacool.check_map_of_contigs`.
 - **Breaking:** `network.txt` and `contig_data_network.txt`: the network is
   in the map (see Added). `metacooler network MAP --level contig --balance
   metator_<normalization>` writes it, by contig names, with the contacts
@@ -530,8 +601,7 @@ All notable changes to this project will be documented in this file.
     file of the assembly, plain or compressed with gzip, and one compressed
     with bzip2 or zip, which pyfastx cannot read, is refused before any work;
   - the dependencies on hicstuff and pysam, and the programs bowtie2, bwa
-    and samtools: prodigal and hmmer stay, for miComplete. `metator mge`
-    still reads pairs files: those of hicstuff, once indexed with pairix.
+    and samtools: prodigal and hmmer stay, for miComplete.
 
   Python API: the module `metator.align`; `metator.network.alignment_to_contacts`,
   `precompute_network`, `compute_network` and `write_hit_data`, and

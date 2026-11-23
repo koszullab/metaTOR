@@ -37,7 +37,6 @@ classifiers = [
 dependencies = [
     "igraph>=0.10.3",
     "biopython>=1.80",
-    "pyfastx",
     "numpy",
     "pandas",
     "matplotlib>=3.9",
@@ -47,7 +46,6 @@ dependencies = [
     # metator._micomplete).
     "pyrodigal>=3.0",
     "pyhmmer>=0.10.11",
-    "pypairix",
     "rich-click>=1.9",
     "metacooler>=0.4.0",
 ]
@@ -148,10 +146,6 @@ exclude_lines = [
     "return NotImplemented",
     "raise NotImplementedError"
 ]
-
-[tool.ty.analysis]
-# C extensions that ship no type information.
-allowed-unresolved-imports = ["pypairix", "pyfastx"]
 
 [tool.bumpversion]
 # src/metator/version.py is the single source of truth for the version; this

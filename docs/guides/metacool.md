@@ -247,7 +247,8 @@ map in place warns, before any work, of what it replaces there that an earlier
 run left (or another binner): the clusters of the map (`pipeline MAP`,
 `validation MAP`) and its clustering rounds (the rounds of the binning for
 `pipeline MAP` and `partition MAP`, those of the validation for `validation
-MAP`, the round `mge` for `mge --map`). The map keeps no record of them:
+MAP`, the round `mge` for `mge MAP`, `mge_random` for `mge MAP --random`).
+The map keeps no record of them:
 `--output-map` writes the map of the run to another file instead.
 
 A run holds metacooler's lock of the map it writes (`<map>.lock`, next to it)
@@ -376,7 +377,8 @@ A run reaches its final clusters in rounds:
 - `final`: the final clusters, each the cluster of the same name of the round
   it comes from.
 
-`metator mge --map` adds one more after them, `mge`: the MGE clusters (see
+`metator mge` adds one more after them, `mge`: the MGE clusters (or
+`mge_random`, a random clustering of the same shape, with `--random`; see
 [mge on the map](#mge-on-the-map)).
 
 The validation writes them all next to its other tables, in the output
@@ -393,19 +395,25 @@ holds the rounds of the run that wrote it, and those only: `metator
 partition MAP` stores the rounds `core` and `overlapping` alone, which
 `metator validation MAP` reads, until it stores every round (see
 [Step by step](#step-by-step)).
-`metator mge --map` then adds the round `mge`, or replaces the one of an
-earlier `mge` run, and keeps the others.
+`metator mge` then adds the round `mge`, or replaces the one of an earlier
+`mge` run, and keeps the others.
 
 ## mge on the map
 
-`metator mge --map MAP` counts the contacts within each MGE contig between
-reads more than 1 kb apart, which a map does not tell: it reads the pairs
-files, and refuses a map in their place. It stores its MGE clusters in the
-map, as the round `mge` of its clustering rounds, after those of the run; the
-genomes and contigs tables, the final clusters, are left as they were. A run
-that replaces the clusters of the map drops the round `mge`, with a warning.
-The map is written as `partition MAP` writes it: in place, or to
-`--output-map FILE` (see
+`metator mge MAP` clusters the MGE contigs of a map that `metator network`
+stored its network in (the map of the contigs after `network`, or the map of
+the clusters) from its contacts: between two contigs, its pixels, summed by
+pair of contigs; within a contig, between reads more than 1 kb apart, its
+contact statistics (metacooler's QC block, counted from the pairs at
+1001 bp, which `hicstuff pipeline -M metacool` and `metacooler create pairs`
+store with metacooler 0.4.0 or later). It reads no cluster of the map. It
+stores its MGE clusters in the map, as the round `mge` of its clustering
+rounds, after the others, and the run in the `mge` entry of its metadata
+(`mge_random` for both with `--random`); the genomes and contigs tables are
+left as they were. A run that replaces the clusters of the map drops the
+rounds `mge` and `mge_random`, and their entries, with a warning: run `mge`
+again on its map. The map is written as `partition MAP` writes it: in place,
+or to `--output-map FILE` (see
 [Clustering mobile genetic elements](mge.md#in-the-contact-map-of-the-run)).
 
 ## From the reads to the map
@@ -430,10 +438,8 @@ metator pipeline sample.metacool -a assembly.fa -e DpnII -o binning
 ```
 
 hicstuff also writes the pairs of each library, `<prefix>.valid_idx.pairs.gz`,
-which `metator mge` reads (see
-[Clustering mobile genetic elements](mge.md#running-it)), and from which
-`metacooler create pairs` makes a map too, as it does from the pairs files of
-another aligner:
+from which `metacooler create pairs` makes a map too, as it does from the
+pairs files of another aligner:
 
 ```bash
 # One map of both libraries, one bin per contig, every contig in __unbinned__.

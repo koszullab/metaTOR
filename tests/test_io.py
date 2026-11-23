@@ -96,18 +96,6 @@ def test_read_compressed_zip(tmp_path):
         mio.read_compressed(str(tmp_path / "two.zip"))
 
 
-def test_remove_pyfastx_index(tmp_path):
-    fasta = tmp_path / "assembly.fa"
-    fasta.write_text(">c1\nACGT\n")
-    index = tmp_path / "assembly.fa.fxi"
-    index.touch()
-    mio.remove_pyfastx_index(str(fasta))
-    assert fasta.exists() and not index.exists()
-    # No index: nothing to remove.
-    mio.remove_pyfastx_index(str(fasta))
-    assert fasta.exists()
-
-
 def test_rename_1x_columns(logged):
     """The columns of the contig data that metaTOR 1.x named after bins get
     their 2.0 names (for host.py, which reads the tables of 1.x). A table of
@@ -133,39 +121,10 @@ def test_rename_1x_columns(logged):
     assert logged() == [("INFO", message)]
 
 
-def test_import_mges_tables(tmp_path):
-    (tmp_path / "binning.txt").write_text("c1_split_00001\tbin_1\nc2\tbin_2\n")
+def test_import_mges_contigs(tmp_path):
+    """The MGE contigs: the first word of each line."""
     (tmp_path / "mges.txt").write_text("c2 phage\nc3\n")
-    pd.DataFrame({"ID": [1, 2, 3], "Name": ["c1", "c2", "c3"], "Size": [10, 20, 30]}).to_csv(
-        tmp_path / "contigs.txt", sep="\t", index=False
-    )
-    binning = mio.import_anvio_binning(str(tmp_path / "binning.txt"))
-    assert binning == {"c1": "bin_1", "c2": "bin_2"}
-    mges = mio.import_mges_contigs(str(tmp_path / "mges.txt"))
-    assert mges == ["c2", "c3"]
-    data, mges_ids = mio.import_contig_data_mges(str(tmp_path / "contigs.txt"), binning, mges)
-    assert mges_ids == [1, 2]
-    assert list(data.Final_cluster) == ["bin_1", "bin_2", "ND"]
-    assert list(data.Binned) == [True, True, False]
-    assert list(data.MGE) == [False, True, True]
-
-
-def test_mge_contigs_that_the_contig_data_lacks(tmp_path, logged):
-    """The contig data tables list the contigs of the map of the run only:
-    the MGE contigs that a map made with a contig filter lacks are left out,
-    with a warning that says how many and names the first."""
-    pd.DataFrame({"ID": [1, 2], "Name": ["c1", "c2"], "Size": [10, 20]}).to_csv(tmp_path / "contigs.txt", sep="\t", index=False)
-    mges = ["c2", *(f"short_{i}" for i in range(7)), "short_0"]
-    data, mges_ids = mio.import_contig_data_mges(str(tmp_path / "contigs.txt"), {}, mges)
-    assert mges_ids == [1] and list(data.MGE) == [False, True]
-    assert logged() == [
-        (
-            "WARNING",
-            f"7 MGE contig(s) are not in the contig data {tmp_path / 'contigs.txt'}, which lists the contigs of the map "
-            "of the run only (a map made with a contig filter lacks some): they are left out of the MGE clusters: "
-            "'short_0', 'short_1', 'short_2', 'short_3', 'short_4', ... (+2 more).",
-        )
-    ]
+    assert mio.import_mges_contigs(str(tmp_path / "mges.txt")) == ["c2", "c3"]
 
 
 @pytest.mark.parametrize("shotgun", [True, False])
@@ -212,12 +171,3 @@ def test_bin_summary_layout_writes_it_again(tmp_path):
         lines.append("\t".join([row, *("" if pd.isna(value) else layout.formats[column] % value
                                         for column, value in zip(layout.columns, values, strict=True))]))  # fmt: skip
     assert path.read_text() == "\n".join(lines) + "\n"
-
-
-@pytest.mark.parametrize("with_tmp_column", [True, False])
-def test_write_mge_data(tmp_path, with_tmp_column):
-    data = pd.DataFrame({"Name": ["c1"], "Score": [0.123456]})
-    if with_tmp_column:
-        data["tmp"] = "c1_1"
-    mio.write_mge_data(data, str(tmp_path / "mges.tsv"))
-    assert (tmp_path / "mges.tsv").read_text() == "Name\tScore\nc1\t0.12\n"

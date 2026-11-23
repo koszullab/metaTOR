@@ -8,15 +8,11 @@ This mdoule contains all core I/O functions:
     - file_compression
     - generate_temp_dir
     - get_restriction_site
-    - import_anvio_binning
-    - import_contig_data_mges
     - import_mges_contigs
     - process_ligation_sites
     - read_compressed
-    - remove_pyfastx_index
     - rename_1x_columns
     - write_bin_summary
-    - write_mge_data
 """
 
 import bz2
@@ -164,80 +160,6 @@ def get_restriction_site(enzyme):
     return pattern
 
 
-def import_anvio_binning(binning_file):
-    """Import Anvio binning file.
-
-    Parameters:
-    -----------
-    binning_file : str
-        Path to the binning file from anvio to import.
-
-    Returns:
-    --------
-    dict:
-        Dictionnary with contig name as keys and bin name as value.
-    """
-    binning_result = {}
-    with open(binning_file, "r") as binning:
-        for line in binning:
-            line = line.split()
-            # Remove the split name add by anvio
-            binning_result[line[0].split("_split")[0]] = line[1]
-    return binning_result
-
-
-def import_contig_data_mges(contig_data_file, binning_result, mges_list):
-    """Import contigs data.
-
-    The contig data tables of metaTOR list the contigs of the map of the run
-    only: an MGE contig that the map lacks (a map made with a contig filter)
-    is not in them. Such contigs are left out, with a warning that says how
-    many and names the first.
-
-    Parameters:
-    -----------
-    contig_data_file : str
-        Path to the contigs data file from MetaTOR.
-    binning_result : dict
-        Dictionnary with contig name as keys and bin name as value.
-    mges_list : list
-        List of the mges contigs names.
-
-    Returns:
-    --------
-    pandas.DataFrame:
-        Table with the contig information given with more column with the given
-        anvio binning and the mge annotation.
-    list
-        List of the mge contigs ID.
-    """
-    from metator.metacool import _shown
-
-    contig_data = pd.read_csv(contig_data_file, sep="\t", **mtcl.EXACT_FLOATS)
-    listed = set(contig_data["Name"].astype(str))
-    missing = [name for name in dict.fromkeys(mges_list) if name not in listed]
-    if missing:
-        logger.warning(
-            f"{len(missing)} MGE contig(s) are not in the contig data {contig_data_file}, which lists the contigs of "
-            f"the map of the run only (a map made with a contig filter lacks some): they are left out of the MGE "
-            f"clusters: {_shown(missing)}."
-        )
-    contig_data["Binned"] = False
-    contig_data["Final_cluster"] = "ND"
-    contig_data["MGE"] = False
-    mges_list_id = []
-    for i in contig_data.index:
-        if contig_data.loc[i, "Name"] in mges_list:
-            contig_data.loc[i, "MGE"] = True
-            mges_list_id.append(contig_data.index[i])
-        try:
-            contig_data.loc[i, "Final_cluster"] = binning_result[contig_data.loc[i, "Name"]]
-            contig_data.loc[i, "Binned"] = True
-        except KeyError:
-            continue
-    return contig_data, mges_list_id
-
-
 def import_mges_contigs(mges_file):
     """Import list of mges contigs.
 
@@ -376,22 +298,6 @@ def rename_1x_columns(contig_data):
     return contig_data.rename(columns=renamed)
 
 
-def remove_pyfastx_index(fasta):
-    """Remove the index pyfastx writes next to a fasta file, if there is
-    one: pyfastx only indexes the assembly when metator mge writes the
-    FASTA of its MGE clusters from it (see metator.mge.generate_mges_fasta).
-
-    Parameters:
-    -----------
-    fasta : str
-        Path to the fasta file.
-    """
-    try:
-        os.remove(f"{fasta}.fxi")
-    except FileNotFoundError:
-        pass
-
-
 # The columns of the summary of the clusters that write_bin_summary writes with
 # four decimals: the abundances. Its other decimal numbers have two, and its
 # whole numbers none.
@@ -469,25 +375,3 @@ def write_bin_summary(bin_summary, bin_summary_file):
     # Write the file.
     bin_summary.to_csv(bin_summary_file, sep="\t", float_format="%.2f")
     return SummaryLayout([str(row) for row in bin_summary.index], list(formats), formats)
-
-
-def write_mge_data(mge_data, out_file):
-    """Write mge binning information.
-
-    Parameters:
-    -----------
-    mges_data : pandas.DataFrame
-        Table with the mge binning information.
-    out_file : str
-        Path to write the mge data information.
-    """
-
-    # Drop the mge id column which is the concatenation of the two previous
-    # ones.
-    try:
-        mge_data.drop("tmp", inplace=True, axis=1)
-    except KeyError:
-        pass
-
-    # Write the data frame
-    mge_data.to_csv(out_file, sep="\t", index=False, float_format="%.2f")
