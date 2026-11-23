@@ -53,7 +53,7 @@ error, before any work unless said otherwise:
 | metaTOR 1.x | metaTOR 2.0 |
 |---|---|
 | | `<outdir>/metator.metacool` (`<prefix>.metacool`): the contact map of the contigs, grouped by cluster, written by every `pipeline` run from reads, alignments or pairs. |
-| | A run from a map updates that map in place (staged, validated, then renamed over it), and locks it while it runs (`<map>.lock`): `pipeline MAP`, and the steps `partition MAP` and `validation MAP`. |
+| | A run from a map updates that map in place (staged, validated, then renamed over it), and locks it while it runs (`<map>.metator.lock`): `pipeline MAP`, and the steps `partition MAP` and `validation MAP`. |
 | | `clusters.txt` and `cluster_members.txt`: the clusters of every clustering round, and their contigs, also stored in the `/clusters` group of the map. |
 | | `mge --map`: the round `mge` of the clustering rounds of the map, its MGE clusters, after those of the run. |
 | 1.4.0: a map of the clusters that could not be written, a warning, and exit status 0 | The run stops with the reason, logged as an error. Its other outputs are kept, and so is the map it would have replaced. |
