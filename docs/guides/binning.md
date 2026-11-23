@@ -22,7 +22,6 @@ metator partition -a assembly.fa -c binning/contig_data_network.txt \
 | `--overlap` (`-O`) | 80 | Two core clusters are merged into one overlapping cluster when they fall in the same community in at least this percentage of the iterations. A higher threshold gives less contaminated, but less complete, clusters |
 | `--res-param` (`-r`) | 1.0 | The resolution of the modularity that the Leiden algorithm optimises (1 is plain modularity, as in Louvain): the higher, the more, smaller communities |
 | `--size` (`-s`) | 500000 | The size, in base pairs, an overlapping cluster must reach to be written |
-| `--cluster-matrix` (`-C`) | off | Also write `clustering_matrix_partition.npz`: how often each two contigs fell in the same community |
 | `--prefix` (`-p`) | none | Names the clusters `<prefix>_metator_…` |
 
 `partition` writes the overlapping clusters of at least `--size` base pairs to
@@ -54,7 +53,6 @@ contigs:
 | `--iterations` (`-i`) of `validation`, `--rec-iter` (`-j`) of `pipeline` | 10 | How many times each contaminated cluster is partitioned |
 | `--overlap` (`-O`) of `validation`, `--rec-overlap` (`-P`) of `pipeline` | 90 | The overlap threshold of the recursive partition |
 | `--algorithm`, `--res-param`, `--size`, `--prefix` | | As in the partition |
-| `--cluster-matrix` (`-C`) | off | Also write `clustering_matrix_recursive.npz`: how often each two contigs of a cluster partitioned again fell together, in its latest partition (and, in `pipeline`, `clustering_matrix.npz`, the mean of both matrices) |
 
 The parts of a cluster, its **recursive clusters**, are checked with
 miComplete in turn. They replace the cluster when the most complete of them

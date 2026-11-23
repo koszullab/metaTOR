@@ -44,7 +44,7 @@ def metacool_to_contacts(
     tmp_dir,
     n_cpus,
     normalization,
-    self_contacts=False,
+    *,
     chunksize=METACOOL_CHUNKSIZE,
 ):
     """Generates the network file (in edgelist form) from a .metacool contact
@@ -55,8 +55,8 @@ def metacool_to_contacts(
     of the pixels of its bins, a pixel between two of its bins counting
     twice, as a pair with both reads on the contig does in the pairs files
     the map was made of. The intra-contig contacts are left out of the
-    network unless self_contacts is set. The network is then normalized
-    (see normalize_pair) and written with the contig data file.
+    network. The network is then normalized (see normalize_pair) and written
+    with the contig data file.
 
     The map may lack contigs of the assembly (a map made with a contig
     filter, for example, which leaves out the pairs with a read on the
@@ -95,9 +95,6 @@ def metacool_to_contacts(
     normalization : str
         Mode of normalization of the contact counts (see normalize_pair), or
         "None" for the raw counts.
-    self_contacts : bool
-        Whether to keep the intra-contig contacts in the network. Default is
-        False.
     chunksize : int
         Number of pixels read at a time.
 
@@ -137,7 +134,6 @@ def metacool_to_contacts(
         tmp_dir,
         n_cpus,
         normalization,
-        self_contacts,
         chunksize,
     )
     write_contig_data(contig_data, contig_data_file)
@@ -167,7 +163,6 @@ def _write_map_network(
     tmp_dir,
     n_cpus,
     normalization,
-    self_contacts,
     chunksize,
 ):
     """Write the network of the contacts of a map: the edges by contig names,
@@ -177,8 +172,8 @@ def _write_map_network(
     with open(pre_network_file, "w") as pre_network:
         for start in range(0, len(contacts), chunksize):
             edges = contacts.iloc[start : start + chunksize]
-            if not self_contacts:
-                edges = edges[edges["id1"] != edges["id2"]]
+            # The contacts within a contig are no edge of the network.
+            edges = edges[edges["id1"] != edges["id2"]]
             pd.DataFrame(
                 {"contig1": names[edges["id1"].to_numpy()], "contig2": names[edges["id2"].to_numpy()], "count": edges["count"]}
             ).to_csv(pre_network, sep="\t", header=False, index=False)

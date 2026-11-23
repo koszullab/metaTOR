@@ -170,11 +170,10 @@ that are in no cluster are in the `__unbinned__` genome.
 
 ```python
 import metacooler
-import metator.io as mio
 import pandas as pd
 
 clusters = pd.read_csv("binning/cluster_summary.txt", sep="\t", index_col=0)
-contigs = mio.read_contig_data("binning/contig_data_final.txt")
+contigs = pd.read_csv("binning/contig_data_final.txt", sep="\t", index_col=0).set_index("Name", drop=False)
 
 mc = metacooler.MetaCooler("sample.metacool")
 mc.genomes   # one row per cluster, and __unbinned__, with the columns of cluster_summary.txt

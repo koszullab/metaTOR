@@ -95,7 +95,7 @@ def test_network_normalizations(norm, a_map, tmp_path, run_cli):
 @pytest.mark.parametrize(*ALGORITHM)
 def test_partition(alg, tmp_path, run_cli):
     args = (
-        "-a {SUBSET_FASTA} -c {CONTIGS} -i 5 -n {NETWORK} -o {OUT_TEST} -s 30000 -t 8 -T {TMP} -A {0} -FC --no-clean-up"
+        "-a {SUBSET_FASTA} -c {CONTIGS} -i 5 -n {NETWORK} -o {OUT_TEST} -s 30000 -t 8 -T {TMP} -A {0} -F --no-clean-up"
     ).format(
         alg,
         TMP=Path(tmp_path, "tmp"),
@@ -131,7 +131,7 @@ def test_network_partition_validation(tmp_dir, a_map, run_cli):
     run_cli("network", *args.split(" "))
 
     args = (
-        "-a {SUBSET_FASTA} -c {OUT_TEST}/contig_data_network.txt -i 5 -n {OUT_TEST}/network.txt -o {OUT_TEST} -s 30000 -t 8 -T {TMP} -FC --no-clean-up"
+        "-a {SUBSET_FASTA} -c {OUT_TEST}/contig_data_network.txt -i 5 -n {OUT_TEST}/network.txt -o {OUT_TEST} -s 30000 -t 8 -T {TMP} -F --no-clean-up"
     ).format(
         TMP=tmp,
         OUT_TEST=out,
@@ -411,75 +411,51 @@ def test_pipeline_refuses_existing_outputs(existing, a_map, tmp_path, run_cli, l
     assert ("ERROR", message) in logged()
 
 
-@pytest.mark.parametrize(
-    "existing, now",
-    [
-        ("overlapping_bin", "overlapping_clusters"),
-        ("recursive_bin", "recursive_clusters"),
-        ("final_bin", "final_clusters"),
-        ("final_bin_unscaffold", "final_clusters"),
-        ("bin_summary.txt", "cluster_summary.txt"),
-    ],
-)
-def test_pipeline_refuses_the_outputs_of_1x(existing, now, a_map, tmp_path, run_cli, logged):
-    """An output of an earlier run that metaTOR 1.x named after bins is
-    refused without -F, as those of 2.0 are: the run would leave it next to
-    its own."""
-    path = tmp_path / "out" / existing
-    if existing.endswith(".txt"):
-        path.parent.mkdir(parents=True)
-        path.write_text("earlier\n")
-    else:
-        path.mkdir(parents=True)
-    args = [a_map(), "-a", global_args["SUBSET_FASTA"], "-o", str(tmp_path / "out"), "-T", str(tmp_path / "tmp")]
-    with pytest.raises(ValueError):
-        run_cli("pipeline", *args)
-    message = (
-        f"{path} already existed: an output of an earlier run, named as metaTOR 1.x names it ({now} now). Remove it "
-        "or use -F argument to remove it."
-    )
-    assert ("ERROR", message) in logged() and path.exists()
-
-
-def test_pipeline_refuses_the_plots_of_an_earlier_run(a_map, tmp_path, run_cli, logged):
-    """The plots of an earlier run (plot/, of metaTOR 1.x or of a run made
-    before 2.0), which 2.0 no longer draws, are refused without -F, as the
-    other outputs of an earlier run are: the run would leave them next to
-    its own (they were left behind)."""
-    path = tmp_path / "out" / "plot"
-    path.mkdir(parents=True)
-    (path / "bins_distribution.png").write_bytes(b"png")
-    args = [a_map(), "-a", global_args["SUBSET_FASTA"], "-o", str(tmp_path / "out"), "-T", str(tmp_path / "tmp")]
-    with pytest.raises(ValueError):
-        run_cli("pipeline", *args)
-    message = (
-        f"{path} already existed: the plots of an earlier run, which metaTOR 2.0 no longer draws. Remove it or use -F "
-        "argument to remove it."
-    )
-    assert ("ERROR", message) in logged() and (path / "bins_distribution.png").exists()
-
-
 def test_pipeline_force_replaces_outputs(a_map, network_from_a_map, tmp_path, run_cli, logged):
     """With --force the output directories are emptied once the arguments
     and the assembly are checked, then the run goes on (here up to the
-    partition, which network_from_a_map stops)."""
+    partition, which network_from_a_map stops). The outputs that metaTOR
+    1.x named after bins, and the plots of an earlier run, are no output
+    of 2.0: they are neither refused nor removed."""
     for existing in ["overlapping_clusters", "recursive_clusters", "final_clusters"]:
         (tmp_path / "out" / existing).mkdir(parents=True)
         (tmp_path / "out" / existing / "stale.fa").write_text(">old\nA\n")
-    # Those of a run of metaTOR 1.x, named after bins, and the plots, which
-    # 2.0 no longer draws, are removed.
-    outputs_of_1x = ["overlapping_bin", "recursive_bin", "final_bin", "final_bin_unscaffold", "plot"]
-    for existing in outputs_of_1x:
+    others = ["overlapping_bin", "final_bin", "plot"]
+    for existing in others:
         (tmp_path / "out" / existing).mkdir(parents=True)
-        (tmp_path / "out" / existing / "stale.fa").write_text(">old\nA\n")
+        (tmp_path / "out" / existing / "earlier.fa").write_text(">old\nA\n")
     (tmp_path / "out" / "bin_summary.txt").write_text("earlier\n")
     args = [a_map(), "-a", global_args["SUBSET_FASTA"], "-F", "-o", str(tmp_path / "out"), "-T", str(tmp_path / "tmp")]
     with pytest.raises(RuntimeError, match=r"^network built$"):
         run_cli("pipeline", *args)
     assert not list((tmp_path / "out").glob("*/stale.fa"))
-    assert not [name for name in [*outputs_of_1x, "bin_summary.txt"] if (tmp_path / "out" / name).exists()]
-    plots = tmp_path / "out" / "plot"
-    assert ("INFO", f"Removed {plots}, the plots of an earlier run, which metaTOR 2.0 no longer draws.") in logged()
+    assert all((tmp_path / "out" / name / "earlier.fa").exists() for name in others)
+    assert (tmp_path / "out" / "bin_summary.txt").exists()
+    assert not [message for _, message in logged() if message.startswith("Removed ")]
+
+
+def test_validation_refuses_a_table_without_the_columns_of_a_partition(tmp_path, monkeypatch, run_cli):
+    """A contig data table that lacks a column the validation reads, here a
+    table of metaTOR 1.x (its columns named after bins), is refused before
+    miComplete runs on any cluster, the missing columns named in the log of
+    the run. It ran miComplete on every cluster, then failed with
+    KeyError: 'Overlapping_cluster_ID', the traceback on the terminal only."""
+    from tests import synthetic
+
+    def micomplete_quality(*args):
+        raise AssertionError("miComplete ran")
+
+    monkeypatch.setattr("metator.validation.micomplete_quality", micomplete_quality)
+    table = synthetic.as_1x(global_args["CONTIGS_PARTITION"], tmp_path / "contig_data_partition_1x.txt")
+    out = tmp_path / "out"
+    with pytest.raises(ValueError):
+        run_cli("validation", "-a", global_args["SUBSET_FASTA"], "-c", table, "-f", global_args["OVERLAPPING_BINS"],
+                "-n", global_args["NETWORK"], "-o", out, "-T", tmp_path / "tmp")  # fmt: skip
+    (log,) = out.glob("metator_validation_*.log")
+    message = (
+        f"{table} has no Overlapping_cluster_ID column: give the contig data table of a partition (contig_data_partition.txt)."
+    )
+    assert f"ERROR :: {message}" in log.read_text()
 
 
 @pytest.mark.parametrize("existing", ["recursive_clusters", "final_clusters"])
@@ -510,13 +486,3 @@ def test_partition_existing_outputs(metagenome_inputs, metagenome_network, tmp_p
     bins = sorted(p.name for p in fasta_dir.iterdir())
     assert "stale.fa" not in bins
     assert bins and all(name.startswith("sample-1_metator_") for name in bins)
-
-
-def test_check_output_path(tmp_path):
-    target = tmp_path / "new" / "dir" / "file.txt"
-    mtc.check_output_path(str(target))
-    assert target.parent.is_dir()
-    target.write_text("x")
-    with pytest.raises(IOError, match="--force"):
-        mtc.check_output_path(str(target))
-    mtc.check_output_path(str(target), force=True)

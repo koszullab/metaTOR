@@ -118,7 +118,7 @@ def outside_contacts(pairs_file, contig_data):
     return last_base, position_0
 
 
-def pairs_network(data, out, normalization="None", self_contacts=False):
+def pairs_network(data, out, normalization="None"):
     """network.txt and contig_data_network.txt of the pairs themselves,
     written in out: the oracle of the network of a map of the pairs. The
     contacts and the hits are counted in Python, from the pairs file: each
@@ -152,22 +152,22 @@ def pairs_network(data, out, normalization="None", self_contacts=False):
     out.mkdir(parents=True)
     network, contigs = out / "network.txt", out / "contig_data_network.txt"
     mtn._write_map_network(table, names, contig_data, str(network), str(out / "pre.txt"), str(out / "sorted.txt"),
-                           str(out), 1, normalization, self_contacts, mtn.METACOOL_CHUNKSIZE)  # fmt: skip
+                           str(out), 1, normalization, mtn.METACOOL_CHUNKSIZE)  # fmt: skip
     mtn.write_contig_data(contig_data, str(contigs))
     return {"network": network, "contig_data": contigs, "dir": out}
 
 
-def both_networks(data, metacool, out, normalization="None", self_contacts=False):
+def both_networks(data, metacool, out, normalization="None"):
     """network.txt and contig_data_network.txt of the pairs (see
     pairs_network) and of the metacool, written in out/pairs and
     out/metacool."""
-    from_pairs = pairs_network(data, out / "pairs", normalization, self_contacts)
+    from_pairs = pairs_network(data, out / "pairs", normalization)
     directory = out / "metacool"
     directory.mkdir(parents=True)
     contig_data = mtn.create_contig_data(str(data["assembly"]), data["depth"], data["enzyme"])
     network, contigs = mtn.metacool_to_contacts(
         str(metacool), contig_data, str(directory), "network.txt", "contig_data_network.txt", str(directory), 1,
-        normalization, self_contacts,
+        normalization,
     )  # fmt: skip
     return from_pairs, {"network": Path(network), "contig_data": Path(contigs), "dir": directory}
 
@@ -216,16 +216,6 @@ def test_normalized_network_of_a_metacool(dataset, tmp_path):
 
 
 @pytest.mark.parametrize("binsize", BIN_SIZES)
-def test_network_of_a_metacool_with_self_contacts(dataset, binsize, tmp_path):
-    """With the intra-contig contacts: the same network, byte for byte."""
-    metacool = make_metacool(tmp_path / "map.metacool", dataset["pairs"], dataset["assembly"], binsize)
-    from_pairs, from_map = both_networks(dataset, metacool, tmp_path / "self", self_contacts=True)
-    assert from_map["network"].read_text() == from_pairs["network"].read_text()
-    assert from_map["contig_data"].read_text() == from_pairs["contig_data"].read_text()
-    assert any(line.split("\t")[0] == line.split("\t")[1] for line in from_map["network"].read_text().splitlines())
-
-
-@pytest.mark.parametrize("binsize", BIN_SIZES)
 @pytest.mark.parametrize(
     "dataset, how", [("synthetic", "create"), ("synthetic", "extract"), ("alignment", "create")], indirect=["dataset"]
 )
@@ -235,7 +225,7 @@ def test_network_of_a_filtered_metacool(dataset, how, binsize, tmp_path):
     network is that of the pairs it holds, whose two reads lie on the
     contigs it keeps, and the contigs it lacks get no hits and no edges, as
     contigs that no read maps to: the same contig data and network, byte for
-    byte, with and without self contacts."""
+    byte."""
     contig_data = mtn.create_contig_data(str(dataset["assembly"]))
     lengths = {name: data["length"] for name, data in contig_data.items()}
     shortest = int(np.median(list(lengths.values())))
@@ -245,10 +235,9 @@ def test_network_of_a_filtered_metacool(dataset, how, binsize, tmp_path):
     assert 0 < len(kept) < len(lengths)
     pairs = {**dataset, "pairs": kept_pairs(dataset["pairs"], kept, tmp_path / "kept.pairs")}
 
-    for out, self_contacts in [("raw", False), ("self", True)]:
-        from_pairs, from_map = both_networks(pairs, metacool, tmp_path / out, self_contacts=self_contacts)
-        assert from_map["network"].read_text() == from_pairs["network"].read_text()
-        assert from_map["contig_data"].read_text() == from_pairs["contig_data"].read_text()
+    from_pairs, from_map = both_networks(pairs, metacool, tmp_path / "raw")
+    assert from_map["network"].read_text() == from_pairs["network"].read_text()
+    assert from_map["contig_data"].read_text() == from_pairs["contig_data"].read_text()
     table = pd.read_csv(from_map["contig_data"], sep="\t")
     assert (table.Hit[~table.Name.isin(kept)] == 0).all()
     assert table.Hit[table.Name.isin(kept)].sum() > 0
@@ -273,8 +262,7 @@ def test_contacts_by_chunk(tmp_path):
     assert hits[0] == 0 and hits.sum() == 2 * contacts["count"].sum()
 
 
-@pytest.mark.parametrize("self_contacts", [False, True])
-def test_network_by_chunk(self_contacts, tmp_path):
+def test_network_by_chunk(tmp_path):
     """Nor does the network, whose edges are written a block at a time.
 
     An equivalence guard: it passes without the change that writes the
@@ -288,7 +276,7 @@ def test_network_by_chunk(self_contacts, tmp_path):
         out.mkdir()
         network, contigs = mtn.metacool_to_contacts(
             str(metacool), contig_data, str(out), "network.txt", "contigs.txt", str(out), 1, "empirical_hit",
-            self_contacts, chunksize=chunksize
+            chunksize=chunksize
         )  # fmt: skip
         networks.append((Path(network).read_text(), Path(contigs).read_text()))
     assert networks[0] == networks[1]
@@ -385,8 +373,9 @@ def test_map_lacking_contigs(tmp_path, logged):
     )
     assert logged() == [("INFO", message)]
     network, contigs = mtn.metacool_to_contacts(str(metacool), contig_data, str(tmp_path), "network.txt",
-                                                "contigs.txt", str(tmp_path), 1, "None", True)  # fmt: skip
-    assert Path(network).read_text() == "2\t2\t1\n2\t3\t1\n3\t5\t1\n"
+                                                "contigs.txt", str(tmp_path), 1, "None")  # fmt: skip
+    # The contact of a with itself is no edge.
+    assert Path(network).read_text() == "2\t3\t1\n3\t5\t1\n"
     table = pd.read_csv(contigs, sep="\t")
     assert list(table.Name) == ["z", "a", "b", "y", "c"] and list(table.Hit) == [0, 3, 2, 0, 1]
     assert [entry for entry in logged() if "of the assembly are not in" in entry[1]] == [("INFO", message)] * 2

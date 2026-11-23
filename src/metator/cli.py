@@ -18,10 +18,9 @@ import threading
 import time
 from contextlib import ExitStack, contextmanager
 from functools import partial
-from os.path import dirname, exists, join
+from os.path import exists, join
 
 import rich_click as click
-from scipy.sparse import load_npz, save_npz
 
 import metator.clusters as mtcl
 import metator.io as mio
@@ -45,18 +44,6 @@ GENERAL = "Options"
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def check_output_path(path, force=False):
-    """Throws error if the output file exists. Create required file tree
-    otherwise.
-    """
-    # Get complete output filename and prevent overwriting unless force is
-    # enabled
-    if not force and os.path.exists(path):
-        raise IOError("Output file already exists. Use --force to overwrite")
-    if dirname(path):
-        os.makedirs(dirname(path), exist_ok=True)
 
 
 def bin_prefix(user_prefix):
@@ -103,8 +90,8 @@ def private_tmp_dir(tmpdir, clean_up=True):
 
 def refuse_output_dir(path, force):
     """Refuse an existing output directory of bins, unless --force replaces
-    it."""
-    if exists(path) and not force:
+    it: a symbolic link too, even one to nothing."""
+    if os.path.lexists(path) and not force:
         logger.error(
             "%s already existed. Remove directory or use -F argument to overwrite it.",
             path,
@@ -114,54 +101,14 @@ def refuse_output_dir(path, force):
 
 def make_output_dir(path, force):
     """Create an output directory of bins; an existing one is replaced with
-    --force, or refused.
+    --force, or refused. A symbolic link is removed, not its target.
     """
     refuse_output_dir(path, force)
-    if exists(path):
+    if os.path.islink(path):
+        os.remove(path)
+    elif exists(path):
         shutil.rmtree(path)
     os.makedirs(path)
-
-
-#: The outputs of the clusters of a run that metaTOR 1.x named after bins,
-#: with their names since 2.0, and its plots (plot), which 2.0 no longer
-#: draws (None). A run that replaces the clusters of an earlier one refuses
-#: those it would write, under the names of 1.x too, and the plots, and
-#: removes them with --force: no output of the earlier run is left next to
-#: its own.
-OUTPUTS_OF_1X = {
-    "overlapping_bin": "overlapping_clusters",
-    "recursive_bin": "recursive_clusters",
-    "final_bin": "final_clusters",
-    "final_bin_unscaffold": "final_clusters",
-    "bin_summary.txt": "cluster_summary.txt",
-    "plot": None,
-}
-
-
-def remove_output_of_1x(path, force, remove=True):
-    """Refuse an output of an earlier run that metaTOR 2.0 does not write (a
-    directory or a file of OUTPUTS_OF_1X: one named as metaTOR 1.x names
-    it, or the plots), unless --force removes it, and then remove it,
-    unless remove is False (a check that comes before the run removes
-    anything)."""
-    if not os.path.lexists(path):
-        return
-    now = OUTPUTS_OF_1X[os.path.basename(path)]
-    if now is None:
-        refused = removed = "the plots of an earlier run, which metaTOR 2.0 no longer draws"
-    else:
-        refused = f"an output of an earlier run, named as metaTOR 1.x names it ({now} now)"
-        removed = f"an output of an earlier run named as metaTOR 1.x names it ({now} now)"
-    if not force:
-        logger.error("%s already existed: %s. Remove it or use -F argument to remove it.", path, refused)
-        raise ValueError
-    if not remove:
-        return
-    if os.path.isdir(path) and not os.path.islink(path):
-        shutil.rmtree(path)
-    else:
-        os.remove(path)
-    logger.info("Removed %s, %s.", path, removed)
 
 
 def check_normalization(normalization, enzyme, depth, metacool, read=None):
@@ -407,18 +354,16 @@ def _is_in(path, directory):
 
 def refuse_an_input_in_the_outputs(path, outputs, force, option):
     """Refuse an input (validation -f) that is, or is in, an output that the
-    run removes with --force (see start_step and remove_output_of_1x): the
-    run would remove it before reading it. Without --force, those outputs
-    are refused anyway. Through a symbolic link, the link is removed, not
-    its target."""
+    run replaces with --force (see start_step): the run would remove it
+    before reading it, or replace the output it is in, through a symbolic
+    link too. Without --force, those outputs are refused anyway."""
     if not force:
         return
     for output in outputs:
         if not os.path.lexists(output):
             continue
         inside = _is_in(os.path.abspath(path), os.path.abspath(output))
-        if not os.path.islink(output):
-            inside = inside or _is_in(os.path.realpath(path), os.path.realpath(output))
+        inside = inside or _is_in(os.path.realpath(path), os.path.realpath(output))
         if inside:
             logger.error(
                 "%s, given as %s, is in %s, which -F removes: write the run to another directory (-o).", path, option, output
@@ -437,7 +382,6 @@ def start_step(
     prefix=None,
     contigs=None,
     inputs=(),
-    outputs_of_1x=(),
     assembly=None,
 ):
     """Start a partition or validation run (command) in outdir: its log file,
@@ -450,16 +394,11 @@ def start_step(
     inputs, the other input files, which output_map must not be (see
     step_map). A run without one replaces them first, then starts its log
     file, as before a run took a map. Either checks the prefix of the
-    clusters (--prefix, see bin_prefix) before it replaces them. The
-    outputs of the earlier run named as metaTOR 1.x names them
-    (outputs_of_1x, see remove_output_of_1x) are refused, or removed, with
-    its directories. Returns the log file, the map to write (None without
-    one) and the prefix."""
+    clusters (--prefix, see bin_prefix) before it replaces them. Returns the
+    log file, the map to write (None without one) and the prefix."""
     with_a_map = input_map is not None or output_map is not None
 
     def replace_outputs():
-        for path in outputs_of_1x:
-            remove_output_of_1x(path, force)
         for path in cluster_dirs:
             make_output_dir(path, force)
 
@@ -476,16 +415,16 @@ def start_step(
     return log_file, metacool_file, bins_prefix
 
 
-def contig_network(metacool, contig_data, outdir, tmp_dir, threads, *args):
-    """network.txt and contig_data_network.txt of a run (args: normalization
-    and self contacts), from the .metacool map metacool, its first argument
+def contig_network(metacool, contig_data, outdir, tmp_dir, threads, normalization):
+    """network.txt and contig_data_network.txt of a run, normalized
+    (normalization), from the .metacool map metacool, its first argument
     (see metator.network.metacool_to_contacts). A map that cannot give them
     stops the run, as metaTOR stops on an input it cannot use: the reason is
     logged as an error, in the log file of the run, and its MetacoolError is
     raised."""
     files = ("network.txt", "contig_data_network.txt")
     try:
-        return mtn.metacool_to_contacts(metacool, contig_data, outdir, *files, tmp_dir, threads, *args)
+        return mtn.metacool_to_contacts(metacool, contig_data, outdir, *files, tmp_dir, threads, normalization)
     except mtmc.MetacoolError as error:
         logger.error(str(error))
         raise
@@ -998,13 +937,6 @@ def partition_options(iterations, overlap, iterations_help, overlap_help):
             panel="Partition",
             help="Threshold size to keep clusters in base pair.",
         ),
-        _option(
-            "-C",
-            "--cluster-matrix",
-            is_flag=True,
-            panel="Partition",
-            help="If enabled, save the clustering matrix.",
-        ),
     )
 
 
@@ -1065,13 +997,6 @@ def cli():
 @cli.command(short_help="Generate the metaHiC contig network from a .metacool map and normalize it.")
 @map_argument(required=True)
 @network_options("-n")
-@_option(
-    "-s",
-    "--self-contacts",
-    is_flag=True,
-    panel="Network",
-    help="If enabled, count alignments between a contig and itself (intracontigs contacts).",
-)
 @outdir_option(help="The output directory to write the network and contig data into. Default: current directory.")
 @tmpdir_option()
 @threads_option(help="Number of parallel threads allocated to sort the network.")
@@ -1082,7 +1007,6 @@ def network(
     depth,
     enzyme,
     normalization,
-    self_contacts,
     outdir,
     tmpdir,
     threads,
@@ -1103,7 +1027,8 @@ def network(
     options replace them.
 
     In the output network, contigs are the network nodes and the edges are
-    the contact counts: every pair counts, as in a contact map.
+    the contact counts between two contigs: every pair counts, as in a
+    contact map, but the pairs within a contig.
 
     Note: the network is in a strict barebone form so that it can be reused
     and imported quickly into other applications etc. Verbose information
@@ -1133,7 +1058,7 @@ def network(
         # then the network of the map.
         contig_data = mtn.create_contig_data(assembly, depth, enzyme)
         contig_data_from_map(map, contig_data, normalization, enzyme, depth)
-        contig_network(map, contig_data, outdir, tmp_dir, threads, normalization, self_contacts)
+        contig_network(map, contig_data, outdir, tmp_dir, threads, normalization)
 
     generate_log_footer(log_file)
 
@@ -1177,7 +1102,7 @@ def network(
 @prefix_option()
 @force_option(
     "Replace the directory of overlapping clusters of an earlier run in the output directory (overlapping_clusters), "
-    "and an existing --output-map. Removes that of a run of metaTOR 1.x (overlapping_bin)."
+    "and an existing --output-map."
 )
 @tmpdir_option()
 @threads_option(help="Number of parallel threads allocated for the partition.")
@@ -1196,7 +1121,6 @@ def partition(
     overlap,
     res_param,
     size,
-    cluster_matrix,
     outdir,
     prefix,
     force,
@@ -1250,15 +1174,13 @@ def partition(
             prefix,
             contigs,
             [assembly, network],
-            [join(outdir, "overlapping_bin")],
             assembly,
         )
 
         # Partition the network
-        _, contig_data_file = mtp.partition(
+        contig_data_file = mtp.partition(
             algorithm,
             assembly,
-            cluster_matrix,
             contigs,
             iterations,
             network,
@@ -1327,9 +1249,7 @@ def partition(
 @prefix_option()
 @force_option(
     "Replace the directories of recursive and final clusters of an earlier run in the output directory "
-    "(recursive_clusters, final_clusters), and an existing --output-map. Removes those of a run of metaTOR 1.x "
-    "(recursive_bin, final_bin, final_bin_unscaffold, bin_summary.txt), and the plots of an earlier run (plot), which "
-    "metaTOR 2.0 no longer draws."
+    "(recursive_clusters, final_clusters), and an existing --output-map."
 )
 @tmpdir_option()
 @threads_option(help="Number of parallel threads allocated for the partition.")
@@ -1349,7 +1269,6 @@ def validation(
     overlap,
     res_param,
     size,
-    cluster_matrix,
     outdir,
     prefix,
     force,
@@ -1389,15 +1308,9 @@ def validation(
         os.makedirs(outdir, exist_ok=True)
         recursive_fasta_dir = join(outdir, "recursive_clusters")
         final_fasta_dir = join(outdir, "final_clusters")
-        # The final clusters of 1.x: final_bin of validation, and
-        # final_bin_unscaffold of pipeline, both final_clusters now; and the
-        # plots, which 2.0 no longer draws.
-        outputs_of_1x = [
-            join(outdir, name) for name in ["recursive_bin", "final_bin", "final_bin_unscaffold", "bin_summary.txt", "plot"]
-        ]
         # The clusters to validate in a directory that -F removes: refused
         # before anything is removed.
-        refuse_an_input_in_the_outputs(fasta, [recursive_fasta_dir, final_fasta_dir, *outputs_of_1x], force, "-f")
+        refuse_an_input_in_the_outputs(fasta, [recursive_fasta_dir, final_fasta_dir], force, "-f")
 
         # Enable file logging, the map of a run from a map checked and
         # locked, and the directories of the clusters made (see start_step).
@@ -1412,14 +1325,12 @@ def validation(
             prefix,
             contigs,
             [assembly, network],
-            outputs_of_1x,
             assembly,
         )
 
         mtv.recursive_decontamination(
             algorithm,
             assembly,
-            cluster_matrix,
             contigs,
             final_fasta_dir,
             fasta,
@@ -1481,11 +1392,7 @@ def validation(
 )
 @outdir_option(help="The output directory. Default: current directory.")
 @prefix_option()
-@force_option(
-    "Replace the directories of clusters of an earlier run in the output directory, and an existing --output-map. "
-    "Removes those of a run of metaTOR 1.x (overlapping_bin, recursive_bin, final_bin, final_bin_unscaffold, "
-    "bin_summary.txt), and the plots of an earlier run (plot), which metaTOR 2.0 no longer draws."
-)
+@force_option("Replace the directories of clusters of an earlier run in the output directory, and an existing --output-map.")
 @tmpdir_option()
 @threads_option(help="Number of parallel threads allocated to sort the network, and for the partition and the validation.")
 @no_clean_up_option()
@@ -1509,7 +1416,6 @@ def pipeline(
     overlap,
     res_param,
     size,
-    cluster_matrix,
     rec_iter,
     rec_overlap,
     outdir,
@@ -1581,17 +1487,8 @@ def pipeline(
         recursive_fasta_dir = join(outdir, "recursive_clusters")
         final_fasta_dir = join(outdir, "final_clusters")
         bin_dirs = [overlapping_fasta_dir, recursive_fasta_dir, final_fasta_dir]
-        # Those of a run of metaTOR 1.x, or one made before 2.0, named as 1.x
-        # names them, and the plots, which 2.0 no longer draws: refused too,
-        # and removed with --force.
-        outputs_of_1x = [
-            join(outdir, name)
-            for name in ["overlapping_bin", "recursive_bin", "final_bin", "final_bin_unscaffold", "bin_summary.txt", "plot"]
-        ]
         for path in bin_dirs:
             refuse_output_dir(path, force)
-        for path in outputs_of_1x:
-            remove_output_of_1x(path, force, remove=False)
 
         # The assembly, and the contig data of the run, before the clusters
         # of an earlier run are replaced: a map whose columns cannot give
@@ -1599,19 +1496,16 @@ def pipeline(
         check_assembly(assembly)
         contig_data = mtn.create_contig_data(assembly, depth, enzyme)
         columns_from_map = contig_data_from_map(map, contig_data, normalization, enzyme, depth)
-        for path in outputs_of_1x:
-            remove_output_of_1x(path, force)
         for path in bin_dirs:
             make_output_dir(path, force)
 
         # Build the network, from the map.
-        network_file, contigs_data_file = contig_network(map, contig_data, outdir, tmp_dir, threads, normalization, False)
+        network_file, contigs_data_file = contig_network(map, contig_data, outdir, tmp_dir, threads, normalization)
 
         # Partition the network
-        clustering_matrix_partition_file, contigs_data_file = mtp.partition(
+        contigs_data_file = mtp.partition(
             algorithm,
             assembly,
-            cluster_matrix,
             contigs_data_file,
             iterations,
             network_file,
@@ -1625,10 +1519,9 @@ def pipeline(
         )
 
         # Launch validation.
-        clustering_matrix_recursive_file = mtv.recursive_decontamination(
+        mtv.recursive_decontamination(
             algorithm,
             assembly,
-            cluster_matrix,
             contigs_data_file,
             final_fasta_dir,
             overlapping_fasta_dir,
@@ -1643,13 +1536,6 @@ def pipeline(
             threads,
             bins_prefix,
         )
-
-        if cluster_matrix:
-            # Make the sum with the partition clustering matrix and save it.
-            clustering_matrix = load_npz(clustering_matrix_partition_file + ".npz")
-            clustering_matrix_recursive = load_npz(clustering_matrix_recursive_file + ".npz")
-            clustering_matrix = ((clustering_matrix + clustering_matrix_recursive) / 2).tocoo()
-            save_npz(join(outdir, "clustering_matrix"), clustering_matrix)
 
         # Remove contig_data_partition file
         os.remove(join(outdir, "contig_data_partition.txt"))
