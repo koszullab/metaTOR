@@ -97,7 +97,7 @@ A run refuses to overwrite the clusters of an earlier one unless given
 | `--tmpdir` | `./tmp` | Where the temporary files go; deleted at the end, unless `--no-clean-up`. It holds the FASTA files of the clusters that miComplete checks (at most the size of the assembly) and, from a compressed assembly, its decompressed copy while they are written: give it room for both. Not in `recursive_clusters/` or `final_clusters/` of `--outdir`, which the run makes anew |
 
 The validation is the step that needs the most memory and time: miComplete
-runs prodigal and hmmer on every cluster.
+runs Prodigal and HMMER (pyrodigal and pyhmmer) on every cluster.
 
 ## Running the steps one by one
 
