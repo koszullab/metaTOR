@@ -883,7 +883,7 @@ def _lock(metacool, pid, host=None, started="2026-11-18T10:00:00+0000"):
     import socket
 
     holder = {"pid": pid, "host": host or socket.gethostname(), "started": started, "command": "metator pipeline"}
-    lock = Path(f"{metacool}.lock")
+    lock = Path(f"{metacool}.metator.lock")
     lock.write_text(json.dumps(holder))
     return lock
 
@@ -1168,7 +1168,7 @@ def test_pipeline_from_a_map_refused_with_a_lock_it_cannot_check(holder, stub_pi
     cannot be told stale: the run is refused, and the lock left."""
     metacool = _contig_map(tmp_path / "input.metacool")
     if holder != "another host":
-        lock = Path(f"{metacool}.lock")
+        lock = Path(f"{metacool}.metator.lock")
         lock.write_text("{not json" if holder == "unreadable" else "[1]")
         who = "a run that cannot be told"
     else:
@@ -1184,7 +1184,7 @@ def test_pipeline_from_a_map_whose_lock_cannot_be_created(stub_pipeline, tmp_pat
     place: the run is refused before any work, with what to do (it stopped
     on a bare PermissionError)."""
     metacool = _contig_map(tmp_path / "input.metacool")
-    lock = f"{metacool}.lock"
+    lock = f"{metacool}.metator.lock"
     opened = os.open
 
     def read_only(path, *args, **kwargs):
@@ -1206,10 +1206,10 @@ def test_pipeline_from_a_map_whose_lock_cannot_be_created(stub_pipeline, tmp_pat
 
 def test_the_lock_of_a_map_given_as_its_file_root(tmp_path):
     """A map given as file::/ (the file itself) is locked as the file: next to
-    it, not at file::/.lock."""
+    it, not at file::/.metator.lock."""
     metacool = _contig_map(tmp_path / "input.metacool")
     with mtmc.map_lock(f"{metacool}::/") as lock:
-        assert lock == f"{metacool}.lock" and Path(lock).exists()
+        assert lock == f"{metacool}.metator.lock" and Path(lock).exists()
     assert not Path(lock).exists()
 
 
@@ -1233,7 +1233,7 @@ def test_a_stale_lock_is_taken_once(tmp_path):
     stale = json.loads(_lock(metacool, 999999999).read_text())
     first = {"pid": 1, "host": socket.gethostname(), "started": "now", "run": "first"}
     second = {"pid": 2, "host": socket.gethostname(), "started": "now", "run": "second"}
-    lock = f"{metacool}.lock"
+    lock = f"{metacool}.metator.lock"
     assert mtmc._take_stale_lock(lock, stale, first)
     assert not mtmc._take_stale_lock(lock, stale, second)
     assert json.loads(Path(lock).read_text()) == first
@@ -1256,7 +1256,7 @@ def test_a_stale_lock_taken_by_a_third_run(tmp_path, monkeypatch):
     stale = json.loads(_lock(metacool, 999999999).read_text())
     runs = {name: {"pid": i, "host": socket.gethostname(), "started": "now", "run": name}
             for i, name in enumerate(["first", "second", "third"], start=1)}  # fmt: skip
-    lock = f"{metacool}.lock"
+    lock = f"{metacool}.metator.lock"
     assert mtmc._take_stale_lock(lock, stale, runs["first"])
     rename = os.rename
 
@@ -1332,7 +1332,7 @@ def test_pipeline_output_map_in_a_new_directory(stub_pipeline, tmp_path, monkeyp
     metacool = _contig_map(tmp_path / "input.metacool")
     output = tmp_path / "new" / "copy.metacool"
     run_cli("pipeline", *_map_run(metacool, tmp_path, "--output-map", output))
-    assert output.exists() and not Path(f"{output}.lock").exists()
+    assert output.exists() and not Path(f"{output}.metator.lock").exists()
 
 
 @pytest.mark.parametrize("root", ["::/", "::"])
@@ -1889,7 +1889,7 @@ STEP_MAP_ERRORS = {
         [],
         "{map} is being written by another metaTOR run (pid {pid} on {host}, since 2026-11-18T10:00:00+0000): wait "
         "for it to end, write this run's map elsewhere with --output-map, or, if no such run is going on, remove "
-        "{map}.lock.",
+        "{map}.metator.lock.",
     ),
 }
 
@@ -1994,7 +1994,7 @@ def test_partition_on_a_map_stores_its_overlapping_clusters(output, stub_pipelin
     monkeypatch.setattr("metator.metacool.write_rounds", locked)
     run_cli("partition", *_step_run("partition", metacool, tmp_path, "-s", "100", *options))
     written = metacool if output == "in place" else output_map
-    assert locks == [[f"{written.name}.lock"]] and not list(tmp_path.glob("*.lock"))
+    assert locks == [[f"{written.name}.metator.lock"]] and not list(tmp_path.glob("*.lock"))
     metacooler.validate(str(written), full=True)
     mc = metacooler.MetaCooler(str(written))
     assert mc.cluster_rounds == [{"name": "overlapping", "tool": "metaTOR", "version": __version__, "step": "partition"}]
