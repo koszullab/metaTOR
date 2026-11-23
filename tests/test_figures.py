@@ -63,7 +63,9 @@ def binned_output(tmp_path):
 
 
 def test_plot_figures_reads_compressed_pairs(binned_output):
-    """The pipeline leaves *_sorted.pairs.gz in its outdir: the heatmap must read them."""
+    """metator network leaves *_sorted.pairs.gz in its outdir, which the
+    heatmap of metator validation, run step by step without a map, reads:
+    the heatmap must read them."""
     out_dir, contigs_data, bin_summary = binned_output
     contigs_data["Shotgun_coverage"] = "-"
     mtf.plot_figures(str(out_dir), contigs_data, bin_summary, 50_000)

@@ -45,7 +45,10 @@ H9:1:HGJYYBBXY:8:1102:3792:13693	NODE_100063	161	NODE_100063	402	-	-
 
 metaTOR writes them sorted, compressed with bgzip and indexed with pairix
 (`alignment_<i>_sorted.pairs.gz` and `.px2`), as `metator pairs` does for
-other pairs files.
+other pairs files: `metator network` does, and `metator pipeline` with
+`--no-clean-up` or `--scaffold`. Without, the pairs files of a `pipeline`
+run are temporary: `alignment_<i>.pairs`, plain text, its pairs in the order
+of the reads of the alignments, not by position, in its temporary directory.
 
 ### Lists of contigs
 

@@ -1525,6 +1525,7 @@ def network(
                 outdir,
                 tmp_dir,
                 threads,
+                keep_temp=no_clean_up,
             )
 
         # Build the network: from the pairs files, or from the input map.
@@ -1882,9 +1883,11 @@ def validation(
 @outdir_option(help="The output directory to write the bam files the network and contig data into. Default: current directory.")
 @prefix_option()
 @force_option("Replace the directories of clusters of an earlier run in the output directory, and an existing --output-map.")
-@tmpdir_option()
+@tmpdir_option(
+    help="Temporary directory, where the pairs files made from reads or alignments go, unsorted, but with -N or --scaffold."
+)
 @threads_option(help="Number of parallel threads allocated for the alignment.")
-@no_clean_up_option()
+@no_clean_up_option(help="Do not remove temporary files, and keep the pairs files, sorted and indexed in the output directory.")
 @_option(
     "--no-metacool",
     is_flag=True,
@@ -1995,6 +1998,10 @@ def pipeline(
 
         # Manage start point.
         start_step = {"fastq": 1, "bam": 2, "pair": 3, "metacool": 3}[start]
+        # The pairs files made from the reads or the alignments are sorted,
+        # indexed and kept in the output directory for --scaffold and -N
+        # only (see get_contact_pairs).
+        keep_pairs = scaffold or no_clean_up
 
         # Print information of the workflow:
         if start_step == 1:
@@ -2056,6 +2063,11 @@ def pipeline(
                 outdir,
                 tmp_dir,
                 threads,
+                # Only --scaffold and the user (-N) query the pairs of a
+                # contig: the maps read them once, in any order, and the
+                # networks come from the maps.
+                sort_pairs=keep_pairs,
+                keep_temp=no_clean_up,
             )
             columns_from_map = []
         # The contact map of the contigs, built once from the pairs files as
@@ -2079,6 +2091,13 @@ def pipeline(
         # writes none: its libraries are summed.
         if start != "metacool" and len(alignment_files) == 1:
             shutil.copyfile(network_file, join(outdir, "network_0.txt"))
+        # The pairs files made from the reads or the alignments, written to
+        # the temporary directory as they were made: nothing reads them
+        # after the maps, which the networks come from.
+        if start_step <= 2 and not keep_pairs:
+            logger.info("Removing the pairs files, read for the contact maps: -N keeps them.")
+            for pair_file in alignment_files:
+                os.remove(pair_file)
 
         # Partition the network
         clustering_matrix_partition_file, contigs_data_file = mtp.partition(
@@ -2167,9 +2186,9 @@ def pipeline(
         else:
             pipeline_metacool(metacool_file, outdir, metacool_file, contig_map=True)
 
-    # Delete the pairs files made from the reads or the alignments, and
-    # their pypairix index.
-    if not no_clean_up and start_step < 3:
+    # Delete the pairs files made from the reads or the alignments for
+    # --scaffold, and their pypairix index.
+    if scaffold and not no_clean_up and start_step < 3:
         for pair_file in alignment_files:
             os.remove(pair_file)
             if os.path.exists(f"{pair_file}.px2"):

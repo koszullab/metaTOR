@@ -20,6 +20,7 @@ This module contains all these alignment functions:
 """
 
 import csv
+import os
 import pysam
 import shutil as st
 import subprocess as sp
@@ -144,12 +145,23 @@ def get_contact_pairs(
     out_dir,
     tmp_dir,
     n_cpu,
+    sort_pairs=True,
+    keep_temp=False,
 ):
     """General function to do the whole alignment of both fastq.
 
-    The function writes, in the output directory, the pairs of each library
-    i, sorted, compressed and indexed: alignment_<i>_sorted.pairs.gz, with 7
-    columns: readID, chr1, pos1, chr2, pos2, strand1, strand2.
+    The function writes the pairs of each library i, with 7 columns: readID,
+    chr1, pos1, chr2, pos2, strand1, strand2. With sort_pairs, in the output
+    directory, sorted, compressed and indexed: alignment_<i>_sorted.pairs.gz,
+    which the commands that query the pairs of a contig read (scaffold, mge,
+    qc and contactmap from pairs files). Without, in the temporary
+    directory, as they are made, in the order of the reads of the
+    alignments: alignment_<i>.pairs, for a run that reads them once, in any
+    order (the contact map of its contigs, the network of
+    several libraries), then removes them. The tables of the alignments of
+    the mates of a library (bowtie2, or bwa in iterative mode), written to
+    the temporary directory, are removed once its pairs are written, unless
+    keep_temp.
 
     Two start stages are possible, from fastq or bam files.
 
@@ -185,6 +197,14 @@ def get_contact_pairs(
         Path where temporary files should be written.
     n_cpu : int
         The number of CPUs to use for the alignment.
+    sort_pairs : bool
+        Whether to write the pairs files sorted, compressed and indexed, in
+        the output directory, or as they are made, in the temporary
+        directory. [Default: True]
+    keep_temp : bool
+        Whether to keep the tables of the alignments of the mates, which
+        are read once, to make the pairs: --no-clean-up keeps them.
+        [Default: False]
 
     Returns
     -------
@@ -217,7 +237,7 @@ def get_contact_pairs(
         except IndexError:
             rev_in = None
         name = "alignment_" + str(i)
-        out_file = join(out_dir, "alignment_" + str(i) + ".pairs")
+        out_file = join(out_dir if sort_pairs else tmp_dir, "alignment_" + str(i) + ".pairs")
 
         # Align if necessary
         iterative = False
@@ -304,6 +324,11 @@ def get_contact_pairs(
             # Merge alignement to create a pairs file
             logger.info("Merging the pairs:")
             n_pairs = merge_alignment(alignment_temp_for, alignment_temp_rev, contig_data, out_file)
+            # Read once, as large as the pairs of the library: removed now,
+            # rather than with the temporary directory at the end of the run.
+            if not keep_temp:
+                os.remove(alignment_temp_for)
+                os.remove(alignment_temp_rev)
 
         # One BAM for both mates: bwa in the other modes, or a bam file from bwa
         # given as input.
@@ -313,9 +338,10 @@ def get_contact_pairs(
         logger.info(f"{n_pairs} pairs aligned.\n")
         total_aligned_pairs += n_pairs
 
-        # Sort pairs.
-        logger.info(f"Sort and index {out_file}")
-        out_file = mio.sort_and_index_pairs(out_file, threads=n_cpu, remove=True, force=True, tmp_dir=tmp_dir)
+        # Sort pairs, for the commands that query them.
+        if sort_pairs:
+            logger.info(f"Sort and index {out_file}")
+            out_file = mio.sort_and_index_pairs(out_file, threads=n_cpu, remove=True, force=True, tmp_dir=tmp_dir)
         out_file_list.append(out_file)
 
     if len(out_file_list) > 1:

@@ -56,6 +56,7 @@ error, before any work unless said otherwise:
 | | A run from a map updates that map in place (staged, validated, then renamed over it), and locks it while it runs (`<map>.metator.lock`): `pipeline MAP`, and the steps `partition MAP` and `validation MAP`. |
 | | `clusters.txt` and `cluster_members.txt`: the clusters of every clustering round, and their contigs, also stored in the `/clusters` group of the map. |
 | | `mge --map`: the round `mge` of the clustering rounds of the map, its MGE clusters, after those of the run. |
+| `pipeline` from reads or alignments: `alignment_<i>_sorted.pairs.gz` and its index, sorted in the output directory, removed at the end of the run (kept with `-N`) | Written to the temporary directory of the run as they are made, `alignment_<i>.pairs`, and removed once the network is built; sorted, indexed and kept in the output directory with `-N` only (`--scaffold` sorts them too, and removes them at the end). Without `-N` or `--scaffold`, a run that stops before its network is built leaves them in its temporary directory; one that stops later (in the partition or the validation) leaves none, where 1.x left them, sorted, in the output directory: restart it from the contact map of its contigs, which it leaves (`metator pipeline <outdir>/metator.metacool … -F`). |
 | 1.4.0: a map of the clusters that could not be written, a warning, and exit status 0 | The run stops with the reason, logged as an error. Its other outputs are kept, and so is the map it would have replaced. |
 
 ## What a run counts

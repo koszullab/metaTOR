@@ -10,7 +10,7 @@ contacts.
 
 These commands read the pairs files of the run, `alignment_<i>_sorted.pairs.gz`,
 sorted and indexed with pairix, which `metator network` writes and
-`metator pipeline` deletes at the end unless given `--no-clean-up`. A pairs
+`metator pipeline` keeps only with `--no-clean-up`. A pairs
 file without its index is sorted, compressed and indexed the first time it is
 read, or beforehand with `metator pairs`:
 

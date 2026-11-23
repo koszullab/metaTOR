@@ -57,7 +57,7 @@ def build_matrix_network(pairs_files, info_contigs, N, bin_size):
 
     # Iterates on the input pairs file
     for pairs_file in pairs_files:
-        # The pipeline leaves bgzip-compressed pairs files in its outdir.
+        # metator network leaves bgzip-compressed pairs files in its outdir.
         with mio.read_compressed(pairs_file) as input_pairs:
             for pairs_line in input_pairs:
                 # Ignore header lines.

@@ -161,6 +161,19 @@ All notable changes to this project will be documented in this file.
   `metator.metacool.write_round`, `metator.clusters.mge_round`.
 
 ### Changed
+- `pipeline` no longer sorts, compresses and indexes the pairs files of
+  a run from reads or alignments, which it removed at its end: the maps
+  of the contigs read them once, in any order, and the networks come
+  from the maps. Without `--scaffold` or `-N`, which keep them
+  sorted in the output directory as before, it writes them to its
+  temporary directory as they are made (`alignment_<i>.pairs`), and
+  removes them once its network is built: a run that stops later leaves
+  none, but leaves the contact map of its contigs, which a run restarts
+  from. The tables of the alignments of the mates of each library, as
+  large as its pairs, are removed once its pairs are written, where they
+  stayed in the temporary directory until the end of the run (`-N` keeps
+  them, in `pipeline` and `network`). The map and the network are those
+  of the sorted pairs.
 - `qc` logs the pairs within contigs, within MAGs and between MAGs that
   its noise contact ratio and noise score are computed from, from the
   pairs files as from a map.

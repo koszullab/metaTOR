@@ -4,9 +4,12 @@ import functools
 import glob
 import gzip
 import itertools
+import json
 import os
 import random
 import string
+import zlib
+from pathlib import Path
 
 import metator.align as mta
 import metator.io as mio
@@ -14,6 +17,7 @@ import pysam
 import pytest
 
 CONTIG_DATA = {"c1": {"id": 1, "length": 10_000}, "c2": {"id": 2, "length": 20_000}}
+TESTS_DATA = Path(__file__).resolve().parents[1] / "tests_data"
 
 
 def _write_bam(path, reads):
@@ -370,3 +374,134 @@ def test_strnum_cmp_sorts_as_samtools(tmp_path):
     with pysam.AlignmentFile(str(sorted_bam), "rb", check_sq=False) as bam:
         samtools_order = [read.query_name for read in bam.fetch(until_eof=True)]
     assert samtools_order == sorted(names, key=functools.cmp_to_key(mta.strnum_cmp))
+
+
+def test_get_contact_pairs_unsorted(tmp_path):
+    """Without sort_pairs, the pairs of each library are written to the
+    temporary directory as they are made, alignment_<i>.pairs: plain text,
+    neither sorted, compressed nor indexed, and nothing is written to the
+    output directory. They are the pairs of the sorted file, in the order
+    of the reads of the alignments, with the rest of its header: its
+    #sorted line is that of the merged pairs (readID here)."""
+    assembly = tmp_path / "assembly.fa"
+    assembly.write_text(f">c1\n{'ACGT' * 2_500}\n>c2\n{'ACGT' * 5_000}\n")
+    bam = tmp_path / "alignment.bam"
+    # r1 within c2, then r2 between c1 and c2: sorted, r2 comes first.
+    _write_bam(bam, [("r1", 1, 300, 65), ("r1", 1, 200, 129), ("r2", 0, 100, 65), ("r2", 1, 5000, 145)])
+    lines = {}
+    for sort_pairs in (True, False):
+        out_dir, tmp_dir = tmp_path / f"out_{sort_pairs}", tmp_path / f"tmp_{sort_pairs}"
+        out_dir.mkdir()
+        tmp_dir.mkdir()
+        (pairs_file,), contig_data, _ = mta.get_contact_pairs(
+            str(bam), None, None, str(assembly), "bwa", "normal", 30, "bam", None, None, str(out_dir), str(tmp_dir), 1,
+            sort_pairs=sort_pairs,
+        )  # fmt: skip
+        if sort_pairs:
+            assert pairs_file == str(out_dir / "alignment_0_sorted.pairs.gz") and os.path.exists(f"{pairs_file}.px2")
+            with gzip.open(pairs_file, "rt") as pairs:
+                lines[sort_pairs] = pairs.read().splitlines()
+        else:
+            assert pairs_file == str(tmp_dir / "alignment_0.pairs") and not os.path.exists(f"{pairs_file}.px2")
+            assert not list(out_dir.iterdir()) and sorted(path.name for path in tmp_dir.iterdir()) == ["alignment_0.pairs"]
+            lines[sort_pairs] = Path(pairs_file).read_text().splitlines()
+        assert sorted(contig_data) == ["c1", "c2"]
+    header = {sort_pairs: [line for line in found if line.startswith("#")] for sort_pairs, found in lines.items()}
+    rows = {sort_pairs: [line.split("\t") for line in found if not line.startswith("#")] for sort_pairs, found in lines.items()}
+    assert [line for line in header[False] if line.startswith("#sorted")] == ["#sorted: readID"]
+    assert [line for line in header[True] if line.startswith("#sorted")] == ["#sorted: chr1-chr2-pos1-pos2"]
+    assert [line for line in header[False] if not line.startswith("#sorted")] == [
+        line for line in header[True] if not line.startswith("#sorted")
+    ]
+    assert rows[False] == [["r1", "c2", "201", "c2", "301", "+", "+"], ["r2", "c1", "101", "c2", "5001", "+", "-"]]
+    assert rows[True] == rows[False][::-1]
+
+
+def _without_dates_and_tables(objects):
+    """The objects of a map (see tests.hdf5.walk) but its creation-date,
+    and the temporary table of the run in its annotate history (the
+    contig columns that metaTOR gives metacooler, in a temporary file)."""
+    kind, members, attributes = objects["/"]
+    kept = []
+    for key, dtype, value in attributes:
+        if key == "metadata":
+            value = json.loads(value)
+            for entry in value["annotate"]:
+                entry.pop("contigs_table")
+        if key != "creation-date":
+            kept.append((key, dtype, value))
+    return {**objects, "/": (kind, members, kept)}
+
+
+def _subset_bam(source, path, keep):
+    """A copy of the BAM file source at path, with the reads whose name
+    keep accepts, in their order."""
+    with pysam.AlignmentFile(str(source), "rb") as bam, pysam.AlignmentFile(str(path), "wb", template=bam) as out:
+        for read in bam:
+            if keep(read.query_name):
+                out.write(read)
+    return str(path)
+
+
+def test_unsorted_pairs_give_the_map_and_the_network_of_sorted_pairs(tmp_path):
+    """The pairs that a pipeline run makes from alignments, and no longer
+    sorts (sort_pairs=False), give the contact map of the contigs and the
+    network that the sorted pairs give: the same map, but for its date and
+    the temporary table of its annotate history, by a walk of every group,
+    dataset and attribute (its pixels included); and the same network, of
+    the two libraries here (the alignments of tests_data, and two thirds of
+    their reads) and of each, with the same contig data and hits, byte for
+    byte. A guard: the map and the network read the pairs in any order."""
+    import cooler
+
+    import metator.metacool as mtmc
+    import metator.network as mtn
+    from tests.hdf5 import walk
+
+    forward, reverse = str(TESTS_DATA / "alignment_0_for.bam"), str(TESTS_DATA / "alignment_0_rev.bam")
+    # Two thirds of the reads, by name: both mates of a pair, or neither.
+    subset = [_subset_bam(path, tmp_path / f"subset_{mate}.bam", lambda name: zlib.crc32(name.encode()) % 3 != 0)
+              for path, mate in [(forward, "for"), (reverse, "rev")]]  # fmt: skip
+    files = ["network.txt", "network_0.txt", "network_1.txt", "contig_data_network.txt", "hit_data_alignment.txt"]
+    maps, written = {}, {}
+    for sort_pairs in (True, False):
+        out_dir, tmp_dir = tmp_path / f"out_{sort_pairs}", tmp_path / f"tmp_{sort_pairs}"
+        out_dir.mkdir()
+        tmp_dir.mkdir()
+        pairs, contig_data, hit_data = mta.get_contact_pairs(
+            f"{forward},{subset[0]}", f"{reverse},{subset[1]}", str(TESTS_DATA / "assembly"), str(TESTS_DATA / "assembly.fa"),
+            "bowtie2", "normal", 30, "bam", None, "DpnII", str(out_dir), str(tmp_dir), 1, sort_pairs=sort_pairs,
+        )  # fmt: skip
+        assert [os.path.dirname(path) for path in pairs] == [str(out_dir if sort_pairs else tmp_dir)] * 2
+        maps[sort_pairs] = tmp_path / f"map_{sort_pairs}.metacool"
+        mtmc.write_contig_map(pairs, contig_data, str(maps[sort_pairs]), force=True, tmp_dir=str(tmp_dir))
+        mtn.alignment_to_contacts(pairs, contig_data, 0, hit_data, str(out_dir), "network.txt", "contig_data_network.txt",
+                                  str(tmp_dir), 1, "empirical_hit", False)  # fmt: skip
+        written[sort_pairs] = {name: (out_dir / name).read_bytes() for name in files}
+    assert _without_dates_and_tables(walk(maps[False])) == _without_dates_and_tables(walk(maps[True]))
+    assert cooler.Cooler(str(maps[False])).info["sum"] > 0
+    assert written[False] == written[True] and all(written[True].values())
+    # Two libraries that differ: a mix-up of their networks shows.
+    assert written[True]["network_0.txt"] != written[True]["network_1.txt"]
+
+
+@pytest.mark.parametrize("keep_temp", [False, True])
+def test_get_contact_pairs_removes_the_tables_of_the_mates(keep_temp, tmp_path):
+    """The tables of the alignments of the mates of a library, which the
+    pairs are merged from (bowtie2), are removed from the temporary
+    directory once the pairs are written: as large as the pairs, they stayed
+    there until the end of the run. --no-clean-up (keep_temp) keeps them, as
+    it keeps every temporary file: with it, a guard, as they were always
+    kept."""
+    out_dir, tmp_dir = tmp_path / "out", tmp_path / "tmp"
+    out_dir.mkdir()
+    tmp_dir.mkdir()
+    forward, reverse = str(TESTS_DATA / "alignment_0_for.bam"), str(TESTS_DATA / "alignment_0_rev.bam")
+    (pairs_file,), _, _ = mta.get_contact_pairs(
+        forward, reverse, str(TESTS_DATA / "assembly"), str(TESTS_DATA / "assembly.fa"), "bowtie2", "normal", 30, "bam",
+        None, "DpnII", str(out_dir), str(tmp_dir), 1, keep_temp=keep_temp,
+    )  # fmt: skip
+    found = sorted(path.name for path in tmp_dir.iterdir() if path.name.endswith("_temp.txt"))
+    assert found == (["alignment_0_for_temp.txt", "alignment_0_rev_temp.txt"] if keep_temp else [])
+    assert all((tmp_dir / name).stat().st_size > 0 for name in found)
+    assert os.path.exists(pairs_file) and os.path.exists(f"{pairs_file}.px2")
