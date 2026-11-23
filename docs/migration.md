@@ -13,6 +13,65 @@ what a run writes and counts differently. The
 other changes to the clusters and outputs (those of 1.4.0, for example:
 Louvain and Leiden run through igraph).
 
+## From 1.x to 2.0
+
+metaTOR 2.0 no longer maps reads: hicstuff (from 4.0.0) maps them and writes
+a `.metacool` contact map, from which metaTOR clusters the contigs.
+
+```bash
+# 1.x
+metator pipeline --assembly assembly.fa \
+    --forward R1.fq.gz --reverse R2.fq.gz \
+    --enzyme DpnII,HinfI --outdir out/
+
+# 2.0
+hicstuff pipeline --genome assembly.fa --enzyme DpnII,HinfI \
+    --matrix metacool --prefix sample --outdir hic/ R1.fq.gz R2.fq.gz
+metator pipeline hic/sample.metacool --assembly assembly.fa \
+    --enzyme DpnII,HinfI --outdir out/
+```
+
+Several libraries, which 1.x took as comma-separated lists: one hicstuff run
+per library, then sum the maps:
+
+```bash
+metacooler merge hic_A/A.metacool hic_B/B.metacool -o AB.metacool
+metator pipeline AB.metacool --assembly assembly.fa \
+    --enzyme DpnII,HinfI --outdir out/
+```
+
+### Same network, equivalent clusters
+
+On a mock community of 39 genomes (12.8 M read pairs, 174 Mb assembly):
+
+- hicstuff kept the same 10,894,611 read pairs as 1.3.10, each on the same two
+  contigs, and metaTOR 2.0 built the same network: 263,961 edges, their
+  weights equal to floating-point rounding, and the same hits on all 20,566
+  contigs.
+- The clusters differ from run to run in both versions (Louvain is random, and
+  2.0 runs it through igraph): 2.0 agreed with three 1.3.10 runs as closely as
+  these agreed with each other (adjusted Rand index over the contigs that
+  either run clusters, weighted by length: 0.977–0.992, against 0.971–0.992).
+- Same quality: 24 HQ and 7 MQ clusters in 2.0, as in each 1.3.10 run, and the
+  same genomes recovered: 29 of the 39 had at least 90% of their sequence in
+  one cluster of at least 95% purity, against 28–29 for 1.3.10.
+- Several libraries: on a metagenome sequenced in two libraries (355 Mb
+  assembly), each library gave the same pairs in both workflows, the map that
+  `metacooler merge` sums gave the network that 1.3.10 partitioned from the
+  two, and the clusters were of the same quality, alone or merged.
+
+### Comparing with the outputs of 1.x
+
+- Count the quality classes of a 1.x run from its plot,
+  `plot/bins_size_distribution.png`, not from its log, which counted the HQ
+  clusters as MQ (see the [changelog](changelog.md#fixed)): on the mock, the
+  log of a run said 7 HQ and 24 MQ, its plot 24 and 7.
+- Take its clusters from `final_bin_unscaffold/` or `contig_data_final.txt`:
+  its `binning.txt` left out the contigs of the clusters partitioned again but
+  kept whole (27% of the binned bases on the mock).
+- To run 1.3.10 again, pin `pandas<3`: bioconda installs pandas 3, under which
+  1.3.10 stops in the partition.
+
 ## The command line
 
 <div class="mt-versions" markdown>
