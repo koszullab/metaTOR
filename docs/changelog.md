@@ -309,6 +309,10 @@ each removed command.
 - The depth file (`--depth`) is read by contig name: read line by line, a
   file in another order than the assembly gave the contigs the values of
   others. A file that lacks a contig, or gives it another length, is refused.
+- The depth file of a contig of a million bases or more, whose length
+  `jgi_summarize_bam_contig_depths` writes in scientific notation, to 6
+  significant digits (`1.21754e+06`), stopped `network` and `pipeline` with
+  a `ValueError` (#26): such a length is that of the contig rounded so.
 - `network` and `pipeline` read an assembly compressed with gzip, which they
   refused as no FASTA file.
 - `validation` reads the contig names of its tables as text: contigs named

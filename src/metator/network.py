@@ -538,14 +538,45 @@ def read_depth(depth_file):
     Returns
     -------
     dict
-        The length (int) and the coverage (float) of each contig, by name."""
+        The length and the coverage (float) of each contig, by name: the length
+        is an int, or a float when the file writes it in scientific notation
+        (see depth_length_matches)."""
     depths = {}
     with open(depth_file, "r") as depth:
         next(depth, None)
         for line in depth:
             fields = line.rstrip("\n").split("\t")
-            depths[fields[0]] = (int(fields[1]), float(fields[2]))
+            try:
+                length = int(fields[1])
+            except ValueError:
+                length = float(fields[1])
+            depths[fields[0]] = (length, float(fields[2]))
     return depths
+
+
+def depth_length_matches(depth_length, length):
+    """Whether the length of a contig in the depth file is that of a contig of
+    the assembly.
+
+    jgi_summarize_bam_contig_depths writes the lengths of a million bases or
+    more in scientific notation, to 6 significant digits (1217543 as
+    1.21754e+06): such a length matches the length of the contig rounded so, or
+    the length itself. A length written as an integer must be the length.
+
+    Parameters
+    ----------
+    depth_length : int or float
+        The length of the contig in the depth file (see read_depth).
+    length : int
+        The length of the contig in the assembly.
+
+    Returns
+    -------
+    bool
+        Whether the lengths match."""
+    if isinstance(depth_length, float):
+        return depth_length == length or depth_length == float(f"{length:.6g}")
+    return depth_length == length
 
 
 def create_contig_data(assembly, depth_file=None, enzyme=None):
@@ -587,7 +618,7 @@ def create_contig_data(assembly, depth_file=None, enzyme=None):
             if depths is not None:
                 if contig.id not in depths:
                     missing.append(contig.id)
-                elif depths[contig.id][0] != len(contig.seq):
+                elif not depth_length_matches(depths[contig.id][0], len(contig.seq)):
                     other_length.append(contig.id)
                 else:
                     coverage = depths[contig.id][1]

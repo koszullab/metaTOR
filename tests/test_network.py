@@ -170,6 +170,66 @@ def test_create_contig_data_refuses_the_depth_file_of_another_assembly(case, mes
     assert f"{message} {other}, such as NODE_522" in caplog.text
 
 
+def one_contig_assembly(tmp_path, length):
+    """An assembly of one contig, "big", of `length` bases."""
+    fasta = tmp_path / "big.fa"
+    bases = np.random.default_rng(0).choice(list("ACGT"), size=length)
+    fasta.write_text(">big\n" + "".join(bases) + "\n")
+    return str(fasta)
+
+
+def test_read_depth_reads_lengths_in_scientific_notation(tmp_path):
+    """jgi_summarize_bam_contig_depths writes the lengths of a million bases or
+    more in scientific notation (#26): read as floats, the others as ints."""
+    depth = tmp_path / "depth.txt"
+    depth.write_text("contigName\tcontigLen\ttotalAvgDepth\nbig\t1.21754e+06\t3.5\nNODE_522\t22786\t4.76595\n")
+    depths = mtn.read_depth(str(depth))
+    assert depths == {"big": (1217540.0, 3.5), "NODE_522": (22786, 4.76595)}
+    assert isinstance(depths["big"][0], float)
+    assert isinstance(depths["NODE_522"][0], int)
+
+
+@pytest.mark.parametrize(
+    "depth_length, length, matches",
+    [
+        (22786, 22786, True),
+        (22787, 22786, False),
+        (22786.0, 22786, True),
+        # 6 significant digits: 1217543 is written 1.21754e+06.
+        (1217540.0, 1217543, True),
+        (1217543.0, 1217543, True),
+        (1217550.0, 1217543, False),
+        # Written as an integer, a length is the length.
+        (1217540, 1217543, False),
+    ],
+)
+def test_depth_length_matches(depth_length, length, matches):
+    assert mtn.depth_length_matches(depth_length, length) is matches
+
+
+def test_create_contig_data_with_a_length_in_scientific_notation(tmp_path):
+    """A contig of 1,217,543 bases, whose length the depth file writes
+    1.21754e+06, gets its coverage (#26: int() refused the length)."""
+    fasta = one_contig_assembly(tmp_path, 1217543)
+    depth = tmp_path / "depth.txt"
+    depth.write_text("contigName\tcontigLen\ttotalAvgDepth\nbig\t1.21754e+06\t3.5\n")
+    contig_data = mtn.create_contig_data(fasta, str(depth))
+    assert contig_data["big"]["length"] == 1217543
+    assert contig_data["big"]["coverage"] == 3.5
+
+
+@pytest.mark.parametrize("written", ["1.21755e+06", "1217540"])
+def test_create_contig_data_refuses_another_length_in_scientific_notation(written, tmp_path, caplog):
+    """A length that is not that of the contig, rounded to 6 significant digits
+    or written whole, is refused as another length."""
+    fasta = one_contig_assembly(tmp_path, 1217543)
+    depth = tmp_path / "depth.txt"
+    depth.write_text(f"contigName\tcontigLen\ttotalAvgDepth\nbig\t{written}\t3.5\n")
+    with caplog.at_level("INFO", logger="metator_logger"), pytest.raises(ValueError, match="is not that of the assembly"):
+        mtn.create_contig_data(fasta, str(depth))
+    assert f"1 contigs of the assembly have another length in the depth file {depth}, such as big" in caplog.text
+
+
 def test_create_contig_data_from_a_compressed_assembly(tmp_path):
     """A gzipped assembly gives the same contig data as the uncompressed one."""
     compressed = tmp_path / "assembly.fa.gz"
