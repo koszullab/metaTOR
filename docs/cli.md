@@ -40,7 +40,7 @@ metator pipeline [OPTIONS] MAP
 
 The run starts from a `.metacool` contact map of the contigs, `MAP`, which
 hicstuff makes from the reads (`hicstuff pipeline -M metacool`, from
-hicstuff's next release), or metacooler from pairs files
+hicstuff 4.0.0), or metacooler from pairs files
 (`metacooler create pairs`): see
 [Other tools](other-tools.md#from-the-reads-to-the-map).
 

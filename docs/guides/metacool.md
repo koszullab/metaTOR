@@ -455,11 +455,11 @@ metacooler create pairs --pairs hicstuff_L1/L1.valid_idx.pairs.gz \
     --assembly-name assembly -o sample.metacool
 ```
 
-!!! note "`-M metacool` and mapping mode `5spm` need a hicstuff release after 3.3.0"
+!!! note "`-M metacool` and mapping mode `5spm` need hicstuff 4.0.0"
 
-    hicstuff 3.3.0, the latest release so far, writes no `.metacool` map and
-    has no mapping mode `5spm`: with it, make the map from its pairs files
-    with `metacooler create pairs`.
+    hicstuff 3.3.0 and earlier write no `.metacool` map and have no mapping
+    mode `5spm`: with them, make the map from their pairs files with
+    `metacooler create pairs`.
 
 - `--bins 1000` makes bins of 1 kb instead, taking the lengths of the contigs
   from the `#chromsize` lines of hicstuff's pairs files, or from `--fasta`.

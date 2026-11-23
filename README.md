@@ -114,9 +114,9 @@ metator pipeline sample.metacool -a assembly.fa -e DpnII -d depth.txt -o binning
 metator dump sample.metacool -o tables
 ```
 
-`hicstuff pipeline -M metacool` comes with hicstuff's next release (3.3.0, the
-latest so far, does not have it): until then, make the map from hicstuff's
-pairs files, `<prefix>.valid_idx.pairs.gz`, with `metacooler create pairs`.
+`hicstuff pipeline -M metacool` needs hicstuff 4.0.0 or later; with an
+earlier hicstuff, make the map from its pairs files,
+`<prefix>.valid_idx.pairs.gz`, with `metacooler create pairs`.
 metacooler makes the map from the pairs files of any aligner:
 
 ```sh

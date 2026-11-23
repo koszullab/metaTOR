@@ -37,12 +37,12 @@ metacooler merge hicstuff_L1/L1.metacool hicstuff_L2/L2.metacool -o sample.metac
 metator pipeline sample.metacool -a assembly.fa -e DpnII -o binning
 ```
 
-!!! note "`-M metacool` comes with hicstuff's next release"
+!!! note "`-M metacool` needs hicstuff 4.0.0"
 
     `hicstuff pipeline -M metacool`, and its mapping mode `5spm`, come with
-    hicstuff's next release: 3.3.0, the latest so far, has neither. Until
-    then, install hicstuff from its master branch, or make the map from the
-    pairs files of hicstuff 3.3.0 with `metacooler create pairs`, as below.
+    hicstuff 4.0.0: 3.3.0 and earlier have neither. With an earlier
+    hicstuff, make the map from its pairs files with `metacooler create
+    pairs`, as below.
 
 hicstuff aligns the reads with bowtie2 by default; `-m 5spm` aligns them with
 `bwa mem -5SPM`, close to metaTOR 1.x's `--aligner bwa`, which ran

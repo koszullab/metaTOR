@@ -19,7 +19,7 @@ each removed command.
   as their first argument, which they require: a file, or an entry of a
   `.mmetacool` collection (`file.mmetacool::entries/<name>`), at any bin size.
   hicstuff makes it from the reads (`hicstuff pipeline -M metacool`, from
-  hicstuff's next release), metacooler from pairs files (`metacooler create
+  hicstuff 4.0.0), metacooler from pairs files (`metacooler create
   pairs`) or a `.cool` file (`create cool`), and `metacooler merge` sums the
   maps of several libraries. Gone with the reads, alignments and pairs
   inputs: `-1/--forward`, `-2/--reverse`, `-S/--start`, `-b/--aligner`,
