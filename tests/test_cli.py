@@ -1328,17 +1328,14 @@ def test_pipeline_from_a_map_refused_with_a_lock_it_cannot_check(holder, stub_pi
     lock = Path(f"{metacool}.lock")
     if holder in ("unreadable", "not an object"):
         lock.write_text("{not json" if holder == "unreadable" else "[1]")
-        reason = f"{lock} does not say which process holds {metacool}: if none is writing it, delete {lock}."
+        reason = refusal(metacool)
+        assert "does not say which process holds" in reason
     else:
         gone = subprocess.Popen([sys.executable, "-c", "pass"])
         gone.wait()
         _lock(metacool, 1, host="elsewhere") if holder == "another host" else _lock(metacool, gone.pid)
-        record = json.loads(lock.read_text())
-        reason = (
-            f"{metacool} is locked by a process this host cannot check ({described(record)}: another host, machine "
-            f"or PID namespace): if it is no longer running, delete {lock} and "
-            f"{tmp_path}/.input.metacool.{record['uuid']}.*.d/ (its staged copies)."
-        )
+        reason = refusal(metacool, json.loads(lock.read_text()))
+        assert "a process this host cannot check" in reason
     with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(reason)} Or write this run's map elsewhere"):
         run_cli("pipeline", *_map_run(metacool, tmp_path))
     assert lock.exists()

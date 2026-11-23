@@ -1,7 +1,6 @@
 # Installation
 
-metaTOR needs Python 3.10 to 3.14, and two programs that are not on PyPI:
-the prodigal and hmmer that miComplete runs to validate the clusters. It
+metaTOR needs Python 3.10 to 3.14, and no program that is not on PyPI. It
 starts from a contact map of the contigs, which
 [hicstuff](https://koszullab.github.io/hicstuff/) makes from the reads
 (`hicstuff pipeline -M metacool`), or
@@ -10,7 +9,7 @@ starts from a contact map of the contigs, which
 
 ## With conda (recommended)
 
-bioconda installs metaTOR with the programs it runs:
+bioconda installs metaTOR:
 
 ```bash
 conda create -n metator bioconda::metator
@@ -25,23 +24,17 @@ conda activate metator
 
 ## With pip
 
-Install the programs first, then metaTOR:
-
 ```bash
-# Debian or Ubuntu; on macOS: brew install hmmer prodigal
-sudo apt install hmmer prodigal
-
 pip install metator
 ```
 
-| Program | Used for |
-|---|---|
-| `prodigal`, `hmmer` | Finding the marker genes of the clusters, with miComplete |
-
 pip installs metaTOR's Python dependencies, among them
 [metacooler](https://github.com/js2264/metacooler),
-[cooler](https://github.com/open2c/cooler) and
-[miComplete](https://pypi.org/project/micomplete/); install metaTOR in an
+[cooler](https://github.com/open2c/cooler),
+[miComplete](https://pypi.org/project/micomplete/), and
+[pyrodigal](https://pypi.org/project/pyrodigal/) and
+[pyhmmer](https://pypi.org/project/pyhmmer/), with which miComplete runs
+Prodigal and HMMER to validate the clusters; install metaTOR in an
 environment of its own so that they do not change the versions other tools
 rely on. hicstuff, which makes the map from the reads, is not one of them:
 install it with its aligner, bowtie2 or bwa, where the reads are aligned (see
@@ -49,8 +42,8 @@ install it with its aligner, bowtie2 or bwa, where the reads are aligned (see
 
 ## With Docker
 
-Docker images, with metaTOR and the programs it runs, are published to the
-GitHub Container Registry when a release is tagged:
+Docker images of metaTOR are published to the GitHub Container Registry
+when a release is tagged:
 
 ```bash
 docker pull ghcr.io/koszullab/metator:latest
@@ -59,8 +52,7 @@ docker pull ghcr.io/koszullab/metator:v<version>
 
 ## Development version
 
-The development version is managed with [uv](https://docs.astral.sh/uv/).
-With prodigal and hmmer installed:
+The development version is managed with [uv](https://docs.astral.sh/uv/):
 
 ```bash
 git clone https://github.com/koszullab/metator.git
