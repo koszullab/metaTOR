@@ -219,9 +219,9 @@ def read_compressed(filename):
 
 #: The columns of the contig data files that metaTOR 1.x named after bins,
 #: with their names since metaTOR 2.0, which calls its groups of contigs
-#: clusters. No command reads the tables of 1.x anymore: host.py renames
-#: their columns (see rename_1x_columns), and the writer of the map of the
-#: clusters drops those that a map made from a table of 1.x carries
+#: clusters. No command reads the tables of 1.x anymore: rename_1x_columns
+#: renames their columns for a user's own scripts, and the writer of the map
+#: of the clusters drops those that a map made from a table of 1.x carries
 #: (metator.metacool._write_back_columns).
 CONTIG_DATA_1X_COLUMNS = {
     "Core_bin_ID": "Core_cluster_ID",
@@ -239,9 +239,9 @@ CONTIG_DATA_1X_COLUMNS = {
 
 def rename_1x_columns(contig_data):
     """The table of contig data contig_data, its columns named after bins by
-    metaTOR 1.x renamed as metaTOR 2.0 names them (CONTIG_DATA_1X_COLUMNS).
-    Kept for host.py, which calls it to read the contig data files of a 1.x run
-    as those of a 2.0 run: no command reads the tables of 1.x anymore.
+    metaTOR 1.x renamed as metaTOR 2.0 names them (CONTIG_DATA_1X_COLUMNS),
+    to read the contig data files of a 1.x run as those of a 2.0 run: no
+    command reads the tables of 1.x anymore (metator host reads the map).
 
     A column already named as in 2.0 is kept, and the 1.x column of the same
     meaning left as it is.

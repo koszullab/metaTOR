@@ -256,7 +256,9 @@ before any work, of what it replaces there that an earlier run left (or
 another binner): the clusters of the map (`pipeline MAP`, `validation MAP`)
 and its clustering rounds (the rounds of the binning for `pipeline MAP` and
 `partition MAP`, those of the validation for `validation MAP`, the round
-`mge` for `mge MAP`, `mge_random` for `mge MAP --random`). The map keeps no
+`mge` for `mge MAP`, `mge_random` for `mge MAP --random`), and the hosts of
+its MGE clusters (`host MAP`, and the runs that replace what they describe:
+`mge MAP`, `partition MAP`, `validation MAP`, `pipeline MAP`). The map keeps no
 record of them: a run that writes its map to another output directory, without
 `--inplace`, leaves them in the input map.
 
@@ -411,7 +413,10 @@ partition MAP` stores the rounds `core` and `overlapping` alone, which
 `metator validation MAP` reads, until it stores every round (see
 [Step by step](#step-by-step)).
 `metator mge` then adds the round `mge`, or replaces the one of an earlier
-`mge` run, and keeps the others.
+`mge` run, and keeps the others; and `metator host` adds the hosts of its MGE
+clusters as columns of the round `mge` (`n_hosts`, `hosts`, `host_shares`),
+and the MGE clusters of each final cluster as columns of the genomes table
+(`n_mges`, `mges`).
 
 ## mge on the map
 
@@ -432,6 +437,9 @@ rounds `mge` and `mge_random`, and their entries, with a warning: run `mge`
 again on its map. The map is written as `partition MAP` writes it: to the
 output directory, or in place (see
 [Clustering mobile genetic elements](mge.md#in-the-contact-map-of-the-run)).
+`metator host MAP` then finds the MAGs that host the MGE clusters, and
+stores them in the map, as `mge` stores its MGE clusters (see
+[The hosts](mge.md#the-hosts)).
 
 ## From the reads to the map
 

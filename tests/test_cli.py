@@ -44,7 +44,8 @@ mtmc_write_map = mtmc.write_map
 # commands qc, contactmap, metacool, scaffold and pairs are gone, and so are
 # the --scaffold and --junctions options of pipeline, --self-contacts of
 # network and --cluster-matrix of partition, validation and pipeline. 2.0
-# adds dump, which writes the tables of a run from its map.
+# adds dump, which writes the tables of a run from its map, and host again,
+# which finds the hosts of the MGE clusters of a map (1.x's host read tables).
 INVENTORY = json.loads((TESTS_DATA / "cli_inventory.json").read_text())["metator"]
 
 # Options whose value is one of a list, wherever they appear.

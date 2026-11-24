@@ -58,6 +58,12 @@ SUMMARY_FORMATS = ("%.2f", "%.4f", "%d", "%s")
 #: column mge itself, each with its format.
 MGE_SUMMARY_FORMATS = {"GC": "%.2f", "Hit": "%d", "BinningScore": "%.4f", mtmc.MGE_GENOME_COLUMN: "%s"}
 
+#: The columns of the summary that the hosts of the MGE clusters add, after
+#: those of the validation, when metator host stored them in the genomes table
+#: of the map (see metator.metacool.HOST_GENOME_COLUMNS), each with its format:
+#: the number of MGE clusters that each MAG hosts, and their names.
+HOST_SUMMARY_FORMATS = {"n_mges": "%d", "mges": "%s"}
+
 #: The columns that a recursive step of the validation sets.
 RECURSIVE_COLUMNS = ("Recursive_cluster_ID", "Recursive_cluster_contigs", "Recursive_cluster_size")
 
@@ -221,7 +227,9 @@ def cluster_summary(metacool, mc, layout):
     format of the column (an empty field for a missing value: NaN, None or an
     empty text), after a header, an empty field then the columns. The columns
     are those of the summary, then, when the genomes table says which genomes
-    are MGE genomes, those of MGE_SUMMARY_FORMATS that it holds.
+    are MGE genomes, those of MGE_SUMMARY_FORMATS that it holds, then those of
+    HOST_SUMMARY_FORMATS that it holds: the hosts of the MGE clusters that
+    metator host stored there.
 
     Returns
     -------
@@ -249,6 +257,9 @@ def cluster_summary(metacool, mc, layout):
         for column, written in MGE_SUMMARY_FORMATS.items():
             if column in genomes.columns and column not in formats:
                 formats[column] = written
+    for column, written in HOST_SUMMARY_FORMATS.items():
+        if column in genomes.columns and column not in formats:
+            formats[column] = written
     listed = set(layout.rows)
     rows = [row for row in layout.rows if row in genomes.index]
     rows += [name for name in genomes.index if name != UNBINNED_GENOME and name not in listed]

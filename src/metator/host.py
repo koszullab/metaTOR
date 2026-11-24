@@ -1,583 +1,328 @@
 #!/usr/bin/env python3
 # coding: utf-8
+
+"""Find the MAGs that host the MGE clusters of a .metacool map: metator host.
+
+The MGE clusters are those of the round ``mge`` of the map, which ``metator
+mge`` stores, and the MAGs are the genomes of the map, whatever made them:
+the final clusters of a metaTOR run, or the bins of another binner that
+``metacooler reassign`` made the genomes of the map. ``__unbinned__`` is no
+MAG, and neither is a genome named after an MGE cluster (an MGE cluster made
+a genome of the map, by ``metator mge --reassign`` or ``metacooler reassign
+--round mge``). A contig of an MGE cluster counts for its MGE cluster only:
+a MAG that holds it too (a validation clusters the MGE contigs with the
+other contigs) is taken without it, or the contacts of the MGE cluster
+within itself would count as contacts with that MAG.
+
+The signal of an MGE cluster with a MAG is the sum of the weights of the
+edges of the network between their contigs: the network that ``metator
+network`` stored in the map, weighed with its normalization (see
+metator.network.stored_network). A MAG hosts the MGE cluster when that
+signal is at least ``min_share`` percent (10 by default) of the signal of the
+MGE cluster with all the MAGs, and when the MGE cluster is in contact with at
+least ``min_contigs`` of its contigs (5 by default). The contacts of the MGE
+cluster with the contigs in no MAG and with the other MGE clusters do not
+count in that share: an MGE cluster with few contacts with the MAGs, as a
+phage that the library caught in its free particles, can be given a host
+from a small part of its contacts. ``share_of_all``, the share of all the
+contacts of the MGE cluster with the other contigs, says how small.
+
+``metator host`` stores what it finds in the map (see
+metator.metacool.write_map): the hosts of each MGE cluster in the round
+``mge`` (HOST_CLUSTER_COLUMNS), and the MGE clusters of each MAG in the
+genomes table (HOST_GENOME_COLUMNS); and writes every MGE cluster and MAG in
+contact in ``mge_hosts.txt`` (see write_hosts), and the signal and share of
+the hosts in ``mge_hosts.png`` (see plot_hosts).
 """
-This module is used to detect and associate an MGE with its bacterial MAG host.
 
-It defines two main classes, `MAG` and `MgeMag`, along with their methods.
-Starting from a `MAG` or `MgeMag` object, the module retrieves all contigs belonging to a given MAG or MGE-MAG based on binning results.
+import os
+from dataclasses import dataclass
 
-The module allows evaluation of background noise by calculating intra- and inter-MAG interaction signals, as well as interactions between MGE-MAGs and MAGs. This helps identify the host MAG for a given MGE-MAG.
-
-Main functions and methods include:
-    - Class methods:
-        - `__init__()`: Initializes a MAG or MGE-MAG object.
-        - `add_contig()`: Adds a contig to a MAG or MGE-MAG.
-        - `has_contig()`: Checks if a MAG or MGE-MAG contains a specific contig.
-        - `list_all_mags()` and `list_all_mge_mags()`: List all existing MAG and MGE-MAG objects.
-    - `create_mags()` and `create_mge_mags()`: Instantiate MAG and MGE-MAG objects from input data.
-    - `evaluate_experience_noise()`: Calculates intra-MAG and inter-MAG interaction signals, writes them to a file, and plots a normalized log10 boxplot.
-       Also compares the distributions of intra- and inter-MAG interactions on a violin plot by quality of mags.
-    - `compute_mge_mag_interactions()`: Compute MGE-MAG to MAG interaction signals with signal filtering by percentage and minimum contact threshold.
-"""
-
-# import metator.figures as mtf
-# import metator.io as mio
-from collections import Counter
-from typing import Literal
-import igraph as ig
-import matplotlib.pyplot as plt
-
-# import pypairix
-import metator.io as mio
-from metator.log import logger
-import pandas as pd
 import numpy as np
-from matplotlib.patches import Patch
-import math
+import pandas as pd
+from matplotlib.figure import Figure
+
+import metator.clusters as mtcl
+import metator.figures as mtf
+import metator.metacool as mtmc
+from metator.log import logger
+
+#: The share of the signal of an MGE cluster with the MAGs, in percent, from
+#: which a MAG is a host (--min-share).
+MIN_SHARE = 10.0
+
+#: The number of contigs of a MAG in contact with an MGE cluster from which
+#: the MAG is a host (--min-contigs).
+MIN_CONTIGS = 5
+
+#: The table of the MGE clusters and MAGs in contact, and the plot of the
+#: hosts, in the output directory of a run.
+HOSTS_FILE = "mge_hosts.txt"
+PLOT_FILE = "mge_hosts.png"
+
+#: The columns of HOSTS_FILE, in order.
+PAIRS_COLUMNS = ["mge", "mag", "signal", "contigs", "share", "share_of_all", "host"]
+
+#: What separates the names (and the shares) of a list in a column of the map.
+SEPARATOR = ","
 
 
-class Bin:
-    """
-    Classe de base représentant un ensemble de contigs appartenant à un même groupe (ex: MAG ou MGE-MAG).
-    """
+@dataclass
+class Hosts:
+    """The hosts of the MGE clusters of a map (see find_hosts).
 
-    def __init__(self, name):
-        self.name: str = name
-        self.info: dict = {}
-        self.contigs: dict = {}
-        self.completeness: float = None
-        self.contamination: float = None
-        self.quality: str = None
-        self.intra_signal: float = None
-        self.inter_signals: dict = {}
-
-    def add_contig(self, contig_name, contig) -> None:
-        self.contigs[contig_name] = contig
-
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}('{self.name}', {len(self.contigs)} contigs)"
-
-
-class Mag(Bin):
-    """Représente un MAG (Metagenome-Assembled Genome). Hérite de Bin."""
-
-    def __init__(self, name):
-        super().__init__(name)
-        self.mges: dict = {}
-
-    def add_mge(self, mge_name, mge_mag) -> None:
-        self.mges[mge_name] = mge_mag
-
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}('{self.name}', {len(self.contigs)} contigs, {len(self.mges)} MGEs)"
-
-
-class MgeMag(Bin):
-    """Représente un MGE-MAG (intégrant des éléments génétiques mobiles). Hérite de Bin."""
-
-    def __init__(self, name):
-        super().__init__(name)
-        self.hosts: dict = {}
-
-    def add_host(self, mag_name, mag) -> None:
-        self.hosts[mag_name] = mag
-
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}('{self.name}', {len(self.contigs)} contigs, {len(self.hosts)} hosts)"
-
-
-def create_bins(contig_data: pd.DataFrame) -> tuple[dict, dict]:
-    """
-    Creates MGE-MAGs from contig data.
-
-    Args:
-        contig_data (pd.DataFrame): DataFrame containing information about contigs.
-
-    Returns:
-        dict: A dictionary mapping MGE-MAG names to their corresponding MgeMag objects.
+    Attributes
+    ----------
+    pairs : pandas.DataFrame
+        One row per MGE cluster and MAG in contact (PAIRS_COLUMNS), the MGE
+        clusters in the order of the round mge, the MAGs of each by
+        decreasing signal (ties in the order of the genomes table): the
+        signal of the MGE cluster with the MAG (signal), the number of
+        contigs of the MAG in contact with it (contigs), the signal as a
+        percentage of that of the MGE cluster with all the MAGs (share) and
+        of all its contacts with the other contigs (share_of_all), and
+        whether the MAG hosts it (host).
+    clusters : pandas.DataFrame
+        One row per MGE cluster, in the order of the round mge: its name, its
+        number of hosts (n_hosts), its hosts by decreasing share (hosts) and
+        their shares, with two decimals (host_shares), each list separated by
+        commas, missing for none.
+    genomes : pandas.DataFrame
+        One row per MAG, in the order of the genomes table: its name, the
+        number of MGE clusters that it hosts (n_mges), and their names, in the
+        order of the round mge, separated by commas (mges, an empty text for
+        none).
     """
 
-    # The contig data of metaTOR 1.x too.
-    contig_data = mio.rename_1x_columns(contig_data)
-    mags = {}
-    mge_mags = {}
-    logger.info("Instantiating clusters (MAGs and MGE-MAGs)...")
-
-    for _, row in contig_data.iterrows():
-        contig_id, contig_name, bin_name = row["ID"], row["Name"], row["Final_cluster"]
-
-        if bin_name.startswith("MetaTOR_MGE_"):  # Identify MGE-MAGs
-            if bin_name not in mge_mags:
-                mge_mags[bin_name] = MgeMag(bin_name)  # create a new MGE-MAG
-            mge_mags[bin_name].add_contig(contig_name, contig_id)
-
-        elif bin_name.startswith("metator_"):
-            if bin_name not in mags:
-                mags[bin_name] = Mag(bin_name)  # create a new MGE-MAG
-            mags[bin_name].add_contig(contig_name, contig_id)
-    logger.info(f"{len(mags)} MAGs and {len(mge_mags)} MGE-MAGs have been parsed.")
-
-    return mags, mge_mags
+    pairs: pd.DataFrame
+    clusters: pd.DataFrame
+    genomes: pd.DataFrame
 
 
-def map_contigs_to_mags(mags: dict) -> dict:
-    """
-    Creates a mapping from each contig to its corresponding MAG name.
-
-    Iterates through a dictionary of MAG objects and associates each contig with the name of the MAG it belongs to.
-
-    Args:
-    - mags (dict): Dictionary in the form {mag_name: mag_object}, where each mag_object has a `contigs` attribute
-      that returns a dictionary of contigs.
-
-    Returns:
-    - contig_to_mag (dict): Dictionary mapping each contig ID to its corresponding MAG name.
-    """
-    contig_to_mag = {contig: mag_name for mag_name, mag_obj in mags.items() for contig in mag_obj.contigs.values()}
-    logger.info(f"{len(contig_to_mag)} contigs mapped to {len(mags)} MAGs.")
-
-    return contig_to_mag
-
-
-def build_contig_graph(network_data: pd.DataFrame) -> ig.Graph:
-    """
-    Builds an undirected interaction graph from a DataFrame containing contig pairs and interaction signals.
-
-    Each row of the DataFrame should contain two contig IDs and a signal value representing the interaction strength.
-    The function constructs an igraph graph where each contig is a vertex, named after the contig ID, and each edge
-    is weighted by the signal. A pair of contigs listed in several rows makes one edge, which keeps the signal of the
-    last row; its ``order`` attribute is the index of the first row, so that sorting edges by ``order`` follows the
-    rows of the table.
-
-    Args:
-    - network_data (pd.DataFrame): DataFrame with columns ['contig1', 'contig2', 'signal'].
-
-    Returns:
-    - G (ig.Graph): An undirected graph where edges are weighted by the interaction signal.
-    """
-    logger.info("Creating contigs contacts graph...")
-
-    edges = [
-        (int(u), int(v), w)
-        for u, v, w in zip(network_data["contig1"], network_data["contig2"], network_data["signal"], strict=True)
-    ]
-    G = ig.Graph.TupleList(edges, weights=True)
-    G.es["order"] = range(G.ecount())
-    G.simplify(multiple=True, loops=False, combine_edges={"weight": "last", "order": "min"})
-    logger.info(f"Contigs graph has {G.vcount()} nodes and {G.ecount()} edges.")
-    return G
-
-
-def estimate_noise(mags, network_data) -> pd.DataFrame:
-    """
-    Evaluates inter- and intra-MAG interaction signals from a contig interaction graph and
-    MAG quality data, in order to detect potential noise or assembly artifacts.
+def map_bins(metacool, mc):
+    """The MAGs and the MGE clusters of a map, as find_hosts reads them (see the
+    module's docstring).
 
     Parameters
     ----------
-    mags : dict
-        Dictionary where keys are MAG names and values are objects representing MAGs. Each object must have
-        a `contigs` attribute that returns a dictionary of contigs.
-
-    network_data : pd.DataFrame
-        DataFrame containing interaction data with columns ['contig1', 'contig2', 'signal'].
+    metacool : str
+        Path to the .metacool file, or URI of an entry of a .mmetacool
+        collection, for the messages.
+    mc : metacooler.MetaCooler
+        The map, opened.
 
     Returns
     -------
-    pd.DataFrame
-        DataFrame containing the average intra- and inter-MAG interaction signals for each MAG.
+    numpy.ndarray
+        The MAG of each contig of the map, in its order: an empty text for a
+        contig in no MAG (in __unbinned__, in an MGE genome, or in an MGE
+        cluster).
+    pandas.DataFrame
+        The MGE clusters and their contigs: one row per contig of an MGE
+        cluster, its cluster (mge) and its position in the map, from 0
+        (position).
+    list of str
+        The MGE clusters, in the order of the round mge.
+    list of str
+        The MAGs, in the order of the genomes table.
 
-    Notes
-    -----
-    The function:
-    - Builds a graph of contig interactions.
-    - Maps each contig to its corresponding MAG.
-    - Calculates average intra- and inter-MAG interaction signals.
-    - Groups MAG pairs by quality (e.g., HQ-HQ, HQ-MQ, HQ-contaminated).
-    - Applies log transformation and normalization to the interaction signals for downstream analysis.
-    """
-    logger.info("Calculating the backgroung noise of the experience.")
-
-    # Get contigs <-> MAG mapping
-    contig_to_mag = map_contigs_to_mags(mags)
-    contig_to_mag_df = pd.DataFrame({"contig": list(contig_to_mag.keys()), "MAG": list(contig_to_mag.values())})
-
-    # Merge network data with contig to MAG mapping
-    mags_df = (
-        network_data.merge(contig_to_mag_df, left_on="contig1", right_on="contig", how="left")
-        .rename(columns={"MAG": "MAG1"})[["contig1", "contig2", "signal", "MAG1"]]
-        .merge(contig_to_mag_df, left_on="contig2", right_on="contig", how="left")
-        .rename(columns={"MAG": "MAG2"})[["MAG1", "MAG2", "contig1", "contig2", "signal"]]
-    )
-
-    # Define intra/inter contacts
-    mags_df["type"] = np.where(mags_df["MAG1"] == mags_df["MAG2"], "intra", "inter")
-
-    # Remove rows with NaN values
-    mags_df = mags_df.dropna(subset=["MAG1", "MAG2"])
-
-    ###################### INTRA-MAG INTERACTIONS COMPUTATION #################
-    for _, mag in mags.items():
-        intra_signals = mags_df.query("(MAG1 == @mag.name or MAG2 == @mag.name) and type == 'intra'")["signal"]
-        mag.intra_signal = np.mean(intra_signals)
-        if np.isnan(mag.intra_signal):
-            mag.intra_signal = 0.0
-
-    ########### INTER-MAG INTERACTIONS COMPUTATION #################
-    def get_other_mag(row, target_mag):
-        if row["MAG1"] == target_mag:
-            return row["MAG2"]
-        else:
-            return row["MAG1"]
-
-    for _, mag in mags.items():
-        subset = ((mags_df["MAG1"] == mag.name) | (mags_df["MAG2"] == mag.name)) & (mags_df["type"] == "inter")
-        if subset.sum() == 0:
-            mag.inter_signals = 0
-            continue
-        else:
-            df_inters = mags_df.copy()[subset]
-            df_inters.loc[:, "mag0"] = mag.name
-            df_inters.loc[:, "mag"] = df_inters.apply(get_other_mag, axis=1, target_mag=mag.name)
-            scores = list(
-                (
-                    df_inters.groupby(["mag0", "mag"])["signal"]
-                    .mean()
-                    .reset_index()
-                    .rename(columns={"mag0": "MAG1", "mag": "MAG2"})
-                    .sort_values("MAG2")
-                )["signal"]
+    Raises
+    ------
+    metator.metacool.MetacoolError
+        If the map holds no round mge, or no MAG."""
+    with mtmc.read_errors(metacool):
+        rounds = [str(entry.get("name")) for entry in mc.cluster_rounds]
+        if mtcl.MGE not in rounds:
+            raise mtmc.MetacoolError(
+                f"{metacool} holds no MGE clusters (no clustering round {mtcl.MGE}): run metator mge on it first, which "
+                "stores them in the map."
             )
-            while len(scores) < (len(mags) - 1):
-                scores.append(0)
-            mag.inter_signals = scores
-
-    return mags
-
-
-def plot_mag_noise(mags, image_file="background_noise.png") -> None:
-    """
-    Plots the background noise of MAG interactions.
-
-    Args:
-        mags (dict): Dictionary of MAG objects.
-        image_file (str): Path to save the plot image.
-
-    Returns:
-        None
-    """
-    logger.info("Plotting background noise...")
-
-    intra_signals = pd.DataFrame(
+        clusters = mc.clusters
+        mges = [str(name) for name in clusters.loc[(clusters["round"] == mtcl.MGE).to_numpy(), "name"]]
+        members = mc.cluster_members(mtcl.MGE)
+        contigs = mc.contigs
+        genome_names = mc.genomes["name"].astype(str).to_numpy()
+    names = contigs["name"].astype(str).to_numpy()
+    position = pd.Series(np.arange(len(names)), index=names)
+    members = pd.DataFrame(
         {
-            "MAG": [mag.name for mag in mags.values()],
-            "type": ["intra"] * len(mags),
-            "quality": [mag.quality for mag in mags.values()],
-            "signal": [mag.intra_signal for mag in mags.values()],
+            "mge": members["cluster"].astype(str).to_numpy(),
+            "position": position.reindex(members["contig"].astype(str)).to_numpy(dtype=np.int64),
         }
     )
-    intra_signals["log_signal"] = np.log10(intra_signals["signal"] + 1e-10)
-    min_val = intra_signals["log_signal"].min()
-    max_val = intra_signals["log_signal"].max()
-    intra_signals["norm_log"] = (intra_signals["log_signal"] - min_val) / (max_val - min_val)
-
-    inter_signals = pd.DataFrame(
-        {
-            "MAG": [mag.name for mag in mags.values()],
-            "type": ["inter"] * len(mags),
-            "quality": [mag.quality for mag in mags.values()],
-            "signal": [mag.inter_signals for mag in mags.values()],
-        }
-    ).explode("signal")
-    inter_signals["signal"] = inter_signals["signal"].astype(float)
-    inter_signals["log_signal"] = np.log10(inter_signals["signal"] + 1e-10)
-    min_val = inter_signals["log_signal"].min()
-    max_val = inter_signals["log_signal"].max()
-    inter_signals["norm_log"] = (inter_signals["log_signal"] - min_val) / (max_val - min_val)
-
-    # Create a DataFrame for plotting
-    data = pd.concat([intra_signals, inter_signals], ignore_index=True)
-    # MAGs without a quality and missing or infinite signals are left out.
-    data = data[data["quality"].notna() & np.isfinite(data["log_signal"].to_numpy(dtype=float))]
-    qualities = list(pd.unique(data["quality"]))
-
-    # Plotting a split violin plot; each violin show distribution of intra (left) and inter (right) signals, per quality
-    fig, ax = plt.subplots(figsize=(12, 6))
-    handles = []
-    for kind, side, colour in [("intra", "low", "C0"), ("inter", "high", "C1")]:
-        groups = [
-            data.loc[(data["quality"] == quality) & (data["type"] == kind), "log_signal"].to_numpy() for quality in qualities
-        ]
-        _half_violins(ax, groups, side, colour)
-        handles.append(Patch(facecolor=colour, edgecolor=VIOLIN_LINE_COLOUR, linewidth=1.25, label=kind))
-    ax.set_xticks(range(len(qualities)), labels=qualities)
-    if qualities:
-        # One unit per quality, as on a categorical axis.
-        ax.set_xlim(-0.5, len(qualities) - 0.5)
-    ax.set_xlabel("MAG Quality")
-    ax.set_ylabel("Interaction Signal (log scale)")
-    ax.set_title("Distribution of Intra- and Inter-MAG Interaction Signals")
-    ax.legend(handles=handles, title="Interaction Type")
-    fig.tight_layout()
-    fig.savefig(image_file)
-    plt.close(fig)
-
-
-# Outlines and quartile lines of the violins.
-VIOLIN_LINE_COLOUR = "0.25"
-
-
-def _half_violins(ax, groups, side, colour, width=0.8):
-    """
-    Draws one half violin per group of values, at x = 0, 1, 2...
-
-    Args:
-        ax (matplotlib.axes.Axes): Axes to draw on.
-        groups (list of numpy.ndarray): Values of each violin.
-        side (str): "low" for left halves, "high" for right halves.
-        colour (str): Fill colour of the violins.
-        width (float): Width of a whole violin.
-
-    A group with a single distinct value has no density to draw: it is
-    drawn as a line at that value. Empty groups are skipped.
-    """
-    positions = []
-    for position, values in enumerate(groups):
-        distinct = np.unique(values)
-        if len(distinct) > 1:
-            positions.append(position)
-        elif len(distinct) == 1:
-            start = position - width / 2 if side == "low" else position
-            ax.plot([start, start + width / 2], [distinct[0], distinct[0]], color=VIOLIN_LINE_COLOUR, linewidth=1.25)
-    if not positions:
-        return
-    parts = ax.violinplot(
-        [groups[position] for position in positions],
-        positions,
-        widths=width,
-        side=side,
-        showextrema=False,
-        quantiles=[[0.25, 0.5, 0.75]] * len(positions),
-    )
-    for body in parts["bodies"]:
-        body.set(facecolor=colour, edgecolor=VIOLIN_LINE_COLOUR, linewidth=1.25, alpha=1)
-    parts["cquantiles"].set(color=VIOLIN_LINE_COLOUR, linestyle="--", linewidth=1.25)
-
-
-def classify_mags(mags, bin_summary) -> dict:
-    """
-    Classifies MAGs based on their completeness and contamination values.
-
-    Args:
-        mags (dict): Dictionary of MAG objects.
-        bin_summary (pd.DataFrame): DataFrame containing MAG quality metrics.
-
-    Returns:
-        dict: Updated dictionary of MAG objects with quality classifications.
-    """
-    logger.info("Classifying MAGs based on their completeness and contamination values...")
-
-    def classify_mag(mag) -> Literal["Unknown", "Contaminated", "Complete", "HQ", "MQ", "LQ", "PQ"] | None:
-        c, r = mag.completeness, mag.contamination
-        if pd.isna(c) or pd.isna(r):
-            return "Unknown"
-        elif r > 1.1:
-            return "Contaminated"
-        elif c > 0.9 and r <= 1.05:
-            return "Complete"
-        elif c > 0.9 and r < 1.1 and r > 1.05:
-            return "HQ"
-        elif c > 0.7 and r < 1.1:
-            return "MQ"
-        elif c > 0.5 and r < 1.1:
-            return "LQ"
-        elif c < 0.5 and r < 1.1:
-            return "PQ"
-
-    for mag in mags.values():
-        if mag.name in bin_summary["MAG"].values:
-            mag_data = bin_summary[bin_summary["MAG"] == mag.name].iloc[0]
-            mag.info = dict(mag_data)
-            mag.completeness = mag_data["Completeness"]
-            mag.contamination = mag_data["Redundancy"]
-            mag.quality = classify_mag(mag)
-        else:
-            logger.warning(f"Warning: {mag.name} not found in cluster summary.")
-
-    quals = [x.quality for x in mags.values()]
-    cnts = Counter(quals)
-    for value, count in cnts.items():
-        print(f"{value} MAGs: {count}")
-
-    return mags
-
-
-def compute_mge_mag_interactions(
-    network_data,
-    mags,
-    mge_mags,
-    interaction_threshold=10.0,
-    min_interacting_contigs=5,
-    output_file="mge_mag_interactions.txt",
-    image_file="mge_mag_histogram.png",
-):
-    """
-    Computes interactions between contigs from mgeMAGs and those from MAGs,
-    and filters them based on a percentage threshold.
-    Generates two histograms: one showing the total interaction signal (log scale)
-    and another showing the number of MAG contigs interacting with an mgeMAG.
-
-    Args:
-    - network_data (pd.DataFrame): DataFrame with columns ['contig1', 'contig2', 'signal'].
-    - mge_mags (dict): Dictionary {mgeMAG_name: MAG_object} representing the mgeMAGs.
-    - mags (dict): Dictionary {MAG_name: MAG_object} representing the MAGs.
-    - output_file (str): Name of the output text file.
-    - image_file (str): Name of the output image file for the histograms.
-    - interaction_threshold (float): Threshold (%) to validate an interaction.
-    - min_interacting_contigs (int): Minimum number of MAG contigs interacting with the mgeMAG.
-
-    Returns:
-    - image_file (str): Name of the saved image file.
-    """
-
-    G = build_contig_graph(network_data)
-    names, ends, weights, order = G.vs["name"], G.get_edgelist(), G.es["weight"], G.es["order"]
-    # Vertex of each contig ID (G.vs.find(name=...) scans every vertex for a
-    # name that is not a string).
-    vertex_of = {name: vertex for vertex, name in enumerate(names)}
-
-    contig_to_mag = map_contigs_to_mags(mags)
-
-    interaction_results = []
-
-    for mgemag in mge_mags.values():
-        interaction_signals = {}
-        interacting_contigs_by_mag = {}
-        for contig1 in mgemag.contigs.values():
-            if contig1 in vertex_of:
-                vertex = vertex_of[contig1]
-                # Neighbours in the order of the network rows; a self-contact,
-                # listed twice by igraph, counts once.
-                for edge in sorted(set(G.incident(vertex)), key=order.__getitem__):
-                    source, target = ends[edge]
-                    contig2 = names[target if source == vertex else source]
-                    if contig2 in contig_to_mag:
-                        mag_name = contig_to_mag[contig2]
-                        signal = weights[edge]
-                        interaction_signals[mag_name] = interaction_signals.get(mag_name, 0) + signal
-                        interacting_contigs_by_mag.setdefault(mag_name, set()).add(contig2)
-
-        total_signal_mgemag = sum(interaction_signals.values())
-
-        for mag_name, signal_sum in interaction_signals.items():
-            percent_signal = (signal_sum / total_signal_mgemag) * 100 if total_signal_mgemag > 0 else 0
-            if percent_signal >= interaction_threshold:
-                interacting_contig_count = len(interacting_contigs_by_mag[mag_name])
-                if interacting_contig_count >= min_interacting_contigs:
-                    interaction_results.append((mgemag.name, mag_name, signal_sum, percent_signal, interacting_contig_count))
-
-    with open(output_file, "w") as f:
-        f.write("mgeMAG\tMAG\tTotal Signal\t% of signal\tInteracting Contigs\n")
-        for res in interaction_results:
-            mge_name, mag_name, signal_sum, percent_signal, contig_count = res
-            f.write(f"{mge_name:<24}\t{mag_name:<24}\t{signal_sum:.6f}\t{percent_signal:.2f}\t{contig_count}\n")
-
-    filtered_signals = [x[2] for x in interaction_results if x[2] > 0]
-    percentage_counts = [x[3] for x in interaction_results]
-
-    if filtered_signals and percentage_counts:
-        fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-
-        # Histogramm of total interaction signal  (log scale)
-        axes[0].hist(
-            filtered_signals,
-            bins=np.logspace(np.log10(min(filtered_signals)), np.log10(max(filtered_signals)), 20),
-            edgecolor="black",
+    in_mge = np.zeros(len(names), dtype=bool)
+    in_mge[members["position"].to_numpy()] = True
+    # Genomes named after an MGE cluster are MGE clusters made genomes, no
+    # MAGs.
+    mge_genomes = set(mges)
+    mags = [name for name in genome_names if name != mtmc.UNBINNED_GENOME and name not in mge_genomes]
+    if not mags:
+        raise mtmc.MetacoolError(
+            f"{metacool} holds no MAG to host its MGE clusters: none of its genomes is a MAG (but __unbinned__ and the "
+            "MGE clusters made genomes). Run metator validation (or pipeline) on it first, which makes its final "
+            "clusters its genomes, or make the bins of another binner its genomes with metacooler reassign."
         )
-        axes[0].set_xscale("log")
-        axes[0].set_xlabel("mge-MAG total interaction Signal  (log scale)")
-        axes[0].set_ylabel("Frequences")
-        axes[0].set_title(f"Signaux Distribution (\u2265 {interaction_threshold}%)")
-
-        # Histogramm of interaction percentage
-        bins = range(1, math.ceil(max(percentage_counts)) + 1 + 1)  # +2 pour être équivalent à +2 dans ta ligne
-        axes[1].hist(percentage_counts, bins=bins, edgecolor="black", align="left")
-        axes[1].set_xlabel("Taux d'association")
-        axes[1].set_ylabel("Fréquence")
-        axes[1].set_title("Distribution des taux d'association des MgeMags à leur MAGs")
-
-        plt.tight_layout()
-        fig.savefig(image_file)
-        plt.close(fig)
-
-    for res in interaction_results:
-        mge_name, mag_name, _, _, _ = res
-        mge_mags[mge_name].add_host(mag_name=mag_name, mag=mags[mag_name])
-        mags[mag_name].add_mge(mge_name=mge_name, mge_mag=mge_mags[mge_name])
-
-    print(f"MAGs with: 0  MGEs: {len([x for x in mags.values() if len(x.mges) == 0])}")
-    print(f"           1  MGEs: {len([x for x in mags.values() if len(x.mges) == 1])}")
-    print(f"           2  MGEs: {len([x for x in mags.values() if len(x.mges) == 2])}")
-    print(f"           3+ MGEs: {len([x for x in mags.values() if len(x.mges) >= 3])}")
-    print("---")
-    print(f"MGEs with: 0  hosts: {len([x for x in mge_mags.values() if len(x.hosts) == 0])}")
-    print(f"           1  hosts: {len([x for x in mge_mags.values() if len(x.hosts) == 1])}")
-    print(f"           2  hosts: {len([x for x in mge_mags.values() if len(x.hosts) == 2])}")
-    print(f"           3  hosts: {len([x for x in mge_mags.values() if len(x.hosts) == 3])}")
-    print(f"           4  hosts: {len([x for x in mge_mags.values() if len(x.hosts) == 4])}")
-    print(f"           5+ hosts: {len([x for x in mge_mags.values() if len(x.hosts) >= 5])}")
-
-    return mags, mge_mags
+    genome = genome_names[contigs["genome_id"].to_numpy()]
+    mag = np.where(~in_mge & np.isin(genome, mags), genome, "")
+    return mag, members, mges, mags
 
 
-def annotate_hosts(
-    contig_data: pd.DataFrame,
-    network_data: pd.DataFrame,
-    bin_summary: pd.DataFrame,
-    interaction_threshold: int,
-    min_interacting_contigs: int,
-) -> None:
+def contact_pairs(network, mag, members, mges, mags):
+    """The signal of each MGE cluster with each MAG it is in contact with (see the
+    module's docstring), from the network of the map.
 
-    # Loading data and instantiating objects.
-    logger.info("Loading data and instantiating objects...")
-    mags, mge_mags = create_bins(contig_data)
-    mags = classify_mags(mags, bin_summary)
+    Parameters
+    ----------
+    network : pandas.DataFrame
+        The network of the map, by the positions of its contigs, from 1 (see
+        metator.network.map_network): contig1, contig2 and weight.
+    mag, members, mges, mags :
+        The MAGs and the MGE clusters of the map (see map_bins).
 
-    # Evaluate background noise
-    logger.info("Evaluating the background noise of the experience...")
-    mags = estimate_noise(mags, network_data)
-
-    # Plot background noise
-    logger.info("Plotting background noise...")
-    plot_mag_noise(mags, image_file="background_noise.png")
-
-    # Associate each MGE to their most likely MAG(s)
-    logger.info("Computing mgeMAG and MAG interactions and associate each MGE to potential host(s)...")
-    mags, mge_mags = compute_mge_mag_interactions(
-        network_data,
-        mags,
-        mge_mags,
-        interaction_threshold=interaction_threshold,
-        min_interacting_contigs=min_interacting_contigs,
+    Returns
+    -------
+    pandas.DataFrame
+        One row per MGE cluster and MAG in contact: mge, mag, signal,
+        contigs, share and share_of_all (see Hosts.pairs), the MGE clusters
+        in the order of mges, the MAGs of each by decreasing signal, ties in
+        the order of mags."""
+    in_mge = np.zeros(len(mag), dtype=bool)
+    in_mge[members["position"].to_numpy()] = True
+    first = network["contig1"].to_numpy() - 1
+    second = network["contig2"].to_numpy() - 1
+    weight = network["weight"].to_numpy(dtype=np.float64)
+    # The edges of the MGE contigs, from each of their two contigs that is
+    # one: the contacts of the MGE clusters.
+    touched = in_mge[first] | in_mge[second]
+    edges = pd.DataFrame(
+        {
+            "position": np.concatenate([first[touched], second[touched]]),
+            "other": np.concatenate([second[touched], first[touched]]),
+            "weight": np.concatenate([weight[touched], weight[touched]]),
+        }
     )
-    logger.info("Association finished!!!")
+    edges = edges.merge(members, on="position")
+    # The contacts of an MGE cluster with the other contigs: not those within
+    # it.
+    within = members.rename(columns={"position": "other"}).assign(within=True)
+    edges = edges.merge(within, on=["mge", "other"], how="left")
+    edges = edges[edges["within"].isna()]
+    total = edges.groupby("mge", sort=False)["weight"].sum()
+    edges = edges.assign(mag=mag[edges["other"].to_numpy()])
+    edges = edges[(edges["mag"] != "").to_numpy()]
+    pairs = edges.groupby(["mge", "mag"], sort=False).agg(signal=("weight", "sum"), contigs=("other", "nunique")).reset_index()
+    pairs["contigs"] = pairs["contigs"].astype(np.int64)
+    # As numbers, whatever the types of an empty table (no MGE cluster in
+    # contact with a MAG).
+    signal = pairs["signal"].to_numpy(dtype=np.float64)
+    pairs["signal"] = signal
+    pairs["share"] = 100 * signal / pairs.groupby("mge", sort=False)["signal"].transform("sum").to_numpy(dtype=np.float64)
+    pairs["share_of_all"] = 100 * signal / pairs["mge"].map(total).to_numpy(dtype=np.float64)
+    order = pd.DataFrame(
+        {
+            "mge_rank": pairs["mge"].map({name: rank for rank, name in enumerate(mges)}),
+            "mag_rank": pairs["mag"].map({name: rank for rank, name in enumerate(mags)}),
+            "signal": -pairs["signal"],
+        }
+    )
+    ranked = order.sort_values(["mge_rank", "signal", "mag_rank"], kind="stable").index
+    return pairs.loc[ranked].reset_index(drop=True)
 
-    return mags, mge_mags
+
+def find_hosts(metacool, mc, network, min_share=MIN_SHARE, min_contigs=MIN_CONTIGS):
+    """The hosts of the MGE clusters of a map (see the module's docstring).
+
+    Parameters
+    ----------
+    metacool : str
+        Path to the .metacool file, or URI of an entry of a .mmetacool
+        collection, for the messages.
+    mc : metacooler.MetaCooler
+        The map, opened: it gives the MAGs and the MGE clusters (see
+        map_bins).
+    network : pandas.DataFrame
+        The network of the map, by the positions of its contigs, from 1 (see
+        metator.network.stored_network).
+    min_share : float
+        The share of the signal of an MGE cluster with the MAGs, in percent,
+        from which a MAG is a host.
+    min_contigs : int
+        The number of contigs of a MAG in contact with an MGE cluster from
+        which the MAG is a host.
+
+    Returns
+    -------
+    Hosts
+        The MGE clusters and MAGs in contact, the hosts of each MGE cluster,
+        and the MGE clusters of each MAG.
+
+    Raises
+    ------
+    metator.metacool.MetacoolError
+        If the map holds no round mge, or no MAG (see map_bins)."""
+    mag, members, mges, mags = map_bins(metacool, mc)
+    pairs = contact_pairs(network, mag, members, mges, mags)
+    pairs["host"] = (pairs["share"] >= min_share) & (pairs["contigs"] >= min_contigs)
+    hosts = pairs[pairs["host"].to_numpy()]
+    by_mge = {name: group for name, group in hosts.groupby("mge", sort=False)}
+    clusters = pd.DataFrame(
+        [
+            (
+                name,
+                len(by_mge[name]) if name in by_mge else 0,
+                SEPARATOR.join(by_mge[name]["mag"]) if name in by_mge else None,
+                SEPARATOR.join(f"{share:.2f}" for share in by_mge[name]["share"]) if name in by_mge else None,
+            )
+            for name in mges
+        ],
+        columns=["name", *mtmc.HOST_CLUSTER_COLUMNS],
+    )
+    rank = {name: position for position, name in enumerate(mges)}
+    hosted = {name: sorted(group["mge"], key=rank.__getitem__) for name, group in hosts.groupby("mag", sort=False)}
+    genomes = pd.DataFrame(
+        [(name, len(hosted.get(name, [])), SEPARATOR.join(hosted.get(name, []))) for name in mags],
+        columns=["name", *mtmc.HOST_GENOME_COLUMNS],
+    )
+    n_hosts = clusters["n_hosts"].to_numpy()
+    logger.info(
+        f"{len(mges)} MGE clusters and {len(mags)} MAGs: {int((n_hosts == 1).sum())} MGE clusters with one host, "
+        f"{int((n_hosts > 1).sum())} with several, {int((n_hosts == 0).sum())} with none; "
+        f"{int((genomes['n_mges'] > 0).sum())} MAGs host at least one."
+    )
+    return Hosts(pairs[PAIRS_COLUMNS], clusters, genomes)
 
 
-# Call to the main function `annotate_hosts`
-if __name__ == "__main__":
-    network_data_file = "network_1.txt"
-    contig_data_file = "contig_data_final_reformated.txt"
-    bin_summary_file = "cluster_summary.txt"
-    interaction_threshold = 10
-    min_interacting_contigs = 5
+def write_hosts(pairs, path):
+    """Write the MGE clusters and MAGs in contact (pairs, see Hosts.pairs) at path,
+    tab-separated, with a header: PAIRS_COLUMNS, host True or False. The file is
+    replaced if it exists (a symbolic link there, not its target)."""
+    if os.path.islink(path):
+        os.remove(path)
+    pairs[PAIRS_COLUMNS].to_csv(path, sep="\t", index=False)
 
-    # Load data
-    contig_data = pd.read_csv(contig_data_file, sep="\t")
-    bin_summary = pd.read_csv(bin_summary_file, sep="\t", comment="#")
-    bin_summary.columns = ["MAG", *list(bin_summary.columns[1:])]
-    network_data = pd.read_csv(network_data_file, sep="\t", names=["contig1", "contig2", "signal"])
 
-    # Run the main function
-    mags, mge_mags = annotate_hosts(contig_data, network_data, bin_summary, interaction_threshold, min_interacting_contigs)
+def plot_hosts(pairs, path):
+    """Plot the hosts of the MGE clusters (the rows of pairs that are hosts, see
+    Hosts.pairs) at path: the distribution of their signal, on a log scale,
+    and of their share. The axes say so when there is no host."""
+    hosts = pairs[pairs["host"].to_numpy()]
+    fig = Figure(figsize=(12, 5))
+    signal, share = fig.subplots(1, 2)
+    if len(hosts):
+        values = hosts["signal"].to_numpy(dtype=np.float64)
+        low, high = values.min(), values.max()
+        # geomspace, whose last edge is the highest signal exactly: a host
+        # there is counted.
+        signal.hist(values, bins=np.geomspace(low, high if high > low else 10 * low, 21), edgecolor="black")
+        signal.set_xscale("log")
+        share.hist(hosts["share"].to_numpy(dtype=np.float64), bins=np.linspace(0, 100, 21), edgecolor="black")
+    else:
+        for ax in (signal, share):
+            ax.text(0.5, 0.5, "No host", ha="center", va="center", transform=ax.transAxes)
+    signal.set_xlabel("Signal of the MGE cluster with its host (log scale)")
+    share.set_xlabel("Share of the signal of the MGE cluster with the MAGs (%)")
+    share.set_xlim(0, 100)
+    for ax in (signal, share):
+        ax.set_ylabel("Hosts")
+    fig.suptitle(f"The {len(hosts)} hosts of {hosts['mge'].nunique()} MGE clusters")
+    mtf._saved(fig, path)

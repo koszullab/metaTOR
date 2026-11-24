@@ -15,7 +15,7 @@ import metator.cli as mtcli
 from metator.version import __version__
 from tests.ansi import plain
 
-COMMANDS = ["network", "partition", "validation", "pipeline", "mge"]
+COMMANDS = ["network", "partition", "validation", "pipeline", "mge", "host", "dump"]
 
 
 def _run(monkeypatch, *argv):
@@ -39,7 +39,6 @@ def test_help(monkeypatch, capsys):
     for command in COMMANDS:
         # Listed at the start of a line, after indentation or table borders.
         assert re.search(rf"^\W*{command}\b", out, flags=re.MULTILINE), command
-    assert not re.search(r"^\W*host\b", out, flags=re.MULTILINE)
     assert "--version" in out
 
 
@@ -58,8 +57,9 @@ def test_no_command(monkeypatch, capsys):
     assert "usage" in _shown(exit, capsys).lower()
 
 
-# host: removed in 1.4.0, it always failed; the others in 2.0.0.
-@pytest.mark.parametrize("command", ["binning", "host", "qc", "contactmap", "metacool", "scaffold", "pairs"])
+# Removed in 2.0.0 (host, removed in 1.4.0 as it always failed, is back in
+# 2.0.0, on the map).
+@pytest.mark.parametrize("command", ["binning", "qc", "contactmap", "metacool", "scaffold", "pairs"])
 def test_unknown_command(monkeypatch, capsys, command):
     with pytest.raises(SystemExit) as exit:
         _run(monkeypatch, command)

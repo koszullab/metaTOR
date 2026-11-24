@@ -73,12 +73,12 @@ contigs, which [hicstuff](https://github.com/koszullab/hicstuff) makes from the
 reads (`hicstuff pipeline -M metacool`) and
 [metacooler](https://github.com/js2264/metacooler) from pairs files
 (`metacooler create pairs`). Every command takes the map as its first argument:
-the clustering steps and `mge` store what they find in it, so that the map is
+the clustering steps, `mge` and `host` store what they find in it, so that the map is
 what the steps share, and it becomes the contact map of the clusters; `dump`
 only reads it.
 
 ```sh
-metator {network|partition|validation|pipeline|mge|dump} MAP [OPTIONS]
+metator {network|partition|validation|pipeline|mge|host|dump} MAP [OPTIONS]
 ```
 
 | Command | What it does |
@@ -88,6 +88,7 @@ metator {network|partition|validation|pipeline|mge|dump} MAP [OPTIONS]
 | `validation` | Checks the overlapping clusters with miComplete, partitions the contaminated ones again, writes the FASTA files of the final clusters, and makes the map the contact map of the clusters. |
 | `pipeline` | Runs `network`, `partition` and `validation` in one command. |
 | `mge` | Clusters the contigs of mobile genetic elements (MGEs) from their contacts, and stores the MGE clusters in the map. |
+| `host` | Finds the MAGs that host the MGE clusters, from their contacts, and stores them in the map. |
 | `dump` | Writes the tables of a run (contig data, cluster summary, binning, clustering rounds, network) from the map of its clusters. |
 
 `metator --help` lists the commands, `metator <command> --help` their options,
@@ -208,7 +209,9 @@ reads the map after `metator network`, `pipeline` or `validation`, writes
 `mges_binned.fa`, one record per MGE cluster (`MetaTOR_MGE_00001`...), its
 contigs joined by 200 `N`, and stores the MGE clusters in the map of its output
 directory, as the round `mge` of its clustering rounds (`-o binning` updates
-`binning/sample.metacool` in place). See
+`binning/sample.metacool` in place). `metator host MAP` then finds the MAGs
+that host each MGE cluster, those that its contigs are in contact with, writes
+them in `mge_hosts.txt`, and stores them in the map. See
 [Clustering mobile genetic elements](https://koszullab.github.io/metator/guides/mge/).
 
 ## Migrating from metaTOR 1.x

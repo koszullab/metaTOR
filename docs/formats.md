@@ -175,7 +175,9 @@ the lines; `summary_columns`, the columns in order; and `summary_formats`,
 the format of each column as printf writes it (`%.2f`, `%.4f`, `%d`, or
 `%s` for text and booleans), a missing value being an empty field. From
 them, the map alone writes the table again, byte for byte, as
-[`metator dump`](cli.md#dump) does.
+[`metator dump`](cli.md#dump) does; after `metator host`, with the number of
+MGE clusters that each cluster hosts and their names last (`n_mges`, `mges`:
+see [Hosts of the MGE clusters](#hosts-of-the-mge-clusters)).
 
 `metator dump` writes the genomes of the map: after
 [`metator mge --reassign`](guides/mge.md#mge-genomes), the final clusters,
@@ -273,14 +275,53 @@ clustering rounds (`mge_random` for `--random`), one cluster per MGE cluster
 | `length`, `n_contigs` | The size of the cluster and its number of contigs, which metacooler computes from its contigs |
 | `GC`, `Hit` | The GC content and the hits of the cluster |
 | `BinningScore` | The lowest score at which its contigs were merged, missing for a single contig |
+| `n_hosts`, `hosts`, `host_shares` | After `metator host`: the number of hosts of the MGE cluster, their names by decreasing share, and their shares in percent, with two decimals, each list separated by commas (see [Hosts of the MGE clusters](#hosts-of-the-mge-clusters)) |
 
 Its contigs are the members of the round (`mc.cluster_members("mge")`), in
 the order of the map, as metacooler stores the members of every round:
 `mges_binned.fa` gives them the longest first, ties by name. `metator dump`
 writes the round with the others, in `clusters.txt` (with `n_contigs` and
 `length`, the `ContigsNumber` and `BinLength` of 1.x's
-`mges_bin_summary.tsv`) and `cluster_members.txt`. The round has no column
-for the hosts of the MGE clusters, which `metator mge` does not look for.
+`mges_bin_summary.tsv`) and `cluster_members.txt`. `metator mge` looks for
+no host: `metator host` does, and adds its columns to the round.
+
+## Hosts of the MGE clusters
+
+`metator host` writes `mge_hosts.txt` in its output directory: one row per
+MGE cluster and MAG in contact, the MGE clusters in the order of the round
+`mge`, the MAGs of each by decreasing signal (see
+[Clustering mobile genetic elements](guides/mge.md#the-hosts)).
+Tab-separated, with a header, every number as it is:
+
+| Column | What it holds |
+|---|---|
+| `mge` | The MGE cluster (`MetaTOR_MGE_00001`...) |
+| `mag` | The MAG: a genome of the map |
+| `signal` | The sum of the weights of the edges of the network between their contigs, with the normalization that `metator network` stored (the count of their contacts for `None`) |
+| `contigs` | The number of contigs of the MAG in contact with the MGE cluster |
+| `share` | The signal, in percent of the signal of the MGE cluster with all the MAGs |
+| `share_of_all` | The signal, in percent of the signal of the MGE cluster with every other contig: those of the MAGs, those in no MAG, and those of the other MGE clusters |
+| `host` | Whether the MAG hosts the MGE cluster (`True`, `False`): a `share` of at least `--min-share` and at least `--min-contigs` contigs |
+
+```text
+mge	mag	signal	contigs	share	share_of_all	host
+MetaTOR_MGE_00013	metator_00005_00000	0.7090148667776763	37	93.8246167981684	76.06906868895449	True
+MetaTOR_MGE_00013	metator_00020_00000	0.005037475316584434	4	0.6666139362589284	0.5404626529450921	False
+```
+
+`mge_hosts.png` plots the distribution of the signal of the hosts, on a log
+scale, and of their share. The map holds the hosts of each MGE cluster in
+its round `mge` (see [MGE clusters](#mge-clusters)), and the MGE clusters of
+each MAG in its genomes table:
+
+| Column | What it holds |
+|---|---|
+| `n_mges` | The number of MGE clusters that the MAG hosts, missing for a genome that is no MAG |
+| `mges` | Their names, in the order of the round `mge`, separated by commas |
+
+`metator dump` writes them last in `cluster_summary.txt`, after the columns
+of the validation (and those of the MGE genomes, after `metator mge
+--reassign`, whose `n_mges` and `mges` are empty).
 
 ## Logs
 

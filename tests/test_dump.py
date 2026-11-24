@@ -163,6 +163,35 @@ def test_dump_gives_each_cluster_its_size(copied, metagenome, run, tmp_path, run
     assert len(mge) and (mge["n_contigs"] > 0).all() and (mge["length"] > 0).all()
 
 
+def test_dump_writes_the_hosts(copied, metagenome, run, tmp_path, run_cli):
+    """After metator host, cluster_summary.txt gives each final cluster the number
+    of MGE clusters that it hosts and their names (n_mges, mges), after the
+    columns of the validation, which are written as the run wrote them; and
+    clusters.txt the hosts of each MGE cluster (n_hosts, hosts, host_shares),
+    NA for the clusters of the other rounds."""
+    truth = metagenome.truth
+    mges = tmp_path / "mges.txt"
+    mges.write_text("".join(f"{name}\n" for name in truth.Name[truth.Kind == "mge"]))
+    run_cli("mge", copied, "-a", run["assembly"], "-m", mges, "-o", tmp_path / "mge", "-T", tmp_path / "tmp", "--inplace")
+    run_cli("host", copied, "-o", tmp_path / "host", "--inplace")
+    run_cli("dump", copied, "-o", tmp_path / "dump")
+    kept = _lines(run["kept"] / "cluster_summary.txt")
+    dumped = _lines(tmp_path / "dump" / "cluster_summary.txt")
+    assert [line.rsplit("\t", 2)[0] for line in dumped] == kept
+    assert dumped[0].split("\t")[-2:] == ["n_mges", "mges"]
+    genomes = metacooler.MetaCooler(str(copied)).genomes.set_index("name")
+    summary = pd.read_csv(tmp_path / "dump" / "cluster_summary.txt", sep="\t", dtype=str, keep_default_na=False, index_col=0)
+    assert summary["n_mges"].tolist() == [str(int(genomes.loc[name, "n_mges"])) for name in summary.index]
+    assert summary["mges"].tolist() == genomes.loc[summary.index, "mges"].tolist()
+    assert summary["n_mges"].astype(int).sum() == len(metagenome.mges)
+    clusters = pd.read_csv(tmp_path / "dump" / "clusters.txt", sep="\t", dtype=str, keep_default_na=False)
+    mge = clusters[clusters["round"] == "mge"]
+    assert len(mge) == len(metagenome.mges) and (mge["n_hosts"] == "1.0").all()
+    assert set(mge["hosts"]) <= set(summary.index) and mge["host_shares"].str.fullmatch(r"\d+\.\d\d").all()
+    other = clusters[clusters["round"] != "mge"]
+    assert (other[["n_hosts", "hosts", "host_shares"]] == "NA").all().all()
+
+
 def test_dump_of_an_entry_is_that_of_its_map(run, tmp_path, run_cli):
     """An entry of a .mmetacool collection dumps as the map it holds."""
     collection = tmp_path / "maps.mmetacool"
@@ -500,6 +529,14 @@ def test_cluster_summary_writes_each_value_in_its_format():
     layout = mio.SummaryLayout(["a", "b"], ["x", "n", "t", "ab"], {"x": "%.2f", "n": "%d", "t": "%s", "ab": "%.4f"})
     summary = mtd.cluster_summary("map", Map(), layout)
     assert summary.to_csv(sep="\t") == "\tx\tn\tt\tab\na\t\t2\t\t1.0000\nb\t1.00\t3\tyes\t0.1235\n"
+    # The hosts of the MGE clusters that metator host stored, after the
+    # columns of the summary: whole numbers stored as decimals, and text.
+    Map.genomes = Map.genomes.assign(mges=pd.Series(["", "MGE_1,MGE_2", ""], dtype=object), n_mges=[0.0, 2.0, np.nan])
+    summary = mtd.cluster_summary("map", Map(), layout)
+    assert (
+        summary.to_csv(sep="\t")
+        == "\tx\tn\tt\tab\tn_mges\tmges\na\t\t2\t\t1.0000\t2\tMGE_1,MGE_2\nb\t1.00\t3\tyes\t0.1235\t0\t\n"
+    )
 
 
 def test_dump_refuses_a_map_whose_network_changed(copied, run, tmp_path, run_cli):
