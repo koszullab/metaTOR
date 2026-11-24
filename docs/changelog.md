@@ -126,11 +126,13 @@ tools](other-tools.md) says what replaces each removed command. Below,
   the contigs of the genome in map order, pyhmmer with miComplete's
   `--evalue`, `--bias` and `--domain-cutoff`; metagenome mode for the contigs
   of `__unbinned__` and of genomes under 20 kb), and stores them in the map:
-  the contigs columns `markers_Bact105` and `markers_Arch131`
-  (`Ribosomal_L22,SecY*2`) and the `markers` metadata entry, with the markers
-  and weights of both sets. Summed over any group of contigs they give
-  miComplete's completeness, redundancy, weighted completeness and weighted
-  redundancy (`metator.markers.marker_quality`), those of a genome exactly.
+  the contigs columns `markers_Bact105` and `markers_Arch131` (text,
+  `Ribosomal_L22,SecY*2`; `*0` for a marker miComplete sees but drops, which
+  counts in the weighted completeness only) and the `markers` metadata entry,
+  with how the genes were found and the markers and weights of both sets.
+  Summed over any group of contigs they give miComplete's completeness,
+  redundancy, weighted completeness and weighted redundancy
+  (`metator.markers.marker_quality`), those of a genome exactly.
   `pipeline` runs it after the validation (`[4/5] markers`); every run keeps
   them. See [Marker genes of the contigs](formats.md#marker-genes-of-the-contigs).
 - **`metator host MAP`** finds the MAGs that host the MGE clusters stored by

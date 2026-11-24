@@ -351,9 +351,8 @@ NODE_2487	Cons_hypoth95*0,Ribosomal_S9	Ribosomal_S9
   its score or its best domain too weak. The marker counts in the weighted
   completeness of a bin, as miComplete counts every marker it sees, and
   nowhere else.
-- A column in which no contig has a marker (no hit of the set in the whole
-  map) is stored by metacooler as numbers, all missing: read a missing value
-  as no marker.
+- Both columns hold text, a fixed-length ASCII string dataset, even when no
+  contig of the map has a marker of a set: an empty text on every contig.
 - `metacooler dump -t contigs -H MAP` writes both columns with the rest of
   the contigs table; the run writes them in its temporary directory too
   (`contig_markers.txt`, which `-N` keeps).
@@ -366,7 +365,7 @@ and:
 |---|---|
 | `micomplete` | The version of miComplete whose marker sets and rules the run applied |
 | `thresholds` | `evalue`, `bias` and `domain_cutoff`: miComplete's `--evalue`, `--bias` and `--domain-cutoff` |
-| `genes` | How the genes were found: the versions of `pyrodigal` and `pyhmmer`; `trained_genomes`, the number of genomes pyrodigal was trained on (single mode: those of `min_training` bp, 20000, or more, with the linkers between their contigs); `metagenome_contigs`, the number of contigs in metagenome mode (in no genome, or in a shorter one); `metagenome_z`, the number of proteins their E-values were counted over: the median of the trained genomes (without one, the proteins of these contigs, as one bin; `null` without such contigs) |
+| `genes` | How the genes were found: the versions of `pyrodigal` and `pyhmmer`; `single` and `metagenome`, the rule of each of pyrodigal's two modes, in words (see [`metator markers`](cli.md#markers)); `trained_genomes`, the number of genomes pyrodigal was trained on (single mode: those of `min_training` bp, 20000, or more, with the linkers between their contigs); `metagenome_contigs`, the number of contigs in metagenome mode (in no genome, or in a shorter one); `metagenome_z`, the number of proteins their E-values were counted over: the median of the trained genomes (without one, the proteins of these contigs, as one bin; `null` without such contigs) |
 | `sets` | By set (`Bact105`, `Arch131`): its `column`, its `markers` in the order of its HMMs, and their `weights`, in the same order, as miComplete reads them |
 | `kept` | The set that metaTOR keeps for a bin: `by` the higher `weighted_completeness`, `ties` to `Bact105` |
 

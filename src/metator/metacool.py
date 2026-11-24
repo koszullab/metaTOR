@@ -791,8 +791,28 @@ class Markers:
 
 
 #: The table of the markers that metator markers stores (see _store_markers),
-#: in the temporary directory of the run.
+#: in the temporary directory of the run: a row per contig, and one more,
+#: NO_CONTIG, when no contig of the map has a marker of a set.
 MARKERS_FILE = "contig_markers.txt"
+
+
+#: The row of the table of the markers that names no contig (see
+#: _store_markers), named so in the log of metacooler annotate, which leaves it
+#: out, and in contig_markers.txt; each of its markers is this text.
+NO_CONTIG = "(no contig)"
+NO_CONTIG_TEXT = "(text)"
+
+
+def _no_contig(names):
+    """A name of no contig of a map (names: its contigs), nor of one by its name
+    in the input of a map that metacooler collect made, which annotate matches
+    too (the name after <genome>__): NO_CONTIG, or that after more
+    underscores."""
+    taken = set(names)
+    name = NO_CONTIG
+    while name in taken or any(other.endswith(f"__{name}") for other in taken):
+        name = f"_{name}"
+    return name
 
 
 def _store_markers(path, markers):
@@ -800,28 +820,41 @@ def _store_markers(path, markers):
     map at path, the staged map of an edit session (see write_map): the columns
     MARKER_COLUMNS of its contigs table, last, in place of those of an earlier
     run, with metacooler annotate, and the run under the markers entry of its
-    metator metadata, whose other entries are kept. A column whose every contig
-    has an empty text (no marker of the set on the map) is stored by
-    metacooler as numbers, all missing, as it stores a column of a table that
-    holds no text."""
+    metator metadata, whose other entries are kept.
+
+    Both columns hold text, an empty one for a contig without a marker, even
+    when no contig of the map has a marker of a set: metacooler stores a column
+    of a table as numbers when each of its values parses as one, an empty text
+    as missing, as it would such a column. One row more then, which names no
+    contig of the map (see _no_contig) and which annotate leaves out, keeps the
+    columns text: every row of a table gives its columns their type, those that
+    match no contig too."""
     import metacooler
 
     mc = open_map(path)
     held = [f"contigs.{column}" for column in MARKER_COLUMNS if column in mc.contigs.columns]
     metator = {**_metator_metadata(mc), MARKERS_ENTRY: markers.entry}
     if held:
-        # Dropped, then added again: a column that metacooler stored as
-        # numbers (all missing) may hold text now, or the other way round.
+        # Dropped, then added again, as a first run adds them: last in the
+        # table, whatever an earlier run (or another tool) stored under their
+        # names, as text or as numbers.
         metacooler.annotate(path, drop=held, inplace=True)
+    table = markers.table[["Name", *MARKER_COLUMNS]]
+    no_text = not all((table[column] != "").any() for column in MARKER_COLUMNS)
+    if no_text:
+        row = {"Name": _no_contig(table["Name"].astype(str)), **dict.fromkeys(MARKER_COLUMNS, NO_CONTIG_TEXT)}
+        table = pd.concat([table, pd.DataFrame([row])], ignore_index=True)
     with ExitStack() as scratch:
         directory = markers.tmp_dir or scratch.enter_context(tempfile.TemporaryDirectory())
-        table = os.path.join(directory, MARKERS_FILE)
-        markers.table[["Name", *MARKER_COLUMNS]].to_csv(table, sep="\t", index=False)
+        path_of_table = os.path.join(directory, MARKERS_FILE)
+        table.to_csv(path_of_table, sep="\t", index=False)
         metacooler.annotate(
             path,
-            contigs_table=table,
+            contigs_table=path_of_table,
             contigs_table_format="Name",
             columns=[f"contigs.{column}" for column in MARKER_COLUMNS],
+            # The row that names no contig, if any: every other names one.
+            unmatched="ignore" if no_text else "warn",
             metadata={"metator": metator},
             inplace=True,
         )

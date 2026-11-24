@@ -3108,19 +3108,21 @@ def markers(
     and their markers searched as in a genome of the median number of
     proteins of the others.
 
-    The run stores the markers of each contig in the contigs table of the
-    map, one column per set (markers_Bact105, markers_Arch131: the markers
-    sorted by name, comma-separated, each with its number of proteins when
-    above one, as Ribosomal_L22,SecY*2), and the run, with the markers and
-    the weights of each set, under the markers entry of the metator metadata
-    of the map, in place of those of an earlier run. Every other run keeps
-    them, those that regroup the contigs too (validation, pipeline, mge
-    --reassign): they are facts about the contigs, found in the genomes as
-    the run read them. [cyan]metator pipeline[/] runs this step after the
-    validation, on the map of its clusters. The run writes the map to the
+    The run stores the markers of each contig in the contigs table of the map,
+    one column per set (markers_Bact105, markers_Arch131: text, the markers
+    sorted by name, comma-separated, each with its number of proteins when not
+    one, as Ribosomal_L22,SecY*2; *0 for a marker that miComplete sees on the
+    contig but whose every hit it drops, which counts in its weighted
+    completeness only; an empty text for none), and the run, how its genes were
+    found, with the markers and the weights of each set, under the markers entry
+    of the metator metadata of the map, in place of those of an earlier run.
+    Every other run keeps them, those that regroup the contigs too (validation,
+    pipeline, mge --reassign): they are facts about the contigs, found in the
+    genomes as the run read them. [cyan]metator pipeline[/] runs this step after
+    the validation, on the map of its clusters. The run writes the map to the
     output directory, under the name of MAP, which it leaves as it was
-    (--inplace updates MAP in place, and so does a run in the directory of
-    MAP), and locks it while it writes it.
+    (--inplace updates MAP in place, and so does a run in the directory of MAP),
+    and locks it while it writes it.
     """
     outdir = outdir or "."
     make_outdir(outdir)
@@ -3193,15 +3195,16 @@ def markers_entry(found, evalue, bias, domain_cutoff):
     metator.metacool.write_map): the version of metaTOR, the command line and
     the parameters of the run; miComplete's version and thresholds
     (thresholds: evalue, bias, domain_cutoff); how the genes were found
-    (genes: the versions of pyrodigal and pyhmmer, the number of genomes
-    trained on, the length a genome needs for it, the number of contigs in
-    metagenome mode and the number of proteins that their E-values are
-    counted over, z; see found, a metator.markers.ContigMarkers); each marker
-    set (sets: its column in the contigs table, its markers in the order of
-    its HMMs and their weights, see metator.markers.entry_sets); the set that
-    metaTOR keeps for a bin (kept: the set of the higher weighted
-    completeness, ties to Bact105); and what the run read of the map (read:
-    its genomes, by name)."""
+    (genes: the versions of pyrodigal and pyhmmer, the rules of its single
+    genome and metagenome modes in words, see metator.markers.GENE_RULES, the
+    number of genomes trained on, the length a genome needs for it, the
+    number of contigs in metagenome mode and the number of proteins that
+    their E-values are counted over, z; see found, a
+    metator.markers.ContigMarkers); each marker set (sets: its column in the
+    contigs table, its markers in the order of its HMMs and their weights, see
+    metator.markers.entry_sets); the set that metaTOR keeps for a bin (kept:
+    the set of the higher weighted completeness, ties to Bact105); and what
+    the run read of the map (read: its genomes, by name)."""
     import importlib.metadata
 
     import pyhmmer
@@ -3215,6 +3218,7 @@ def markers_entry(found, evalue, bias, domain_cutoff):
         "genes": {
             "pyrodigal": pyrodigal.__version__,
             "pyhmmer": pyhmmer.__version__,
+            **mtmk.GENE_RULES,
             "trained_genomes": len(found.trained),
             "min_training": mtmk.MIN_TRAINING,
             "metagenome_contigs": found.meta,

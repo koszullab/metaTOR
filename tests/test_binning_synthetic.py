@@ -736,17 +736,17 @@ def test_pipeline_map_is_the_map_of_the_pairs(metagenome, metagenome_inputs, tmp
     )
 
     ref = cooler.Cooler(str(expected))
-    bins = clr.bins()[:]
+    bins = _whole(clr.bins())
     # The run's map also stores the normalization of its network, which the
     # map of the pairs does not hold.
     assert "metator_empirical_hit" in bins.columns
-    pd.testing.assert_frame_equal(bins.drop(columns="metator_empirical_hit", errors="ignore"), ref.bins()[:])
-    pd.testing.assert_frame_equal(clr.pixels()[:], ref.pixels()[:])
+    pd.testing.assert_frame_equal(bins.drop(columns="metator_empirical_hit", errors="ignore"), _whole(ref.bins()))
+    pd.testing.assert_frame_equal(_whole(clr.pixels()), _whole(ref.pixels()))
     # The run's map also stores the marker genes of its contigs, last, which
     # the map of the pairs does not hold.
-    chroms = clr.chroms()[:]
+    chroms = _whole(clr.chroms())
     assert list(chroms.columns[-2:]) == list(mtmc.MARKER_COLUMNS)
-    pd.testing.assert_frame_equal(chroms.drop(columns=list(mtmc.MARKER_COLUMNS)), ref.chroms()[:])
+    pd.testing.assert_frame_equal(chroms.drop(columns=list(mtmc.MARKER_COLUMNS)), _whole(ref.chroms()))
     _assert_normalized_as_the_network(written, tmp_path)
     genomes = metacooler.MetaCooler(str(written)).genomes
     pd.testing.assert_frame_equal(genomes, metacooler.MetaCooler(str(expected)).genomes)
@@ -763,6 +763,14 @@ def test_pipeline_map_is_the_map_of_the_pairs(metagenome, metagenome_inputs, tmp
     # added), then the marker genes of the contigs.
     assert len(metadata["annotate"]) == 4 and len(ref_metadata["annotate"]) == 1
     assert metadata["annotate"][-1]["added"] == [f"contigs.{column}" for column in mtmc.MARKER_COLUMNS]
+
+
+def _whole(selector) -> pd.DataFrame:
+    """The whole table of a selector of a cooler (its bins, pixels or chroms): a
+    DataFrame, which the annotations of cooler leave a DataFrame or a Series."""
+    table = selector[:]
+    assert isinstance(table, pd.DataFrame)
+    return table
 
 
 def _assert_normalized_as_the_network(written, tmp_path):
@@ -922,7 +930,7 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, tmp_path, monke
     # other columns; metaTOR then stores its own columns last, as in the map
     # of the first run: those of the network, then the marker genes, which
     # the second run finds again in the same clusters.
-    chroms, ref_chroms = clr.chroms()[:], ref.chroms()[:]
+    chroms, ref_chroms = _whole(clr.chroms()), _whole(ref.chroms())
     columns = ["name", "length", "genome_id", "GC_content", "Hit", "Shotgun_coverage", "Restriction_site",
                *mtmc.MARKER_COLUMNS]  # fmt: skip
     for table in [chroms, ref_chroms]:
@@ -978,12 +986,14 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, tmp_path, monke
     clr = cooler.Cooler(str(command))
     run_map = cooler.Cooler(str(written))
     # But the normalization of the network, which the run stores in its map.
-    pd.testing.assert_frame_equal(clr.bins()[:], run_map.bins()[:].drop(columns="metator_empirical_hit", errors="ignore"))
-    pd.testing.assert_frame_equal(clr.pixels()[:], run_map.pixels()[:])
+    pd.testing.assert_frame_equal(
+        _whole(clr.bins()), _whole(run_map.bins()).drop(columns="metator_empirical_hit", errors="ignore")
+    )
+    pd.testing.assert_frame_equal(_whole(clr.pixels()), _whole(run_map.pixels()))
     # The marker genes of the contigs, which the map of the first run holds:
     # kept where metacooler reassign carries them, the run stores them again,
     # last, the same, found in the same clusters.
-    chroms, run_chroms = clr.chroms()[:], run_map.chroms()[:]
+    chroms, run_chroms = _whole(clr.chroms()), _whole(run_map.chroms())
     assert list(run_chroms.columns[-2:]) == list(mtmc.MARKER_COLUMNS)
     pd.testing.assert_frame_equal(chroms, run_chroms[chroms.columns])
     pd.testing.assert_frame_equal(metacooler.MetaCooler(str(command)).genomes, genomes)

@@ -349,9 +349,11 @@ metator markers [OPTIONS] MAP
   of proteins of the trained genomes: as in a typical genome of the map
   (on a map without one, over their own proteins, as one bin).
 - **Stores** the markers of each contig in the contigs table, one column per
-  set (`markers_Bact105`, `markers_Arch131`: `Ribosomal_L22,SecY*2`), and the
-  run under `metator` → `markers` in the metadata, with the markers and
-  weights of both sets (see
+  set (`markers_Bact105`, `markers_Arch131`: text, `Ribosomal_L22,SecY*2`;
+  `*0` for a marker that miComplete sees on the contig but drops, which counts
+  in the weighted completeness only; empty for none), and the run under
+  `metator` → `markers` in the metadata, with how the genes were found and
+  the markers and weights of both sets (see
   [Marker genes of the contigs](formats.md#marker-genes-of-the-contigs)).
   They replace those of an earlier run.
 - **Every other run keeps them**, those that regroup the contigs too

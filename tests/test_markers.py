@@ -15,6 +15,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import h5py
 import metacooler
 import numpy as np
 import pandas as pd
@@ -421,6 +422,8 @@ def test_markers_stores_the_markers_of_the_contigs(output, marker_run, oracle, t
     proteins = [int(tables["Bact105"].loc[genome, "CDs"]) for genome in MAP_GENOMES]
     genes = entry["genes"]
     assert (genes["trained_genomes"], genes["metagenome_contigs"], genes["min_training"]) == (2, 5, 20_000)
+    # How the genes were found, in words: the rules of the two modes.
+    assert {mode: genes[mode] for mode in ("single", "metagenome")} == mtmk.GENE_RULES
     assert genes["metagenome_z"] == (proteins[0] + proteins[1]) / 2
     assert entry["sets"] == mtmk.entry_sets() and entry["kept"] == {"by": "weighted_completeness", "ties": "Bact105"}
     assert entry["read"] == {"genomes": ["name"]}
@@ -506,20 +509,38 @@ def test_markers_rerun_replaces_its_markers(marker_run, tmp_path, run_cli, logge
     assert list(table[mtmc.MARKER_COLUMNS[0]]) == list(stored[mtmc.MARKER_COLUMNS[0]])
 
 
-def test_a_set_without_any_marker_is_stored_as_missing_values(marker_run, tmp_path, run_cli):
-    """With an E-value that no hit reaches, no contig has a marker: metacooler
-    stores each column as numbers, all missing, which read as no marker; a run
-    that finds some again stores text."""
+def test_a_set_without_any_marker_is_stored_as_empty_texts(marker_run, tmp_path, run_cli, logged):
+    """With an E-value that no hit reaches, no contig has a marker: each column
+    holds an empty text on every contig, as text still, which metacooler would
+    store as numbers, all missing: a row more of the table of the markers
+    (which -N keeps), naming no contig, keeps the columns text, and metacooler
+    leaves it out without a word. A run that finds markers again stores them."""
     metacool, assembly, out = marker_run
-    run_cli("markers", metacool, "-a", assembly, "--inplace", "-o", out, "--evalue", "1e-300")
+    tmp = tmp_path / "tmp"
+    run_cli("markers", metacool, "-a", assembly, "--inplace", "-o", out, "-T", tmp, "-N", "--evalue", "1e-300")
     table, entry = _stored(metacool)
     assert entry["thresholds"]["evalue"] == 1e-300
-    assert all(table[column].isna().all() for column in mtmc.MARKER_COLUMNS)
-    assert all(mtmk.decode_markers(value) == {} for value in table[mtmc.MARKER_COLUMNS[0]])
+    assert all(table[column].tolist() == [""] * len(table) for column in mtmc.MARKER_COLUMNS)
+    with h5py.File(metacool, "r") as handle:
+        assert [handle["contigs"][column].dtype.kind for column in mtmc.MARKER_COLUMNS] == ["S", "S"]
     assert mtmk.quality_of(_genome_texts(metacool, "binA")) == ("Bacteria", (0.0, 0.0, 0.0, 0.0))
+    (kept,) = tmp.iterdir()
+    rows = pd.read_csv(kept / mtmc.MARKERS_FILE, sep="\t", keep_default_na=False)
+    assert list(rows["Name"]) == [*table.index, mtmc.NO_CONTIG]
+    assert list(rows.iloc[-1]) == [mtmc.NO_CONTIG, mtmc.NO_CONTIG_TEXT, mtmc.NO_CONTIG_TEXT]
+    assert not [message for level, message in logged() if level in ("WARNING", "ERROR")]
     run_cli("markers", metacool, "-a", assembly, "--inplace", "-o", out)
     table, _ = _stored(metacool)
     assert (table[mtmc.MARKER_COLUMNS[0]] != "").any()
+
+
+def test_the_row_that_names_no_contig():
+    """The row of the table of the markers that keeps their columns text names
+    no contig of the map, nor one by its name in the input of a collected map
+    (the name after <genome>__), which metacooler annotate matches too."""
+    assert mtmc._no_contig(["c1", "c2"]) == "(no contig)"
+    assert mtmc._no_contig(["c1", "(no contig)"]) == "_(no contig)"
+    assert mtmc._no_contig(["g__(no contig)", "g___(no contig)"]) == "__(no contig)"
 
 
 @pytest.mark.parametrize("case", ["a contig missing", "another length", "two records of a contig", "not a FASTA file"])
@@ -608,8 +629,9 @@ def test_holds_markers(marker_run, run_cli, tmp_path):
 
 
 def test_the_metadata_stays_small(marker_run, run_cli):
-    """The markers entry, the marker sets with it, adds about 9 KB to the
-    metadata of the map, a JSON attribute."""
+    """The markers entry, the marker sets with it, adds about 10 KB to the
+    metadata of the map, a JSON attribute: the names and weights of the
+    markers, 8.7 KB, which miComplete's files give to 17 digits."""
     metacool, assembly, out = marker_run
     run_cli("markers", metacool, "-a", assembly, "--inplace", "-o", out)
     _, entry = _stored(metacool)

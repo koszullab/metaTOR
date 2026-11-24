@@ -48,7 +48,8 @@ number of its proteins that miComplete keeps when above one
 (``Ribosomal_L22,SecY*2``); ``*0`` for a marker that miComplete sees on the
 contig (a hit in the table of hmmsearch) but whose every hit it drops, which
 still counts in its weighted completeness, as miComplete counts the markers
-it sees there.
+it sees there, and in none of its other numbers. Both columns hold text, an
+empty one for a contig without a marker.
 """
 
 import functools
@@ -86,6 +87,18 @@ DOMAIN_CUTOFF = 1e-5
 #: contigs of a bin joined as prodigal joins them, a linker of 12 bp after
 #: each when there are several. A bin under it gets no gene from miComplete.
 MIN_TRAINING = 20_000
+
+#: How the genes of the contigs of a map are found (see contig_markers), in
+#: the words of the markers entry of the metadata of the map (genes, see
+#: metator.cli.markers_entry, beside the numbers that it names).
+GENE_RULES = {
+    "single": "Each genome but __unbinned__ whose contigs make min_training bp or more, joined as prodigal joins them (a "
+    "12 bp linker after each when there are several): pyrodigal trained on its contigs in map order, the E-values of "
+    "their hits counted over the proteins of the genome, as miComplete finds the markers of a bin.",
+    "metagenome": "The contigs of __unbinned__ and of the shorter genomes: pyrodigal's metagenome mode, contig by "
+    "contig, the E-values of their hits counted over metagenome_z proteins, the median of the trained genomes (without "
+    "one, the proteins of these contigs, as one bin).",
+}
 
 #: How the markers of a contig are written in the contigs table of a map (see
 #: encode_markers): the markers apart, and a marker from its count.
@@ -631,9 +644,9 @@ def encode_markers(counts):
 
 def decode_markers(text):
     """The markers of a contig from their text (see encode_markers): the count of
-    each, by name. An empty text, or a missing value (metacooler stores a
-    column of a contigs table where no contig has a marker as numbers, all
-    missing), is none."""
+    each, by name. An empty text is none, and so is a missing value (None or
+    NaN), which a contigs table edited by another tool may hold: metaTOR
+    stores both columns as text (see metator.metacool._store_markers)."""
     if text is None or (isinstance(text, float) and np.isnan(text)) or text == "":
         return {}
     counts = {}
