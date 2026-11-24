@@ -122,8 +122,8 @@ each removed command.
   `Core_cluster_ID`... and `Final_cluster`. `binning.txt`, the names of the
   clusters and those of the plots are kept, and the texts of the plots name
   clusters (`Contaminated clusters`, `Other clusters`, `Clusters
-  threshold`). `metator.host` still reads the tables of 1.x
-  (`metator.io.rename_1x_columns`).
+  threshold`). `metator.io.rename_1x_columns` renames the columns of a table
+  of 1.x.
 - **The contigs of a run are those of its map, in its order.** The ID of a
   contig is its position in the map, and the rows of the tables, the numbers
   of the clusters and the records of their FASTA files follow that order
@@ -193,8 +193,38 @@ each removed command.
   `metator.validation.recursive_decontamination` takes the partition and the
   map, and draws the plots in `plot/` of `plot_outdir`, when given;
   `metator.mge.mge_binning` takes the map.
+- **`metator.host` reads the map.** It finds the hosts of the MGE clusters
+  of a map (`find_hosts`), as `metator host` does, where it read the tables
+  of a 1.x run: removed, the classes `Bin`, `Mag` and `MgeMag`, and
+  `create_bins`, `map_contigs_to_mags`, `build_contig_graph`,
+  `compute_mge_mag_interactions` and `annotate_hosts`, which took the contig
+  data, the network and the summary of a run as tables, joined by the IDs of
+  the contigs, and found MAGs only under names that started with `metator_`
+  (none with `--prefix`), and MGE clusters only in a `Final_cluster` column
+  edited by hand; and the estimate of the noise of the library, which no
+  host call used (`estimate_noise`, `plot_mag_noise`, `classify_mags`, and
+  `background_noise.png`). The rule is the same: a MAG hosts an MGE cluster
+  with at least 10% of its signal with the MAGs, and at least 5 of its
+  contigs in contact with it.
 
 ### Added
+- `metator host MAP` finds the MAGs that host the MGE clusters that
+  `metator mge` stored in the map (its round `mge`): its genomes, the final
+  clusters of a run or the bins of another binner made its genomes by
+  `metacooler reassign`, but `__unbinned__` and the MGE clusters made
+  genomes, each taken without the MGE contigs that it holds. A MAG hosts an
+  MGE cluster with at least `--min-share` percent (10) of its signal with the
+  MAGs, the weights of the network between their contigs, and at least
+  `--min-contigs` (5) of its contigs in contact with it. The run writes
+  `mge_hosts.txt`, every MGE cluster and MAG in contact, with their signal,
+  shares and contigs in contact, and `mge_hosts.png`, and stores the hosts in
+  the map: in the round `mge` (`n_hosts`, `hosts`, `host_shares`), in the
+  genomes table (`n_mges`, `mges`), which `metator dump` writes in
+  `clusters.txt` and `cluster_summary.txt`, and under the `host` entry of its
+  metadata, with the digest of its network. A run that replaces the round
+  `mge` (`mge`, but `--random`), the clusters (`partition`, `validation`,
+  `pipeline`) or the network (`network`, with another one) drops them, with a
+  warning. `metator host` of 1.x, gone in 1.4.0, read the tables of a run.
 - `metator dump MAP -o DIR` writes the tables of a run from the map of its
   clusters, read only: `contig_data_final.txt` (without its `ID` column),
   `cluster_summary.txt`, `binning.txt`, `clusters.txt` and
@@ -225,7 +255,7 @@ each removed command.
   `--enzyme` and `--depth` are not given; given, they replace them, with a
   warning that counts the contigs whose value differs.
 - The metadata of the map record, under the `metator` key, one entry per
-  step (`network`, `partition`, `validation`, `mge`): the version of
+  step (`network`, `partition`, `validation`, `mge`, `host`): the version of
   metaTOR, the command line and parameters of the run, and what it read of
   the map (`read`).
 - `partition` and `validation` refuse a map whose network an edit changed
@@ -247,7 +277,11 @@ each removed command.
   `map_matrix` and `write_mges_fasta`; `metator.validation.contaminated_bins`;
   `metator.partition.iterate`, and the `progress` argument of
   `algo_partition`, `louvain_iterations` and `leiden_iterations`, which logs
-  the iterations as they go; `metator.log.duration`.
+  the iterations as they go; `metator.log.duration`; `metator.host`
+  (`find_hosts`, `map_bins`, `contact_pairs`, `write_hosts`, `plot_hosts`,
+  `Hosts`), the `hosts` and `drop_hosts` arguments of
+  `metator.metacool.write_map`, and `metator.metacool.holds_hosts` and
+  `hosts_network`.
 
 ### Changed
 - Validation runs Prodigal and HMMER through pyrodigal and pyhmmer, their

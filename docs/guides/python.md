@@ -14,7 +14,8 @@ This page shows the pieces to put together; the
 | `metator.validation` | `mtv` | miComplete, and the recursive partition of contaminated clusters |
 | `metator.figures` | `mtf` | The plots of the quality of the final clusters |
 | `metator.metacool` | `mtmc` | Writing the `.metacool` contact map of the clusters |
-| `metator.mge`, `metator.host` | `mtm` | Clustering MGE contigs, and finding their hosts |
+| `metator.mge` | `mtm` | Clustering MGE contigs |
+| `metator.host` | `mth` | Finding the MAGs that host the MGE clusters |
 | `metator.io` | `mio` | Reading and writing tables and FASTA files |
 | `metator.log` | `mtl` | The logger, `metator.log.logger` |
 
@@ -91,7 +92,8 @@ clusters.core, clusters.overlapping, clusters.names
 | `metator network` | `metator.network.create_contig_data` and `contig_data_from_map`, `contig_contacts` and `contig_data_table`, then `metator.metacool.write_map` (`network=`) |
 | `metator partition` | `metator.partition.partition`, then `metator.metacool.write_map` (`partition=`, `rounds=`) |
 | `metator validation` | `metator.metacool.read_partition`, `metator.validation.write_overlapping_fasta` and `recursive_decontamination`, then `metator.metacool.write_map` (`clusters=`, a `FinalClusters`, and `network=`) |
-| `metator mge` | `metator.mge.mge_binning` |
+| `metator mge` | `metator.mge.mge_binning` and `write_mges_fasta`, then `metator.metacool.write_map` (`mge=`) |
+| `metator host` | `metator.network.stored_network`, `metator.host.find_hosts`, `write_hosts` and `plot_hosts`, then `metator.metacool.write_map` (`hosts=`) |
 
 The commands also check their inputs, write their log file and clean up
 their temporary files, which the functions leave to the caller.

@@ -554,6 +554,57 @@
      }
     ]
    },
+   "host": {
+    "positional": [
+     {
+      "name": "map",
+      "required": true,
+      "repeatable": false
+     }
+    ],
+    "options": [
+     {
+      "short": "-c",
+      "long": "--min-contigs",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "5",
+      "required": false
+     },
+     {
+      "short": "-F",
+      "long": "--force",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-o",
+      "long": "--outdir",
+      "takes_value": true,
+      "metavar": "DIR",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": null,
+      "long": "--inplace",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-s",
+      "long": "--min-share",
+      "takes_value": true,
+      "metavar": "FLOAT",
+      "default": "10.0",
+      "required": false
+     }
+    ]
+   },
    "dump": {
     "positional": [
      {

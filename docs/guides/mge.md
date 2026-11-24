@@ -157,17 +157,108 @@ again on the map that they write to store the MGE clusters there.
 
 ## The hosts
 
-`metator mge` does not look for the host MAGs of the MGE clusters: the
-round `mge` has no column for them (`mges_bin_summary.tsv` had three,
-always empty). The Python module `metator.host` (see [the API](../api/mge.md))
-holds the functions, still in development, that associate MGE clusters with
-their hosts from the network; no command runs them yet. They join the
-network to `contig_data_final.txt` by the IDs of the contigs. The IDs of the
-network of a map (`metator.network.map_network`) are the positions of its
-contigs in the map as it is read, and a run that regroups the map
-(`validation`, `pipeline`) moves them: the network of the map of the
-clusters has other IDs than the tables of the run. Give the network the IDs
-of the table first, by contig name, with `metator.network.relabel_network`.
+`metator host` finds the MAGs that host the MGE clusters: those that their
+contigs are in contact with. It reads the map that `metator mge` stored its
+MGE clusters in, and stores what it finds there.
+
+```bash
+# The map of the clusters of a run, in binning: its MGE clusters, then their
+# hosts, updated in place
+metator mge binning/sample.metacool -a assembly.fa -m mges.txt -o binning
+metator host binning/sample.metacool -o binning
+```
+
+1. **The MAGs.** The genomes of the map: the final clusters of
+   `validation` or `pipeline`, or the bins of another binner, made the
+   genomes of the map by `metacooler reassign` (on a map that `metator
+   network` stored the network in). `__unbinned__` is no MAG, and neither is
+   a genome named after an MGE cluster: an MGE cluster made a genome of the
+   map (`metacooler reassign --round mge`).
+2. **The MGE contigs.** A contig of an MGE cluster counts for its MGE
+   cluster only. A validation clusters the MGE contigs with the other
+   contigs, and a final cluster often holds some (a plasmid with its host):
+   it is taken without them, or the contacts of an MGE cluster within itself
+   would count as contacts with that cluster.
+3. **The signal.** The signal of an MGE cluster with a MAG is the sum of the
+   weights of the edges of the network between their contigs, with the
+   normalization that `metator network` stored (`empirical_hit` by default,
+   which corrects for the coverage of the contigs), and the number of
+   contigs of the MAG in contact with the MGE cluster is counted too.
+4. **The hosts.** A MAG hosts the MGE cluster when its signal is at least
+   `--min-share` percent (10 by default) of the signal of the MGE cluster with
+   all the MAGs, and the MGE cluster is in contact with at least
+   `--min-contigs` of its contigs (5 by default). An MGE cluster can have one
+   host, several, or none.
+
+| Option | Default | Effect |
+|---|---|---|
+| `--min-share` (`-s`) | 10 | The share of the signal of an MGE cluster with the MAGs, in percent, from which a MAG is a host |
+| `--min-contigs` (`-c`) | 5 | The number of contigs of a MAG in contact with an MGE cluster from which the MAG is a host |
+| `--outdir` (`-o`) | current directory | Where `mge_hosts.txt`, `mge_hosts.png`, the log and the map of the run go: `MAP` itself, updated in place, when it is there already |
+| `--inplace` | off | Store the hosts in `MAP` itself, in place, rather than in the map of the output directory |
+
+### Reading the hosts
+
+The share of a host is that of the signal of the MGE cluster with the MAGs:
+its contacts with the contigs in no MAG, and with the other MGE clusters,
+do not count. An MGE cluster with few contacts with the MAGs, as a phage
+that the library caught in its free particles, can then have a host from a
+small part of its contacts: on a mock community, a free phage of 42 kb had a
+host from 1% of its contacts. `share_of_all`, in `mge_hosts.txt`, is the
+share of all its contacts with the other contigs: a host with a small one
+calls for a look at the contact map.
+
+Several hosts are not always several species. A genome that the binning
+split into several clusters (a contaminated cluster partitioned again, for
+example) gives each of them a share of the signal of its MGE clusters: on the
+mock community, 12 of the 14 MGE clusters with several hosts had the
+clusters of one genome as hosts. Check the taxonomy of the hosts, or their
+contacts with each other, before reading several hosts as a broad host
+range. Related plasmids, assembled into shared contigs, give hosts of each
+genome that carries one.
+
+`metator host` filters on no estimate of the noise of the library, and keeps
+no MAG as the only host when it has most of the signal: the rule of
+[Bignaud et al. 2025](../citation.md), which adds both, is left to the
+analysis of `mge_hosts.txt`.
+
+### What host writes
+
+| Output | What it holds |
+|---|---|
+| `mge_hosts.txt` | One row per MGE cluster and MAG in contact: their signal, the number of contigs of the MAG in contact, the share of the signal (`share`) and of all the contacts of the MGE cluster (`share_of_all`), and whether the MAG is a host (see [Hosts of the MGE clusters](../formats.md#hosts-of-the-mge-clusters)) |
+| `mge_hosts.png` | The distribution of the signal of the hosts, on a log scale, and of their share |
+| The round `mge` of the map | The number of hosts of each MGE cluster, their names by decreasing share, and their shares (`n_hosts`, `hosts`, `host_shares`) |
+| The genomes table of the map | The number of MGE clusters that each MAG hosts, and their names (`n_mges`, `mges`) |
+| `metator_host_<date>.log` | The log of the run, in its output directory |
+
+The entry `host` of the `metator` key of the metadata of the map records the
+run: the version of metaTOR, its command line and parameters, the
+normalization of the network that it read and its digest
+(`network_digest`), and what it read of the map (`read`).
+
+```python
+import metacooler
+
+mc = metacooler.MetaCooler("binning/sample.metacool")
+mge = mc.clusters[mc.clusters["round"] == "mge"]
+mge[["name", "n_hosts", "hosts", "host_shares"]]  # the hosts of each MGE cluster
+mc.genomes[["name", "n_mges", "mges"]]              # the MGE clusters of each MAG
+mc.metadata["metator"]["host"]                      # the run
+```
+
+`metator dump` writes them with the rest of the map: the hosts of each MGE
+cluster in `clusters.txt`, and the MGE clusters of each final cluster, last,
+in `cluster_summary.txt`.
+
+The hosts describe the round `mge`, the genomes and the network of the map
+as `metator host` read them. A second `host` run replaces them (in place,
+with a warning before any work), and a run that replaces one of these drops
+them, with a warning once its map is written: run `host` again on its map.
+So do `mge` (but `mge --random`, which leaves the round `mge` as it was),
+`partition`, `validation` and `pipeline`, and `network` when it stores
+another network than the one the hosts were found on (another
+normalization, or the contacts of another library).
 
 The phages of a community and their hosts are the subject of two of the
 studies listed in [Citing metaTOR](../citation.md): Marbouty et al., 2021,

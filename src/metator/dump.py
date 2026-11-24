@@ -51,6 +51,12 @@ SUMMARY_KEYS = ("summary_rows", "summary_columns", "summary_formats")
 #: metator.io.SummaryLayout).
 SUMMARY_FORMATS = ("%.2f", "%.4f", "%d", "%s")
 
+#: The columns of the summary that the hosts of the MGE clusters add, after
+#: those of the validation, when metator host stored them in the genomes table
+#: of the map (see metator.metacool.HOST_GENOME_COLUMNS), each with its format:
+#: the number of MGE clusters that each final cluster hosts, and their names.
+HOST_SUMMARY_FORMATS = {"n_mges": "%d", "mges": "%s"}
+
 #: The columns that a recursive step of the validation sets.
 RECURSIVE_COLUMNS = ("Recursive_cluster_ID", "Recursive_cluster_contigs", "Recursive_cluster_size")
 
@@ -232,6 +238,9 @@ def cluster_summary(metacool, mc, layout):
     the cluster then the value of each column in the genomes table, written
     with the format of the column (an empty field for a missing value: NaN,
     None or an empty text), after a header, an empty field then the columns.
+    The columns are those of the summary, then those of HOST_SUMMARY_FORMATS
+    that the genomes table holds: the hosts of the MGE clusters that metator
+    host stored there.
 
     Returns
     -------
@@ -260,19 +269,22 @@ def cluster_summary(metacool, mc, layout):
             f"The genomes table of {metacool} lacks the cluster(s) {mtmc._shown(absent)} of the summary of its "
             "clusters (summary_rows): run metator validation on the map again."
         )
-    values = genomes.loc[layout.rows, layout.columns]
+    formats = {column: layout.formats[column] for column in layout.columns}
+    for column, written in HOST_SUMMARY_FORMATS.items():
+        if column in genomes.columns and column not in formats:
+            formats[column] = written
+    values = genomes.loc[layout.rows, list(formats)]
     fields = {}
-    for column in layout.columns:
-        written = layout.formats[column]
+    for column, written in formats.items():
         try:
             fields[column] = ["" if _missing(value) else written % value for value in values[column]]
         except (TypeError, ValueError) as error:
             raise mtmc.MetacoolError(
-                f"The column {column} of the genomes table of {metacool} holds a value that metator validation did "
-                f"not write there ({written}: {error}): an edit of the map changed it since. Run metator validation "
-                "on the map again."
+                f"The column {column} of the genomes table of {metacool} holds a value that metaTOR did not write "
+                f"there ({written}: {error}): an edit of the map changed it since. Run metator validation on the map "
+                "again."
             ) from error
-    return pd.DataFrame(fields, index=pd.Index(layout.rows, dtype=object), columns=layout.columns, dtype=object)
+    return pd.DataFrame(fields, index=pd.Index(layout.rows, dtype=object), columns=list(formats), dtype=object)
 
 
 def _missing(value):

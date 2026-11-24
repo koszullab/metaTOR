@@ -3,8 +3,8 @@
 
 """metaTOR command line interface.
 
-One function per command: network, partition, validation, pipeline, mge
-and dump. The ``metator`` entry point is :func:`cli`.
+One function per command: network, partition, validation, pipeline, mge,
+host and dump. The ``metator`` entry point is :func:`cli`.
 """
 
 import glob
@@ -25,6 +25,7 @@ import rich_click as click
 import metator.clusters as mtcl
 import metator.dump as mtd
 import metator.figures as mtf
+import metator.host as mth
 import metator.io as mio
 import metator.log as mtl
 import metator.metacool as mtmc
@@ -397,7 +398,15 @@ REPLACED_IN_PLACE = {
     "partition": (False, ("partition", "validation")),
     "validation": (True, ("validation",)),
     "mge": (False, ("mge",)),
+    "host": (False, ()),
 }
+
+# The runs that replace the hosts of the MGE clusters that a map holds (see
+# metator.metacool.write_map): host itself, and the runs that replace what
+# they describe, the round mge (mge, but with --random), the rounds
+# (partition) or the genomes (validation, pipeline). network replaces them
+# only when it stores another network, which it finds once it is built.
+REPLACES_HOSTS = ("host", "partition", "validation", "pipeline")
 
 
 def warn_of_what_is_replaced(command, metacool, rounds=None, inplace=False):
@@ -407,14 +416,18 @@ def warn_of_what_is_replaced(command, metacool, rounds=None, inplace=False):
     __unbinned__, of an earlier run, or of another binner), and its clustering
     rounds made by an earlier run (see REPLACED_IN_PLACE).
 
-    Neither can be found again in the updated map."""
+    Neither can be found again in the updated map, and neither can the hosts
+    of its MGE clusters that metator host stored in it, which the run replaces
+    too (see REPLACES_HOSTS)."""
     clusters, steps = REPLACED_IN_PLACE[command]
+    replaces_hosts = command in REPLACES_HOSTS or (command == "mge" and mtcl.MGE in (rounds or ()))
     replaced = (lambda entry: entry.get("step") in steps) if rounds is None else (lambda entry: entry.get("name") in rounds)
     try:
         with mtmc.read_errors(metacool):
             mc = mtmc.open_map(metacool)
             n_clusters = int((mc.genomes["name"].astype(str) != "__unbinned__").sum()) if clusters else 0
             rounds = [str(entry["name"]) for entry in mc.cluster_rounds if replaced(entry)]
+            hosts = replaces_hosts and mtmc.holds_hosts(mc)
     except mtmc.MetacoolError as error:
         logger.error(str(error))
         raise
@@ -423,6 +436,8 @@ def warn_of_what_is_replaced(command, metacool, rounds=None, inplace=False):
         held.append(f"{n_clusters} cluster(s)")
     if rounds:
         held.append(f"the clustering round(s) {', '.join(rounds)}")
+    if hosts:
+        held.append("the hosts of its MGE clusters (metator host)")
     if held:
         logger.warning(
             f"{metacool} holds {' and '.join(held)}, which this run replaces, in place: {write_elsewhere(inplace)} to "
@@ -431,9 +446,10 @@ def warn_of_what_is_replaced(command, metacool, rounds=None, inplace=False):
 
 
 def step_map(command, input_map, outdir, inplace, force, held, inputs=(), rounds=None):
-    """The map that a partition, validation or mge run (command) writes (see
-    run_map_path), and the map as it reads it (see hold_map)."""
-    map_of = f"the map of the {'run' if command == 'mge' else 'contigs of the run'} as the first argument of {command}"
+    """The map that a partition, validation, mge or host run (command) writes
+    (see run_map_path), and the map as it reads it (see hold_map)."""
+    run = command in ("mge", "host")
+    map_of = f"the map of the {'run' if run else 'contigs of the run'} as the first argument of {command}"
     path = refuse_missing_map(input_map)
     if not mtmc.is_map(input_map):
         reason = f"{input_map} is not a .metacool contact map: give {map_of}."
@@ -488,15 +504,16 @@ def start_step(
     return started, metacool_file, bins_prefix, planned, stored, clusters
 
 
-def stored_network(metacool):
-    """The network that metator network stored in the map of a partition or
-    validation run, metacool, read in full before the run replaces anything
-    (see metator.network.stored_network): the contig data of its contigs, the
-    network and its normalization, by the positions of the contigs in the map,
-    which the partition that a validation run reads from the map numbers them
-    by too (see metator.metacool.read_partition)."""
+def stored_network(metacool, mc=None):
+    """The network that metator network stored in the map of a partition,
+    validation or host run, metacool, read in full before the run replaces
+    anything (see metator.network.stored_network), through mc when it is given
+    (the map as the run read it): the contig data of its contigs, the network
+    and its normalization, by the positions of the contigs in the map, which
+    the partition that a validation run reads from the map numbers them by too
+    (see metator.metacool.read_partition)."""
     try:
-        return mtn.stored_network(metacool)
+        return mtn.stored_network(metacool, mc)
     except mtmc.MetacoolError as error:
         logger.error(str(error))
         raise
@@ -874,8 +891,25 @@ def stale_partition(planned, contacts, table, normalization):
     partition until metator partition runs again."""
     if not mtmc.holds_partition(planned):
         return False
-    digest = mtn.network_digest(contacts, mtn.network_weights(table, normalization), table["Name"], normalization)
-    return mtmc.partition_network(planned) != digest
+    return mtmc.partition_network(planned) != _network_digest(contacts, table, normalization)
+
+
+def stale_hosts(planned, contacts, table, normalization):
+    """Whether the input map of a network run, planned, holds hosts of its MGE
+    clusters (see metator.metacool.holds_hosts) that metator host found on
+    another network than the one the run stores (see
+    metator.metacool.hosts_network and stale_partition): the run drops them
+    (see metator.metacool.write_map)."""
+    if not mtmc.holds_hosts(planned):
+        return False
+    return mtmc.hosts_network(planned) != _network_digest(contacts, table, normalization)
+
+
+def _network_digest(contacts, table, normalization):
+    """The digest of the network that a network run stores (see
+    metator.network.network_digest): from the contacts of its map and its
+    contig data (table), with its normalization."""
+    return mtn.network_digest(contacts, mtn.network_weights(table, normalization), table["Name"], normalization)
 
 
 def run_validation(
@@ -1246,7 +1280,7 @@ def no_clean_up_option(help="Do not remove temporary files."):
 @click.group("metator", context_settings={"help_option_names": ["-h", "--help"]})
 @click.rich_config(help_config=click.RichHelpConfiguration(text_markup="rich", show_arguments=True, max_width=100))
 @click.command_panel("Clustering", commands=["network", "partition", "validation", "pipeline"])
-@click.command_panel("Other commands", commands=["mge", "dump"])
+@click.command_panel("Other commands", commands=["mge", "host", "dump"])
 @click.version_option(__version__, "-v", "--version", prog_name="metator", message="%(version)s")
 def cli():
     """MetaHiC pipeline for generating and manipulating MAGs.
@@ -1308,7 +1342,9 @@ def network(
     metator_<normalization> of its bins, which replace those of an earlier
     network. The clusters of the map are kept: the partition of an earlier
     network too, with a warning, as [cyan]metator validation MAP[/] refuses
-    it until [cyan]metator partition MAP[/] partitions the new network. The
+    it until [cyan]metator partition MAP[/] partitions the new network; but
+    the hosts of the MGE clusters that [cyan]metator host[/] found on another
+    network are dropped, with a warning. The
     run writes the map to the output directory, under the name of MAP, which
     it leaves as it was (--inplace updates MAP in place), and locks it while
     it writes it. [cyan]metator dump[/] writes the network, as
@@ -1346,9 +1382,11 @@ def network(
         # the network, stored in the map.
         network, contacts = run_network(map, planned, assembly, depth, enzyme, normalization, tmp_dir)
         # A partition of another network, which the map keeps: said once the
-        # map is written.
+        # map is written. The hosts of the MGE clusters found on another
+        # network, which it drops, with a warning.
         stale = stale_partition(planned, contacts, network.table, normalization)
-        write_map(map, metacool_file, planned, "the map with the network of its contigs", network=network)
+        drop_hosts = stale_hosts(planned, contacts, network.table, normalization)
+        write_map(map, metacool_file, planned, "the map with the network of its contigs", network=network, drop_hosts=drop_hosts)
         if stale:
             logger.warning(
                 f"{metacool_file} holds a partition of another network than the one stored in it now, which the run "
@@ -1873,7 +1911,9 @@ def mge(
     (--inplace updates MAP in place, and so does a run in the directory of
     MAP), and locks it while it writes it. A run that replaces the clusters
     of the map (partition, validation, pipeline) drops the rounds of mge,
-    with a warning: run mge again then.
+    with a warning: run mge again then. A run that replaces the round mge
+    (not --random) drops the hosts that metator host stored in the map, with
+    a warning.
     """
     # Generate log
     log_file = log_file_name("", "mge")
@@ -1929,6 +1969,146 @@ def mge_entry(name):
     block of its metadata."""
     read = {"contigs": [*mtm.MGE_COLUMNS, mtm.INTRA_LONG], "metadata": ["qc"]}
     return {"name": name, "tool": "metaTOR", "version": __version__, "step": "mge", **run_metadata(), "read": read}
+
+
+# ---------------------------------------------------------------------------
+# host
+# ---------------------------------------------------------------------------
+
+
+@cli.command(short_help="Find the MAGs that host the MGE clusters of a .metacool map, and store them in the map.")
+@map_argument(
+    required=True,
+    help="The .metacool contact map of the run, or an entry of a .mmetacool collection "
+    "(file.mmetacool::entries/NAME): the map that metator mge stored its MGE clusters in (the round mge), whose "
+    "genomes are the MAGs (the final clusters of metator validation or pipeline, or the bins of another binner, made "
+    "its genomes by metacooler reassign), and which holds the network of its contigs (metator network). "
+    + written_map_help("the hosts of its MGE clusters"),
+)
+@_option(
+    "-s",
+    "--min-share",
+    type=click.FloatRange(0, 100),
+    default=mth.MIN_SHARE,
+    show_default=True,
+    metavar="FLOAT",
+    panel="Hosts",
+    help="The share of the signal of an MGE cluster with the MAGs, in percent, from which a MAG is a host. The "
+    "contacts of the MGE cluster with the contigs in no MAG and with the other MGE clusters do not count.",
+)
+@_option(
+    "-c",
+    "--min-contigs",
+    type=click.IntRange(min=1),
+    default=mth.MIN_CONTIGS,
+    show_default=True,
+    metavar="INT",
+    panel="Hosts",
+    help="The number of contigs of a MAG in contact with an MGE cluster from which the MAG is a host.",
+)
+@outdir_option(
+    help=f"The output directory, of the map of the run, {mth.HOSTS_FILE}, {mth.PLOT_FILE} and the log. Default: "
+    "current directory."
+)
+@force_option(
+    f"Replace the map of an earlier run in the output directory ({mth.HOSTS_FILE} and {mth.PLOT_FILE} are replaced without it)."
+)
+@inplace_option(help=INPLACE_HELP)
+def host(
+    map,  # the argument MAP
+    min_share,
+    min_contigs,
+    outdir,
+    force,
+    inplace,
+):
+    """Find the MAGs that host the MGE clusters.
+
+    [cyan]metator host MAP[/] finds the hosts of the MGE clusters that
+    [cyan]metator mge MAP[/] stored in the map (its round mge) among its
+    MAGs: its genomes, the final clusters of [cyan]metator validation[/] or
+    [cyan]pipeline[/], or the bins of another binner made its genomes by
+    [cyan]metacooler reassign[/]; not __unbinned__, nor a genome named after
+    an MGE cluster. The contigs of an MGE cluster count for it only, and the
+    MAGs that hold some of them are taken without them.
+
+    The signal of an MGE cluster with a MAG is the sum of the weights of the
+    edges of the network between their contigs, as [cyan]metator network[/]
+    stored it in the map, with its normalization. A MAG hosts the MGE cluster
+    when its signal is at least --min-share percent of the signal of the MGE
+    cluster with all the MAGs, and the MGE cluster is in contact with at
+    least --min-contigs of its contigs: an MGE cluster can have one host,
+    several, or none.
+
+    The run writes every MGE cluster and MAG in contact to mge_hosts.txt,
+    with their signal, the number of contigs of the MAG in contact, the share
+    of the signal of the MGE cluster with the MAGs (share) and with every
+    other contig (share_of_all), and whether the MAG is a host; and the
+    distribution of the signal and share of the hosts to mge_hosts.png. It
+    stores the hosts in the map: in the round mge, the number of hosts of
+    each MGE cluster, their names and their shares (n_hosts, hosts,
+    host_shares); in the genomes table, the number of MGE clusters that each
+    MAG hosts and their names (n_mges, mges); and the run under the host
+    entry of the metator metadata of the map. They replace those of an
+    earlier run, and a run that replaces the round mge (mge), the clusters
+    (partition, validation, pipeline) or the network (network, with another
+    one) drops them, with a warning: run host again then. The run writes the
+    map to the output directory, under the name of MAP, which it leaves as it
+    was (--inplace updates MAP in place, and so does a run in the directory
+    of MAP), and locks it while it writes it.
+    """
+    outdir = outdir or "."
+    make_outdir(outdir)
+
+    # Enable file logging
+    log_file = log_file_name(outdir, "host")
+    started = generate_log_header(log_file, outdir=outdir)
+
+    # The lock of the map the run writes, held until its end.
+    with ExitStack() as held:
+        # The map that the run stores the hosts in, checked and locked, and its
+        # network, read through the map as the run read it: what the map
+        # cannot give is refused before anything is written.
+        metacool_file, planned = step_map("host", map, outdir, inplace, force, held)
+        stored = stored_network(map, planned)
+        try:
+            hosts = mth.find_hosts(map, planned, stored.network, min_share, min_contigs)
+        except mtmc.MetacoolError as error:
+            logger.error(str(error))
+            raise
+
+        # Every MGE cluster and MAG in contact, and the plot of the hosts.
+        mth.write_hosts(hosts.pairs, join(outdir, mth.HOSTS_FILE))
+        plot = join(outdir, mth.PLOT_FILE)
+        mtf._drawn(plot, lambda: mth.plot_hosts(hosts.pairs, plot))
+
+        # The hosts, stored in the map: in the round mge and the genomes
+        # table, in place of those of an earlier run, and the run under the
+        # host entry of the metator metadata of the map (see
+        # metator.metacool.write_map).
+        write_map(map, metacool_file, planned, "the map with the hosts of its MGE clusters", hosts=(hosts, host_entry(stored)))
+
+    log_end(started, "Contact map with the hosts of the MGE clusters written", metacool_file)
+
+
+def host_entry(stored):
+    """What a map records of the host run that stores the hosts of its MGE
+    clusters in it, under the host entry of its metator metadata (see
+    metator.metacool.write_map): the version of metaTOR, the command line and
+    the parameters of the run, the normalization of the network that it read
+    (stored, see metator.network.stored_network) and its digest (see
+    metator.network.network_digest), which a network run checks the network
+    that it stores against, and what the run read of the map (read): the
+    columns of its network in its contigs table and the weights of its
+    normalization (see map_read), its round mge, and its genomes, by name."""
+    read = {**map_read(stored.table, stored.normalization, (mtcl.MGE,)), "genomes": ["name"]}
+    return {
+        "version": __version__,
+        **run_metadata(),
+        "normalization": stored.normalization,
+        "read": read,
+        mtmc.NETWORK_DIGEST: stored.digest,
+    }
 
 
 # ---------------------------------------------------------------------------

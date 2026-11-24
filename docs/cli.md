@@ -297,18 +297,20 @@ that fails leaves the output directory as it was.
 | Table | What it holds |
 |---|---|
 | `contig_data_final.txt` | One row per contig of the map, in its order: `Name`, `Size`, `GC_content`, `Hit`, `Shotgun_coverage`, `Restriction_site`, then the ID, number of contigs and size of its core, overlapping and recursive clusters, then `Final_cluster` (see [The contig data tables](formats.md#the-contig-data-tables)). No `ID` column: the ID of a contig was its position in the map that the run read. |
-| `cluster_summary.txt` | The summary of the final clusters, one row per cluster: its values are those of the genomes table of the map, written as the `validation` entry of its metadata records it, its rows in order (`summary_rows`), its columns in order (`summary_columns`) and the format of each (`summary_formats`). |
+| `cluster_summary.txt` | The summary of the final clusters, one row per cluster: its values are those of the genomes table of the map, written as the `validation` entry of its metadata records it, its rows in order (`summary_rows`), its columns in order (`summary_columns`) and the format of each (`summary_formats`); after [`metator host`](#host), the number of MGE clusters that each final cluster hosts and their names (`n_mges`, `mges`), last. |
 | `binning.txt` | Each contig of a final cluster and its cluster, without a header: the binning that anvi'o imports. |
 | `clusters.txt`, `cluster_members.txt` | Every clustering round of the map (`core`, `overlapping`, `recursive_<k>`, `final`, the round `mge` that `metator mge` stores, and `mge_random` when `metator mge --random` stores one), every cluster with its parent, its number of contigs and their length (`n_contigs`, `length`, which the map computes) and the columns its round stored, and the contigs of each cluster. |
 | `network.txt` | The network of the contigs, without a header: `contig1`, `contig2` (their names) and the weight of their edge, the normalization that `metator network` stored (the count of their contacts for `None`); one row per pair of contigs in contact, in the order of the map, without the contacts within a contig (see [The network](formats.md#the-network)). |
 
 The values are those of the tables that the run kept in its temporary
-directory: `cluster_summary.txt` is the same file, and so is `clusters.txt`
+directory: `cluster_summary.txt` is the same file until `metator host`
+stores the hosts of the MGE clusters in the map, and so is `clusters.txt`
 until a later command stores a round in the map. After `metator mge`,
 `clusters.txt` and `cluster_members.txt` list the rounds `mge` and
 `mge_random` after those of the run, and every row of `clusters.txt` gains
 their columns, `GC`, `Hit` and `BinningScore` (`NA` for the rounds of the
-run).
+run); after `metator host`, the hosts of each MGE cluster too (`n_hosts`,
+`hosts`, `host_shares`, `NA` for the clusters of the other rounds).
 The rows of `contig_data_final.txt`, `binning.txt` and `cluster_members.txt`
 come in the order of the map, which a validation regroups by cluster: the
 run's tables followed the map as it read it.
@@ -373,7 +375,9 @@ build), with or without `-F`: it is never removed. `--random` stores the round `
 `mges_binned_random.fa`, and leaves the round `mge` as it was. A run that
 replaces the clusters of the map (`partition`, `validation`, `pipeline`)
 drops the rounds `mge` and `mge_random`, and their entries, with a warning:
-run `mge` again on its map.
+run `mge` again on its map. A run that replaces the round `mge` (not
+`--random`) drops the hosts that [`metator host`](#host) stored in the map,
+with a warning: run `host` again.
 
 | Option | Default | Description |
 |---|---|---|
@@ -390,4 +394,74 @@ run `mge` again on its map.
 ```bash
 # The map of the clusters of a run, in binning: updated in place
 metator mge binning/sample.metacool -a assembly.fa -m mges.txt -o binning
+```
+
+### `host` { #host }
+
+Find the MAGs that host the MGE clusters of the map, from the contacts
+between them, and store them in the map.
+**API:** `metator.host.find_hosts`, `metator.host.write_hosts`,
+`metator.metacool.write_map`.
+**Guide:** [Clustering mobile genetic elements](guides/mge.md#the-hosts).
+
+```console
+metator host [OPTIONS] MAP
+```
+
+`MAP` is the map that `metator mge` stored its MGE clusters in (the round
+`mge`), which holds the network that `metator network` stored, and the MAGs
+as its genomes: the final clusters of `validation` or `pipeline`, or the bins
+of another binner, which `metacooler reassign` made the genomes of the map;
+or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`).
+`__unbinned__` is no MAG, and neither is a genome named after an MGE cluster
+(an MGE cluster made a genome of the map). The contigs of an MGE cluster
+count for it only: a MAG that holds some of them (a validation clusters the
+MGE contigs with the other contigs) is taken without them. A map without the
+network of `metator network`, without MGE clusters or without MAGs is refused
+before anything is written, with what to run.
+
+The signal of an MGE cluster with a MAG is the sum of the weights of the
+edges of the network between their contigs, with the normalization that
+`metator network` stored. A MAG hosts the MGE cluster when its signal is at
+least `--min-share` percent of the signal of the MGE cluster with all the
+MAGs, and the MGE cluster is in contact with at least `--min-contigs` of its
+contigs: an MGE cluster has one host, several, or none. Its contacts with the
+contigs in no MAG and with the other MGE clusters do not count in that share,
+so an MGE cluster with few contacts with the MAGs (a phage that the library
+caught in its free particles) can have a host from a small part of its
+contacts: `share_of_all`, in `mge_hosts.txt`, says how small.
+
+The run writes `mge_hosts.txt`, every MGE cluster and MAG in contact, and
+`mge_hosts.png`, the signal and the share of the hosts (see
+[Hosts of the MGE clusters](formats.md#hosts-of-the-mge-clusters)), in its
+output directory, in place of those of an earlier run, and stores the hosts
+in the map: the number of hosts of each MGE cluster, their names and their
+shares, as columns of the round `mge` (`n_hosts`, `hosts`, `host_shares`);
+the number of MGE clusters that each MAG hosts and their names, as columns
+of the genomes table (`n_mges`, `mges`); and the run, under the entry `host`
+of the `metator` key of its metadata, with the digest of the network that it
+read (`network_digest`). They replace those of an earlier run; the rounds,
+their clusters and contigs, and the rest of the map are left as they were.
+The run writes the map to its output directory, as `metator mge MAP` writes
+it (`MAP` itself when it is there already, or with `--inplace`: see
+[Step by step](guides/metacool.md#step-by-step)), and refused as it refuses
+it, before any work. The hosts describe the round `mge`, the genomes and the
+network of the map: a run that replaces one of them drops them, with a
+warning once its map is written (run `host` again then): `mge`, but with
+`--random`; `partition`, `validation` and `pipeline`; and `network`, when it
+stores another network than the one the hosts were found on (its
+`network_digest`).
+
+| Option | Default | Description |
+|---|---|---|
+| `-s, --min-share` | `10` | The share of the signal of an MGE cluster with the MAGs, in percent, from which a MAG is a host. |
+| `-c, --min-contigs` | `5` | The number of contigs of a MAG in contact with an MGE cluster from which the MAG is a host. |
+| `-o, --outdir` | the current directory | The output directory: the map of the run, `mge_hosts.txt`, `mge_hosts.png` and the log. |
+| `-F, --force` | off | Replace the map of an earlier run in the output directory. `mge_hosts.txt` and `mge_hosts.png` are replaced without it. |
+| `--inplace` | off | Store the hosts in `MAP` itself, in place, rather than in the map of the output directory: refused for an entry of a collection. |
+
+```bash
+# The hosts of the MGE clusters that mge stored in the map of a run, in
+# binning: updated in place
+metator host binning/sample.metacool -o binning
 ```

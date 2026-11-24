@@ -46,6 +46,10 @@ UNBINNED = {"ND", "-", ""}
 # never one of them.
 METACOOLER_UNBINNED = frozenset({"__unbinned__", "na", "nan", "n/a", "nd", "n/d", "-1", ""})
 
+# The genome of metacooler that holds the contigs of a map that are in no
+# genome.
+UNBINNED_GENOME = "__unbinned__"
+
 # The columns of the network of the contigs that a map stores in its contigs
 # table (see Network): what metaTOR measures on each contig, the GC content,
 # the Hi-C hits counted on its contacts, and the shotgun coverage and the
@@ -680,8 +684,19 @@ PARTITION_ROUNDS = (mtcl.CORE, mtcl.OVERLAPPING)
 
 # The key of the partition entry of the metator metadata of a map that
 # records the network that the partition was made on: its digest (see
-# metator.network.network_digest).
+# metator.network.network_digest). The host entry records it too.
 NETWORK_DIGEST = "network_digest"
+
+# What metator host stores in a map (see write_map and metator.host): the run,
+# under the host entry of its metator metadata, with the digest of the
+# network that it read (NETWORK_DIGEST); the hosts of each MGE cluster, as
+# columns of the clusters of the round mge; and the MGE clusters of each MAG,
+# as columns of the genomes table. They describe the round mge, the genomes
+# and the network of the map as the run read them: a run that replaces one of
+# them drops them all, with a warning.
+HOST_ENTRY = "host"
+HOST_CLUSTER_COLUMNS = ("n_hosts", "hosts", "host_shares")
+HOST_GENOME_COLUMNS = ("n_mges", "mges")
 
 
 def holds_partition(mc):
@@ -696,6 +711,21 @@ def partition_network(mc):
     under the partition key of the metator metadata of the map (as
     NETWORK_DIGEST): None when the map records none."""
     entry = _metator_metadata(mc).get("partition")
+    digest = entry.get(NETWORK_DIGEST) if isinstance(entry, dict) else None
+    return digest if isinstance(digest, str) else None
+
+
+def holds_hosts(mc):
+    """Whether the map mc holds the hosts of its MGE clusters that metator host
+    found: the host entry of its metator metadata (see HOST_ENTRY)."""
+    return isinstance(_metator_metadata(mc).get(HOST_ENTRY), dict)
+
+
+def hosts_network(mc):
+    """The digest of the network that metator host read to find the hosts that
+    the map mc holds (see holds_hosts), as its host entry records it: None when
+    the map records none."""
+    entry = _metator_metadata(mc).get(HOST_ENTRY)
     digest = entry.get(NETWORK_DIGEST) if isinstance(entry, dict) else None
     return digest if isinstance(digest, str) else None
 
@@ -724,6 +754,20 @@ def _warn_dropped_rounds(entries, metacool, outfile, in_place):
     logger.warning(
         f"{where} the clustering round(s) {rounds}, which this run does not make: a run that replaces the clusters of "
         "a map stores its own rounds only. Run what made them again, on the new clusters, to store them."
+    )
+
+
+def _warn_dropped_hosts(metacool, outfile, in_place, why):
+    """Warn, once outfile is written from the map metacool (in place, or to
+    another file), that it does not keep the hosts of the MGE clusters that
+    metator host stored in the map, which describe what the run replaced
+    (why)."""
+    where = f"{metacool} no longer holds" if in_place else f"{outfile} does not keep, of {metacool},"
+    logger.warning(
+        f"{where} the hosts of the MGE clusters that metator host found (the {HOST_ENTRY} entry of its metator "
+        f"metadata, the columns {', '.join(HOST_CLUSTER_COLUMNS)} of its round {mtcl.MGE} and "
+        f"{', '.join(HOST_GENOME_COLUMNS)} of its genomes table), which described {why}, which this run replaced. "
+        f"Run metator host again on {outfile} to find them."
     )
 
 
@@ -974,6 +1018,8 @@ def write_map(
     round_names=None,
     clusters=None,
     mge=None,
+    hosts=None,
+    drop_hosts=False,
     force=False,
     planned=None,
 ):
@@ -986,9 +1032,16 @@ def write_map(
     and renamed once; on any failure outfile is left as it was. In order: the
     final clusters (a map written anew from the input map, contigs grouped by
     cluster then longest first), the network (columns and weights, last in both
-    tables), the partition's rounds and entry, then the round mge. A run that
-    replaces the rounds warns of those the binning did not make, and drops
-    them.
+    tables), the partition's rounds and entry, then the round mge, or the
+    hosts of the MGE clusters. A run that replaces the rounds warns of those
+    the binning did not make, and drops them.
+
+    The hosts that metator host stored in the map (see HOST_ENTRY) describe
+    its round mge, its genomes and its network as they were: a run that
+    replaces the round mge (metator mge, but --random), the rounds
+    (partition) or the genomes (validation, pipeline) drops them, and so does
+    a network run with drop_hosts (another network than the one they were
+    found on), each with a warning.
 
     Parameters
     ----------
@@ -1011,6 +1064,13 @@ def write_map(
         The tables of the round mge or mge_random (see
         metator.clusters.mge_round) and its entry (its name, and what made it:
         see metator.cli.mge_entry).
+    hosts : tuple, optional
+        The hosts of the MGE clusters of the map (a metator.host.Hosts) and
+        the host entry of the run that found them (see metator.cli.host_entry),
+        stored alone (see _store_hosts).
+    drop_hosts : bool
+        Whether to drop the hosts that the map holds, which another network
+        than the one stored now gave (a network run).
     force : bool
         Whether to replace an existing outfile: the input map itself, which a
         run updates in place, or another file.
@@ -1024,7 +1084,7 @@ def write_map(
     ------
     ValueError
         If clusters come with rounds or round_names: the rounds of a validation
-        are those of its clusters.
+        are those of its clusters; or hosts with anything else to store.
     MetacoolError
         If the outfile is no file's path (a URI), exists (without force), is
         the .mmetacool collection of the input map or a hard link of the input
@@ -1038,6 +1098,21 @@ def write_map(
             "write_map takes the clustering rounds of a validation from its clusters (FinalClusters.rounds): give "
             "clusters without rounds or round_names."
         )
+    if hosts is not None and any(store is not None for store in (network, partition, rounds, clusters, mge)):
+        raise ValueError("write_map stores the hosts of the MGE clusters of metator host alone: give hosts alone.")
+    # What the hosts that the map holds describe, which the run replaces (see
+    # HOST_ENTRY): none when it keeps them.
+    replaced = (
+        "its genomes"
+        if clusters is not None
+        else "its clustering rounds"
+        if rounds is not None
+        else f"its round {mtcl.MGE}"
+        if mge is not None and mge[1]["name"] == mtcl.MGE
+        else "its network"
+        if drop_hosts
+        else None
+    )
     metacool, outfile = str(metacool), str(outfile)
     if is_entry(metacool) and is_input_map(metacool, outfile):
         raise MetacoolError(
@@ -1057,9 +1132,11 @@ def write_map(
             # The rounds of the map that the run does not make: said once the
             # map is written.
             later = _later_rounds(mc) if clusters is not None or rounds is not None else []
+            # The hosts that the run drops: said once the map is written.
+            dropped_hosts = replaced is not None and holds_hosts(mc)
         if clusters is not None:
             _check_clustered_contigs(metacool, contigs, clusters)
-        writing, written = _what_is_written(contigs, network, rounds, clusters, mge)
+        writing, written = _what_is_written(contigs, network, rounds, clusters, mge, hosts)
         source = "in place" if in_place else f"from {metacool}"
         logger.info(f"Writing {outfile} {source}{writing}.")
         with _as_metacool_errors(), ExitStack() as session:
@@ -1087,14 +1164,30 @@ def write_map(
             # What made the rounds of metator mge that the map no longer
             # holds, which the clusters of a validation carried over.
             _drop_metator_entries(staged, [dropped["name"] for dropped in later if _made_by(dropped) == "metaTOR mge"])
+            if hosts is not None:
+                _store_hosts(staged, metacool, *hosts)
+            elif replaced is not None:
+                # The hosts that described what the run replaced: those that
+                # the map held, and what was carried over of them (the host
+                # entry that the clusters of a validation carry, the columns of
+                # an earlier round mge that the other rounds kept).
+                _drop_hosts(staged, metacool)
         logger.debug(f"{outfile} is written: the contact map{written}.")
     _warn_dropped_rounds(later, metacool, outfile, in_place)
+    if dropped_hosts:
+        _warn_dropped_hosts(metacool, outfile, in_place, replaced)
 
 
-def _what_is_written(contigs, network, rounds, clusters, mge):
+def _what_is_written(contigs, network, rounds, clusters, mge, hosts=None):
     """What the messages of write_map say of the map it writes: while it is
     written, and once it is (each a text that follows the name of the map, and
     the words "the contact map")."""
+    if hosts is not None:
+        n_mges = len(hosts[0].clusters)
+        return (
+            f", with the hosts of the {n_mges} MGE clusters of its round {mtcl.MGE}",
+            f", with the hosts of the MGE clusters of its round {mtcl.MGE}",
+        )
     if clusters is not None:
         binned = [name for name in contigs["name"].astype(str) if name in clusters.assignment]
         final = set(clusters.assignment[name] for name in binned)
@@ -1218,3 +1311,61 @@ def _store_round(path, metacool, rounds, entry):
     other_members = held_members[(held_members["round"] != name).to_numpy()]
     entries = [stored for stored in held_rounds if stored["name"] != name]
     _store_clusters(path, [*entries, entry], _stacked(other, clusters), _stacked(other_members, members), name=metacool)
+
+
+def _store_hosts(path, metacool, hosts, entry):
+    """Store the hosts of the MGE clusters that metator host found (hosts, a
+    metator.host.Hosts) in the map at path, the staged map of an edit session
+    (see write_map), in place of those of an earlier run (see _drop_hosts):
+    HOST_CLUSTER_COLUMNS in the clusters of the round mge (missing in those of
+    the other rounds), HOST_GENOME_COLUMNS in the genomes table (missing for
+    the genomes that are no MAG), and the run under the host entry of the
+    metator metadata of the map (entry). The rounds keep their order, their
+    entries, the columns of their clusters and their contigs, and the rest of
+    the map is left as it was."""
+    import metacooler
+
+    _drop_hosts(path, metacool)
+    mc = open_map(path)
+    clusters = mc.clusters.drop(columns=_computed_cluster_columns())
+    rows = (clusters["round"] == mtcl.MGE).to_numpy()
+    values = hosts.clusters.set_index("name").reindex(clusters.loc[rows, "name"].astype(str))
+    for column in HOST_CLUSTER_COLUMNS:
+        found = values[column].to_numpy()
+        if pd.api.types.is_numeric_dtype(values[column]):
+            stored = np.full(len(clusters), np.nan)
+        else:
+            stored = np.full(len(clusters), None, dtype=object)
+        stored[rows] = found
+        clusters[column] = stored
+    members = mc.cluster_members()[["round", "cluster", "contig"]]
+    _store_clusters(path, mc.cluster_rounds, clusters, members, name=metacool)
+    with tempfile.TemporaryDirectory() as directory:
+        table = os.path.join(directory, "genomes.txt")
+        hosts.genomes.rename(columns={"name": "genome"}).to_csv(table, sep="\t", index=False)
+        metacooler.annotate(path, genomes_table=table, genomes_table_format="genome", inplace=True)
+    _store_metator_entries(path, {HOST_ENTRY: entry})
+
+
+def _drop_hosts(path, metacool=None):
+    """Remove what metator host stored in the map at path, the staged map of an
+    edit session (see write_map): the host entry of its metator metadata, the
+    columns HOST_CLUSTER_COLUMNS of its clusters (those of the round mge, kept
+    by the other rounds when a run replaced it) and HOST_GENOME_COLUMNS of its
+    genomes table. Everything else is kept as it was. metacool: the map that
+    path is staged for, which the warnings name."""
+    import metacooler
+
+    # Everything read before anything is written: a write of the map replaces
+    # the file that mc opened.
+    mc = open_map(path)
+    clusters = mc.clusters
+    stored = [column for column in HOST_CLUSTER_COLUMNS if column in clusters.columns]
+    genomes = [f"genomes.{column}" for column in HOST_GENOME_COLUMNS if column in mc.genomes.columns]
+    if stored:
+        kept = clusters.drop(columns=[*_computed_cluster_columns(), *stored])
+        members = mc.cluster_members()[["round", "cluster", "contig"]]
+        _store_clusters(path, mc.cluster_rounds, kept, members, name=metacool)
+    if genomes:
+        metacooler.annotate(path, drop=genomes, inplace=True)
+    _drop_metator_entries(path, [HOST_ENTRY])
