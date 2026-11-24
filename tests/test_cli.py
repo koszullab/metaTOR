@@ -49,8 +49,10 @@ mtmc_write_map = mtmc.write_map
 # network and pipeline then took pairs and BAM files again, as their
 # arguments (INPUT..., the map or the files that the run makes it from), with
 # -q/--min-quality for the BAM files, and network -t/--threads to read them;
-# then partition, validation, pipeline and mge took --seed, the seed of their
-# random numbers.
+# and pipeline the --mges, --mge-threshold-bin, --mge-min-share and
+# --mge-min-contigs options, with which it runs mge and host after the
+# validation; then partition, validation, pipeline and mge took --seed,
+# the seed of their random numbers.
 INVENTORY = json.loads((TESTS_DATA / "cli_inventory.json").read_text())["metator"]
 
 # Options whose value is one of a list, wherever they appear.
@@ -407,7 +409,13 @@ def stub_pipeline(monkeypatch, tmp_path):
         # The input map must still be there.
         calls["write_map"] = (metacool, os.path.exists(metacool), outfile, stores)
 
+    def run_export(*args, **kwargs):
+        # The step export of a pipeline run, its outputs written from the map
+        # of its clusters, which the stub validation does not write: recorded.
+        calls["run_export"] = (args, kwargs)
+
     monkeypatch.setattr("metator.network.create_contig_data", create_contig_data)
+    monkeypatch.setattr("metator.cli.run_export", run_export)
     monkeypatch.setattr("metator.network.contig_data_from_map", contig_data_from_map)
     monkeypatch.setattr("metator.network.contig_contacts", recorded_contig_contacts)
     monkeypatch.setattr("metator.partition.partition", partition)
@@ -447,7 +455,10 @@ def _final_tables(monkeypatch, contig, final_bin="metator_00001_00000", summary=
         rows = "" if final_bin == "ND" else f"{final_bin}\t0.9\n"
         if final_bin != "ND":
             Path(args[3], f"{final_bin}.fa").write_text(f">{contig}\nACGT\n")
-        Path(args[7], "cluster_summary.txt").write_text(summary or f"\tCompleteness\n{rows}")
+        # The summary as the run writes it, and at full precision, which the
+        # map stores (the same here).
+        for name in ("cluster_summary.txt", mio.SUMMARY_FULL_FILE):
+            Path(args[7], name).write_text(summary or f"\tCompleteness\n{rows}")
         layout = mio.SummaryLayout([] if final_bin == "ND" else [final_bin], ["Completeness"], {"Completeness": "%.2f"})
         return pd.DataFrame({"Name": [contig, "c2"], "Final_cluster": [final_bin, "ND"]}), layout
 
@@ -495,7 +506,7 @@ def test_a_run_refuses_an_assembly_that_metacooler_cannot_read(compression, comm
     else:
         with zipfile.ZipFile(fasta, "w") as archive:
             archive.writestr("assembly.fa", ">c1\nACGT\n")
-    earlier = tmp_path / "out" / "final_clusters" / "bin.fa"
+    earlier = tmp_path / "out" / "fasta" / "mags_with-mges" / "bin.fa"
     earlier.parent.mkdir(parents=True)
     earlier.write_text(">old\nA\n")
     metacool = _contig_map(tmp_path / "map.metacool")
@@ -521,7 +532,7 @@ def test_a_run_refuses_an_assembly_that_names_a_contig_by_several_records(
     fasta.write_text(">c1\n" + "A" * 100 + "\n>c2\n" + "C" * 50 + "\n>c1 again\n" + "G" * 100 + "\n")
     source = _contig_map(tmp_path / "map.metacool") if inputs == "map" else _pairs(tmp_path)
     out = tmp_path / "out"
-    earlier = out / "final_clusters" / "bin.fa"
+    earlier = out / "fasta" / "mags_with-mges" / "bin.fa"
     earlier.parent.mkdir(parents=True)
     earlier.write_text(">old\nA\n")
     what = f"1 contig(s) are named by several records of the assembly {fasta}"
@@ -656,15 +667,22 @@ def test_pipeline_from_a_metacool(stub_pipeline, tmp_path, run_cli):
     assert list(table.Core_cluster_ID) == ["00001", "00001"] and list(table.Overlapping_cluster_size) == [2000, 2000]
     # The validation works in the temporary directory of the run: the
     # contig data of the partition, the tables of the validation and its
-    # recursive clusters; the final clusters go to the output directory.
+    # recursive clusters; the final clusters go to fasta/mags_with-mges of
+    # the output directory.
     tables = Path(calls["recursive_decontamination"][7])
     assert Path(calls["recursive_decontamination"][2]).parent == tables and tables.parent == tmp_path / "tmp"
-    assert calls["recursive_decontamination"][3] == str(out / "final_clusters")
+    assert calls["recursive_decontamination"][3] == str(out / "fasta" / "mags_with-mges")
     assert Path(calls["recursive_decontamination"][9]) == tables / "recursive_clusters"
     assert calls["recursive_decontamination_kwargs"]["metacool"] == str(metacool)
-    # The plots of the final clusters go to plot/ of the output directory,
+    # The plots of the final clusters go to plots/ of the output directory,
     # which the validation makes (the stub validation draws none).
-    assert calls["recursive_decontamination_kwargs"]["plot_outdir"] == str(out) and not (out / "plot").exists()
+    assert calls["recursive_decontamination_kwargs"]["plot_outdir"] == str(out) and not (out / "plots").exists()
+    # The outputs of the run, exported from its map in its output directory
+    # (in place of those of its steps), from the assembly (plain: as it is),
+    # in its temporary directory.
+    (metacool_file, assembly, outdir, tmp_dir), options = calls["run_export"]
+    assert (metacool_file, assembly, outdir, options) == (str(metacool), str(tmp_path / "assembly.fa"), str(out), {"force": True})
+    assert Path(tmp_dir).parent == tmp_path / "tmp"
     assert not (out / "overlapping_clusters").exists() and not (out / "contig_data_partition.txt").exists()
     assert metacool.read_bytes() == before
     # No table of the network: it is in the map.
@@ -696,13 +714,147 @@ def test_pipeline_from_a_metacool(stub_pipeline, tmp_path, run_cli):
     assert clusters.entry["read"] == {"contigs": ["GC_content", "Hit"], "bins": ["metator_length"],
                                       "rounds": ["core", "overlapping"]}  # fmt: skip
     # The stub validation clusters no contig, and writes no table.
-    assert clusters.assignment == {} and clusters.rounds is None and clusters.summary == str(tables / "cluster_summary.txt")
+    assert clusters.assignment == {} and clusters.rounds is None and clusters.summary == str(tables / mio.SUMMARY_FULL_FILE)
     # No column was read from the map (the stub reads none).
     assert network.entry["read"] == {"contigs": []}
     assert stores["partition"]["read"] == {"contigs": ["GC_content", "Hit"], "bins": ["metator_length"]}
     # The map of the output directory, updated in place, as the log says.
     in_place = f"INFO :: The run updates {metacool} in place: it is the map of its output directory (give another one"
     assert in_place in logged and "is the input map" not in logged
+
+
+# The steps of a pipeline run, as its log marks them, without --mges.
+STEPS = [("1", "4", "network"), ("2", "4", "partition"), ("3", "4", "validation"), ("4", "4", "export")]
+
+
+def test_pipeline_without_mges_has_no_steps_mge_and_host(stub_pipeline, tmp_path, run_cli):
+    """Without --mges, a pipeline run from a map has four steps ([1/4]
+    network... [4/4] export), and says, once it has written the map of its
+    clusters, that it has no steps mge and host, and how to run them: with
+    --mges. It writes no MGE fasta and no hosts, and then exports its outputs,
+    from the map of its clusters."""
+    metacool = _contig_map(tmp_path / "input.metacool")
+    run_cli("pipeline", *_map_run(metacool, tmp_path))
+    out = tmp_path / "out"
+    (log,) = out.glob("metator_pipeline_*.log")
+    logged = log.read_text()
+    assert re.findall(r" :: INFO :: \[([0-9])/([0-9])\] ([a-z]+): ", logged) == STEPS
+    stop = (
+        "INFO :: No list of MGE contigs (--mges): the run has no steps mge and host, which cluster the MGE contigs and "
+        "find their hosts: give --mges to run them.\n"
+    )
+    assert logged.index("[3/4] validation") < logged.index(stop) < logged.index("[4/4] export")
+    assert stub_pipeline["write_map"] and stub_pipeline["run_export"]
+    assert not (out / "fasta" / "mges").exists() and not (out / "tables").exists()
+
+
+# What the steps mge and host of a pipeline run with --mges would refuse
+# once its clusters are made, refused before any work, the reason logged as an
+# error: a list of MGE contigs that cannot be read, or that is the map of the
+# output directory; a map without the contact statistics that mge reads, or
+# that holds none of the MGE contigs; and the summary, the FASTA file of the MGE
+# clusters and the hosts of an earlier version in the output directory, which
+# mge and host refuse.
+PIPELINE_MGES_ERRORS = {
+    "a list that is not there": (
+        "{missing}",
+        "Cannot read the list of MGE contigs {missing} (No such file or directory): give a text file, one contig name per line.",
+    ),
+    "a directory as the list": (
+        "{directory}",
+        "Cannot read the list of MGE contigs {directory} (Is a directory): give a text file, one contig name per line.",
+    ),
+    "the list as the map of the output directory": (
+        "{out_map}",
+        "{out_map}, where the run writes its map, is {out_map}, an input of the run: give the run another output "
+        "directory with -o.",
+    ),
+    "no MGE contig in the map": ("{other_mges}", "None of the MGE contigs is in {map}: there is no MGE contig to cluster."),
+    "a map without contact statistics": (
+        "{mges}",
+        "{map} holds no contact statistics of the reads of its contigs (metacooler's QC block, with "
+        "qc_intra_contig_long in its contigs table): metator mge counts the contacts within each MGE contig between "
+        "reads more than 1 kb apart, which the pixels of a map do not tell. ",
+    ),
+    "contact statistics of the pixels": (
+        "{mges}",
+        "{map} has the contact statistics of its contigs measured from its pixels (QC source 'pixels'), not from the "
+        "pairs: metator mge counts",
+    ),
+    "the summary of an earlier version": (
+        "{mges}",
+        "{out} holds results of an earlier run, which this run does not write and does not replace: "
+        "'mges_bin_summary.tsv'. Move them away, or give the run another output directory with -o.",
+    ),
+    "the MGE FASTA file and the hosts of an earlier version": (
+        "{mges}",
+        "{out} holds results of an earlier run, which this run does not write and does not replace: "
+        "'mge_hosts.txt', 'mges_binned.fa'. Move them away, or give the run another output directory with -o.",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(PIPELINE_MGES_ERRORS))
+def test_pipeline_with_mges_refused_before_any_work(case, stub_pipeline, tmp_path, run_cli):
+    """What the steps mge and host of a pipeline run with --mges would refuse,
+    after hours of work, is refused before any (see PIPELINE_MGES_ERRORS): the
+    map and the output directory are left as they were."""
+    import h5py
+
+    metacool = _contig_map(tmp_path / "input.metacool")
+    out = tmp_path / "out"
+    out.mkdir()
+    if case == "a map without contact statistics":
+        with h5py.File(metacool, "r+") as handle:
+            metadata = json.loads(handle.attrs["metadata"])
+            del metadata["qc"]
+            handle.attrs["metadata"] = json.dumps(metadata)
+    elif case == "contact statistics of the pixels":
+        with h5py.File(metacool, "r+") as handle:
+            metadata = json.loads(handle.attrs["metadata"])
+            metadata["qc"]["source"] = "pixels"
+            handle.attrs["metadata"] = json.dumps(metadata)
+    elif case == "the summary of an earlier version":
+        (out / "mges_bin_summary.tsv").write_text("an earlier summary")
+    elif case == "the MGE FASTA file and the hosts of an earlier version":
+        (out / "mges_binned.fa").write_text(">MetaTOR_MGE_00001\nACGT\n")
+        (out / "mge_hosts.txt").write_text("mge\tmag\n")
+    elif case == "the list as the map of the output directory":
+        shutil.copyfile(metacool, out / "input.metacool")
+    mges = tmp_path / "mges.txt"
+    mges.write_text("c2\n")
+    other_mges = tmp_path / "other_mges.txt"
+    other_mges.write_text("c3\nc4\n")
+    paths = {
+        "map": metacool,
+        "out": out,
+        "out_map": out / "input.metacool",
+        "mges": mges,
+        "other_mges": other_mges,
+        "missing": tmp_path / "missing.txt",
+        "directory": tmp_path,
+    }
+    given, message = (text.format(**paths) for text in PIPELINE_MGES_ERRORS[case])
+    before = metacool.read_bytes()
+    with pytest.raises(ValueError):
+        run_cli("pipeline", *_map_run(metacool, tmp_path, "--mges", given, "-F"))
+    assert _no_step(stub_pipeline) and metacool.read_bytes() == before
+    assert not (out / "fasta").exists()
+    (log,) = out.glob("metator_pipeline_*.log")
+    assert f"ERROR :: {message}" in log.read_text()
+
+
+def test_pipeline_with_mges_warns_that_it_replaces_the_round_mge(tmp_path, logged):
+    """pipeline MAP --mges, which updates MAP in place, warns before any work that
+    it replaces the round mge of the map too, which its step mge stores, with
+    the clusters and the rounds of the binning that it replaces."""
+    metacool = _map_of_an_earlier_run(tmp_path / "input.metacool")
+    mtcli.warn_of_what_is_replaced("pipeline", str(metacool), rounds=["mge"], inplace=True)
+    message = (
+        f"{metacool} holds 1 cluster(s) and the clustering round(s) overlapping, final, mge, which this run replaces, in "
+        f"place: leave out --inplace to write the map of this run to another file, and leave {metacool} as it is."
+    )
+    assert [record for record in logged() if record[0] == "WARNING"] == [("WARNING", message)]
 
 
 def _contig_map(path, lengths=None, network=False, normalization="empirical_hit", partition=False):
@@ -918,7 +1070,8 @@ def test_pipeline_refused_for_a_column_that_lacks_contigs_keeps_the_clusters(stu
     monkeypatch.setattr("metator.network.create_contig_data", lambda *args: contig_data)
     metacool = _map_with_columns(tmp_path, {"Restriction_site": [3, 2]})
     out = tmp_path / "out"
-    names = ["overlapping_clusters", "recursive_clusters", "final_clusters"]
+    # The directories that the run makes anew, which -F replaces.
+    names = [os.path.join("fasta", "mags_with-mges"), os.path.join("fasta", "mags"), "cool"]
     clusters = [out / name / "cluster.fa" for name in names]
     for path in clusters:
         path.parent.mkdir(parents=True)
@@ -927,6 +1080,8 @@ def test_pipeline_refused_for_a_column_that_lacks_contigs_keeps_the_clusters(stu
         run_cli("pipeline", metacool, "-a", _assembly(tmp_path), "-m", "RS", "-o", out, "-F",
                 "-T", tmp_path / "tmp")  # fmt: skip
     assert all(path.exists() for path in clusters)
+    (log,) = out.glob("metator_pipeline_*.log")
+    assert "does not give every contig of the assembly its restriction sites." in log.read_text()
 
 
 @pytest.mark.parametrize("command", ["network", "pipeline"])
@@ -2153,7 +2308,7 @@ def test_a_directory_is_no_map(command, stub_pipeline, tmp_path, monkeypatch, ru
     removed the clusters of the earlier run)."""
     monkeypatch.chdir(tmp_path)
     Path("maps").mkdir()
-    bins = Path("out", "final_clusters", "bin.fa")
+    bins = Path("out", "fasta", "mags_with-mges", "bin.fa")
     bins.parent.mkdir(parents=True)
     bins.write_text(">c1\nACGT\n")
     force = [] if command == "network" else ["-F"]
@@ -2204,7 +2359,11 @@ def test_options_of_reads_and_pairs_are_gone(command, option, stub_pipeline, tmp
 
 # The directories of clusters of each step, replaced with -F: partition writes
 # none.
-STEP_DIRS = {"partition": [], "validation": ["recursive_clusters", "final_clusters"]}
+# The directories of clusters of an earlier run: those of an earlier version
+# (recursive_clusters), refused, and those of the run (fasta/mags_with-mges),
+# which -F replaces.
+MAGS_WITH_MGES = os.path.join("fasta", "mags_with-mges")
+STEP_DIRS = {"partition": [], "validation": ["recursive_clusters", MAGS_WITH_MGES]}
 
 
 def _step_run(command, metacool, tmp_path, *options):
@@ -2231,10 +2390,10 @@ def _earlier_run(command, tmp_path):
 
 
 # The results of a run of an earlier version in the output directory of a
-# validation or pipeline run (see metator.cli.EARLIER_OUTPUTS): the tables of
-# 2.0's development builds, and the outputs of 1.x, files and directories, the
-# plots of 1.x that 2.0 no longer draws among them (the run draws its own in
-# plot/: see test_the_plots_of_an_earlier_run).
+# validation or pipeline run (see metator.cli.EARLIER_OUTPUTS): the tables,
+# final clusters and plots of 2.0's development builds, and the outputs of 1.x,
+# files and directories, the plots of 1.x that 2.0 no longer draws among them
+# (the run draws its own in plots/: see test_the_plots_of_an_earlier_run).
 EARLIER_FILES = [
     "bin_summary.txt",
     "binning.txt",
@@ -2248,6 +2407,8 @@ EARLIER_FILES = [
     "network.txt",
     "overlapping_micomplete_results.txt",
     "plot/MAGs_GC_distribution.png",
+    "plot/bins_distribution.png",
+    "plot/bins_size_distribution.png",
     "plot/MAGs_HiC_cov_distribution.png",
     "plot/MAGs_SG_cov_distribution.png",
     "plot/network_heatmap.png",
@@ -2256,6 +2417,7 @@ EARLIER_FILES = [
 EARLIER_DIRECTORIES = [
     "final_bin",
     "final_bin_unscaffold",
+    "final_clusters",
     "overlapping_bin",
     "recursive_bin",
     "recursive_clusters",
@@ -2304,20 +2466,20 @@ def test_the_outputs_of_an_earlier_version(command, force, stub_pipeline, tmp_pa
 @pytest.mark.parametrize("command", ["validation", "pipeline"])
 @pytest.mark.parametrize("force", [False, True], ids=["refused", "-F"])
 def test_the_plots_of_an_earlier_run(command, force, stub_pipeline, tmp_path, run_cli):
-    """The plots of an earlier run in plot/ are refused without -F, before any work,
-    and removed with -F once the run is checked, for the validation to draw
-    them again: a symbolic link, not its target. The other files of plot/ are
-    left as they are, with or without -F: a file of the user's, and the map
+    """The plots of an earlier run in plots/ are refused without -F, before any
+    work, and removed with -F once the run is checked, for the validation to
+    draw them again: a symbolic link, not its target. The other files of plots/
+    are left as they are, with or without -F: a file of the user's, and the map
     of the run itself."""
     out = tmp_path / "out"
-    plot = out / "plot"
+    plot = out / "plots"
     plot.mkdir(parents=True)
     metacool = _contig_map(plot / "network.metacool", network=True, partition=True)
     before = metacool.read_bytes()
     (plot / "notes.txt").write_text("the user's\n")
-    (plot / "bins_distribution.png").write_text("an earlier run's\n")
-    (tmp_path / "kept.png").write_text("the target of a link\n")
-    (plot / "bins_size_distribution.png").symlink_to(tmp_path / "kept.png")
+    (plot / "bins_distribution.pdf").write_text("an earlier run's\n")
+    (tmp_path / "kept.pdf").write_text("the target of a link\n")
+    (plot / "bins_size_distribution.pdf").symlink_to(tmp_path / "kept.pdf")
     options = ["-F"] if force else []
     args = (
         _step_run("validation", metacool, tmp_path, *options)
@@ -2327,44 +2489,74 @@ def test_the_plots_of_an_earlier_run(command, force, stub_pipeline, tmp_path, ru
     if not force:
         with pytest.raises(ValueError):
             run_cli(command, *args)
-        assert all(os.path.lexists(plot / name) for name in ["bins_distribution.png", "bins_size_distribution.png"])
-        assert _no_step(stub_pipeline) and not (out / "final_clusters").exists()
+        assert all(os.path.lexists(plot / name) for name in ["bins_distribution.pdf", "bins_size_distribution.pdf"])
+        assert _no_step(stub_pipeline) and not (out / "fasta").exists()
         (log,) = out.glob(f"metator_{command}_*.log")
         assert (
-            f"ERROR :: {plot} holds the plots of an earlier run ('bins_distribution.png', 'bins_size_distribution.png'), "
+            f"ERROR :: {plot} holds the plots of an earlier run ('bins_distribution.pdf', 'bins_size_distribution.pdf'), "
             "which this run draws again: give -F to replace them, or give the run another output directory with -o."
         ) in log.read_text()
     else:
         run_cli(command, *args)
         # Removed, for the validation to draw them (the stub draws none).
-        assert not any(os.path.lexists(plot / name) for name in ["bins_distribution.png", "bins_size_distribution.png"])
+        assert not any(os.path.lexists(plot / name) for name in ["bins_distribution.pdf", "bins_size_distribution.pdf"])
         assert stub_pipeline["recursive_decontamination_kwargs"]["plot_outdir"] == str(out)
     assert (plot / "notes.txt").read_text() == "the user's\n" and metacool.read_bytes() == before
-    assert (tmp_path / "kept.png").read_text() == "the target of a link\n"
+    assert (tmp_path / "kept.pdf").read_text() == "the target of a link\n"
+
+
+@pytest.mark.parametrize("force", [False, True], ids=["refused", "-F"])
+def test_the_tables_of_an_earlier_run(force, stub_pipeline, tmp_path, run_cli):
+    """The tables of an earlier run in tables/, which a pipeline run writes again
+    from the map of its clusters (metator dump), are refused without -F, before
+    any work, and removed with -F once the run is checked: they would describe
+    another map, should the run stop before it writes its own. The other files
+    of tables/ are left as they are, with or without -F."""
+    metacool = _contig_map(tmp_path / "input.metacool")
+    out = tmp_path / "out"
+    tables = out / "tables"
+    tables.mkdir(parents=True)
+    (tables / "binning.txt").write_text("an earlier run's\n")
+    (tables / "notes.txt").write_text("the user's\n")
+    if not force:
+        with pytest.raises(ValueError):
+            run_cli("pipeline", *_map_run(metacool, tmp_path))
+        assert (tables / "binning.txt").read_text() == "an earlier run's\n"
+        assert _no_step(stub_pipeline) and not (out / "fasta").exists()
+        (log,) = out.glob("metator_pipeline_*.log")
+        assert (
+            f"ERROR :: {tables} holds the tables of an earlier run ('binning.txt'), which this run writes again: give -F "
+            "to replace them, or give the run another output directory with -o."
+        ) in log.read_text()
+    else:
+        run_cli("pipeline", *_map_run(metacool, tmp_path, "-F"))
+        # Removed, for the run to write them again (its stub outputs write none).
+        assert not os.path.lexists(tables / "binning.txt") and stub_pipeline["run_export"]
+    assert (tables / "notes.txt").read_text() == "the user's\n"
 
 
 @pytest.mark.parametrize("command", ["validation", "pipeline"])
-@pytest.mark.parametrize("what", ["plot, a file", "a plot, a directory"])
+@pytest.mark.parametrize("what", ["plots, a file", "a plot, a directory"])
 def test_where_the_run_draws_no_plot(command, what, stub_pipeline, tmp_path, run_cli):
-    """A plot/ that is no directory, or a directory where a plot goes, is refused
+    """A plots/ that is no directory, or a directory where a plot goes, is refused
     with or without -F, before any work, and left as it is: the run would draw
     no plot there."""
     metacool = _contig_map(tmp_path / "network.metacool", network=True, partition=True)
     out = tmp_path / "out"
     out.mkdir()
-    if what == "plot, a file":
-        where = out / "plot"
+    if what == "plots, a file":
+        where = out / "plots"
         where.write_text("a file\n")
         message = f"{where} is not a directory, where the run draws its plots"
     else:
-        where = out / "plot" / "bins_size_distribution.png"
+        where = out / "plots" / "bins_size_distribution.pdf"
         where.mkdir(parents=True)
         message = f"{where} is a directory, where the run draws a plot"
     args = _step_run("validation", metacool, tmp_path, "-F") if command == "validation" else _map_run(metacool, tmp_path, "-F")
     with pytest.raises(ValueError):
         run_cli(command, *args)
-    assert where.is_file() if what == "plot, a file" else where.is_dir()
-    assert _no_step(stub_pipeline) and not (out / "final_clusters").exists()
+    assert where.is_file() if what == "plots, a file" else where.is_dir()
+    assert _no_step(stub_pipeline) and not (out / "fasta").exists()
     (log,) = out.glob(f"metator_{command}_*.log")
     assert f"ERROR :: {message}: move it away, or give the run another output directory with -o." in log.read_text()
 
@@ -2380,42 +2572,42 @@ def test_the_map_of_the_run_is_no_earlier_output(command, stub_pipeline, tmp_pat
     else:
         args = _map_run(metacool, tmp_path)
     run_cli(command, *args)
-    assert (out / "final_clusters").is_dir()
+    assert (out / "fasta" / "mags_with-mges").is_dir()
 
 
 @pytest.mark.parametrize("command", ["validation", "pipeline"])
 @pytest.mark.parametrize(
     "where",
     [
-        "in final_clusters",
+        "in fasta/mags_with-mges",
         "recursive_clusters",
         "recursive_bin",
         "through a link of -o",
-        "through a link of final_clusters",
+        "through a link of fasta/mags_with-mges",
     ],
 )
 def test_tmpdir_in_the_clusters_refused(command, where, stub_pipeline, tmp_path, run_cli):
-    """A --tmpdir in final_clusters or in a directory of an earlier run's results,
-    as written or through links, is refused as a usage error before anything is
-    created or removed."""
+    """A --tmpdir in fasta/mags_with-mges, which the run makes anew, or in a
+    directory of an earlier run's results, as written or through links, is
+    refused as a usage error before anything is created or removed."""
     metacool = _contig_map(tmp_path / "network.metacool", network=True, partition=True)
     earlier = _earlier_run("validation", tmp_path)
     out = tmp_path / "out"
     if where == "through a link of -o":
         (tmp_path / "alias").symlink_to(out)
-    if where == "through a link of final_clusters":
-        shutil.move(out / "final_clusters", tmp_path / "elsewhere")
-        (out / "final_clusters").symlink_to(tmp_path / "elsewhere")
+    if where == "through a link of fasta/mags_with-mges":
+        shutil.move(out / MAGS_WITH_MGES, tmp_path / "elsewhere")
+        (out / MAGS_WITH_MGES).symlink_to(tmp_path / "elsewhere")
         earlier = [tmp_path / "elsewhere" / "earlier.fa", earlier[0]]
     outdir = tmp_path / "alias" if where == "through a link of -o" else out
     tmpdir = {
-        "in final_clusters": out / "final_clusters" / "tmp",
+        "in fasta/mags_with-mges": out / MAGS_WITH_MGES / "tmp",
         "recursive_clusters": out / "recursive_clusters",
         "recursive_bin": out / "recursive_bin" / "tmp",
-        "through a link of -o": out / "final_clusters" / "tmp",
-        "through a link of final_clusters": out / "final_clusters" / "tmp",
+        "through a link of -o": out / MAGS_WITH_MGES / "tmp",
+        "through a link of fasta/mags_with-mges": out / MAGS_WITH_MGES / "tmp",
     }[where]
-    clusters = outdir / (where if where in ("recursive_clusters", "recursive_bin") else "final_clusters")
+    clusters = outdir / (where if where in ("recursive_clusters", "recursive_bin") else MAGS_WITH_MGES)
     if command == "validation":
         args = _step_run("validation", metacool, tmp_path, "-o", outdir, "-T", tmpdir, "-F")
     else:
@@ -2427,13 +2619,37 @@ def test_tmpdir_in_the_clusters_refused(command, where, stub_pipeline, tmp_path,
     where = (
         "where an earlier version wrote its results, which the run refuses"
         if where in ("recursive_clusters", "recursive_bin")
-        else "where the run writes its clusters, which it makes anew (-F replaces an earlier one)"
+        else "which the run makes anew (-F replaces an earlier one)"
     )
     message = f"Invalid value for '-T' / '--tmpdir': {tmpdir} is in {clusters}, {where}: give a temporary directory outside it."
     assert message in " ".join(result.output.replace("│", " ").split())
     assert all(path.exists() for path in earlier)
     assert sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*")) == before
     assert not stub_pipeline
+
+
+@pytest.mark.parametrize(
+    ("directory", "mges"),
+    [(os.path.join("fasta", "mags"), False), ("cool", False), (os.path.join("fasta", "mges"), True)],
+    ids=["fasta/mags", "cool", "fasta/mges with --mges"],
+)
+def test_tmpdir_in_an_output_of_the_pipeline_refused(directory, mges, stub_pipeline, tmp_path, run_cli):
+    """A --tmpdir in a directory that pipeline makes anew for its outputs, which
+    -F replaces (fasta/mags, cool, and fasta/mges with --mges), is refused as a
+    usage error before anything is created or removed; fasta/mges is no
+    output of a run without --mges."""
+    metacool = _contig_map(tmp_path / "input.metacool")
+    out = tmp_path / "out"
+    tmpdir = out / directory / "tmp"
+    options = ["--mges", tmp_path / "mges.txt"] if mges else []
+    (tmp_path / "mges.txt").write_text("c2\n")
+    result = run_cli("pipeline", metacool, "-a", _assembly(tmp_path), "-o", out, "-T", tmpdir, "-F", *options, exit_code=2)
+    message = (
+        f"Invalid value for '-T' / '--tmpdir': {tmpdir} is in {out / directory}, which the run makes anew (-F replaces "
+        "an earlier one): give a temporary directory outside it."
+    )
+    assert message in " ".join(result.output.replace("│", " ").split())
+    assert not out.exists() and not stub_pipeline
 
 
 @pytest.mark.parametrize("command", ["partition", "validation"])
@@ -2909,8 +3125,8 @@ def test_force_replaces_a_link_of_clusters_not_its_target(dangling, stub_pipelin
     if not dangling:
         target.mkdir()
         (target / "earlier.fa").write_text(">c1\nACGT\n")
-    link = tmp_path / "out" / "final_clusters"
-    link.parent.mkdir()
+    link = tmp_path / "out" / MAGS_WITH_MGES
+    link.parent.mkdir(parents=True)
     link.symlink_to(target)
     with pytest.raises(ValueError):
         run_cli("validation", *_step_run("validation", None, tmp_path))
@@ -3006,13 +3222,13 @@ def test_pipeline_refuses_earlier_bins_before_reading_the_assembly(tmp_path, mon
 
     monkeypatch.setattr("metator.network.create_contig_data", create_contig_data)
     out = tmp_path / "out"
-    (out / "final_clusters").mkdir(parents=True)
+    (out / MAGS_WITH_MGES).mkdir(parents=True)
     assembly = tmp_path / "assembly.fa"
     shutil.copyfile(TESTS_DATA / "subset.assembly.fa", assembly)
     with pytest.raises(ValueError):
         run_cli("pipeline", _contig_map(tmp_path / "map.metacool"), "-a", assembly, "-o", out, "-T", tmp_path / "tmp")
     (log,) = out.glob("metator_pipeline_*.log")
-    assert f"ERROR :: {out / 'final_clusters'} already existed." in log.read_text()
+    assert f"ERROR :: {out / MAGS_WITH_MGES} already existed." in log.read_text()
 
 
 def test_final_clusters_are_those_of_their_fasta_files(tmp_path, caplog):
@@ -3054,8 +3270,9 @@ def test_pipeline_leaves_the_directory_of_the_assembly_alone(stub_pipeline, tmp_
 
 @pytest.mark.parametrize("flag", [None, "--random", "--reassign"], ids=["mge", "--random", "--reassign"])
 def test_mge_default_outdir(flag, tmp_path, monkeypatch, run_cli):
-    """Without --outdir, mge writes its MGE fasta to the current directory
-    (mges_binned_random.fa with --random), with the assembly that the map was
+    """Without --outdir, mge writes the FASTA files of its MGE clusters to
+    fasta/mges of the current directory (fasta/mges_random with --random),
+    which it makes, with the assembly that the map was
     made from, and stores the round mge (mge_random) in the map, and its MGE
     clusters as genomes with --reassign; its temporary directory is removed at
     its end, and nothing is written next to the assembly."""
@@ -3073,9 +3290,9 @@ def test_mge_default_outdir(flag, tmp_path, monkeypatch, run_cli):
         calls["binning"] = (metacool, mges_list, threshold_bin, random)
         return summary, {1: {"Contigs": ["c2"], "Score": float("nan")}}
 
-    def write_mges_fasta(metacool, assembly, mge_bins, out_file, temp_dir):
-        calls["fasta"] = (metacool, assembly, out_file)
-        assert os.path.isdir(temp_dir)
+    def write_mges_fasta(metacool, assembly, mge_bins, out_dir, temp_dir):
+        calls["fasta"] = (metacool, assembly, out_dir)
+        assert os.path.isdir(temp_dir) and os.path.isdir(out_dir)
 
     def write_map(metacool, outfile, planned, what, mge, reassign):
         (clusters, members), entry = mge
@@ -3092,8 +3309,8 @@ def test_mge_default_outdir(flag, tmp_path, monkeypatch, run_cli):
     mges.write_text("c2\n")
     run_cli("mge", metacool, "-a", assembly, "-m", mges, *([flag] if flag else []))
     assert calls["binning"] == (str(metacool), ["c2"], 0.8, random)
-    fasta = "mges_binned_random.fa" if random else "mges_binned.fa"
-    assert calls["fasta"] == (str(metacool), str(assembly), os.path.join(".", fasta))
+    fasta = "mges_random" if random else "mges"
+    assert calls["fasta"] == (str(metacool), str(assembly), os.path.join(".", "fasta", fasta))
     name = mtcl.MGE_RANDOM if random else mtcl.MGE
     # The map of the output directory, the current one: the map itself, in
     # place.

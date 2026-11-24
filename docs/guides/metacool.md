@@ -363,6 +363,11 @@ metator validation binning/sample.metacool -a assembly.fa -o binning
   their positions in the map as the validation reads it: a validation run
   again on the map of the clusters, whose contigs are grouped by cluster,
   numbers them in that order.
+- `mge MAP --reassign` and `host MAP`, run next on the map of the clusters,
+  store the MGE clusters, as genomes of the map, and their hosts in it, as
+  `pipeline MAP --mges` does in its steps `mge` and `host`, which update in
+  place the map that its validation wrote (see
+  [Clustering mobile genetic elements](mge.md)).
 
 `network MAP`, `partition MAP` and `validation MAP` write the map as
 `pipeline MAP` does: to their output directory, through a map written next to

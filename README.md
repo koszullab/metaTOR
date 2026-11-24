@@ -77,10 +77,10 @@ reads (`hicstuff pipeline -M metacool`) and
 from the pairs files or the BAM files of the run. Every command takes the map
 as its first argument: the clustering steps, `mge` and `host` store what they
 find in it, so that the map is what the steps share, and it becomes the
-contact map of the clusters; `dump` only reads it.
+contact map of the clusters; `dump` and `export` only read it.
 
 ```sh
-metator {network|partition|validation|pipeline|mge|host|dump} MAP [OPTIONS]
+metator {network|partition|validation|pipeline|mge|host|dump|export} MAP [OPTIONS]
 metator {network|pipeline} PAIRS_OR_BAM... [OPTIONS]
 ```
 
@@ -89,10 +89,11 @@ metator {network|pipeline} PAIRS_OR_BAM... [OPTIONS]
 | `network` | Builds the network of the contigs from the map (or makes the map first, from pairs or BAM files), normalizes it, and stores it in the map. |
 | `partition` | Partitions the network many times with Louvain or Leiden, and stores the core and overlapping clusters in the map. |
 | `validation` | Checks the overlapping clusters with miComplete, partitions the contaminated ones again, writes the FASTA files of the final clusters, and makes the map the contact map of the clusters. |
-| `pipeline` | Runs `network`, `partition` and `validation` in one command, from the map or from pairs or BAM files. |
+| `pipeline` | Runs `network`, `partition` and `validation` in one command, from the map or from pairs or BAM files; with `--mges`, then `mge --reassign` and `host`. |
 | `mge` | Clusters the contigs of mobile genetic elements (MGEs) from their contacts, and stores the MGE clusters in the map. |
 | `host` | Finds the MAGs that host the MGE clusters, from their contacts, and stores them in the map. |
 | `dump` | Writes the tables of a run (contig data, cluster summary, binning, clustering rounds, network) from the map of its clusters. |
+| `export` | Writes the outputs of a run again (`fasta/`, `cool/`, `tables/`, `plots/`) from the map of its clusters, and its assembly for the FASTA files. |
 
 `metator --help` lists the commands, `metator <command> --help` their options,
 and `metator --version` prints the version. A run writes its map to its output
@@ -120,6 +121,9 @@ metator pipeline sample.metacool -a assembly.fa -e DpnII -d depth.txt -o binning
 
 # 4. The tables of the run, from the map.
 metator dump binning/sample.metacool -o tables
+
+# Or every output of the run again, from the map and the assembly.
+metator export binning/sample.metacool -a assembly.fa -o outputs
 ```
 
 `hicstuff pipeline -M metacool` needs hicstuff 4.0.0 or later; with an
@@ -182,9 +186,13 @@ metator validation binning/sample.metacool -a assembly.fa -o binning
 ### Outputs
 
 **In the output directory** (`-o`): the map of the run, named as `MAP`;
-`final_clusters/`, one FASTA file per final cluster; `plot/`, the plots of
-the quality of the clusters (their completeness and contamination, and the
-size of each quality class); and the log of the run,
+`fasta/mags_with-mges/`, one FASTA file per final cluster; `plots/`, the plots
+of the quality of the clusters, as PDF files (their completeness and
+contamination, and the size of each quality class); from `pipeline`,
+`fasta/mags/`, each MAG as its contigs and stitched (one record, its contigs
+joined by 200 `N`), `cool/`, a balanced cool file per MAG (with the MGE
+clusters that it hosts), and `tables/`, the tables of `metator dump`; and the
+log of the run,
 `metator_<command>_<date>.log`, which starts with the version, the command line
 and the value of each option, and ends with what the run wrote and how long it
 took.
@@ -237,12 +245,18 @@ files of the clusters it checked; `network.txt` comes from the map only. [File f
 within each, between reads more than 1 kb apart, which the map counts when
 hicstuff or metacooler made it from the pairs (metacooler 0.4.0 or later). It
 reads the map after `metator network`, `pipeline` or `validation`, writes
-`mges_binned.fa`, one record per MGE cluster (`MetaTOR_MGE_00001`...), its
-contigs joined by 200 `N`, and stores the MGE clusters in the map of its output
+`fasta/mges/`, each MGE cluster (`MetaTOR_MGE_00001`...) as its contigs and
+stitched (its contigs joined by 200 `N`), and stores the MGE clusters in the
+map of its output
 directory, as the round `mge` of its clustering rounds (`-o binning` updates
 `binning/sample.metacool` in place). `metator host MAP` then finds the MAGs
 that host each MGE cluster, those that its contigs are in contact with, writes
-them in `mge_hosts.txt`, and stores them in the map. See
+them in `tables/mge_hosts.txt`, and stores them in the map. `metator pipeline
+MAP --mges mges.txt` runs both after the validation, as its last two steps
+(`mge --reassign`, which makes each MGE cluster a genome of the map, then
+`host`); without `--mges`, it has no steps `mge` and `host`, and says so. Its
+last step, `export`, writes the outputs of the run from its map, as
+`metator export` does. See
 [Clustering mobile genetic elements](https://koszullab.github.io/metator/guides/mge/).
 
 ## Migrating from metaTOR 1.x

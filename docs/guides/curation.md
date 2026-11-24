@@ -20,15 +20,16 @@ below.
 ## 1. The contigs database
 
 The database holds only the contigs of the final clusters, those of
-`binning.txt`, whose records the run wrote in `final_clusters/`, one FASTA file
-per cluster:
+`binning.txt`, whose records the run wrote in `fasta/mags_with-mges/`, one
+FASTA file per cluster (here a run without `--mges`, whose MGE genomes would be
+in `binning.txt` too, and their contigs in `fasta/mges/`):
 
 ```bash
-# The tables of the run, from the map of its clusters
-metator dump binning/sample.metacool -o tables
+# The tables of the run, which pipeline writes in binning/tables (metator dump
+# writes them from the map of the clusters of a run step by step)
 mkdir -p anvio
-cut -f 1 tables/binning.txt > anvio/contigs.txt
-cat binning/final_clusters/*.fa > anvio/contigs.fa
+cut -f 1 binning/tables/binning.txt > anvio/contigs.txt
+cat binning/fasta/mags_with-mges/*.fa > anvio/contigs.fa
 ```
 
 anvi'o reads only contig names made of ASCII letters, digits and underscores:
@@ -119,7 +120,7 @@ anvi-export-collection -p anvio/merged/PROFILE.db -C metator -O anvio/curated
 From `anvio/curated.txt`, metaTOR's Python API writes one FASTA file per
 cluster, checks the clusters with miComplete as `metator validation` does,
 counts them in the quality classes of its log, and draws the plots of their
-quality, as the run draws those of its clusters in `binning/plot/`:
+quality, as the run draws those of its clusters in `binning/plots/`:
 
 ```python
 import metacooler
@@ -149,12 +150,12 @@ print(quality.value_counts())
 # The plots of metaTOR's validation, for the curated clusters: the pie chart
 # of the contigs of the map, as the run draws it.
 total = int(metacooler.MetaCooler("binning/sample.metacool").contigs["length"].sum())
-mtf.figures_bins_distribution(summary, "anvio/bins_distribution.png")
-mtf.figures_bins_size_distribution(summary, total, 500000, "anvio/bins_size_distribution.png")
+mtf.figures_bins_distribution(summary, "anvio/bins_distribution.pdf")
+mtf.figures_bins_size_distribution(summary, total, 500000, "anvio/bins_size_distribution.pdf")
 ```
 
-Compare them with `binning/plot/bins_distribution.png` and
-`binning/plot/bins_size_distribution.png`, those of the clusters before the
+Compare them with `binning/plots/bins_distribution.pdf` and
+`binning/plots/bins_size_distribution.pdf`, those of the clusters before the
 curation.
 
 To look at the contacts of a curated cluster, add the curated clusters to the

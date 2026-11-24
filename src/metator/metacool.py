@@ -729,6 +729,14 @@ def holds_hosts(mc):
     return isinstance(_metator_metadata(mc).get(HOST_ENTRY), dict)
 
 
+def host_entry(mc):
+    """The host entry of the metator metadata of the map mc (see HOST_ENTRY): what
+    the run that found the hosts of its MGE clusters recorded, its command line
+    and its parameters among them; None when the map holds no hosts."""
+    entry = _metator_metadata(mc).get(HOST_ENTRY)
+    return entry if isinstance(entry, dict) else None
+
+
 def hosts_network(mc):
     """The digest of the network that metator host read to find the hosts that
     the map mc holds (see holds_hosts), as its host entry records it: None when
@@ -1000,9 +1008,11 @@ class FinalClusters:
         The final cluster of each binned contig, by name: the other contigs of
         the map go to metacooler's __unbinned__ genome.
     summary : str
-        The summary of the final clusters (cluster_summary.txt, in the
-        temporary directory of the run): one row per final cluster, named by
-        its first column, whose other columns go to the genomes table.
+        The summary of the final clusters at full precision
+        (cluster_summary_full.txt, in the temporary directory of the run; see
+        metator.io.SUMMARY_FULL_FILE): one row per final cluster, named by its
+        first column, whose other columns go to the genomes table, with the
+        values of miComplete, where cluster_summary.txt rounds them.
     rounds : tuple of pandas.DataFrame
         The clustering rounds of the run, every cluster and its contigs (see
         metator.clusters.read_rounds), which replace those of the map.
@@ -1031,11 +1041,13 @@ def write_map(
     drop_hosts=False,
     force=False,
     planned=None,
+    mge_follows=False,
 ):
     """Write the map of a run at outfile from its input map, metacool: what the
     run stores in it, everything else as it was. Each step of a run writes its
     map so, and pipeline writes what its three steps store, in one map, as the
-    steps one by one write it.
+    steps one by one write it (then, with --mges, its steps mge and host store
+    the round mge and the hosts in it, as mge and host do).
 
     Everything goes into one edit session (see _staged_edit), validated once
     and renamed once; on any failure outfile is left as it was. In order: the
@@ -1094,6 +1106,11 @@ def write_map(
         is refused if it changed since (another run replaced it, or a program
         wrote it), rather than written from another map than the one that the
         run worked on.
+    mge_follows : bool
+        Whether the run stores the round mge and the hosts of its MGE clusters
+        in the map once it is written (pipeline --mges, in its steps mge and
+        host): the warnings of what the map no longer holds leave them out,
+        which the run makes again.
 
     Raises
     ------
@@ -1198,8 +1215,10 @@ def write_map(
                 # an earlier round mge that the other rounds kept).
                 _drop_hosts(staged, metacool)
         logger.debug(f"{outfile} is written: the contact map{written}.")
-    _warn_dropped_rounds(later, metacool, outfile, in_place)
-    if dropped_hosts:
+    _warn_dropped_rounds(
+        [entry for entry in later if not (mge_follows and entry["name"] == mtcl.MGE)], metacool, outfile, in_place
+    )
+    if dropped_hosts and not mge_follows:
         _warn_dropped_hosts(metacool, outfile, in_place, replaced)
 
 
@@ -1311,7 +1330,7 @@ def _reassign(path, metacool, read, assignment, genomes_table, layout, metadata=
             path,
             layout=layout,
             # The genome names are the first column of the table, unnamed in
-            # cluster_summary.txt.
+            # the summary of the validation (cluster_summary_full.txt).
             genomes_table=genomes_table,
             genomes_table_format="1",
             metadata=metadata,

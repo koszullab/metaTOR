@@ -4,7 +4,9 @@
 
 from pathlib import Path
 import pandas as pd
+import cooler
 import metator.cli as mtc
+import metator.dump as mtd
 import metator.metacool as mtmc
 import metator.network as mtn
 import metacooler
@@ -230,6 +232,19 @@ def test_pipeline(a_map, tmp_path, run_cli):
     (summary,) = Path(tmp_path, "tmp").glob("*/cluster_summary.txt")
     assert set(genomes.name) - {"__unbinned__"} == {line.split("\t")[0] for line in summary.read_text().splitlines()[1:]}
     assert not list(Path(tmp_path, "out_test").glob("*.txt"))
+    # The outputs of the run: the FASTA files of its final clusters and of its
+    # MAGs (each as its contigs and stitched), a cool file per MAG, balanced
+    # (weights in its bins), its tables (metator dump) and its plots (PDF).
+    out = Path(tmp_path, "out_test")
+    mags = sorted(set(genomes.name) - {"__unbinned__"})
+    assert sorted(path.stem for path in (out / "fasta" / "mags_with-mges").iterdir()) == mags
+    assert sorted(path.name for path in (out / "fasta" / "mags").iterdir()) == sorted(
+        f"{mag}{suffix}" for mag in mags for suffix in (".fa", ".stitched.fa")
+    )
+    assert sorted(path.stem for path in (out / "cool").iterdir()) == mags
+    assert all("weight" in cooler.Cooler(str(path)).bins().columns for path in (out / "cool").iterdir())
+    assert sorted(path.name for path in (out / "tables").iterdir()) == sorted(mtd.TABLES)
+    assert sorted(path.name for path in (out / "plots").iterdir()) == ["bins_distribution.pdf", "bins_size_distribution.pdf"]
     # The contig columns but Shotgun_coverage, which is - without a depth
     # file.
     contigs = metacooler.MetaCooler(str(metacool)).contigs
@@ -485,10 +500,10 @@ def test_pipeline_bad_choices(case, tmp_path, run_cli):
     assert not (tmp_path / "out").exists()
 
 
-@pytest.mark.parametrize("existing", ["final_clusters"])
+@pytest.mark.parametrize("existing", [os.path.join("fasta", "mags_with-mges"), os.path.join("fasta", "mags"), "cool"])
 def test_pipeline_refuses_existing_outputs(existing, a_map, tmp_path, run_cli, logged):
-    """A directory of clusters of an earlier run is refused without -F, named in
-    the log."""
+    """A directory of the outputs of an earlier run (its final clusters, its MAGs,
+    their cool files) is refused without -F, named in the log."""
     (tmp_path / "out" / existing).mkdir(parents=True)
     args = [a_map(), "-a", global_args["SUBSET_FASTA"], "-o", str(tmp_path / "out"), "-T", str(tmp_path / "tmp")]
     with pytest.raises(ValueError):
@@ -498,20 +513,23 @@ def test_pipeline_refuses_existing_outputs(existing, a_map, tmp_path, run_cli, l
 
 
 def test_pipeline_force_replaces_outputs(a_map, network_from_a_map, tmp_path, run_cli, logged):
-    """-F replaces final_clusters and leaves a directory that no version writes any more."""
-    (tmp_path / "out" / "final_clusters").mkdir(parents=True)
-    (tmp_path / "out" / "final_clusters" / "stale.fa").write_text(">old\nA\n")
+    """-F replaces the directories of the outputs of an earlier run, once the
+    network is built, and leaves a directory that no version writes any more."""
+    stale = [tmp_path / "out" / name / "stale" for name in [os.path.join("fasta", "mags_with-mges"), "cool"]]
+    for path in stale:
+        path.parent.mkdir(parents=True)
+        path.write_text("an earlier run's\n")
     (tmp_path / "out" / "overlapping_clusters").mkdir(parents=True)
     (tmp_path / "out" / "overlapping_clusters" / "earlier.fa").write_text(">old\nA\n")
     args = [a_map(), "-a", global_args["SUBSET_FASTA"], "-F", "-o", str(tmp_path / "out"), "-T", str(tmp_path / "tmp")]
     with pytest.raises(RuntimeError, match=r"^network built$"):
         run_cli("pipeline", *args)
-    assert not (tmp_path / "out" / "final_clusters" / "stale.fa").exists()
+    assert not any(path.exists() for path in stale) and all(path.parent.is_dir() for path in stale)
     assert (tmp_path / "out" / "overlapping_clusters" / "earlier.fa").exists()
     assert not [message for _, message in logged() if message.startswith("Removed ")]
 
 
-@pytest.mark.parametrize("existing", ["final_clusters"])
+@pytest.mark.parametrize("existing", [os.path.join("fasta", "mags_with-mges")])
 def test_validation_refuses_existing_outputs(existing, a_network_map, tmp_path, run_cli, logged):
     (tmp_path / "out" / existing).mkdir(parents=True)
     args = ("{MAP} -a {SUBSET_FASTA} -o {OUT} -T {TMP}").format(

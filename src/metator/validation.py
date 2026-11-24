@@ -758,7 +758,7 @@ def recursive_decontamination(
         directory of the run.
     plot_outdir : str, optional
         The output directory of the run, where the plots of the final clusters
-        are drawn, in ``plot/`` (see metator.figures.plot_figures). None draws
+        are drawn, in ``plots/`` (see metator.figures.plot_figures). None draws
         none.
 
     Returns
@@ -983,7 +983,7 @@ def recursive_decontamination(
     rounds.write(outdir, pd.Series(contigs_data["Size"].to_numpy(), index=contigs_data["Name"].astype(str).to_numpy()))
 
     # Save bin information in final file
-    summary = mio.write_bin_summary(bin_summary, join(outdir, "cluster_summary.txt"))
+    summary = mio.write_bin_summary(bin_summary, join(outdir, "cluster_summary.txt"), join(outdir, mio.SUMMARY_FULL_FILE))
 
     # Write the new file
     contigs_data.to_csv(join(outdir, "contig_data_final.txt"), sep="\t", header=True, index=True)

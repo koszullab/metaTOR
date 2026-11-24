@@ -149,11 +149,14 @@ def import_mges_contigs(mges_file):
     Returns
     -------
     list
-        List of the mges contigs names."""
+        List of the mges contigs names: the first word of each line, its blank
+        lines left out."""
     mges_list = []
     with open(mges_file, "r") as mges:
         for contig in mges:
-            mges_list.append(contig.split()[0])
+            words = contig.split()
+            if words:
+                mges_list.append(words[0])
     return mges_list
 
 
@@ -311,7 +314,14 @@ def _summary_format(column, values):
     return "%s"
 
 
-def write_bin_summary(bin_summary, bin_summary_file):
+#: The summary of the final clusters at full precision, which the validation
+#: writes beside cluster_summary.txt (whose floats have 2 decimals), and which
+#: the map of the clusters stores: the quality classes of the clusters (see
+#: metator.validation.bin_quality) are those of the values of miComplete.
+SUMMARY_FULL_FILE = "cluster_summary_full.txt"
+
+
+def write_bin_summary(bin_summary, bin_summary_file, full_file=None):
     """Function to write the bin summary from dictionnary to table text file.
 
     Parameters
@@ -320,6 +330,10 @@ def write_bin_summary(bin_summary, bin_summary_file):
         Dictionnary with the output of the miComplete of the bins.
     bin_summary_file : str
         Path to the output file to write the summary informations of the bins.
+    full_file : str, optional
+        Path to the same table, its values at full precision (see
+        SUMMARY_FULL_FILE), where bin_summary_file writes its floats with 2
+        decimals, and the abundances with 4.
 
     Returns
     -------
@@ -331,6 +345,8 @@ def write_bin_summary(bin_summary, bin_summary_file):
     # Transform dictionnary to pandas DataFrame.
     bin_summary = pd.DataFrame.from_dict(bin_summary, orient="index")
     formats = {str(column): _summary_format(column, bin_summary[column]) for column in bin_summary.columns}
+    if full_file is not None:
+        bin_summary.to_csv(full_file, sep="\t")
 
     # Change float format of the coverage.
     bin_summary["HiC_abundance"] = bin_summary["HiC_abundance"].map(lambda x: "%.4f" % x)

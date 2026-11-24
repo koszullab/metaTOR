@@ -50,6 +50,12 @@ metaTOR 1.x counted it from the pairs files.
 metator mge binning/sample.metacool -a assembly.fa -m mges.txt -o binning
 ```
 
+`metator pipeline MAP --mges mges.txt` runs it, with `--reassign`, as its step
+`mge`, on the map of its clusters, then [`metator host`](#the-hosts) as its
+step `host`: `--mge-threshold-bin` is the `--threshold-bin` of its step `mge`
+(see
+[Mobile genetic elements and their hosts](pipeline.md#mobile-genetic-elements-and-their-hosts)).
+
 | Input | What it is |
 |---|---|
 | `MAP` | The contact map of the run, which `metator network` stored the network of its contigs in (the map that `metator network`, `pipeline` or `validation` wrote in its output directory): it gives the contacts of the MGE contigs, and the size, GC content and hits of each, which `metator network` stored in it. Its clusters, if it has any, are not read. It must hold the contact statistics of the reads of its contigs, at 1001 bp: `hicstuff pipeline -M metacool` and `metacooler create pairs` count them as they make the map from the pairs files, with metacooler 0.4.0 or later (`metacooler create pairs --qc-threshold 1001` with an earlier one) |
@@ -59,8 +65,8 @@ metator mge binning/sample.metacool -a assembly.fa -m mges.txt -o binning
 | Option | Default | Effect |
 |---|---|---|
 | `--threshold-bin` (`-s`) | 0.8 | The score above which two contigs, or clusters, are merged. A lower threshold merges more |
-| `--random` (`-r`) | off | Shuffle the contigs between the clusters, keeping the number of contigs of each: a random clustering of the same shape, to compare the real one with. Stored as the round `mge_random`, and written to `mges_binned_random.fa` |
-| `--outdir` (`-o`) | current directory | Where `mges_binned.fa` and the map of the run go: `MAP` itself, updated in place, when it is there already |
+| `--random` (`-r`) | off | Shuffle the contigs between the clusters, keeping the number of contigs of each: a random clustering of the same shape, to compare the real one with. Stored as the round `mge_random`, and written to `fasta/mges_random/` |
+| `--outdir` (`-o`) | current directory | Where `fasta/mges/` and the map of the run go: `MAP` itself, updated in place, when it is there already |
 | `--reassign` | off | Make each MGE cluster a genome of the map, its contigs out of the final clusters that held them (see [MGE genomes](#mge-genomes)). Refused with `--random` |
 | `--inplace` | off | Store the MGE clusters in `MAP` itself, in place, rather than in the map of the output directory (see [In the contact map of the run](#in-the-contact-map-of-the-run)) |
 
@@ -78,20 +84,23 @@ assembly that is not a FASTA file, plain or compressed with gzip, as
 
 | Output | What it holds |
 |---|---|
-| `mges_binned.fa` | One record per MGE cluster, `MetaTOR_MGE_00001` and on: its contigs, the longest first (ties by name), joined by 200 `N`, in lines of 80 bases |
+| `fasta/mges/` | Two FASTA files per MGE cluster, named after it, `MetaTOR_MGE_00001` and on: `MetaTOR_MGE_00001.fa`, its contigs, as records of their own, and `MetaTOR_MGE_00001.stitched.fa`, one record, its contigs joined by 200 `N`, in lines of 80 bases; both the longest first (ties by name) |
 | The round `mge` of the map | One cluster per MGE cluster, named as its record: its contigs, length, GC content, hits and clustering score (`BinningScore`) (see [In the contact map of the run](#in-the-contact-map-of-the-run)) |
 | `metator_mge_<date>.log` | The log of the run, in the current directory |
 
 The clustering score of an MGE cluster is the lowest score at which its
-contigs were merged (missing for a single contig). The record of a cluster
-holds a single sequence, so that the tools that check the quality of an MGE
-genome, which expect one sequence per genome, read each cluster as one.
-metacooler writes it (`metacooler.write_fasta`, stitched).
+contigs were merged (missing for a single contig). The stitched file of a
+cluster holds a single sequence, so that the tools that check the quality of
+an MGE genome, which expect one sequence per genome, read each cluster as one.
+metacooler writes both (`metacooler.write_fasta`). The `fasta/mges/` of an
+earlier run is refused without `-F`, which replaces it.
 
 `mge` writes no summary table: the round `mge` holds what
 `mges_bin_summary.tsv` held (`mges_cluster_summary.tsv` in a development
 build). An earlier run's, in the output directory, would pass for this run's:
-it is refused, with or without `-F`, before any work, and never removed.
+it is refused, with or without `-F`, before any work, and never removed; so
+is the `mges_binned.fa` of an earlier version, one file of all the clusters,
+which `fasta/mges/` replaces.
 
 ## In the contact map of the run
 
@@ -102,7 +111,7 @@ of its clustering rounds (see
 it holds, those of a clustering run (`core`, `overlapping`,
 `recursive_<k>`, `final`), which are kept: their clusters, contigs and
 values. Each MGE
-cluster is named as its record of `mges_binned.fa` (`MetaTOR_MGE_00001`),
+cluster is named as its FASTA files in `fasta/mges/` (`MetaTOR_MGE_00001`),
 with its contigs and its columns: its length and number of contigs, which
 metacooler computes from its contigs, and its GC content (`GC`), hits
 (`Hit`) and clustering score (`BinningScore`). The entry `mge` of the
@@ -154,7 +163,9 @@ clusters, and gives the same MGE clusters on both. But a run that replaces
 the clusters of the map drops the rounds `mge` and `mge_random`, and their
 entries, with a warning that says so, as it drops every round that it does
 not make: `partition MAP`, `validation MAP` and `pipeline MAP`. Run `mge`
-again on the map that they write to store the MGE clusters there.
+again on the map that they write to store the MGE clusters there:
+`pipeline MAP --mges` does, in its step `mge`, and warns only of the round
+`mge_random`.
 
 ## MGE genomes
 
@@ -253,7 +264,7 @@ metator host binning/sample.metacool -o binning
 |---|---|---|
 | `--min-share` (`-s`) | 10 | The share of the signal of an MGE cluster with the MAGs, in percent, from which a MAG is a host |
 | `--min-contigs` (`-c`) | 5 | The number of contigs of a MAG in contact with an MGE cluster from which the MAG is a host |
-| `--outdir` (`-o`) | current directory | Where `mge_hosts.txt`, `mge_hosts.png`, the log and the map of the run go: `MAP` itself, updated in place, when it is there already |
+| `--outdir` (`-o`) | current directory | Where `tables/mge_hosts.txt`, `plots/mge_hosts.pdf`, the log and the map of the run go: `MAP` itself, updated in place, when it is there already |
 | `--inplace` | off | Store the hosts in `MAP` itself, in place, rather than in the map of the output directory |
 
 ### Reading the hosts
@@ -263,7 +274,7 @@ its contacts with the contigs in no MAG, and with the other MGE clusters,
 do not count. An MGE cluster with few contacts with the MAGs, as a phage
 that the library caught in its free particles, can then have a host from a
 small part of its contacts: on a mock community, a free phage of 42 kb had a
-host from 1% of its contacts. `share_of_all`, in `mge_hosts.txt`, is the
+host from 1% of its contacts. `share_of_all`, in `tables/mge_hosts.txt`, is the
 share of all its contacts with the other contigs: a host with a small one
 calls for a look at the contact map.
 
@@ -279,14 +290,14 @@ genome that carries one.
 `metator host` filters on no estimate of the noise of the library, and keeps
 no MAG as the only host when it has most of the signal: the rule of
 [Bignaud et al. 2025](../citation.md), which adds both, is left to the
-analysis of `mge_hosts.txt`.
+analysis of `tables/mge_hosts.txt`.
 
 ### What host writes
 
 | Output | What it holds |
 |---|---|
-| `mge_hosts.txt` | One row per MGE cluster and MAG in contact: their signal, the number of contigs of the MAG in contact, the share of the signal (`share`) and of all the contacts of the MGE cluster (`share_of_all`), and whether the MAG is a host (see [Hosts of the MGE clusters](../formats.md#hosts-of-the-mge-clusters)) |
-| `mge_hosts.png` | The distribution of the signal of the hosts, on a log scale, and of their share |
+| `tables/mge_hosts.txt` | One row per MGE cluster and MAG in contact: their signal, the number of contigs of the MAG in contact, the share of the signal (`share`) and of all the contacts of the MGE cluster (`share_of_all`), and whether the MAG is a host (see [Hosts of the MGE clusters](../formats.md#hosts-of-the-mge-clusters)) |
+| `plots/mge_hosts.pdf` | The distribution of the signal of the hosts, on a log scale, and of their share |
 | The round `mge` of the map | The number of hosts of each MGE cluster, their names by decreasing share, and their shares (`n_hosts`, `hosts`, `host_shares`) |
 | The genomes table of the map | The number of MGE clusters that each MAG hosts, and their names (`n_mges`, `mges`) |
 | `metator_host_<date>.log` | The log of the run, in its output directory |
@@ -315,7 +326,8 @@ as `metator host` read them. A second `host` run replaces them (in place,
 with a warning before any work), and a run that replaces one of these drops
 them, with a warning once its map is written: run `host` again on its map.
 So do `mge` (but `mge --random`, which leaves the round `mge` as it was),
-`partition`, `validation` and `pipeline`, and `network` when it stores
+`partition`, `validation` and `pipeline` (but `pipeline --mges`, which finds
+them again in its step `host`, without the warning), and `network` when it stores
 another network than the one the hosts were found on (another
 normalization, or the contacts of another library).
 

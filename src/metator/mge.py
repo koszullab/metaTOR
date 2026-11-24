@@ -28,9 +28,6 @@ INTRA_LONG = "qc_intra_contig_long"
 # contacts: those that metator network stores.
 MGE_COLUMNS = ["GC_content", "Hit"]
 
-# N between two contigs of an MGE cluster, in its record of mges_binned.fa.
-SPACER = 200
-
 # How to make a map that mge reads, said when it refuses one.
 HOW_TO_MAKE_A_MAP = (
     "Make the map from the pairs files of the run, with the contact statistics of its reads at 1001 bp: hicstuff "
@@ -51,7 +48,7 @@ def check_mge_map(metacool, mc):
 
     The contacts within an MGE contig are its reads at least 1001 bp apart,
     which only the map's QC block, measured from the pairs, gives; its pixels
-    do not.
+    do not (see check_mge_qc).
 
     Parameters
     ----------
@@ -68,6 +65,36 @@ def check_mge_map(metacool, mc):
         from its pixels or at another distance than 1001 bp, or lacks the
         columns of metator network: the reason, and how to make a map that mge
         reads."""
+    check_mge_qc(metacool, mc)
+    with mtmc.read_errors(metacool):
+        columns = set(mc.contigs.columns)
+    missing = [column for column in MGE_COLUMNS if column not in columns]
+    if missing:
+        raise mtmc.MetacoolError(
+            f"{metacool} lacks the {' and '.join(missing)} column(s) of its contigs table that metator network "
+            f"stores: {WHERE_THE_NETWORK_IS}"
+        )
+
+
+def check_mge_qc(metacool, mc):
+    """Refuse a map without the contact statistics that mge counts the contacts
+    within each MGE contig from: its QC block, measured from the pairs at 1001
+    bp, with the counts of each contig (see check_mge_map).
+
+    Parameters
+    ----------
+    metacool : str
+        Path to the .metacool file, or URI of an entry of a .mmetacool
+        collection: ``file.mmetacool::entries/<name>``.
+    mc : metacooler.MetaCooler
+        The map, opened.
+
+    Raises
+    ------
+    metator.metacool.MetacoolError
+        If the map holds no contact statistics of its pairs, or has them
+        measured from its pixels or at another distance than 1001 bp: the
+        reason, and how to make a map that mge reads."""
     with mtmc.read_errors(metacool):
         qc = mc.metadata.get("qc")
         columns = set(mc.contigs.columns)
@@ -89,12 +116,45 @@ def check_mge_map(metacool, mc):
             f"distance_threshold): metator mge counts those between reads more than 1 kb apart, at "
             f"{DISTANCE_THRESHOLD} bp and more. {HOW_TO_MAKE_A_MAP}"
         )
-    missing = [column for column in MGE_COLUMNS if column not in columns]
-    if missing:
-        raise mtmc.MetacoolError(
-            f"{metacool} lacks the {' and '.join(missing)} column(s) of its contigs table that metator network "
-            f"stores: {WHERE_THE_NETWORK_IS}"
-        )
+
+
+def check_contig_map(metacool, mc, mges_list):
+    """Refuse, before any work, the map of the contigs of a run that clusters
+    its MGE contigs once it has stored its network and its clusters there
+    (metator pipeline --mges, in its step mge): a map that mge would refuse then
+    for want of the contact statistics of its reads (see check_mge_qc), not of
+    the columns of metator network, which the run stores first, and a map that
+    holds none of the MGE contigs (see mge_contigs). The map of the clusters
+    has the contigs of the map of the contigs, under the same names, and its
+    contact statistics, which metacooler carries over as it groups the contigs
+    by cluster.
+
+    Parameters
+    ----------
+    metacool : str
+        Path to the .metacool file, or URI of an entry of a .mmetacool
+        collection: ``file.mmetacool::entries/<name>``.
+    mc : metacooler.MetaCooler
+        The map, opened.
+    mges_list : list of str
+        Names of the MGE contigs (see metator.io.import_mges_contigs).
+
+    Raises
+    ------
+    metator.metacool.MetacoolError
+        If the map has no contact statistics that mge reads, or holds none of
+        the MGE contigs."""
+    check_mge_qc(metacool, mc)
+    with mtmc.read_errors(metacool):
+        names = set(mc.contigs["name"].astype(str))
+    if not names & set(mges_list):
+        raise _no_mge_contig(metacool)
+
+
+def _no_mge_contig(metacool):
+    """The error of a map that holds none of the MGE contigs: there is nothing to
+    cluster."""
+    return mtmc.MetacoolError(f"None of the MGE contigs is in {metacool}: there is no MGE contig to cluster.")
 
 
 def mge_contigs(metacool, mc, mges_list):
@@ -142,7 +202,7 @@ def mge_contigs(metacool, mc, mges_list):
         )
     positions = np.flatnonzero(names.isin(set(mges_list)).to_numpy())
     if not len(positions):
-        raise mtmc.MetacoolError(f"None of the MGE contigs is in {metacool}: there is no MGE contig to cluster.")
+        raise _no_mge_contig(metacool)
     # The longest first, ties by name: whatever the order of the map.
     lengths = contigs["length"].to_numpy(dtype=np.int64)[positions]
     positions = positions[np.lexsort((names.to_numpy()[positions], -lengths))]
@@ -307,14 +367,15 @@ def mge_binning(
     return generate_bin_summary(mges_data, mge_bins), mge_bins
 
 
-def write_mges_fasta(metacool, assembly, mge_bins, out_file, temp_dir=None):
-    """Write the FASTA file with one record per MGE cluster, so that the tools
-    that check the quality of an MGE genome, which expect one sequence per
-    genome, read each cluster as one: named after the cluster
-    (``MetaTOR_MGE_<ID>``), its contigs, in the order of the cluster (the longest
-    first, ties by name: see mge_binning), joined by 200 N, in lines of 80
-    bases (metacooler.write_fasta, stitched). The file is replaced if it
-    exists.
+def write_mges_fasta(metacool, assembly, mge_bins, out_dir, temp_dir=None):
+    """Write the FASTA files of the MGE clusters in out_dir (made if missing), two
+    for each, named after the cluster (``MetaTOR_MGE_<ID>``), side by side (see
+    metator.outputs.write_fasta_files): ``<name>.fa``, its contigs as records of
+    their own, and ``<name>.stitched.fa``, one record, so that the tools that
+    check the quality of an MGE genome, which expect one sequence per genome,
+    read the cluster as one: its contigs joined by 200 N, in lines of 80 bases.
+    Both list the contigs in the order of the cluster (the longest first, ties
+    by name: see mge_binning). Files of those names are replaced.
 
     Parameters
     ----------
@@ -326,8 +387,9 @@ def write_mges_fasta(metacool, assembly, mge_bins, out_file, temp_dir=None):
         with gzip.
     mge_bins : dict
         The MGE clusters (see mge_binning).
-    out_file : str
-        Path to the FASTA file to write.
+    out_dir : str
+        The directory to write them in: fasta/mges of the output directory of
+        the run (see metator.outputs.MGES_DIR).
     temp_dir : str, optional
         Where a compressed assembly is copied, plain: the temporary directory
         of the run.
@@ -335,25 +397,14 @@ def write_mges_fasta(metacool, assembly, mge_bins, out_file, temp_dir=None):
     Raises
     ------
     metator.metacool.MetacoolError
-        If the file cannot be written: the assembly lacks a contig, gives one
+        If the files cannot be written: the assembly lacks a contig, gives one
         another length than the map, or is not FASTA (a ValueError, KeyError or
         OSError of metacooler, message kept)."""
-    import metacooler
+    import metator.outputs as mto
 
     groups = {f"MetaTOR_MGE_{bin_id:05d}": [str(contig) for contig in cluster["Contigs"]] for bin_id, cluster in mge_bins.items()}
-    with mtmc._metacooler_logging(), mtmc._as_metacool_errors(), mtmc.read_errors(metacool):
-        metacooler.write_fasta(
-            metacool,
-            assembly,
-            out_file,
-            groups=groups,
-            stitch=True,
-            spacer=SPACER,
-            single_file=True,
-            force=True,
-            temp_dir=temp_dir,
-        )
-    logger.info(f"{len(groups)} clusters have been extracted")
+    mto.write_fasta_files(metacool, assembly, out_dir, groups=groups, temp_dir=temp_dir)
+    logger.info(f"{len(groups)} clusters have been extracted, each as its contigs and stitched: {out_dir}")
 
 
 def resolve_matrix(mat: "np.ndarray", threshold: float = 0.8) -> List[Tuple]:

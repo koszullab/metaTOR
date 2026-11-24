@@ -90,8 +90,8 @@ without `-F`, and never removes them.
 
 | File | What it holds |
 |---|---|
-| `final_clusters/` | One FASTA file per final cluster, in the output directory |
-| `plot/` | The plots of the final clusters, in the output directory (see [Viewing the clusters](#viewing-the-clusters)) |
+| `fasta/mags_with-mges/` | One FASTA file per final cluster, in the output directory: its contigs, the MGE contigs that it holds included |
+| `plots/` | The plots of the final clusters, as PDF files, in the output directory (see [Viewing the clusters](#viewing-the-clusters)) |
 | `recursive_clusters/` | One FASTA file per recursive cluster, in `step_<n>/` for step `n` |
 | `cluster_summary.txt` | One row per final cluster, with miComplete's measures and the cluster's abundance |
 | `contig_data_final.txt` | The contig data table, with the recursive and final cluster of each contig |
@@ -110,18 +110,18 @@ cluster 12, and `metator_00001_00000` an overlapping cluster kept whole.
 The log of the validation counts the final clusters in each quality class
 (HQ, MQ and LQ MAGs, contaminated clusters and the others: see
 [Cluster quality](../concepts.md#cluster-quality)), and the run draws two
-plots of them in `plot/`, in the output directory:
+plots of them in `plots/`, in the output directory, as PDF files:
 
 | Plot | Shows |
 |---|---|
-| `bins_distribution.png` | The completeness (red) and the contamination (black) of each final cluster, in percent, the clusters by decreasing completeness, with dashed lines at the thresholds of the quality classes. The contamination, the weighted redundancy − 1, is drawn from 0 to 105%: a cluster in which miComplete finds no marker gene at 0, and a contamination of more than 105% at 105% |
-| `bins_size_distribution.png` | The share of the contigs of the run in each quality class, and in no cluster: the number and the size of the clusters of each class, the total size of the contigs (those of the map: the whole assembly, for a map of all its contigs) and the share of the MAGs (HQ, MQ and LQ) in it |
+| `bins_distribution.pdf` | The completeness (red) and the contamination (black) of each final cluster, in percent, the clusters by decreasing completeness, with dashed lines at the thresholds of the quality classes. The contamination, the weighted redundancy − 1, is drawn from 0 to 105%: a cluster in which miComplete finds no marker gene at 0, and a contamination of more than 105% at 105% |
+| `bins_size_distribution.pdf` | The share of the contigs of the run in each quality class, and in no cluster: the number and the size of the clusters of each class, the total size of the contigs (those of the map: the whole assembly, for a map of all its contigs) and the share of the MAGs (HQ, MQ and LQ) in it |
 
 The plots count the clusters as the log does, from miComplete's numbers,
 which `cluster_summary.txt` gives at two decimals. A plot that cannot be
 drawn is a warning: the run goes on, and writes the map of its clusters. A
 run replaces the plots of an earlier one with `-F` only, and leaves the
-other files of `plot/` as they are.
+other files of `plots/` as they are.
 `metacooler show` draws the contacts between the final clusters from the
 contact map of the run (see [Other tools](../other-tools.md)):
 

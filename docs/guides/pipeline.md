@@ -3,13 +3,16 @@
 `metator pipeline` clusters the contigs of an assembly from the contact map of
 a metaHiC library, in one command: it builds the network of contigs from the
 map, partitions it, validates the clusters, and writes the contact map of the
-clusters to its output directory. This page lists its inputs, the files it writes, and
+clusters to its output directory. Given the list of the contigs of mobile
+genetic elements (`--mges`), it goes on: it clusters them, and finds the MAGs
+that host them (see [Mobile genetic elements and their hosts](#mobile-genetic-elements-and-their-hosts)).
+This page lists its inputs, the files it writes, and
 how to run its steps one by one. The [CLI reference](../cli.md#pipeline) lists
 every option, and [Concepts](../concepts.md) explains the steps.
 
 ```bash
 metator pipeline sample.metacool --enzyme DpnII --depth depth.txt --threads 16 \
-    --assembly assembly.fa --outdir binning
+    --assembly assembly.fa --outdir binning --mges mges.txt
 ```
 
 ## Before the run: the assembly
@@ -69,8 +72,8 @@ metator pipeline 'L*_R1.bam' 'L*_R2.bam' --enzyme DpnII --threads 16 --assembly 
 
 - The map is named after `--prefix` (`sample.metacool`), or after the FASTA
   file of the assembly (`assembly.metacool` from `assembly.fa.gz`). The log
-  marks the step that makes it, `[1/4] map`, before the three of the
-  clustering.
+  marks the step that makes it, `[1/5] map`, before the three of the
+  clustering and `export`.
 - The pairs of a BAM file are those of the primary alignments of the two
   mates of each read, both aligned with a mapping quality of at least
   `--min-quality` (`-q`, 30 by default), each at the 5' end of its
@@ -101,31 +104,48 @@ The pipeline writes into `--outdir` (`-o`, the current directory by default):
 | File | What it holds |
 |---|---|
 | `<MAP>` | The contact map of the clusters, named as `MAP` (`sample.metacool` from `sample.metacool`); from pairs or BAM files, the map that the run made, named after `--prefix` or the assembly (`<prefix>.metacool`, `<assembly>.metacool`) |
-| `final_clusters/` | One FASTA file per final cluster |
-| `plot/` | The plots of the final clusters: their completeness and contamination (`bins_distribution.png`), and the size of each quality class (`bins_size_distribution.png`); see [Viewing the clusters](binning.md#viewing-the-clusters) |
+| `fasta/mags_with-mges/` | One FASTA file per final cluster, as the validation made it: its contigs, the MGE contigs that it holds included |
+| `fasta/mags/` | Each MAG (a genome of the map but the MGE genomes), two FASTA files: its contigs (`<MAG>.fa`) and stitched (`<MAG>.stitched.fa`: one record, its contigs joined by 200 `N`). Without `--mges`, the contigs of the final clusters; with it, without their MGE contigs, which the MGE genomes took |
+| `fasta/mges/` | With `--mges`: each MGE cluster, the same two ways (see [Outputs](mge.md#outputs) of `mge`) |
+| `cool/` | A cool file per MAG, `<MAG>.cool`: its contigs and those of the MGE clusters that it hosts (with `--mges`), at the bins of the map, balanced (the `weight` column of its bins, which cooler, cooltools and HiGlass read) |
+| `tables/` | The tables of the run, as `metator dump` writes them from its map (see [`dump`](../cli.md#dump)); with `--mges`, `mge_hosts.txt`, every MGE cluster and MAG in contact (see [What host writes](mge.md#what-host-writes)) |
+| `plots/` | The plots, as PDF files: the completeness and contamination of the final clusters (`bins_distribution.pdf`), the size of each quality class (`bins_size_distribution.pdf`), see [Viewing the clusters](binning.md#viewing-the-clusters); with `--mges`, the signal and share of the hosts (`mge_hosts.pdf`) |
 | `metator_pipeline_<date>.log` | The log of the run |
 
-What the run finds is in the map. At its end, the run writes the contact map
-of all the contigs, grouped by cluster, to the output directory, under the
-name of `MAP` (see [The contact map of the clusters](metacool.md)): the
-summary of the clusters in its genomes table, every clustering round (core,
-overlapping, recursive, final), and the network of the contigs, as `metator
-network` stores it (see
+What the run finds is in the map. At the end of the validation, the run
+writes the contact map of all the contigs, grouped by cluster, to the output
+directory, under the name of `MAP` (see
+[The contact map of the clusters](metacool.md)): the summary of the clusters
+in its genomes table, every clustering round (core, overlapping, recursive,
+final), and the network of the contigs, as `metator network` stores it (see
 [Building the network](network.md#building-the-network)). `MAP` is left as it
 was: metacooler copies it next to the map of the run, which the run edits, and
 renames into place once it is validated. `--inplace` writes the map of the
 clusters over `MAP` instead, and so does a run whose output directory holds
 `MAP` already. A run that stops before leaves `MAP` as it was, which a run
-restarts from (`-F` to replace the map, the final clusters and the plots it
-began).
+restarts from (`-F` to replace the map and the outputs it began). With
+`--mges`, its steps `mge` and `host` store the MGE clusters and their hosts
+in that map, in place (see [Mobile genetic elements and their hosts](#mobile-genetic-elements-and-their-hosts));
+without it, the run says that it has no steps `mge` and `host`. Its last
+step, `export`, writes the outputs of the run from its map, as
+[`metator export`](../cli.md#export) does, in place of those that its steps
+wrote: `fasta/mags_with-mges/`, `fasta/mags/` (with `metacooler fasta`),
+`fasta/mges/` with `--mges`, `cool/` (with `metacooler extract`, then
+`cooler balance`, on the whole of each cool file at once, with its defaults:
+a cool file whose every bin is masked, too small for `cooler balance`, is a
+warning), `tables/` (with `metator dump`) and `plots/`. `metator export`
+writes them all again from the map, and the FASTA files from the assembly:
+the outputs of a run that stopped before, or that were removed since.
 
-The tables of the run are written in its temporary directory (`--tmpdir`, in
-a directory of its own, which the log names), which `--no-clean-up` (`-N`)
-keeps:
+The validation writes its tables in the temporary directory of the run
+(`--tmpdir`, in a directory of its own, which the log names), which
+`--no-clean-up` (`-N`) keeps; `tables/` holds those that `metator dump` writes
+from the map:
 
 | File | What it holds |
 |---|---|
-| `cluster_summary.txt` | One row per final cluster: size, GC content, miComplete's completeness and redundancy, N50, abundance… |
+| `cluster_summary.txt` | One row per final cluster: size, GC content, miComplete's completeness and redundancy, N50, abundance… (floats with 2 decimals, abundances with 4) |
+| `cluster_summary_full.txt` | The same table at full precision, which the map of the clusters stores: the quality classes of the clusters, in the map, the plots and the log, are those of the values of miComplete |
 | `contig_data_final.txt` | One row per contig: its measures, and the core, overlapping, recursive and final clusters it belongs to |
 | `binning.txt` | The contigs of the final clusters and their cluster |
 | `clusters.txt`, `cluster_members.txt` | Every cluster of every round, with its parent, its number of contigs and their length, and miComplete's columns, and the contigs of each: see [Clustering rounds](metacool.md#clustering-rounds) |
@@ -138,11 +158,13 @@ The tables list the contigs of the map, in its order, by their position in it
 map of the clusters (see [`dump`](../cli.md#dump)), in the order of that map,
 without the `ID`. [File formats](../formats.md) describes each table.
 
-A run refuses to overwrite the final clusters and the plots of an earlier one
-unless given `--force` (`-F`), which leaves the other files of `plot/` as
-they are. The other results of an earlier run in the output directory
-(the tables and `recursive_clusters/` of a development build of 2.0, the
-outputs of 1.x) are refused, with or without `-F`, and never removed: move
+A run refuses to overwrite the outputs of an earlier one (`fasta/mags_with-mges/`,
+`fasta/mags/`, `fasta/mges/`, `cool/`, the tables of `tables/`, the plots of
+the clusters) unless given `--force` (`-F`), which leaves the other files of
+`plots/` and `tables/` as they are. The other results of an earlier run in the
+output directory (the tables, `recursive_clusters/`, `final_clusters/`,
+`plot/`, `mges_binned.fa` and `mge_hosts.txt` of a development build of 2.0,
+the outputs of 1.x) are refused, with or without `-F`, and never removed: move
 them away, or give the run another `--outdir`.
 
 ## Choosing the options
@@ -155,16 +177,71 @@ them away, or give the run another `--outdir`.
 | `--iterations`, `--overlap` | 100, 80 | See [Partition](binning.md#partition) |
 | `--rec-iter`, `--rec-overlap` | 10, 90 | See [Validation](binning.md#validation) |
 | `--size` | 500000 | The size, in base pairs, an overlapping cluster must reach to be checked with miComplete, and a recursive cluster must exceed |
+| `--mges` | none | The MGE contigs, one name per line: the run goes on with the steps `mge` and `host` (see [Mobile genetic elements and their hosts](#mobile-genetic-elements-and-their-hosts)) |
+| `--mge-threshold-bin` | 0.8 | The step `mge`: the score above which two MGE contigs, or two MGE clusters, are merged; see [How it works](mge.md#how-it-works) |
+| `--mge-min-share`, `--mge-min-contigs` | 10, 5 | The step `host`: the share of the signal of an MGE cluster with the MAGs, in percent, and the number of contigs of a MAG in contact with it, from which a MAG is a host; see [The hosts](mge.md#the-hosts) |
 | `--prefix` | none | Names the clusters `<prefix>_metator_…` |
 | `--threads` | 1 | Threads for the partition and the validation |
-| `--tmpdir` | `./tmp` | Where the temporary files go; deleted at the end, unless `--no-clean-up`. It holds the tables of the run, the FASTA files of the clusters that miComplete checks (at most the size of the assembly) and, from a compressed assembly, its decompressed copy: give it room for both. Not in `final_clusters/` of `--outdir`, which the run makes anew, nor in a directory of the results of an earlier run there (`recursive_clusters/`, `final_bin/`...), which the run refuses |
+| `--tmpdir` | `./tmp` | Where the temporary files go; deleted at the end, unless `--no-clean-up`. It holds the tables of the run, the FASTA files of the clusters that miComplete checks (at most the size of the assembly) and, from a compressed assembly, its decompressed copy: give it room for both. Not in a folder of `--outdir` that the run makes anew (`fasta/mags_with-mges/`, `fasta/mags/`, `cool/`...), nor in a directory of the results of an earlier run there (`recursive_clusters/`, `final_clusters/`...), which the run refuses |
 
 The validation is the step that needs the most memory and time: miComplete
 runs Prodigal and HMMER (pyrodigal and pyhmmer) on every cluster.
 
+## Mobile genetic elements and their hosts
+
+`--mges` gives the run the contigs of the assembly that are mobile genetic
+elements (MGEs), plasmids and phages found beforehand with an annotation
+tool: one name per line, as `metator mge` reads them (see
+[Clustering mobile genetic elements](mge.md)). With it, once the run has
+written the map of its clusters, at the end of the validation, it goes on with
+two more steps on that map, which it updates in place, as the commands do one
+by one in its output directory: steps 4 and 5 of a run from a map, 5 and 6 of
+a run from pairs or BAM files, which makes its map first.
+
+| Step | As | What it does |
+|---|---|---|
+| `mge` | `metator mge MAP --reassign` | Clusters the MGE contigs from their contacts (`--mge-threshold-bin`), stores the MGE clusters as the round `mge` of the map, makes each of them a genome of the map, its contigs out of the final clusters that held them, and writes `fasta/mges/` |
+| `host` | `metator host MAP` | Finds the MAGs that host the MGE clusters (`--mge-min-share`, `--mge-min-contigs`), stores them in the map, and writes `tables/mge_hosts.txt` and `plots/mge_hosts.pdf` |
+
+The MGE genomes take their contigs out of the final clusters of the genomes
+table of the map, as `metator mge --reassign` does (see
+[MGE genomes](mge.md#mge-genomes)). So `fasta/mags/`, which the run writes at
+its end from the genomes of its map, holds the MAGs without their MGE
+contigs, and `fasta/mags_with-mges/`, which the validation writes, the
+final clusters as the validation made them, with their MGE contigs, as the
+round `final` of the map keeps them. The cool file of each MAG, in `cool/`,
+holds the contigs of the MGE clusters that it hosts too.
+
+What they would refuse, hours later, is refused before any work, the reason
+logged: a list of MGE contigs that cannot be read; a map without the contact
+statistics of the reads of its contigs at 1001 bp, which
+`hicstuff pipeline -M metacool` and `metacooler create pairs` count as they
+make the map from the pairs files, with metacooler 0.4.0 or later, and so
+does the run, from pairs or BAM files; a list none of whose contigs is in the
+map (from pairs or BAM files, in the assembly, before the run makes its map);
+and the MGE files that an earlier version wrote in the output directory
+(`mges_bin_summary.tsv`, `mges_cluster_summary.tsv`, `mges_binned.fa`,
+`mge_hosts.txt`...). A contig of the list that the map lacks is left out, with
+a warning, in the step `mge`.
+
+A run that stops in one of them leaves the map of its clusters, which the
+validation wrote, with its MGE clusters when it stops in `host`, and
+`fasta/mags_with-mges/`; its log says what to run on the map to complete it,
+without the hours of the validation: `metator mge --reassign` then
+`metator host`, or `metator host` alone, then `metator export`, its last
+step, which writes `fasta/mags/`, `cool/` and `tables/`. Without `--mges`, the
+run has no steps `mge` and `host`, and says so: the same two commands
+cluster the MGE contigs of the map of the clusters later (then
+`metator export -F`).
+
+```bash
+metator mge binning/sample.metacool -a assembly.fa -m mges.txt --reassign -o binning
+metator host binning/sample.metacool -o binning
+```
+
 ## Running the steps one by one
 
-The three steps of the pipeline are also commands of their own, to run one
+The steps of the pipeline are also commands of their own, to run one
 after the other, or to rerun the partition with other parameters without
 building the network again:
 
@@ -175,18 +252,36 @@ metator network sample.metacool -a assembly.fa -e DpnII -d depth.txt -o binning
 # 2. Partition it: the map stores its core and overlapping clusters, in place
 metator partition binning/sample.metacool -t 16 -o binning
 
-# 3. Validate the clusters: final_clusters/, plot/, and the map of the clusters
+# 3. Validate the clusters: fasta/mags_with-mges/, plots/, and the map of the
+#    clusters
 metator validation binning/sample.metacool -a assembly.fa -t 16 -o binning
+
+# 4. (--mges) Cluster the MGE contigs, each MGE cluster a genome of the map:
+#    fasta/mges/
+metator mge binning/sample.metacool -a assembly.fa -m mges.txt --reassign -o binning
+
+# 5. (--mges) Find their hosts: tables/mge_hosts.txt, plots/mge_hosts.pdf
+metator host binning/sample.metacool -o binning
 ```
 
-Run step by step, the final clusters go to `final_clusters/`, and their plots
-to `plot/`. The map is
+Run step by step, the final clusters go to `fasta/mags_with-mges/`, and their
+plots to `plots/`; `fasta/mags/`, `cool/` and `tables/`, the outputs that
+`pipeline` writes from its map at its end, are written by
+[`metator export`](../cli.md#export), which writes every output of a run from
+the map of its clusters (the FASTA files with `--assembly`):
+
+```bash
+metator export binning/sample.metacool -a assembly.fa -o binning -F
+```
+
+The map is
 what the steps share: `metator network` stores the network in the map of its
 output directory, which `partition` and `validation` read and update in
 place (it is the map of their output directory too), `partition` stores its
 partition there, which `validation` reads, and they write the map that
 `metator pipeline MAP` writes from the same clusters: see
-[Step by step](metacool.md#step-by-step).
+[Step by step](metacool.md#step-by-step). `mge --reassign` and `host`, run
+on it, give the map that `metator pipeline MAP --mges` writes.
 
 To cluster without validating, run the first two steps alone: the clusters
 are then the overlapping clusters of the map, its round `overlapping`, which
@@ -198,21 +293,33 @@ as FASTA files.
 
 The log starts, as hicstuff's does, with the version of metaTOR, the date and
 the command line (`cmd`), then the value of each option, and a line of
-dashes. It then follows the three steps of the run, each from a line of its
-own (`[1/3] network`, `[2/3] partition`, `[3/3] validation`): the contacts of
+dashes. It then follows the steps of the run, each from a line of its
+own (`[1/4] network`, `[2/4] partition`, `[3/4] validation`,
+`[4/4] export`; from pairs or BAM files, `[1/5] map` first; with `--mges`,
+`[4/6] mge` and `[5/6] host` before `[6/6] export`): the contacts of
 the map and those between contigs, the iterations of the partition as they
 go (a line every tenth of them, at least 10 seconds apart, on a large
 network), the core and overlapping clusters found, the clusters that
 miComplete checked, each recursive step of the validation (`Recursive step
 2/9: ...`, and when no further step is needed), and the number of clusters in
-each quality class (see [Cluster quality](../concepts.md#cluster-quality)). It
-ends with the map that the run wrote and how long it took:
+each quality class (see [Cluster quality](../concepts.md#cluster-quality));
+with `--mges`, the MGE clusters, the MAGs that lose contigs to them, and the
+hosts found. Without `--mges`, the run says, once it has written the map of
+its clusters, that it has no steps `mge` and `host`. Its step `export` then
+says where it wrote its outputs, and the log ends with the map that the run
+wrote and how long it took:
 
 ```console
-INFO :: [1/3] network: the contigs of sample.metacool and their contacts
+INFO :: [1/4] network: the contigs of sample.metacool and their contacts
 INFO :: 41563 contacts in sample.metacool, 18632 of them between contigs (3D ratio: 0.4483).
 ...
-INFO :: Final contact map written after 0h 0m 5s: binning/sample.metacool
+INFO :: No list of MGE contigs (--mges): the run has no steps mge and host, which cluster the MGE contigs and find their hosts: give --mges to run them.
+INFO :: [4/4] export: the outputs of the run, from its map
+INFO :: The FASTA files of the 26 final cluster(s), with the MGE contigs that they hold: binning/fasta/mags_with-mges
+INFO :: The FASTA files of the 26 MAG(s) of the run, each as its contigs and stitched: binning/fasta/mags
+INFO :: The cool files of the 26 MAG(s) of the run, 0 of them with the MGE clusters that they host, balanced: binning/cool
+...
+INFO :: Final contact map written after 0h 0m 9s: binning/sample.metacool
 ```
 
 The **3D ratio** is the share of the contacts that join two different
