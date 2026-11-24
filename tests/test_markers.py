@@ -293,7 +293,11 @@ def test_marker_quality(counts, expected):
 def test_marker_quality_rounds_as_micomplete():
     """Rounded to 4 decimals, a weighted completeness of less than 0.00005 written
     0.0001, and the weighted redundancy computed from the weighted completeness
-    before it is rounded."""
+    before it is rounded. An exact tie is rounded to the even digit, as
+    Python's round does: 33 copies of 32 markers, 1.03125, give 1.0312."""
+    markers = [f"M{number}" for number in range(32)]
+    counts = {name: 2 if name == "M0" else 1 for name in markers}
+    assert mtmk.marker_quality(counts, markers, [1.0] * 32) == (1.0, 1.0312, 32.0, 1.0312)
     quality = mtmk.marker_quality({"A": 2, "B": 1}, ("A", "B", "C"), (1e-05, 2e-05, 0.5))
     assert quality == (round(2 / 3, 4), 1.5, 0.0001, round((1e-05 + 3e-05) / 3e-05, 4))
     with pytest.raises(ValueError, match="Markers of no marker set of 4 markers: X"):

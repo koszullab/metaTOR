@@ -380,7 +380,9 @@ For a group of contigs (a genome of the map, or any curated bin), in each set
 2. P is the number of markers of a sum of 1 or more, N the number of markers
    of the set. Without such a marker (P = 0), all four numbers are 0.
 3. Completeness = P / N, and redundancy = the sum of the counts / P, each
-   rounded to 4 decimals.
+   rounded to 4 decimals as Python's `round` does: to the nearest, an exact
+   tie to the even digit (33 / 32 = 1.03125 gives 1.0312, where JavaScript's
+   `toFixed(4)` gives 1.0313).
 4. WC is the sum of the weights of the markers seen (those of a sum of 0
    too). The weighted redundancy is (the sum of the weights of the markers of
    a sum above 1, each once, + WC) / WC, rounded to 4 decimals; the weighted

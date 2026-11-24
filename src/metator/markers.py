@@ -673,7 +673,8 @@ def marker_quality(counts, markers, weights):
 
     With P the markers present (a count of one or more) and N the markers of
     the set: completeness = P / N, and redundancy = the sum of the counts of
-    the present markers / P, each rounded to 4 decimals. The weighted
+    the present markers / P, each rounded to 4 decimals (by Python's round,
+    as miComplete: an exact tie to the even digit, 1.03125 to 1.0312). The weighted
     completeness WC is the sum of the weights of the markers that miComplete
     sees (present, or seen and dropped: a count of 0), rounded to 4 decimals,
     0.0001 if that is 0; the weighted redundancy is (the sum of the weights of
