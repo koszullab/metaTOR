@@ -57,7 +57,8 @@ each removed command.
     refuses a partition made on another network than the one stored there.
     Its `--size` chooses the overlapping clusters that miComplete checks. It
     writes the FASTA files of the final clusters in the output directory,
-    `final_clusters/`, with the plots of their quality, `plot/` (see Fixed),
+    `fasta/mags_with-mges/`, with the plots of their quality, as PDF files,
+    `plots/` (see Fixed),
     and stores the rest in the map: the final cluster of
     each contig, as its genome, the summary of the clusters in the genomes
     table, every clustering round, and its run under the `validation` entry,
@@ -71,16 +72,19 @@ each removed command.
     `-N/--no-clean-up` keeps and the log names: `metator dump` writes them
     from the map (see Added).
   - **The results of an earlier run in the output directory are refused,
-    with or without `-F`, and never removed**: the tables and recursive
-    clusters of a development build of 2.0, and the outputs of 1.x (its
+    with or without `-F`, and never removed**: the tables, recursive
+    clusters, `final_clusters/`, `plot/`, `mges_binned.fa` and
+    `mge_hosts.txt` of a development build of 2.0, and the outputs of 1.x (its
     tables and networks, `bin_summary.txt`, `network.txt`, the clustering
     matrices, `recursive_bin/`, `final_bin/`, `final_bin_unscaffold/`,
     `overlapping_bin/`, `scaffold_bin/`, and the plots of `plot/` that 2.0
     no longer draws). Left there, they would pass
     for the results of the run; a file of one of these names, a user's own
     too, is refused and left as it is. `-F` replaces only what a run writes
-    itself: `final_clusters/`, the plots of the clusters in `plot/` (whose
-    other files it leaves as they are) and the map of the output directory.
+    itself: the folders that it makes anew (`fasta/mags_with-mges/`,
+    `fasta/mags/`, `fasta/mges/`, `cool/`), the plots of the clusters in
+    `plots/` (whose other files it leaves as they are), the tables of
+    `tables/` and the map of the output directory.
     The plots of an earlier run are refused without `-F`, where 1.4.0 wrote
     over them.
   - `pipeline MAP` runs the three steps on the map, and writes the map of
@@ -120,7 +124,7 @@ each removed command.
 - **Clusters, not bins.** The outputs and columns of a run are named after
   clusters: `bin_summary.txt` is `cluster_summary.txt`, `final_bin/`
   (`validation`) and `final_bin_unscaffold/` (`pipeline`) are
-  `final_clusters/`, `recursive_bin/` is `recursive_clusters/`, and in the
+  `fasta/mags_with-mges/`, `recursive_bin/` is `recursive_clusters/`, and in the
   contig data tables `Core_bin_ID`, `Core_bin_contigs`, `Core_bin_size`,
   their overlapping and recursive equivalents and `Final_bin` are
   `Core_cluster_ID`... and `Final_cluster`. `binning.txt`, the names of the
@@ -156,8 +160,10 @@ each removed command.
   otherwise. It stores the MGE clusters in the map, as the round `mge` (and
   `--random`, the round `mge_random`), where it wrote
   `mges_bin_summary.tsv`, which is refused in the output directory, with or
-  without `-F`, and never removed; `mges_binned.fa` is written by metacooler, its contigs joined by
-  200 `N`, in lines of 80 bases.
+  without `-F`, and never removed; `fasta/mges/` replaces `mges_binned.fa`,
+  which is refused too: two FASTA files per MGE cluster, written by
+  metacooler, its contigs, and stitched, joined by 200 `N`, in lines of 80
+  bases.
 - **Removed commands and features**, with what replaces them in
   [Other tools](other-tools.md): `metator qc`, `contactmap`, `metacool`,
   `scaffold` and `pairs`; `pipeline -v/--scaffold` and `-J/--junctions`; the
@@ -180,8 +186,9 @@ each removed command.
   of the clusters (`bin_quality` is now `metator.validation.bin_quality`):
   `figures_bins_distribution` and `figures_bins_size_distribution`, which
   take any table of clusters (the latter returns a copy of it, with its
-  `MAG_quality`), and `plot_figures`, which draws them in `plot/` of its
-  `out_dir`, as in 1.4.0, but takes no map (`metacool`); the readers and
+  `MAG_quality`), and `plot_figures`, which draws them in `plots/` of its
+  `out_dir`, as PDF files (1.4.0: PNG files in `plot/`), and takes no map
+  (`metacool`); the readers and
   writers of the files 2.0 no longer reads
   or writes (`metator.io.sort_pairs`, `write_contigs`, `import_anvio_binning`,
   `read_contig_data`...; `metator.network.normalize_pair`, `write_edge`,
@@ -195,7 +202,7 @@ each removed command.
   `metator.partition.partition` returns the partition, a
   `metator.clusters.Partition`, and writes nothing;
   `metator.validation.recursive_decontamination` takes the partition and the
-  map, and draws the plots in `plot/` of `plot_outdir`, when given;
+  map, and draws the plots in `plots/` of `plot_outdir`, when given;
   `metator.mge.mge_binning` takes the map.
 - **`metator.host` reads the map.** It finds the hosts of the MGE clusters
   of a map (`find_hosts`), as `metator host` does, where it read the tables
@@ -212,6 +219,40 @@ each removed command.
   contigs in contact with it.
 
 ### Added
+- `metator pipeline --mges FILE` goes on after the validation with two more
+  steps on the map of its clusters, which they update in place, as the
+  commands do one by one: `mge`, as `metator mge --reassign`, which clusters
+  the MGE contigs of the list, makes each MGE cluster a genome of the map and
+  writes `fasta/mges/`, and `host`, as `metator host`, which finds the MAGs
+  that host them and writes `tables/mge_hosts.txt` and `plots/mge_hosts.pdf`;
+  the log marks them last (`[4/5] mge`, `[5/5] host`; `[6/6] host` from pairs
+  or BAM files, whose map the run makes first). `--mge-threshold-bin`,
+  `--mge-min-share` and `--mge-min-contigs` are the `--threshold-bin` of
+  `mge` and the `--min-share` and `--min-contigs` of `host`. What they would
+  refuse is refused before any work: a list that cannot be read, a map
+  without the contact statistics of the reads of its contigs at 1001 bp or
+  that holds none of the MGE contigs (from pairs or BAM files, a list none of
+  whose contigs is in the assembly, before the run makes its map), and an
+  earlier version's MGE files in the output directory. A run that stops in
+  one of them keeps the map of its clusters (with its MGE clusters, in
+  `host`), and its log says what to run on it to complete it. Without
+  `--mges`, the run ends with the validation, and says so.
+- **The outputs of a run, in folders of its output directory** (see the
+  [CLI reference](cli.md#conventions)): `fasta/mags_with-mges/`, the FASTA file
+  of each final cluster, as the validation made it, with its MGE contigs
+  (`validation`, `pipeline`; `final_clusters/` in a development build);
+  `fasta/mags/`, each MAG of the map of the run (its genomes but the MGE
+  genomes) as its contigs (`<MAG>.fa`) and stitched (`<MAG>.stitched.fa`, one
+  record, its contigs joined by 200 `N`), with `metacooler fasta`
+  (`pipeline`); `fasta/mges/`, each MGE cluster the same two ways (`mge`,
+  `pipeline --mges`; `fasta/mges_random/` with `--random`; `mges_binned.fa`
+  in 1.x and a development build); `cool/`, a cool file per MAG, with the MGE
+  clusters that it hosts, extracted by `metacooler extract` and balanced by
+  `cooler balance` (`pipeline`); `tables/`, the tables of `metator dump`
+  (`pipeline`) and `mge_hosts.txt` (`host`, `pipeline --mges`); `plots/`, every
+  plot, as a PDF file (`plot/`, PNG files, in 1.x and a development build). A
+  folder of an earlier run that a run makes anew is refused without `-F`,
+  which replaces it.
 - `metator host MAP` finds the MAGs that host the MGE clusters that
   `metator mge` stored in the map (its round `mge`): its genomes, the final
   clusters of a run or the bins of another binner made its genomes by
@@ -220,8 +261,9 @@ each removed command.
   MGE cluster with at least `--min-share` percent (10) of its signal with the
   MAGs, the weights of the network between their contigs, and at least
   `--min-contigs` (5) of its contigs in contact with it. The run writes
-  `mge_hosts.txt`, every MGE cluster and MAG in contact, with their signal,
-  shares and contigs in contact, and `mge_hosts.png`, and stores the hosts in
+  `tables/mge_hosts.txt`, every MGE cluster and MAG in contact, with their
+  signal, shares and contigs in contact, and `plots/mge_hosts.pdf`, and stores
+  the hosts in
   the map: in the round `mge` (`n_hosts`, `hosts`, `host_shares`), in the
   genomes table (`n_mges`, `mges`), which `metator dump` writes in
   `clusters.txt` and `cluster_summary.txt`, and under the `host` entry of its
@@ -369,8 +411,8 @@ each removed command.
   distances without holding the GIL, so the threads run in parallel.
 - Python's warnings (cooler gives the problems of a map with them) are shown
   and written to the log of a run, as metaTOR's own messages.
-- The plots of the quality of the clusters (`plot/bins_distribution.png`,
-  `plot/bins_size_distribution.png`) are drawn with matplotlib's `Figure`,
+- The plots of the quality of the clusters (`plots/bins_distribution.pdf`,
+  `plots/bins_size_distribution.pdf`) are drawn with matplotlib's `Figure`,
   without pyplot: no window, whatever the backend of matplotlib. A plot that
   cannot be drawn is a warning, with its error, and the run goes on to write
   the map of its clusters, where 1.4.0 stopped.
@@ -405,6 +447,10 @@ each removed command.
   tables.
 
 ### Fixed
+- `mge` refuses a list of MGE contigs (`--mges`) that cannot be read, not
+  there or a directory, before any work, with the reason in its log, where it
+  stopped with a traceback; and it skips the blank lines of the list, which
+  stopped it with an `IndexError`.
 - The depth file (`--depth`) is read by contig name: read line by line, a
   file in another order than the assembly gave the contigs the values of
   others. A file that lacks a contig, or gives it another length, is refused.
@@ -431,7 +477,7 @@ each removed command.
   partitioned again but kept whole were left out.
 - The log of the validation counts the clusters in the quality classes of
   `metator.validation.bin_quality`, as the plot of their sizes does
-  (`plot/bins_size_distribution.png`), the contamination being the weighted
+  (`plots/bins_size_distribution.pdf`), the contamination being the weighted
   redundancy − 1; it divided it by the completeness, where the plot does not,
   and, from 1.2.0 to 1.4.0, its test of the HQ class was inverted: a cluster
   of at least 90% completeness was counted HQ when its contamination was over
@@ -440,7 +486,7 @@ each removed command.
   1.3.10 run, 7 HQ and 24 MQ in its log, are 24 HQ and 7 MQ for
   `bin_quality`. From 1.2.3, the plot counted them right.
 - The plot of the completeness and the contamination of the clusters
-  (`plot/bins_distribution.png`) draws the contamination from 0 to 105%, as
+  (`plots/bins_distribution.pdf`) draws the contamination from 0 to 105%, as
   it meant to: it compared the weighted redundancy, a ratio, with 105, which
   no cluster reaches, so a contamination above 105% stretched its axis, and
   a cluster in which miComplete finds no marker gene, of a redundancy of 0,
@@ -455,8 +501,9 @@ each removed command.
   weighted completeness of 33%, not 50%.
 - `pipeline` and `validation` check their arguments and their assembly before
   `-F` replaces the clusters of an earlier run; `-F` replaces a directory of
-  clusters that is a symbolic link, not its target; a `--tmpdir` in
-  `final_clusters/`, which `-F` replaces, or in a directory of the results of
+  clusters that is a symbolic link, not its target; a `--tmpdir` in a folder
+  that the run makes anew (`fasta/mags_with-mges/`...), which `-F` replaces,
+  or in a directory of the results of
   an earlier run, which the run refuses, is refused as a usage error.
 - `pipeline` and `validation` stop with a clear error when no cluster of the
   partition reaches `--size`, where miComplete failed.

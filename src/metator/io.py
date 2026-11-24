@@ -149,11 +149,14 @@ def import_mges_contigs(mges_file):
     Returns
     -------
     list
-        List of the mges contigs names."""
+        List of the mges contigs names: the first word of each line, its blank
+        lines left out."""
     mges_list = []
     with open(mges_file, "r") as mges:
         for contig in mges:
-            mges_list.append(contig.split()[0])
+            words = contig.split()
+            if words:
+                mges_list.append(words[0])
     return mges_list
 
 

@@ -758,7 +758,7 @@ def recursive_decontamination(
         directory of the run.
     plot_outdir : str, optional
         The output directory of the run, where the plots of the final clusters
-        are drawn, in ``plot/`` (see metator.figures.plot_figures). None draws
+        are drawn, in ``plots/`` (see metator.figures.plot_figures). None draws
         none.
 
     Returns

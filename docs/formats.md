@@ -265,9 +265,15 @@ clusters stores both (see
 
 ### FASTA files of the clusters
 
-`final_clusters/`, in the output directory, holds one FASTA file per final
-cluster, `<cluster>.fa`, with the records of its contigs as they are in the
-assembly. metacooler writes the files of the clusters that the validation
+`fasta/mags_with-mges/`, in the output directory, holds one FASTA file per
+final cluster, `<cluster>.fa`, with the records of its contigs as they are in
+the assembly, the MGE contigs that the validation clustered with it included.
+`fasta/mags/` (`pipeline`) holds each MAG, a genome of the map of the run but
+the MGE genomes, twice: `<MAG>.fa`, the records of its contigs as they are in
+the assembly, in the order of the map, and `<MAG>.stitched.fa`, one record
+named after it, its contigs, the longest first, joined by 200 `N`, in lines of
+80 bases. `fasta/mges/` (`mge`, `pipeline --mges`) holds each MGE cluster the
+same two ways, its contigs the longest first, ties by name. metacooler writes the files of the clusters that the validation
 checks (`metacooler.write_fasta`), in its temporary directory (`-N` keeps
 it): the overlapping clusters in `overlapping_clusters/`, in the order of
 the partition (by core cluster, then by ID), and the recursive clusters of
@@ -275,6 +281,18 @@ step `n` in `recursive_clusters/step_<n>/`. A final cluster is a copy of the
 file that miComplete checked. A gzip-compressed assembly is decompressed
 once per run, in the temporary directory, and every file is written from
 that copy. No pyfastx index is made, beside the assembly or the clusters.
+
+### Cool files of the MAGs
+
+`cool/` (`pipeline`) holds one [cooler](https://github.com/open2c/cooler) file
+per MAG, `<MAG>.cool`, which `metacooler extract` writes from the map of the
+run: the contacts of its contigs, and with `--mges` of those of the MGE
+clusters that it hosts, at the bins of the map, each contig a chromosome of
+the file. `cooler balance` balances each file, the whole of it at once, with
+its defaults: the `weight` column of its bins, which cooler, cooltools and
+HiGlass read (`clr.matrix(balance=True)`); a file whose every bin is masked,
+too small for `cooler balance`, keeps weights that are all `NaN`, with a
+warning in the log.
 
 ## The contact map of the clusters
 
@@ -289,11 +307,12 @@ map of the clusters, which keeps the bins of the map. See
 `metator mge` stores its MGE clusters in the map, as the round `mge` of its
 clustering rounds (`mge_random` for `--random`), one cluster per MGE cluster
 (see
-[Clustering mobile genetic elements](guides/mge.md#in-the-contact-map-of-the-run)):
+[Clustering mobile genetic elements](guides/mge.md#in-the-contact-map-of-the-run)),
+and so does `metator pipeline --mges`, in its step `mge`:
 
 | Column | What it holds |
 |---|---|
-| `name` | `MetaTOR_MGE_00001` and on, the name of its record in `mges_binned.fa` |
+| `name` | `MetaTOR_MGE_00001` and on, the name of its FASTA files in `fasta/mges/` |
 | `length`, `n_contigs` | The size of the cluster and its number of contigs, which metacooler computes from its contigs |
 | `GC`, `Hit` | The GC content and the hits of the cluster |
 | `BinningScore` | The lowest score at which its contigs were merged, missing for a single contig |
@@ -301,7 +320,7 @@ clustering rounds (`mge_random` for `--random`), one cluster per MGE cluster
 
 Its contigs are the members of the round (`mc.cluster_members("mge")`), in
 the order of the map, as metacooler stores the members of every round:
-`mges_binned.fa` gives them the longest first, ties by name. `metator dump`
+`fasta/mges/` gives them the longest first, ties by name. `metator dump`
 writes the round with the others, in `clusters.txt` (with `n_contigs` and
 `length`, the `ContigsNumber` and `BinLength` of 1.x's
 `mges_bin_summary.tsv`) and `cluster_members.txt`. `metator mge` looks for
@@ -309,7 +328,8 @@ no host: `metator host` does, and adds its columns to the round.
 
 ## Hosts of the MGE clusters
 
-`metator host` writes `mge_hosts.txt` in its output directory: one row per
+`metator host` writes `tables/mge_hosts.txt` in its output directory, as
+`metator pipeline --mges` does in its step `host`: one row per
 MGE cluster and MAG in contact, the MGE clusters in the order of the round
 `mge`, the MAGs of each by decreasing signal (see
 [Clustering mobile genetic elements](guides/mge.md#the-hosts)).
@@ -331,7 +351,7 @@ MetaTOR_MGE_00013	metator_00005_00000	0.7090148667776763	37	93.8246167981684	76.
 MetaTOR_MGE_00013	metator_00020_00000	0.005037475316584434	4	0.6666139362589284	0.5404626529450921	False
 ```
 
-`mge_hosts.png` plots the distribution of the signal of the hosts, on a log
+`plots/mge_hosts.pdf` plots the distribution of the signal of the hosts, on a log
 scale, and of their share. The map holds the hosts of each MGE cluster in
 its round `mge` (see [MGE clusters](#mge-clusters)), and the MGE clusters of
 each MAG in its genomes table:

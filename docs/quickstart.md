@@ -92,8 +92,10 @@ directory, in `tmp/`, with the tables of the run.
     cluster to check. On a real sample, leave `--size` out.
 
 The log starts with the version, the command line and the value of each
-option, then follows the three steps of the run, and ends with how long it
-took (excerpt):
+option, then follows the three steps of the run, says that it ends with the
+validation, without the list of the MGE contigs that `--mges` gives it (see
+[Running the pipeline](guides/pipeline.md#mobile-genetic-elements-and-their-hosts)),
+then where it wrote its outputs, and ends with how long it took (excerpt):
 
 ```console
 INFO :: ## MetaTOR: v1.4.0 log file
@@ -122,6 +124,7 @@ INFO :: LQ MAGs: 0	Total Size: 0
 INFO :: Contaminated potential MAGs: 0	Total Size: 0
 INFO :: Other clusters: 26	Total Size: 764377
 INFO :: Writing binning/sample.metacool from sample.metacool: 1219 contigs, 347 of them in 26 clusters.
+INFO :: No list of MGE contigs (--mges): the run ends with its step 3, the validation, without the steps mge and host, which cluster the MGE contigs and find their hosts: give --mges to run them.
 INFO :: The temporary directory of the run, ./tmp/7891e04f, and its files are kept (-N).
 INFO :: Final contact map written after 0h 0m 5s: binning/sample.metacool
 ```
@@ -137,35 +140,40 @@ not always the same.
 
 ```console
 $ ls binning
-final_clusters
+cool
+fasta
 metator_pipeline_20261123152335.log
-plot
+plots
 sample.metacool
+tables
+$ ls binning/fasta binning/tables
+binning/fasta:
+mags  mags_with-mges
+
+binning/tables:
+binning.txt  cluster_members.txt  cluster_summary.txt  clusters.txt
+contig_data_final.txt  network.txt
 ```
 
 The run stored everything else in the map of the clusters,
-`binning/sample.metacool`: its network, its clusters and their summary. Its
-tables are in its temporary directory, which `--no-clean-up` kept
-(`ls tmp/*/`; the log names it); without it, the run removes them, and
-`metator dump` writes them from the map:
-
-```console
-$ metator dump binning/sample.metacool -o binning/tables
-$ ls binning/tables
-binning.txt  cluster_members.txt  cluster_summary.txt  clusters.txt
-contig_data_final.txt  metator_dump_20261123152345.log  network.txt
-```
+`binning/sample.metacool`: its network, its clusters and their summary. It
+wrote its tables from the map, as `metator dump` does, in `binning/tables`;
+the tables of its validation, the same, are in its temporary directory, which
+`--no-clean-up` kept (`ls tmp/*/`; the log names it).
 
 | File | What it holds |
 |---|---|
 | `sample.metacool` | The contact map of the clusters (see below) |
-| `final_clusters/` | One FASTA file per final cluster: the result |
-| `plot/` | The plots of the clusters: their completeness and contamination (`bins_distribution.png`), and the size of each quality class (`bins_size_distribution.png`) |
+| `fasta/mags/` | Each MAG, two FASTA files: its contigs (`<MAG>.fa`) and stitched (`<MAG>.stitched.fa`, one record, its contigs joined by 200 `N`): the result |
+| `fasta/mags_with-mges/` | One FASTA file per final cluster, as the validation made it (the same contigs as `fasta/mags/`, without `--mges`) |
+| `cool/` | A cool file per MAG, balanced: its contacts, at the bins of the map |
+| `plots/` | The plots of the clusters, as PDF files: their completeness and contamination (`bins_distribution.pdf`), and the size of each quality class (`bins_size_distribution.pdf`) |
 | `metator_pipeline_<date>.log` | The log of the run |
-| `cluster_summary.txt` (in `tmp/*/`) | One row per final cluster: size, GC content, completeness, redundancy, N50, Hi-C abundance… |
-| `clusters.txt`, `cluster_members.txt` (in `tmp/*/`) | Every cluster of every round (core, overlapping, recursive, final), with its parent, its number of contigs and their length, and miComplete's columns, and the contigs of each |
-| `contig_data_final.txt` (in `tmp/*/`) | One row per contig: its size, GC content, hits, and the clusters it went through |
-| `binning.txt` (in `tmp/*/`) | The contigs of the final clusters and their cluster, as anvi'o imports a binning |
+| `tables/cluster_summary.txt` | One row per final cluster: size, GC content, completeness, redundancy, N50, Hi-C abundance… |
+| `tables/clusters.txt`, `tables/cluster_members.txt` | Every cluster of every round (core, overlapping, recursive, final), with its parent, its number of contigs and their length, and miComplete's columns, and the contigs of each |
+| `tables/contig_data_final.txt` | One row per contig: its size, GC content, hits, and the clusters it went through |
+| `tables/binning.txt` | The contigs of the final clusters and their cluster, as anvi'o imports a binning |
+| `tables/network.txt` | The network of the contigs, by their names |
 
 `binning/sample.metacool` is the contact map of all the contigs, grouped by
 cluster, with the network of the run: what metaTOR measured on each contig,
@@ -176,7 +184,7 @@ every output, and [File formats](formats.md) describes the tables.
 ## Step 4: read the cluster summary
 
 ```console
-$ cut -f 1-6,9,10 tmp/*/cluster_summary.txt | head -4
+$ cut -f 1-6,9,10 binning/tables/cluster_summary.txt | head -4
 	Length	GC-content	Present Markers	Completeness	Redundancy	Contigs	N50
 metator_00001_00000	36399.00	62.14	1.00	0.01	1.00	9.00	22786.00
 metator_00006_00000	30476.00	61.77	1.00	0.01	1.00	9.00	7448.00
@@ -188,7 +196,7 @@ genome without contamination has a completeness and a redundancy of 1. The
 clusters of this test library hold a few marker genes at most (a completeness
 under 10%), so they are classed as *Other clusters*; on a real sample, the log
 counts the high-, medium- and low-quality MAGs, and
-`binning/plot/bins_size_distribution.png` shows their share of the assembly.
+`binning/plots/bins_size_distribution.pdf` shows their share of the assembly.
 
 ## Step 5: open the contact map
 

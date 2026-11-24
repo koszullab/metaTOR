@@ -757,6 +757,24 @@ def test_refusals_of_a_run_from_pairs_or_bam_files(command, case, community, met
         assert map_there.read_text() == "an earlier map"
 
 
+def test_pipeline_from_pairs_refuses_mge_contigs_of_another_assembly(community, metagenome_files, tmp_path, run_cli):
+    """pipeline --mges from pairs or BAM files: a list none of whose contigs is a
+    contig of the assembly, which the map that the run makes would hold none
+    of, is refused once the run has read the assembly, before it makes its map
+    from them: no map, and no other file of the run than its log."""
+    arguments = _inputs("pairs as two arguments", community, metagenome_files, tmp_path / "inputs")
+    out = tmp_path / "out"
+    mges = tmp_path / "mges.txt"
+    mges.write_text("not_a_contig\n")
+    assembly = str(metagenome_files["assembly"])
+    with pytest.raises(ValueError):
+        run_cli("pipeline", *arguments, "-a", assembly, "-o", str(out), "-T", str(tmp_path / "tmp"), "--mges", str(mges))
+    (log,) = out.glob("metator_pipeline_*.log")
+    message = f"None of the MGE contigs is a contig of {assembly}: there is no MGE contig to cluster."
+    assert f"ERROR :: {message}\n" in log.read_text()
+    assert sorted(path.name for path in out.iterdir()) == [log.name]
+
+
 def test_a_map_there_is_replaced_with_force(community, metagenome_files, tmp_path, run_cli):
     """With -F, the map of an earlier run where the run writes the map that it
     makes is replaced (a symbolic link there, not its target)."""

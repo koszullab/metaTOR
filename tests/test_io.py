@@ -120,8 +120,9 @@ def test_rename_1x_columns(logged):
 
 
 def test_import_mges_contigs(tmp_path):
-    """The MGE contigs: the first word of each line."""
-    (tmp_path / "mges.txt").write_text("c2 phage\nc3\n")
+    """The MGE contigs: the first word of each line, its blank lines left out
+    (which stopped mge and pipeline --mges with an IndexError)."""
+    (tmp_path / "mges.txt").write_text("c2 phage\n\nc3\n  \n\n")
     assert mio.import_mges_contigs(str(tmp_path / "mges.txt")) == ["c2", "c3"]
 
 

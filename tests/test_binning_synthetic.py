@@ -19,6 +19,7 @@ import pytest
 
 import metator.cli as mtcli
 import metator.clusters as mtcl
+import metator.dump as mtd
 import metator.metacool as mtmc
 import metator.network as mtn
 import metator.partition as mtp
@@ -36,6 +37,9 @@ NORMALIZATIONS = ["None", "abundance", "length", "RS", "empirical_hit", "theorit
 # directory of the run, which -N keeps: every run of this module keeps it,
 # and the tests read them there (see _kept).
 TABLES = ["contig_data_final.txt", "cluster_summary.txt", "binning.txt", "clusters.txt", "cluster_members.txt"]
+
+# The FASTA files of the final clusters of a run, in its output directory.
+MAGS_WITH_MGES = os.path.join("fasta", "mags_with-mges")
 
 
 @pytest.fixture(autouse=True)
@@ -229,11 +233,11 @@ def test_validation_splits_a_merged_bin(
     )
     out = tmp_path / "out"
     # Outputs of an earlier run, replaced thanks to --force: its final
-    # clusters, and its plots, but a file of the user's in plot/, left there.
-    for stale, name in [("final_clusters", "metator_00009_00000.fa"), ("plot", "bins_distribution.png")]:
+    # clusters, and its plots, but a file of the user's in plots/, left there.
+    for stale, name in [(MAGS_WITH_MGES, "metator_00009_00000.fa"), ("plots", "bins_distribution.pdf")]:
         (out / stale).mkdir(parents=True)
         (out / stale / name).write_text(">old\nACGT\n")
-    (out / "plot" / "notes.txt").write_text("the user's\n")
+    (out / "plots" / "notes.txt").write_text("the user's\n")
     args = [
         str(metacool),
         "-a", str(metagenome_inputs["assembly"]),
@@ -245,7 +249,7 @@ def test_validation_splits_a_merged_bin(
         "-F",
     ]  # fmt: skip
     run_cli("validation", *args)
-    assert not (out / "final_clusters" / "metator_00009_00000.fa").exists()
+    assert not (out / MAGS_WITH_MGES / "metator_00009_00000.fa").exists()
 
     # miComplete ran on the partition bins, then on the bins of the first
     # recursive step only: the split bins are clean.
@@ -264,23 +268,23 @@ def test_validation_splits_a_merged_bin(
     hic = summary.HiC_abundance.astype(float)
     assert (hic / hic.sum()).to_numpy() == pytest.approx((hits / hits.sum()).to_numpy(), rel=1e-3)
     # The final fasta files are the final bins, and nothing else.
-    assert sorted(p.name for p in (out / "final_clusters").iterdir()) == sorted(f"{name}.fa" for name in summary.index)
+    assert sorted(p.name for p in (out / MAGS_WITH_MGES).iterdir()) == sorted(f"{name}.fa" for name in summary.index)
     binning = pd.read_csv(_kept(out) / "binning.txt", sep="\t", header=None, names=["Name", "Bin"])
     assert set(binning.Bin) == set(summary.index)
     assert sorted(binning.Name) == sorted(final.Name[final.Final_cluster != "ND"])
-    # The plots of the final clusters, in plot/, the user's file left there: a
-    # dot of completeness per cluster, and a wedge per quality class and for
-    # the contigs in no cluster.
-    plots = ["bins_distribution.png", "bins_size_distribution.png"]
-    assert sorted(path.name for path in (out / "plot").iterdir()) == [*plots, "notes.txt"]
-    assert all((out / "plot" / name).read_bytes().startswith(b"\x89PNG") for name in plots)
-    assert (out / "plot" / "notes.txt").read_text() == "the user's\n"
-    completion, _ = saved_figures["bins_distribution.png"].axes[0].collections
+    # The plots of the final clusters, in plots/, as PDF files, the user's
+    # file left there: a dot of completeness per cluster, and a wedge per
+    # quality class and for the contigs in no cluster.
+    plots = ["bins_distribution.pdf", "bins_size_distribution.pdf"]
+    assert sorted(path.name for path in (out / "plots").iterdir()) == [*plots, "notes.txt"]
+    assert all((out / "plots" / name).read_bytes().startswith(b"%PDF") for name in plots)
+    assert (out / "plots" / "notes.txt").read_text() == "the user's\n"
+    completion, _ = saved_figures["bins_distribution.pdf"].axes[0].collections
     dots = completion.get_offsets()[:, 1]
     assert len(dots) == len(summary) and list(dots) == sorted(dots, reverse=True)
     # miComplete's numbers, which the summary gives at two decimals.
     np.testing.assert_allclose(sorted(dots), sorted(100 * summary["Weighted completeness"]), atol=0.5)
-    assert len(saved_figures["bins_size_distribution.png"].axes[0].patches) == 6
+    assert len(saved_figures["bins_size_distribution.pdf"].axes[0].patches) == 6
     # The bins of the split are recursive bins, of step 1; the others are not.
     assert list(summary.recursive) == list(summary.step > 0)
     assert summary.recursive.any() and not summary.recursive.all()
@@ -321,7 +325,7 @@ def test_validation_decompresses_the_assembly_once(
         random.seed(0)
         run_cli("validation", metacool, "-a", assembly, "-o", tmp_path / name, "-T", tmp_path / f"tmp_{name}",
                 "-s", "50000", "-i", "10", "-t", "1")  # fmt: skip
-        finals[name] = {path.name: path.read_bytes() for path in (tmp_path / name / "final_clusters").iterdir()}
+        finals[name] = {path.name: path.read_bytes() for path in (tmp_path / name / MAGS_WITH_MGES).iterdir()}
     # The overlapping clusters, then the clusters of the recursive step.
     assert len(written) == 2 and len(set(written)) == 1
     (plain,) = set(written)
@@ -456,7 +460,7 @@ def test_contigs_named_by_numbers(tmp_path, monkeypatch, run_cli):
     )
     # Each FASTA file of a final cluster lists the contigs of its cluster in
     # the map.
-    files = sorted((out / "final_clusters").glob("*.fa"))
+    files = sorted((out / MAGS_WITH_MGES).glob("*.fa"))
     assert sorted(path.stem for path in files) == sorted(set(binned.Final_cluster))
     for path in files:
         listed = [line[1:].split()[0] for line in path.read_text().splitlines() if line.startswith(">")]
@@ -539,12 +543,12 @@ def test_the_plots_count_the_clusters_as_the_log(
     length = int(float(summary.loc[almost, "Length"]))
     others = summary.drop(index=almost)
     assert (others["Weighted completeness"] == "1.00").all() and (summary["Weighted redundancy"] == "1.00").all()
-    legend = [text.get_text() for text in saved_figures["bins_size_distribution.png"].axes[0].get_legend().get_texts()]
+    legend = [text.get_text() for text in saved_figures["bins_size_distribution.pdf"].axes[0].get_legend().get_texts()]
     assert legend[0].startswith(f"HQ MAGs: {len(others)} - ")
     assert legend[1] == f"MQ MAGs: 1 - {round(length / 1_000_000, 2)}Mb"
     (log,) = out.glob("metator_validation_*.log")
     assert f"MQ MAGs: 1\tTotal Size: {length}" in log.read_text()
-    completion, _ = saved_figures["bins_distribution.png"].axes[0].collections
+    completion, _ = saved_figures["bins_distribution.pdf"].axes[0].collections
     assert completion.get_offsets()[-1, 1] == pytest.approx(89.96)
 
 
@@ -563,11 +567,11 @@ def test_a_run_goes_on_when_a_plot_cannot_be_drawn(
     metacool = _map_with_merged_partition(metagenome, metagenome_network, tmp_path / "network.metacool", merged=())
     out = tmp_path / "out"
     run_cli("validation", metacool, "-a", metagenome_inputs["assembly"], "-o", out, "-T", tmp_path / "tmp", "-s", "50000")
-    assert [path.name for path in (out / "plot").iterdir()] == ["bins_distribution.png"]
+    assert [path.name for path in (out / "plots").iterdir()] == ["bins_distribution.pdf"]
     metacooler.validate(str(out / metacool.name))
     (log,) = out.glob("metator_validation_*.log")
     logged = log.read_text()
-    assert f"WARNING :: {out / 'plot' / 'bins_size_distribution.png'} is not drawn: ValueError: no pie" in logged
+    assert f"WARNING :: {out / 'plots' / 'bins_size_distribution.pdf'} is not drawn: ValueError: no pie" in logged
     assert "Traceback (most recent call last)" in logged
     assert "Final contact map written after " in logged and logged.rstrip().endswith(str(out / metacool.name))
 
@@ -676,12 +680,16 @@ def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, tmp_path, 
         assert mc.contigs[column].tolist() == measured[column].tolist(), column
     # Clean-up: no pyfastx index, no intermediate table in the output
     # directory (the tables of the validation stay in the temporary
-    # directory, kept here as -N keeps it: see _keep_the_tables); the plots
-    # of the clusters in plot/.
+    # directory, kept here as -N keeps it: see _keep_the_tables, and metator
+    # dump writes them in tables/); the FASTA files of the final clusters,
+    # with their MGE contigs, and of the MAGs, the cool files of the MAGs and
+    # the plots of the clusters, as PDF files, in plots/.
     assert not os.path.exists(f"{metagenome_inputs['assembly']}.fxi")
     outputs = sorted(path.name for path in out.iterdir() if not path.name.endswith(".log"))
-    assert outputs == [metacool.name, "final_clusters", "plot"]
-    assert sorted(path.name for path in (out / "plot").iterdir()) == ["bins_distribution.png", "bins_size_distribution.png"]
+    assert outputs == sorted([metacool.name, "cool", "fasta", "plots", "tables"])
+    assert sorted(path.name for path in (out / "fasta").iterdir()) == ["mags", "mags_with-mges"]
+    assert sorted(path.name for path in (out / "plots").iterdir()) == ["bins_distribution.pdf", "bins_size_distribution.pdf"]
+    assert sorted(path.name for path in (out / "tables").iterdir()) == sorted(mtd.TABLES)
     assert not (out / "contig_data_partition.txt").exists()
 
 
@@ -795,7 +803,7 @@ def test_pipeline_restarts_from_the_map_of_a_stopped_run(metagenome, metagenome_
 
     for name in ["contig_data_final.txt", "cluster_summary.txt", "binning.txt"]:
         assert (_kept(out) / name).read_text() == (_kept(clean) / name).read_text(), name
-    final_bins = [{path.name: path.read_bytes() for path in (run / "final_clusters").iterdir()} for run in [out, clean]]
+    final_bins = [{path.name: path.read_bytes() for path in (run / MAGS_WITH_MGES).iterdir()} for run in [out, clean]]
     assert final_bins[0] == final_bins[1] and final_bins[0]
     # The map of the clusters, written over the map that the stopped run
     # left as it was.
@@ -855,7 +863,7 @@ def _assert_same_clusters(out, ref, contigs=None):
         pd.testing.assert_frame_equal(found[0], found[1], check_exact=False, rtol=1e-12)
     members = [table(run, "cluster_members.txt").sort_values(["round", "cluster", "contig"]) for run in (out, ref)]
     pd.testing.assert_frame_equal(members[0].reset_index(drop=True), members[1].reset_index(drop=True))
-    fasta = [{path.name: synthetic.read_fasta(path) for path in (run / "final_clusters").iterdir()} for run in (out, ref)]
+    fasta = [{path.name: synthetic.read_fasta(path) for path in (run / MAGS_WITH_MGES).iterdir()} for run in (out, ref)]
     assert fasta[0] == fasta[1] and fasta[0]
 
 
@@ -1122,9 +1130,12 @@ def test_pipeline_from_pairs_or_bam_files(metagenome, metagenome_inputs, tmp_pat
         assert clr.info["metadata"]["commands"][0].startswith("metator pipeline ")
         parameters = clr.info["metadata"]["metator"]["validation"]["parameters"]
         assert parameters["input"] == arguments and parameters["map"] == str(written)
-        # The output directory: the map, the clusters, their plots and the log.
+        # The output directory: the map, the log and the outputs of the run
+        # (the FASTA files of its clusters and of its MAGs, their cool files,
+        # the tables and the plots).
         (log,) = out.glob("metator_pipeline_*.log")
-        assert sorted(path.name for path in out.iterdir()) == sorted(["final_clusters", log.name, "plot", "sample.metacool"])
+        outputs = ["cool", "fasta", log.name, "plots", "sample.metacool", "tables"]
+        assert sorted(path.name for path in out.iterdir()) == sorted(outputs)
         steps = [line.split(" :: ", 2)[2] for line in log.read_text().splitlines() if " :: INFO :: [" in line]
         assert steps == [
             f"[1/4] map: the contact map of the contigs, from {what}",
@@ -1132,6 +1143,8 @@ def test_pipeline_from_pairs_or_bam_files(metagenome, metagenome_inputs, tmp_pat
             "[3/4] partition: the clusters of the network",
             "[4/4] validation: miComplete checks the clusters, and the contaminated ones are partitioned again",
         ]
+        # Without --mges, the run ends with the validation, its step 4 here.
+        assert "INFO :: No list of MGE contigs (--mges): the run ends with its step 4, the validation, " in log.read_text()
 
 
 def _clustering(path):
@@ -1209,9 +1222,12 @@ def _without_run(objects):
     """The objects of a map (see tests.hdf5.walk) but what differs between two
     runs of the same clusters: the date the map was written (creation-date, an
     attribute of the file), the command line and the parameters of the run that
-    wrote it and of the runs that stored its network and its partition (the
-    command and parameters of the metator key of its metadata, a JSON text, and
-    of its entries network and partition), and the history of its metacooler
+    wrote it and of the runs that stored its network, its partition and its
+    MGE clusters, and found their hosts (the command and parameters of the
+    entries of the metator key of its metadata, a JSON text: network,
+    partition, validation, and mge and host after them; and of the entry of the
+    round mge, which records the run that made it, in the attribute rounds of
+    the /clusters group, a JSON text), and the history of its metacooler
     annotate edits, which records each store of the network (see _annotated):
     the steps store it twice, with network and validation, pipeline once."""
     kind, members, attributes = objects["/"]
@@ -1219,14 +1235,22 @@ def _without_run(objects):
     for key, dtype, value in attributes:
         if key == "metadata":
             metadata = json.loads(value)
-            for run in ["command", "parameters"]:
-                for step in ["network", "partition", "validation"]:
-                    del metadata["metator"][step][run]
+            for entry in metadata["metator"].values():
+                del entry["command"], entry["parameters"]
             del metadata["annotate"]
             value = metadata
         if key != "creation-date":
             kept.append((key, dtype, value))
-    return {**objects, "/": (kind, members, kept)}
+    objects = {**objects, "/": (kind, members, kept)}
+    if "/clusters" in objects:
+        kind, members, attributes = objects["/clusters"]
+        rounds = [(key, dtype, json.loads(value) if key == "rounds" else value) for key, dtype, value in attributes]
+        for key, _, value in rounds:
+            for entry in value if key == "rounds" else []:
+                for run in ["command", "parameters"]:
+                    entry.pop(run, None)
+        objects["/clusters"] = (kind, members, rounds)
+    return objects
 
 
 def _metator_metadata(objects):
@@ -1259,7 +1283,7 @@ def test_a_cluster_partitioned_again_but_kept_whole(metagenome, metagenome_input
     members = mc.cluster_members("final")
     in_cluster = set(members.contig[members.cluster == "metator_00001_00000"])
     assert set(kept_whole.Name) <= in_cluster
-    listed = (out / "final_clusters" / "metator_00001_00000.fa").read_text().splitlines()
+    listed = (out / MAGS_WITH_MGES / "metator_00001_00000.fa").read_text().splitlines()
     assert in_cluster == {line[1:].split()[0] for line in listed if line.startswith(">")}
 
 
@@ -1509,3 +1533,240 @@ def test_the_log_follows_the_steps_of_the_run(case, metagenome, metagenome_input
     steps = [message for message in messages if message.startswith("Recursive step")]
     assert len(steps) == len(expected) and all(re.fullmatch(pattern, step) for pattern, step in zip(expected, steps, strict=True))
     assert re.fullmatch(rf"Final contact map written after 0h 0m [0-9]+s: {re.escape(str(out / metacool.name))}", messages[-1])
+
+
+# The MGE steps of the pipeline (--mges): metator mge --reassign and metator
+# host on the map of its clusters.
+
+
+def _mge_list(metagenome, path):
+    """The list of the MGE contigs of the mock community at path, one name per
+    line, as metator mge and pipeline --mges read it."""
+    truth = metagenome.truth
+    path.write_text("".join(f"{name}\n" for name in truth.Name[truth.Kind == "mge"]))
+    return path
+
+
+def test_pipeline_with_mges_is_the_steps_one_by_one(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli):
+    """pipeline MAP --mges gives the map that the steps give one by one, network
+    MAP, partition MAP, validation MAP, then mge MAP --reassign and host MAP,
+    from copies of the same map of the contigs (see
+    test_steps_on_a_map_give_the_map_of_pipeline: but the command lines of the
+    runs), and their files: the FASTA files of the final clusters
+    (fasta/mags_with-mges) and of the MGE clusters (fasta/mges), and the hosts
+    (tables/mge_hosts.txt, plots/mge_hosts.pdf): its steps mge and host, 4
+    and 5 here, are mge --reassign and host, on the map of its clusters. Its
+    log marks its five steps. Each MGE cluster is a genome of the map, and its host is the final
+    cluster of the genome that hosts it. The pipeline also writes its outputs
+    from its map: fasta/mags, the MAGs without their MGE contigs, cool, a cool
+    file per MAG with the MGE clusters that it hosts, balanced, and tables."""
+    monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
+    assembly = str(metagenome_inputs["assembly"])
+    contig_map = _contig_map(metagenome_inputs, tmp_path / "contigs.metacool")
+    mges = _mge_list(metagenome, tmp_path / "mges.txt")
+    runs = {name: tmp_path / name for name in ["pipeline", "steps"]}
+    for directory in runs.values():
+        directory.mkdir()
+        shutil.copyfile(contig_map, directory / "input.metacool")
+    common = ["-a", assembly, "-o", "out", "-T", "tmp", "-s", "20000", "--inplace"]
+
+    monkeypatch.chdir(runs["pipeline"])
+    random.seed(0)
+    run_cli("pipeline", "input.metacool", *common, "-i", "10", "-j", "5", "--mges", mges)
+
+    monkeypatch.chdir(runs["steps"])
+    random.seed(0)
+    run_cli("network", "input.metacool", "-a", assembly, "-o", "out", "-T", "tmp", "--inplace")
+    run_cli("partition", "input.metacool", "-o", "out", "-T", "tmp", "--inplace", "-i", "10")
+    run_cli("validation", "input.metacool", *common, "-i", "5")
+    run_cli("mge", "input.metacool", "-a", assembly, "-m", mges, "--reassign", "-o", "out", "-T", "tmp", "--inplace")
+    run_cli("host", "input.metacool", "-o", "out", "--inplace")
+
+    pipeline, steps = runs["pipeline"] / "out", runs["steps"] / "out"
+    for directory in [MAGS_WITH_MGES, os.path.join("fasta", "mges")]:
+        files = [{path.name: path.read_bytes() for path in (out / directory).iterdir()} for out in (steps, pipeline)]
+        assert files[0] == files[1] and files[1], directory
+    hosts = os.path.join("tables", "mge_hosts.txt")
+    assert (steps / hosts).read_bytes() == (pipeline / hosts).read_bytes()
+    assert all((out / "plots" / "mge_hosts.pdf").read_bytes().startswith(b"%PDF") for out in (steps, pipeline))
+    # The outputs of the pipeline only.
+    assert sorted(path.name for path in steps.iterdir() if path.is_dir()) == ["fasta", "plots", "tables"]
+    assert sorted(path.name for path in pipeline.iterdir() if path.is_dir()) == ["cool", "fasta", "plots", "tables"]
+    assert sorted(path.name for path in (pipeline / "tables").iterdir()) == sorted([*mtd.TABLES, "mge_hosts.txt"])
+    written = {name: directory / "input.metacool" for name, directory in runs.items()}
+    for path in written.values():
+        metacooler.validate(str(path), full=True)
+    found = {name: walk(path) for name, path in written.items()}
+    assert _without_run(found["steps"]) == _without_run(found["pipeline"])
+    # What differs: the command lines of the runs, and their parameters.
+    metator = {name: _metator_metadata(objects) for name, objects in found.items()}
+    assert set(metator["pipeline"]) == set(metator["steps"]) == {"network", "partition", "validation", "mge", "host"}
+    for step in ["mge", "host"]:
+        assert metator["pipeline"][step]["command"].startswith("metator pipeline input.metacool")
+        assert metator["steps"][step]["command"].startswith(f"metator {step} input.metacool")
+    # The five steps of the run, in its log, and no word of a stop.
+    (log,) = pipeline.glob("metator_pipeline_*.log")
+    logged = log.read_text()
+    names = ["network", "partition", "validation", "mge", "host"]
+    assert re.findall(r" :: INFO :: \[([0-9])/([0-9])\] ([a-z]+): ", logged) == [
+        (str(number), "5", name) for number, name in enumerate(names, start=1)
+    ]
+    assert "No list of MGE contigs" not in logged and "The run stopped" not in logged
+    # Each MGE cluster, a genome of the map, and its host, the final cluster
+    # of the genome that hosts it.
+    mc = metacooler.MetaCooler(str(written["pipeline"]))
+    members = mc.cluster_members(mtcl.MGE)
+    mge_of = dict(zip(members["contig"], members["cluster"], strict=True))
+    genomes = mc.genomes
+    assert sorted(genomes.name[genomes.mge == "True"]) == sorted(set(mge_of.values()))
+    final = mc.cluster_members(mtcl.FINAL)
+    final_of = dict(zip(final["contig"], final["cluster"], strict=True))
+    clusters = mc.clusters[(mc.clusters["round"] == mtcl.MGE).to_numpy()].set_index("name")
+    for mge in metagenome.mges:
+        (cluster,) = {mge_of[contig.name] for contig in mge.contigs}
+        (host,) = {final_of[contig.name] for contig in metagenome.molecule(mge.host).contigs}
+        assert (clusters.loc[cluster, "n_hosts"], clusters.loc[cluster, "hosts"]) == (1, host)
+        # The MGE contigs: in the FASTA file of their host's final cluster
+        # (the validation clusters them with it), not in that of its MAG.
+        contigs = {contig.name for contig in mge.contigs}
+        assert contigs <= set(synthetic.read_fasta(pipeline / MAGS_WITH_MGES / f"{host}.fa"))
+        assert not contigs & set(synthetic.read_fasta(pipeline / "fasta" / "mags" / f"{host}.fa"))
+    # fasta/mags: each MAG, a genome of the map but the MGE genomes, its
+    # contigs and stitched; cool: a cool file per MAG, its contigs and those of
+    # the MGE clusters that it hosts, balanced (weights in its bins).
+    genome_of = dict(zip(mc.contigs["name"], genomes["name"].to_numpy()[mc.contigs["genome_id"].to_numpy()], strict=True))
+    mags = list(genomes.name[genomes.mge == "False"])
+    assert sorted(path.name for path in (pipeline / "fasta" / "mags").iterdir()) == sorted(
+        f"{mag}{suffix}" for mag in mags for suffix in (".fa", ".stitched.fa")
+    )
+    assert sorted(path.name for path in (pipeline / "cool").iterdir()) == sorted(f"{mag}.cool" for mag in mags)
+    hosted = {
+        name: mges.split(",") for name, mges in zip(genomes.name, genomes.mges, strict=True) if isinstance(mges, str) and mges
+    }
+    assert sorted(hosted) == sorted(clusters.hosts[clusters.n_hosts > 0])
+    for mag in mags:
+        contigs = sorted(name for name, genome in genome_of.items() if genome == mag)
+        assert sorted(synthetic.read_fasta(pipeline / "fasta" / "mags" / f"{mag}.fa")) == contigs
+        assert list(synthetic.read_fasta(pipeline / "fasta" / "mags" / f"{mag}.stitched.fa")) == [mag]
+        clr = cooler.Cooler(str(pipeline / "cool" / f"{mag}.cool"))
+        mge_contigs = [contig for contig, cluster in mge_of.items() if cluster in hosted.get(mag, [])]
+        assert sorted(clr.chromnames) == sorted(contigs + mge_contigs) and "weight" in clr.bins().columns
+
+
+def test_pipeline_with_mges_again_on_the_map_it_wrote(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli, logged):
+    """pipeline MAP --mges, run again on the map it updated in place, warns before
+    any work that it replaces the clusters, the rounds, the round mge among
+    them, and the hosts of the MGE clusters that the map holds; but not, once
+    it has written the map of its clusters, that the map no longer holds the
+    round mge and the hosts, which its steps mge and host store again."""
+    monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
+    metacool = _contig_map(metagenome_inputs, tmp_path / "contigs.metacool")
+    mges = _mge_list(metagenome, tmp_path / "mges.txt")
+    args = [metacool, "-a", metagenome_inputs["assembly"], "-o", tmp_path / "out", "-T", tmp_path / "tmp", "-s", "20000",
+            "-i", "10", "-j", "5", "--mges", mges, "--inplace"]  # fmt: skip
+    random.seed(0)
+    run_cli("pipeline", *args)
+    first = len(logged())
+    random.seed(0)
+    run_cli("pipeline", *args, "-F")
+    # The cool files of the smallest MAGs, which cooler balance cannot
+    # balance on this map of one bin per contig, aside (see
+    # metator.outputs.write_cool_files).
+    warnings = [message for level, message in logged()[first:] if level == "WARNING" and not message.startswith("Every bin of ")]
+    replaced = (
+        rf"{re.escape(str(metacool))} holds [0-9]+ cluster\(s\) and the clustering round\(s\) core, overlapping, "
+        r"(recursive_[0-9]+, )*final, mge and the hosts of its MGE clusters \(metator host\), which this run replaces, "
+        r"in place: leave out --inplace to write the map of this run to another file, and leave .* as it is\."
+    )
+    assert len(warnings) == 1 and re.fullmatch(replaced, warnings[0]), warnings
+    mc = metacooler.MetaCooler(str(metacool))
+    assert [entry["name"] for entry in mc.cluster_rounds][-1] == mtcl.MGE
+    assert set(mc.metadata["metator"]) == {"network", "partition", "validation", "mge", "host"}
+    assert (mc.genomes.mge == "True").any() and mc.genomes.n_mges.notna().any()
+
+
+@pytest.mark.parametrize("step", [4, 5], ids=["mge", "host"])
+def test_pipeline_stopped_in_an_mge_step_keeps_its_clusters(step, metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli):
+    """A pipeline run with --mges that stops in its step 4, mge, leaves the map of
+    its clusters that step 3, the validation, wrote, and one that stops in its
+    step 5, host, the map with its MGE clusters too, which mge wrote; the log
+    says so, and what to run on the map to complete the run."""
+    monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
+
+    def fails(*args, **kwargs):
+        raise mtmc.MetacoolError("cannot")
+
+    monkeypatch.setattr("metator.mge.mge_binning" if step == 4 else "metator.host.find_hosts", fails)
+    metacool = _contig_map(metagenome_inputs, tmp_path / "contigs.metacool")
+    mges = _mge_list(metagenome, tmp_path / "mges.txt")
+    out = tmp_path / "out"
+    random.seed(0)
+    with pytest.raises(mtmc.MetacoolError, match=r"^cannot$"):
+        run_cli("pipeline", metacool, "-a", metagenome_inputs["assembly"], "-o", out, "-T", tmp_path / "tmp", "-s",
+                "20000", "-i", "10", "-j", "5", "--mges", mges)  # fmt: skip
+    written = out / metacool.name
+    metacooler.validate(str(written), full=True)
+    mc = metacooler.MetaCooler(str(written))
+    held = ["network", "partition", "validation", *(["mge"] if step == 5 else [])]
+    assert set(mc.metadata["metator"]) == set(held)
+    assert (mtcl.MGE in [entry["name"] for entry in mc.cluster_rounds]) == (step == 5)
+    # fasta/mges, made anew, holds the MGE clusters of mge; the hosts and
+    # the outputs of the run (fasta/mags, cool, tables) are not written.
+    assert bool(list((out / "fasta" / "mges").iterdir())) == (step == 5)
+    assert not (out / "tables").exists() and not list((out / "fasta" / "mags").iterdir())
+    assert not list((out / "cool").iterdir())
+    (log,) = out.glob("metator_pipeline_*.log")
+    name, what, finish = {
+        4: ("mge", "the clusters of the run", "metator mge --reassign then metator host"),
+        5: ("host", "the clusters of the run and their MGE clusters", "metator host"),
+    }[step]
+    logged = log.read_text()
+    assert "ERROR :: cannot\n" in logged
+    stopped = (
+        f"INFO :: The run stopped in its step {step}, {name}: {written} holds {what}; run {finish} on it to complete "
+        f"the map ({os.path.join('fasta', 'mags')}, cool and tables are not written).\n"
+    )
+    assert stopped in logged
+
+
+def test_pipeline_with_mges_from_pairs_files(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli):
+    """pipeline --mges from the pairs files of a run makes the map of the contigs
+    first, in a step more, then gives what it gives from that map, as
+    metacooler create pairs makes it: the same clusters, MGE clusters and
+    hosts, and the same files (the FASTA files of the clusters, of the MAGs and
+    of the MGE clusters, and the hosts). Its log marks its six steps: map, the
+    three of the binning, then mge and host, 5 and 6 here."""
+    monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
+    assembly, depth = str(metagenome_inputs["assembly"]), str(metagenome_inputs["depth"])
+    mges = _mge_list(metagenome, tmp_path / "mges.txt")
+    common = ["-a", assembly, "-d", depth, "-e", "DpnII", "-s", "20000", "-i", "10", "-j", "5", "-p", "sample",
+              "-T", str(tmp_path / "tmp"), "--mges", str(mges)]  # fmt: skip
+    contig_data = mtn.create_contig_data(assembly, depth, "DpnII")
+    reference = contig_map(metagenome_inputs["pairs"], contig_data, tmp_path / "sample.metacool", columns=False)
+    runs = {"map": str(reference), "pairs": str(metagenome_inputs["pairs"])}
+    for name, argument in runs.items():
+        random.seed(0)
+        run_cli("pipeline", argument, "-o", str(tmp_path / name), *common)
+    maps = {name: metacooler.MetaCooler(str(tmp_path / name / "sample.metacool")) for name in runs}
+    pd.testing.assert_frame_equal(maps["pairs"].genomes, maps["map"].genomes)
+    pd.testing.assert_frame_equal(maps["pairs"].clusters, maps["map"].clusters)
+
+    def rounds(mc):
+        # The round mge records the run that made it, whose input differs.
+        return [
+            {key: value for key, value in entry.items() if key not in ("command", "parameters")} for entry in mc.cluster_rounds
+        ]
+
+    assert rounds(maps["pairs"]) == rounds(maps["map"]) and rounds(maps["map"])[-1]["name"] == mtcl.MGE
+    genomes = maps["map"].genomes
+    assert (genomes.mge == "True").any() and genomes.n_mges.notna().any()
+    for directory in [MAGS_WITH_MGES, os.path.join("fasta", "mags"), os.path.join("fasta", "mges")]:
+        files = [{path.name: path.read_bytes() for path in (tmp_path / name / directory).iterdir()} for name in runs]
+        assert files[0] == files[1] and files[0], directory
+    hosts = os.path.join("tables", "mge_hosts.txt")
+    assert (tmp_path / "pairs" / hosts).read_bytes() == (tmp_path / "map" / hosts).read_bytes()
+    (log,) = (tmp_path / "pairs").glob("metator_pipeline_*.log")
+    names = ["map", "network", "partition", "validation", "mge", "host"]
+    assert re.findall(r" :: INFO :: \[([0-9])/([0-9])\] ([a-z]+): ", log.read_text()) == [
+        (str(number), "6", name) for number, name in enumerate(names, start=1)
+    ]

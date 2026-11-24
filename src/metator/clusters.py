@@ -337,7 +337,7 @@ def read_rounds(outdir):
 def mge_round(summary, name=MGE):
     """The round ``mge`` (or ``mge_random``: name): the MGE clusters of a run of
     ``metator mge``, from their summary (see metator.mge.generate_bin_summary),
-    in its order: each named as its record of ``mges_binned.fa``
+    in its order: each named as its FASTA files in ``fasta/mges``
     (``MetaTOR_MGE_<ID>``), with its contigs (the ``Contigs`` column) and no
     parent. Its other columns are those of the summary (GC, Hit, BinningScore),
     but those that the map computes from the contigs (see

@@ -420,20 +420,31 @@ def test_mge_contigs_that_the_map_lacks(metagenome, clusters_map, logged):
 
 
 def test_write_mges_fasta(metagenome, metagenome_files, clusters_map, tmp_path):
-    """One record per MGE cluster, named after it: its contigs, in the order given
-    (that of the map), joined by 200 N, in lines of 80 bases."""
+    """Two FASTA files per MGE cluster, named after it, side by side: its contigs,
+    as records of their own (MGE.fa), and one record (MGE.stitched.fa), its
+    contigs joined by 200 N, in lines of 80 bases; both in the order given
+    (that of the cluster). A file of their names is replaced, another file is
+    left as it is, and nothing else is left in the directory."""
     metacool, _ = clusters_map
     sequences = synthetic.read_fasta(metagenome_files["assembly"])
     phage, plasmid = ([c.name for c in mge.contigs] for mge in metagenome.mges)
     clusters = {1: {"Contigs": phage[::-1]}, 3: {"Contigs": plasmid}}
-    out = tmp_path / "mges.fa"
-    out.write_text("an older file")
+    out = tmp_path / "mges"
+    out.mkdir()
+    (out / "MetaTOR_MGE_00001.stitched.fa").write_text("an older file")
+    (out / "notes.txt").write_text("the user's")
     mtm.write_mges_fasta(str(metacool), str(metagenome_files["assembly"]), clusters, str(out))
-    expected = ""
-    for name, contigs in [("MetaTOR_MGE_00001", phage[::-1]), ("MetaTOR_MGE_00003", plasmid)]:
+    names = [("MetaTOR_MGE_00001", phage[::-1]), ("MetaTOR_MGE_00003", plasmid)]
+    for name, contigs in names:
         record = ("N" * 200).join(sequences[contig] for contig in contigs)
-        expected += f">{name}\n" + "".join(f"{record[i : i + 80]}\n" for i in range(0, len(record), 80))
-    assert out.read_text() == expected
+        stitched = f">{name}\n" + "".join(f"{record[i : i + 80]}\n" for i in range(0, len(record), 80))
+        assert (out / f"{name}.stitched.fa").read_text() == stitched
+        records = synthetic.read_fasta(out / f"{name}.fa")
+        assert list(records) == contigs and all(records[contig] == sequences[contig] for contig in contigs)
+    assert sorted(path.name for path in out.iterdir()) == sorted(
+        ["notes.txt", *(f"{name}{suffix}" for name, _ in names for suffix in (".fa", ".stitched.fa"))]
+    )
+    assert (out / "notes.txt").read_text() == "the user's"
 
 
 # The MGE clusters stored in the map of the run: the round mge of its
@@ -559,6 +570,9 @@ def test_mge_stores_its_clusters_in_the_map(output, mge_run, tmp_path, monkeypat
     if output.startswith("-F"):
         out.mkdir()
         output_map.write_text("an older map")
+        # The FASTA files of an earlier run, which -F replaces.
+        (out / "fasta" / "mges").mkdir(parents=True)
+        (out / "fasta" / "mges" / "MetaTOR_MGE_09999.fa").write_text(">an older cluster\nACGT\n")
         options.append("-F")
     locks = []
     write_map = mtmc.write_map
@@ -593,8 +607,14 @@ def test_mge_stores_its_clusters_in_the_map(output, mge_run, tmp_path, monkeypat
     assert {path: path.read_bytes() for path in unchanged} == unchanged
     assert not [path.name for path in [*tmp_path.iterdir(), *out.iterdir()] if path.name.startswith(".")]
     maps = [] if output == "--inplace" else [output_map.name]
-    assert sorted(path.name for path in out.iterdir()) == sorted(["mges_binned.fa", *maps])
-    assert sorted(synthetic.read_fasta(out / "mges_binned.fa")) == sorted(summary.BinName)
+    assert sorted(path.name for path in out.iterdir()) == sorted(["fasta", *maps])
+    fasta = out / "fasta" / "mges"
+    assert sorted(path.name for path in fasta.iterdir()) == sorted(
+        f"{name}{suffix}" for name in summary.BinName for suffix in (".fa", ".stitched.fa")
+    )
+    for name, contigs in zip(summary.BinName, summary.Contigs, strict=True):
+        assert list(synthetic.read_fasta(fasta / f"{name}.stitched.fa")) == [name]
+        assert sorted(synthetic.read_fasta(fasta / f"{name}.fa")) == sorted(contigs.split(","))
     assert not (tmp_path / "tmp").exists()
     (log,) = tmp_path.glob("metator_mge_*.log")
     logged = log.read_text()
@@ -630,29 +650,56 @@ def test_mge_rerun_replaces_its_round(mge_run, tmp_path, run_cli):
 
 def test_mge_random_is_a_round_of_its_own(mge_run, tmp_path, monkeypatch, run_cli):
     """--random stores its random clustering as the round mge_random, with its
-    entry in the metator metadata, and writes mges_binned_random.fa: the round
-    mge, its entry, and mges_binned.fa of an earlier run are left as they were."""
+    entry in the metator metadata, and writes fasta/mges_random: the round mge,
+    its entry, and fasta/mges of an earlier run are left as they were. A second
+    run replaces fasta/mges_random with -F."""
     import metacooler
 
     metacool, args = mge_run
     run_cli("mge", metacool, *args, "--inplace")
     real = metacooler.MetaCooler(str(metacool))
     rounds, entry = _round(real), real.metadata["metator"]["mge"]
-    fasta = (tmp_path / "out" / "mges_binned.fa").read_bytes()
+    fasta = {path.name: path.read_bytes() for path in (tmp_path / "out" / "fasta" / "mges").iterdir()}
     summary = _expected_summary(metacool, args, random=True)
-    for _ in range(2):
+    for force in [[], ["-F"]]:
         monkeypatch.setattr("numpy.random.permutation", lambda ids: np.random.RandomState(7).permutation(ids))
         np.random.seed(7)
-        run_cli("mge", metacool, *args, "--random", "--inplace")
+        run_cli("mge", metacool, *args, "--random", "--inplace", *force)
     mc = metacooler.MetaCooler(str(metacool))
     assert [entry["name"] for entry in mc.cluster_rounds] == ["overlapping", "final", "mge", "mge_random"]
     pd.testing.assert_frame_equal(_round(mc), rounds)
     assert mc.metadata["metator"]["mge"] == entry and mc.metadata["metator"]["mge_random"]["parameters"]["random"] is True
     assert sorted(len(contigs.split(",")) for contigs in _round(mc, "mge_random")["name"].map(
         dict(zip(summary.BinName, summary.Contigs, strict=True)))) == sorted(summary.ContigsNumber)  # fmt: skip
-    assert (tmp_path / "out" / "mges_binned.fa").read_bytes() == fasta
-    records = synthetic.read_fasta(tmp_path / "out" / "mges_binned_random.fa")
-    assert sorted(records) == sorted(_round(mc, "mge_random")["name"])
+    assert {path.name: path.read_bytes() for path in (tmp_path / "out" / "fasta" / "mges").iterdir()} == fasta
+    stitched = sorted((tmp_path / "out" / "fasta" / "mges_random").glob("*.stitched.fa"))
+    assert sorted(path.name[: -len(".stitched.fa")] for path in stitched) == sorted(_round(mc, "mge_random")["name"])
+
+
+@pytest.mark.parametrize("random", [False, True], ids=["fasta/mges", "fasta/mges_random"])
+def test_the_fasta_files_of_an_earlier_run(random, mge_run, tmp_path, run_cli):
+    """The FASTA files of the MGE clusters of an earlier run (fasta/mges, or
+    fasta/mges_random with --random) are refused without -F, before any work,
+    and left as they are; a fasta that is no directory is refused with or
+    without -F."""
+    metacool, args = mge_run
+    out = tmp_path / "out"
+    directory = out / "fasta" / ("mges_random" if random else "mges")
+    directory.mkdir(parents=True)
+    (directory / "MetaTOR_MGE_00001.fa").write_text(">an earlier run's\nACGT\n")
+    before = metacool.read_bytes()
+    options = ["--random"] if random else []
+    with pytest.raises(ValueError):
+        run_cli("mge", metacool, *args, *options)
+    assert metacool.read_bytes() == before
+    assert (directory / "MetaTOR_MGE_00001.fa").read_text() == ">an earlier run's\nACGT\n"
+    (log,) = tmp_path.glob("metator_mge_*.log")
+    assert f"ERROR :: {directory} already existed." in log.read_text()
+    shutil.rmtree(out / "fasta")
+    (out / "fasta").write_text("a file\n")
+    with pytest.raises(ValueError):
+        run_cli("mge", metacool, *args, *options, "-F")
+    assert metacool.read_bytes() == before and (out / "fasta").read_text() == "a file\n"
 
 
 def test_mge_random_with_a_seed(mge_run, run_cli):
@@ -665,7 +712,7 @@ def test_mge_random_with_a_seed(mge_run, run_cli):
     found = []
     for state in (1, 2):
         np.random.seed(state)
-        run_cli("mge", metacool, *args, "--random", "--seed", "11", "--inplace")
+        run_cli("mge", metacool, *args, "--random", "--seed", "11", "--inplace", "-F")
         mc = metacooler.MetaCooler(str(metacool))
         members = mc.cluster_members("mge_random")
         found.append(sorted(zip(members["cluster"].astype(str), members["contig"].astype(str), strict=True)))
@@ -693,12 +740,14 @@ def test_seed_random_seeds_python_and_numpy():
     assert random.random() == expected
 
 
-@pytest.mark.parametrize("name", ["mges_bin_summary.tsv", "mges_cluster_summary.tsv"])
+@pytest.mark.parametrize("name", ["mges_bin_summary.tsv", "mges_cluster_summary.tsv", "mges_binned.fa", "mges_binned_random.fa"])
 @pytest.mark.parametrize("force", [False, True], ids=["refused", "-F"])
 def test_the_summary_of_an_earlier_version(name, force, mge_run, tmp_path, run_cli):
     """An earlier MGE summary (1.x's mges_bin_summary.tsv, a development build's
-    mges_cluster_summary.tsv), or a user's own file of that name, is refused with
-    or without -F, before any work, and left as it is."""
+    mges_cluster_summary.tsv) or FASTA file of the MGE clusters (mges_binned.fa,
+    mges_binned_random.fa, which fasta/mges and fasta/mges_random replace), or a
+    user's own file of that name, is refused with or without -F, before any
+    work, and left as it is."""
     metacool, args = mge_run
     out = tmp_path / "out"
     out.mkdir()
@@ -718,9 +767,27 @@ def test_the_summary_of_an_earlier_version(name, force, mge_run, tmp_path, run_c
     ) in log.read_text()
 
 
+@pytest.mark.parametrize(("case", "reason"), [("not there", "No such file or directory"), ("a directory", "Is a directory")])
+def test_mge_refuses_a_list_that_cannot_be_read(case, reason, mge_run, tmp_path, run_cli):
+    """A list of MGE contigs that cannot be read is refused before anything is
+    written, the reason logged as an error, as pipeline --mges refuses it."""
+    metacool, args = mge_run
+    mges = tmp_path / "missing.txt" if case == "not there" else tmp_path / "a directory"
+    if case == "a directory":
+        mges.mkdir()
+    args[args.index("-m") + 1] = str(mges)
+    before = metacool.read_bytes()
+    message = f"Cannot read the list of MGE contigs {mges} ({reason}): give a text file, one contig name per line."
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        run_cli("mge", metacool, *args)
+    assert metacool.read_bytes() == before and not (tmp_path / "out" / "fasta").exists()
+    (log,) = tmp_path.glob("metator_mge_*.log")
+    assert f"ERROR :: {message}\n" in log.read_text()
+
+
 @pytest.mark.parametrize("assembly", ["bzip2", "zip", "no FASTA"])
 def test_mge_refuses_an_assembly_that_metacooler_cannot_read(assembly, mge_run, tmp_path, run_cli, logged):
-    """An assembly that metacooler cannot write mges_binned.fa from (compressed
+    """An assembly that metacooler cannot write fasta/mges from (compressed
     with bzip2 or zip, or no FASTA file) is refused before any work, as the
     network, the validation and the pipeline refuse it: the map is left as it
     was, nothing is written, and nothing is removed."""
@@ -968,7 +1035,7 @@ def test_mge_on_a_map_that_cannot_be_written(error, mge_run, tmp_path, monkeypat
         assert "Aborted" in run_cli("mge", metacool, *args, "--inplace", exit_code=1).output
     assert metacool.read_bytes() == before
     assert sorted(path.name for path in (tmp_path / "maps").iterdir()) == [metacool.name]
-    assert (tmp_path / "out" / "mges_binned.fa").exists()
+    assert list((tmp_path / "out" / "fasta" / "mges").glob("*.stitched.fa"))
 
 
 def _dropped(where, rounds):

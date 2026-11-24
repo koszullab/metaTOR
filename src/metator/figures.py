@@ -3,13 +3,14 @@
 
 """The plots of the final clusters of a validation.
 
-``validation`` and ``pipeline`` draw them in ``plot/``, in their output
-directory, once the clusters are final (see plot_figures):
+``validation`` and ``pipeline`` draw them in ``plots/``, in their output
+directory, as PDF files, once the clusters are final (see plot_figures), where
+``host`` draws its own (see metator.host.plot_hosts):
 
-- ``bins_distribution.png``: the completeness and the contamination of each
+- ``bins_distribution.pdf``: the completeness and the contamination of each
   cluster, the clusters by decreasing completeness (see
   figures_bins_distribution);
-- ``bins_size_distribution.png``: the share of the contigs of the run in each
+- ``bins_size_distribution.pdf``: the share of the contigs of the run in each
   quality class of the clusters (see metator.validation.bin_quality), and in
   no cluster (see figures_bins_size_distribution).
 
@@ -27,9 +28,9 @@ from matplotlib.figure import Figure
 from metator.log import logger
 
 # The directory of the plots, in the output directory of a run, and the plots
-# that a run draws there (see plot_paths).
-PLOT_DIR = "plot"
-PLOTS = ("bins_distribution.png", "bins_size_distribution.png")
+# that a validation or pipeline run draws there (see plot_paths), as PDF files.
+PLOT_DIR = "plots"
+PLOTS = ("bins_distribution.pdf", "bins_size_distribution.pdf")
 
 # The quality classes of the clusters (see metator.validation.bin_quality), in
 # the order of the plots, with their colour.
@@ -62,7 +63,8 @@ PLOTTED_COLUMNS = ["Length", "Weighted completeness", "Weighted redundancy"]
 
 
 def _saved(fig, out_file):
-    """Write the figure fig to out_file, as a PNG of 200 dpi cut to its content."""
+    """Write the figure fig to out_file, cut to its content: a PDF file, its
+    rasterized parts at 200 dpi."""
     fig.savefig(out_file, dpi=200, bbox_inches="tight")
 
 
@@ -170,16 +172,16 @@ def figures_bins_size_distribution(bin_summary, total_size, threshold, out_file)
 
 def plot_paths(out_dir):
     """The plots that a run draws in its output directory, out_dir, in the order
-    of PLOTS: plot/bins_distribution.png and plot/bins_size_distribution.png."""
+    of PLOTS: plots/bins_distribution.pdf and plots/bins_size_distribution.pdf."""
     return [join(out_dir, PLOT_DIR, name) for name in PLOTS]
 
 
 def plot_figures(out_dir, contigs_data, bin_summary, threshold):
-    """Draw the plots of the final clusters of a validation in plot/ of its output
+    """Draw the plots of the final clusters of a validation in plots/ of its output
     directory, out_dir, made if missing (see plot_paths):
-    bins_distribution.png (see figures_bins_distribution) and
-    bins_size_distribution.png (see figures_bins_size_distribution). They
-    replace files of their names; the other files of plot/ are left as they
+    bins_distribution.pdf (see figures_bins_distribution) and
+    bins_size_distribution.pdf (see figures_bins_size_distribution). They
+    replace files of their names; the other files of plots/ are left as they
     are.
 
     They are figures: one that cannot be drawn is a warning, with the type,

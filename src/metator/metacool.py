@@ -1031,11 +1031,13 @@ def write_map(
     drop_hosts=False,
     force=False,
     planned=None,
+    mge_follows=False,
 ):
     """Write the map of a run at outfile from its input map, metacool: what the
     run stores in it, everything else as it was. Each step of a run writes its
     map so, and pipeline writes what its three steps store, in one map, as the
-    steps one by one write it.
+    steps one by one write it (then, with --mges, its steps mge and host store
+    the round mge and the hosts in it, as mge and host do).
 
     Everything goes into one edit session (see _staged_edit), validated once
     and renamed once; on any failure outfile is left as it was. In order: the
@@ -1094,6 +1096,11 @@ def write_map(
         is refused if it changed since (another run replaced it, or a program
         wrote it), rather than written from another map than the one that the
         run worked on.
+    mge_follows : bool
+        Whether the run stores the round mge and the hosts of its MGE clusters
+        in the map once it is written (pipeline --mges, in its steps mge and
+        host): the warnings of what the map no longer holds leave them out,
+        which the run makes again.
 
     Raises
     ------
@@ -1198,8 +1205,10 @@ def write_map(
                 # an earlier round mge that the other rounds kept).
                 _drop_hosts(staged, metacool)
         logger.debug(f"{outfile} is written: the contact map{written}.")
-    _warn_dropped_rounds(later, metacool, outfile, in_place)
-    if dropped_hosts:
+    _warn_dropped_rounds(
+        [entry for entry in later if not (mge_follows and entry["name"] == mtcl.MGE)], metacool, outfile, in_place
+    )
+    if dropped_hosts and not mge_follows:
         _warn_dropped_hosts(metacool, outfile, in_place, replaced)
 
 

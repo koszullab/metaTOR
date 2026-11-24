@@ -16,11 +16,12 @@ metator --version
 | Several libraries | One map, which sums them: give the pairs files or the BAM files of every library to `network` or `pipeline`, which sum them in the map that they make (see [The inputs of a run](#inputs)); or make the map of each library, then merge them with `metacooler merge` (see [Other tools](other-tools.md)). |
 | Several enzymes | Separated by commas: `DpnII,HinfI`. |
 | The map of a run | A run writes its map to its output directory (`-o`), under the name of `MAP` (`NAME.metacool` for an entry of a collection), and leaves `MAP` as it was: metacooler copies `MAP` next to that map, the run writes what it stores into the copy, and metacooler renames it into place once it is validated. `--inplace` updates `MAP` itself instead, and so does a run whose output directory holds `MAP` already: the steps of a run, one by one, in one output directory (`network MAP -o DIR`, then `partition DIR/MAP -o DIR`...). |
-| `-F, --force` | Replace what the command writes itself, when an earlier run left it: the map of the output directory, the final clusters (`final_clusters/`) and their plots (in `plot/`, whose other files are left as they are), the tables of a dump. Without it, a command refuses to overwrite them. The other results of an earlier run in the output directory (the tables of a development build of 2.0, the outputs of 1.x, an earlier summary of `mge`) are refused, with or without it, and never removed. A run that updates its map in place warns, before any work, of the clusters and clustering rounds that it replaces there. |
+| Outputs | Beside its map and its log, a run writes its files in folders of its output directory: `fasta/mags_with-mges/`, the FASTA file of each final cluster, as the validation made it, with the MGE contigs that it holds (`validation`, `pipeline`); `fasta/mags/`, each MAG, a genome of the map but the MGE genomes, as its contigs (`<MAG>.fa`) and stitched (`<MAG>.stitched.fa`: one record, its contigs joined by 200 `N`) (`pipeline`); `fasta/mges/`, each MGE cluster, the same two ways (`mge`, `pipeline --mges`; `fasta/mges_random/` for `mge --random`); `cool/`, a cool file per MAG, with the MGE clusters that it hosts, balanced (`pipeline`); `tables/`, the tables of `dump` (`pipeline`) and `mge_hosts.txt` (`host`, `pipeline --mges`); `plots/`, the plots, as PDF files (`validation`, `host`, `pipeline`). |
+| `-F, --force` | Replace what the command writes itself, when an earlier run left it: the map of the output directory, the folders that it makes anew (`fasta/mags_with-mges/`, `fasta/mags/`, `fasta/mges/`, `cool/`), the plots of the clusters (in `plots/`, whose other files are left as they are), the tables of a dump. Without it, a command refuses to overwrite them. The other results of an earlier run in the output directory (the tables, `final_clusters/`, `plot/`, `mges_binned.fa` and `mge_hosts.txt` of a development build of 2.0, the outputs of 1.x, an earlier summary of `mge`) are refused, with or without it, and never removed. A run that updates its map in place warns, before any work, of the clusters and clustering rounds that it replaces there. |
 | Writing a map | Through metacooler: a run holds the lock of the map it writes, `<map>.lock` (that of the output directory, or `MAP` in place), from its checks to its end, and writes the map in an edit session, one staged copy next to it (`.<map>.<uuid>.<n>.d/`), validated, then renamed onto it, so a run that stops leaves the map as it was. `MAP` updated in place through a symbolic link is updated where the link points; a symbolic link in the output directory, where the map of the run goes, is replaced (`-F`), not its target, and a hard link of `MAP` there is refused. A map that another process holds, a map updated in place without write permission, or one whose directory is not writable (with room for a copy of the map and for the new map), is refused before any work. A run killed by SIGTERM (a job scheduler's time limit) or SIGKILL leaves its lock and its staged copy, which the next run that writes the map on the same host takes over and removes; on another host, delete the files that the error names. |
 | `-T, --tmpdir` | Each run works in a directory of its own inside it, removed at the end, unless `--no-clean-up` or the run fails: the log says which. |
 | `-N, --no-clean-up` | Keep the temporary directory of the run: that of a `validation` or `pipeline` run holds its tables. |
-| Log files | Each command writes its log, `metator_<command>_<date>.log`, into its output directory; `mge`, into the current directory. The log starts, as hicstuff's does, with the version, the date, the command line (`cmd`) and the value of each option, then a line of dashes; `pipeline` marks its three steps (`[1/3] network`...), four from pairs or BAM files (`[1/4] map`...), the partition counts its iterations as they go, the validation each recursive step (`Recursive step 1/9`); and the log ends with what the run wrote and how long it took. The bookkeeping of a run (the files it writes on the way, metacooler's accounts of its work) is logged at the DEBUG level, which the log does not show. |
+| Log files | Each command writes its log, `metator_<command>_<date>.log`, into its output directory; `mge`, into the current directory. The log starts, as hicstuff's does, with the version, the date, the command line (`cmd`) and the value of each option, then a line of dashes; `pipeline` marks its steps: three (`[1/3] network`...), one more first from pairs or BAM files (`[1/4] map`...), and two more last with `--mges` (... `[5/5] host`, or `[6/6] host` from pairs or BAM files); the partition counts its iterations as they go, the validation each recursive step (`Recursive step 1/9`); and the log ends with what the run wrote and how long it took. The bookkeeping of a run (the files it writes on the way, metacooler's accounts of its work) is logged at the DEBUG level, which the log does not show. |
 | Random numbers | The partition (Louvain or Leiden, in `partition`, `pipeline` and the recursive partition of `validation`) and the random clustering of `mge --random` draw random numbers, other ones at each run: two runs on the same map give close clusters, but not the same. `--seed S` makes a run give the same clusters each time, from the same map and options (and versions of igraph and metaTOR): a step is seeded once, before its iterations, which still draw other numbers one after the other (each iteration of Louvain or Leiden gives another membership, as the core and overlapping clusters need), so that the step as a whole, all its iterations in their order, is the same. `pipeline --seed S` seeds its partition and its validation alike, and gives the clusters of `partition --seed S`, then `validation --seed S`. The metadata of the map store the seed of the run, with its other parameters. |
 
 New to metaTOR? Start with the [Quickstart](quickstart.md); for hits, core,
@@ -93,7 +94,8 @@ from the pairs files or the BAM files of the run: their arguments,
 ### `pipeline` { #pipeline }
 
 Run the three steps of the clustering, `network`, `partition` and `validation`,
-in one command, and write the contact map of the clusters. **Guide:**
+in one command, and write the contact map of the clusters; with `--mges`, go
+on with `mge` and `host` on that map. **Guide:**
 [Running the pipeline](guides/pipeline.md).
 
 ```console
@@ -108,6 +110,38 @@ hicstuff 4.0.0), or metacooler from pairs files
 first, from the pairs files or the BAM files of the run, in its output
 directory (see [The inputs of a run](#inputs)): a step more, which the log
 marks `[1/4] map`.
+
+The run writes the map of its clusters at the end of the validation, which
+writes the FASTA files of the final clusters to `fasta/mags_with-mges/` and
+their plots to `plots/`. Without `--mges`, the run ends with the validation,
+and says so in its log. With `--mges`, the list of the MGE contigs of the
+assembly, it goes on with two more steps on the map of the clusters, which it
+updates in place, as the commands do one by one in its output directory:
+`mge`, as [`mge --reassign`](#mge), with `--mge-threshold-bin`, clusters the
+MGE contigs, makes each MGE cluster a genome of the map and writes
+`fasta/mges/`; `host`, as [`host`](#host), with `--mge-min-share` and
+`--mge-min-contigs`, finds the MAGs that host the MGE clusters and writes
+`tables/mge_hosts.txt` and `plots/mge_hosts.pdf`. They are steps 4 and 5 of a
+run from a map, 5 and 6 of a run from pairs or BAM files. A run that stops in
+one of them leaves the map of the clusters of the validation (with its MGE
+clusters, in `host`), and its log says what to run on it to complete the map:
+`mge --reassign` then `host`, or `host`. What they would refuse is refused
+before any work, the reason logged: a list that cannot be read, a map without
+the contact statistics of the reads of its contigs at 1001 bp (see
+[`mge`](#mge); the map that the run makes from pairs or BAM files has them), a
+list none of whose contigs is in the map (from pairs or BAM files, in the
+assembly, before the run makes its map), and the MGE files that an earlier
+version wrote in the output directory.
+
+At its end, the run writes its outputs from its map (see
+[Outputs](#conventions)): `fasta/mags/`, each MAG (its genomes but the MGE
+genomes, which took their contigs out of the MAGs with `--mges`) as its
+contigs and stitched, with `metacooler fasta`; `cool/`, a cool file per MAG,
+with the MGE clusters that it hosts, extracted from the map by
+`metacooler extract` and balanced as `cooler balance` balances it, the whole of
+it at once, with its defaults (a cool file whose every bin is masked, too
+small for `cooler balance`, is a warning); and `tables/`, the tables of
+[`dump`](#dump).
 
 | Option | Default | Description |
 |---|---|---|
@@ -125,10 +159,14 @@ marks `[1/4] map`.
 | `-j, --rec-iter` | `10` | The iterations of the recursive partition of the contaminated clusters. |
 | `-P, --rec-overlap` | `90` | The overlap threshold of the recursive partition, in percent. |
 | `--seed` | none | The seed of the random numbers of Louvain or Leiden, set once before the partition and again before the recursive partition of the validation, their iterations drawing other numbers one after the other: from the same map, the same seed gives the same clusters, those of `partition --seed S` then `validation --seed S`. Without it, each run draws other random numbers (see the random numbers, in [Conventions](#conventions)). |
-| `-o, --outdir` | the current directory | The output directory: the map of the clusters, `final_clusters/`, `plot/` (see [`validation`](#validation)) and the log. |
+| `--mges` | none | The MGE contigs, one name per line, as `mge --mges` reads them: after the validation, the run goes on with two more steps, `mge` (as `mge --reassign`) and `host`. Without it, the run ends with the validation. |
+| `--mge-threshold-bin` | `0.8` | The step `mge`: the score above which two MGE contigs, or two MGE clusters, are merged, as `--threshold-bin` of `mge`. |
+| `--mge-min-share` | `10` | The step `host`: the share of the signal of an MGE cluster with the MAGs, in percent, from which a MAG is a host, as `--min-share` of `host`. |
+| `--mge-min-contigs` | `5` | The step `host`: the number of contigs of a MAG in contact with an MGE cluster from which the MAG is a host, as `--min-contigs` of `host`. |
+| `-o, --outdir` | the current directory | The output directory: the map of the clusters, the log, and the outputs of the run: `fasta/` (`mags_with-mges/`, `mags/`, and `mges/` with `--mges`), `cool/`, `tables/` and `plots/` (see [Outputs](#conventions)). |
 | `-p, --prefix` | none | Name the clusters `<prefix>_metator_…`, and the map that the run makes from pairs or BAM files `<prefix>.metacool` (by default, named after the assembly). Letters, digits, `_` and `-` only. |
-| `-F, --force` | off | Replace the map, `final_clusters/` and the plots (in `plot/`, whose other files are left as they are) of an earlier run in the output directory. The other results of an earlier run in the output directory (the tables and `recursive_clusters/` of a development build of 2.0, the outputs of 1.x) are refused, with or without `-F`, and never removed. |
-| `-T, --tmpdir` | `./tmp` | The temporary directory, where the run works in a directory of its own: the FASTA files of the clusters that miComplete checks (at most the size of the assembly), miComplete's results, the tables of the validation, and, from a compressed assembly, its decompressed copy; from BAM files, their pairs too (about 25 bytes per pair, plus the names of its two contigs). Not in `final_clusters/`, which the run makes anew, nor in a directory of the results of an earlier run (`recursive_clusters/`, `final_bin/`...), which the run refuses. |
+| `-F, --force` | off | Replace the map, the folders that the run makes anew (`fasta/mags_with-mges/`, `fasta/mags/`, `cool/`, and `fasta/mges/` with `--mges`), the tables of `tables/` and the plots of the clusters (in `plots/`, whose other files are left as they are) of an earlier run in the output directory. `tables/mge_hosts.txt` and `plots/mge_hosts.pdf` are replaced without it, as `host` replaces them. The other results of an earlier run in the output directory (the tables, `final_clusters/`, `plot/`, `mges_binned.fa` and `mge_hosts.txt` of a development build of 2.0, the outputs of 1.x) are refused, with or without `-F`, and never removed. |
+| `-T, --tmpdir` | `./tmp` | The temporary directory, where the run works in a directory of its own: the FASTA files of the clusters that miComplete checks (at most the size of the assembly), miComplete's results, the tables of the validation, and, from a compressed assembly, its decompressed copy; from BAM files, their pairs too (about 25 bytes per pair, plus the names of its two contigs). Not in a folder that the run makes anew (`fasta/mags_with-mges/`...), nor in a directory of the results of an earlier run (`recursive_clusters/`, `final_clusters/`...), which the run refuses. |
 | `-t, --threads` | `1` | Threads for the partition and the validation (miComplete), and to read the BAM files and bin the pairs that the run makes its map from. |
 | `-N, --no-clean-up` | off | Keep the temporary directory of the run, which the log names: the tables of the validation (`cluster_summary.txt`, `contig_data_final.txt`, `binning.txt`, `clusters.txt`, `cluster_members.txt`), miComplete's results and the FASTA files of the clusters that it checked. |
 | `--inplace` | off | Update `MAP` in place with the map of the clusters, rather than write it to the output directory: refused for an entry of a collection, and for pairs or BAM files, whose map the run makes in its output directory and updates in place. A run whose output directory holds `MAP` already updates it in place without `--inplace`. |
@@ -152,6 +190,10 @@ metator pipeline 'hicstuff_*/*.valid_idx.pairs.gz' -a assembly.fa -e DpnII -d de
 # From BAM files: of both mates (bwa mem -5SP), one per library; or of one mate each, the R1 files then the R2 files
 metator pipeline L1.bam,L2.bam -a assembly.fa -e DpnII -o binning
 metator pipeline 'L*_R1.bam' 'L*_R2.bam' -a assembly.fa -e DpnII -o binning
+
+# The clusters, then the MGE clusters and their hosts: binning/fasta/mges/,
+# binning/tables/mge_hosts.txt, and the map of the clusters with both
+metator pipeline hicstuff/sample.metacool -a assembly.fa -e DpnII -t 16 -o binning --mges mges.txt
 ```
 
 ### `network` { #network }
@@ -258,8 +300,9 @@ metator partition binning/sample.metacool -t 16 -o binning
 ### `validation` { #validation }
 
 Check the clusters with miComplete, and partition the contaminated ones
-again: the third step. Writes `final_clusters/` and the plots of the final
-clusters (`plot/`), and stores the final
+again: the third step. Writes the FASTA files of the final clusters
+(`fasta/mags_with-mges/`: each final cluster, the MGE contigs that it holds
+included) and their plots (`plots/`, as PDF files), and stores the final
 clusters, their summary and every clustering round in the map; the tables
 of the validation (`cluster_summary.txt`, `contig_data_final.txt`,
 `binning.txt`, `clusters.txt`, `cluster_members.txt`, miComplete's results)
@@ -284,18 +327,20 @@ contamination, (weighted redundancy − 1) / weighted completeness, reaches
 5%. Its parts replace it when the most complete of them keeps enough of its
 completeness.
 
-Once the clusters are final, the run draws two plots of them in `plot/`, in
-its output directory, from miComplete's numbers: `bins_distribution.png`, the
+Once the clusters are final, the run draws two plots of them in `plots/`, in
+its output directory, as PDF files, from miComplete's numbers:
+`bins_distribution.pdf`, the
 completeness and the contamination (weighted redundancy − 1, drawn from 0 to
 105%) of each final cluster, the clusters by decreasing completeness; and
-`bins_size_distribution.png`, a pie chart of the size of the clusters of each
+`bins_size_distribution.pdf`, a pie chart of the size of the clusters of each
 quality class (HQ, MQ and LQ MAGs, contaminated clusters and the others, the
 classes that the log counts: see [Cluster quality](concepts.md#cluster-quality))
 and of the contigs in no cluster, of the contigs of the map in all. A plot
 that cannot be drawn is a warning, and the run goes on. The plots of an
 earlier run are refused without `-F`, which replaces them; the other files of
-`plot/` are left as they are, but for the plots of 1.x that 2.0 no longer
-draws, refused with or without `-F` as the other outputs of 1.x.
+`plots/` are left as they are. The `plot/` of an earlier version (its PNG
+files, those of 1.x that 2.0 no longer draws) is refused, with or without
+`-F`, as the other outputs of an earlier version.
 
 The run partitions again the network that `metator network MAP` stored in the
 map, and refuses a map without it, or without the partition of `metator
@@ -317,10 +362,10 @@ already, or with `--inplace`). See
 | `-r, --res-param` | `1.0` | The resolution of the Leiden algorithm. |
 | `-s, --size` | `500000` | The size, in bp, that an overlapping cluster of the partition must reach to be checked, and that a cluster of the recursive partition must exceed. |
 | `--seed` | none | The seed of the random numbers of the recursive partition, set once before it, its iterations drawing other numbers one after the other: from the same map, the same seed gives the same clusters, and `partition --seed S` then `validation --seed S` give those of `pipeline --seed S`. |
-| `-o, --outdir` | `./` | The output directory: the map of the clusters, `final_clusters/`, `plot/` and the log. |
+| `-o, --outdir` | `./` | The output directory: the map of the clusters, `fasta/mags_with-mges/`, `plots/` and the log. |
 | `-p, --prefix` | none | Name the recursive clusters `<prefix>_metator_…`. |
-| `-F, --force` | off | Replace the map, `final_clusters/` and the plots (in `plot/`, whose other files are left as they are) of an earlier run in the output directory. The other results of an earlier run in the output directory (the tables and `recursive_clusters/` of a development build of 2.0, the outputs of 1.x) are refused, with or without `-F`, and never removed. |
-| `-T, --tmpdir` | `./tmp` | The temporary directory, where the run writes, in a directory of its own, the clusters that miComplete checks (at most the size of the assembly), miComplete's results and the tables of the validation, and, from a compressed assembly, its decompressed copy. Not in `final_clusters/`, which the run makes anew, nor in a directory of the results of an earlier run (`recursive_clusters/`, `final_bin/`...), which the run refuses. |
+| `-F, --force` | off | Replace the map, `fasta/mags_with-mges/` and the plots (in `plots/`, whose other files are left as they are) of an earlier run in the output directory. The other results of an earlier run in the output directory (the tables, `recursive_clusters/`, `final_clusters/` and `plot/` of a development build of 2.0, the outputs of 1.x) are refused, with or without `-F`, and never removed. |
+| `-T, --tmpdir` | `./tmp` | The temporary directory, where the run writes, in a directory of its own, the clusters that miComplete checks (at most the size of the assembly), miComplete's results and the tables of the validation, and, from a compressed assembly, its decompressed copy. Not in a folder that the run makes anew (`fasta/mags_with-mges/`...), nor in a directory of the results of an earlier run (`recursive_clusters/`, `final_clusters/`...), which the run refuses. |
 | `-t, --threads` | `1` | Threads for the partition and miComplete. |
 | `-N, --no-clean-up` | off | Keep the temporary directory of the run, which the log names: the tables of the validation (`cluster_summary.txt`, `contig_data_final.txt`, `binning.txt`, `clusters.txt`, `cluster_members.txt`), miComplete's results and the FASTA files of the clusters that it checked. |
 | `--inplace` | off | Write the map of the clusters over `MAP`, in place, rather than to the output directory: refused for an entry of a collection. |
@@ -413,7 +458,8 @@ metator dump binning/sample.metacool -o tables
 ### `mge` { #mge }
 
 Cluster the contigs of mobile genetic elements from the contacts between them,
-and store the MGE clusters in the contact map.
+and store the MGE clusters in the contact map. [`pipeline --mges`](#pipeline)
+runs it, with `--reassign`, as its step `mge`, on the map of its clusters.
 **API:** `metator.mge.mge_binning`, `metator.mge.write_mges_fasta`,
 `metator.metacool.write_map`.
 **Guide:** [Clustering mobile genetic elements](guides/mge.md).
@@ -441,7 +487,11 @@ are taken the longest first, ties by name, whatever the order of the map:
 that order breaks the ties of the scores, and numbers the clusters of one
 contig (see [Clustering mobile genetic elements](guides/mge.md#how-it-works)).
 
-The run writes `mges_binned.fa` and stores its MGE clusters in the map: as
+The run writes the FASTA files of its MGE clusters to `fasta/mges/`, two for
+each, named after it: `MetaTOR_MGE_<ID>.fa`, its contigs as records of their
+own, and `MetaTOR_MGE_<ID>.stitched.fa`, one record, its contigs joined by 200
+`N`, both the longest first, ties by name; and it stores its MGE clusters in
+the map: as
 the round `mge` of its clustering rounds, with their contigs, length, GC
 content, hits and clustering score, in place of the round `mge` of an earlier
 run, after the other rounds, which are kept (`metator dump` writes it with
@@ -470,27 +520,31 @@ is there already, or with `--inplace`: see
 [Step by step](guides/metacool.md#step-by-step)), and refused as it refuses
 it, before any work; so is an assembly that is not a FASTA file, plain or
 compressed with gzip, as `validation` refuses it, and the summary of the MGE
-clusters that an earlier version wrote in the output directory
-(`mges_bin_summary.tsv`, or `mges_cluster_summary.tsv` of a development
-build), with or without `-F`: it is never removed. `--random` stores the round `mge_random` and writes
-`mges_binned_random.fa`, and leaves the round `mge` as it was. A run that
+clusters, or their FASTA file, that an earlier version wrote in the output
+directory (`mges_bin_summary.tsv`, `mges_binned.fa`, or `mges_cluster_summary.tsv`
+of a development build), with or without `-F`: it is never removed. The
+`fasta/mges/` of an earlier run is refused without `-F`, which replaces it.
+`--random` stores the round `mge_random` and writes `fasta/mges_random/`, and
+leaves the round `mge` and `fasta/mges/` as they were. A run that
 replaces the clusters of the map (`partition`, `validation`, `pipeline`)
 drops the rounds `mge` and `mge_random`, and their entries, with a warning:
 run `mge` again on its map (`validation` and `pipeline` make their final
-clusters the genomes of the map, without MGE genomes). A run that replaces
-the round `mge` (not `--random`) drops the hosts that [`metator host`](#host)
-stored in the map, with a warning: run `host` again.
+clusters the genomes of the map, without MGE genomes); `pipeline --mges`
+stores its own round `mge` there in its step `mge`, and warns only of the round
+`mge_random`. A run that replaces the round `mge` (not `--random`) drops the
+hosts that [`metator host`](#host) stored in the map, with a warning: run
+`host` again.
 
 | Option | Default | Description |
 |---|---|---|
 | `-a, --assembly` | *required* | The assembly that the map was made from: a FASTA file, plain or compressed with gzip. |
 | `-m, --mges` | *required* | The MGE contigs, one name per line. |
 | `-s, --threshold-bin` | `0.8` | The score above which two contigs, or clusters, are merged. |
-| `-r, --random` | off | Shuffle the contigs between the clusters: a random clustering of the same shape, stored as the round `mge_random` and written to `mges_binned_random.fa`. |
+| `-r, --random` | off | Shuffle the contigs between the clusters: a random clustering of the same shape, stored as the round `mge_random` and written to `fasta/mges_random/`. |
 | `--reassign` | off | Make each MGE cluster a genome of the map, with its GC content, hits and clustering score: its contigs leave the final clusters that held them, which keep their values. The column `mge` of the genomes table says which genomes are MGE genomes. Refused with `--random`. |
 | `--seed` | none | The seed of the random clustering of `--random`: from the same map, the same seed gives the same random clustering. |
-| `-o, --outdir` | the current directory | The output directory: the map of the run and `mges_binned.fa`. |
-| `-F, --force` | off | Replace the map of an earlier run in the output directory. A summary of the MGE clusters that an earlier version wrote in the output directory (`mges_bin_summary.tsv` or `mges_cluster_summary.tsv`) is refused, with or without `-F`, and never removed. |
+| `-o, --outdir` | the current directory | The output directory: the map of the run and `fasta/mges/` (`fasta/mges_random/` with `--random`). |
+| `-F, --force` | off | Replace the map and `fasta/mges/` (`fasta/mges_random/` with `--random`) of an earlier run in the output directory. A summary or a FASTA file of the MGE clusters that an earlier version wrote in the output directory (`mges_bin_summary.tsv`, `mges_cluster_summary.tsv`, `mges_binned.fa`, `mges_binned_random.fa`) is refused, with or without `-F`, and never removed. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory, where metacooler copies a compressed assembly, plain, while it reads it. `mge` writes no temporary file of its own. |
 | `-N, --no-clean-up` | off | Keep the temporary directory of the run: `mge` leaves nothing in it. |
 | `--inplace` | off | Store the MGE clusters in `MAP` itself, in place, rather than in the map of the output directory: refused for an entry of a collection. |
@@ -507,7 +561,8 @@ metator dump binning/sample.metacool -o tables
 ### `host` { #host }
 
 Find the MAGs that host the MGE clusters of the map, from the contacts
-between them, and store them in the map.
+between them, and store them in the map. [`pipeline --mges`](#pipeline) runs
+it as its step `host`, after `mge --reassign`.
 **API:** `metator.host.find_hosts`, `metator.host.write_hosts`,
 `metator.metacool.write_map`.
 **Guide:** [Clustering mobile genetic elements](guides/mge.md#the-hosts).
@@ -537,12 +592,14 @@ contigs: an MGE cluster has one host, several, or none. Its contacts with the
 contigs in no MAG and with the other MGE clusters do not count in that share,
 so an MGE cluster with few contacts with the MAGs (a phage that the library
 caught in its free particles) can have a host from a small part of its
-contacts: `share_of_all`, in `mge_hosts.txt`, says how small.
+contacts: `share_of_all`, in `tables/mge_hosts.txt`, says how small.
 
-The run writes `mge_hosts.txt`, every MGE cluster and MAG in contact, and
-`mge_hosts.png`, the signal and the share of the hosts (see
+The run writes `tables/mge_hosts.txt`, every MGE cluster and MAG in contact,
+and `plots/mge_hosts.pdf`, the signal and the share of the hosts (see
 [Hosts of the MGE clusters](formats.md#hosts-of-the-mge-clusters)), in its
-output directory, in place of those of an earlier run, and stores the hosts
+output directory, in place of those of an earlier run (the `mge_hosts.txt`
+and `mge_hosts.png` that an earlier version wrote at the top of the output
+directory are refused, with or without `-F`), and stores the hosts
 in the map: the number of hosts of each MGE cluster, their names and their
 shares, as columns of the round `mge` (`n_hosts`, `hosts`, `host_shares`);
 the number of MGE clusters that each MAG hosts and their names, as columns
@@ -556,16 +613,17 @@ it (`MAP` itself when it is there already, or with `--inplace`: see
 it, before any work. The hosts describe the round `mge`, the genomes and the
 network of the map: a run that replaces one of them drops them, with a
 warning once its map is written (run `host` again then): `mge`, but with
-`--random`; `partition`, `validation` and `pipeline`; and `network`, when it
-stores another network than the one the hosts were found on (its
+`--random`; `partition`, `validation` and `pipeline` (but `pipeline --mges`,
+which finds them again in its step `host`, without the warning); and `network`,
+when it stores another network than the one the hosts were found on (its
 `network_digest`).
 
 | Option | Default | Description |
 |---|---|---|
 | `-s, --min-share` | `10` | The share of the signal of an MGE cluster with the MAGs, in percent, from which a MAG is a host. |
 | `-c, --min-contigs` | `5` | The number of contigs of a MAG in contact with an MGE cluster from which the MAG is a host. |
-| `-o, --outdir` | the current directory | The output directory: the map of the run, `mge_hosts.txt`, `mge_hosts.png` and the log. |
-| `-F, --force` | off | Replace the map of an earlier run in the output directory. `mge_hosts.txt` and `mge_hosts.png` are replaced without it. |
+| `-o, --outdir` | the current directory | The output directory: the map of the run, `tables/mge_hosts.txt`, `plots/mge_hosts.pdf` and the log. |
+| `-F, --force` | off | Replace the map of an earlier run in the output directory. `tables/mge_hosts.txt` and `plots/mge_hosts.pdf` are replaced without it. The `mge_hosts.txt` and `mge_hosts.png` of an earlier version are refused, with or without `-F`, and never removed. |
 | `--inplace` | off | Store the hosts in `MAP` itself, in place, rather than in the map of the output directory: refused for an entry of a collection. |
 
 ```bash

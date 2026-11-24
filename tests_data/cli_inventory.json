@@ -406,6 +406,38 @@
       "required": false
      },
      {
+      "short": null,
+      "long": "--mge-min-contigs",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "5",
+      "required": false
+     },
+     {
+      "short": null,
+      "long": "--mge-min-share",
+      "takes_value": true,
+      "metavar": "FLOAT",
+      "default": "10.0",
+      "required": false
+     },
+     {
+      "short": null,
+      "long": "--mge-threshold-bin",
+      "takes_value": true,
+      "metavar": "FLOAT",
+      "default": "0.8",
+      "required": false
+     },
+     {
+      "short": null,
+      "long": "--mges",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": false
+     },
+     {
       "short": "-N",
       "long": "--no-clean-up",
       "takes_value": false,

@@ -200,7 +200,7 @@ def test_mge_clusters_without_contact_with_the_mags(tmp_path, run_cli):
     assert list(hosts.clusters["n_hosts"]) == [0] and _listed(hosts.clusters["hosts"]) == [None]
     assert list(hosts.genomes["n_mges"]) == [0, 0] and list(hosts.genomes["mges"]) == ["", ""]
     run_cli("host", metacool, "-o", tmp_path / "out", "--inplace")
-    assert (tmp_path / "out" / mth.HOSTS_FILE).read_text() == "\t".join(mth.PAIRS_COLUMNS) + "\n"
+    assert (tmp_path / "out" / "tables" / mth.HOSTS_FILE).read_text() == "\t".join(mth.PAIRS_COLUMNS) + "\n"
     assert _stored(metacool)[0]["n_hosts"].tolist() == [0]
 
 
@@ -245,7 +245,7 @@ def test_write_hosts(tmp_path):
 
 
 def test_plot_hosts(tmp_path, saved_figures):
-    """mge_hosts.png: the signal of the hosts, on a log scale, and their share,
+    """mge_hosts.pdf: the signal of the hosts, on a log scale, and their share,
     from 0 to 100%: one count per host."""
     mth.plot_hosts(PAIRS, str(tmp_path / mth.PLOT_FILE))
     assert (tmp_path / mth.PLOT_FILE).stat().st_size > 0
@@ -333,8 +333,8 @@ def test_host_stores_its_hosts_in_the_map(output, host_run, tmp_path, run_cli):
     of its own): the hosts of each MGE cluster in the round mge, the MGE
     clusters of each MAG in the genomes table, and the run under the host
     entry of the metator metadata of the map; everything else is kept as it
-    was. It writes mge_hosts.txt and mge_hosts.png, and its log, in its output
-    directory."""
+    was. It writes tables/mge_hosts.txt and plots/mge_hosts.pdf, and its log,
+    in its output directory."""
     metacool, out, _ = host_run
     before = _outside_hosts(metacool)
     rounds = [entry for entry in metacooler.MetaCooler(str(metacool)).cluster_rounds]
@@ -367,9 +367,9 @@ def test_host_stores_its_hosts_in_the_map(output, host_run, tmp_path, run_cli):
     assert _outside_hosts(written) == before
     if output != "--inplace":
         assert metacool.read_bytes() == unchanged
-    pairs = pd.read_csv(out / mth.HOSTS_FILE, sep="\t", **mtcl.EXACT_FLOATS)
+    pairs = pd.read_csv(out / "tables" / mth.HOSTS_FILE, sep="\t", **mtcl.EXACT_FLOATS)
     pd.testing.assert_frame_equal(pairs, PAIRS)
-    assert (out / mth.PLOT_FILE).stat().st_size > 0
+    assert (out / "plots" / mth.PLOT_FILE).read_bytes().startswith(b"%PDF")
     (log,) = out.glob("metator_host_*.log")
     logged = log.read_text()
     assert "4 MGE clusters and 2 MAGs: 2 MGE clusters with one host, 1 with several, 1 with none" in logged
@@ -393,7 +393,7 @@ def test_host_rerun_replaces_its_hosts(host_run, run_cli, logged):
     assert list(clusters["hosts"]) == ["semibin_1", "", "", ""] and list(clusters["n_hosts"]) == [1, 0, 0, 0]
     assert list(genomes["n_mges"]) == [1, 0] and list(genomes["mges"]) == ["MetaTOR_MGE_00001", ""]
     assert entry["parameters"]["min_contigs"] == 6
-    pairs = pd.read_csv(out / mth.HOSTS_FILE, sep="\t")
+    pairs = pd.read_csv(out / "tables" / mth.HOSTS_FILE, sep="\t")
     assert list(pairs["host"]) == [True, False, False, False, False]
 
 
@@ -415,6 +415,32 @@ def test_host_refuses_a_map(case, tmp_path, run_cli, logged):
     assert metacool.read_bytes() == before
     assert sorted(path.name for path in (tmp_path / "out").iterdir())[0].startswith("metator_host_")
     assert [path.name for path in (tmp_path / "out").iterdir() if not path.name.endswith(".log")] == []
+
+
+@pytest.mark.parametrize("case", ["mge_hosts.txt", "mge_hosts.png", "tables, a file"])
+@pytest.mark.parametrize("force", [False, True], ids=["refused", "-F"])
+def test_host_refuses_an_earlier_version_s_outputs(case, force, host_run, tmp_path, run_cli):
+    """The table or the plot of the hosts that an earlier version wrote in the
+    output directory (mge_hosts.txt, mge_hosts.png, which tables/mge_hosts.txt
+    and plots/mge_hosts.pdf replace) would pass for this run's: refused with or
+    without -F, before anything is written, and left as they are; and so is a
+    tables that is no directory, where the run writes its table."""
+    metacool, out, _ = host_run
+    out.mkdir()
+    blocking = out / ("tables" if case == "tables, a file" else case)
+    blocking.write_text("an earlier run's\n")
+    before = metacool.read_bytes()
+    with pytest.raises(ValueError):
+        run_cli("host", metacool, "-o", out, "--inplace", *(["-F"] if force else []))
+    assert metacool.read_bytes() == before and blocking.read_text() == "an earlier run's\n"
+    assert not (out / "plots").exists() and (case == "tables, a file" or not (out / "tables").exists())
+    (log,) = out.glob("metator_host_*.log")
+    message = (
+        f"{blocking} is not a directory, where the run writes the table of the hosts"
+        if case == "tables, a file"
+        else f"{out} holds results of an earlier run, which this run does not write and does not replace: {case!r}"
+    )
+    assert f"ERROR :: {message}" in log.read_text()
 
 
 def _dropped(where, why, outfile):
@@ -532,7 +558,7 @@ def test_mge_then_host_find_each_mge_its_host(metagenome, mock_map, metagenome_i
     for mge in metagenome.mges:
         (cluster,) = {cluster_of[contig.name] for contig in mge.contigs}
         assert hosts[cluster] == clusters[mge.host]
-    pairs = pd.read_csv(tmp_path / "out" / mth.HOSTS_FILE, sep="\t")
+    pairs = pd.read_csv(tmp_path / "out" / "tables" / mth.HOSTS_FILE, sep="\t")
     assert (pairs.loc[pairs["host"], "share"] > 80).all()
     assert sorted(genomes.loc[genomes["n_mges"] > 0, "name"]) == sorted(clusters[mge.host] for mge in metagenome.mges)
 
@@ -550,9 +576,9 @@ def test_mge_genomes_change_no_host(mock_map, metagenome_inputs, tmp_path, run_c
         metacool = directory / "clusters.metacool"
         shutil.copyfile(source, metacool)
         run_cli("mge", metacool, "-a", metagenome_inputs["assembly"], "-m", mges, "--inplace", "-T", directory / "tmp",
-                *(["--reassign"] if reassign else []))  # fmt: skip
+                "-o", directory / "out", *(["--reassign"] if reassign else []))  # fmt: skip
         run_cli("host", metacool, "--inplace", "-o", directory / "out")
-        found[reassign] = pd.read_csv(directory / "out" / mth.HOSTS_FILE, sep="\t")
+        found[reassign] = pd.read_csv(directory / "out" / "tables" / mth.HOSTS_FILE, sep="\t")
         if reassign:
             mc = metacooler.MetaCooler(str(metacool))
             genomes = mc.genomes

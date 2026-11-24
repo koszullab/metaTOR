@@ -31,8 +31,9 @@ contacts of the MGE cluster with the other contigs, says how small.
 metator.metacool.write_map): the hosts of each MGE cluster in the round
 ``mge`` (HOST_CLUSTER_COLUMNS), and the MGE clusters of each MAG in the
 genomes table (HOST_GENOME_COLUMNS); and writes every MGE cluster and MAG in
-contact in ``mge_hosts.txt`` (see write_hosts), and the signal and share of
-the hosts in ``mge_hosts.png`` (see plot_hosts).
+contact in ``tables/mge_hosts.txt`` (see write_hosts), and the signal and share
+of the hosts in ``plots/mge_hosts.pdf`` (see plot_hosts), in its output
+directory.
 """
 
 import os
@@ -56,9 +57,10 @@ MIN_SHARE = 10.0
 MIN_CONTIGS = 5
 
 #: The table of the MGE clusters and MAGs in contact, and the plot of the
-#: hosts, in the output directory of a run.
+#: hosts, in tables/ and plots/ of the output directory of a run (see
+#: metator.outputs.TABLES_DIR and metator.figures.PLOT_DIR): a PDF file.
 HOSTS_FILE = "mge_hosts.txt"
-PLOT_FILE = "mge_hosts.png"
+PLOT_FILE = "mge_hosts.pdf"
 
 #: The columns of HOSTS_FILE, in order.
 PAIRS_COLUMNS = ["mge", "mag", "signal", "contigs", "share", "share_of_all", "host"]
