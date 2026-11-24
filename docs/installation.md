@@ -5,7 +5,9 @@ starts from a contact map of the contigs, which
 [hicstuff](https://koszullab.github.io/hicstuff/) makes from the reads
 (`hicstuff pipeline -M metacool`), or
 [metacooler](https://github.com/js2264/metacooler) from pairs files
-(`metacooler create pairs`): see [Quickstart](quickstart.md).
+(`metacooler create pairs`), or which `metator network` and `metator pipeline`
+make themselves from pairs files or BAM files (read with pysam, without a
+samtools program): see [Quickstart](quickstart.md).
 
 ## With conda (recommended)
 

@@ -10,7 +10,7 @@ Hi-C reads of the run.
 
 | Removed | Use instead |
 |---|---|
-| Reads, BAM and pairs inputs (`--forward`, `--reverse`, `--start`, `--aligner`, `--aligner-mode`, `--min-quality`) | `hicstuff pipeline -M metacool` makes the map from the reads; `metacooler create pairs` from pairs files, or `metacooler create cool` from a `.cool` file; `metacooler merge` sums the maps of several libraries. See [From the reads to the map](#from-the-reads-to-the-map). |
+| Reads inputs, and the options of the BAM and pairs inputs (`--forward`, `--reverse`, `--start`, `--aligner`, `--aligner-mode`) | `hicstuff pipeline -M metacool` makes the map from the reads; `metacooler create pairs` from pairs files, or `metacooler create cool` from a `.cool` file; `metacooler merge` sums the maps of several libraries. See [From the reads to the map](#from-the-reads-to-the-map). `network` and `pipeline` still take the pairs files or the BAM files of a run, as their arguments, and make the map of the contigs from them, with `--min-quality` for the BAM files: see [The inputs of a run](cli.md#inputs). |
 | `metator qc` | `metacooler qc MAP --per-genome qc.tsv`: the contacts within contigs, within clusters (the genomes of the map) and between them, per cluster. For the uncut, loop and weird events of a library: hicstuff's `pipeline -g assembly.fa -e ENZYME -f --plot R1.fq.gz R2.fq.gz`, whose `plots/` show them. |
 | `metator contactmap` | `metacooler extract MAP --genomes NAME -o NAME.cool`: the contact map of a cluster, a `.cool` file, at the bin size of the map. A map of restriction fragments: hicstuff's `pipeline -g NAME.fa -e ENZYME R1.fq.gz R2.fq.gz` on the FASTA file of the cluster. |
 | The heatmap of the clusters and the plots of the GC content and coverage of their contigs, of `pipeline` and `validation` (`network_heatmap.png`, `MAGs_GC_distribution.png`, `MAGs_HiC_cov_distribution.png`, `MAGs_SG_cov_distribution.png`) | `metacooler show MAP -o map.png`: the contacts between the clusters (`--level genome`, the default); between the contigs of some of them with `--genomes NAME,... --level contig`. The contigs table of the map (`metacooler dump -t contigs MAP`) gives the GC content, hits and shotgun coverage of each contig, and its cluster. `pipeline` and `validation` still draw the plots of the quality of the clusters, in `plot/`. |
@@ -69,3 +69,21 @@ default, and `--assembly-name` names the assembly of the map, `unknown`
 otherwise. A `.cool` file of the contigs becomes a map with
 `metacooler create cool`. [Starting from a contact map](guides/metacool.md#starting-from-a-contact-map)
 says what metaTOR reads from the map.
+
+`metator network` and `metator pipeline` make the map themselves from the
+pairs files, or from the BAM files, of a run, one bin per contig, as
+`metacooler create pairs` makes it: give them as the arguments of the run, in
+place of the map (see [The inputs of a run](cli.md#inputs)).
+
+```bash
+# The pairs files of hicstuff: binning/sample.metacool, made from them, becomes the map of the clusters
+metator pipeline hicstuff_L1/L1.valid_idx.pairs.gz hicstuff_L2/L2.valid_idx.pairs.gz -p sample \
+    -a assembly.fa -e DpnII -o binning
+```
+
+The alignments that hicstuff keeps with `-n`, its BAM files of each mate
+(`tmp/<prefix>.for.bam` and `tmp/<prefix>.rev.bam`), and those of another
+aligner, of both mates of each read (`bwa mem -5SP`), are inputs too: metaTOR
+takes their pairs (the primary alignments of the two mates of each read, with
+a mapping quality of at least `--min-quality`), with pysam, without a
+samtools program.

@@ -22,9 +22,10 @@ step, the [CLI reference](https://koszullab.github.io/metator/cli/) and the [fil
 1. [Installation](#installation)
 2. [Usage](#usage)
    1. [From the reads to the clusters](#from-the-reads-to-the-clusters)
-   2. [Step by step](#step-by-step)
-   3. [Outputs](#outputs)
-   4. [Mobile genetic elements](#mobile-genetic-elements)
+   2. [From pairs or BAM files](#from-pairs-or-bam-files)
+   3. [Step by step](#step-by-step)
+   4. [Outputs](#outputs)
+   5. [Mobile genetic elements](#mobile-genetic-elements)
 3. [Migrating from metaTOR 1.x](#migrating-from-metator-1x)
 4. [Contributions](#contributions)
 5. [References](#references)
@@ -72,21 +73,23 @@ metaTOR starts from a `.metacool` contact map of the contigs: a
 contigs, which [hicstuff](https://github.com/koszullab/hicstuff) makes from the
 reads (`hicstuff pipeline -M metacool`) and
 [metacooler](https://github.com/js2264/metacooler) from pairs files
-(`metacooler create pairs`). Every command takes the map as its first argument:
-the clustering steps, `mge` and `host` store what they find in it, so that the map is
-what the steps share, and it becomes the contact map of the clusters; `dump`
-only reads it.
+(`metacooler create pairs`); `network` and `pipeline` also make it themselves,
+from the pairs files or the BAM files of the run. Every command takes the map
+as its first argument: the clustering steps, `mge` and `host` store what they
+find in it, so that the map is what the steps share, and it becomes the
+contact map of the clusters; `dump` only reads it.
 
 ```sh
 metator {network|partition|validation|pipeline|mge|host|dump} MAP [OPTIONS]
+metator {network|pipeline} PAIRS_OR_BAM... [OPTIONS]
 ```
 
 | Command | What it does |
 |---|---|
-| `network` | Builds the network of the contigs from the map, normalizes it, and stores it in the map. |
+| `network` | Builds the network of the contigs from the map (or makes the map first, from pairs or BAM files), normalizes it, and stores it in the map. |
 | `partition` | Partitions the network many times with Louvain or Leiden, and stores the core and overlapping clusters in the map. |
 | `validation` | Checks the overlapping clusters with miComplete, partitions the contaminated ones again, writes the FASTA files of the final clusters, and makes the map the contact map of the clusters. |
-| `pipeline` | Runs `network`, `partition` and `validation` in one command. |
+| `pipeline` | Runs `network`, `partition` and `validation` in one command, from the map or from pairs or BAM files. |
 | `mge` | Clusters the contigs of mobile genetic elements (MGEs) from their contacts, and stores the MGE clusters in the map. |
 | `host` | Finds the MAGs that host the MGE clusters, from their contacts, and stores them in the map. |
 | `dump` | Writes the tables of a run (contig data, cluster summary, binning, clustering rounds, network) from the map of its clusters. |
@@ -131,6 +134,33 @@ metacooler create pairs --pairs L1.pairs.gz --pairs L2.pairs.gz --bins 1000 --no
 
 The map can have any bin size, from one bin per contig to fixed bins.
 [Other tools](https://koszullab.github.io/metator/other-tools/#from-the-reads-to-the-map) gives the details.
+
+### From pairs or BAM files
+
+`network` and `pipeline` make the map of the contigs themselves from the pairs
+files or the BAM files of the run, as metacooler does, one bin per contig, and
+sum the libraries: each argument is a file, a comma-separated list or a glob
+pattern. A BAM file holds both mates of its reads (paired-end alignments, as
+`bwa mem -5SP` writes them), or one mate each (as bowtie2 aligns them, one mate
+at a time): give the R1 files, then the R2 files. The pairs of a BAM file are
+the primary alignments of the two mates of each read, both aligned with a
+mapping quality of at least `-q` (30 by default). The map goes to the output
+directory, named after `--prefix` or after the assembly, and becomes the map of
+the clusters.
+
+```sh
+# From the pairs files of two libraries: binning/sample.metacool.
+metator pipeline 'hicstuff_*/*.valid_idx.pairs.gz' -a assembly.fa -e DpnII -d depth.txt -p sample -o binning
+
+# From BAM files of both mates, one per library: binning/assembly.metacool.
+metator pipeline L1.bam,L2.bam -a assembly.fa -e DpnII -d depth.txt -o binning
+
+# From BAM files of one mate each: the R1 files, then the R2 files.
+metator pipeline 'L*_R1.bam' 'L*_R2.bam' -a assembly.fa -e DpnII -d depth.txt -o binning
+```
+
+[The inputs of a run](https://koszullab.github.io/metator/cli/#inputs) gives
+the details.
 
 ### Step by step
 
@@ -216,8 +246,9 @@ them in `mge_hosts.txt`, and stores them in the map. See
 
 ## Migrating from metaTOR 1.x
 
-metaTOR 2.0 reads no reads, alignments or pairs files: hicstuff and metacooler
-make the map. It removed the commands that did what hicstuff, metacooler,
+metaTOR 2.0 aligns no reads: hicstuff makes the map from them, and `network`
+and `pipeline` make it from the pairs files or the BAM files of a run. It
+removed the commands that did what hicstuff, metacooler,
 instaGRAAL or pairix do (`qc`, `contactmap`, `metacool`, `scaffold`, `pairs`)
 and the heatmap and the GC and coverage plots of the clusters: [Other tools](https://koszullab.github.io/metator/other-tools/) says what replaces each one.
 Its outputs are named after clusters, where 1.x named them after bins

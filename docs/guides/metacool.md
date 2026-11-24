@@ -5,7 +5,9 @@ clustering: every contig in `__unbinned__`, with its contacts. hicstuff makes
 it from the reads of a library (`hicstuff pipeline -M metacool`), and
 metacooler from pairs files (`metacooler create pairs`), or from the maps of
 several libraries, which `metacooler merge` sums: see
-[From the reads to the map](#from-the-reads-to-the-map). `metator network`
+[From the reads to the map](#from-the-reads-to-the-map); `metator network`
+and `metator pipeline` make it too, from the pairs files or the BAM files of
+a run (see [From pairs or BAM files](#from-pairs-or-bam-files)). `metator network`
 and `metator pipeline` read the network of the contigs from it (see
 [Starting from a contact map](#starting-from-a-contact-map)). At its end,
 `pipeline` writes the contact map of all the contigs, grouped by cluster, with
@@ -147,6 +149,9 @@ on the map (see [Step by step](#step-by-step)):
 ```bash
 metator pipeline sample.metacool -a assembly.fa -d depth.txt -e DpnII -o binning
 ```
+
+Or from the pairs files or the BAM files of the run, which they make the map
+from first (see [From pairs or BAM files](#from-pairs-or-bam-files)).
 
 A first argument that is not there, or that metacooler cannot open as one map
 (a collection rather than one of its entries, which the error names), is
@@ -499,3 +504,49 @@ mates with `bwa mem -5SPM`, close to metaTOR 1.x's `--aligner bwa`, which ran
 same 28,510 contacts between contigs as metaTOR 1.x with `--aligner bwa`, and
 bowtie2 the 41,563 contacts of `tests_data/alignment.pairs`, 18,632 of them
 between contigs.
+
+## From pairs or BAM files
+
+`metator network` and `metator pipeline` make the map of the contigs
+themselves, from the pairs files or the BAM files of the libraries of a run,
+given as their arguments in place of the map: the map that
+`metacooler create pairs` makes from the pairs, one bin per contig of the
+assembly, every contig in `__unbinned__`, the longest first, with the
+contacts of every library summed and the contact statistics of the reads (the
+QC block, at 1001 bp, which `metator mge` reads). Each argument is a path, a
+comma-separated list or a glob pattern (see
+[The inputs of a run](../cli.md#inputs)):
+
+```bash
+# binning/sample.metacool, made from the pairs of both libraries, then the map of the clusters
+metator pipeline hicstuff_L1/L1.valid_idx.pairs.gz,hicstuff_L2/L2.valid_idx.pairs.gz -p sample \
+    -a assembly.fa -e DpnII -o binning
+
+# binning/assembly.metacool, from BAM files of both mates (bwa mem -5SP), one per library
+metator pipeline L1.bam L2.bam -a assembly.fa -e DpnII -o binning
+```
+
+- The map goes to the output directory of the run, named
+  `<prefix>.metacool` (`pipeline --prefix`), or after the FASTA file of the
+  assembly (`assembly.metacool` from `assembly.fa.gz`), whose name it stores
+  as the name of the assembly; its history of commands holds the command line
+  of the run. The run then updates it in place, as the map of its output
+  directory: the steps one by one start from it (`metator network L1.bam
+  L2.bam -o binning`, then `metator partition binning/assembly.metacool -o
+  binning`...), and a run that stops after it made the map leaves it there,
+  which a new run starts from without reading the pairs again.
+- It is written next to where it goes, under a hidden name, and renamed there
+  once it holds contacts: a map there already, which only `-F` replaces, is
+  left as it was by a run that fails before; inputs that give no contact on
+  the contigs of the assembly leave no map.
+- The pairs of the BAM files are those of the primary alignments of the two
+  mates of each read, both aligned with a mapping quality of at least
+  `--min-quality` (30), on contigs of the assembly, each at the leftmost base
+  of its alignment, as metaTOR 1.x took them (see
+  [File formats](../formats.md#pairs)): a map made from the BAM files of the
+  pairs of a pairs file is the map made from that pairs file, its contact
+  statistics included.
+- The contigs of the map are those of the assembly, with their lengths: the
+  sequences of the BAM files (`@SQ`) and of the pairs files (`#chromsize`)
+  that are not are refused, or left out (see
+  [The inputs of a run](../cli.md#inputs)).

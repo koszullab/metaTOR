@@ -19,7 +19,9 @@ joined finds the genomes.
 
 `metator pipeline` runs these steps (rounded) in order, from the contact map
 of the contigs, its first argument, and writes the files (slanted) between
-them. hicstuff makes the map from the reads, and metacooler from pairs files:
+them. hicstuff makes the map from the reads, and metacooler from pairs files,
+as `metator pipeline` does itself from the pairs files or the BAM files of the
+run, in a step before these (see [The inputs of a run](cli.md#inputs)):
 
 ```mermaid
 ---
@@ -133,5 +135,6 @@ genomes, one per final cluster, in its output directory, from the map it
 started from (which it leaves as it was, but with `--inplace`): a map of the
 contigs, made before any clustering by
 [hicstuff](https://koszullab.github.io/hicstuff/) from the reads, or by
-metacooler from pairs files. See
+metacooler from pairs files (or by the run itself, from pairs or BAM files).
+See
 [The contact map of the clusters](guides/metacool.md).

@@ -46,6 +46,9 @@ mtmc_write_map = mtmc.write_map
 # network and --cluster-matrix of partition, validation and pipeline. 2.0
 # adds dump, which writes the tables of a run from its map, and host again,
 # which finds the hosts of the MGE clusters of a map (1.x's host read tables).
+# network and pipeline then took pairs and BAM files again, as their
+# arguments (INPUT..., the map or the files that the run makes it from), with
+# -q/--min-quality for the BAM files, and network -t/--threads to read them.
 INVENTORY = json.loads((TESTS_DATA / "cli_inventory.json").read_text())["metator"]
 
 # Options whose value is one of a list, wherever they appear.
@@ -153,12 +156,14 @@ def test_command_help(command, help_option, run_cli):
 
 @pytest.mark.parametrize("command", ["network", "pipeline"])
 def test_help_of_a_run_from_a_map(command, run_cli):
-    """The help shows the one input, the map, the first argument, which
-    hicstuff or metacooler make; and that every pair counts."""
+    """The help shows the inputs, the arguments: the map, which hicstuff or
+    metacooler make, or the pairs or BAM files that the run makes it from;
+    and that every pair counts."""
     output = " ".join(run_cli(command, "--help").output.split())
-    assert f"Usage: metator {command} [OPTIONS] MAP" in output
-    assert f"metator {command} MAP -a ASSEMBLY" in output and "-1 FORWARD" not in output
+    assert f"Usage: metator {command} [OPTIONS] INPUT..." in output
+    assert f"metator {command} INPUT... -a ASSEMBLY" in output and "-1 FORWARD" not in output
     assert "hicstuff pipeline -M metacool" in output and "metacooler create pairs" in output
+    assert "the pairs files or the BAM files" in output
     assert "every pair" in output
 
 
@@ -200,7 +205,8 @@ def test_missing_pairs_files(command, run_cli):
     after."""
     args = _required_args(command)
     del args[args.index("p.pairs")]
-    missing = "MAP"
+    # network and pipeline take one input or more (INPUT...), the others a map.
+    missing = "INPUT..." if INVENTORY["commands"][command]["positional"][0]["repeatable"] else "MAP"
     result = run_cli(command, *args, exit_code=2)
     assert f"Missing argument '{missing}'" in result.output
 
@@ -1453,7 +1459,7 @@ def test_pipeline_map_refusals(case, stub_pipeline, tmp_path, run_cli):
     out = tmp_path / "out"
     if case == "missing map":
         given = tmp_path / "missing" / "map.metacool"
-        message = f"Cannot read the contact map {given}: no such file."
+        message = f"Cannot read the input {given}: no such file."
     elif case == "an entry with --inplace":
         given = f"{_collection(tmp_path / 'maps.mmetacool', 'rep1')}::entries/rep1"
         options = ["--inplace"]
@@ -2001,18 +2007,21 @@ def test_network_keeps_the_partition_of_the_map(stub_pipeline, tmp_path, run_cli
     assert [entry["name"] for entry in metacooler.MetaCooler(str(metacool)).cluster_rounds][:2] == ["core", "overlapping"]
 
 
-# What the first argument of a network or pipeline run cannot be, refused
-# before any work, the reason in its log file.
+# What the inputs of a network or pipeline run cannot be, refused before any
+# work, the reason in its log file.
 NOT_A_MAP = (
-    "{name} is not a .metacool contact map: make the map of the contigs with hicstuff pipeline -M metacool, from "
-    "the reads of the run, or metacooler create pairs, from its pairs files."
+    "{name} is not a .metacool contact map: give the map of the contigs (made by hicstuff pipeline -M metacool or "
+    "metacooler create pairs), or the pairs files or the BAM files of the run, which the run makes it from."
+)
+READS = (
+    "{reads} holds reads (FASTQ): metaTOR aligns no reads. Give the BAM files or the pairs files of the run, or the map "
+    "of its contigs, which hicstuff makes from the reads (hicstuff pipeline -M metacool)."
 )
 RUN_INPUT_ERRORS = {
-    "reads as the first argument": (["{reads}"], NOT_A_MAP.replace("{name}", "{reads}")),
-    "a map that is not there": (["{missing}"], "Cannot read the contact map {missing}: no such file."),
+    "reads as the first argument": (["{reads}"], READS),
+    "a map that is not there": (["{missing}"], "Cannot read the input {missing}: no such file."),
     "a URI of a directory": (["{directory}::/"], "Cannot read the contact map {directory}::/: {directory} is not a file."),
-    "a pairs file named as a URI": (["{reads}::/"], NOT_A_MAP.replace("{name}", "{reads}::/")),
-    "a pairs file whose name holds ::": (["{colons}"], NOT_A_MAP.replace("{name}", "{colons}")),
+    "a file named as a URI": (["{reads}::/"], NOT_A_MAP.replace("{name}", "{reads}::/")),
     "a map whose name holds ::": (
         ["{colon_map}"],
         "Cannot read the contact map {colon_map}: metacooler reads a path that holds :: as file::group. Rename the map "
@@ -2024,23 +2033,21 @@ RUN_INPUT_ERRORS = {
 @pytest.mark.parametrize("command", ["network", "pipeline"])
 @pytest.mark.parametrize("case", list(RUN_INPUT_ERRORS))
 def test_run_input_refused(command, case, stub_pipeline, tmp_path, run_cli):
-    """A run takes a .metacool map, as its first argument: a first argument
-    that is no map, not there, or a URI whose file is no map nor a file, is
-    refused before any work, the reason in the log file (it failed once the
-    run read the map). A file whose name holds :: is that file: a pairs
-    file is no map (it was refused as missing), and a map is refused with
-    the reason, as metacooler cannot read it."""
+    """A run takes a .metacool map, or pairs or BAM files, as its arguments:
+    reads, a file that is not there, or a URI whose file is no map nor a
+    file, are refused before any work, the reason in the log file (it failed
+    once the run read the map). A map whose name holds :: is refused with the
+    reason, as metacooler cannot read it (a pairs file whose name holds ::
+    is that file: see test_a_pairs_file_whose_name_holds_colons)."""
     names = {
         "map": _contig_map(tmp_path / "input.metacool"),
         "reads": tmp_path / "R1.fq",
         "missing": tmp_path / "missing.metacool",
         "directory": tmp_path / "maps",
-        "colons": tmp_path / "lib::1.pairs",
         "colon_map": tmp_path / "run::1.metacool",
     }
     names["reads"].write_text("@r1\nACGT\n+\nIIII\n")
     names["directory"].mkdir()
-    names["colons"].write_text("## pairs format v1.0\n")
     shutil.copyfile(names["map"], names["colon_map"])
     args, message = RUN_INPUT_ERRORS[case]
     args = [arg.format(**names) for arg in args]
@@ -2050,6 +2057,17 @@ def test_run_input_refused(command, case, stub_pipeline, tmp_path, run_cli):
     assert not stub_pipeline
     (log,) = out.glob(f"metator_{command}_*.log")
     assert f"ERROR :: {message.format(**names)}\n" in log.read_text()
+
+
+def test_a_pairs_file_whose_name_holds_colons(tmp_path, run_cli):
+    """A pairs file whose name holds :: is that file, which the run makes its
+    map from (it was refused as no map): metacooler reads it as a path."""
+    import metacooler
+
+    pairs = shutil.copyfile(TESTS_DATA / "alignment.pairs", tmp_path / "lib::1.pairs")
+    out = tmp_path / "out"
+    run_cli("network", pairs, "-a", TESTS_DATA / "assembly.fa", "-o", out, "-T", tmp_path / "tmp")
+    assert metacooler.MetaCooler(str(out / "assembly.metacool")).info["sum"] == 41563
 
 
 @pytest.mark.parametrize("command", ["network", "pipeline"])
@@ -2067,22 +2085,31 @@ def test_a_collection_is_no_map(command, stub_pipeline, tmp_path, run_cli):
 
 
 @pytest.mark.parametrize("command", ["network", "pipeline"])
-def test_an_extra_argument_is_a_usage_error(command, stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """An argument after the map is one argument too many: a usage error,
-    and the command does not start."""
-    monkeypatch.chdir(tmp_path)
-    result = run_cli(command, "map.metacool", "R2.fq", "-a", "a.fa", "-o", "out", exit_code=2)
-    assert "Got unexpected extra argument (R2.fq)" in result.output
-    assert not stub_pipeline and not Path("out").exists()
+def test_a_map_is_the_one_input(command, stub_pipeline, tmp_path, run_cli):
+    """A map given with another input (a pairs file after it, which the run
+    would make a map from) is refused before any work, the reason in the log
+    file: it was a usage error, one argument too many."""
+    metacool = _contig_map(tmp_path / "input.metacool")
+    pairs = shutil.copyfile(TESTS_DATA / "alignment.pairs", tmp_path / "lib.pairs")
+    out = tmp_path / "out"
+    with pytest.raises(mtmc.MetacoolError):
+        run_cli(command, metacool, pairs, "-a", _assembly(tmp_path), "-o", out, "-T", tmp_path / "tmp")
+    assert not stub_pipeline
+    (log,) = out.glob(f"metator_{command}_*.log")
+    assert (
+        f"ERROR :: A .metacool map is the one input of a run, given alone, and this run has 2: {metacool}, {pairs}.\n"
+        in log.read_text()
+    )
+    assert sorted(path.name for path in out.iterdir()) == [log.name]
 
 
 @pytest.mark.parametrize("command", ["network", "pipeline"])
 def test_a_run_needs_its_map(command, stub_pipeline, tmp_path, monkeypatch, run_cli):
-    """The map is the one input of a network or pipeline run: without it, a
-    usage error, and the command does not start."""
+    """A network or pipeline run needs its inputs (the map, or pairs or BAM
+    files): without them, a usage error, and the command does not start."""
     monkeypatch.chdir(tmp_path)
     result = run_cli(command, "-a", "a.fa", "-o", "out", exit_code=2)
-    assert "Missing argument 'MAP'" in result.output
+    assert "Missing argument 'INPUT...'" in result.output
     assert not stub_pipeline and not Path("out").exists()
 
 
@@ -2124,13 +2151,15 @@ def test_help_says_what_the_columns_of_the_map_stand_for(command):
 @pytest.mark.parametrize("command", ["network", "pipeline"])
 @pytest.mark.parametrize(
     "option",
-    [["-E", "100"], ["--edge", "0"], ["-1", "R1.fq"], ["-S", "pair"], ["-b", "bwa"], ["-q", "30"]],
-    ids=["-E", "--edge", "-1", "-S", "-b", "-q"],
+    [["-E", "100"], ["--edge", "0"], ["-1", "R1.fq"], ["-S", "pair"], ["-b", "bwa"]],
+    ids=["-E", "--edge", "-1", "-S", "-b"],
 )
 def test_options_of_reads_and_pairs_are_gone(command, option, stub_pipeline, tmp_path, run_cli):
     """The options of a run from reads, alignments or pairs, and --edge,
     which metaTOR 2.0 removed, are unknown options: click's usage error,
-    with no hint. The command does not start."""
+    with no hint. The command does not start. (-q, --min-quality is back:
+    the mapping quality of the alignments of BAM files, which the arguments
+    of a run may be.)"""
     result = run_cli(command, "map.metacool", *option, "-a", "a.fa", "-o", tmp_path / "out", exit_code=2)
     assert f"No such option '{option[0]}'." in " ".join(result.output.replace("│", " ").split())
     assert not stub_pipeline and not (tmp_path / "out").exists()

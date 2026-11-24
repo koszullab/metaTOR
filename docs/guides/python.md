@@ -9,6 +9,7 @@ This page shows the pieces to put together; the
 
 | Module | Usual name | What it holds |
 |---|---|---|
+| `metator.inputs` | `mti` | The inputs of a run: the map, or the pairs files or BAM files that it makes the map of the contigs from |
 | `metator.network` | `mtn` | The contig data table, and the network built from a contact map |
 | `metator.partition` | `mtp` | Partitioning the network into core and overlapping clusters |
 | `metator.validation` | `mtv` | miComplete, and the recursive partition of contaminated clusters |

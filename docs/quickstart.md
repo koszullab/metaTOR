@@ -53,6 +53,22 @@ contig.
     `metacooler merge` sums the maps of several libraries: see
     [Other tools](other-tools.md#from-the-reads-to-the-map).
 
+!!! tip "Or let the pipeline make the map"
+
+    `metator pipeline` and `metator network` make the map themselves, one bin
+    per contig, from the pairs files or the BAM files of the run, several
+    libraries summed:
+
+    ```bash
+    metator pipeline alignment.pairs --assembly assembly.fa --enzyme DpnII \
+        --depth depth.txt --size 20000 --threads 4 --outdir binning --no-clean-up
+    ```
+
+    makes `binning/assembly.metacool` from `alignment.pairs` (named after the
+    assembly; `--prefix sample` names it `sample.metacool`), then runs the
+    three steps below on it, and makes it the map of the clusters. See
+    [The inputs of a run](cli.md#inputs).
+
 ## Step 2: run the pipeline
 
 ```bash

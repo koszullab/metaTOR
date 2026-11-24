@@ -38,12 +38,53 @@ argument, `MAP`: a file, or an entry of a `.mmetacool` collection
 | From | The map |
 |---|---|
 | The reads of a library | `hicstuff pipeline -g assembly.fa -e DpnII -M metacool -P sample R1.fq.gz R2.fq.gz` aligns them and writes `sample.metacool` (from hicstuff 4.0.0: see [Other tools](../other-tools.md#from-the-reads-to-the-map)) |
-| Pairs files | `metacooler create pairs --pairs sample.pairs.gz --bins 1000 -o sample.metacool` |
-| Several libraries | The map of each, summed with `metacooler merge L1.metacool L2.metacool -o sample.metacool` |
+| Pairs files | `metacooler create pairs --pairs sample.pairs.gz --bins 1000 -o sample.metacool`; or `metator pipeline` itself, from the pairs files (below) |
+| BAM files | `metator pipeline` itself, from the BAM files (below) |
+| Several libraries | The map of each, summed with `metacooler merge L1.metacool L2.metacool -o sample.metacool`; or `metator pipeline` itself, from the pairs or BAM files of every library |
 
 See [Other tools](../other-tools.md#from-the-reads-to-the-map) for these
 commands, and [Starting from a contact map](metacool.md#starting-from-a-contact-map)
 for what the run reads from the map.
+
+### From pairs or BAM files
+
+The arguments of a run may be the pairs files or the BAM files of its
+libraries, rather than the map: the run makes the map of the contigs from
+them first, in its output directory, one bin per contig, as
+`metacooler create pairs` makes it, then clusters the contigs on it, and
+makes it the map of the clusters. Each argument is a file, a comma-separated
+list or a glob pattern; the libraries are summed.
+
+```bash
+# The pairs files of hicstuff, one per library: binning/sample.metacool
+metator pipeline 'hicstuff_*/*.valid_idx.pairs.gz' -p sample --enzyme DpnII --depth depth.txt \
+    --threads 16 --assembly assembly.fa --outdir binning
+
+# BAM files of both mates of each read (bwa mem -5SP), one per library: binning/assembly.metacool
+metator pipeline L1.bam,L2.bam --enzyme DpnII --threads 16 --assembly assembly.fa --outdir binning
+
+# BAM files of one mate each (bowtie2, one mate at a time): the R1 files, then the R2 files
+metator pipeline 'L*_R1.bam' 'L*_R2.bam' --enzyme DpnII --threads 16 --assembly assembly.fa --outdir binning
+```
+
+- The map is named after `--prefix` (`sample.metacool`), or after the FASTA
+  file of the assembly (`assembly.metacool` from `assembly.fa.gz`). The log
+  marks the step that makes it, `[1/4] map`, before the three of the
+  clustering.
+- The pairs of a BAM file are those of the primary alignments of the two
+  mates of each read, both aligned with a mapping quality of at least
+  `--min-quality` (`-q`, 30 by default), each at the leftmost base of its
+  alignment, as metaTOR 1.x took them; neither PCR duplicates nor 3C events
+  are filtered. The BAM files may be sorted by name or by coordinate, or be
+  as the aligner wrote them: see [The inputs of a run](../cli.md#inputs).
+- The pairs of the BAM files are written in the temporary directory of the
+  run, about 25 bytes per pair plus the names of its two contigs, before
+  metacooler reads them: give `--tmpdir`
+  room for them. `--threads` reads the BAM files and bins the pairs on
+  several threads.
+- A run that stops after it made the map leaves it in its output directory: a
+  new run starts from it (`metator pipeline binning/sample.metacool ...
+  --outdir binning`), without reading the pairs again.
 
 `--assembly` (`-a`) is the assembly that the map was made from, as a FASTA
 file, plain or compressed with gzip. A compressed one is decompressed once,
@@ -56,7 +97,7 @@ The pipeline writes into `--outdir` (`-o`, the current directory by default):
 
 | File | What it holds |
 |---|---|
-| `<MAP>` | The contact map of the clusters, named as `MAP` (`sample.metacool` from `sample.metacool`) |
+| `<MAP>` | The contact map of the clusters, named as `MAP` (`sample.metacool` from `sample.metacool`); from pairs or BAM files, the map that the run made, named after `--prefix` or the assembly (`<prefix>.metacool`, `<assembly>.metacool`) |
 | `final_clusters/` | One FASTA file per final cluster |
 | `plot/` | The plots of the final clusters: their completeness and contamination (`bins_distribution.png`), and the size of each quality class (`bins_size_distribution.png`); see [Viewing the clusters](binning.md#viewing-the-clusters) |
 | `metator_pipeline_<date>.log` | The log of the run |

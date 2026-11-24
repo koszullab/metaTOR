@@ -7,6 +7,12 @@ with its clustering rounds and the normalization of its network. See
 
 ::: metator.metacool
 
+`metator.inputs` reads the inputs of `metator network` and `metator
+pipeline`, and makes the map of the contigs that a run starts from out of its
+pairs files or BAM files (see [The inputs of a run](../cli.md#inputs)).
+
+::: metator.inputs
+
 `metator.dump` writes the tables of a run from the map of its clusters, as
 `metator dump` does (see [`dump`](../cli.md#dump)).
 

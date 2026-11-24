@@ -24,7 +24,7 @@ import metator.network as mtn
 import metator.partition as mtp
 import metator.validation as mtv
 from metator.version import __version__
-from tests import synthetic
+from tests import alignments, synthetic
 from tests.hdf5 import walk
 from tests.maps import contig_map, pairs_map
 
@@ -1067,6 +1067,71 @@ def test_pipeline_from_a_filtered_metacool(metagenome, metagenome_inputs, tmp_pa
     assert "Contigs table" not in log.read_text()
     assert mc.metadata["annotate"][-1]["contigs_table"].endswith("contig_data_network.txt")
     assert not [path.name for path in mcool.iterdir() if path.name.startswith(".")]
+
+
+def test_pipeline_from_pairs_or_bam_files(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli):
+    """From the pairs files or the BAM files of the libraries of a run (two
+    here), the pipeline makes the map of the contigs, one bin per contig, in
+    its output directory, named after --prefix, in a step more, first; then
+    gives the clusters, the tables and the map of the clusters of a run from
+    the map of those pairs, as metacooler create pairs makes it: the same bins,
+    contacts, contigs, clusters and contact statistics."""
+    monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
+    common = ["-a", str(metagenome_inputs["assembly"]), "-d", str(metagenome_inputs["depth"]), "-e", "DpnII", "-s", "50000",
+              "-i", "10", "-j", "5", "-p", "sample", "-T", str(tmp_path / "tmp")]  # fmt: skip
+    contig_data = mtn.create_contig_data(str(metagenome_inputs["assembly"]), str(metagenome_inputs["depth"]), "DpnII")
+    reference = contig_map(metagenome_inputs["pairs"], contig_data, tmp_path / "sample.metacool", columns=False)
+    random.seed(0)
+    run_cli("pipeline", str(reference), "-o", str(tmp_path / "map"), *common)
+    expected = tmp_path / "map" / "sample.metacool"
+
+    # (tmp_path / "inputs" holds the copies of the files of the community.)
+    inputs = tmp_path / "libraries"
+    inputs.mkdir()
+    lengths = {contig.name: contig.length for contig in metagenome.contigs}
+    pairs = metagenome.pairs
+    half = len(pairs) // 2
+    lines = Path(metagenome_inputs["pairs"]).read_text().splitlines(keepends=True)
+    head, body = [line for line in lines if line.startswith("#")], [line for line in lines if not line.startswith("#")]
+    for name, rows in [("L1.pairs", body[:half]), ("L2.pairs", body[half:])]:
+        (inputs / name).write_text("".join(head + rows))
+    alignments.both_mates(inputs / "L1.bam", pairs[:half], lengths)
+    alignments.both_mates(inputs / "L2.bam", pairs[half:], lengths, order="coordinate")
+    alignments.one_mate([inputs / "L1_R1.bam", inputs / "L1_R2.bam"], pairs[:half], lengths)
+    alignments.one_mate([inputs / "L2_R1.bam", inputs / "L2_R2.bam"], pairs[half:], lengths)
+    runs = {
+        "pairs": ([str(inputs / "L*.pairs")], "2 pairs files"),
+        "both": ([str(inputs / "L1.bam"), str(inputs / "L2.bam")], "2 BAM files of both mates"),
+        "one": ([str(inputs / "L*_R1.bam"), str(inputs / "L*_R2.bam")], "4 BAM files of one mate each"),
+    }
+    for name, (arguments, what) in runs.items():
+        out = tmp_path / name
+        random.seed(0)
+        run_cli("pipeline", *arguments, "-o", str(out), *common)
+        _assert_same_clusters(out, tmp_path / "map")
+        written = out / "sample.metacool"
+        metacooler.validate(str(written), full=True)
+        clr, ref = cooler.Cooler(str(written)), cooler.Cooler(str(expected))
+        for table in ["bins", "pixels", "chroms"]:
+            pd.testing.assert_frame_equal(getattr(clr, table)()[:], getattr(ref, table)()[:])
+        mc, ref_mc = metacooler.MetaCooler(str(written)), metacooler.MetaCooler(str(expected))
+        pd.testing.assert_frame_equal(mc.genomes, ref_mc.genomes)
+        assert mc.cluster_rounds == ref_mc.cluster_rounds
+        pd.testing.assert_frame_equal(mc.clusters, ref_mc.clusters)
+        assert clr.info["metadata"]["qc"] == ref.info["metadata"]["qc"]
+        assert clr.info["metadata"]["commands"][0].startswith("metator pipeline ")
+        parameters = clr.info["metadata"]["metator"]["validation"]["parameters"]
+        assert parameters["input"] == arguments and parameters["map"] == str(written)
+        # The output directory: the map, the clusters, their plots and the log.
+        (log,) = out.glob("metator_pipeline_*.log")
+        assert sorted(path.name for path in out.iterdir()) == sorted(["final_clusters", log.name, "plot", "sample.metacool"])
+        steps = [line.split(" :: ", 2)[2] for line in log.read_text().splitlines() if " :: INFO :: [" in line]
+        assert steps == [
+            f"[1/4] map: the contact map of the contigs, from {what}",
+            f"[2/4] network: the contigs of {written} and their contacts",
+            "[3/4] partition: the clusters of the network",
+            "[4/4] validation: miComplete checks the clusters, and the contaminated ones are partitioned again",
+        ]
 
 
 def _contig_map(metagenome_inputs, path, pairs=None):
