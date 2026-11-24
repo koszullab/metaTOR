@@ -2449,6 +2449,8 @@ def pipeline(
             ),
             clusters=final,
             mge_follows=mges_list is not None,
+            # The step markers finds the marker genes of the contigs again.
+            markers_follow=True,
         )
 
         # The marker genes of the contigs, as metator markers finds them, in
@@ -3128,10 +3130,14 @@ def markers(
     [cyan]metator pipeline[/] runs this step after the validation, on the map
     of its clusters, and so replaces them too. Every other run keeps them,
     those that regroup the contigs too (validation, mge --reassign): they are
-    facts about the contigs, found in the genomes as the run read them. The
-    run writes the map to the output directory, under the name of MAP, which
-    it leaves as it was (--inplace updates MAP in place, and so does a run in
-    the directory of MAP), and locks it while it writes it.
+    facts about the contigs, found in the genomes as the run read them, which
+    the map records (assignment_digest, the digest of the genome of each
+    contig, and trained_genomes): a run that regroups the contigs into other
+    genomes says that the markers predate them, and so does [cyan]metator
+    report[/]. The run writes the map to the output directory, under the
+    name of MAP, which it leaves as it was (--inplace updates MAP in place,
+    and so does a run in the directory of MAP), and locks it while it writes
+    it.
     """
     outdir = outdir or "."
     make_outdir(outdir)
@@ -3206,14 +3212,18 @@ def markers_entry(found, evalue, bias, domain_cutoff):
     (thresholds: evalue, bias, domain_cutoff); how the genes were found
     (genes: the versions of pyrodigal and pyhmmer, the rules of its single
     genome and metagenome modes in words, see metator.markers.GENE_RULES, the
-    number of genomes trained on, the length a genome needs for it, the
+    genomes trained on, by name, the length a genome needs for it, the
     number of contigs in metagenome mode and the number of proteins that
     their E-values are counted over, z; see found, a
     metator.markers.ContigMarkers); each marker set (sets: its column in the
     contigs table, its markers in the order of its HMMs and their weights, see
     metator.markers.entry_sets); the set that metaTOR keeps for a bin (kept:
-    the set of the higher weighted completeness, ties to Bact105); and what
-    the run read of the map (read: its genomes, by name)."""
+    the set of the higher weighted completeness, ties to Bact105); what the
+    run read of the map (read: its genomes, by name); and the binning that the
+    genes were found in, the digest of the genome of each contig (see
+    metator.metacool.assignment_digest), which a run that regroups the contigs
+    and metator report check the binning of the map against (see
+    metator.metacool.markers_predate)."""
     import importlib.metadata
 
     import pyhmmer
@@ -3228,7 +3238,7 @@ def markers_entry(found, evalue, bias, domain_cutoff):
             "pyrodigal": pyrodigal.__version__,
             "pyhmmer": pyhmmer.__version__,
             **mtmk.GENE_RULES,
-            "trained_genomes": len(found.trained),
+            "trained_genomes": list(found.trained),
             "min_training": mtmk.MIN_TRAINING,
             "metagenome_contigs": found.meta,
             "metagenome_z": found.z,
@@ -3236,6 +3246,7 @@ def markers_entry(found, evalue, bias, domain_cutoff):
         "sets": mtmk.entry_sets(),
         "kept": {"by": "weighted_completeness", "ties": mtmk.MARKER_SETS[0]},
         "read": {"genomes": ["name"]},
+        mtmc.ASSIGNMENT_DIGEST: found.assignment,
     }
 
 
@@ -3610,11 +3621,13 @@ def report(
     [cyan]metator report MAP -o DIR[/] digests what the map of the clusters
     of a run holds ([cyan]metator pipeline[/], or [cyan]metator
     validation[/], then [cyan]metator mge[/] and [cyan]metator host[/]): the
-    run and its parameters, the contigs and where they went, the contacts of
-    the reads, the clustering rounds, the final clusters by quality class
-    (from the values of miComplete, as the log of the run counts them), the
-    MAGs, the MGE clusters and their hosts. It writes, named after the map
-    (<name>: MAP without .metacool):
+    run and its parameters (and whether the marker genes of the contigs
+    predate its genomes: found by [cyan]metator markers[/] in another
+    binning, which a run changed since), the contigs and where they went, the
+    contacts of the reads, the clustering rounds, the final clusters by
+    quality class (from the values of miComplete, as the log of the run
+    counts them), the MAGs, the MGE clusters and their hosts. It writes,
+    named after the map (<name>: MAP without .metacool):
 
     - <name>.report.txt: a text file, in sections, a key and its value per line,
       then tables, a row per line, in a format that MultiQC, or a script,

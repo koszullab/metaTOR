@@ -51,3 +51,15 @@ def walk(path):
     with h5py.File(path, "r") as handle:
         visit(handle, "")
     return found
+
+
+def edit_metator_entry(path, name, edit):
+    """Edit the entry name of the metator key of the metadata of the map at path,
+    in place, as another program writing the map would (edit: a function that
+    changes the entry, a dict, in place)."""
+    import json
+
+    with h5py.File(path, "r+") as handle:
+        metadata = json.loads(handle.attrs["metadata"])
+        edit(metadata["metator"][name])
+        handle.attrs["metadata"] = json.dumps(metadata)

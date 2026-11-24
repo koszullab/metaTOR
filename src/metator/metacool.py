@@ -715,10 +715,20 @@ HOST_GENOME_COLUMNS = ("n_mges", "mges")
 # replace them (metator.cli.REPLACES_MARKERS); every other run keeps them,
 # those that regroup the contigs too (validation, mge --reassign), as a
 # curation by hand does. Their genes were found in the genomes of the map as
-# the run read them; metator markers run again finds them in the genomes as
-# they are.
+# the run read them, which the entry records (ASSIGNMENT_DIGEST): a run that
+# regroups the contigs into other genomes says that the markers predate them
+# (see write_map), and so does metator report (see markers_predate); metator
+# markers run again finds them in the genomes as they are.
 MARKERS_ENTRY = "markers"
 MARKER_COLUMNS = ("markers_Bact105", "markers_Arch131")
+
+# The key of the markers entry of the metator metadata of a map that records
+# the binning that the marker genes of its contigs were found in: the digest
+# of the genome of each contig then (see assignment_digest), as the partition
+# and host entries record the network that they read (NETWORK_DIGEST). The
+# genes key of the entry names the genomes that pyrodigal was trained on
+# (trained_genomes).
+ASSIGNMENT_DIGEST = "assignment_digest"
 
 
 def holds_partition(mc):
@@ -766,6 +776,119 @@ def holds_markers(mc):
     MARKER_COLUMNS in its contigs table."""
     held = isinstance(_metator_metadata(mc).get(MARKERS_ENTRY), dict)
     return held or any(column in mc.contigs.columns for column in MARKER_COLUMNS)
+
+
+def markers_entry(mc):
+    """The markers entry of the metator metadata of the map mc (see
+    MARKERS_ENTRY): what the run that found the marker genes of its contigs
+    recorded, its marker sets among them (see metator.markers.map_sets); None
+    when the map holds no markers."""
+    entry = _metator_metadata(mc).get(MARKERS_ENTRY)
+    return entry if isinstance(entry, dict) else None
+
+
+def map_assignment(mc):
+    """The binning of the map mc (opened): the names of its contigs, in the order
+    of its contigs table, and the name of the genome of each (UNBINNED_GENOME
+    for none), as two arrays (see assignment_digest)."""
+    contigs = mc.contigs
+    genomes = mc.genomes["name"].astype(str).to_numpy()
+    return contigs["name"].astype(str).to_numpy(), genomes[contigs["genome_id"].to_numpy()]
+
+
+def assignment_digest(contigs, genomes):
+    """The identity of a binning of the contigs of a map: the SHA-256 of the
+    genome of each contig, by the names of the contigs, as
+    metator.network.network_digest is the identity of a network. It is that
+    of the assignment, not of a map: the same whatever the order of the
+    contigs, another one once a contig is in another genome, or a genome is
+    renamed. metator markers records the binning that it found the marker
+    genes of the contigs in (see ASSIGNMENT_DIGEST), which markers_predate
+    checks the binning of the map against.
+
+    Parameters
+    ----------
+    contigs : sequence of str
+        The names of the contigs of the map.
+    genomes : sequence of str
+        The name of the genome of each, in the same order: UNBINNED_GENOME for
+        none (see map_assignment).
+
+    Returns
+    -------
+    str
+        The SHA-256, in hexadecimal, of the name of each contig and of its
+        genome, the contigs by name, each field ended by a NUL, which no name
+        holds."""
+    import hashlib
+
+    names = np.asarray(contigs, dtype=str)
+    of = np.asarray(genomes, dtype=str)
+    order = np.argsort(names, kind="stable")
+    fields = zip(names[order].tolist(), of[order].tolist(), strict=True)
+    return hashlib.sha256("".join(f"{name}\0{genome}\0" for name, genome in fields).encode()).hexdigest()
+
+
+def markers_binning(mc):
+    """The digest of the binning that metator markers found the marker genes of
+    the contigs of the map mc in (see assignment_digest), as its markers entry
+    records it (ASSIGNMENT_DIGEST): None when the map records none (it holds no
+    markers, or markers that an earlier metaTOR found)."""
+    entry = markers_entry(mc)
+    digest = entry.get(ASSIGNMENT_DIGEST) if entry is not None else None
+    return digest if isinstance(digest, str) else None
+
+
+def markers_predate(mc):
+    """Whether the marker genes of the contigs of the map mc predate its genomes,
+    as metator report says: found by metator markers in another binning of its
+    contigs than the one the map has (the digest that its markers entry records
+    is not that of its genomes, see assignment_digest). Each contig has its own
+    markers still, but summed over a genome whose contigs changed since, they
+    give an estimate of miComplete's numbers, not those of the genome as
+    metator markers would find its genes. None when the map cannot tell: it
+    records no such digest (see markers_binning)."""
+    found_in = markers_binning(mc)
+    if found_in is None:
+        return None
+    return found_in != assignment_digest(*map_assignment(mc))
+
+
+def _markers_found_in(mc):
+    """The digest of the binning that the marker genes that the map mc holds were
+    found in (see markers_binning) or, when its markers entry records none,
+    that of its binning as it is, the last one that they can have been found
+    in; None when the map holds no markers (see holds_markers)."""
+    if not holds_markers(mc):
+        return None
+    return markers_binning(mc) or assignment_digest(*map_assignment(mc))
+
+
+def _regrouped(contigs, clusters, genomes):
+    """The digest of the binning of a map (see assignment_digest) once a run
+    regroups its contigs (contigs: its contigs table): into the final clusters
+    of a validation (clusters, a FinalClusters), or else into the genomes that
+    its round mge makes (genomes, an MgeGenomes); a contig of no genome, or of
+    ND, in UNBINNED_GENOME, where metacooler reassign puts it."""
+    names = contigs["name"].astype(str).tolist()
+    assignment = clusters.assignment if clusters is not None else genomes.assignment
+    of = [assignment.get(name, "ND") for name in names]
+    return assignment_digest(names, [UNBINNED_GENOME if genome == "ND" else genome for genome in of])
+
+
+def _log_markers_predate(metacool, outfile, in_place):
+    """Say, once outfile is written from the map metacool (in place, or to
+    another file), that it keeps the marker genes of the contigs that metator
+    markers stored in the map, which the run regrouped into other genomes than
+    those that the genes were found in (see markers_predate)."""
+    where = f"{metacool} keeps" if in_place else f"{outfile} keeps, of {metacool},"
+    logger.info(
+        f"{where} the marker genes of its contigs that metator markers found (the columns "
+        f"{' and '.join(MARKER_COLUMNS)} of its contigs table), which predate its new genomes: each contig keeps its "
+        "own, found in the genome that it was in then, but summed over a genome whose contigs changed, they give an "
+        "estimate of miComplete's numbers, which miComplete's own run on that genome can differ from. Run metator "
+        f"markers again on {outfile} to find them in its genomes as they are."
+    )
 
 
 @dataclass
@@ -1158,6 +1281,7 @@ def write_map(
     force=False,
     planned=None,
     mge_follows=False,
+    markers_follow=False,
 ):
     """Write the map of a run at outfile from its input map, metacool: what the
     run stores in it, everything else as it was. Each step of a run writes its
@@ -1182,6 +1306,13 @@ def write_map(
     (partition) or the genomes (validation, pipeline) drops them, and so does
     a network run with drop_hosts (another network than the one they were
     found on), each with a warning.
+
+    The marker genes that metator markers stored in the map (see
+    MARKERS_ENTRY) are facts about its contigs, which every write but that of
+    markers keeps: a run that regroups the contigs into other genomes than
+    those that the genes were found in (validation, mge --reassign) says so
+    once the map is written, as they predate its new genomes (see
+    markers_predate), unless markers_follow.
 
     Parameters
     ----------
@@ -1232,6 +1363,11 @@ def write_map(
         in the map once it is written (pipeline --mges, in its steps mge and
         host): the warnings of what the map no longer holds leave them out,
         which the run makes again.
+    markers_follow : bool
+        Whether the run says later what becomes of the marker genes of the
+        contigs that the map holds, which this write does not say then: it
+        finds them again once the map is written (pipeline, in its step
+        markers).
 
     Raises
     ------
@@ -1297,6 +1433,11 @@ def write_map(
             # The genomes of the map once its round mge is stored: None when
             # they stay as they are.
             genomes = mge_reassignment(mc, mge[0], reassign) if mge is not None and mge[1]["name"] == mtcl.MGE else None
+            # The binning that the marker genes that the map holds were found
+            # in, which a run that regroups the contigs keeps: said once the
+            # map is written, if it regroups them into other genomes.
+            regroups = clusters is not None or genomes is not None
+            found_in = _markers_found_in(mc) if regroups and not markers_follow else None
         if clusters is not None:
             _check_clustered_contigs(metacool, contigs, clusters)
         writing, written = _what_is_written(contigs, network, rounds, clusters, mge, genomes, hosts, markers)
@@ -1345,6 +1486,8 @@ def write_map(
     )
     if dropped_hosts and not mge_follows:
         _warn_dropped_hosts(metacool, outfile, in_place, replaced)
+    if found_in is not None and _regrouped(contigs, clusters, genomes) != found_in:
+        _log_markers_predate(metacool, outfile, in_place)
 
 
 def _what_is_written(contigs, network, rounds, clusters, mge, genomes=None, hosts=None, markers=None):

@@ -437,13 +437,19 @@ class ContigMarkers:
     z : float, or None
         The number of proteins over which the E-values of the contigs in
         metagenome mode are counted (see metagenome_z); None without such
-        contigs."""
+        contigs.
+    assignment : str, or None
+        The binning that the genes were found in: the digest of the genome of
+        each contig of the map as the run read it (see
+        metator.metacool.assignment_digest), which the markers entry of the
+        map records."""
 
     table: pd.DataFrame
     trained: dict
     small: list
     meta: int
     z: float | None
+    assignment: str | None = None
 
 
 def metagenome_z(trained, proteins):
@@ -626,7 +632,7 @@ def contig_markers(metacool, mc, sequences, threads=1, evalue=EVALUE, bias=BIAS,
     table = pd.DataFrame({"Name": names})
     for name in MARKER_SETS:
         table[marker_column(name)] = [encode_markers(markers[name].get(contig, {})) for contig in names]
-    result = ContigMarkers(table, trained, small, len(meta), z)
+    result = ContigMarkers(table, trained, small, len(meta), z, mtmc.assignment_digest(names, of_genome))
     _log_markers(result)
     return result
 

@@ -740,6 +740,10 @@ def test_pipeline_from_a_metacool(stub_pipeline, tmp_path, run_cli):
     assert stores["partition"]["command"] == network.entry["command"] and stores["partition"]["version"] == __version__
     clusters = stores["clusters"]
     assert clusters.entry["command"] == network.entry["command"] and clusters.entry["version"] == __version__
+    # The step markers finds the marker genes of the contigs again once the
+    # map of the clusters is written: the map of the clusters does not say
+    # that those of the input map predate its genomes.
+    assert stores["markers_follow"] is True
     assert clusters.entry["normalization"] == "length" and clusters.entry["summary_columns"] == []
     # The coverage of the depth file is not measured by the stub contig data.
     assert clusters.entry["read"] == {"contigs": ["GC_content", "Hit"], "bins": ["metator_length"],

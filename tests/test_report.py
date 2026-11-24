@@ -22,8 +22,9 @@ import metator.outputs as mto
 import metator.report as mtr
 from metator.cli import cli
 from tests import synthetic
-from tests.maps import contig_map
+from tests.hdf5 import edit_metator_entry
 from tests.logs import logs
+from tests.maps import contig_map
 
 
 @pytest.fixture(scope="module")
@@ -80,6 +81,12 @@ def test_the_report_is_the_run(run):
     assert sections["run"]["steps"] == "network,partition,validation,markers,mge,host"
     assert sections["run"]["size_bp"] == 20000 and sections["run"]["normalization"] == "empirical_hit"
     assert sections["run"]["seed"] == sections["run"]["rec_seed"] == 3
+    # The marker genes of the contigs, found in the final clusters, before the
+    # step mge made MGE genomes of some of their contigs, as the run said once.
+    assert sections["run"]["markers_predate_genomes"] is True
+    log = run["log"]
+    assert log.count("which predate its new genomes") == 1
+    assert log.index("] markers: ") < log.index("] mge: ") < log.index("which predate its new genomes")
     lengths = mc.contigs["length"].to_numpy()
     assert sections["contigs"]["contigs"] == len(lengths) and sections["contigs"]["contigs_bp"] == lengths.sum()
     ordered = np.sort(lengths)[::-1]
@@ -248,16 +255,19 @@ def test_a_report_without_mges(run, tmp_path):
     assert 'id="mges"' not in page and "plot-hosts" not in page
 
 
-def test_a_report_before_host(run, tmp_path, run_cli):
+def test_a_report_before_host(run, tmp_path, run_cli, logged):
     """A map whose MGE clusters have no hosts yet (metator mge ran on it again,
     which drops the hosts of the round mge that it replaces, and metator host
     did not): its report has the section mges but not hosts, no table of the
-    hosts, its MGE clusters NA hosts, and the run no thresholds of host."""
+    hosts, its MGE clusters NA hosts, and the run no thresholds of host. The
+    run keeps the marker genes of the contigs, which predate the MGE genomes
+    that it makes again, as it says once."""
     metacool = tmp_path / "mges.metacool"
     shutil.copyfile(run["map"], metacool)
     mges = run["out"].parent / "mges.txt"
     run_cli("mge", metacool, "-a", run["assembly"], "-m", mges, "--reassign", "--inplace", "-o", tmp_path / "out",
             "-T", tmp_path / "tmp")  # fmt: skip
+    assert len([message for _, message in logged() if f"{metacool} keeps the marker genes" in message]) == 1
     mc, layout, stored = mtd.read_run(str(metacool))
     assert not mtmc.holds_hosts(mc)
     report = mtr.collect(str(metacool), mc, layout, stored)
@@ -266,6 +276,31 @@ def test_a_report_before_host(run, tmp_path, run_cli):
     assert report.tables["mge_clusters"]["n_hosts"].isna().all()
     assert "host_min_share_pct" not in report.sections["run"]
     assert "plot-hosts" not in mtr.figures(report)
+
+
+@pytest.mark.parametrize("case", ["predating", "found in the genomes of the map", "of an earlier metaTOR"])
+def test_the_report_says_whether_the_markers_predate_the_genomes(case, run, tmp_path):
+    """The marker genes of the run were found in its final clusters, before its
+    step mge made MGE genomes of some of their contigs: they predate the
+    genomes of the map, as the report says (true, and a note on its page); not
+    once the binning that the markers entry records is that of the map
+    (false), and the report cannot tell when it records none (NA)."""
+    metacool = tmp_path / "sample.metacool"
+    shutil.copyfile(run["map"], metacool)
+    if case == "found in the genomes of the map":
+        digest = mtmc.assignment_digest(*mtmc.map_assignment(metacooler.MetaCooler(str(metacool))))
+        edit_metator_entry(metacool, "markers", lambda entry: entry.update({mtmc.ASSIGNMENT_DIGEST: digest}))
+    elif case == "of an earlier metaTOR":
+        edit_metator_entry(metacool, "markers", lambda entry: entry.pop(mtmc.ASSIGNMENT_DIGEST))
+    mc, layout, stored = mtd.read_run(str(metacool))
+    report = mtr.collect(str(metacool), mc, layout, stored)
+    predate = {"predating": True, "found in the genomes of the map": False, "of an earlier metaTOR": None}[case]
+    assert report.sections["run"]["markers_predate_genomes"] is predate
+    mtr.write_report(report, str(tmp_path / "out"))
+    sections, _ = mtr.read_txt(tmp_path / "out" / TXT)
+    assert sections["run"]["markers_predate_genomes"] == {True: "true", False: "false", None: None}[predate]
+    page = (tmp_path / "out" / HTML).read_text()
+    assert ("The marker genes of the contigs (metator markers) predate the genomes of the map" in page) is (predate is True)
 
 
 def test_write_report_replaces_a_link(run, tmp_path):

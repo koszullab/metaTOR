@@ -139,7 +139,12 @@ tools](other-tools.md) says what replaces each removed command. Below,
   the merge of the MAGs of two organisms, a redundancy of 1.6667 against
   miComplete's 1.1827).
   `pipeline` runs it after the validation (`[4/5] markers`); every other run
-  keeps them. See [Marker genes of the contigs](formats.md#marker-genes-of-the-contigs).
+  keeps them. The entry records the binning that the genes were found in
+  (`assignment_digest`, and the genomes trained on, `trained_genomes`): a
+  run that keeps the markers while it regroups the contigs into other
+  genomes (`validation`, `mge --reassign`) says once that they predate its
+  new genomes, and `report` says so too (`markers_predate_genomes` in its
+  section `run`). See [Marker genes of the contigs](formats.md#marker-genes-of-the-contigs).
 - **`metator host MAP`** finds the MAGs that host the MGE clusters stored by
   `mge`: at least `--min-share` (10%) of the MGE cluster's signal with the
   MAGs, and `--min-contigs` (5) contigs in contact. It writes
@@ -181,7 +186,8 @@ tools](other-tools.md) says what replaces each removed command. Below,
   (`find_hosts`...); `metator.markers` (`contig_markers`, `group_markers`,
   `marker_quality`, `quality_of`, `encode_markers`, `decode_markers`...);
   `metator.metacool.write_map`, `map_rounds`, `read_partition`,
-  `holds_hosts`, `hosts_network`, `holds_markers`;
+  `holds_hosts`, `hosts_network`, `holds_markers`, `markers_entry`,
+  `markers_predate`, `assignment_digest`, `map_assignment`;
   `metator.network.map_network`, `stored_network`, `contig_contacts`,
   `contig_hits`, `normalization_weights`, `relabel_network`;
   `metator.mge.check_mge_map`, `map_matrix`, `write_mges_fasta`;

@@ -27,7 +27,7 @@ import metator.markers as mtmk
 import metator.metacool as mtmc
 import metator.validation as mtv
 from metator.version import __version__
-from tests.hdf5 import walk
+from tests.hdf5 import edit_metator_entry, walk
 from tests.logs import logs
 
 BINS = Path(__file__).resolve().parents[1] / "tests_data" / "micomplete"
@@ -391,9 +391,10 @@ def test_markers_stores_the_markers_of_the_contigs(output, marker_run, oracle, t
     its own): summed over a genome that pyrodigal trains on, they give the
     numbers that miComplete gives the FASTA file of the genome, in the order of
     the map; the contigs of binC (under 20 kb) and of no genome get theirs in
-    metagenome mode, searched as in a genome of the median number of proteins
-    of the others. The run is recorded under the markers entry of the metator
-    metadata, and everything else is kept as it was."""
+    metagenome mode, searched over the median number of proteins of the genomes
+    trained on. The run is recorded under the markers entry of the metator
+    metadata, with the binning that the genes were found in, and everything
+    else is kept as it was."""
     metacool, assembly, out = marker_run
     before = walk(metacool)
     unchanged = metacool.read_bytes()
@@ -421,12 +422,17 @@ def test_markers_stores_the_markers_of_the_contigs(output, marker_run, oracle, t
     assert entry["thresholds"] == {"evalue": 4e-10, "bias": 0.3, "domain_cutoff": 1e-05}
     proteins = [int(tables["Bact105"].loc[genome, "CDs"]) for genome in MAP_GENOMES]
     genes = entry["genes"]
-    assert (genes["trained_genomes"], genes["metagenome_contigs"], genes["min_training"]) == (2, 5, 20_000)
+    assert (genes["trained_genomes"], genes["metagenome_contigs"], genes["min_training"]) == (["binA", "binB"], 5, 20_000)
     # How the genes were found, in words: the rules of the two modes.
     assert {mode: genes[mode] for mode in ("single", "metagenome")} == mtmk.GENE_RULES
     assert genes["metagenome_z"] == (proteins[0] + proteins[1]) / 2
     assert entry["sets"] == mtmk.entry_sets() and entry["kept"] == {"by": "weighted_completeness", "ties": "Bact105"}
     assert entry["read"] == {"genomes": ["name"]}
+    # The binning that the genes were found in: that of the map, which the
+    # markers do not predate.
+    mc = metacooler.MetaCooler(str(written))
+    assert entry[mtmc.ASSIGNMENT_DIGEST] == mtmc.assignment_digest(*mtmc.map_assignment(mc))
+    assert mtmc.markers_predate(mc) is False
     # Everything else as it was: the contigs table but its two columns, and the
     # metadata but the markers entry and metacooler's record of the annotation.
     after = walk(written)
@@ -591,15 +597,30 @@ def test_markers_of_a_gzip_compressed_assembly(marker_run, tmp_path, run_cli):
     pd.testing.assert_frame_equal(_stored(tmp_path / "plain" / metacool.name)[0], _stored(tmp_path / "gzip" / metacool.name)[0])
 
 
-def test_the_runs_that_regroup_the_contigs_keep_the_markers(marker_run, tmp_path, run_cli):
+#: What a run that keeps the markers says, once, when it regroups the contigs
+#: into other genomes than those that the genes were found in.
+PREDATE = "which predate its new genomes"
+
+
+def _predate(logged):
+    """What the run said of markers that predate its new genomes (see PREDATE)."""
+    return [(level, message) for level, message in logged() if PREDATE in message]
+
+
+def test_the_runs_that_regroup_the_contigs_keep_the_markers(marker_run, tmp_path, run_cli, logged):
     """The markers are facts about the contigs: a run that regroups them (the
     final clusters of a validation, the MGE genomes of mge --reassign) or stores
-    the network keeps the columns and the entry."""
+    the network keeps the columns and the entry. One that regroups the contigs
+    into other genomes than those that the genes were found in says once that
+    the markers predate them, which the map says then (markers_predate); a run
+    of markers finds them in the genomes as they are."""
     metacool, assembly, out = marker_run
     run_cli("markers", metacool, "-a", assembly, "--inplace", "-o", out)
     table, entry = _stored(metacool)
     contigs = list(table.index)
+    genomes = dict(zip(*mtmc.map_assignment(metacooler.MetaCooler(str(metacool))), strict=True))
     run_cli("network", metacool, "-a", assembly, "--inplace", "-o", out, "-n", "None")
+    assert not _predate(logged) and mtmc.markers_predate(metacooler.MetaCooler(str(metacool))) is False
     clusters = mtmc.FinalClusters({name: "metator_00001_00000" for name in contigs[:10]}, None, None, {})
     mtmc.write_map(str(metacool), str(metacool), clusters=clusters, force=True)
     mc = metacooler.MetaCooler(str(metacool))
@@ -608,6 +629,66 @@ def test_the_runs_that_regroup_the_contigs_keep_the_markers(marker_run, tmp_path
     pd.testing.assert_frame_equal(kept.reindex(contigs), table)
     assert kept_entry == entry
     assert {"network", "validation", "markers"} <= set(mc.metadata["metator"])
+    assert _predate(logged) == [
+        (
+            "INFO",
+            f"{metacool} keeps the marker genes of its contigs that metator markers found (the columns markers_Bact105 "
+            "and markers_Arch131 of its contigs table), which predate its new genomes: each contig keeps its own, found "
+            "in the genome that it was in then, but summed over a genome whose contigs changed, they give an estimate "
+            "of miComplete's numbers, which miComplete's own run on that genome can differ from. Run metator markers "
+            f"again on {metacool} to find them in its genomes as they are.",
+        )
+    ]
+    assert mtmc.markers_predate(mc) is True
+    # Written to another file, from the map: said of that file. Not by a write
+    # whose run finds the markers again (pipeline, in its step markers).
+    other = tmp_path / "other.metacool"
+    mtmc.write_map(str(metacool), str(other), clusters=clusters, force=True)
+    assert _predate(logged)[-1][1].startswith(f"{other} keeps, of {metacool}, the marker genes of its contigs")
+    mtmc.write_map(str(metacool), str(metacool), clusters=clusters, force=True, markers_follow=True)
+    assert len(_predate(logged)) == 2
+    # Back in the genomes that the genes were found in: nothing to say.
+    found = {name: genome for name, genome in genomes.items() if genome != mtmc.UNBINNED_GENOME}
+    mtmc.write_map(str(metacool), str(metacool), clusters=mtmc.FinalClusters(found, None, None, {}), force=True)
+    assert len(_predate(logged)) == 2 and mtmc.markers_predate(metacooler.MetaCooler(str(metacool))) is False
+    # Found again in the genomes of the map once they moved.
+    mtmc.write_map(str(metacool), str(metacool), clusters=clusters, force=True)
+    run_cli("markers", metacool, "-a", assembly, "--inplace", "-o", out)
+    assert mtmc.markers_predate(metacooler.MetaCooler(str(metacool))) is False
+
+
+def test_assignment_digest():
+    """The identity of a binning: the SHA-256 of the name of each contig and of
+    its genome, the contigs by name, each field ended by a NUL; the same in any
+    order of the contigs, another once a contig is in another genome, or a
+    genome is renamed."""
+    import hashlib
+
+    digest = mtmc.assignment_digest(["c2", "c1", "c3"], ["g1", "g1", "__unbinned__"])
+    assert digest == hashlib.sha256(b"c1\0g1\0c2\0g1\0c3\0__unbinned__\0").hexdigest()
+    assert mtmc.assignment_digest(np.array(["c3", "c1", "c2"]), ["__unbinned__", "g1", "g1"]) == digest
+    assert mtmc.assignment_digest(["c2", "c1", "c3"], ["g1", "g2", "__unbinned__"]) != digest
+    assert mtmc.assignment_digest(["c2", "c1", "c3"], ["g0", "g0", "__unbinned__"]) != digest
+    assert mtmc.assignment_digest([], []) == hashlib.sha256(b"").hexdigest()
+
+
+def test_markers_that_record_no_binning(marker_run, run_cli, logged):
+    """Markers whose entry records no binning (found by an earlier metaTOR): the
+    map cannot tell whether they predate its genomes (None), and a run that
+    regroups the contigs says so when it regroups them into other genomes than
+    the map's, the last that they can have been found in."""
+    metacool, assembly, out = marker_run
+    run_cli("markers", metacool, "-a", assembly, "--inplace", "-o", out)
+    edit_metator_entry(metacool, "markers", lambda entry: entry.pop(mtmc.ASSIGNMENT_DIGEST))
+    mc = metacooler.MetaCooler(str(metacool))
+    assert mtmc.markers_binning(mc) is None and mtmc.markers_predate(mc) is None
+    names, genomes = mtmc.map_assignment(mc)
+    found = {name: genome for name, genome in zip(names, genomes, strict=True) if genome != mtmc.UNBINNED_GENOME}
+    mtmc.write_map(str(metacool), str(metacool), clusters=mtmc.FinalClusters(found, None, None, {}), force=True)
+    assert not _predate(logged)
+    other = mtmc.FinalClusters({names[0]: "metator_00001_00000"}, None, None, {})
+    mtmc.write_map(str(metacool), str(metacool), clusters=other, force=True)
+    assert len(_predate(logged)) == 1 and mtmc.markers_predate(metacooler.MetaCooler(str(metacool))) is None
 
 
 def test_write_map_stores_the_markers_alone(marker_run):

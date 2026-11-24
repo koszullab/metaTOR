@@ -372,8 +372,11 @@ metator markers [OPTIONS] MAP
 - **Every other run keeps them**, those that regroup the contigs too
   (`validation`, `mge --reassign`, `metacooler reassign`): they are facts
   about the contigs. Their genes were found in the genomes as the run read
-  them: run `markers` again for the numbers that miComplete gives the genomes
-  as they are now.
+  them, which the map records (`assignment_digest`, and the genomes trained
+  on, `trained_genomes`): a run that regroups the contigs into other genomes
+  says once, in its log, that the markers predate them, and
+  [`report`](#report) says so too (`markers_predate_genomes`). Run `markers`
+  again for the numbers that miComplete gives the genomes as they are now.
 - **Refuses** an assembly that lacks a contig of the map, gives one another
   length, or names a contig by several records, before any work.
 - **On a map of many contigs**, the two columns cost time and memory each
@@ -623,7 +626,7 @@ metator report [OPTIONS] MAP
 
 | Part | Contents |
 |---|---|
-| The run | Its steps, input and assembly, the parameters of each step and their command lines. |
+| The run | Its steps, input and assembly, the parameters of each step and their command lines; whether the marker genes of the contigs predate the genomes of the map (found in another binning, which a run changed since). |
 | The contigs | Number, length, N50, L50, N90, longest and median contig, GC content, median coverage; and how many are in a final cluster, a MAG, an MGE cluster or no cluster. |
 | The contacts | The read contacts that metacooler counted (within a contig, within a genome, between genomes, and their ratios), and the network. |
 | The clusters | The clusters of each round, and the final clusters by quality class (HQ, MQ, LQ, Contaminated, Other) with their length, from the miComplete values at full precision. |

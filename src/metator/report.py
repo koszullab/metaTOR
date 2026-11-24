@@ -312,6 +312,11 @@ def collect(metacool, mc, layout, stored):
         run["mge_threshold_bin"] = mge.get("threshold_bin", mge.get("mge_threshold_bin"))
     if mtmc.holds_hosts(mc):
         run["host_min_share_pct"], run["host_min_contigs"] = mth.recorded_thresholds(mc)
+    if "markers" in entries:
+        # Whether the marker genes of the contigs (metator markers) were found
+        # in another binning than the map's, which a run regrouped since: NA
+        # when the map does not record it (see metator.metacool.markers_predate).
+        run["markers_predate_genomes"] = mtmc.markers_predate(mc)
     report.sections["run"] = run
 
     # The contigs, and where they went.
