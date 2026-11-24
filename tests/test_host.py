@@ -414,7 +414,7 @@ def test_host_refuses_a_map(case, tmp_path, run_cli, logged):
     }[case]
     assert any(level == "ERROR" and expected in message for level, message in logged())
     assert metacool.read_bytes() == before
-    assert sorted(path.name for path in (tmp_path / "out").iterdir())[0].startswith("metator_host_")
+    assert logs(tmp_path / "out", "host")[0].name.startswith(f"{metacool.stem}.metator_")
     assert [path.name for path in (tmp_path / "out").iterdir() if not path.name.endswith(".log")] == []
 
 
