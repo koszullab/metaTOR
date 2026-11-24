@@ -346,9 +346,11 @@ metator markers [OPTIONS] MAP
 - **Other contigs.** miComplete finds no gene in a bin under 20 kb (with the
   12-bp linkers between its contigs), too little to train on. The contigs of
   such a genome, and those of `__unbinned__`, get their genes in metagenome
-  mode, contig by contig, and their markers counted over the median number
-  of proteins of the trained genomes: as in a typical genome of the map
-  (on a map without one, over their own proteins, as one bin).
+  mode, contig by contig, and the E-values of their hits counted over the
+  median number of proteins of the genomes trained on: every genome of 20 kb
+  or more, whatever it is, the MGE genomes of `mge --reassign` too, which
+  have fewer proteins than a MAG and lower it (on a map without one, over
+  their own proteins, as one bin).
 - **Curated groups.** Summed over any other group of contigs (two MAGs
   merged, a contig moved from one MAG to another, contigs recruited from
   `__unbinned__`), the markers give an estimate, from the genes found in the

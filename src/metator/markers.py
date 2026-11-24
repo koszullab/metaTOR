@@ -48,11 +48,12 @@ miComplete gives that FASTA file. miComplete finds no gene in a bin of less
 than 20 kb, which prodigal cannot train on: the contigs of a genome that
 small, and those of no genome, have their genes found in metagenome mode
 (pyrodigal's pre-trained models, contig by contig), and their markers
-searched with Z the median number of proteins of the trained genomes: a
-contig in no genome is judged as it would be inside a typical genome of the
-map. The genomes, and groups of the other contigs, are searched side by side
-in threads: pyrodigal and pyhmmer release the GIL, and each search runs on
-one CPU, as miComplete runs hmmsearch in each of its processes.
+searched with Z the median number of proteins of the genomes trained in
+single mode: every genome of the map of 20 kb or more, whatever it is, an
+MGE genome of metator mge --reassign too, whose fewer proteins lower it.
+The genomes, and groups of the other contigs, are searched side by side in
+threads: pyrodigal and pyhmmer release the GIL, and each search runs on one
+CPU, as miComplete runs hmmsearch in each of its processes.
 
 The markers of a contig, in a set, are written as a text (see
 encode_markers): its markers sorted by name, comma-separated, each with the
@@ -108,8 +109,9 @@ GENE_RULES = {
     "12 bp linker after each when there are several): pyrodigal trained on its contigs in map order, the E-values of "
     "their hits counted over the proteins of the genome, as miComplete finds the markers of a bin.",
     "metagenome": "The contigs of __unbinned__ and of the shorter genomes: pyrodigal's metagenome mode, contig by "
-    "contig, the E-values of their hits counted over metagenome_z proteins, the median of the trained genomes (without "
-    "one, the proteins of these contigs, as one bin).",
+    "contig, the E-values of their hits counted over metagenome_z proteins: the median number of proteins of the "
+    "genomes trained in single mode, every one of them, MGE genomes included (without one, the proteins of these "
+    "contigs, as one bin).",
 }
 
 #: How the markers of a contig are written in the contigs table of a map (see
@@ -446,10 +448,12 @@ class ContigMarkers:
 
 def metagenome_z(trained, proteins):
     """The number of proteins that the E-values of the contigs in metagenome mode
-    are counted over: the median number of proteins of the trained genomes
-    (trained, by genome), as if each contig were in a typical genome of the
-    map; without a trained genome, proteins, the number of proteins of the
-    contigs in metagenome mode, searched as one bin."""
+    are counted over: the median number of proteins of the genomes trained in
+    single mode (trained, by genome), every genome of the map that pyrodigal
+    trains on, whatever it is, an MGE genome of metator mge --reassign too,
+    whose fewer proteins lower it; without a trained genome, proteins, the
+    number of proteins of the contigs in metagenome mode, searched as one
+    bin."""
     # At least one protein: HMMER counts no E-value over none.
     return max(1.0, float(statistics.median(trained.values())) if trained else float(proteins))
 
@@ -557,8 +561,8 @@ def contig_markers(metacool, mc, sequences, threads=1, evalue=EVALUE, bias=BIAS,
     as a bin of its contigs, in the order of the map, trained on in single
     genome mode, its E-values counted over its proteins; the contigs of the
     genomes too short to train on, and of no genome, in metagenome mode, their
-    E-values counted over the median number of proteins of the trained
-    genomes (see metagenome_z).
+    E-values counted over the median number of proteins of the genomes
+    trained in single mode, MGE genomes included (see metagenome_z).
 
     Parameters
     ----------

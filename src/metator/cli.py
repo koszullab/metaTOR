@@ -3112,8 +3112,10 @@ def markers(
     ([cyan]metacooler fasta[/]). miComplete finds no gene in a bin under 20
     kb, which prodigal cannot train on: the genes of the contigs of such a
     genome, and of the contigs in no genome, are found in metagenome mode,
-    and their markers searched as in a genome of the median number of
-    proteins of the others.
+    and the E-values of their hits counted over the median number of
+    proteins of the genomes trained on: every genome of 20 kb or more,
+    whatever it is, the MGE genomes of [cyan]metator mge --reassign[/]
+    too.
 
     The run stores the markers of each contig in the contigs table of the map,
     one column per set (markers_Bact105, markers_Arch131: text, the markers
