@@ -51,8 +51,25 @@ more columns (the restriction fragment of each mate). `metacooler create
 pairs` makes a contact map from them, or from the pairs files of another
 aligner, with the contact statistics of the reads of each contig that
 `metator mge` reads (see
-[Clustering mobile genetic elements](guides/mge.md#running-it)). metaTOR
-reads no pairs file itself.
+[Clustering mobile genetic elements](guides/mge.md#running-it)); and so do
+`metator network` and `metator pipeline`, given them as their arguments, one
+bin per contig (see [The inputs of a run](cli.md#inputs)). They read the
+contig and the position of each mate (columns 2 to 5), in any order, and the
+`#chromsize` lines of the header, which must give the contigs of the assembly
+their lengths.
+
+From BAM files, a run writes the pairs of each library in its temporary
+directory, `library_<i>.pairs`, as they come: the read name `.` (the map does
+not keep it), each mate at the leftmost base of its alignment (1-based), the
+contig that comes first in the assembly first, and no `#chromsize` line (the
+contigs of the map are those of the assembly):
+
+```text
+## pairs format v1.0
+#shape: upper triangle
+#columns: readID chr1 pos1 chr2 pos2 strand1 strand2
+.	NODE_100063	161	NODE_100063	402	-	-
+```
 
 ### Lists of contigs
 

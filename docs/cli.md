@@ -13,20 +13,79 @@ metator --version
 
 | Convention | Meaning |
 |---|---|
-| Several libraries | One map, which sums them: make the map of each library, then merge them with `metacooler merge` (see [Other tools](other-tools.md)). |
+| Several libraries | One map, which sums them: give the pairs files or the BAM files of every library to `network` or `pipeline`, which sum them in the map that they make (see [The inputs of a run](#inputs)); or make the map of each library, then merge them with `metacooler merge` (see [Other tools](other-tools.md)). |
 | Several enzymes | Separated by commas: `DpnII,HinfI`. |
 | The map of a run | A run writes its map to its output directory (`-o`), under the name of `MAP` (`NAME.metacool` for an entry of a collection), and leaves `MAP` as it was: metacooler copies `MAP` next to that map, the run writes what it stores into the copy, and metacooler renames it into place once it is validated. `--inplace` updates `MAP` itself instead, and so does a run whose output directory holds `MAP` already: the steps of a run, one by one, in one output directory (`network MAP -o DIR`, then `partition DIR/MAP -o DIR`...). |
 | `-F, --force` | Replace what the command writes itself, when an earlier run left it: the map of the output directory, the final clusters (`final_clusters/`) and their plots (in `plot/`, whose other files are left as they are), the tables of a dump. Without it, a command refuses to overwrite them. The other results of an earlier run in the output directory (the tables of a development build of 2.0, the outputs of 1.x, an earlier summary of `mge`) are refused, with or without it, and never removed. A run that updates its map in place warns, before any work, of the clusters and clustering rounds that it replaces there. |
 | Writing a map | Through metacooler: a run holds the lock of the map it writes, `<map>.lock` (that of the output directory, or `MAP` in place), from its checks to its end, and writes the map in an edit session, one staged copy next to it (`.<map>.<uuid>.<n>.d/`), validated, then renamed onto it, so a run that stops leaves the map as it was. `MAP` updated in place through a symbolic link is updated where the link points; a symbolic link in the output directory, where the map of the run goes, is replaced (`-F`), not its target, and a hard link of `MAP` there is refused. A map that another process holds, a map updated in place without write permission, or one whose directory is not writable (with room for a copy of the map and for the new map), is refused before any work. A run killed by SIGTERM (a job scheduler's time limit) or SIGKILL leaves its lock and its staged copy, which the next run that writes the map on the same host takes over and removes; on another host, delete the files that the error names. |
 | `-T, --tmpdir` | Each run works in a directory of its own inside it, removed at the end, unless `--no-clean-up` or the run fails: the log says which. |
 | `-N, --no-clean-up` | Keep the temporary directory of the run: that of a `validation` or `pipeline` run holds its tables. |
-| Log files | Each command writes its log, `metator_<command>_<date>.log`, into its output directory; `mge`, into the current directory. The log starts, as hicstuff's does, with the version, the date, the command line (`cmd`) and the value of each option, then a line of dashes; `pipeline` marks its three steps (`[1/3] network`...), the partition counts its iterations as they go, the validation each recursive step (`Recursive step 1/9`); and the log ends with what the run wrote and how long it took. The bookkeeping of a run (the files it writes on the way, metacooler's accounts of its work) is logged at the DEBUG level, which the log does not show. |
+| Log files | Each command writes its log, `metator_<command>_<date>.log`, into its output directory; `mge`, into the current directory. The log starts, as hicstuff's does, with the version, the date, the command line (`cmd`) and the value of each option, then a line of dashes; `pipeline` marks its three steps (`[1/3] network`...), four from pairs or BAM files (`[1/4] map`...), the partition counts its iterations as they go, the validation each recursive step (`Recursive step 1/9`); and the log ends with what the run wrote and how long it took. The bookkeeping of a run (the files it writes on the way, metacooler's accounts of its work) is logged at the DEBUG level, which the log does not show. |
 
 New to metaTOR? Start with the [Quickstart](quickstart.md); for hits, core,
 overlapping and recursive clusters, see [Concepts](concepts.md). metaTOR 2.0
 removed `qc`, `contactmap`, `metacool`, `scaffold` and `pairs`, and the heatmap
 and the GC and coverage plots of the clusters: [Other tools](other-tools.md)
 says what replaces each one.
+
+## The inputs of a run { #inputs }
+
+`network` and `pipeline` start from the contact map of the contigs, or make it
+from the pairs files or the BAM files of the run: their arguments,
+`INPUT...`.
+
+| Input | What the run does |
+|---|---|
+| A `.metacool` map, or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`) | Reads its network from it, and writes it to the output directory, under its name (see [The map of a run](#conventions)). |
+| Pairs files, one per library: plain, or compressed with gzip, bzip2, zstd or LZ4 | Makes the map of the contigs from them first, their contacts summed, as `metacooler create pairs` makes it: one bin per contig of the assembly, every contig in `__unbinned__`, with the contact statistics of the reads, which `mge` reads. |
+| BAM files (or SAM files) of both mates of each read (paired-end alignments, as `bwa mem -5SP` writes them), one per library; or of one mate each (as bowtie2 aligns them, one mate at a time), an R1 file and an R2 file per library | Takes their pairs first: the primary alignments of the two mates of each read, both aligned with a mapping quality of at least `--min-quality` (30) on contigs of the assembly, each at the leftmost base of its alignment, as metaTOR 1.x took them. Then makes the map from them, as from pairs files. |
+
+- **Each argument** is a path, a comma-separated list or a glob pattern, which
+  stands for the files it matches, sorted by name, as hicstuff 4.0 reads its
+  inputs: `a.pairs b.pairs`, `a.pairs,b.pairs` and `'*.pairs'` (quoted, or
+  expanded by the shell) are the same two libraries. A path that exists is
+  that file, whatever its name holds.
+- **BAM files of one mate each** come in two halves: two arguments, the R1
+  files then the R2 files (`'*_R1.bam' '*_R2.bam'`, or two comma-separated
+  lists), or as many R1 arguments as R2 arguments, as the shell expands
+  `*_R1.bam *_R2.bam`. The i-th R1 file and the i-th R2 file are the mates of
+  one library, matched by read name (a mate suffix, `/1` or `/2`, left out):
+  in the order the aligner wrote both, or sorted by name (`samtools sort -n`
+  or `-N`); in another order, the run sorts them by name first, with the
+  samtools of pysam, in its temporary directory.
+- **BAM files of both mates** are read as the aligner writes them, the two
+  mates of a read in a row, or sorted by name; sorted by coordinate (as their
+  header says, or as the run finds when a read comes back after others), the
+  run groups their reads by name first (`samtools collate`, in its temporary
+  directory).
+- **What each file is** comes from its first bytes, whatever its name: an
+  HDF5 file is a map, a BAM or SAM file is alignments, and any other file is a
+  pairs file. Reads (FASTQ), an assembly (FASTA) and CRAM files are refused;
+  so are a map given with other inputs, pairs files with BAM files, BAM files
+  of both mates with BAM files of one mate each, and a file given twice.
+- **The map that the run makes** goes to its output directory, as
+  `<prefix>.metacool` (`pipeline --prefix`), or `<assembly>.metacool`, named
+  after the FASTA file of the assembly without its extensions
+  (`assembly.fa.gz` makes `assembly.metacool`). The run then updates it in
+  place, as the map of its output directory: a `pipeline` run makes it the map
+  of its clusters. A map there already is replaced only with `-F`, once the
+  new map is written; `--inplace` is refused. A run that stops later leaves
+  the map of the contigs, which a new run can start from without reading the
+  pairs again.
+- **The sequences** of the BAM files (their `@SQ` lines) and of the pairs
+  files (their `#chromsize` lines) must be contigs of the assembly, with their
+  lengths: a sequence of another length, or files none of whose sequences is
+  a contig of the assembly, are refused before the pairs are read. A sequence
+  that is not a contig of the assembly (a spike-in) is left out, with a
+  warning, and so are the pairs with a read on it. Inputs that give no contact
+  on the contigs of the assembly are refused: the run writes no map, and
+  leaves one there as it was.
+- **The pairs of the BAM files** are written in the temporary directory of the
+  run, a file per library (`library_<i>.pairs`, about 25 bytes per pair, plus
+  the names of its two contigs, which `-N` keeps), then read once by
+  metacooler, with those of the other
+  libraries. `--threads` reads the BAM files and bins the pairs on several
+  threads.
 
 ## Clustering
 
@@ -37,22 +96,26 @@ in one command, and write the contact map of the clusters. **Guide:**
 [Running the pipeline](guides/pipeline.md).
 
 ```console
-metator pipeline [OPTIONS] MAP
+metator pipeline [OPTIONS] INPUT...
 ```
 
 The run starts from a `.metacool` contact map of the contigs, `MAP`, which
 hicstuff makes from the reads (`hicstuff pipeline -M metacool`, from
 hicstuff 4.0.0), or metacooler from pairs files
 (`metacooler create pairs`): see
-[Other tools](other-tools.md#from-the-reads-to-the-map).
+[Other tools](other-tools.md#from-the-reads-to-the-map). Or it makes that map
+first, from the pairs files or the BAM files of the run, in its output
+directory (see [The inputs of a run](#inputs)): a step more, which the log
+marks `[1/4] map`.
 
 | Option | Default | Description |
 |---|---|---|
-| `MAP` | *required* | A `.metacool` contact map of the contigs, or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`): the run reads its network from it, and writes the map of its clusters, with the network of its contigs, as `network` stores it, to the output directory, under the name of `MAP` (see [The map of a run](#conventions)). See [Starting from a contact map](guides/metacool.md#starting-from-a-contact-map). |
+| `INPUT...` | *required* | A `.metacool` contact map of the contigs (`MAP`), or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`): the run reads its network from it, and writes the map of its clusters, with the network of its contigs, as `network` stores it, to the output directory, under the name of `MAP` (see [The map of a run](#conventions)). See [Starting from a contact map](guides/metacool.md#starting-from-a-contact-map). Or the pairs files or the BAM files of the run, which it makes the map of the contigs from, in its output directory, then updates in place: see [The inputs of a run](#inputs). |
 | `-a, --assembly` | *required* | The assembly that the map was made from: a FASTA file, plain or compressed with gzip; a compressed one is decompressed once, into the temporary directory of the run, for the FASTA files of the clusters. |
 | `-d, --depth` | none | The coverage of the contigs, from `jgi_summarize_bam_contig_depths` of MetaBAT2. The `Shotgun_coverage` column of the map gives it without `--depth`, which replaces it: see [Starting from a contact map](guides/metacool.md#starting-from-a-contact-map). |
 | `-e, --enzyme` | none | The restriction enzymes of the library. The `Restriction_site` column of the map gives the restriction sites without `--enzyme`, which replaces it. |
 | `-m, --normalization` | `empirical_hit` | `None`, `abundance`, `length`, `RS`, `empirical_hit` or `theoritical_hit`. `RS` and `theoritical_hit` need `--enzyme`; `abundance` and `theoritical_hit` need `--depth`, or the columns of the map that give them. See [Normalising the network](guides/network.md#normalising-the-network). |
+| `-q, --min-quality` | `30` | BAM files: the mapping quality that both mates of a read must reach for its pair to count. Refused with a map or pairs files, whose contacts are read as they are. |
 | `-A, --algorithm` | `louvain` | The partition algorithm: `louvain` or `leiden`. |
 | `-i, --iterations` | `100` | The iterations of the partition. |
 | `-O, --overlap` | `80` | The percentage of iterations in which two core clusters must fall together to be merged into one overlapping cluster. |
@@ -61,12 +124,12 @@ hicstuff 4.0.0), or metacooler from pairs files
 | `-j, --rec-iter` | `10` | The iterations of the recursive partition of the contaminated clusters. |
 | `-P, --rec-overlap` | `90` | The overlap threshold of the recursive partition, in percent. |
 | `-o, --outdir` | the current directory | The output directory: the map of the clusters, `final_clusters/`, `plot/` (see [`validation`](#validation)) and the log. |
-| `-p, --prefix` | none | Name the clusters `<prefix>_metator_…`. Letters, digits, `_` and `-` only. |
+| `-p, --prefix` | none | Name the clusters `<prefix>_metator_…`, and the map that the run makes from pairs or BAM files `<prefix>.metacool` (by default, named after the assembly). Letters, digits, `_` and `-` only. |
 | `-F, --force` | off | Replace the map, `final_clusters/` and the plots (in `plot/`, whose other files are left as they are) of an earlier run in the output directory. The other results of an earlier run in the output directory (the tables and `recursive_clusters/` of a development build of 2.0, the outputs of 1.x) are refused, with or without `-F`, and never removed. |
-| `-T, --tmpdir` | `./tmp` | The temporary directory, where the run works in a directory of its own: the FASTA files of the clusters that miComplete checks (at most the size of the assembly), miComplete's results, the tables of the validation, and, from a compressed assembly, its decompressed copy. Not in `final_clusters/`, which the run makes anew, nor in a directory of the results of an earlier run (`recursive_clusters/`, `final_bin/`...), which the run refuses. |
-| `-t, --threads` | `1` | Threads for the partition and the validation (miComplete). |
+| `-T, --tmpdir` | `./tmp` | The temporary directory, where the run works in a directory of its own: the FASTA files of the clusters that miComplete checks (at most the size of the assembly), miComplete's results, the tables of the validation, and, from a compressed assembly, its decompressed copy; from BAM files, their pairs too (about 25 bytes per pair, plus the names of its two contigs). Not in `final_clusters/`, which the run makes anew, nor in a directory of the results of an earlier run (`recursive_clusters/`, `final_bin/`...), which the run refuses. |
+| `-t, --threads` | `1` | Threads for the partition and the validation (miComplete), and to read the BAM files and bin the pairs that the run makes its map from. |
 | `-N, --no-clean-up` | off | Keep the temporary directory of the run, which the log names: the tables of the validation (`cluster_summary.txt`, `contig_data_final.txt`, `binning.txt`, `clusters.txt`, `cluster_members.txt`), miComplete's results and the FASTA files of the clusters that it checked. |
-| `--inplace` | off | Update `MAP` in place with the map of the clusters, rather than write it to the output directory: refused for an entry of a collection. A run whose output directory holds `MAP` already updates it in place without `--inplace`. |
+| `--inplace` | off | Update `MAP` in place with the map of the clusters, rather than write it to the output directory: refused for an entry of a collection, and for pairs or BAM files, whose map the run makes in its output directory and updates in place. A run whose output directory holds `MAP` already updates it in place without `--inplace`. |
 
 The validation is the step that needs the most memory: miComplete runs
 Prodigal and HMMER (pyrodigal and pyhmmer) on every cluster.
@@ -80,6 +143,13 @@ metator pipeline hicstuff/sample.metacool -a assembly.fa -e DpnII -d depth.txt -
 
 # The same, updating hicstuff/sample.metacool in place
 metator pipeline hicstuff/sample.metacool -a assembly.fa -e DpnII -o binning --inplace
+
+# From the pairs files of two libraries: binning/sample.metacool, made from them, becomes the map of the clusters
+metator pipeline 'hicstuff_*/*.valid_idx.pairs.gz' -a assembly.fa -e DpnII -d depth.txt -p sample -o binning
+
+# From BAM files: of both mates (bwa mem -5SP), one per library; or of one mate each, the R1 files then the R2 files
+metator pipeline L1.bam,L2.bam -a assembly.fa -e DpnII -o binning
+metator pipeline 'L*_R1.bam' 'L*_R2.bam' -a assembly.fa -e DpnII -o binning
 ```
 
 ### `network` { #network }
@@ -89,7 +159,7 @@ step of the pipeline, whose network `partition` and `validation` read from the
 map. **Guide:** [Building the network](guides/network.md).
 
 ```console
-metator network [OPTIONS] MAP
+metator network [OPTIONS] INPUT...
 ```
 
 The run stores in the map what it measured on each contig, in its contigs
@@ -103,7 +173,10 @@ partition was made on, it says so with a warning, and `metator validation
 MAP` refuses the partition until `metator partition MAP` partitions the new
 network ([`metator dump MAP`](#dump) refuses the map too). The run writes the
 map to its output directory, under the name of `MAP`, or updates `MAP` in
-place with `--inplace` (see [The map of a run](#conventions)). It writes no
+place with `--inplace` (see [The map of a run](#conventions)); from pairs or
+BAM files, it makes the map of the contigs first, in its output directory,
+named after the assembly, then stores the network in it (see
+[The inputs of a run](#inputs)). It writes no
 table in the output directory: `network.txt` is gone, and
 `contig_data_network.txt`, the contig
 data that it stores in the map, is written in its temporary directory, which
@@ -114,20 +187,25 @@ it, one that only `network` ran on included (see
 
 | Option | Default | Description |
 |---|---|---|
-| `MAP` | *required* | As in `pipeline`: the run writes it, with the network of its contigs, to the output directory. |
+| `INPUT...` | *required* | As in `pipeline`: a map, which the run writes, with the network of its contigs, to the output directory; or the pairs files or the BAM files of the run, which it makes the map of the contigs from, `<assembly>.metacool`, in its output directory. |
 | `-a, --assembly` | *required* | The assembly that the map was made from: a FASTA file, plain or compressed with gzip. |
 | `-d, --depth` | none | As in `pipeline`. |
 | `-e, --enzyme` | none | As in `pipeline`. |
 | `-n, --normalization` | `empirical_hit` | As `--normalization` (`-m`) in `pipeline`. |
+| `-q, --min-quality` | `30` | As in `pipeline`: BAM files only. |
 | `-o, --outdir` | the current directory | The output directory, of the map of the run and of its log. |
-| `-F, --force` | off | Replace the map of an earlier run in the output directory. |
-| `-T, --tmpdir` | `./tmp` | The temporary directory, where the run writes, in a directory of its own, the contig data that it stores in the map (`contig_data_network.txt`). |
+| `-F, --force` | off | Replace the map of an earlier run in the output directory: that of `MAP`, or the map that the run makes from pairs or BAM files. |
+| `-T, --tmpdir` | `./tmp` | The temporary directory, where the run writes, in a directory of its own, the contig data that it stores in the map (`contig_data_network.txt`), and the pairs of the BAM files that it makes its map from. |
+| `-t, --threads` | `1` | Threads to read the BAM files and bin the pairs that the run makes its map from. |
 | `-N, --no-clean-up` | off | Keep the temporary directory of the run, which the log names, and its `contig_data_network.txt`. |
-| `--inplace` | off | Store the network in `MAP` itself, in place, rather than in the map of the output directory: refused for an entry of a collection. |
+| `--inplace` | off | Store the network in `MAP` itself, in place, rather than in the map of the output directory: refused for an entry of a collection, and for pairs or BAM files. |
 
 ```bash
 # binning/sample.metacool, with the network of the contigs
 metator network sample.metacool -a assembly.fa -e DpnII -o binning
+
+# binning/assembly.metacool, the map of the contigs made from the pairs files, with their network
+metator network L1.pairs.gz L2.pairs.gz -a assembly.fa -e DpnII -o binning
 ```
 
 ### `partition` { #partition }

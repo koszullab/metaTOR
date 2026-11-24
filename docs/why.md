@@ -19,9 +19,10 @@ that signal. It was described in [Baudry *et al.*, *Frontiers in Genetics*,
 
 - **One command, from a contact map to clusters.** `metator pipeline` builds
   the network of contigs from the `.metacool` contact map of a metaHiC
-  library, which hicstuff makes from the reads, partitions it, validates the
-  clusters, and writes one FASTA file per cluster with a table of their
-  quality.
+  library, which hicstuff makes from the reads (or `metator pipeline` itself,
+  from the pairs files or the BAM files of the libraries), partitions it,
+  validates the clusters, and writes one FASTA file per cluster with a table
+  of their quality.
 - **Robust partitions.** The network is partitioned many times with the
   Louvain (or Leiden) algorithm: the contigs that always fall together form
   core clusters, and the core clusters that fall together in most runs form a

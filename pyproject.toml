@@ -51,11 +51,15 @@ dependencies = [
     # metaTOR 2.0 needs metacooler 0.4.0: the map's lock and edit sessions,
     # metacooler fasta, the contig network as a table of ids, the QC split
     # at 1001 bp. The bioconda recipe of metaTOR, which the docs recommend,
-    # must require metacooler>=0.4.0 too, pyrodigal and pyhmmer, and drop
-    # hicstuff, pysam, pypairix, pyfastx, prodigal and hmmer: metacooler
+    # must require metacooler>=0.4.0 too, pysam, pyrodigal and pyhmmer, and
+    # drop hicstuff, pypairix, pyfastx, prodigal and hmmer: metacooler
     # must be on bioconda or conda-forge first (submit its recipe if it is
     # not), or the conda package of 2.0 cannot be built.
     "metacooler>=0.4.0",
+    # The BAM files that network and pipeline make the map of the contigs
+    # from (metator.inputs): pysam reads them, and groups or sorts them by
+    # read name with the samtools it carries (no samtools program needed).
+    "pysam>=0.22",
 ]
 
 [project.optional-dependencies]

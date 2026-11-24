@@ -12,10 +12,21 @@ The map is made before any clustering: hicstuff makes it from the reads of a
 library (`hicstuff pipeline -M metacool`), and metacooler from pairs files
 (`metacooler create pairs`), or from the maps of several libraries, which
 `metacooler merge` sums (see
-[Other tools](../other-tools.md#from-the-reads-to-the-map)). The aligner, the
-mapping mode and the minimum mapping quality are those of hicstuff
-(`--aligner`, `--mapping` and `--quality-min` of `hicstuff pipeline`), which
-metaTOR 1.x ran with its own options. Cutting the reads at their ligation
+[Other tools](../other-tools.md#from-the-reads-to-the-map)). `metator network`
+and `metator pipeline` make it too, from the pairs files or the BAM files of
+the run, their arguments, one bin per contig, several libraries summed, in
+their output directory (see [The inputs of a run](../cli.md#inputs)):
+
+```bash
+# binning/assembly.metacool, made from the BAM files of both mates of two libraries, with its network
+metator network L1.bam L2.bam -a assembly.fa -e DpnII -o binning
+```
+
+The aligner, the mapping mode and the minimum mapping quality are those of
+hicstuff (`--aligner`, `--mapping` and `--quality-min` of `hicstuff
+pipeline`), which metaTOR 1.x ran with its own options; from BAM files,
+`--min-quality` (`-q`, 30 by default) is the mapping quality that both mates
+of a read must reach for its pair to count. Cutting the reads at their ligation
 sites recovers the reads that span a junction, which neither part of aligns
 well: it is worth it with long reads (2×100 bp or more) and an enzyme that
 cuts often (`hicstuff pipeline -m cutsite`).

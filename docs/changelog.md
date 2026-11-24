@@ -6,7 +6,9 @@ All notable changes to this project will be documented in this file.
 
 metaTOR 2.0 clusters contigs, and nothing else. It starts from a `.metacool`
 contact map of the contigs, which hicstuff makes from the reads and metacooler
-from pairs files, and every step reads that map and stores what it finds in it:
+from pairs files, or which `network` and `pipeline` make from the pairs files
+or the BAM files of a run, and every step reads that map and stores what it
+finds in it:
 the map is what the steps share, and it becomes the contact map of the
 clusters. The commands that did what hicstuff, metacooler, instaGRAAL or pairix
 do are gone. [Migrating to metaTOR 2.0](migration.md) lists every change to the
@@ -14,21 +16,23 @@ command line and the outputs; [Other tools](other-tools.md) says what replaces
 each removed command.
 
 ### Breaking changes
-- **A contact map is the only input.** `network`, `partition`, `validation`,
-  `pipeline` and `mge` take a `.metacool` contact map of the contigs, `MAP`,
-  as their first argument, which they require: a file, or an entry of a
-  `.mmetacool` collection (`file.mmetacool::entries/<name>`), at any bin size.
-  hicstuff makes it from the reads (`hicstuff pipeline -M metacool`, from
-  hicstuff 4.0.0), metacooler from pairs files (`metacooler create
-  pairs`) or a `.cool` file (`create cool`), and `metacooler merge` sums the
-  maps of several libraries. Gone with the reads, alignments and pairs
+- **A contact map is the input of every step.** `network`, `partition`,
+  `validation`, `pipeline` and `mge` take a `.metacool` contact map of the
+  contigs, `MAP`, as their first argument, which they require: a file, or an
+  entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`), at
+  any bin size. hicstuff makes it from the reads (`hicstuff pipeline -M
+  metacool`, from hicstuff 4.0.0), metacooler from pairs files (`metacooler
+  create pairs`) or a `.cool` file (`create cool`), and `metacooler merge`
+  sums the maps of several libraries; `network` and `pipeline` make it from
+  the pairs files or the BAM files of a run, their arguments (see Added).
+  Gone with the reads inputs, and the options of the alignments and pairs
   inputs: `-1/--forward`, `-2/--reverse`, `-S/--start`, `-b/--aligner`,
-  `-B/--aligner-mode`, `-q/--min-quality` and `-E/--edge`; the alignments,
-  pairs files and per-library networks a run wrote (`alignment_<i>*.bam`,
+  `-B/--aligner-mode` and `-E/--edge`; the alignments, pairs files and
+  per-library networks a run wrote (`alignment_<i>*.bam`,
   `alignment_<i>_sorted.pairs.gz`, `network_<i>.txt`,
   `hit_data_alignment.txt`); `--assembly` as the basename of an aligner's
   index (it is the FASTA file of the assembly, plain or compressed with
-  gzip); and the dependencies on hicstuff and pysam, and on bowtie2, bwa and
+  gzip); and the dependencies on hicstuff, and on bowtie2, bwa and
   samtools. A removed option is an unknown option, a usage error (exit
   status 2).
 - **The map is the interface between the steps.**
@@ -225,6 +229,37 @@ each removed command.
   `mge` (`mge`, but `--random`), the clusters (`partition`, `validation`,
   `pipeline`) or the network (`network`, with another one) drops them, with a
   warning. `metator host` of 1.x, gone in 1.4.0, read the tables of a run.
+- **`network` and `pipeline` from pairs or BAM files.** Their arguments,
+  `INPUT...`, are the map of the contigs, or the pairs files or the BAM files
+  (or SAM files) of the libraries of the run: each argument a path, a
+  comma-separated list or a glob pattern, as hicstuff 4.0 reads its inputs,
+  and what each file holds found from its first bytes, whatever its name.
+  The run makes the map of the contigs from them first, as `metacooler create
+  pairs` makes it (one bin per contig of the assembly, every contig in
+  `__unbinned__`, the libraries summed, with the contact statistics of the
+  reads that `mge` reads), in its output directory, as `<prefix>.metacool`
+  (`pipeline --prefix`) or `<assembly>.metacool` (named after the FASTA file
+  of the assembly), then updates it in place: a `pipeline` run makes it the
+  map of its clusters, and logs the step first (`[1/4] map`). A map there is
+  replaced only with `-F`, once the new map is written; `--inplace` is
+  refused. A BAM file holds both mates of its reads (paired-end alignments, as
+  `bwa mem -5SP` writes them: as the aligner wrote them, or sorted by name or
+  by coordinate), or one mate each (bowtie2's, the R1 files then the R2
+  files, matched by read name, sorted by name if they need it). Its pairs are
+  the primary alignments of the two mates of each read, both aligned with a
+  mapping quality of at least `-q/--min-quality` (30), each at the leftmost
+  base of its alignment, as metaTOR 1.x took them: read with pysam, a
+  dependency again, whose samtools groups or sorts the files by name (no
+  samtools program needed), and written in the temporary directory of the
+  run (`library_<i>.pairs`, which `-N` keeps). `network` takes
+  `-t/--threads` again, to read them. The sequences of the BAM and pairs
+  files must be contigs of the assembly, with their lengths (others are left
+  out, with a warning); reads, an assembly or CRAM files given as inputs, a
+  map given with other inputs, pairs files with BAM files, and
+  `--min-quality` with a map or pairs files are refused before any work. The
+  metadata of the map store the inputs as given (`input`), and the map that
+  the run started from or made (`map`). See
+  [The inputs of a run](cli.md#inputs).
 - `metator dump MAP -o DIR` writes the tables of a run from the map of its
   clusters, read only: `contig_data_final.txt` (without its `ID` column),
   `cluster_summary.txt`, `binning.txt`, `clusters.txt` and

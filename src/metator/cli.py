@@ -21,11 +21,13 @@ from os.path import exists, join
 from typing import cast
 
 import rich_click as click
+from click.core import ParameterSource
 
 import metator.clusters as mtcl
 import metator.dump as mtd
 import metator.figures as mtf
 import metator.host as mth
+import metator.inputs as mti
 import metator.io as mio
 import metator.log as mtl
 import metator.metacool as mtmc
@@ -272,7 +274,9 @@ def check_normalization(normalization, enzyme, depth, metacool, read=None):
     """The normalizations that need the restriction sites or the shotgun coverage
     of the contigs: measured on the assembly with --enzyme and --depth or read
     from the Restriction_site and Shotgun_coverage columns of the contigs table
-    of the map of the run, metacool (see metator.network.contig_data_from_map)."""
+    of the map of the run, metacool (see metator.network.contig_data_from_map);
+    None for the map that a run makes from pairs or BAM files, which has no
+    such column."""
     needs = [
         (("RS", "theoritical_hit"), enzyme, "enzyme", "Restriction_site"),
         (("abundance", "theoritical_hit"), depth, "depth", "Shotgun_coverage"),
@@ -281,7 +285,10 @@ def check_normalization(normalization, enzyme, depth, metacool, read=None):
         if normalization not in normalizations or given:
             continue
         message = f'For "{normalizations[0]}" and "{normalizations[1]}" normalization, {option} is required'
-        if read is None:
+        if metacool is None:
+            what = mtn.MAP_COLUMNS[column][2]
+            message += f", as the map that the run makes from its pairs or BAM files gives no {what}."
+        elif read is None:
             try:
                 columns = mtn.map_columns(metacool)
             except mtmc.MetacoolError as error:
@@ -320,12 +327,136 @@ def run_input(input_map):
     path = refuse_missing_map(input_map)
     if not mtmc.is_map(input_map):
         logger.error(
-            f"{input_map} is not a .metacool contact map: make the map of the contigs with hicstuff pipeline -M "
-            "metacool, from the reads of the run, or metacooler create pairs, from its pairs files."
+            f"{input_map} is not a .metacool contact map: give the map of the contigs (made by hicstuff pipeline -M "
+            "metacool or metacooler create pairs), or the pairs files or the BAM files of the run, which the run makes it "
+            "from."
         )
         raise ValueError
     refuse_a_map_named_as_a_uri(input_map, path)
     open_input_map(input_map)
+
+
+def run_inputs(arguments, min_quality_given=False):
+    """The inputs of a network or pipeline run, its arguments (see
+    metator.inputs.resolve): the .metacool map of the contigs, or the pairs
+    files or the BAM files that the run makes it from. Checked before any work:
+    the reason of a refusal is logged as an error, then raised (a
+    MetacoolError). --min-quality (min_quality_given: given on the command
+    line) filters the alignments of BAM files only, and is refused with other
+    inputs."""
+    try:
+        inputs = mti.resolve(arguments)
+    except mtmc.MetacoolError as error:
+        logger.error(str(error))
+        raise
+    if inputs.kind != mti.BAM and min_quality_given:
+        message = (
+            f"--min-quality filters the alignments of BAM files, and the inputs of the run are "
+            f"{'a map' if inputs.kind == mti.MAP else inputs.describe()}: leave out --min-quality."
+        )
+        logger.error(message)
+        raise mtmc.MetacoolError(message)
+    return inputs
+
+
+def given_on_the_command_line(name):
+    """Whether the parameter name of the running command was given on its
+    command line, rather than left to its default."""
+    ctx = cast(click.RichContext, click.get_current_context())
+    return ctx.get_parameter_source(name) == ParameterSource.COMMANDLINE
+
+
+def made_map_path(inputs, name, outdir=".", inplace=False, force=False):
+    """The map that a run makes from its pairs or BAM files (inputs, see
+    metator.inputs.make_map): name (see metator.inputs.map_name), in its output
+    directory, outdir. Checked before any work, and its directory made: the
+    reason of a refusal is logged as an error, then raised (a MetacoolError).
+
+    It is refused with --inplace (inplace), which updates the map that a run
+    starts from; when it holds :: (a URI, file::group, to metacooler), or is a
+    directory; and when it exists, without force. With force, the map of an
+    earlier run there is replaced once the new map is written (a symbolic link
+    there is replaced, not its target)."""
+    outfile = name if os.path.normpath(outdir or ".") == "." else join(outdir, name)
+    reason = None
+    if inplace:
+        reason = (
+            f"--inplace updates the map that a run starts from, and this run starts from {inputs.describe()}, which it "
+            f"makes its map from, in its output directory ({outfile}): leave out --inplace."
+        )
+    elif "::" in outfile:
+        reason = (
+            f"{outfile}, the map that the run makes in its output directory, holds ::, which metacooler reads as "
+            "file::group: give the run another output directory with -o."
+        )
+    elif os.path.isdir(outfile):
+        reason = (
+            f"{outfile} is a directory, where the run writes the map that it makes: move it away, or give the run another "
+            "output directory with -o."
+        )
+    elif os.path.lexists(outfile) and not force:
+        reason = (
+            f"{outfile} exists, where the run writes the map that it makes from {inputs.describe()}: give -F to replace "
+            "it, or another output directory with -o; or start the run from that map."
+        )
+    if reason:
+        logger.error(reason)
+        raise mtmc.MetacoolError(reason)
+    make_outdir(os.path.dirname(outfile) or ".")
+    logger.info(f"The run makes its map, {outfile}, from {inputs.describe()}, and updates it in place.")
+    return outfile
+
+
+def run_map(command, inputs, held, name, assembly, depth, enzyme, normalization, outdir, inplace, force):
+    """The map of a network or pipeline run (command), checked before any work,
+    as (map, outfile, planned): the map that the run starts from, the map that
+    it writes (see run_map_path), and its map as the run read it, under the
+    lock of the map that it writes, which the run holds from now on (see
+    hold_map).
+
+    From pairs or BAM files (inputs), the run makes its map first, at outfile
+    (see made_map_path; name: its name), which it then updates in place: it
+    holds the lock of outfile, and planned is None until the map is made (see
+    make_run_map). The parameters that the map stores give the map that the run
+    started from (map), whatever its inputs."""
+    if inputs.kind == mti.MAP:
+        input_map = inputs.map
+        run_input(input_map)
+        outfile, in_place = run_map_path(input_map, outdir, inplace, force)
+        refuse_an_input_as_the_map(outfile, in_place, [assembly, depth])
+        check_normalization(normalization, enzyme, depth, input_map)
+        resolved_parameters(map=input_map)
+        return input_map, outfile, hold_map(held, command, input_map, outfile, in_place, inplace=inplace)
+    outfile = made_map_path(inputs, name, outdir, inplace, force)
+    refuse_an_input_as_the_map(outfile, False, [assembly, depth, *inputs.files])
+    check_normalization(normalization, enzyme, depth, None)
+    hold_lock(held, outfile, in_place=False)
+    resolved_parameters(map=outfile)
+    return outfile, outfile, None
+
+
+def make_run_map(command, inputs, held, outfile, contig_data, assembly, min_quality, threads, tmp_dir):
+    """Make the map of the contigs of a run (command) from its pairs or BAM files
+    at outfile (see metator.inputs.make_map), the pairs of its BAM files in its
+    temporary directory, tmp_dir, then open it, as the run reads it from now
+    on, under its lock (see hold_map): the map that the run updates in place.
+    A failure is logged as an error, then raised (a MetacoolError): an earlier
+    map at outfile is then left as it was."""
+    try:
+        mti.make_map(
+            inputs,
+            contig_data,
+            outfile,
+            assembly=assembly,
+            min_quality=min_quality,
+            threads=threads,
+            tmp_dir=tmp_dir,
+            command=shlex.join(["metator", *sys.argv[1:]]),
+        )
+    except mtmc.MetacoolError as error:
+        logger.error(str(error))
+        raise
+    return hold_map(held, command, outfile, outfile, True)
 
 
 def refuse_missing_map(input_map):
@@ -645,11 +776,12 @@ def log_end(started, what, where=None):
     logger.info(f"{what} after {mtl.duration(time.monotonic() - started)}" + (f": {where}" if where else "."))
 
 
-def log_stage(number, name, what):
+def log_stage(number, name, what, stages=3):
     """The first line of the log of a step of a pipeline run, one of three
-    (network, partition, validation): which step, its name, and what it does,
-    so that the log of the run reads step by step."""
-    logger.info(f"[{number}/3] {name}: {what}")
+    (network, partition, validation), or of four from pairs or BAM files (the
+    map first): which step, its name, and what it does, so that the log of the
+    run reads step by step."""
+    logger.info(f"[{number}/{stages}] {name}: {what}")
 
 
 def log_file_name(directory, command):
@@ -658,11 +790,27 @@ def log_file_name(directory, command):
     return join(directory, f"metator_{command}_{now}.log")
 
 
+#: The key of the context of a command (its meta) that holds the values that
+#: the run resolved, which its metadata store with its parameters (see
+#: resolved_parameters).
+RESOLVED = "metator.resolved_parameters"
+
+
+def resolved_parameters(**values):
+    """Store, with the parameters of the running command, values that the run
+    resolved (by name): the map that a network or pipeline run starts from
+    (map), which its inputs give, or which it makes from them. run_metadata
+    stores them, after its parameters."""
+    cast(click.RichContext, click.get_current_context()).meta.setdefault(RESOLVED, {}).update(values)
+
+
 def run_metadata():
     """The command line and the parameters of the running command, as stored in a
-    .metacool file."""
+    .metacool file, with the values that the run resolved (see
+    resolved_parameters)."""
     # Outside a command, get_current_context raises: it never returns None here.
-    params = dict(cast(click.RichContext, click.get_current_context()).params)
+    ctx = cast(click.RichContext, click.get_current_context())
+    params = {**ctx.params, **ctx.meta.get(RESOLVED, {})}
     return {
         "command": shlex.join(["metator", *sys.argv[1:]]),
         "parameters": {name: list(value) if isinstance(value, tuple) else value for name, value in params.items()},
@@ -865,13 +1013,15 @@ def write_map(metacool, outfile, planned, what="the map of the clusters", **stor
         raise mtmc.MetacoolError(message) from error
 
 
-def run_network(metacool, planned, assembly, depth, enzyme, normalization, tmp_dir):
+def run_network(metacool, planned, assembly, depth, enzyme, normalization, tmp_dir, contig_data=None):
     """The network of the contigs of a network or pipeline run, from its map
     (metacool, as the run read it under its lock: planned): the contig data,
-    measured on the assembly and read from the map (see contig_data_from_map),
-    and the hits of the contigs of the map, counted on its contacts (see
+    measured on the assembly (contig_data, when the run measured it already,
+    to make its map) and read from the map (see contig_data_from_map), and the
+    hits of the contigs of the map, counted on its contacts (see
     map_contacts)."""
-    contig_data = mtn.create_contig_data(assembly, depth, enzyme)
+    if contig_data is None:
+        contig_data = mtn.create_contig_data(assembly, depth, enzyme)
     columns_from_map = contig_data_from_map(metacool, contig_data, normalization, enzyme, depth)
     contacts = map_contacts(metacool)
     names = planned.contigs["name"]
@@ -1138,6 +1288,66 @@ def map_argument(help=MAP_HELP, required=False):
     )
 
 
+def input_help(made, what):
+    """What the help of INPUT says (network and pipeline): the map that a run
+    starts from, or the pairs or BAM files that it makes it from, named as made
+    says; and what the run stores in its map (what)."""
+    return (
+        "The .metacool contact map of the contigs of the assembly (made by hicstuff pipeline -M metacool or metacooler "
+        "create pairs), or an entry of a .mmetacool collection (file.mmetacool::entries/NAME): the run reads its network "
+        f"from it, and writes it, with {what}, to the output directory, under its name (an entry as NAME.metacool), "
+        "leaving it as it was, but with --inplace or when it is that map already. Or the pairs files, or the BAM files, "
+        "of the Hi-C libraries of the run, summed: the run makes the map of the contigs from them first, one bin per "
+        f"contig, in the output directory, {made}, then updates it in place. Each argument is a path, a "
+        "comma-separated list or a glob pattern (quoted). A BAM file holds both mates of its reads (paired-end "
+        "alignments, as bwa mem -5SP writes them), or one mate each (as bowtie2 aligns them): give the R1 files, then "
+        "the R2 files."
+    )
+
+
+def input_argument(help):
+    """The inputs of a network or pipeline run, its arguments: the .metacool map
+    of the contigs, or the pairs files or the BAM files that the run makes it
+    from (see metator.inputs.resolve and run_inputs)."""
+    return click.argument(
+        # Shown as INPUT...: one or several.
+        "input",
+        nargs=-1,
+        required=True,
+        # A directory is refused as a usage error. An entry of a collection
+        # (file::group) is no path, nor a comma-separated list or a glob
+        # pattern: run_inputs checks them.
+        type=click.Path(dir_okay=False),
+        panel="Input",
+        help=help,
+    )
+
+
+def min_quality_option():
+    """-q, --min-quality: the mapping quality that both mates of a read of a BAM
+    file must reach for its pair to count (see metator.inputs.bam_pairs)."""
+    return _option(
+        "-q",
+        "--min-quality",
+        type=click.INT,
+        default=30,
+        show_default=True,
+        metavar="INT",
+        panel="Input",
+        help="BAM files: the mapping quality (MAPQ) that both mates of a read must reach for its pair to count. Refused "
+        "with a map or pairs files, whose contacts are read as they are.",
+    )
+
+
+#: --inplace of network and pipeline, whose map may be made from pairs or BAM
+#: files rather than given.
+RUN_INPLACE_HELP = (
+    "Update the map given as INPUT in place, rather than write the map of the run to the output directory: refused "
+    "for an entry of a .mmetacool collection, and for pairs or BAM files, whose map the run makes in its output "
+    "directory."
+)
+
+
 def inplace_option(help):
     """--inplace: the run updates its map in place, rather than write the map of
     its output directory (see run_map_path)."""
@@ -1247,12 +1457,12 @@ def outdir_option(default=None, help="The output directory. Default: current dir
     return _option("-o", "--outdir", default=default, show_default=default is not None, metavar="DIR", help=help)
 
 
-def prefix_option(what):
+def prefix_option(what, more=""):
     return _option(
         "-p",
         "--prefix",
         metavar="STR",
-        help=f"Name {what} STR_metator_... (by default, metator_...). Only letters, digits, '_' and '-'.",
+        help=f"Name {what} STR_metator_... (by default, metator_...).{more} Only letters, digits, '_' and '-'.",
     )
 
 
@@ -1296,36 +1506,49 @@ def cli():
 # ---------------------------------------------------------------------------
 
 
-@cli.command(short_help="Build the metaHiC network of the contigs of a .metacool map, and store it in the map.")
-@map_argument(required=True, help=f"{MAP_HELP} {written_map_help('the network of its contigs')}")
-@network_options("-n")
-@outdir_option(help="The output directory, of the map of the run and of its log. Default: current directory.")
-@force_option("Replace the map of an earlier run in the output directory.")
-@tmpdir_option(
-    help="Temporary directory, where the run writes, in a directory of its own, the contig data that it stores in the map (contig_data_network.txt)."
+@cli.command(
+    short_help="Build the metaHiC network of the contigs of a .metacool map, or of pairs or BAM files, and store it in the map."
 )
+@input_argument(help=input_help("named after the FASTA file of the assembly (<assembly>.metacool)", "the network of its contigs"))
+@network_options("-n")
+@min_quality_option()
+@outdir_option(help="The output directory, of the map of the run and of its log. Default: current directory.")
+@force_option(
+    "Replace the map of an earlier run in the output directory: that of the map given, or the map that the run makes "
+    "from pairs or BAM files."
+)
+@tmpdir_option(
+    help="Temporary directory, where the run writes, in a directory of its own, the contig data that it stores in the "
+    "map (contig_data_network.txt), and the pairs of the BAM files that it makes its map from (about 25 bytes per "
+    "pair, plus the names of its two contigs)."
+)
+@threads_option(help="Threads reading the BAM files and binning the pairs, when the run makes its map from them.")
 @no_clean_up_option(help="Keep the temporary directory of the run, which the log names, and its contig_data_network.txt.")
-@inplace_option(help=INPLACE_HELP)
+@inplace_option(help=RUN_INPLACE_HELP)
 def network(
-    map,  # the argument MAP
+    input,  # the arguments INPUT...
     assembly,
     depth,
     enzyme,
     normalization,
+    min_quality,
     outdir,
     force,
     tmpdir,
+    threads,
     no_clean_up,
     inplace,
 ):
     """Build the metaHiC network of the contigs, and store it in the map.
 
-    [cyan]metator network MAP -a ASSEMBLY[/] builds the network from a
+    [cyan]metator network INPUT... -a ASSEMBLY[/] builds the network from a
     .metacool contact map of the contigs (metacooler merge sums the maps of
     several libraries): that of the pairs it was made of. hicstuff
     ([cyan]hicstuff pipeline -M metacool[/]) or metacooler
     ([cyan]metacooler create pairs[/]) makes the map from the reads or the
-    pairs.
+    pairs; or the run makes it from the pairs files or the BAM files of its
+    libraries, one bin per contig, as metacooler create pairs does, in the
+    output directory, named after the assembly.
 
     The Restriction_site and Shotgun_coverage columns of the map, when they
     give every contig a value, give the restriction sites and the coverage
@@ -1344,10 +1567,11 @@ def network(
     network too, with a warning, as [cyan]metator validation MAP[/] refuses
     it until [cyan]metator partition MAP[/] partitions the new network; but
     the hosts of the MGE clusters that [cyan]metator host[/] found on another
-    network are dropped, with a warning. The
-    run writes the map to the output directory, under the name of MAP, which
-    it leaves as it was (--inplace updates MAP in place), and locks it while
-    it writes it. [cyan]metator dump[/] writes the network, as
+    network are dropped, with a warning. The run writes the map to the output
+    directory, under the name of the map given, which it leaves as it was
+    (--inplace updates it in place), or updates in place the map that it made
+    from pairs or BAM files, and locks it while it writes it. [cyan]metator
+    dump[/] writes the network, as
     network.txt, from the map of the clusters of a run; from a map that only
     metator network has run on, which dump refuses, [cyan]metacooler network
     MAP --level contig --balance metator_<normalization>[/] writes it, with a
@@ -1362,25 +1586,43 @@ def network(
 
         # Enable file logging
         log_file = log_file_name(outdir, "network")
-        started = generate_log_header(log_file, outdir=outdir)
+        started = generate_log_header(log_file, outdir=outdir, input=shlex.join(input))
 
-        # The map, the map that the run writes (that of the output directory,
-        # by default), the normalization against its columns, and the
-        # assembly, checked before any work. The run holds the lock of the map
-        # it writes from now on: a second run on the same map is refused. It
-        # reads its map under that lock (planned): the map its network is
+        # The inputs, the map that the run starts from (or makes from its
+        # pairs or BAM files), the map that it writes (that of the output
+        # directory, by default), the normalization against its columns, and
+        # the assembly, checked before any work. The run holds the lock of the
+        # map it writes from now on: a second run on the same map is refused.
+        # It reads its map under that lock (planned): the map its network is
         # written from, which is refused if it changed since.
-        run_input(map)
-        metacool_file, in_place = run_map_path(map, outdir, inplace, force)
-        refuse_an_input_as_the_map(metacool_file, in_place, [assembly, depth])
-        check_normalization(normalization, enzyme, depth, map)
-        planned = hold_map(held, "network", map, metacool_file, in_place, inplace=inplace)
+        inputs = run_inputs(input, given_on_the_command_line("min_quality"))
+        map, metacool_file, planned = run_map(
+            "network",
+            inputs,
+            held,
+            mti.map_name(None, assembly),
+            assembly,
+            depth,
+            enzyme,
+            normalization,
+            outdir,
+            inplace,
+            force,
+        )
         check_assembly(assembly)
+
+        # From pairs or BAM files, the map of the contigs, made in the output
+        # directory, which the run then updates in place, from the contig data
+        # measured on the assembly.
+        contig_data = None
+        if planned is None:
+            contig_data = mtn.create_contig_data(assembly, depth, enzyme)
+            planned = make_run_map("network", inputs, held, metacool_file, contig_data, assembly, min_quality, threads, tmp_dir)
 
         # The contig data, measured on the assembly and read from the map,
         # the hits of the contigs of the map, counted on its contacts, then
         # the network, stored in the map.
-        network, contacts = run_network(map, planned, assembly, depth, enzyme, normalization, tmp_dir)
+        network, contacts = run_network(map, planned, assembly, depth, enzyme, normalization, tmp_dir, contig_data)
         # A partition of another network, which the map keeps: said once the
         # map is written. The hosts of the MGE clusters found on another
         # network, which it drops, with a warning.
@@ -1645,8 +1887,14 @@ def validation(
 
 
 @cli.command(short_help="Run network, partition and validation in one command line.")
-@map_argument(required=True, help=f"{MAP_HELP} {written_map_help('the clusters of the run (the map of the clusters)')}")
+@input_argument(
+    help=input_help(
+        "named <prefix>.metacool after --prefix, or after the FASTA file of the assembly (<assembly>.metacool)",
+        "the clusters of the run (the map of the clusters)",
+    )
+)
 @network_options("-m", CHECKED_ASSEMBLY_HELP)
+@min_quality_option()
 @partition_options(
     iterations=100,
     overlap=80,
@@ -1677,18 +1925,28 @@ def validation(
 @outdir_option(
     help="The output directory, of the map of the clusters, final_clusters, plot and the log. Default: current directory."
 )
-@prefix_option("the clusters")
+@prefix_option(
+    "the clusters",
+    " The map that the run makes from pairs or BAM files is STR.metacool (by default, named after the assembly).",
+)
 @force_option(FORCE_RUN_HELP)
-@tmpdir_option(help=TMPDIR_TABLES_HELP)
-@threads_option(help="Number of parallel threads allocated for the partition and the validation.")
+@tmpdir_option(
+    help=TMPDIR_TABLES_HELP + " From BAM files, their pairs too (about 25 bytes per pair, plus the names of its two "
+    "contigs), which the run makes its map from."
+)
+@threads_option(
+    help="Number of parallel threads allocated for the partition and the validation, and for reading the BAM files and "
+    "binning the pairs that the run makes its map from."
+)
 @no_clean_up_option(help=NO_CLEAN_UP_TABLES_HELP)
-@inplace_option(help=INPLACE_HELP)
+@inplace_option(help=RUN_INPLACE_HELP)
 def pipeline(
-    map,  # the argument MAP
+    input,  # the arguments INPUT...
     assembly,
     depth,
     enzyme,
     normalization,
+    min_quality,
     algorithm,
     iterations,
     overlap,
@@ -1708,21 +1966,25 @@ def pipeline(
 
     Cluster the contigs of the assembly from their metaHiC contacts.
 
-    [cyan]metator pipeline MAP -a ASSEMBLY[/] starts from a .metacool contact
-    map of the contigs, made from the pairs of the run (by
+    [cyan]metator pipeline INPUT... -a ASSEMBLY[/] starts from a .metacool
+    contact map of the contigs, made from the pairs of the run (by
     [cyan]hicstuff pipeline -M metacool[/] or
-    [cyan]metacooler create pairs[/]): the run reads its network from that
-    map, and the restriction sites and the coverage of the contigs from its
+    [cyan]metacooler create pairs[/]), or makes it first from the pairs
+    files or the BAM files of the run: one bin per contig, as metacooler
+    create pairs does, in the output directory, named after --prefix or
+    after the assembly. The run reads its network from that map, and the
+    restriction sites and the coverage of the contigs from its
     Restriction_site and Shotgun_coverage columns, unless --enzyme and
     --depth are given. It writes the map of its clusters to the output
-    directory, under the name of MAP, which it leaves as it was (--inplace
-    updates MAP in place).
+    directory, under the name of the map, which it leaves as it was
+    (--inplace updates a map given in place); the map that it makes, it
+    updates in place.
 
     The network counts every pair, as a contact map does. A validation step
     decontaminates the clusters when it's necessary; it is the critical step
     for memory usage (~40G).
 
-    The run does what [cyan]metator network MAP[/], partition MAP and
+    The run does what [cyan]metator network INPUT...[/], partition MAP and
     validation MAP do one by one, and writes the map that they write, once,
     at its end: the FASTA files of the final clusters and their plots go to
     the output directory (final_clusters, plot), and the tables of the
@@ -1739,7 +2001,7 @@ def pipeline(
 
         # Enable file logging
         log_file = log_file_name(outdir, "pipeline")
-        started = generate_log_header(log_file, outdir=outdir)
+        started = generate_log_header(log_file, outdir=outdir, input=shlex.join(input))
 
         # Define variable
         overlapping_parameter = overlap / 100
@@ -1747,16 +2009,27 @@ def pipeline(
 
         # Check the arguments, and the assembly below, before replacing the
         # clusters of an earlier run (--force): a refused run leaves them as
-        # they were.
-        run_input(map)
-        metacool_file, in_place = run_map_path(map, outdir, inplace, force)
-        refuse_an_input_as_the_map(metacool_file, in_place, [assembly, depth])
-        check_normalization(normalization, enzyme, depth, map)
+        # they were. The inputs: the map that the run starts from, or the
+        # pairs or BAM files that it makes it from, in its output directory,
+        # named after --prefix (checked first) or the assembly.
+        inputs = run_inputs(input, given_on_the_command_line("min_quality"))
         bins_prefix = bin_prefix(prefix)
         # The run holds the map's lock from now on: a second run on the same
         # map is refused before any work. It reads its map under that lock
-        # (planned).
-        planned = hold_map(held, "pipeline", map, metacool_file, in_place, inplace=inplace)
+        # (planned; once it has made it, from pairs or BAM files).
+        map, metacool_file, planned = run_map(
+            "pipeline",
+            inputs,
+            held,
+            mti.map_name(prefix, assembly),
+            assembly,
+            depth,
+            enzyme,
+            normalization,
+            outdir,
+            inplace,
+            force,
+        )
 
         # The final clusters and the plots of an earlier run: refused now
         # without --force, before the assembly is read, and replaced only once
@@ -1773,18 +2046,33 @@ def pipeline(
         # the normalization needs is refused once the assembly is read), and
         # the contacts of its contigs, weighed with the normalization.
         check_assembly(assembly)
-        log_stage(1, "network", f"the contigs of {map} and their contacts")
-        network, contacts = run_network(map, planned, assembly, depth, enzyme, normalization, tmp_dir)
+        # From pairs or BAM files, a step more, first: the map of the contigs,
+        # made in the output directory from the contig data measured on the
+        # assembly, which the run then updates in place.
+        stages = 3 if inputs.kind == mti.MAP else 4
+        step = stages - 3
+        contig_data = None
+        if planned is None:
+            log_stage(1, "map", f"the contact map of the contigs, from {inputs.describe()}", stages)
+            contig_data = mtn.create_contig_data(assembly, depth, enzyme)
+            planned = make_run_map("pipeline", inputs, held, metacool_file, contig_data, assembly, min_quality, threads, tmp_dir)
+        log_stage(step + 1, "network", f"the contigs of {map} and their contacts", stages)
+        network, contacts = run_network(map, planned, assembly, depth, enzyme, normalization, tmp_dir, contig_data)
         make_output_dir(final_fasta_dir, force)
         remove_earlier_plots(plots)
         edges = mtn.map_network(map, mtn.network_weights(network.table, normalization), contacts)
 
         # Partition the network, as metator partition does.
-        log_stage(2, "partition", "the clusters of the network")
+        log_stage(step + 2, "partition", "the clusters of the network", stages)
         clusters = mtp.partition(algorithm, edges, iterations, overlapping_parameter, res_param, threads, bins_prefix)
 
         # Validate the partition, as metator validation does.
-        log_stage(3, "validation", "miComplete checks the clusters, and the contaminated ones are partitioned again")
+        log_stage(
+            step + 3,
+            "validation",
+            "miComplete checks the clusters, and the contaminated ones are partitioned again",
+            stages,
+        )
         final = run_validation(
             map,
             assembly,
