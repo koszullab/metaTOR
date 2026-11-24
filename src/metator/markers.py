@@ -8,11 +8,23 @@ miComplete gives a bin four numbers from the single-copy marker genes found
 in it: its completeness, redundancy, weighted completeness and weighted
 redundancy. Each comes from the marker genes of the bin, and each marker
 gene lies on one contig: stored per contig, the markers of a genome give its
-four numbers again, and those of any group of contigs the numbers of a bin
-of them, from the genes found in their genomes, with no gene to find (see
-marker_quality). This is what ``metator markers`` stores in a map (see
-metator.metacool.write_map), so that a viewer recomputes the numbers of a
-bin as a curation edits it.
+four numbers again, with no gene to find (see marker_quality), exactly those
+that miComplete gives it as the markers were found (trained in single genome
+mode on its contigs, in the order of the map, see below). Those of any other
+group of contigs (two genomes merged, a contig moved from one to another,
+contigs of no genome recruited) give an estimate of the numbers of a bin of
+them, from the genes found in the genomes of the map, which miComplete's own
+run on the group can differ from: it trains pyrodigal on the group itself,
+and counts the E-values of the hits over its proteins. Of 28 curated groups
+of the mock community MM133 (halves of MAGs, merges of two MAGs, MAGs with
+contigs of no genome), 23 came out exact; the merge of the MAGs of two
+organisms (GC 66.5% and 39.0%) has a redundancy of 1.6667 from the stored
+markers (175 copies of the 105 markers of Bact105), 1.1827 from miComplete,
+which, trained on the two together, finds 123 copies of 104 of them. This is
+what ``metator markers`` stores in a map (see metator.metacool.write_map), so
+that a viewer recomputes the numbers of a bin as a curation edits it: those
+of a genome of the map, and an estimate of those of a bin the curation
+made.
 
 The genes and their markers are found as metaTOR's miComplete finds them in
 a bin (see metator._micomplete): pyrodigal in its single genome mode,

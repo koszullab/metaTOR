@@ -115,7 +115,8 @@ contigs leave the genomes that held them (MAGs or `__unbinned__`).
 - The MAGs keep their other contigs and their validation values, which still
   describe them with the contigs they lost. The log names each MAG that loses
   contigs, and how many. The marker genes that `metator markers` stored on
-  their contigs give their numbers without them (see
+  their contigs, found in the MAGs with those contigs, give an estimate of
+  their numbers without them (see
   [Marker genes of the contigs](../formats.md#marker-genes-of-the-contigs)).
 - A MAG made only of MGE contigs is no longer a genome, with a warning; the
   round `final` keeps it.

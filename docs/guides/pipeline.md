@@ -134,10 +134,13 @@ HMMER on every cluster.
 After the validation, the step `markers` (as
 [`metator markers`](../cli.md#markers)) finds miComplete's marker genes on
 each contig, in its final cluster, as miComplete finds them, and stores them
-in the map of the clusters. Summed over any group of contigs, they give the
-completeness and redundancy that miComplete would give it: a viewer, or a
-script, recomputes them as a curation moves contigs between MAGs, without
-finding a gene again (see
+in the map of the clusters. Summed over a final cluster, as the step found
+its genes (trained on its contigs, in map order), they give the completeness
+and redundancy that miComplete gives it; summed over any other group of
+contigs, an estimate of them, from the genes found in the clusters. A
+viewer, or a script, recomputes them as a curation moves contigs between
+MAGs, without finding a gene again; miComplete's own run on a new MAG, which
+finds its genes anew, can give other numbers (see
 [Marker genes of the contigs](../formats.md#marker-genes-of-the-contigs)).
 
 ## Mobile genetic elements and their hosts

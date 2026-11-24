@@ -3089,9 +3089,16 @@ def markers(
     [cyan]metator markers MAP -a ASSEMBLY[/] finds on each contig of the map
     the marker genes of miComplete, of its bacterial and archaeal sets
     (Bact105, Arch131), as miComplete finds them in a bin, and stores them in
-    the map: summed over any group of contigs, they give the completeness,
-    redundancy, weighted completeness and weighted redundancy that
-    miComplete gives a bin of these contigs, without finding a gene again.
+    the map: summed over the contigs of a group, they give its completeness,
+    redundancy, weighted completeness and weighted redundancy without finding
+    a gene again. For a genome of the map, as the run found its genes
+    (trained on its contigs, in the order of the map), they are exactly
+    those that miComplete gives it; for any other group of contigs (a merge
+    or a move of a curation), an estimate, from the genes found in the
+    genomes of the map, which miComplete's own run on that group can differ
+    from: on a mock community, 23 of 28 curated groups came out exact, and
+    the merge of the MAGs of two organisms has a redundancy of 1.6667 from
+    the markers, where miComplete, trained on the two together, gives 1.1827.
 
     Each genome of the map is a bin: the final clusters of [cyan]metator
     validation[/] or [cyan]pipeline[/], or the bins of another binner made

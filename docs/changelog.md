@@ -130,9 +130,14 @@ tools](other-tools.md) says what replaces each removed command. Below,
   `Ribosomal_L22,SecY*2`; `*0` for a marker miComplete sees but drops, which
   counts in the weighted completeness only) and the `markers` metadata entry,
   with how the genes were found and the markers and weights of both sets.
-  Summed over any group of contigs they give miComplete's completeness,
-  redundancy, weighted completeness and weighted redundancy
-  (`metator.markers.marker_quality`), those of a genome exactly.
+  Summed over the contigs of a genome as `markers` found its genes (trained
+  on its contigs, in map order), they give miComplete's completeness,
+  redundancy, weighted completeness and weighted redundancy exactly
+  (`metator.markers.marker_quality`); over any other group of contigs (a
+  curation's merge or move), an estimate, which miComplete's own run on the
+  group can differ from (23 of 28 curated groups of a mock community exact;
+  the merge of the MAGs of two organisms, a redundancy of 1.6667 against
+  miComplete's 1.1827).
   `pipeline` runs it after the validation (`[4/5] markers`); every other run
   keeps them. See [Marker genes of the contigs](formats.md#marker-genes-of-the-contigs).
 - **`metator host MAP`** finds the MAGs that host the MGE clusters stored by

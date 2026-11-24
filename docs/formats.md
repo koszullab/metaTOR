@@ -323,10 +323,12 @@ genomes table, which `metator dump` writes last in `cluster_summary.txt`:
 store in the map the marker genes of miComplete that each contig carries, as
 miComplete finds them in its genome (see
 [Concepts](concepts.md#marker-genes-of-the-contigs)): two columns of the
-contigs table, and an entry of the metadata. Summed over any group of
-contigs, they give the four numbers of miComplete that the
-[cluster summary](#cluster-summary) holds for the final clusters:
-completeness, redundancy, weighted completeness and weighted redundancy.
+contigs table, and an entry of the metadata. Summed over the contigs of a
+genome of the map, as the run found their genes, they give the four numbers
+of miComplete that the [cluster summary](#cluster-summary) holds for the
+final clusters: completeness, redundancy, weighted completeness and weighted
+redundancy. Summed over any other group of contigs, they give an estimate of
+them (see *Recomputing miComplete's numbers*, below).
 
 | Column | What it holds |
 |---|---|
@@ -379,8 +381,8 @@ and:
 
 ### Recomputing miComplete's numbers
 
-For a group of contigs (a genome of the map, or any curated bin), in each set
-(`metator.markers.marker_quality`):
+For a group of contigs (a genome of the map, or any curated bin, whose numbers
+are an estimate: see below), in each set (`metator.markers.marker_quality`):
 
 1. Sum the counts of each marker over the contigs. A marker written without
    `*` counts 1; one at `*0` counts 0 but is seen.
@@ -413,17 +415,40 @@ for name, spec in sets.items():
     print(name, mtmk.marker_quality(counts, spec["markers"], spec["weights"]))
 ```
 
-Over a genome whose genes the run found in single mode, the numbers are
-those that miComplete gives the FASTA file of the genome in map order, as
-`fasta/mags/` and `metacooler fasta` write it. The cluster summary holds
-those of the clusters as the validation checked them, with their contigs in
-the order of its partition, on which pyrodigal's training depends a little:
-the numbers are the same but for a rare gene, and for a final cluster that
-`mge --reassign` took contigs from, which the summary still counts (sum the
-markers over the contigs of the cluster, the round `final`, for those). A
-curated group gets the numbers of miComplete from genes found in the genomes
-of the map: trained on the group itself, miComplete can find a gene more or
-less.
+Over a genome whose genes the run found in single mode (trained on its
+contigs, in map order), the numbers are exactly those that miComplete gives
+the FASTA file of the genome in map order, as `fasta/mags/` and
+`metacooler fasta` write it. The cluster summary holds those of the clusters
+as the validation checked them, with their contigs in the order of its
+partition, on which pyrodigal's training depends a little: the numbers are
+the same but for a rare gene, and for a final cluster that `mge --reassign`
+took contigs from, which the summary still counts (sum the markers over the
+contigs of the cluster, the round `final`, for those).
+
+Over any other group of contigs (a curated bin: two MAGs merged, a contig
+moved from one MAG to another, contigs recruited from `__unbinned__`), the
+numbers are an estimate, from the genes found in the genomes of the map, and
+not those that miComplete gives the FASTA file of the group: miComplete
+trains pyrodigal on the group itself, which finds other genes, and counts
+the E-values of the hits over the proteins of the group. On the mock
+community MM133 (20,566 contigs), of 28 curated groups (the first half of
+the contigs of 12 MAGs, 8 merges of two MAGs, 8 MAGs with the 30 longest
+contigs of `__unbinned__`), 23 came out exact, and 5 differed (the four
+numbers, in the set that metaTOR keeps, Bact105 for all five):
+
+| Curated group | From the stored markers | From miComplete |
+|---|---|---|
+| Two MAGs of two organisms merged (GC 66.5% and 39.0%) | 1.0, 1.6667, 1.0, 1.5427 | 0.9905, 1.1827, 0.9915, 1.1059 |
+| Two other MAGs merged | 0.9905, 1.375, 0.9918, 1.4454 | 0.9905, 1.3654, 0.9918, 1.4454 |
+| The first half of the contigs of a MAG | 0.981, 1.0291, 0.9767, 1.0228 | 0.981, 1.0194, 0.9767, 1.0228 |
+| A MAG with 30 contigs of `__unbinned__` | 0.9905, 1.4135, 0.9814, 1.3415 | 0.9905, 1.4038, 0.9814, 1.3214 |
+| Another MAG with 30 contigs of `__unbinned__` | 0.9905, 1.3654, 0.9918, 1.299 | 1.0, 1.3619, 1.0, 1.2966 |
+
+The merge of two organisms parts the most: the markers stored on its
+contigs count 175 copies of the 105 markers of Bact105, those of the two
+genomes, where miComplete, trained on the two organisms together, finds 123
+copies of 104 of them. Its redundancy says less of the contamination than
+the markers do.
 
 ## The report of a run
 

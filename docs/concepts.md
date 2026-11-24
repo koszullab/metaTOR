@@ -112,10 +112,15 @@ redundancy − 1):
 miComplete's numbers come from the marker genes of a cluster, and each lies
 on one of its contigs. `metator markers` (a step of `pipeline`) finds them
 contig by contig, as miComplete finds them in the cluster, and stores them in
-the map: summed over any group of contigs, they give its completeness and
-redundancy again, with no gene to find. A curation that moves contigs between
-MAGs, merges two, or recruits contigs in no cluster sees the numbers of the
-new MAGs at once. See
+the map: summed over the contigs of a cluster, they give its completeness and
+redundancy again, with no gene to find, those of miComplete exactly (the
+genes found as `markers` found them, trained on its contigs in map order). A
+curation that moves contigs between MAGs, merges two, or recruits contigs in
+no cluster sees an estimate of the numbers of the new MAGs at once, from the
+genes found in the clusters of the map: miComplete, which finds the genes of
+the new MAG itself, can give other numbers (on a mock community, 23 of 28
+curated MAGs came out exact; the merge of the MAGs of two organisms had a
+redundancy of 1.67, where miComplete gave 1.18). See
 [Marker genes of the contigs](formats.md#marker-genes-of-the-contigs).
 
 ## The contact map of the clusters

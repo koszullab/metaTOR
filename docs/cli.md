@@ -322,10 +322,11 @@ metator validation binning/sample.metacool -a assembly.fa -t 16 -o binning
 ### `markers` { #markers }
 
 Find miComplete's marker genes on each contig of the map, as miComplete finds
-them in a bin, and store them in the map: summed over any group of contigs,
+them in a bin, and store them in the map: summed over a genome of the map,
 they give the completeness, redundancy, weighted completeness and weighted
-redundancy that miComplete gives a bin of those contigs, with no gene to find
-again. [`pipeline`](#pipeline) runs it after the validation. **API:**
+redundancy that miComplete gives it, with no gene to find again; summed over
+any other group of contigs, an estimate of those of a bin of them (see
+below). [`pipeline`](#pipeline) runs it after the validation. **API:**
 `metator.markers.contig_markers`, `metator.markers.marker_quality`,
 `metator.metacool.write_map`.
 
@@ -348,6 +349,15 @@ metator markers [OPTIONS] MAP
   mode, contig by contig, and their markers counted over the median number
   of proteins of the trained genomes: as in a typical genome of the map
   (on a map without one, over their own proteins, as one bin).
+- **Curated groups.** Summed over any other group of contigs (two MAGs
+  merged, a contig moved from one MAG to another, contigs recruited from
+  `__unbinned__`), the markers give an estimate, from the genes found in the
+  genomes of the map: miComplete, run on the FASTA file of the group, trains
+  pyrodigal on the group itself and counts the E-values over its proteins,
+  and can give other numbers. On a mock community, 23 of 28 curated groups
+  came out exact; the merge of the MAGs of two organisms has a redundancy of
+  1.6667 from the markers, 1.1827 from miComplete (see
+  [Marker genes of the contigs](formats.md#marker-genes-of-the-contigs)).
 - **Stores** the markers of each contig in the contigs table, one column per
   set (`markers_Bact105`, `markers_Arch131`: text, `Ribosomal_L22,SecY*2`;
   `*0` for a marker that miComplete sees on the contig but drops, which counts
