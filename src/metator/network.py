@@ -598,7 +598,15 @@ def create_contig_data(assembly, depth_file=None, enzyme=None):
     dict
         The data of each contig of the assembly, by name, in the order of the
         assembly: "length", "GC", "coverage" (``-`` without a depth file) and
-        "RS" (the restriction sites plus one; ``-`` without an enzyme)."""
+        "RS" (the restriction sites plus one, whatever the case of the bases;
+        ``-`` without an enzyme).
+
+    Raises
+    ------
+    ValueError
+        If the assembly names a contig by several records, or the depth file
+        lacks a contig of the assembly or gives it another length (the reason
+        is logged as an error)."""
 
     # Create a contig data dictionnary from the assembly file
     contig_data = dict()
@@ -609,10 +617,15 @@ def create_contig_data(assembly, depth_file=None, enzyme=None):
 
     # The length and coverage of each contig in the depth file, by name.
     depths = read_depth(depth_file) if depth_file else None
-    missing, other_length = [], []
+    missing, other_length, named_again = [], [], []
 
     with mio.read_compressed(assembly) as fasta:
         for contig in SeqIO.parse(fasta, "fasta"):
+            # A contig is read by its name: another record of that name would
+            # replace it.
+            if contig.id in contig_data:
+                named_again.append(contig.id)
+                continue
             gc_content = int(SeqUtils.gc_fraction(contig.seq) * 100 * 10**13) / 10**13
             coverage = "-"
             if depths is not None:
@@ -626,8 +639,20 @@ def create_contig_data(assembly, depth_file=None, enzyme=None):
                 "length": len(contig.seq),
                 "GC": gc_content,
                 "coverage": coverage,
-                "RS": (len(re.findall(pattern, str(contig.seq))) + 1) if enzyme else "-",
+                # The sites of the enzymes are in upper case: so are the bases
+                # they are looked for in, as a soft-masked assembly holds some
+                # (its repeats) in lower case.
+                "RS": (len(re.findall(pattern, str(contig.seq).upper())) + 1) if enzyme else "-",
             }
+
+    if named_again:
+        named_again = list(dict.fromkeys(named_again))
+        what = f"{len(named_again)} contig(s) are named by several records of the assembly {assembly}"
+        logger.error(
+            f"{what}: {mtmc._shown(named_again)}. A contig is read by its name, the first word of its header: give each "
+            "record a name of its own."
+        )
+        raise ValueError(f"{what}.")
 
     # A depth file of another assembly would give the contigs wrong coverages.
     for contigs, problem in [(missing, "are not in"), (other_length, "have another length in")]:

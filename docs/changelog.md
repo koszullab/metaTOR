@@ -414,6 +414,15 @@ each removed command.
   a `ValueError` (#26): such a length is that of the contig rounded so.
 - `network` and `pipeline` read an assembly compressed with gzip, which they
   refused as no FASTA file.
+- `network` and `pipeline` count the restriction sites of `--enzyme` whatever
+  the case of the bases: those in lower case, where a soft-masked assembly
+  holds its repeats, were not counted. The contigs had too few restriction
+  sites (`Restriction_site`), and the `RS` and `theoritical_hit`
+  normalizations wrong weights.
+- `network` and `pipeline` refuse an assembly that names a contig by several
+  records: they kept the last record of the name, its length and GC content.
+  metacooler refused it only when it wrote the FASTA file of such a contig
+  (`validation`, `mge`).
 - `validation` reads the contig names of its tables as text: contigs named
   by numbers (`000017`, `1e5`), or `NA`, kept their clusters, where they lost
   them or the map was not written. A clustered contig that the map lacks, and

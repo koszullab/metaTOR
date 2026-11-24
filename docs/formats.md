@@ -7,7 +7,11 @@ The files metaTOR reads and writes. Every table is tab-separated.
 ### Assembly
 
 A FASTA file of the contigs, compressed with gzip or not (`--assembly`): the
-assembly that the contact map was made from.
+assembly that the contact map was made from. A contig is read by its name,
+the first word of its header: an assembly that names a contig by several
+records is refused. The restriction sites of `--enzyme` are counted whatever
+the case of the bases: those of a soft-masked assembly, whose repeats are in
+lower case, too.
 
 ### Depth
 
