@@ -17,6 +17,7 @@ import metator.io as mio
 import metator.mge as mtm
 from tests import synthetic
 from tests.hdf5 import walk
+from tests.logs import logs
 
 
 def _mge_contigs(metagenome):
@@ -616,7 +617,7 @@ def test_mge_stores_its_clusters_in_the_map(output, mge_run, tmp_path, monkeypat
         assert list(synthetic.read_fasta(fasta / f"{name}.stitched.fa")) == [name]
         assert sorted(synthetic.read_fasta(fasta / f"{name}.fa")) == sorted(contigs.split(","))
     assert not (tmp_path / "tmp").exists()
-    (log,) = tmp_path.glob("metator_mge_*.log")
+    (log,) = logs(tmp_path, "mge")
     logged = log.read_text()
     ended = rf"INFO :: Contact map with the MGE clusters written after 0h 0m [0-9]+s: {re.escape(str(written))}\n"
     assert re.search(ended, logged)
@@ -693,7 +694,7 @@ def test_the_fasta_files_of_an_earlier_run(random, mge_run, tmp_path, run_cli):
         run_cli("mge", metacool, *args, *options)
     assert metacool.read_bytes() == before
     assert (directory / "MetaTOR_MGE_00001.fa").read_text() == ">an earlier run's\nACGT\n"
-    (log,) = tmp_path.glob("metator_mge_*.log")
+    (log,) = logs(tmp_path, "mge")
     assert f"ERROR :: {directory} already existed." in log.read_text()
     shutil.rmtree(out / "fasta")
     (out / "fasta").write_text("a file\n")
@@ -760,7 +761,7 @@ def test_the_summary_of_an_earlier_version(name, force, mge_run, tmp_path, run_c
     assert sorted(path.name for path in out.iterdir()) == sorted([name, "mges_other.tsv"])
     assert (out / name).read_text() == "an earlier run's\n"
     assert not list(tmp_path.glob("*.lock"))
-    (log,) = tmp_path.glob("metator_mge_*.log")
+    (log,) = logs(tmp_path, "mge")
     assert (
         f"ERROR :: {out} holds results of an earlier run, which this run does not write and does not replace: "
         f"{name!r}. Move them away, or give the run another output directory with -o."
@@ -781,7 +782,7 @@ def test_mge_refuses_a_list_that_cannot_be_read(case, reason, mge_run, tmp_path,
     with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
         run_cli("mge", metacool, *args)
     assert metacool.read_bytes() == before and not (tmp_path / "out" / "fasta").exists()
-    (log,) = tmp_path.glob("metator_mge_*.log")
+    (log,) = logs(tmp_path, "mge")
     assert f"ERROR :: {message}\n" in log.read_text()
 
 
@@ -1000,7 +1001,7 @@ def test_mge_refuses_a_map(case, mge_run, metagenome_files, tmp_path, run_cli):
     assert metacool.read_bytes() == before
     assert {name: Path(names[name]).read_bytes() for name in ["assembly", "mges"]} == inputs
     assert not lock_file(metacool).exists()
-    (log,) = tmp_path.glob("metator_mge_*.log")
+    (log,) = logs(tmp_path, "mge")
     assert f"ERROR :: {message}" in log.read_text()
 
 
@@ -1029,7 +1030,7 @@ def test_mge_on_a_map_that_cannot_be_written(error, mge_run, tmp_path, monkeypat
     if isinstance(error, ValueError):
         with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
             run_cli("mge", metacool, *args, "--inplace")
-        (log,) = tmp_path.glob("metator_mge_*.log")
+        (log,) = logs(tmp_path, "mge")
         assert f"ERROR :: {message}\n" in log.read_text()
     else:
         assert "Aborted" in run_cli("mge", metacool, *args, "--inplace", exit_code=1).output
@@ -1302,7 +1303,7 @@ def test_mge_refuses_reassign_with_random(mge_run, tmp_path, run_cli):
     )
     assert message in " ".join(result.output.replace("│", " ").split())
     assert metacool.read_bytes() == before
-    assert not (tmp_path / "out").exists() and not list(tmp_path.glob("metator_mge_*.log"))
+    assert not (tmp_path / "out").exists() and not list(logs(tmp_path, "mge"))
 
 
 def test_mge_reassign_refuses_an_mge_cluster_named_after_a_genome(mge_run, run_cli):

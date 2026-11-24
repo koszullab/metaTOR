@@ -31,6 +31,7 @@ from metator.version import __version__
 from tests import alignments, synthetic
 from tests.hdf5 import walk
 from tests.maps import contig_map, pairs_map
+from tests.logs import logs
 
 NORMALIZATIONS = ["None", "abundance", "length", "RS", "empirical_hit", "theoritical_hit"]
 
@@ -58,9 +59,9 @@ def _kept(out):
     its command line, which its log records; a relative one from the directory
     of out, where the tests run) that holds them, the last written before the
     end of its log (two runs may share a -T)."""
-    logs = sorted(Path(out).glob("metator_*.log"), key=os.path.getmtime)
-    for log in reversed(logs):
-        line = next(line for line in log.read_text().splitlines() if line.startswith("## cmd: "))
+    for log in reversed(logs(out)):
+        # The last run of the log (runs on one map, in the same second, share it).
+        line = [line for line in log.read_text().splitlines() if line.startswith("## cmd: ")][-1]
         command = shlex.split(line[len("## cmd: ") :])
         tmp = Path(command[command.index("-T") + 1] if "-T" in command else "./tmp")
         if not tmp.is_absolute():
@@ -549,7 +550,7 @@ def test_the_plots_count_the_clusters_as_the_log(
     legend = [text.get_text() for text in saved_figures["bins_size_distribution.pdf"].axes[0].get_legend().get_texts()]
     assert legend[0].startswith(f"HQ MAGs: {len(others)} - ")
     assert legend[1] == f"MQ MAGs: 1 - {round(length / 1_000_000, 2)}Mb"
-    (log,) = out.glob("metator_validation_*.log")
+    (log,) = logs(out, "validation")
     assert f"MQ MAGs: 1\tTotal Size: {length}" in log.read_text()
     completion, _ = saved_figures["bins_distribution.pdf"].axes[0].collections
     assert completion.get_offsets()[-1, 1] == pytest.approx(89.96)
@@ -572,7 +573,7 @@ def test_a_run_goes_on_when_a_plot_cannot_be_drawn(
     run_cli("validation", metacool, "-a", metagenome_inputs["assembly"], "-o", out, "-T", tmp_path / "tmp", "-s", "50000")
     assert [path.name for path in (out / "plots").iterdir()] == ["bins_distribution.pdf"]
     metacooler.validate(str(out / metacool.name))
-    (log,) = out.glob("metator_validation_*.log")
+    (log,) = logs(out, "validation")
     logged = log.read_text()
     assert f"WARNING :: {out / 'plots' / 'bins_size_distribution.pdf'} is not drawn: ValueError: no pie" in logged
     assert "Traceback (most recent call last)" in logged
@@ -597,7 +598,7 @@ def test_validation_without_bin_above_the_size_threshold(metagenome_inputs, meta
     with pytest.raises(ValueError):
         run_cli("validation", *args)
     assert not calls
-    (log,) = (tmp_path / "out").glob("metator_validation_*.log")
+    (log,) = logs(tmp_path / "out", "validation")
     assert "ERROR :: No overlapping cluster of the partition reaches the minimum size" in log.read_text()
     assert metacool.read_bytes() == before
 
@@ -616,7 +617,7 @@ def test_pipeline_without_bin_above_the_size_threshold(metagenome_inputs, tmp_pa
     with pytest.raises(ValueError):
         run_cli("pipeline", *args)
     assert not calls
-    (log,) = out.glob("metator_pipeline_*.log")
+    (log,) = logs(out, "pipeline")
     message = (
         "No overlapping cluster of the partition reaches the minimum size of a cluster to check (--size of validation or "
         "pipeline): there is no cluster to validate."
@@ -689,7 +690,9 @@ def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, tmp_path, 
     # the plots of the clusters, as PDF files, in plots/, and the report.
     assert not os.path.exists(f"{metagenome_inputs['assembly']}.fxi")
     outputs = sorted(path.name for path in out.iterdir() if not path.name.endswith(".log"))
-    assert outputs == sorted([metacool.name, "cool", "fasta", "plots", "tables", *mtr.REPORT_FILES])
+    assert outputs == sorted(
+        [metacool.name, "cool", "fasta", "plots", "tables", *mtr.report_files(mtr.sample_name(metacool.name))]
+    )
     assert sorted(path.name for path in (out / "fasta").iterdir()) == ["mags", "mags_with-mges"]
     assert sorted(path.name for path in (out / "plots").iterdir()) == ["bins_distribution.pdf", "bins_size_distribution.pdf"]
     assert sorted(path.name for path in (out / "tables").iterdir()) == sorted(mtd.TABLES)
@@ -1001,7 +1004,7 @@ def test_pipeline_from_the_columns_of_a_metacool(metagenome, metagenome_inputs, 
     networks = [mtn.map_network(str(run / metacool.name)) for run in (by_options, by_map)]
     pd.testing.assert_frame_equal(networks[0], networks[1])
     assert "SG_abundance" in pd.read_csv(_kept(by_map) / "cluster_summary.txt", sep="\t").columns
-    (log,) = by_map.glob("metator_pipeline_*.log")
+    (log,) = logs(by_map, "pipeline")
     assert f"INFO :: The shotgun coverage of the contigs: the Shotgun_coverage column of {metacool}." in log.read_text()
     # Stored back: the map of the bins holds the values that the run read.
     for written in [by_map / metacool.name, by_options / metacool.name]:
@@ -1055,7 +1058,7 @@ def test_pipeline_from_a_filtered_metacool(metagenome, metagenome_inputs, tmp_pa
     assert 0 < len(lacking) < len(truth)
     assert (pair_final.Hit[sorted(lacking)] == 0).all() and (pair_final.Final_cluster[sorted(lacking)] == "ND").all()
     assert len(pd.read_csv(_kept(mcool) / "cluster_summary.txt", sep="\t")) > 0
-    (log,) = mcool.glob("metator_pipeline_*.log")
+    (log,) = logs(mcool, "pipeline")
     assert f"INFO :: {len(lacking)} contig(s) of the assembly are not in {metacool}: they get no contacts" in log.read_text()
     # The map of the clusters, in the output directory: its contigs, at 1 kb,
     # in their clusters.
@@ -1136,8 +1139,10 @@ def test_pipeline_from_pairs_or_bam_files(metagenome, metagenome_inputs, tmp_pat
         # The output directory: the map, the log and the outputs of the run
         # (the FASTA files of its clusters and of its MAGs, their cool files,
         # the tables, the plots and the report).
-        (log,) = out.glob("metator_pipeline_*.log")
-        outputs = ["cool", "fasta", log.name, "plots", "sample.metacool", "tables", *mtr.REPORT_FILES]
+        (log,) = logs(out, "pipeline")
+        outputs = ["cool", "fasta", log.name, "plots", "sample.metacool", "tables", *mtr.report_files("sample")]
+        # The log and the report named after the map, <prefix>.metacool (-p).
+        assert re.fullmatch(r"sample\.metator_[0-9]{14}\.log", log.name)
         assert sorted(path.name for path in out.iterdir()) == sorted(outputs)
         steps = [line.split(" :: ", 2)[2] for line in log.read_text().splitlines() if " :: INFO :: [" in line]
         assert steps == [
@@ -1607,7 +1612,7 @@ def test_pipeline_with_mges_is_the_steps_one_by_one(metagenome, metagenome_input
         assert metator["pipeline"][step]["command"].startswith("metator pipeline input.metacool")
         assert metator["steps"][step]["command"].startswith(f"metator {step} input.metacool")
     # The six steps of the run, in its log, and no word of a stop.
-    (log,) = pipeline.glob("metator_pipeline_*.log")
+    (log,) = logs(pipeline, "pipeline")
     logged = log.read_text()
     names = ["network", "partition", "validation", "mge", "host", "export"]
     assert re.findall(r" :: INFO :: \[([0-9])/([0-9])\] ([a-z]+): ", logged) == [
@@ -1717,7 +1722,7 @@ def test_pipeline_stopped_in_an_mge_step_keeps_its_clusters(step, metagenome, me
     assert bool(list((out / "fasta" / "mges").iterdir())) == (step == 5)
     assert not (out / "tables").exists() and not list((out / "fasta" / "mags").iterdir())
     assert not list((out / "cool").iterdir())
-    (log,) = out.glob("metator_pipeline_*.log")
+    (log,) = logs(out, "pipeline")
     name, what, finish = {
         4: ("mge", "the clusters of the run", "metator mge --reassign then metator host"),
         5: ("host", "the clusters of the run and their MGE clusters", "metator host"),
@@ -1767,7 +1772,7 @@ def test_pipeline_with_mges_from_pairs_files(metagenome, metagenome_inputs, tmp_
         assert files[0] == files[1] and files[0], directory
     hosts = os.path.join("tables", "mge_hosts.txt")
     assert (tmp_path / "pairs" / hosts).read_bytes() == (tmp_path / "map" / hosts).read_bytes()
-    (log,) = (tmp_path / "pairs").glob("metator_pipeline_*.log")
+    (log,) = logs(tmp_path / "pairs", "pipeline")
     names = ["map", "network", "partition", "validation", "mge", "host", "export"]
     assert re.findall(r" :: INFO :: \[([0-9])/([0-9])\] ([a-z]+): ", log.read_text()) == [
         (str(number), "7", name) for number, name in enumerate(names, start=1)
@@ -1809,7 +1814,7 @@ def _assert_same_outputs(out, ref, without=None):
             assert path.read_bytes().startswith(b"%PDF"), name
         elif name.startswith(MAGS_WITH_MGES):
             assert _records(path) == _records(expected[name]), name
-        elif name in mtr.REPORT_FILES:
+        elif name.endswith(mtr.REPORT_FILES):
             _assert_same_report(name, path, expected[name], without)
         else:
             assert path.read_bytes() == expected[name].read_bytes(), name
@@ -1832,7 +1837,7 @@ def _assert_same_report(name, path, ref, without=None):
     sections, and the same tables; report_mqc.yaml, the same; report.html, the
     same figures, and the same links to the outputs of the run (those of ref
     but under without)."""
-    if name == mtr.REPORT_TXT:
+    if name.endswith(mtr.REPORT_TXT):
         (sections, tables), (ref_sections, ref_tables) = mtr.read_txt(path), mtr.read_txt(ref)
         assert list(sections) == list(ref_sections) and list(tables) == list(ref_tables)
         for section, values in sections.items():
@@ -1844,7 +1849,7 @@ def _assert_same_report(name, path, ref, without=None):
                 assert values == ref_sections[section], section
         for table, rows in tables.items():
             pd.testing.assert_frame_equal(rows, ref_tables[table], obj=table)
-    elif name == mtr.REPORT_MQC:
+    elif name.endswith(mtr.REPORT_MQC):
         assert yaml.safe_load(path.read_text()) == yaml.safe_load(ref.read_text())
     else:
         assert _report_page(path) == _report_page(ref, without)
@@ -1872,7 +1877,7 @@ def test_export_writes_the_outputs_of_a_run_again(metagenome, metagenome_inputs,
     run_cli("export", written, "-a", assembly, "-o", exported, "-T", tmp)
     _assert_same_outputs(exported, out)
     assert _output_files(exported) and written.read_bytes() == before
-    (log,) = exported.glob("metator_export_*.log")
+    (log,) = logs(exported, "export")
     assert (
         "INFO :: The hosts of the MGE clusters, found again from the network of the map with --min-share 10 and "
         f"--min-contigs 5, as the host run recorded them: {exported / 'tables' / 'mge_hosts.txt'}, "
@@ -1882,7 +1887,7 @@ def test_export_writes_the_outputs_of_a_run_again(metagenome, metagenome_inputs,
     partial = tmp_path / "partial"
     run_cli("export", written, "-o", partial, "-T", tmp)
     _assert_same_outputs(partial, out, without="fasta")
-    (log,) = partial.glob("metator_export_*.log")
+    (log,) = logs(partial, "export")
     assert (
         "INFO :: No assembly (--assembly): the FASTA files of the run (fasta) are not written. Give the assembly that "
         f"the map was made from to write them: {assembly}, as the run recorded it.\n"
@@ -1961,7 +1966,7 @@ def test_export_refusals(case, metagenome_inputs, tmp_path, run_cli):
         )
     with pytest.raises(ValueError):
         run_cli("export", metacool, "-a", assembly, "-o", out, "-T", tmp_path / "tmp", "-F")
-    (log,) = out.glob("metator_export_*.log")
+    (log,) = logs(out, "export")
     assert f"ERROR :: {message}\n" in log.read_text()
     assert sorted(path.name for path in out.iterdir()) == sorted([log.name, *kept]) and Path(assembly).exists()
 

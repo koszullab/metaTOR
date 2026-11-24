@@ -8,16 +8,20 @@ metator report writes it in an output directory from the map of the clusters
 of a run alone (see collect), and so do metator export and pipeline, in its
 step export:
 
-- report.txt (REPORT_TXT): a text file, in sections, a key and its value per
-  line, then tables, a row per line; keys, columns and units are fixed by
-  FORMAT_VERSION, so that a script or a MultiQC module parses it (see
+- <name>.report.txt (REPORT_TXT): a text file, in sections, a key and its
+  value per line, then tables, a row per line; keys, columns and units are
+  fixed by FORMAT_VERSION, so that a script or a MultiQC module parses it (see
   write_txt and read_txt);
-- report_mqc.yaml (REPORT_MQC): MultiQC's custom content, a row of its
+- <name>.report_mqc.yaml (REPORT_MQC): MultiQC's custom content, a row of its
   General Statistics table, which ``multiqc`` finds and aggregates over the
   runs (see write_mqc);
-- report.html (REPORT_HTML): a page to read the run with, from its Jinja2
-  template (templates/report.html.j2), its plots drawn by plotly.js, which the
-  page loads from a CDN (PLOTLY_JS) when it is opened (see write_html).
+- <name>.report.html (REPORT_HTML): a page to read the run with, from its
+  Jinja2 template (templates/report.html.j2), its plots drawn by plotly.js,
+  which the page loads from a CDN (PLOTLY_JS) when it is opened (see
+  write_html).
+
+<name> is the name of the run: that of its map, without .metacool (see
+sample_name and report_files).
 
 The quality classes of the final clusters (HQ, MQ, LQ, Contaminated, Other:
 see metator.validation.bin_quality) are those of the values of miComplete,
@@ -52,6 +56,14 @@ REPORT_TXT = "report.txt"
 REPORT_HTML = "report.html"
 REPORT_MQC = "report_mqc.yaml"
 REPORT_FILES = (REPORT_TXT, REPORT_HTML, REPORT_MQC)
+
+
+def report_files(name):
+    """The files of the report of the run named name (see sample_name), in the
+    order of REPORT_FILES: <name>.report.txt, <name>.report.html and
+    <name>.report_mqc.yaml, which MultiQC finds by their _mqc suffix."""
+    return tuple(f"{name}.{file}" for file in REPORT_FILES)
+
 
 #: plotly.js, which report.html loads from its CDN when it is opened: a
 #: pinned version, which draws the plots the same over time.
@@ -201,9 +213,9 @@ class Report:
 
 
 def sample_name(metacool):
-    """The name of the run in its report, which MultiQC names its row with: that
-    of the file of its map without .metacool, or of its entry for an entry of a
-    collection (file.mmetacool::entries/NAME)."""
+    """The name of a run, which names its log and its report, and MultiQC its
+    row: that of the file of its map without .metacool, or of its entry for an
+    entry of a collection (file.mmetacool::entries/NAME)."""
     if mtmc.is_entry(metacool):
         name = str(metacool).split("::", 1)[1].strip().strip("/").rsplit("/", 1)[-1]
     else:
@@ -894,9 +906,11 @@ def figures(report):
 
 
 def _links(outdir, report):
-    """The outputs of the run that report.html links to, which are in its output
-    directory, outdir, as metator export writes them: by MAG, its FASTA files
-    and its cool file; the tables and the plots."""
+    """The outputs of the run that its report.html links to, which are in its
+    output directory, outdir, as metator export writes them: by MAG, its FASTA
+    files and its cool file; the tables, the plots, and the other two files of
+    the report."""
+    txt, _, mqc = report_files(report.sections["report"]["sample"])
 
     def found(*parts):
         path = join(*parts)
@@ -909,7 +923,7 @@ def _links(outdir, report):
     }  # fmt: skip
     files = [path for path in (
         [join(mto.TABLES_DIR, name) for name in sorted(os.listdir(join(outdir, mto.TABLES_DIR)))] if os.path.isdir(join(outdir, mto.TABLES_DIR)) else []
-    ) + [join(mtf.PLOT_DIR, name) for name in (*mtf.PLOTS, mth.PLOT_FILE)] + [REPORT_TXT, REPORT_MQC] if os.path.exists(join(outdir, path))]  # fmt: skip
+    ) + [join(mtf.PLOT_DIR, name) for name in (*mtf.PLOTS, mth.PLOT_FILE)] + [txt, mqc] if os.path.exists(join(outdir, path))]  # fmt: skip
     return {"mags": mags, "files": files}
 
 
@@ -947,16 +961,17 @@ def write_html(report, path, outdir):
 
 def write_report(report, outdir):
     """Write the report of a run (see collect) in outdir (see the module's
-    docstring): report.txt, report_mqc.yaml and report.html, which replace
-    files of their names. The map is not read again: what report.html links
-    to is what outdir holds as it is written.
+    docstring), named after the run (see report_files): <name>.report.txt,
+    <name>.report_mqc.yaml and <name>.report.html, which replace files of
+    their names. The map is not read again: what the page links to is what
+    outdir holds as it is written.
 
     Returns
     -------
     list of str
         Their paths, in the order of REPORT_FILES."""
     os.makedirs(outdir, exist_ok=True)
-    paths = [join(outdir, name) for name in REPORT_FILES]
+    paths = [join(outdir, name) for name in report_files(report.sections["report"]["sample"])]
     for path in paths:
         if os.path.islink(path):
             os.remove(path)

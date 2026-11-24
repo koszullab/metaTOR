@@ -20,6 +20,7 @@ import metator.metacool as mtmc
 import metator.network as mtn
 from tests import alignments
 from tests.maps import contig_map
+from tests.logs import logs
 
 TESTS_DATA = Path(__file__).resolve().parents[1] / "tests_data"
 
@@ -650,12 +651,14 @@ def test_network_from_pairs_or_bam_files(kind, community, metagenome_files, tmp_
     entry = metacooler.MetaCooler(str(written)).metadata["metator"]["network"]
     assert entry["parameters"]["input"] == arguments and entry["parameters"]["map"] == str(written)
     assert entry["parameters"]["min_quality"] == 30 and entry["command"].startswith("metator network ")
-    (log,) = out.glob("metator_network_*.log")
+    (log,) = logs(out, "network")
     logged = log.read_text()
     assert f"## input: {shlex.join(arguments)}\n" in logged
     what = "2 pairs files" if kind.startswith("pairs") else f"{4 if kind.endswith('one mate') else 2} BAM files"
     assert f"INFO :: The run makes its map, {written}, from {what}" in logged
     assert sorted(path.name for path in out.iterdir()) == ["assembly.metacool", log.name]
+    # Named after the map that the run makes, as the report would be.
+    assert re.fullmatch(r"assembly\.metator_[0-9]{14}\.log", log.name)
     # The temporary directory of the run, with the pairs of the BAM files, is
     # removed.
     assert not (tmp_path / "tmp").exists()
@@ -749,7 +752,7 @@ def test_refusals_of_a_run_from_pairs_or_bam_files(command, case, community, met
     with pytest.raises(ValueError):
         run_cli(command, *arguments, "-a", str(metagenome_files["assembly"]), "-o", str(out), "-T", str(tmp_path / "tmp"),
                 *options)  # fmt: skip
-    (log,) = out.glob(f"metator_{command}_*.log")
+    (log,) = logs(out, command)
     assert f"ERROR :: {message}" in log.read_text()
     kept = [log.name] + (["assembly.metacool"] if map_there.exists() and out == map_there.parent else [])
     assert sorted(path.name for path in out.iterdir()) == sorted(kept)
@@ -769,7 +772,7 @@ def test_pipeline_from_pairs_refuses_mge_contigs_of_another_assembly(community, 
     assembly = str(metagenome_files["assembly"])
     with pytest.raises(ValueError):
         run_cli("pipeline", *arguments, "-a", assembly, "-o", str(out), "-T", str(tmp_path / "tmp"), "--mges", str(mges))
-    (log,) = out.glob("metator_pipeline_*.log")
+    (log,) = logs(out, "pipeline")
     message = f"None of the MGE contigs is a contig of {assembly}: there is no MGE contig to cluster."
     assert f"ERROR :: {message}\n" in log.read_text()
     assert sorted(path.name for path in out.iterdir()) == [log.name]
