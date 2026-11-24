@@ -9,287 +9,106 @@
 
 Metagenomic Tridimensional Organisation-based Reassembly: metaTOR clusters the
 contigs of a metagenome assembly into metagenome-assembled genomes (MAGs) from
-the Hi-C contacts between them (metaHiC).
+the Hi-C contacts between them (metaHiC). It also clusters the contigs of
+mobile genetic elements (MGEs) and finds their host MAGs.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/koszullab/metaTOR/master/docs/images/metator_logo.png" width="200">
 </p>
 
-The documentation is at <https://koszullab.github.io/metator/>: a
-[quickstart](https://koszullab.github.io/metator/quickstart/), the [concepts](https://koszullab.github.io/metator/concepts/), a guide per
-step, the [CLI reference](https://koszullab.github.io/metator/cli/) and the [file formats](https://koszullab.github.io/metator/formats/).
-
-1. [Installation](#installation)
-2. [Usage](#usage)
-   1. [From the reads to the clusters](#from-the-reads-to-the-clusters)
-   2. [From pairs or BAM files](#from-pairs-or-bam-files)
-   3. [Step by step](#step-by-step)
-   4. [Outputs](#outputs)
-   5. [Mobile genetic elements](#mobile-genetic-elements)
-3. [Migrating from metaTOR 1.x](#migrating-from-metator-1x)
-4. [Contributions](#contributions)
-5. [References](#references)
-6. [Contact](#contact)
+**Documentation: <https://koszullab.github.io/metator/>**:
+[quickstart](https://koszullab.github.io/metator/quickstart/),
+[the end-to-end pipeline](https://koszullab.github.io/metator/end-to-end/),
+[concepts](https://koszullab.github.io/metator/concepts/),
+[CLI reference](https://koszullab.github.io/metator/cli/) and
+[file formats](https://koszullab.github.io/metator/formats/).
 
 ## Installation
 
-### With conda
-
-`conda` is the recommended way to install the latest `metator` release:
-
 ```sh
-conda create -n metator bioconda::metator
+conda create -n metator bioconda::metator   # recommended
+pip install metator                          # Python 3.10 to 3.14
 ```
 
-### With pip
-
-`metator` is on PyPI, with everything it runs: miComplete finds the marker
-genes of the clusters with Prodigal and HMMER through their Python bindings,
-pyrodigal and pyhmmer. metaTOR needs Python 3.10 to 3.14. Install it in an
-environment of its own, as pip may change the versions of packages that
-other tools rely on.
-
-```sh
-pip3 install metator
-```
-
-### Development version
-
-The development version is managed with [uv](https://docs.astral.sh/uv/):
-
-```sh
-git clone https://github.com/koszullab/metaTOR
-cd metaTOR
-uv sync
-uv run metator --help
-```
-
-See [CONTRIBUTING.md](https://github.com/koszullab/metaTOR/blob/master/CONTRIBUTING.md) to run the tests and checks.
+Docker images are at `ghcr.io/koszullab/metator`. See
+[Installation](https://koszullab.github.io/metator/installation/) for the
+development version.
 
 ## Usage
 
-metaTOR starts from a `.metacool` contact map of the contigs: a
-[cooler](https://github.com/open2c/cooler) file whose chromosomes are the
-contigs, which [hicstuff](https://github.com/koszullab/hicstuff) makes from the
-reads (`hicstuff pipeline -M metacool`) and
-[metacooler](https://github.com/js2264/metacooler) from pairs files
-(`metacooler create pairs`); `network` and `pipeline` also make it themselves,
-from the pairs files or the BAM files of the run. Every command takes the map
-as its first argument: the clustering steps, `mge` and `host` store what they
-find in it, so that the map is what the steps share, and it becomes the
-contact map of the clusters; `dump`, `export` and `report` only read it.
+metaTOR starts from a `.metacool` contact map of the contigs, which
+[hicstuff](https://github.com/koszullab/hicstuff) (4.0.0 or later) makes from
+the Hi-C reads:
 
 ```sh
-metator {network|partition|validation|pipeline|mge|host|dump|export|report} MAP [OPTIONS]
-metator {network|pipeline} PAIRS_OR_BAM... [OPTIONS]
+# The contact map of the contigs: hicstuff/sample.metacool
+hicstuff pipeline -g assembly.fa -e DpnII -M metacool -o hicstuff -P sample R1.fq.gz R2.fq.gz
+
+# The clusters: binning/sample.metacool, the contact map of the clusters
+metator pipeline hicstuff/sample.metacool -a assembly.fa -e DpnII -d depth.txt -o binning
 ```
+
+`metator pipeline` also takes pairs or BAM files in place of the map, and with
+`--mges mges.txt` it clusters the MGE contigs and finds their hosts. It writes,
+in `binning/`:
+
+- `sample.metacool`: the contact map of the clusters, with their quality;
+- `fasta/`, `cool/`, `tables/` and `plots/`: the MAGs, their contact maps, the
+  cluster summary and other tables, and quality plots;
+- `sample.report.html`, `sample.report.txt` and `sample.report_mqc.yaml`: the
+  report of the run, for a browser, as text, and for MultiQC;
+- `sample.metator_<date>.log`: the log.
 
 | Command | What it does |
 |---|---|
-| `network` | Builds the network of the contigs from the map (or makes the map first, from pairs or BAM files), normalizes it, and stores it in the map. |
-| `partition` | Partitions the network many times with Louvain or Leiden, and stores the core and overlapping clusters in the map. |
-| `validation` | Checks the overlapping clusters with miComplete, partitions the contaminated ones again, writes the FASTA files of the final clusters, and makes the map the contact map of the clusters. |
-| `pipeline` | Runs `network`, `partition` and `validation` in one command, from the map or from pairs or BAM files; with `--mges`, then `mge --reassign` and `host`. |
-| `mge` | Clusters the contigs of mobile genetic elements (MGEs) from their contacts, and stores the MGE clusters in the map. |
-| `host` | Finds the MAGs that host the MGE clusters, from their contacts, and stores them in the map. |
-| `dump` | Writes the tables of a run (contig data, cluster summary, binning, clustering rounds, network) from the map of its clusters. |
-| `export` | Writes the outputs of a run again (`fasta/`, `cool/`, `tables/`, `plots/`, the report) from the map of its clusters, and its assembly for the FASTA files. |
-| `report` | Writes the report of a run from the map of its clusters: `report.html`, a page with its numbers, tables and interactive plots; `report.txt`, the same as text; `report_mqc.yaml`, for MultiQC. |
+| `pipeline` | Runs `network`, `partition` and `validation`; with `--mges`, then `mge` and `host`. |
+| `network` | Builds the network of the contigs and stores it in the map. |
+| `partition` | Partitions the network many times with Louvain or Leiden. |
+| `validation` | Checks the clusters with miComplete, and partitions the contaminated ones again. |
+| `mge` | Clusters the contigs of mobile genetic elements. |
+| `host` | Finds the MAGs that host the MGE clusters. |
+| `dump` | Writes the tables of a run from the map of its clusters. |
+| `export` | Writes every output of a run again from the map of its clusters. |
+| `report` | Writes the report of a run from the map of its clusters. |
 
-`metator --help` lists the commands, `metator <command> --help` their options,
-and `metator --version` prints the version. A run writes its map to its output
-directory (`-o`), under the name of `MAP`, which it leaves as it was:
-metacooler copies `MAP` there, the run edits the copy, under its lock, and
-renames it into place once it is validated. `--inplace` updates `MAP` itself
-instead, and so does a run whose output directory holds `MAP` already (the
-steps of a run, one by one, in one output directory). [The contact map of the clusters](https://koszullab.github.io/metator/guides/metacool/)
-says what the map holds, how it is written, and what a run refuses.
-
-### From the reads to the clusters
-
-```sh
-# 1. The map of each library: one bin per restriction fragment, every contig
-#    in the genome __unbinned__.
-hicstuff pipeline -g assembly.fa -e DpnII -M metacool -o hicstuff_L1 -P L1 L1_R1.fq.gz L1_R2.fq.gz
-hicstuff pipeline -g assembly.fa -e DpnII -M metacool -o hicstuff_L2 -P L2 L2_R1.fq.gz L2_R2.fq.gz
-
-# 2. One map of both libraries, their contacts summed.
-metacooler merge hicstuff_L1/L1.metacool hicstuff_L2/L2.metacool -o sample.metacool
-
-# 3. The clusters: binning/sample.metacool, the contact map of the clusters.
-#    sample.metacool is left as it was.
-metator pipeline sample.metacool -a assembly.fa -e DpnII -d depth.txt -o binning
-
-# 4. The tables of the run, from the map.
-metator dump binning/sample.metacool -o tables
-
-# Or every output of the run again, from the map and the assembly.
-metator export binning/sample.metacool -a assembly.fa -o outputs
-```
-
-`hicstuff pipeline -M metacool` needs hicstuff 4.0.0 or later; with an
-earlier hicstuff, make the map from its pairs files,
-`<prefix>.valid_idx.pairs.gz`, with `metacooler create pairs`.
-metacooler makes the map from the pairs files of any aligner:
-
-```sh
-metacooler create pairs --pairs L1.pairs.gz --pairs L2.pairs.gz --bins 1000 --no-ps \
-    --assembly-name assembly -o sample.metacool
-```
-
-The map can have any bin size, from one bin per contig to fixed bins.
-[Other tools](https://koszullab.github.io/metator/other-tools/#from-the-reads-to-the-map) gives the details.
-
-### From pairs or BAM files
-
-`network` and `pipeline` make the map of the contigs themselves from the pairs
-files or the BAM files of the run, as metacooler does, one bin per contig, and
-sum the libraries: each argument is a file, a comma-separated list or a glob
-pattern. A BAM file holds both mates of its reads (paired-end alignments, as
-`bwa mem -5SP` writes them), or one mate each (as bowtie2 aligns them, one mate
-at a time): give the R1 files, then the R2 files. The pairs of a BAM file are
-the primary alignments of the two mates of each read, both aligned with a
-mapping quality of at least `-q` (30 by default), and neither flagged as a PCR
-duplicate nor as failing QC. The map goes to the output
-directory, named after `--prefix` or after the assembly, and becomes the map of
-the clusters.
-
-```sh
-# From the pairs files of two libraries: binning/sample.metacool.
-metator pipeline 'hicstuff_*/*.valid_idx.pairs.gz' -a assembly.fa -e DpnII -d depth.txt -p sample -o binning
-
-# From BAM files of both mates, one per library: binning/assembly.metacool.
-metator pipeline L1.bam,L2.bam -a assembly.fa -e DpnII -d depth.txt -o binning
-
-# From BAM files of one mate each: the R1 files, then the R2 files.
-metator pipeline 'L*_R1.bam' 'L*_R2.bam' -a assembly.fa -e DpnII -d depth.txt -o binning
-```
-
-[The inputs of a run](https://koszullab.github.io/metator/cli/#inputs) gives
-the details.
-
-### Step by step
-
-The three steps of `pipeline` can run one by one, in one output directory,
-which gives the map that `pipeline` writes: the first writes the map there,
-and the next ones update it in place.
-
-```sh
-# 1. The network, stored in binning/sample.metacool.
-metator network sample.metacool -a assembly.fa -e DpnII -d depth.txt -o binning
-# 2. The partition: the map stores its core and overlapping clusters.
-metator partition binning/sample.metacool -o binning
-# 3. The validation: the final clusters. The map becomes the map of the clusters.
-metator validation binning/sample.metacool -a assembly.fa -o binning
-```
-
-
-### Outputs
-
-**In the output directory** (`-o`): the map of the run, named as `MAP`;
-`fasta/mags_with-mges/`, one FASTA file per final cluster; `plots/`, the plots
-of the quality of the clusters, as PDF files (their completeness and
-contamination, and the size of each quality class); from `pipeline`,
-`fasta/mags/`, each MAG as its contigs and stitched (one record, its contigs
-joined by 200 `N`), `cool/`, a balanced cool file per MAG (with the MGE
-clusters that it hosts), `tables/`, the tables of `metator dump`, and the
-report of the run: `report.html`, a page to read it with, its numbers, its
-MAGs and their files, and interactive plots; `report.txt`, the same as text;
-and `report_mqc.yaml`, which [MultiQC](https://multiqc.info) gathers over the
-runs of a project; and the log of the run,
-`metator_<command>_<date>.log`, which starts with the version, the command line
-and the value of each option, and ends with what the run wrote and how long it
-took.
-
-**In the map**, which `validation` and `pipeline` make the contact map of the
-clusters:
-
-* one genome per final cluster, and `__unbinned__` for the contigs in no
-  cluster: the contigs grouped genome by genome, the longest first;
-* the genomes table holds the summary of the clusters (size, GC content,
-  miComplete's completeness and redundancy, N50, Hi-C and shotgun abundances);
-* the contigs table holds what the network measured on each contig
-  (`GC_content`, `Hit`, `Shotgun_coverage`, `Restriction_site`), and the
-  contact statistics of its reads (`qc_intra_contig_short`,
-  `qc_intra_contig_long`);
-* the bins table holds the normalization of the network, as the weights
-  `metator_<normalization>`, the way cooler stores balancing weights;
-* the `/clusters` group holds every clustering round of the run (`core`,
-  `overlapping`, `recursive_<k>`, `final`, and `mge` after `metator mge`);
-* the metadata hold, under the `metator` key, one entry per step: its version,
-  command line, parameters, and what it read of the map.
-
-cooler and the tools built on it read the map as any `.cool` file, and
-metacooler adds the genomes:
-
-```python
-import cooler
-import metacooler
-
-clr = cooler.Cooler("binning/sample.metacool")
-clr.matrix(balance="metator_empirical_hit")  # the normalized contacts
-mc = metacooler.MetaCooler("binning/sample.metacool")
-mc.genomes  # one row per cluster: the summary of the clusters
-mc.contigs  # one row per contig: its GC content, hits... and its cluster
-```
-
-**The tables of a run**, which `metator dump MAP -o DIR` writes from the map
-of the clusters: `contig_data_final.txt`, `cluster_summary.txt`,
-`binning.txt` (which anvi'o imports), `clusters.txt`, `cluster_members.txt`
-and `network.txt`. A run keeps the first five in its temporary directory,
-which `--no-clean-up` (`-N`) keeps, with miComplete's results and the FASTA
-files of the clusters it checked; `network.txt` comes from the map only. [File formats](https://koszullab.github.io/metator/formats/) describes each one.
-
-### Mobile genetic elements
-
-![mge](https://raw.githubusercontent.com/koszullab/metaTOR/master/docs/images/metator_mge.png)
-
-`metator mge MAP -a assembly.fa -m mges.txt` clusters the contigs that the list
-`mges.txt` names as MGEs, from the contacts of the map between them, and those
-within each, between reads more than 1 kb apart, which the map counts when
-hicstuff or metacooler made it from the pairs (metacooler 0.4.0 or later). It
-reads the map after `metator network`, `pipeline` or `validation`, writes
-`fasta/mges/`, each MGE cluster (`MetaTOR_MGE_00001`...) as its contigs and
-stitched (its contigs joined by 200 `N`), and stores the MGE clusters in the
-map of its output
-directory, as the round `mge` of its clustering rounds (`-o binning` updates
-`binning/sample.metacool` in place). `metator host MAP` then finds the MAGs
-that host each MGE cluster, those that its contigs are in contact with, writes
-them in `tables/mge_hosts.txt`, and stores them in the map. `metator pipeline
-MAP --mges mges.txt` runs both after the validation, as its last two steps
-(`mge --reassign`, which makes each MGE cluster a genome of the map, then
-`host`); without `--mges`, it has no steps `mge` and `host`, and says so. Its
-last step, `export`, writes the outputs of the run from its map, as
-`metator export` does. See
-[Clustering mobile genetic elements](https://koszullab.github.io/metator/guides/mge/).
+`metator --help` lists the commands, and `metator <command> --help` their
+options. The [quickstart](https://koszullab.github.io/metator/quickstart/)
+runs metaTOR on the test data of this repository.
 
 ## Migrating from metaTOR 1.x
 
-metaTOR 2.0 aligns no reads: hicstuff makes the map from them, and `network`
-and `pipeline` make it from the pairs files or the BAM files of a run. It
-removed the commands that did what hicstuff, metacooler,
-instaGRAAL or pairix do (`qc`, `contactmap`, `metacool`, `scaffold`, `pairs`)
-and the heatmap and the GC and coverage plots of the clusters: [Other tools](https://koszullab.github.io/metator/other-tools/) says what replaces each one.
-Its outputs are named after clusters, where 1.x named them after bins
-(`cluster_summary.txt` was `bin_summary.txt`). [Migrating to 2.0](https://koszullab.github.io/metator/migration/)
-lists every change to the command line and the outputs, and the
-[changelog](https://koszullab.github.io/metator/changelog/) has the details.
+metaTOR 2.0 no longer aligns reads, and removed the commands that hicstuff,
+metacooler, instaGRAAL or pairix replace (`qc`, `contactmap`, `metacool`,
+`scaffold`, `pairs`). [Migrating to 2.0](https://koszullab.github.io/metator/migration/)
+lists every change, and [Other tools](https://koszullab.github.io/metator/other-tools/)
+what replaces each command.
 
-## Contributions
+## Contributing
 
-We welcome contributions to the project. Please refer to the [CONTRIBUTING.md](https://github.com/koszullab/metaTOR/blob/master/CONTRIBUTING.md) file for more information.
+Contributions are welcome: see
+[CONTRIBUTING.md](https://github.com/koszullab/metaTOR/blob/master/CONTRIBUTING.md).
 
-## References
+## Citation
+
+> Lyam Baudry, Théo Foutel-Rodier, Agnès Thierry, Romain Koszul and Martial
+> Marbouty. 2019. MetaTOR: A Computational Pipeline to Recover High-Quality
+> Metagenomic Bins From Mammalian Gut Proximity-Ligation (meta3C) Libraries.
+> *Frontiers in Genetics* 10: 753.
+> <https://doi.org/10.3389/fgene.2019.00753>
+
+Related work ([BibTeX and the tools metaTOR runs](https://koszullab.github.io/metator/citation/)):
 
 * [Metagenomic chromosome conformation capture (meta3C) unveils the diversity of chromosome organization in microorganisms](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4381813/), Martial Marbouty, Axel Cournac, Jean-François Flot, Hervé Marie-Nelly, Julien Mozziconacci, and Romain Koszul. eLife, 2014.
 * [Scaffolding bacterial genomes and probing host-virus interactions in gut microbiome by proximity ligation (chromosome capture) assay](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5315449/), Martial Marbouty, Lyam Baudry, Axel Cournac, and Romain Koszul. Science Advances, 2017.
 * [MetaHiC phage-bacteria infection network reveals active cycling phages of the healthy human gut](https://elifesciences.org/articles/60608), Martial Marbouty, Agnès Thierry, Gaël A Millot, Romain Koszul. eLife, 2021.
-* [Phages with a broad host range are common across ecosystems](https://hal.science/pasteur-05269627), Amaury Bignaud, Devon Conti, Agnès Thierry, Jacques Serizay, Karine Labadie, Julie Poulain, Olivia Cheny, Maritrini Colón-González, Laurent Debarbieux, Marianna Guerrero-Osornio, Sophie Helaine, Peter Hill, Gwenaelle Le Tinier, Gael A Millot, Lucia Morales, Andrés Parada, Nadia Riera, Gregorio Iraola, Romain Koszul & Martial Marbouty.
-Nature Microbiology, 2025
+* [Phages with a broad host range are common across ecosystems](https://hal.science/pasteur-05269627), Amaury Bignaud, Devon Conti, Agnès Thierry, Jacques Serizay, Karine Labadie, Julie Poulain, Olivia Cheny, Maritrini Colón-González, Laurent Debarbieux, Marianna Guerrero-Osornio, Sophie Helaine, Peter Hill, Gwenaelle Le Tinier, Gael A Millot, Lucia Morales, Andrés Parada, Nadia Riera, Gregorio Iraola, Romain Koszul & Martial Marbouty. Nature Microbiology, 2025.
+
+## License
+
+metaTOR is distributed under the GNU General Public License v3 (GPLv3): see
+[LICENSE](https://github.com/koszullab/metaTOR/blob/master/LICENSE).
 
 ## Contact
-
-### Authors
 
 * martial.marbouty@pasteur.fr
 * jacques.serizay@pasteur.fr
@@ -297,7 +116,5 @@ Nature Microbiology, 2025
 * amaury.bignaud@pasteur.fr
 * lyam.baudry@pasteur.fr
 * thfoutel@pasteur.fr
-
-### Research lab
 
 [Spatial Regulation of Genomes](https://research.pasteur.fr/en/team/spatial-regulation-of-genomes/) (Institut Pasteur, Paris)
