@@ -62,7 +62,12 @@ number of its proteins that miComplete keeps when above one
 contig (a hit in the table of hmmsearch) but whose every hit it drops, which
 still counts in its weighted completeness, as miComplete counts the markers
 it sees there, and in none of its other numbers. Both columns hold text, an
-empty one for a contig without a marker.
+empty one for a contig without a marker. The markers entry of the map
+records the marker sets that they were found with, their markers and their
+weights, which turn them into numbers again (see map_sets and
+stored_quality): those of the miComplete that found them, which the one
+installed later, whose sets find new markers (see marker_set), may weigh
+otherwise.
 """
 
 import functools
@@ -772,10 +777,16 @@ def kept_quality(qualities):
     return KINGDOMS["Arch131"], archaea
 
 
-def quality_of(texts):
+def quality_of(texts, sets):
     """The numbers that miComplete gives a group of contigs, from their markers
     as a map stores them (texts: by marker set, the markers of each contig, see
-    encode_markers), as metaTOR keeps them (see kept_quality).
+    encode_markers), with the marker sets that they were found with (sets: by
+    set, its markers and their weights), as metaTOR keeps them (see
+    kept_quality). For the markers that a map stores, the sets are those that
+    its markers entry records (see map_sets and stored_quality): those of the
+    miComplete that found them, which the one installed now may weigh
+    otherwise; for markers found now (see group_markers), those of the
+    installed miComplete (see entry_sets).
 
     Returns
     -------
@@ -783,14 +794,114 @@ def quality_of(texts):
         Bacteria or Archaea, and the Quality of that set."""
     qualities = {}
     for name in MARKER_SETS:
-        markers = marker_set(name)
         counts = sum_markers(decode_markers(text) for text in texts[name])
-        qualities[name] = marker_quality(counts, markers.markers, markers.weights)
+        qualities[name] = marker_quality(counts, sets[name]["markers"], sets[name]["weights"])
     return kept_quality(qualities)
 
 
 def entry_sets():
-    """The marker sets as the markers entry of the metadata of a map records
-    them (see metator.cli.markers_entry): by set, its column in the contigs
-    table, its markers in the order of its HMMs and their weights."""
+    """The marker sets of the miComplete installed now, which metator markers
+    finds new markers with, as the markers entry of the metadata of a map
+    records them (see metator.cli.markers_entry): by set, its column in the
+    contigs table, its markers in the order of its HMMs and their weights."""
     return {name: {"column": marker_column(name), **marker_set(name).entry()} for name in MARKER_SETS}
+
+
+def _named(mc):
+    """The map mc (opened) as its messages name it: its file, or the URI of an
+    entry of a .mmetacool collection (file.mmetacool::entries/NAME)."""
+    return mc.uri.removesuffix("::/")
+
+
+def map_sets(mc):
+    """The marker sets that the marker genes of the contigs of a map were found
+    with, as its markers entry records them (see entry_sets and
+    metator.metacool.markers_entry): by set, in the order of MARKER_SETS, its
+    column in the contigs table (column), its markers (markers) and their
+    weights (weights). The numbers of a group of contigs of the map come from
+    them (see quality_of and stored_quality), not from the files of the
+    miComplete installed now, which finds new markers (see marker_set): its
+    weights, or its markers, may be other than those of the miComplete that
+    found the markers of the map.
+
+    Parameters
+    ----------
+    mc : metacooler.MetaCooler
+        The map, opened.
+
+    Returns
+    -------
+    dict
+        By set name: its column, its markers and their weights.
+
+    Raises
+    ------
+    metator.metacool.MetacoolError
+        If the map records no such sets: it holds no markers that metator
+        markers found, or its entry lacks a set, its column, or a weight (a
+        number) for each of its markers (by name)."""
+    entry = mtmc.markers_entry(mc)
+    sets = entry.get("sets") if entry is not None else None
+    if not isinstance(sets, dict):
+        raise mtmc.MetacoolError(
+            f"{_named(mc)} records no marker sets of metator markers (the sets of the markers entry of its metator "
+            "metadata): run metator markers on it first."
+        )
+    found = {}
+    for name in MARKER_SETS:
+        spec = sets.get(name) if isinstance(sets.get(name), dict) else {}
+        markers, weights = spec.get("markers"), spec.get("weights")
+        readable = (
+            isinstance(spec.get("column"), str)
+            and isinstance(markers, list)
+            and isinstance(weights, list)
+            and len(markers) == len(weights)
+            and all(isinstance(marker, str) for marker in markers)
+            and all(isinstance(weight, (int, float)) and not isinstance(weight, bool) for weight in weights)
+        )
+        if not readable:
+            raise mtmc.MetacoolError(
+                f"The markers entry of {_named(mc)} records no marker set {name} that metaTOR reads (its column, its markers "
+                "by name, and a weight for each): run metator markers on the map again."
+            )
+        found[name] = {"column": spec["column"], "markers": list(markers), "weights": [float(weight) for weight in weights]}
+    return found
+
+
+def stored_quality(mc, contigs):
+    """The numbers that miComplete gives a group of contigs of a map (mc, opened;
+    contigs: their names, each counted once), from the markers that the map
+    stores, in the columns of its contigs table that its markers entry names,
+    with the marker sets that it records (see map_sets), as metaTOR keeps
+    them (see quality_of): those of a genome of the map as metator markers
+    found its genes, and an estimate of those of any other group (see the
+    module's docstring).
+
+    Returns
+    -------
+    tuple
+        Bacteria or Archaea, and the Quality of that set.
+
+    Raises
+    ------
+    metator.metacool.MetacoolError
+        If the map records no marker sets (see map_sets), lacks the column of
+        one, or a contig of the group."""
+    sets = map_sets(mc)
+    with mtmc.read_errors(_named(mc)):
+        table = mc.contigs
+    table = table.set_index(table["name"].astype(str))
+    names = list(dict.fromkeys(str(name) for name in contigs))
+    missing = [name for name in names if name not in table.index]
+    if missing:
+        raise mtmc.MetacoolError(
+            f"{len(missing)} contig(s) of the group are not contigs of {_named(mc)}: {mtmc._shown(missing)}."
+        )
+    absent = [spec["column"] for spec in sets.values() if spec["column"] not in table.columns]
+    if absent:
+        raise mtmc.MetacoolError(
+            f"{_named(mc)} lacks the column(s) {', '.join(absent)} of its contigs table that its markers entry names: run "
+            "metator markers on it again."
+        )
+    texts = {name: list(table.loc[names, spec["column"]]) for name, spec in sets.items()}
+    return quality_of(texts, sets)

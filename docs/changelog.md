@@ -133,11 +133,12 @@ tools](other-tools.md) says what replaces each removed command. Below,
   Summed over the contigs of a genome as `markers` found its genes (trained
   on its contigs, in map order), they give miComplete's completeness,
   redundancy, weighted completeness and weighted redundancy exactly
-  (`metator.markers.marker_quality`); over any other group of contigs (a
-  curation's merge or move), an estimate, which miComplete's own run on the
-  group can differ from (23 of 28 curated groups of a mock community exact;
-  the merge of the MAGs of two organisms, a redundancy of 1.6667 against
-  miComplete's 1.1827).
+  (`metator.markers.stored_quality`, with the marker sets that the map
+  records, not those of the installed miComplete); over any other group of
+  contigs (a curation's merge or move), an estimate, which miComplete's own
+  run on the group can differ from (23 of 28 curated groups of a mock
+  community exact; the merge of the MAGs of two organisms, a redundancy of
+  1.6667 against miComplete's 1.1827).
   `pipeline` runs it after the validation (`[4/5] markers`); every other run
   keeps them. The entry records the binning that the genes were found in
   (`assignment_digest`, and the genomes trained on, `trained_genomes`): a
@@ -184,7 +185,8 @@ tools](other-tools.md) says what replaces each removed command. Below,
   `network` stored it (e.g. after `metacooler merge`).
 - Python API: `metator.dump`; `metator.clusters`; `metator.host`
   (`find_hosts`...); `metator.markers` (`contig_markers`, `group_markers`,
-  `marker_quality`, `quality_of`, `encode_markers`, `decode_markers`...);
+  `marker_quality`, `quality_of`, `stored_quality`, `map_sets`,
+  `encode_markers`, `decode_markers`...);
   `metator.metacool.write_map`, `map_rounds`, `read_partition`,
   `holds_hosts`, `hosts_network`, `holds_markers`, `markers_entry`,
   `markers_predate`, `assignment_digest`, `map_assignment`;

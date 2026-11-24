@@ -328,7 +328,7 @@ redundancy that miComplete gives it, with no gene to find again; summed over
 any other group of contigs, an estimate of those of a bin of them (see
 below). [`pipeline`](#pipeline) runs it after the validation. **API:**
 `metator.markers.contig_markers`, `metator.markers.marker_quality`,
-`metator.metacool.write_map`.
+`metator.markers.stored_quality`, `metator.metacool.write_map`.
 
 ```console
 metator markers [OPTIONS] MAP

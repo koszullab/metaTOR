@@ -183,7 +183,7 @@ def test_the_markers_of_a_bin_give_the_numbers_of_micomplete(name, oracle):
         assert mtmk.marker_quality(counts, marker_set.markers, marker_set.weights) == _row(tables[markers], name), markers
     texts = {markers: [mtmk.encode_markers(contig) for contig in found.markers.get(markers, {}).values()]
              for markers in mtmk.MARKER_SETS}  # fmt: skip
-    kingdom, quality = mtmk.quality_of(texts)
+    kingdom, quality = mtmk.quality_of(texts, mtmk.entry_sets())
     assert (kingdom, quality) == (tables["Markers"].loc[name, "Markers"], _row(tables["Markers"], name))
     assert (found.proteins or 0) == tables["Bact105"].loc[name, "CDs"]
 
@@ -375,6 +375,12 @@ def _genome_texts(metacool, genome):
     return {name: list(contigs[mtmk.marker_column(name)]) for name in mtmk.MARKER_SETS}
 
 
+def _genome_contigs(metacool, genome):
+    """The contigs of a genome of the map, by name, in its order."""
+    names, genomes = mtmc.map_assignment(metacooler.MetaCooler(str(metacool)))
+    return list(names[genomes == genome])
+
+
 @pytest.fixture
 def marker_run(oracle, tmp_path):
     """A private copy of the map of the tests, its assembly, and the output
@@ -409,7 +415,7 @@ def test_markers_stores_the_markers_of_the_contigs(output, marker_run, oracle, t
     metacooler.validate(str(written), full=True)
     tables = oracle["micomplete"]
     for genome in MAP_GENOMES:
-        kingdom, quality = mtmk.quality_of(_genome_texts(written, genome))
+        kingdom, quality = mtmk.stored_quality(metacooler.MetaCooler(str(written)), _genome_contigs(written, genome))
         assert (kingdom, quality) == (tables["Markers"].loc[genome, "Markers"], _row(tables["Markers"], genome)), genome
     table, entry = _stored(written)
     # The markers of Arch131 of the contigs in metagenome mode, as a bin of
@@ -529,7 +535,10 @@ def test_a_set_without_any_marker_is_stored_as_empty_texts(marker_run, tmp_path,
     assert all(table[column].tolist() == [""] * len(table) for column in mtmc.MARKER_COLUMNS)
     with h5py.File(metacool, "r") as handle:
         assert [handle["contigs"][column].dtype.kind for column in mtmc.MARKER_COLUMNS] == ["S", "S"]
-    assert mtmk.quality_of(_genome_texts(metacool, "binA")) == ("Bacteria", (0.0, 0.0, 0.0, 0.0))
+    assert mtmk.stored_quality(metacooler.MetaCooler(str(metacool)), _genome_contigs(metacool, "binA")) == (
+        "Bacteria",
+        (0.0, 0.0, 0.0, 0.0),
+    )
     (kept,) = tmp.iterdir()
     rows = pd.read_csv(kept / mtmc.MARKERS_FILE, sep="\t", keep_default_na=False)
     assert list(rows["Name"]) == [*table.index, mtmc.NO_CONTIG]
@@ -699,6 +708,72 @@ def test_write_map_stores_the_markers_alone(marker_run):
         mtmc.write_map(str(metacool), str(metacool), markers=markers, rounds=mtcl.Rounds().tables(), force=True)
     with pytest.raises(ValueError, match="stores the hosts of the MGE clusters of metator host alone"):
         mtmc.write_map(str(metacool), str(metacool), markers=markers, hosts=({}, {}), force=True)
+
+
+def test_stored_markers_count_with_the_sets_of_the_map(marker_run, run_cli):
+    """The numbers of a group of contigs of a map come from the marker sets that
+    its markers entry records, those of the miComplete that found its markers,
+    and from the columns that it names, not from the files of the miComplete
+    installed now: an entry whose weights are not the installed ones gives
+    the weighted numbers of its own weights. A contig counts once."""
+    metacool, assembly, out = marker_run
+    run_cli("markers", metacool, "-a", assembly, "--inplace", "-o", out)
+    installed = mtmk.entry_sets()
+
+    def weigh_one(entry):
+        for spec in entry["sets"].values():
+            spec["weights"] = [1] * len(spec["markers"])
+
+    edit_metator_entry(metacool, "markers", weigh_one)
+    mc = metacooler.MetaCooler(str(metacool))
+    sets = mtmk.map_sets(mc)
+    for name in mtmk.MARKER_SETS:
+        assert sets[name] == {"column": installed[name]["column"], "markers": installed[name]["markers"],
+                              "weights": [1.0] * len(installed[name]["markers"])}  # fmt: skip
+        assert sets[name]["weights"] != installed[name]["weights"]
+    contigs = _genome_contigs(metacool, "binA")
+    texts = _genome_texts(metacool, "binA")
+    counts = {name: mtmk.sum_markers(mtmk.decode_markers(text) for text in texts[name]) for name in mtmk.MARKER_SETS}
+    # Weighed one each, the weighted completeness of a set is the number of its
+    # markers seen.
+    expected = mtmk.kept_quality(
+        {name: mtmk.marker_quality(counts[name], sets[name]["markers"], sets[name]["weights"]) for name in counts}
+    )
+    kept = "Arch131" if expected[0] == "Archaea" else "Bact105"
+    assert expected[1].weighted_completeness == len(counts[kept]) > 1
+    assert mtmk.stored_quality(mc, contigs) == mtmk.quality_of(texts, sets) == expected
+    assert mtmk.stored_quality(mc, [*contigs, contigs[0]]) == expected
+    assert mtmk.quality_of(texts, installed) != expected
+
+
+@pytest.mark.parametrize("case", ["no markers", "a set without weights", "a contig of no map", "a column gone"])
+def test_stored_markers_refused(case, marker_run, run_cli):
+    """What the numbers of a group of contigs of a map cannot be counted from: a
+    map without markers, an entry without the weights of a set, a contig that
+    the map lacks, a column that the entry names and the map lacks."""
+    metacool, assembly, out = marker_run
+    contig = "Contig_209305"
+    if case != "no markers":
+        run_cli("markers", metacool, "-a", assembly, "--inplace", "-o", out)
+    if case == "a set without weights":
+        edit_metator_entry(metacool, "markers", lambda entry: entry["sets"]["Arch131"].pop("weights"))
+    elif case == "a contig of no map":
+        contig = "Contig_0"
+    elif case == "a column gone":
+        edit_metator_entry(metacool, "markers", lambda entry: entry["sets"]["Bact105"].update(column="markers_gone"))
+    mc = metacooler.MetaCooler(str(metacool))
+    message = {
+        "no markers": f"{metacool} records no marker sets of metator markers (the sets of the markers entry of its "
+        "metator metadata): run metator markers on it first.",
+        "a set without weights": f"The markers entry of {metacool} records no marker set Arch131 that metaTOR reads (its "
+        "column, its markers by name, and a weight for each): run metator markers on the map again.",
+        "a contig of no map": f"1 contig(s) of the group are not contigs of {metacool}: 'Contig_0'.",
+        "a column gone": f"{metacool} lacks the column(s) markers_gone of its contigs table that its markers entry names: "
+        "run metator markers on it again.",
+    }[case]
+    with pytest.raises(mtmc.MetacoolError) as refused:
+        mtmk.stored_quality(mc, [contig])
+    assert str(refused.value) == message
 
 
 def test_holds_markers(marker_run, run_cli, tmp_path):

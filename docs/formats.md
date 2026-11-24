@@ -411,16 +411,25 @@ are an estimate: see below), in each set (`metator.markers.marker_quality`):
 metaTOR keeps the numbers of Bact105, unless those of Arch131 have the higher
 weighted completeness (`Bacteria` or `Archaea` in the column `Markers` of
 miComplete's results; `metator.markers.kept_quality`).
-`metator.markers.quality_of` does it all, from the texts of the columns:
+
+The markers, their weights and the columns are those that the entry records
+(`sets`): those of the miComplete that found the markers, not the files of
+the miComplete installed now, which may weigh its markers otherwise.
+`metator.markers.stored_quality` does it all from the map, with the sets of
+its entry (`metator.markers.map_sets`; `quality_of` counts the texts of a
+group with them):
 
 ```python
 import metacooler
 import metator.markers as mtmk
 
 mc = metacooler.MetaCooler("binning/sample.metacool")
+group = ["NODE_522", "NODE_2487"]
+print(mtmk.stored_quality(mc, group))
+
+# The same, set by set, from the entry of the map:
 sets = mc.metadata["metator"]["markers"]["sets"]
 contigs = mc.contigs.set_index("name")
-group = ["NODE_522", "NODE_2487"]
 for name, spec in sets.items():
     counts = mtmk.sum_markers(mtmk.decode_markers(text) for text in contigs.loc[group, spec["column"]])
     print(name, mtmk.marker_quality(counts, spec["markers"], spec["weights"]))
