@@ -2501,6 +2501,36 @@ def test_the_plots_of_an_earlier_run(command, force, stub_pipeline, tmp_path, ru
     assert (tmp_path / "kept.pdf").read_text() == "the target of a link\n"
 
 
+@pytest.mark.parametrize("force", [False, True], ids=["refused", "-F"])
+def test_the_tables_of_an_earlier_run(force, stub_pipeline, tmp_path, run_cli):
+    """The tables of an earlier run in tables/, which a pipeline run writes again
+    from the map of its clusters (metator dump), are refused without -F, before
+    any work, and removed with -F once the run is checked: they would describe
+    another map, should the run stop before it writes its own. The other files
+    of tables/ are left as they are, with or without -F."""
+    metacool = _contig_map(tmp_path / "input.metacool")
+    out = tmp_path / "out"
+    tables = out / "tables"
+    tables.mkdir(parents=True)
+    (tables / "binning.txt").write_text("an earlier run's\n")
+    (tables / "notes.txt").write_text("the user's\n")
+    if not force:
+        with pytest.raises(ValueError):
+            run_cli("pipeline", *_map_run(metacool, tmp_path))
+        assert (tables / "binning.txt").read_text() == "an earlier run's\n"
+        assert _no_step(stub_pipeline) and not (out / "fasta").exists()
+        (log,) = out.glob("metator_pipeline_*.log")
+        assert (
+            f"ERROR :: {tables} holds the tables of an earlier run ('binning.txt'), which this run writes again: give -F "
+            "to replace them, or give the run another output directory with -o."
+        ) in log.read_text()
+    else:
+        run_cli("pipeline", *_map_run(metacool, tmp_path, "-F"))
+        # Removed, for the run to write them again (its stub outputs write none).
+        assert not os.path.lexists(tables / "binning.txt") and stub_pipeline["write_outputs"]
+    assert (tables / "notes.txt").read_text() == "the user's\n"
+
+
 @pytest.mark.parametrize("command", ["validation", "pipeline"])
 @pytest.mark.parametrize("what", ["plots, a file", "a plot, a directory"])
 def test_where_the_run_draws_no_plot(command, what, stub_pipeline, tmp_path, run_cli):
