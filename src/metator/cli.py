@@ -3116,13 +3116,13 @@ def markers(
     completeness only; an empty text for none), and the run, how its genes were
     found, with the markers and the weights of each set, under the markers entry
     of the metator metadata of the map, in place of those of an earlier run.
-    Every other run keeps them, those that regroup the contigs too (validation,
-    pipeline, mge --reassign): they are facts about the contigs, found in the
-    genomes as the run read them. [cyan]metator pipeline[/] runs this step after
-    the validation, on the map of its clusters. The run writes the map to the
-    output directory, under the name of MAP, which it leaves as it was
-    (--inplace updates MAP in place, and so does a run in the directory of MAP),
-    and locks it while it writes it.
+    [cyan]metator pipeline[/] runs this step after the validation, on the map
+    of its clusters, and so replaces them too. Every other run keeps them,
+    those that regroup the contigs too (validation, mge --reassign): they are
+    facts about the contigs, found in the genomes as the run read them. The
+    run writes the map to the output directory, under the name of MAP, which
+    it leaves as it was (--inplace updates MAP in place, and so does a run in
+    the directory of MAP), and locks it while it writes it.
     """
     outdir = outdir or "."
     make_outdir(outdir)

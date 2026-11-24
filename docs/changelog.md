@@ -133,8 +133,8 @@ tools](other-tools.md) says what replaces each removed command. Below,
   Summed over any group of contigs they give miComplete's completeness,
   redundancy, weighted completeness and weighted redundancy
   (`metator.markers.marker_quality`), those of a genome exactly.
-  `pipeline` runs it after the validation (`[4/5] markers`); every run keeps
-  them. See [Marker genes of the contigs](formats.md#marker-genes-of-the-contigs).
+  `pipeline` runs it after the validation (`[4/5] markers`); every other run
+  keeps them. See [Marker genes of the contigs](formats.md#marker-genes-of-the-contigs).
 - **`metator host MAP`** finds the MAGs that host the MGE clusters stored by
   `mge`: at least `--min-share` (10%) of the MGE cluster's signal with the
   MAGs, and `--min-contigs` (5) contigs in contact. It writes

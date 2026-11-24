@@ -353,6 +353,14 @@ NODE_2487	Cons_hypoth95*0,Ribosomal_S9	Ribosomal_S9
   nowhere else.
 - Both columns hold text, a fixed-length ASCII string dataset, even when no
   contig of the map has a marker of a set: an empty text on every contig.
+- Each column is as wide as its longest text, that of the contig with the
+  most markers (852 and 547 bytes on a map of 20,566 contigs; 105 KB and
+  73 KB on disk, compressed). cooler, when it opens a map, and metacooler,
+  when it reads its contigs table, decode every column of the table at 4
+  bytes a character: on that map, the two columns make each take about 0.3 s
+  and 150 MB more, and `metator export`, which reads the map once per MAG,
+  70 s in place of 47 s. The cost grows with the number of contigs (some 3 s
+  and 1.5 GB a read for 200,000 contigs).
 - `metacooler dump -t contigs -H MAP` writes both columns with the rest of
   the contigs table; the run writes them in its temporary directory too
   (`contig_markers.txt`, which `-N` keeps).

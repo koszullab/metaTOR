@@ -202,7 +202,7 @@ metator markers binning/sample.metacool -a assembly.fa -o binning
 | `network MAP` | The network: the `GC_content`, `Hit`, `Shotgun_coverage` and `Restriction_site` columns, the weights of its normalization, and the `network` metadata entry, replacing those of an earlier network. Clusters and genomes are left as they were |
 | `partition MAP` | The rounds `core` and `overlapping`, replacing the rounds the map held, and the `partition` metadata entry. No miComplete columns, no table, no FASTA file. Genomes and contigs are left as they were until `validation` |
 | `validation MAP` | The map of the clusters, as `pipeline MAP` writes it: the final clusters as genomes, every round, the miComplete columns of the overlapping clusters it checked, and the network again, with the contigs grouped by cluster. The FASTA files of the overlapping clusters that reach `--size` go to its temporary directory, for miComplete |
-| `markers MAP` | The marker genes of each contig, found in its final cluster: the columns `markers_Bact105` and `markers_Arch131` and the `markers` metadata entry, which every later run keeps |
+| `markers MAP` | The marker genes of each contig, found in its final cluster: the columns `markers_Bact105` and `markers_Arch131` and the `markers` metadata entry, which every later run keeps but `markers` and `pipeline`, which find them again |
 | `mge MAP --reassign`, then `host MAP` | The MGE clusters, as genomes, and their hosts, as `pipeline MAP --mges` does (see [mge on the map](#mge-on-the-map)) |
 
 - **Seeds.** Louvain and Leiden draw other random numbers at each run, so

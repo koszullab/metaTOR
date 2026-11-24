@@ -355,14 +355,20 @@ metator markers [OPTIONS] MAP
   `metator` → `markers` in the metadata, with how the genes were found and
   the markers and weights of both sets (see
   [Marker genes of the contigs](formats.md#marker-genes-of-the-contigs)).
-  They replace those of an earlier run.
+  They replace those of an earlier run, and so does `pipeline`, whose step
+  `markers` finds them again in its clusters.
 - **Every other run keeps them**, those that regroup the contigs too
-  (`validation`, `pipeline`, `mge --reassign`, `metacooler reassign`): they are
-  facts about the contigs. Their genes were found in the genomes as the run
-  read them: run `markers` again for the numbers that miComplete gives the
-  genomes as they are now.
+  (`validation`, `mge --reassign`, `metacooler reassign`): they are facts
+  about the contigs. Their genes were found in the genomes as the run read
+  them: run `markers` again for the numbers that miComplete gives the genomes
+  as they are now.
 - **Refuses** an assembly that lacks a contig of the map, gives one another
   length, or names a contig by several records, before any work.
+- **On a map of many contigs**, the two columns cost time and memory each
+  time cooler opens the map, or metacooler reads its contigs table: about
+  0.3 s and 150 MB on a map of 20,566 contigs, in proportion to their number,
+  and `export` reads the map once per MAG (see
+  [Marker genes of the contigs](formats.md#marker-genes-of-the-contigs)).
 
 | Option | Default | Description |
 |---|---|---|

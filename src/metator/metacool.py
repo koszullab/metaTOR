@@ -711,8 +711,9 @@ HOST_GENOME_COLUMNS = ("n_mges", "mges")
 # the marker genes of each contig, in each marker set of miComplete, as
 # columns of its contigs table, and the run, under the markers entry of its
 # metator metadata, with the markers and the weights of each set. They are
-# facts about the contigs, which no run changes: every run keeps them, those
-# that regroup the contigs too (validation, pipeline, mge --reassign), as a
+# facts about the contigs: metator markers, and the step markers of pipeline,
+# replace them (metator.cli.REPLACES_MARKERS); every other run keeps them,
+# those that regroup the contigs too (validation, mge --reassign), as a
 # curation by hand does. Their genes were found in the genomes of the map as
 # the run read them; metator markers run again finds them in the genomes as
 # they are.
@@ -1216,8 +1217,8 @@ def write_map(
         than the one stored now gave (a network run).
     markers : Markers, optional
         The marker genes of the contigs of the map (metator markers), stored
-        alone (see _store_markers). Every run keeps those that the map holds
-        (see MARKERS_ENTRY).
+        alone (see _store_markers). Every other write keeps those that the
+        map holds (see MARKERS_ENTRY).
     force : bool
         Whether to replace an existing outfile: the input map itself, which a
         run updates in place, or another file.
