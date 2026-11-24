@@ -1090,8 +1090,10 @@ def test_mge_reassign_makes_genomes_of_the_mge_clusters(hosted_run, run_cli, log
     assert list(after.loc[kept, "mge"]) == ["" if genome == "__unbinned__" else "False" for genome in kept]
     assert (after.loc[list(summary.BinName), "mge"] == "True").all()
     for column in ["GC", "Hit", "BinningScore"]:
+        # From a genomes table of text, which metacooler reads with pandas: to
+        # the bit with pandas 3, to about one part in 10^13 with pandas 2.
         mges = after.loc[list(summary.BinName), column].to_numpy(float)
-        np.testing.assert_array_equal(mges, summary[column].to_numpy(float))
+        np.testing.assert_allclose(mges, summary[column].to_numpy(float), rtol=1e-12, atol=0)
         assert after.loc[kept, column].isna().all()
     missing = after.loc[list(summary.BinName), list(values.columns)].map(lambda value: value == "" or pd.isna(value))
     assert missing.all().all()

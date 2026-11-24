@@ -1423,7 +1423,9 @@ def _write_genomes_table(table, path):
     unquoted, the names in the first column, unnamed, the values of a column
     as they are (a decimal as the shortest text that reads it back), a
     missing value as an empty field. A table without columns is the names
-    alone, under the header genome.
+    alone, under the header genome. metacooler reads a decimal back with
+    pandas: to the bit with pandas 3, to about one part in 10^13 with pandas
+    2, whose to_numeric rounds some long decimals off.
 
     Raises
     ------
