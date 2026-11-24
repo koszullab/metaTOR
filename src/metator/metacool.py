@@ -12,7 +12,8 @@ both weights, as cooler stores balancing weights), ``partition`` the rounds
 core and overlapping (see read_partition), and ``validation`` the map of the
 clusters: one genome per final cluster, ``__unbinned__`` for the others, the
 summary in the genomes table and every round. ``pipeline`` stores what the
-three steps store, in one map (see write_map).
+three steps store, in one map (see write_map), then what ``markers`` stores:
+the marker genes of each contig, in its contigs table (see Markers).
 
 Every map is written in one metacooler edit session, validated in full
 once, then renamed onto the map of the output directory of the run (or over
@@ -706,6 +707,18 @@ HOST_ENTRY = "host"
 HOST_CLUSTER_COLUMNS = ("n_hosts", "hosts", "host_shares")
 HOST_GENOME_COLUMNS = ("n_mges", "mges")
 
+# What metator markers stores in a map (see write_map and metator.markers):
+# the marker genes of each contig, in each marker set of miComplete, as
+# columns of its contigs table, and the run, under the markers entry of its
+# metator metadata, with the markers and the weights of each set. They are
+# facts about the contigs, which no run changes: every run keeps them, those
+# that regroup the contigs too (validation, pipeline, mge --reassign), as a
+# curation by hand does. Their genes were found in the genomes of the map as
+# the run read them; metator markers run again finds them in the genomes as
+# they are.
+MARKERS_ENTRY = "markers"
+MARKER_COLUMNS = ("markers_Bact105", "markers_Arch131")
+
 
 def holds_partition(mc):
     """Whether the map mc holds a partition of its network: the clustering round
@@ -744,6 +757,74 @@ def hosts_network(mc):
     entry = _metator_metadata(mc).get(HOST_ENTRY)
     digest = entry.get(NETWORK_DIGEST) if isinstance(entry, dict) else None
     return digest if isinstance(digest, str) else None
+
+
+def holds_markers(mc):
+    """Whether the map mc holds the marker genes of its contigs that metator
+    markers found: the markers entry of its metator metadata, or a column of
+    MARKER_COLUMNS in its contigs table."""
+    held = isinstance(_metator_metadata(mc).get(MARKERS_ENTRY), dict)
+    return held or any(column in mc.contigs.columns for column in MARKER_COLUMNS)
+
+
+@dataclass
+class Markers:
+    """The marker genes of the contigs of a map, as metator markers stores them
+    (see write_map and metator.markers.contig_markers).
+
+    Attributes
+    ----------
+    table : pandas.DataFrame
+        One row per contig of the map: its name (Name) and its markers in each
+        set (MARKER_COLUMNS, see metator.markers.encode_markers), an empty text
+        for none.
+    entry : dict
+        What the map records of the run, under the markers key of its metator
+        metadata (see metator.cli.markers_entry).
+    tmp_dir : str, optional
+        Where the table is written for metacooler annotate
+        (contig_markers.txt): the temporary directory of the run."""
+
+    table: pd.DataFrame
+    entry: dict
+    tmp_dir: str | None = None
+
+
+#: The table of the markers that metator markers stores (see _store_markers),
+#: in the temporary directory of the run.
+MARKERS_FILE = "contig_markers.txt"
+
+
+def _store_markers(path, markers):
+    """Store the marker genes of the contigs of a map (markers, a Markers) in the
+    map at path, the staged map of an edit session (see write_map): the columns
+    MARKER_COLUMNS of its contigs table, last, in place of those of an earlier
+    run, with metacooler annotate, and the run under the markers entry of its
+    metator metadata, whose other entries are kept. A column whose every contig
+    has an empty text (no marker of the set on the map) is stored by
+    metacooler as numbers, all missing, as it stores a column of a table that
+    holds no text."""
+    import metacooler
+
+    mc = open_map(path)
+    held = [f"contigs.{column}" for column in MARKER_COLUMNS if column in mc.contigs.columns]
+    metator = {**_metator_metadata(mc), MARKERS_ENTRY: markers.entry}
+    if held:
+        # Dropped, then added again: a column that metacooler stored as
+        # numbers (all missing) may hold text now, or the other way round.
+        metacooler.annotate(path, drop=held, inplace=True)
+    with ExitStack() as scratch:
+        directory = markers.tmp_dir or scratch.enter_context(tempfile.TemporaryDirectory())
+        table = os.path.join(directory, MARKERS_FILE)
+        markers.table[["Name", *MARKER_COLUMNS]].to_csv(table, sep="\t", index=False)
+        metacooler.annotate(
+            path,
+            contigs_table=table,
+            contigs_table_format="Name",
+            columns=[f"contigs.{column}" for column in MARKER_COLUMNS],
+            metadata={"metator": metator},
+            inplace=True,
+        )
 
 
 def _later_rounds(mc):
@@ -1039,6 +1120,7 @@ def write_map(
     reassign=False,
     hosts=None,
     drop_hosts=False,
+    markers=None,
     force=False,
     planned=None,
     mge_follows=False,
@@ -1046,8 +1128,9 @@ def write_map(
     """Write the map of a run at outfile from its input map, metacool: what the
     run stores in it, everything else as it was. Each step of a run writes its
     map so, and pipeline writes what its three steps store, in one map, as the
-    steps one by one write it (then, with --mges, its steps mge and host store
-    the round mge and the hosts in it, as mge and host do).
+    steps one by one write it (then its step markers stores the marker genes
+    of the contigs in it, and, with --mges, its steps mge and host the round
+    mge and the hosts, as markers, mge and host do).
 
     Everything goes into one edit session (see _staged_edit), validated once
     and renamed once; on any failure outfile is left as it was. In order: the
@@ -1098,6 +1181,10 @@ def write_map(
     drop_hosts : bool
         Whether to drop the hosts that the map holds, which another network
         than the one stored now gave (a network run).
+    markers : Markers, optional
+        The marker genes of the contigs of the map (metator markers), stored
+        alone (see _store_markers). Every run keeps those that the map holds
+        (see MARKERS_ENTRY).
     force : bool
         Whether to replace an existing outfile: the input map itself, which a
         run updates in place, or another file.
@@ -1117,8 +1204,8 @@ def write_map(
     ValueError
         If clusters come with rounds or round_names: the rounds of a validation
         are those of its clusters; or with mge: the genomes of a validation are
-        its final clusters; or hosts with anything else to store. If reassign
-        comes without the round mge.
+        its final clusters; or hosts, or markers, with anything else to store.
+        If reassign comes without the round mge.
     MetacoolError
         If the outfile is no file's path (a URI), exists (without force), is
         the .mmetacool collection of the input map or a hard link of the input
@@ -1133,8 +1220,10 @@ def write_map(
             "write_map takes the clustering rounds and the genomes of a validation from its clusters "
             "(FinalClusters): give clusters without rounds, round_names or mge."
         )
-    if hosts is not None and any(store is not None for store in (network, partition, rounds, clusters, mge)):
+    if hosts is not None and any(store is not None for store in (network, partition, rounds, clusters, mge, markers)):
         raise ValueError("write_map stores the hosts of the MGE clusters of metator host alone: give hosts alone.")
+    if markers is not None and any(store is not None for store in (network, partition, rounds, clusters, mge)):
+        raise ValueError("write_map stores the marker genes of the contigs of metator markers alone: give markers alone.")
     # What the hosts that the map holds describe, which the run replaces (see
     # HOST_ENTRY): none when it keeps them.
     replaced = (
@@ -1176,7 +1265,7 @@ def write_map(
             genomes = mge_reassignment(mc, mge[0], reassign) if mge is not None and mge[1]["name"] == mtcl.MGE else None
         if clusters is not None:
             _check_clustered_contigs(metacool, contigs, clusters)
-        writing, written = _what_is_written(contigs, network, rounds, clusters, mge, genomes, hosts)
+        writing, written = _what_is_written(contigs, network, rounds, clusters, mge, genomes, hosts, markers)
         source = "in place" if in_place else f"from {metacool}"
         logger.info(f"Writing {outfile} {source}{writing}.")
         with _as_metacool_errors(), ExitStack() as session:
@@ -1206,6 +1295,8 @@ def write_map(
             # What made the rounds of metator mge that the map no longer
             # holds, which the clusters of a validation carried over.
             _drop_metator_entries(staged, [dropped["name"] for dropped in later if _made_by(dropped) == "metaTOR mge"])
+            if markers is not None:
+                _store_markers(staged, markers)
             if hosts is not None:
                 _store_hosts(staged, metacool, *hosts)
             elif replaced is not None:
@@ -1222,11 +1313,13 @@ def write_map(
         _warn_dropped_hosts(metacool, outfile, in_place, replaced)
 
 
-def _what_is_written(contigs, network, rounds, clusters, mge, genomes=None, hosts=None):
+def _what_is_written(contigs, network, rounds, clusters, mge, genomes=None, hosts=None, markers=None):
     """What the messages of write_map say of the map it writes: while it is
     written, and once it is (each a text that follows the name of the map, and
     the words "the contact map"). genomes: those that the round mge makes (see
     mge_reassignment)."""
+    if markers is not None:
+        return f", with the marker genes of its {len(contigs)} contigs", ", with the marker genes of its contigs"
     if hosts is not None:
         n_mges = len(hosts[0].clusters)
         return (

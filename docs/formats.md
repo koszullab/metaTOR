@@ -317,6 +317,105 @@ genomes table, which `metator dump` writes last in `cluster_summary.txt`:
 | `n_mges` | The number of MGE clusters that the MAG hosts; missing for a genome that is not a MAG (empty for the MGE genomes of `--reassign`) |
 | `mges` | Their names, in the order of the round `mge`, comma-separated |
 
+## Marker genes of the contigs
+
+[`metator markers`](cli.md#markers), and the step `markers` of `pipeline`,
+store in the map the marker genes of miComplete that each contig carries, as
+miComplete finds them in its genome (see
+[Concepts](concepts.md#marker-genes-of-the-contigs)): two columns of the
+contigs table, and an entry of the metadata. Summed over any group of
+contigs, they give the four numbers of miComplete that the
+[cluster summary](#cluster-summary) holds for the final clusters:
+completeness, redundancy, weighted completeness and weighted redundancy.
+
+| Column | What it holds |
+|---|---|
+| `markers_Bact105` | The markers of the contig in miComplete's bacterial set (105 markers) |
+| `markers_Arch131` | Those in its archaeal set (131 markers, 35 of them in both sets) |
+
+Each holds ASCII text: the markers of the contig sorted by name, in byte
+order (upper case first), comma-separated, each followed by `*` and its
+count when that is not 1. The count is the number of proteins of the contig
+that miComplete keeps as hits of the marker. An empty text is no marker.
+
+```text
+name	markers_Bact105	markers_Arch131
+NODE_522	Ribosomal_L14,Ribosomal_L22,SecY*2	Ribosomal_L14,Ribosomal_L22,SecY*2
+NODE_1404
+NODE_2487	Cons_hypoth95*0,Ribosomal_S9	Ribosomal_S9
+```
+
+- A marker name matches `[A-Za-z0-9_-]+`, of at most 15 characters.
+- `*0`: miComplete sees a hit of the marker on the contig (a line of the
+  table of hmmsearch, `--tblout`) but drops every one, its bias too high for
+  its score or its best domain too weak. The marker counts in the weighted
+  completeness of a bin, as miComplete counts every marker it sees, and
+  nowhere else.
+- A column in which no contig has a marker (no hit of the set in the whole
+  map) is stored by metacooler as numbers, all missing: read a missing value
+  as no marker.
+- `metacooler dump -t contigs -H MAP` writes both columns with the rest of
+  the contigs table; the run writes them in its temporary directory too
+  (`contig_markers.txt`, which `-N` keeps).
+
+The entry `metator` → `markers` of the metadata records the run, as the
+entries of the other steps do (`version`, `command`, `parameters`, `read`),
+and:
+
+| Key | What it holds |
+|---|---|
+| `micomplete` | The version of miComplete whose marker sets and rules the run applied |
+| `thresholds` | `evalue`, `bias` and `domain_cutoff`: miComplete's `--evalue`, `--bias` and `--domain-cutoff` |
+| `genes` | How the genes were found: the versions of `pyrodigal` and `pyhmmer`; `trained_genomes`, the number of genomes pyrodigal was trained on (single mode: those of `min_training` bp, 20000, or more, with the linkers between their contigs); `metagenome_contigs`, the number of contigs in metagenome mode (in no genome, or in a shorter one); `metagenome_z`, the number of proteins their E-values were counted over: the median of the trained genomes (without one, the proteins of these contigs, as one bin; `null` without such contigs) |
+| `sets` | By set (`Bact105`, `Arch131`): its `column`, its `markers` in the order of its HMMs, and their `weights`, in the same order, as miComplete reads them |
+| `kept` | The set that metaTOR keeps for a bin: `by` the higher `weighted_completeness`, `ties` to `Bact105` |
+
+### Recomputing miComplete's numbers
+
+For a group of contigs (a genome of the map, or any curated bin), in each set
+(`metator.markers.marker_quality`):
+
+1. Sum the counts of each marker over the contigs. A marker written without
+   `*` counts 1; one at `*0` counts 0 but is seen.
+2. P is the number of markers of a sum of 1 or more, N the number of markers
+   of the set. Without such a marker (P = 0), all four numbers are 0.
+3. Completeness = P / N, and redundancy = the sum of the counts / P, each
+   rounded to 4 decimals.
+4. WC is the sum of the weights of the markers seen (those of a sum of 0
+   too). The weighted redundancy is (the sum of the weights of the markers of
+   a sum above 1, each once, + WC) / WC, rounded to 4 decimals; the weighted
+   completeness is WC rounded to 4 decimals, 0.0001 if that is 0.
+
+metaTOR keeps the numbers of Bact105, unless those of Arch131 have the higher
+weighted completeness (`Bacteria` or `Archaea` in the column `Markers` of
+miComplete's results; `metator.markers.kept_quality`).
+`metator.markers.quality_of` does it all, from the texts of the columns:
+
+```python
+import metacooler
+import metator.markers as mtmk
+
+mc = metacooler.MetaCooler("binning/sample.metacool")
+sets = mc.metadata["metator"]["markers"]["sets"]
+contigs = mc.contigs.set_index("name")
+group = ["NODE_522", "NODE_2487"]
+for name, spec in sets.items():
+    counts = mtmk.sum_markers(mtmk.decode_markers(text) for text in contigs.loc[group, spec["column"]])
+    print(name, mtmk.marker_quality(counts, spec["markers"], spec["weights"]))
+```
+
+Over a genome whose genes the run found in single mode, the numbers are
+those that miComplete gives the FASTA file of the genome in map order, as
+`fasta/mags/` and `metacooler fasta` write it. The cluster summary holds
+those of the clusters as the validation checked them, with their contigs in
+the order of its partition, on which pyrodigal's training depends a little:
+the numbers are the same but for a rare gene, and for a final cluster that
+`mge --reassign` took contigs from, which the summary still counts (sum the
+markers over the contigs of the cluster, the round `final`, for those). A
+curated group gets the numbers of miComplete from genes found in the genomes
+of the map: trained on the group itself, miComplete can find a gene more or
+less.
+
 ## The report of a run
 
 [`metator report`](cli.md#report), `export` and `pipeline` write the report
@@ -354,7 +453,7 @@ parses line by line (`metator.report.read_txt` reads it back):
 | Section | Keys |
 |---|---|
 | `report` | `format_version`; `sample` (the name of the run); `map`; `metator_version` (that wrote the report); `written`; `map_written` (when the map was written). |
-| `run` | `steps`, the steps the map records, in order, comma-separated (`network`, `partition`, `validation`, `mge`, `host`); `input` (the map, or the pairs or BAM files, comma-separated), `assembly`, `enzyme`, `depth` (`NA`: the map gave them); `normalization` (network); `algorithm`, `iterations`, `overlap_pct`, `res_param` (partition); `size_bp`, `rec_iter`, `rec_overlap_pct` (validation); `seed`, `rec_seed`, the `--seed` of the partition and of the validation (`NA`: none); `mge_threshold_bin` (`mge`); `host_min_share_pct`, `host_min_contigs` (`host`). |
+| `run` | `steps`, the steps the map records, in order, comma-separated (`network`, `partition`, `validation`, `markers`, `mge`, `host`); `input` (the map, or the pairs or BAM files, comma-separated), `assembly`, `enzyme`, `depth` (`NA`: the map gave them); `normalization` (network); `algorithm`, `iterations`, `overlap_pct`, `res_param` (partition); `size_bp`, `rec_iter`, `rec_overlap_pct` (validation); `seed`, `rec_seed`, the `--seed` of the partition and of the validation (`NA`: none); `mge_threshold_bin` (`mge`); `host_min_share_pct`, `host_min_contigs` (`host`). |
 | `contigs` | `contigs`, `contigs_bp` (the contigs of the map and their length); `contig_n50_bp`, `contig_l50`, `contig_n90_bp`, `contig_max_bp`, `contig_median_bp`; `gc_pct` (weighted by length); `coverage_median` (shotgun). Where the contigs went, as a number, length and share of the total length: in a final cluster (`in_final_clusters_contigs`, `_bp`, `_pct`), in a MAG (`in_mags_`...), in an MGE cluster (`in_mges_contigs`, `_bp`), in no genome (`unbinned_contigs`, `_bp`). |
 | `contacts` | The contacts of the reads by where they land, from metacooler's `qc` block: `contacts`; `qc_source` (`pairs`: counted on the reads, `pixels`: on the map); `qc_distance_threshold_bp`; within a contig, closer than that (`intra_contig_short`) or not (`intra_contig_long`); between two contigs of a genome (`inter_contig_intra_genome`); between two genomes (`inter_genome`); `trans_contig_ratio`, the share between two contigs (the "3D ratio"); `intra_genome_fraction`, the share within a genome. The network: `network_contigs`, `network_edges`, `normalization`. |
 | `clusters` | `core_clusters`, `overlapping_clusters`, `recursive_steps`, `recursive_clusters`, `final_clusters`, `final_clusters_bp`. The final clusters by quality class, each a number and a length (`_bp`): `hq_mags` (completeness ≥ 90%, contamination ≤ 5%), `mq_mags` (70%, 10%), `lq_mags` (50%, 10%), `contaminated_mags` (completeness ≥ 50%, contamination > 10%), `other_clusters` (completeness < 50%). `mags`: the genomes of the map but the MGE genomes. |

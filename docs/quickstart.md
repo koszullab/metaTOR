@@ -82,14 +82,16 @@ The log follows the steps of the run (excerpt):
 INFO :: ## MetaTOR: v1.4.0 log file
 INFO :: ## cmd: metator pipeline sample.metacool --assembly assembly.fa --enzyme DpnII --depth depth.txt --size 20000 --threads 4 --outdir binning --no-clean-up
 ...
-INFO :: [1/4] network: the contigs of sample.metacool and their contacts
-INFO :: [2/4] partition: the clusters of the network
+INFO :: [1/5] network: the contigs of sample.metacool and their contacts
+INFO :: [2/5] partition: the clusters of the network
 INFO :: 420 core clusters, merged into 231 overlapping clusters.
-INFO :: [3/4] validation: miComplete checks the clusters, and the contaminated ones are partitioned again
+INFO :: [3/5] validation: miComplete checks the clusters, and the contaminated ones are partitioned again
 INFO :: 24 of the 231 overlapping clusters reach 20000 bp, 0.72 Mb in all: miComplete checks them.
 ...
 INFO :: Other clusters: 24	Total Size: 720373
-INFO :: [4/4] export: the outputs of the run, from its map
+INFO :: [4/5] markers: the marker genes of the contigs, as miComplete finds them in their clusters
+...
+INFO :: [5/5] export: the outputs of the run, from its map
 ...
 INFO :: The report of the run, from its map: binning/sample.report.txt, binning/sample.report.html, binning/sample.report_mqc.yaml
 INFO :: Final contact map written after 0h 0m 10s: binning/sample.metacool

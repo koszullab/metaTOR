@@ -76,7 +76,7 @@ QUALITY_COLOURS = {"HQ": "#1a9850", "MQ": "#91cf60", "LQ": "#fdae61", "Contamina
 
 #: The steps of a run that the map records, in their order, under the metator
 #: key of its metadata.
-STEPS = ("network", "partition", "validation", "mge", "host")
+STEPS = ("network", "partition", "validation", "markers", "mge", "host")
 
 #: The most contigs that the plot of the GC content and the coverage of the
 #: contigs of report.html shows: those of the MAGs and of the MGE clusters

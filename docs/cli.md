@@ -11,8 +11,8 @@ metator --version
 
 As in `metator --help`, the commands are grouped in
 [Pipeline](#pipeline-commands) (`pipeline`), [Steps](#steps) (`network`,
-`partition`, `validation`, `mge`, `host`) and [Outputs](#outputs) (`dump`,
-`export`, `report`).
+`partition`, `validation`, `markers`, `mge`, `host`) and [Outputs](#outputs)
+(`dump`, `export`, `report`).
 
 New to metaTOR? Start with the [Quickstart](quickstart.md) or
 [The end-to-end pipeline](end-to-end.md); for the clusters, see
@@ -31,7 +31,7 @@ heatmap, GC and coverage plots.
 | Several enzymes | Comma-separated: `DpnII,HinfI`. |
 | `-F, --force` | Replace what an earlier run of the command wrote in the output directory (map, folders, cluster plots, tables, report); without it, the command refuses. Outputs of earlier versions (1.x, development builds of 2.0: `final_clusters/`, `plot/`, `mges_binned.fa`…) are always refused and never removed. A run that updates its map in place first warns of the clusters it replaces. |
 | `-T, --tmpdir`, `-N, --no-clean-up` | Each run works in its own directory inside `-T`, removed at the end unless `-N` is given or the run fails; the log names it. |
-| Log files | `<name>.metator_<date>.log`, the date as `%Y%m%d%H%M%S` (`sample.metator_20261123225838.log`), in the output directory (`mge`: in the current directory). It opens with the version, command line and options, and ends with the files written and the run time. `pipeline` numbers its steps: `[1/4] network` … `[4/4] export`, plus `map` first from pairs or BAM files, and `mge` and `host` before `export` with `--mges`. |
+| Log files | `<name>.metator_<date>.log`, the date as `%Y%m%d%H%M%S` (`sample.metator_20261123225838.log`), in the output directory (`mge`: in the current directory). It opens with the version, command line and options, and ends with the files written and the run time. `pipeline` numbers its steps: `[1/5] network` … `[4/5] markers`, `[5/5] export`, plus `map` first from pairs or BAM files, and `mge` and `host` before `export` with `--mges`. |
 | Random numbers | Louvain and Leiden (`partition`, `pipeline`, the recursive partition of `validation`) and `mge --random` draw new random numbers at each run, so two runs give close but not identical clusters. `--seed S` makes a run reproducible for the same map, options, igraph and metaTOR; `pipeline --seed S` gives the clusters of `partition --seed S` then `validation --seed S`. The map records the seed. |
 
 ### Files of a run { #files }
@@ -93,8 +93,8 @@ pairs or BAM files to make it from.
 
 ### `pipeline` { #pipeline }
 
-Run `network`, `partition` and `validation` in one command; with `--mges`,
-then `mge` and `host`; last, `export`. **Guide:**
+Run `network`, `partition`, `validation` and `markers` in one command; with
+`--mges`, then `mge` and `host`; last, `export`. **Guide:**
 [Running the pipeline](guides/pipeline.md).
 
 ```console
@@ -109,6 +109,9 @@ metator pipeline [OPTIONS] INPUT...
 - **Validation**: writes the map of the clusters, `fasta/mags_with-mges/` and
   `plots/`. It is the step that needs the most memory: miComplete runs
   Prodigal and HMMER (pyrodigal, pyhmmer) on every cluster.
+- **Markers**: as [`markers`](#markers), finds miComplete's marker genes on
+  each contig, in its final cluster, and stores them in the map of the
+  clusters, with miComplete's default thresholds.
 - **With `--mges`**: the step `mge` (as [`mge --reassign`](#mge)) clusters the
   MGE contigs, makes each MGE cluster a genome of the map and writes
   `fasta/mges/`; the step `host` (as [`host`](#host)) finds their host MAGs
@@ -144,9 +147,9 @@ metator pipeline [OPTIONS] INPUT...
 | `-o, --outdir` | the current directory | The output directory. |
 | `-p, --prefix` | none | Name the clusters `<prefix>_metator_…`, and a map made from pairs or BAM files `<prefix>.metacool`; letters, digits, `_` and `-` only. |
 | `-F, --force` | off | Replace the map, outputs and report of an earlier run (`tables/mge_hosts.txt` and `plots/mge_hosts.pdf` are replaced without it). |
-| `-T, --tmpdir` | `./tmp` | Temporary directory: the clusters that miComplete checks (up to the size of the assembly), its results, the validation tables, a decompressed assembly and the pairs of BAM files. |
-| `-t, --threads` | `1` | Threads for the partition, miComplete and reading BAM files. |
-| `-N, --no-clean-up` | off | Keep the temporary directory: miComplete's results and the validation tables. |
+| `-T, --tmpdir` | `./tmp` | Temporary directory: the clusters that miComplete checks (up to the size of the assembly), its results, the validation tables, the table of the markers, a decompressed assembly and the pairs of BAM files. |
+| `-t, --threads` | `1` | Threads for the partition, miComplete, the markers and reading BAM files. |
+| `-N, --no-clean-up` | off | Keep the temporary directory: miComplete's results, the validation tables and the table of the markers. |
 | `--inplace` | off | Update `MAP` in place; refused for a collection entry and for pairs or BAM files. |
 
 ```bash
@@ -314,6 +317,68 @@ See [Step by step](guides/metacool.md#step-by-step).
 ```bash
 # The map of a step-by-step run in binning becomes the map of the clusters
 metator validation binning/sample.metacool -a assembly.fa -t 16 -o binning
+```
+
+### `markers` { #markers }
+
+Find miComplete's marker genes on each contig of the map, as miComplete finds
+them in a bin, and store them in the map: summed over any group of contigs,
+they give the completeness, redundancy, weighted completeness and weighted
+redundancy that miComplete gives a bin of those contigs, with no gene to find
+again. [`pipeline`](#pipeline) runs it after the validation. **API:**
+`metator.markers.contig_markers`, `metator.markers.marker_quality`,
+`metator.metacool.write_map`.
+
+```console
+metator markers [OPTIONS] MAP
+```
+
+- **Genomes as bins.** Each genome of the map (the final clusters of
+  `validation` or `pipeline`, or another binner's bins set with
+  `metacooler reassign`; not `__unbinned__`) is a bin: pyrodigal is trained on
+  its contigs in map order, then finds their genes, and pyhmmer searches the
+  marker HMMs of both sets (`Bact105`, 105 bacterial markers; `Arch131`, 131
+  archaeal ones) in their proteins, E-values counted over the proteins of the
+  genome. The hits are read as miComplete reads them, with its thresholds.
+  Summed over a genome, the markers give exactly what miComplete gives its
+  FASTA file in map order (`fasta/mags/`, `metacooler fasta`).
+- **Other contigs.** miComplete finds no gene in a bin under 20 kb (with the
+  12-bp linkers between its contigs), too little to train on. The contigs of
+  such a genome, and those of `__unbinned__`, get their genes in metagenome
+  mode, contig by contig, and their markers counted over the median number
+  of proteins of the trained genomes: as in a typical genome of the map
+  (on a map without one, over their own proteins, as one bin).
+- **Stores** the markers of each contig in the contigs table, one column per
+  set (`markers_Bact105`, `markers_Arch131`: `Ribosomal_L22,SecY*2`), and the
+  run under `metator` → `markers` in the metadata, with the markers and
+  weights of both sets (see
+  [Marker genes of the contigs](formats.md#marker-genes-of-the-contigs)).
+  They replace those of an earlier run.
+- **Every other run keeps them**, those that regroup the contigs too
+  (`validation`, `pipeline`, `mge --reassign`, `metacooler reassign`): they are
+  facts about the contigs. Their genes were found in the genomes as the run
+  read them: run `markers` again for the numbers that miComplete gives the
+  genomes as they are now.
+- **Refuses** an assembly that lacks a contig of the map, gives one another
+  length, or names a contig by several records, before any work.
+
+| Option | Default | Description |
+|---|---|---|
+| `MAP` | *required* | A map whose genomes are bins, or an entry of a collection. |
+| `-a, --assembly` | *required* | The assembly FASTA file, plain or gzip-compressed. |
+| `--evalue` | `4e-10` | E-value threshold of a hit, counted over the proteins of the genome: miComplete's `--evalue`. |
+| `--bias` | `0.3` | A hit whose score times this is no more than its bias is dropped: miComplete's `--bias`. |
+| `--domain-cutoff` | `1e-05` | A hit whose best domain's E-value exceeds the protein's by more than this is dropped: miComplete's `--domain-cutoff`. |
+| `-o, --outdir` | the current directory | Output directory of the map and the log. |
+| `-F, --force` | off | Replace the map of an earlier run. |
+| `-T, --tmpdir` | `./tmp` | Temporary directory: the table of the markers (`contig_markers.txt`). |
+| `-t, --threads` | `1` | Threads: genomes, and groups of the other contigs, searched side by side. |
+| `-N, --no-clean-up` | off | Keep the temporary directory, and `contig_markers.txt`. |
+| `--inplace` | off | Store the markers in `MAP` itself; refused for a collection entry. |
+
+```bash
+# The marker genes of the contigs of the map of a run, in binning, updated in place
+metator markers binning/sample.metacool -a assembly.fa -t 16 -o binning
 ```
 
 ### `mge` { #mge }

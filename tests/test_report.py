@@ -77,7 +77,7 @@ def test_the_report_is_the_run(run):
     report = mtr.collect(str(run["map"]), mc, layout, stored)
     sections, tables = report.sections, report.tables
     assert sections["report"]["sample"] == "sample" and sections["report"]["format_version"] == mtr.FORMAT_VERSION
-    assert sections["run"]["steps"] == "network,partition,validation,mge,host"
+    assert sections["run"]["steps"] == "network,partition,validation,markers,mge,host"
     assert sections["run"]["size_bp"] == 20000 and sections["run"]["normalization"] == "empirical_hit"
     assert sections["run"]["seed"] == sections["run"]["rec_seed"] == 3
     lengths = mc.contigs["length"].to_numpy()

@@ -52,7 +52,8 @@ metator pipeline hicstuff/sample.metacool -a assembly.fa -e DpnII -d depth.txt -
 `--mges mges.txt` it clusters the MGE contigs and finds their hosts. It writes,
 in `binning/`:
 
-- `sample.metacool`: the contact map of the clusters, with their quality;
+- `sample.metacool`: the contact map of the clusters, with their quality and
+  the marker genes of each contig;
 - `fasta/`, `cool/`, `tables/` and `plots/`: the MAGs, their contact maps, the
   cluster summary and other tables, and quality plots;
 - `sample.report.html`, `sample.report.txt` and `sample.report_mqc.yaml`: the
@@ -61,10 +62,11 @@ in `binning/`:
 
 | Command | What it does |
 |---|---|
-| `pipeline` | Runs `network`, `partition` and `validation`; with `--mges`, then `mge` and `host`. |
+| `pipeline` | Runs `network`, `partition`, `validation` and `markers`; with `--mges`, then `mge` and `host`. |
 | `network` | Builds the network of the contigs and stores it in the map. |
 | `partition` | Partitions the network many times with Louvain or Leiden. |
 | `validation` | Checks the clusters with miComplete, and partitions the contaminated ones again. |
+| `markers` | Stores the marker genes of each contig, as miComplete finds them, in the map. |
 | `mge` | Clusters the contigs of mobile genetic elements. |
 | `host` | Finds the MAGs that host the MGE clusters. |
 | `dump` | Writes the tables of a run from the map of its clusters. |

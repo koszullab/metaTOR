@@ -55,7 +55,8 @@ mtmc_write_map = mtmc.write_map
 # --mge-min-contigs options, with which it runs mge and host after the
 # validation; then partition, validation, pipeline and mge took --seed,
 # the seed of their random numbers. export writes the outputs of a run
-# again from its map, and report its report.
+# again from its map, and report its report; markers stores the marker genes
+# of the contigs of a map, which pipeline finds in a step of its own.
 INVENTORY = json.loads((TESTS_DATA / "cli_inventory.json").read_text())["metator"]
 
 # Options whose value is one of a list, wherever they appear.
@@ -178,7 +179,7 @@ def test_group_help(run_cli):
     """The help lists the commands in three panels after the options: the
     pipeline, its steps and the outputs."""
     output = run_cli("-h").output
-    panels = {"Pipeline": ["pipeline"], "Steps": ["network", "partition", "validation", "mge", "host"],
+    panels = {"Pipeline": ["pipeline"], "Steps": ["network", "partition", "validation", "markers", "mge", "host"],
               "Outputs": ["dump", "export", "report"]}  # fmt: skip
     assert sorted(command for commands in panels.values() for command in commands) == sorted(INVENTORY["commands"])
     starts = [output.index(f"─ {panel} ─") for panel in ["Options", *panels]]
@@ -424,8 +425,15 @@ def stub_pipeline(monkeypatch, tmp_path):
         # of its clusters, which the stub validation does not write: recorded.
         calls["run_export"] = (args, kwargs)
 
+    def run_markers(*args, **kwargs):
+        # The step markers of a pipeline run, the marker genes of the contigs
+        # of the map of its clusters, which the stub validation does not
+        # write: recorded.
+        calls["run_markers"] = (args, kwargs)
+
     monkeypatch.setattr("metator.network.create_contig_data", create_contig_data)
     monkeypatch.setattr("metator.cli.run_export", run_export)
+    monkeypatch.setattr("metator.cli.run_markers", run_markers)
     monkeypatch.setattr("metator.network.contig_data_from_map", contig_data_from_map)
     monkeypatch.setattr("metator.network.contig_contacts", recorded_contig_contacts)
     monkeypatch.setattr("metator.partition.partition", partition)
@@ -693,6 +701,19 @@ def test_pipeline_from_a_metacool(stub_pipeline, tmp_path, run_cli):
     (metacool_file, assembly, outdir, tmp_dir), options = calls["run_export"]
     assert (metacool_file, assembly, outdir, options) == (str(metacool), str(tmp_path / "assembly.fa"), str(out), {"force": True})
     assert Path(tmp_dir).parent == tmp_path / "tmp"
+    # The marker genes of the contigs, found on the map of its clusters, which
+    # the step updates in place, opened as the validation wrote it, from the
+    # assembly, with the threads of the run; their table goes to its
+    # temporary directory.
+    (marked, marked_out, planned, marked_assembly, threads, marked_tmp), _ = calls["run_markers"]
+    assert (marked, marked_out, planned, marked_assembly, threads) == (
+        str(metacool),
+        str(metacool),
+        None,
+        str(tmp_path / "assembly.fa"),
+        3,
+    )
+    assert marked_tmp == tmp_dir
     assert not (out / "overlapping_clusters").exists() and not (out / "contig_data_partition.txt").exists()
     assert metacool.read_bytes() == before
     # No table of the network: it is in the map.
@@ -734,15 +755,15 @@ def test_pipeline_from_a_metacool(stub_pipeline, tmp_path, run_cli):
 
 
 # The steps of a pipeline run, as its log marks them, without --mges.
-STEPS = [("1", "4", "network"), ("2", "4", "partition"), ("3", "4", "validation"), ("4", "4", "export")]
+STEPS = [("1", "5", "network"), ("2", "5", "partition"), ("3", "5", "validation"), ("4", "5", "markers"), ("5", "5", "export")]
 
 
 def test_pipeline_without_mges_has_no_steps_mge_and_host(stub_pipeline, tmp_path, run_cli):
-    """Without --mges, a pipeline run from a map has four steps ([1/4]
-    network... [4/4] export), and says, once it has written the map of its
-    clusters, that it has no steps mge and host, and how to run them: with
-    --mges. It writes no MGE fasta and no hosts, and then exports its outputs,
-    from the map of its clusters."""
+    """Without --mges, a pipeline run from a map has five steps ([1/5]
+    network... [4/5] markers, [5/5] export), and says, once it has stored the
+    markers in the map of its clusters, that it has no steps mge and host, and
+    how to run them: with --mges. It writes no MGE fasta and no hosts, and
+    then exports its outputs, from the map of its clusters."""
     metacool = _contig_map(tmp_path / "input.metacool")
     run_cli("pipeline", *_map_run(metacool, tmp_path))
     out = tmp_path / "out"
@@ -753,8 +774,8 @@ def test_pipeline_without_mges_has_no_steps_mge_and_host(stub_pipeline, tmp_path
         "INFO :: No list of MGE contigs (--mges): the run has no steps mge and host, which cluster the MGE contigs and "
         "find their hosts: give --mges to run them.\n"
     )
-    assert logged.index("[3/4] validation") < logged.index(stop) < logged.index("[4/4] export")
-    assert stub_pipeline["write_map"] and stub_pipeline["run_export"]
+    assert logged.index("[4/5] markers") < logged.index(stop) < logged.index("[5/5] export")
+    assert stub_pipeline["write_map"] and stub_pipeline["run_markers"] and stub_pipeline["run_export"]
     assert not (out / "fasta" / "mges").exists() and not (out / "tables").exists()
 
 

@@ -348,6 +348,97 @@
      }
     ]
    },
+   "markers": {
+    "positional": [
+     {
+      "name": "map",
+      "required": true,
+      "repeatable": false
+     }
+    ],
+    "options": [
+     {
+      "short": "-a",
+      "long": "--assembly",
+      "takes_value": true,
+      "metavar": "FILE",
+      "default": null,
+      "required": true
+     },
+     {
+      "short": null,
+      "long": "--evalue",
+      "takes_value": true,
+      "metavar": "FLOAT",
+      "default": "4e-10",
+      "required": false
+     },
+     {
+      "short": null,
+      "long": "--bias",
+      "takes_value": true,
+      "metavar": "FLOAT",
+      "default": "0.3",
+      "required": false
+     },
+     {
+      "short": null,
+      "long": "--domain-cutoff",
+      "takes_value": true,
+      "metavar": "FLOAT",
+      "default": "1e-05",
+      "required": false
+     },
+     {
+      "short": "-o",
+      "long": "--outdir",
+      "takes_value": true,
+      "metavar": "DIR",
+      "default": null,
+      "required": false
+     },
+     {
+      "short": "-F",
+      "long": "--force",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-T",
+      "long": "--tmpdir",
+      "takes_value": true,
+      "metavar": "DIR",
+      "default": "./tmp",
+      "required": false
+     },
+     {
+      "short": "-t",
+      "long": "--threads",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": "1",
+      "required": false
+     },
+     {
+      "short": "-N",
+      "long": "--no-clean-up",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": null,
+      "long": "--inplace",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     }
+    ]
+   },
    "pipeline": {
     "positional": [
      {

@@ -114,13 +114,25 @@ tools](other-tools.md) says what replaces each removed command. Below,
   map, or the pairs or BAM/SAM files of the libraries (paths, comma-separated
   lists or globs). The run first makes the map in its output directory
   (`<prefix>.metacool` with `pipeline --prefix`, else `<assembly>.metacool`;
-  `[1/5] map` in the log). BAM pairs: primary alignments of both mates, MAPQ
+  `[1/6] map` in the log). BAM pairs: primary alignments of both mates, MAPQ
   ≥ `-q/--min-quality` (30), no duplicates or QC failures, at their 5' ends.
   pysam is a dependency again; `network -t` reads the files. See [The inputs
   of a run](cli.md#inputs).
 - **`pipeline --mges FILE`** runs `mge --reassign` and `host` after the
-  validation (`[4/6] mge`, `[5/6] host`, `[6/6] export`), with
+  step `markers` (`[5/7] mge`, `[6/7] host`, `[7/7] export`), with
   `--mge-threshold-bin`, `--mge-min-share` and `--mge-min-contigs`.
+- **`metator markers MAP -a ASSEMBLY`** finds miComplete's marker genes on
+  each contig, as miComplete finds them in its genome (pyrodigal trained on
+  the contigs of the genome in map order, pyhmmer with miComplete's
+  `--evalue`, `--bias` and `--domain-cutoff`; metagenome mode for the contigs
+  of `__unbinned__` and of genomes under 20 kb), and stores them in the map:
+  the contigs columns `markers_Bact105` and `markers_Arch131`
+  (`Ribosomal_L22,SecY*2`) and the `markers` metadata entry, with the markers
+  and weights of both sets. Summed over any group of contigs they give
+  miComplete's completeness, redundancy, weighted completeness and weighted
+  redundancy (`metator.markers.marker_quality`), those of a genome exactly.
+  `pipeline` runs it after the validation (`[4/5] markers`); every run keeps
+  them. See [Marker genes of the contigs](formats.md#marker-genes-of-the-contigs).
 - **`metator host MAP`** finds the MAGs that host the MGE clusters stored by
   `mge`: at least `--min-share` (10%) of the MGE cluster's signal with the
   MAGs, and `--min-contigs` (5) contigs in contact. It writes
@@ -159,8 +171,10 @@ tools](other-tools.md) says what replaces each removed command. Below,
 - `partition` and `validation` refuse a map whose network changed since
   `network` stored it (e.g. after `metacooler merge`).
 - Python API: `metator.dump`; `metator.clusters`; `metator.host`
-  (`find_hosts`...); `metator.metacool.write_map`, `map_rounds`,
-  `read_partition`, `holds_hosts`, `hosts_network`;
+  (`find_hosts`...); `metator.markers` (`contig_markers`, `group_markers`,
+  `marker_quality`, `quality_of`, `encode_markers`, `decode_markers`...);
+  `metator.metacool.write_map`, `map_rounds`, `read_partition`,
+  `holds_hosts`, `hosts_network`, `holds_markers`;
   `metator.network.map_network`, `stored_network`, `contig_contacts`,
   `contig_hits`, `normalization_weights`, `relabel_network`;
   `metator.mge.check_mge_map`, `map_matrix`, `write_mges_fasta`;
@@ -181,7 +195,7 @@ tools](other-tools.md) says what replaces each removed command. Below,
   (1.4.0 stopped).
 - **The log:** a hicstuff-style header (`## cmd:`, `## <option>: <value>`)
   and a last line with what the run wrote and how long it took. `pipeline`
-  numbers its steps (`[1/4] network`...); the partition logs its iterations
+  numbers its steps (`[1/5] network`...); the partition logs its iterations
   as they go, the validation each recursive step; bookkeeping is at DEBUG
   level.
 - `metator --help` lists the commands in three panels: Pipeline, Steps and
