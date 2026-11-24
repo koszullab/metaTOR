@@ -237,6 +237,22 @@ def test_read_hits_as_micomplete():
     assert mtmk.read_hits(header + rows[3], domain_cutoff=1e-4) == [("c_4", "RecR", True)]
 
 
+def test_a_group_without_a_protein():
+    """No contig, or no protein: no gene to train on, and no hit to search."""
+    assert mtmk.find_proteins([]) is None
+    assert mtmk.search_table(mtmk.Proteins("", []), mtmk.marker_set("Bact105")) == ""
+    assert mtmk.group_markers([]) == mtmk.GroupMarkers(None)
+
+
+def test_marker_sets_need_micomplete(monkeypatch):
+    """The marker sets are miComplete's files: without miComplete, none."""
+    import importlib.util
+
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+    with pytest.raises(ImportError, match="miComplete is not installed"):
+        mtmk.marker_set.__wrapped__("Bact105")
+
+
 def test_count_markers():
     """The markers of each contig, from the hits in its proteins: a protein counts
     for each marker that it is kept for, and a marker that a contig only has
