@@ -3013,10 +3013,10 @@ def dump(
     map without the clusters of a validation (the validation entry of its
     metator metadata, and the clustering round final) is refused, and so is
     one that a development build of metaTOR 2.0 validated, one whose
-    clusters were edited after the run (by metacooler reassign), one whose
     network metator network replaced after the run (run it again with the
     normalization of the run), and an output directory that holds tables of
-    an earlier dump, without -F. The tables are replaced all at once: a dump
+    an earlier dump, without -F. The tables follow the genomes of the map,
+    clusters edited after the run (metacooler reassign) included. The tables are replaced all at once: a dump
     that fails leaves them as they were.
     """
     outdir = outdir or "."
