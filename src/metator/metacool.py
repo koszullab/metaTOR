@@ -24,6 +24,7 @@ checks to its end (see metator.cli.hold_lock).
 import logging
 import os
 import tempfile
+from collections import Counter
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 
@@ -45,6 +46,17 @@ UNBINNED = {"ND", "-", ""}
 # without an error. metaTOR's own bin names (metator_*, MetaTOR_MGE_*) are
 # never one of them.
 METACOOLER_UNBINNED = frozenset({"__unbinned__", "na", "nan", "n/a", "nd", "n/d", "-1", ""})
+
+# The genome of metacooler that holds the contigs of a map that are in no
+# genome.
+UNBINNED_GENOME = "__unbinned__"
+
+# The column of the genomes table of a map that metator mge --reassign writes
+# (see write_map): True for the genomes that it made of the clusters of its
+# round mge (its MGE genomes), False for the others. As text, as metacooler
+# stores a column of a genomes table that holds no numbers (as it stores the
+# column recursive of the summary of a validation).
+MGE_GENOME_COLUMN = "mge"
 
 # The columns of the network of the contigs that a map stores in its contigs
 # table (see Network): what metaTOR measures on each contig, the GC content,
@@ -974,6 +986,7 @@ def write_map(
     round_names=None,
     clusters=None,
     mge=None,
+    reassign=False,
     force=False,
     planned=None,
 ):
@@ -985,10 +998,11 @@ def write_map(
     Everything goes into one edit session (see _staged_edit), validated once
     and renamed once; on any failure outfile is left as it was. In order: the
     final clusters (a map written anew from the input map, contigs grouped by
-    cluster then longest first), the network (columns and weights, last in both
-    tables), the partition's rounds and entry, then the round mge. A run that
-    replaces the rounds warns of those the binning did not make, and drops
-    them.
+    cluster then longest first), or the genomes that the round mge makes (see
+    mge_reassignment: a map written anew from the input map too), the network
+    (columns and weights, last in both tables), the partition's rounds and
+    entry, then the round mge. A run that replaces the rounds warns of those
+    the binning did not make, and drops them.
 
     Parameters
     ----------
@@ -1010,7 +1024,11 @@ def write_map(
     mge : tuple, optional
         The tables of the round mge or mge_random (see
         metator.clusters.mge_round) and its entry (its name, and what made it:
-        see metator.cli.mge_entry).
+        see metator.cli.mge_entry). The round mge undoes the MGE genomes of
+        the map (see mge_reassignment).
+    reassign : bool
+        With the round mge (mge), whether its clusters are genomes of the map
+        then (metator mge --reassign).
     force : bool
         Whether to replace an existing outfile: the input map itself, which a
         run updates in place, or another file.
@@ -1024,20 +1042,24 @@ def write_map(
     ------
     ValueError
         If clusters come with rounds or round_names: the rounds of a validation
-        are those of its clusters.
+        are those of its clusters; or with mge: the genomes of a validation are
+        its final clusters. If reassign comes without the round mge.
     MetacoolError
         If the outfile is no file's path (a URI), exists (without force), is
         the .mmetacool collection of the input map or a hard link of the input
         map, the input map is missing, cannot be read or changed since planned
         was opened, a contig of the clusters is not a contig of the input map,
         a cluster name is not ASCII or one that metacooler reads as no cluster
-        (NA, nan, -1...), or metacooler cannot write the map (a ValueError,
-        OSError or KeyError, message kept)."""
-    if clusters is not None and (rounds is not None or round_names is not None):
+        (NA, nan, -1...), an MGE cluster is named after a genome that the map
+        keeps (see mge_reassignment), or metacooler cannot write the map (a
+        ValueError, OSError or KeyError, message kept)."""
+    if clusters is not None and (rounds is not None or round_names is not None or mge is not None):
         raise ValueError(
-            "write_map takes the clustering rounds of a validation from its clusters (FinalClusters.rounds): give "
-            "clusters without rounds or round_names."
+            "write_map takes the clustering rounds and the genomes of a validation from its clusters "
+            "(FinalClusters): give clusters without rounds, round_names or mge."
         )
+    if reassign and (mge is None or mge[1]["name"] != mtcl.MGE):
+        raise ValueError(f"reassign makes genomes of the clusters of the round {mtcl.MGE}: give them as mge.")
     metacool, outfile = str(metacool), str(outfile)
     if is_entry(metacool) and is_input_map(metacool, outfile):
         raise MetacoolError(
@@ -1057,9 +1079,12 @@ def write_map(
             # The rounds of the map that the run does not make: said once the
             # map is written.
             later = _later_rounds(mc) if clusters is not None or rounds is not None else []
+            # The genomes of the map once its round mge is stored: None when
+            # they stay as they are.
+            genomes = mge_reassignment(mc, mge[0], reassign) if mge is not None and mge[1]["name"] == mtcl.MGE else None
         if clusters is not None:
             _check_clustered_contigs(metacool, contigs, clusters)
-        writing, written = _what_is_written(contigs, network, rounds, clusters, mge)
+        writing, written = _what_is_written(contigs, network, rounds, clusters, mge, genomes)
         source = "in place" if in_place else f"from {metacool}"
         logger.info(f"Writing {outfile} {source}{writing}.")
         with _as_metacool_errors(), ExitStack() as session:
@@ -1070,6 +1095,8 @@ def write_map(
             staged = _enter_session(session, metacool, outfile, read, force)
             if clusters is not None:
                 _store_final_clusters(staged, metacool, read, contigs, clusters, partition)
+            elif genomes is not None:
+                _store_mge_genomes(staged, metacool, read, genomes)
             if network is not None:
                 _store_network(staged, network)
             if clusters is not None:
@@ -1091,10 +1118,11 @@ def write_map(
     _warn_dropped_rounds(later, metacool, outfile, in_place)
 
 
-def _what_is_written(contigs, network, rounds, clusters, mge):
+def _what_is_written(contigs, network, rounds, clusters, mge, genomes=None):
     """What the messages of write_map say of the map it writes: while it is
     written, and once it is (each a text that follows the name of the map, and
-    the words "the contact map")."""
+    the words "the contact map"). genomes: those that the round mge makes (see
+    mge_reassignment)."""
     if clusters is not None:
         binned = [name for name in contigs["name"].astype(str) if name in clusters.assignment]
         final = set(clusters.assignment[name] for name in binned)
@@ -1105,9 +1133,13 @@ def _what_is_written(contigs, network, rounds, clusters, mge):
     if mge is not None:
         tables, entry = mge
         name = entry["name"]
+        made = ""
+        if genomes is not None:
+            mges = (genomes.table[MGE_GENOME_COLUMN] == "True").sum() if MGE_GENOME_COLUMN in genomes.table else 0
+            made = f", and {mges} MGE genomes" if mges else ", without its MGE genomes"
         return (
-            f", with the {len(tables[0])} clusters of the round {name} of its clustering rounds",
-            f", with the round {name} of its clustering rounds",
+            f", with the {len(tables[0])} clusters of the round {name} of its clustering rounds{made}",
+            f", with the round {name} of its clustering rounds{made}",
         )
     if rounds is not None:
         return f", with the {len(rounds[0])} clusters of the run", ", with the clustering rounds of the run"
@@ -1138,8 +1170,6 @@ def _store_final_clusters(path, metacool, read, contigs, clusters, partition=Non
     what it leaves out. read: the maps opened on the input map (see _read), the
     last one to write the map, whose contigs table is contigs; one replaced or
     written while metacooler read the map is refused."""
-    import metacooler
-
     names = [str(name) for name in contigs["name"]]
     metator = {key: value for key, value in _metator_metadata(read[-1]).items() if key not in LEGACY_RUN_KEYS}
     if partition is not None:
@@ -1161,38 +1191,51 @@ def _store_final_clusters(path, metacool, read, contigs, clusters, partition=Non
             genomes_table = os.path.join(scratch.enter_context(tempfile.TemporaryDirectory()), "clusters.txt")
             with open(genomes_table, "w") as handle:
                 handle.write("".join(f"{name}\n" for name in ["cluster", *sorted(final)]))
-        with read_errors(metacool):
-            metacooler.reassign(
-                metacool,
-                assignment,
-                # The staged map, written anew from the input map, which
-                # metacooler only reads: its history names the input map as
-                # the source.
-                path,
-                # Grouped by cluster, then from the longest, whatever the
-                # order of the input map: the pixels are remapped, the
-                # columns of the contigs table and the weights of the bins
-                # follow them.
-                layout="genome-then-length",
-                # The cluster names are the first column of the table,
-                # unnamed in cluster_summary.txt. It replaces the columns of
-                # the genomes table that the input map carried.
-                genomes_table=genomes_table,
-                genomes_table_format="1",
-                metadata={"metator": metator},
-                # Over the staged copy of the map.
-                force=True,
-                # On a failure, metacooler removes the partial file it writes
-                # next to the staged map.
-                keep_partial=False,
-            )
-            # The input map as the run read it: one replaced or written
-            # while metacooler read it, by a program that takes no lock of
-            # metacooler, is refused (a read through a map opened on it
-            # checks its file).
-            for mc in read:
-                with mc.open():
-                    pass
+        # Grouped by cluster, then from the longest, whatever the order of the
+        # input map: the pixels are remapped, the columns of the contigs table
+        # and the weights of the bins follow them.
+        _reassign(path, metacool, read, assignment, genomes_table, "genome-then-length", {"metator": metator})
+
+
+def _reassign(path, metacool, read, assignment, genomes_table, layout, metadata=None):
+    """Write the map at path, the staged map of an edit session (see write_map),
+    anew from the input map metacool with metacooler reassign, which warns of
+    what it leaves out: each contig in its genome of assignment (every contig
+    of the map, by name: ND for none), the genomes with the values of
+    genomes_table (a table that names them in its first column, which replaces
+    the values that the input map carried), the contigs laid out as layout
+    says (see metacooler.reassign), with metadata (keys of the metadata of the
+    map). read: the maps opened on the input map (see _read), the last one to
+    write the map; one replaced or written while metacooler read the map is
+    refused."""
+    import metacooler
+
+    with read_errors(metacool):
+        metacooler.reassign(
+            metacool,
+            assignment,
+            # The staged map, written anew from the input map, which
+            # metacooler only reads: its history names the input map as the
+            # source.
+            path,
+            layout=layout,
+            # The genome names are the first column of the table, unnamed in
+            # cluster_summary.txt.
+            genomes_table=genomes_table,
+            genomes_table_format="1",
+            metadata=metadata,
+            # Over the staged copy of the map.
+            force=True,
+            # On a failure, metacooler removes the partial file it writes next
+            # to the staged map.
+            keep_partial=False,
+        )
+        # The input map as the run read it: one replaced or written while
+        # metacooler read it, by a program that takes no lock of metacooler,
+        # is refused (a read through a map opened on it checks its file).
+        for mc in read:
+            with mc.open():
+                pass
 
 
 def _store_round(path, metacool, rounds, entry):
@@ -1218,3 +1261,200 @@ def _store_round(path, metacool, rounds, entry):
     other_members = held_members[(held_members["round"] != name).to_numpy()]
     entries = [stored for stored in held_rounds if stored["name"] != name]
     _store_clusters(path, [*entries, entry], _stacked(other, clusters), _stacked(other_members, members), name=metacool)
+
+
+def mge_genomes(mc):
+    """The MGE genomes of the map mc (opened), by name, in the order of its genomes
+    table: those that its column mge says are (True), which metator mge
+    --reassign made of the clusters of its round mge (see write_map)."""
+    genomes = mc.genomes
+    if MGE_GENOME_COLUMN not in genomes.columns:
+        return []
+    flagged = genomes[MGE_GENOME_COLUMN].astype(object).map(lambda value: str(value) == "True").to_numpy(bool)
+    return list(genomes["name"].astype(str).to_numpy()[flagged])
+
+
+@dataclass
+class MgeGenomes:
+    """The genomes of a map once metator mge stores its round mge in it (see
+    mge_reassignment and write_map).
+
+    Attributes
+    ----------
+    assignment : dict
+        The genome of each contig of the map, by name: ND for none.
+    table : pandas.DataFrame
+        The values of each genome, indexed by its name: the genomes table that
+        metacooler reassign stores (see _write_genomes_table)."""
+
+    assignment: dict
+    table: pd.DataFrame
+
+
+# The columns of the clustering rounds that name a cluster and its parent: the
+# others are the values of the cluster.
+CLUSTER_KEY_COLUMNS = ("round", "name", "parent_round", "parent")
+
+
+def mge_reassignment(mc, rounds, reassign):
+    """The genomes of the map mc (opened) once metator mge stores the round mge of
+    its run in it (rounds: its clusters and their contigs, see
+    metator.clusters.mge_round), or None when the run leaves them as they are.
+
+    The MGE genomes that the map holds are undone first: those that its column
+    mge says are (see mge_genomes), and those named after a cluster of its
+    round mge (which metacooler reassign --round mge makes, say). Their
+    contigs go back to their final cluster (the round final), or to none.
+    With reassign (--reassign), each MGE cluster of the run is a genome then,
+    named after it, with its values (GC, Hit, BinningScore): its contigs leave
+    the genomes that held them, MAGs or none. The other genomes are kept, with
+    their values, those of the validation, which describe them with the
+    contigs that they lose, as the log says; a genome whose contigs all leave
+    it is no genome any more, and its values go with it. The column mge of
+    the genomes table says which genomes are MGE genomes (True): it is not
+    there without reassign.
+
+    Returns
+    -------
+    MgeGenomes, or None
+        None without reassign, on a map that holds no MGE genome.
+
+    Raises
+    ------
+    MetacoolError
+        If a genome that the run keeps is named after an MGE cluster of the
+        run: their contigs would make one genome."""
+    from metacooler.qc import strip_qc_columns
+
+    clusters, members = rounds
+    contigs = mc.contigs
+    genomes = strip_qc_columns(mc.genomes)
+    names = genomes["name"].astype(str).to_numpy()
+    held = dict(zip(contigs["name"].astype(str), names[contigs["genome_id"].to_numpy()], strict=True))
+    stored = [str(entry.get("name")) for entry in mc.cluster_rounds]
+    earlier = set(mge_genomes(mc))
+    if mtcl.MGE in stored:
+        earlier |= set(mc.cluster_members(mtcl.MGE)["cluster"].astype(str)) & set(names)
+    if not earlier and not reassign:
+        return None
+    final = {}
+    if mtcl.FINAL in stored:
+        members_final = mc.cluster_members(mtcl.FINAL)
+        final = dict(zip(members_final["contig"].astype(str), members_final["cluster"].astype(str), strict=True))
+    base = {contig: final.get(contig, UNBINNED_GENOME) if genome in earlier else genome for contig, genome in held.items()}
+    moved = {}
+    if reassign:
+        pairs = zip(members["contig"].astype(str), members["cluster"].astype(str), strict=True)
+        moved = {contig: cluster for contig, cluster in pairs if contig in held}
+    mges = list(dict.fromkeys(moved.values()))
+    clash = sorted({genome for contig, genome in base.items() if contig not in moved} & set(mges))
+    if clash:
+        raise MetacoolError(
+            f"The MGE cluster(s) {_shown(clash)} of the run are named after genome(s) of the map that the run keeps: "
+            "their contigs would make one genome. Rename those genomes (metacooler reassign) first."
+        )
+    assignment = {**base, **moved}
+    kept = [genome for genome in dict.fromkeys(assignment.values()) if genome != UNBINNED_GENOME and genome not in mges]
+    _log_mge_genomes(held, base, moved, earlier, kept, set(names))
+    # The values of the genomes that the run keeps, but those that the MGE
+    # genomes of the run get and those that metacooler computes (their
+    # length, contigs and bins); none for a genome that gets contigs back
+    # after it lost them all.
+    columns = [column for column in clusters.columns if column not in CLUSTER_KEY_COLUMNS]
+    values = genomes.set_index(pd.Index(names, dtype=object))
+    computed = {"name", "length", "n_contigs", "n_bins", MGE_GENOME_COLUMN, *columns}
+    table = values.drop(columns=[column for column in values.columns if column in computed]).reindex(
+        pd.Index([*kept, *mges], dtype=object)
+    )
+    if reassign:
+        cluster_values = clusters.set_index(pd.Index(clusters["name"].astype(str), dtype=object))
+        for column in columns:
+            table[column] = cluster_values[column].reindex(table.index)
+        table[MGE_GENOME_COLUMN] = ["False"] * len(kept) + ["True"] * len(mges)
+    return MgeGenomes({contig: "ND" if genome == UNBINNED_GENOME else genome for contig, genome in assignment.items()}, table)
+
+
+def _log_mge_genomes(held, base, moved, earlier, kept, genomes):
+    """Log what mge_reassignment makes of the genomes of a map: the MGE genomes
+    that it undoes (earlier), the genomes that lose contigs to the MGE
+    genomes of the run (moved), those that lose them all, and the genomes
+    that get contigs back without values (none in the genomes of the map)."""
+    undone = sorted(earlier & set(held.values()))
+    if undone:
+        back = [contig for contig, genome in held.items() if genome in earlier]
+        restored = sum(base[contig] != UNBINNED_GENOME for contig in back)
+        logger.info(
+            f"The {len(undone)} MGE genome(s) of the map are undone ({_shown(undone)}): of their {len(back)} contig(s), "
+            f"{restored} go back to their final cluster, and {len(back) - restored} to none."
+        )
+    if moved:
+        lost = Counter(base[contig] for contig in moved if base[contig] != UNBINNED_GENOME)
+        taken = sum(lost.values())
+        logger.info(
+            f"The {len(set(moved.values()))} MGE clusters of the run are genomes of the map, of {len(moved)} contig(s): "
+            f"{taken} of them leave {len(lost)} genome(s), {len(moved) - taken} were in none."
+        )
+        left = [genome for genome in lost if genome in kept]
+        if left:
+            listed = ", ".join(f"{genome} ({lost[genome]})" for genome in left[:MAX_SHOWN])
+            more = f", ... (+{len(left) - MAX_SHOWN} more)" if len(left) > MAX_SHOWN else ""
+            logger.info(
+                f"{len(left)} genome(s) lose contigs to MGE genomes, and keep the values of their validation, which "
+                f"describe them with those contigs: {listed}{more}."
+            )
+        gone = sorted(genome for genome in lost if genome not in kept)
+        if gone:
+            logger.warning(
+                f"{len(gone)} genome(s) of the map are no genome any more, as all their contigs are in MGE genomes: "
+                f"{_shown(gone)}. Their values leave the genomes table with them."
+            )
+    bare = [genome for genome in kept if genome not in genomes]
+    if bare:
+        logger.warning(
+            f"{len(bare)} final cluster(s) are genomes of the map again, without values: {_shown(bare)}. Their values "
+            "left the genomes table with their last contigs, which an MGE genome took: run metator validation again "
+            "to measure them."
+        )
+
+
+def _write_genomes_table(table, path):
+    """Write the values of the genomes of a map (table, indexed by their names) at
+    path, as metacooler reads a genomes table (see _reassign): tab-separated,
+    unquoted, the names in the first column, unnamed, the values of a column
+    as they are (a decimal as the shortest text that reads it back), a
+    missing value as an empty field. A table without columns is the names
+    alone, under the header genome. metacooler reads a decimal back with
+    pandas: to the bit with pandas 3, to about one part in 10^13 with pandas
+    2, whose to_numeric rounds some long decimals off.
+
+    Raises
+    ------
+    MetacoolError
+        If a value holds a tab or a line break, which no field of such a table
+        holds."""
+    import csv
+
+    if table.columns.empty:
+        with open(path, "w") as handle:
+            handle.write("".join(f"{name}\n" for name in ["genome", *table.index]))
+        return
+    try:
+        table.rename_axis(None).to_csv(path, sep="\t", quoting=csv.QUOTE_NONE)
+    except csv.Error as error:
+        raise MetacoolError(
+            f"A value of the genomes table of the map holds a tab or a line break, which a table of genomes cannot "
+            f"hold ({error}): remove it from the map first (metacooler annotate)."
+        ) from error
+
+
+def _store_mge_genomes(path, metacool, read, genomes):
+    """Write the map at path, the staged map of an edit session (see write_map),
+    anew from the input map metacool with metacooler reassign: its contigs in
+    the genomes of genomes (an MgeGenomes, see mge_reassignment), with their
+    values, laid out as the input map is, grouped by genome again when it
+    grouped them (metacooler reassign's layout auto), as a validation does.
+    read: the maps opened on the input map (see _read)."""
+    with tempfile.TemporaryDirectory() as directory:
+        table = os.path.join(directory, "genomes.txt")
+        _write_genomes_table(genomes.table, table)
+        _reassign(path, metacool, read, genomes.assignment, table, "auto")

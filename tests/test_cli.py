@@ -2989,18 +2989,19 @@ def test_pipeline_leaves_the_directory_of_the_assembly_alone(stub_pipeline, tmp_
     ]  # fmt: skip
 
 
-@pytest.mark.parametrize("random", [False, True], ids=["mge", "--random"])
-def test_mge_default_outdir(random, tmp_path, monkeypatch, run_cli):
+@pytest.mark.parametrize("flag", [None, "--random", "--reassign"], ids=["mge", "--random", "--reassign"])
+def test_mge_default_outdir(flag, tmp_path, monkeypatch, run_cli):
     """Without --outdir, mge writes its MGE fasta to the current directory
     (mges_binned_random.fa with --random), with the assembly that the map was
-    made from, and stores the round mge (mge_random) in the map; its temporary
-    directory is removed at its end, and nothing is written next to the
-    assembly."""
+    made from, and stores the round mge (mge_random) in the map, and its MGE
+    clusters as genomes with --reassign; its temporary directory is removed at
+    its end, and nothing is written next to the assembly."""
     import metacooler
     import pandas as pd
 
     import metator.clusters as mtcl
 
+    random = flag == "--random"
     metacool = _contig_map(tmp_path / "map.metacool")
     calls = {}
     summary = pd.DataFrame({"BinName": ["MetaTOR_MGE_00001"], "Contigs": ["c2"]})
@@ -3013,9 +3014,9 @@ def test_mge_default_outdir(random, tmp_path, monkeypatch, run_cli):
         calls["fasta"] = (metacool, assembly, out_file)
         assert os.path.isdir(temp_dir)
 
-    def write_map(metacool, outfile, planned, what, mge):
+    def write_map(metacool, outfile, planned, what, mge, reassign):
         (clusters, members), entry = mge
-        calls["map"] = (metacool, outfile, list(clusters["round"]), list(members["contig"]), entry["name"])
+        calls["map"] = (metacool, outfile, list(clusters["round"]), list(members["contig"]), entry["name"], reassign)
         assert isinstance(planned, metacooler.MetaCooler)
 
     monkeypatch.setattr("metator.mge.mge_binning", mge_binning)
@@ -3026,14 +3027,14 @@ def test_mge_default_outdir(random, tmp_path, monkeypatch, run_cli):
     shutil.copyfile(TESTS_DATA / "subset.assembly.fa", assembly)
     mges = tmp_path / "mges.txt"
     mges.write_text("c2\n")
-    run_cli("mge", metacool, "-a", assembly, "-m", mges, *(["--random"] if random else []))
+    run_cli("mge", metacool, "-a", assembly, "-m", mges, *([flag] if flag else []))
     assert calls["binning"] == (str(metacool), ["c2"], 0.8, random)
     fasta = "mges_binned_random.fa" if random else "mges_binned.fa"
     assert calls["fasta"] == (str(metacool), str(assembly), os.path.join(".", fasta))
     name = mtcl.MGE_RANDOM if random else mtcl.MGE
     # The map of the output directory, the current one: the map itself, in
     # place.
-    assert calls["map"] == (str(metacool), "map.metacool", [name], ["c2"], name)
+    assert calls["map"] == (str(metacool), "map.metacool", [name], ["c2"], name, flag == "--reassign")
     assert sorted(path.name for path in assembly.parent.iterdir()) == ["assembly.fa"]
     assert not (tmp_path / "tmp").exists()
 

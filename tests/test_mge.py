@@ -139,6 +139,57 @@ def test_shuffle_mge_bins():
     assert sorted(c for b in mge_bins.values() for c in b["Contigs"]) == ["a", "b", "c", "d"]
 
 
+def _clusters_map(metagenome, metagenome_files, directory, hosted=False):
+    """The map of the clusters of a binning run of the mock metagenome (see
+    clusters_map), and the list of its MGE contigs. hosted: the contigs of the
+    first MGE (the phage) are in the final cluster of their host, and those of
+    the others (the plasmid) in a final cluster of their own, and the genomes
+    have the values that a validation gives them (decimals and text, a
+    recursive column of True and False among them), where the MGE contigs are
+    in none and the genomes have no values."""
+    import metacooler
+
+    import metator.clusters as mtcl
+    import metator.metacool as mtmc
+    import metator.network as mtn
+
+    truth = metagenome.truth
+    clusters = {genome.name: f"metator_{k:05d}_00000" for k, genome in enumerate(metagenome.genomes, start=1)}
+    if hosted:
+        mges = sorted(set(truth.Genome[truth.Kind == "mge"]))
+        clusters |= {mge: f"metator_{len(clusters) + k:05d}_00000" for k, mge in enumerate(mges[1:], start=1)}
+        hosts = {mges[0]: clusters[str(truth.Host[truth.Genome == mges[0]].iloc[0])]}
+    else:
+        hosts = {}
+    final = {name: hosts.get(genome, clusters.get(genome, "ND")) for name, genome in zip(truth.Name, truth.Genome, strict=True)}
+    metacool = _map_of_pairs(metagenome, metagenome_files, directory / "clusters.metacool", final=final)
+    contig_data = mtn.create_contig_data(str(metagenome_files["assembly"]), str(metagenome_files["depth"]), "DpnII")
+    contacts = mtn.contig_contacts(str(metacool))
+    names = metacooler.MetaCooler(str(metacool)).contigs["name"]
+    table = mtn.contig_data_table(contig_data, names, mtn.contig_hits(contacts, len(names)))
+    mtmc.write_map(str(metacool), str(metacool), network=mtmc.Network(table, "empirical_hit"), force=True)
+    members = {cluster: [name for name, held in final.items() if held == cluster] for cluster in clusters.values()}
+    rounds = mtcl.Rounds()
+    for cluster, contigs in members.items():
+        columns = {"Completeness": 0.9, "Lineage": "Bacteria", "Markers": 40, "Circular": True}
+        rounds.add(mtcl.OVERLAPPING, cluster, contigs, columns=columns)
+    rounds.close_round(mtcl.OVERLAPPING)
+    for cluster, contigs in members.items():
+        columns = {"Markers": 41, "Circular": False}
+        rounds.add(mtcl.FINAL, cluster, contigs, parent=cluster, columns=columns)
+    mtmc.store_rounds(str(metacool), rounds.tables())
+    if hosted:
+        values = directory / "values.txt"
+        values.write_text(
+            "\tCompleteness\tLineage\trecursive\n"
+            + "".join(f"{cluster}\t{0.9 + k / 300}\tBacteria {k}\t{k % 2 == 0}\n" for k, cluster in enumerate(members, start=1))
+        )
+        metacooler.annotate(str(metacool), genomes_table=str(values), genomes_table_format="1", inplace=True)
+    mges = directory / "mges.txt"
+    mges.write_text("".join(f"{name}\n" for name in _mge_contigs(metagenome)))
+    return metacool, mges
+
+
 @pytest.fixture(scope="module")
 def clusters_map(metagenome, metagenome_files, tmp_path_factory):
     """The .metacool map of the clusters of a binning run of the mock metagenome,
@@ -149,47 +200,39 @@ def clusters_map(metagenome, metagenome_files, tmp_path_factory):
     weights of empirical_hit); and the clustering rounds of the run,
     overlapping and final (with columns of text, decimals, whole numbers and
     booleans)."""
-    import metacooler
+    return _clusters_map(metagenome, metagenome_files, tmp_path_factory.mktemp("clusters_map"))
 
-    import metator.clusters as mtcl
-    import metator.metacool as mtmc
-    import metator.network as mtn
 
-    directory = tmp_path_factory.mktemp("clusters_map")
-    truth = metagenome.truth
-    genomes = truth[truth.Kind == "genome"]
-    clusters = {genome.name: f"metator_{k:05d}_00000" for k, genome in enumerate(metagenome.genomes, start=1)}
-    final = {name: clusters.get(genome, "ND") for name, genome in zip(truth.Name, truth.Genome, strict=True)}
-    metacool = _map_of_pairs(metagenome, metagenome_files, directory / "clusters.metacool", final=final)
-    contig_data = mtn.create_contig_data(str(metagenome_files["assembly"]), str(metagenome_files["depth"]), "DpnII")
-    contacts = mtn.contig_contacts(str(metacool))
-    names = metacooler.MetaCooler(str(metacool)).contigs["name"]
-    table = mtn.contig_data_table(contig_data, names, mtn.contig_hits(contacts, len(names)))
-    mtmc.write_map(str(metacool), str(metacool), network=mtmc.Network(table, "empirical_hit"), force=True)
-    rounds = mtcl.Rounds()
-    for genome, cluster in clusters.items():
-        contigs = genomes.Name[genomes.Genome == genome]
-        columns = {"Completeness": 0.9, "Lineage": "Bacteria", "Markers": 40, "Circular": True}
-        rounds.add(mtcl.OVERLAPPING, cluster, contigs, columns=columns)
-    rounds.close_round(mtcl.OVERLAPPING)
-    for genome, cluster in clusters.items():
-        columns = {"Markers": 41, "Circular": False}
-        rounds.add(mtcl.FINAL, cluster, genomes.Name[genomes.Genome == genome], parent=cluster, columns=columns)
-    mtmc.store_rounds(str(metacool), rounds.tables())
-    mges = directory / "mges.txt"
-    mges.write_text("".join(f"{name}\n" for name in _mge_contigs(metagenome)))
-    return metacool, mges
+@pytest.fixture(scope="module")
+def hosted_map(metagenome, metagenome_files, tmp_path_factory):
+    """clusters_map, but the phage in the final cluster of its host, the plasmid
+    in a final cluster of its own, and the genomes with values (see
+    _clusters_map)."""
+    return _clusters_map(metagenome, metagenome_files, tmp_path_factory.mktemp("hosted_map"), hosted=True)
+
+
+def _run_on(clusters, metagenome_inputs, tmp_path):
+    """A private copy of a map of clusters (see _clusters_map), and the arguments
+    of an mge run on it but the map, its outputs in tmp_path/out."""
+    source, mges = clusters
+    metacool = tmp_path / "clusters.metacool"
+    shutil.copyfile(source, metacool)
+    args = ["-a", metagenome_inputs["assembly"], "-m", mges, "-o", tmp_path / "out", "-T", tmp_path / "tmp"]
+    return metacool, [str(arg) for arg in args]
 
 
 @pytest.fixture
 def mge_run(clusters_map, metagenome_inputs, tmp_path):
     """A private copy of clusters_map, and the arguments of an mge run on it but
     the map, its outputs in tmp_path/out."""
-    source, mges = clusters_map
-    metacool = tmp_path / "clusters.metacool"
-    shutil.copyfile(source, metacool)
-    args = ["-a", metagenome_inputs["assembly"], "-m", mges, "-o", tmp_path / "out", "-T", tmp_path / "tmp"]
-    return metacool, [str(arg) for arg in args]
+    return _run_on(clusters_map, metagenome_inputs, tmp_path)
+
+
+@pytest.fixture
+def hosted_run(hosted_map, metagenome_inputs, tmp_path):
+    """A private copy of hosted_map, and the arguments of an mge run on it but the
+    map, its outputs in tmp_path/out."""
+    return _run_on(hosted_map, metagenome_inputs, tmp_path)
 
 
 def test_mge_binning(metagenome, clusters_map):
@@ -445,13 +488,15 @@ def _binning_rounds(mc):
     )
 
 
-def _check_binning_rounds(held, mc):
+def _check_binning_rounds(held, mc, without=()):
     """The rounds of the binning run that the map mc holds are those that it held
     (held, see _binning_rounds): the same entries and contigs, and the same
-    values in the columns of their clusters."""
+    values in the columns of their clusters, but those of without. The
+    contigs of a cluster come in the order of the map: with without, which
+    a reassignment changes, in any order."""
     entries, clusters, members = _binning_rounds(mc)
     assert entries == held[0]
-    expected = held[1].copy()
+    expected = held[1].drop(columns=list(without))
     assert expected["Markers"].dtype == "int64" and expected["Circular"].dtype == "bool"
     for column in expected.columns:
         if pd.api.types.is_bool_dtype(expected[column]):
@@ -459,7 +504,11 @@ def _check_binning_rounds(held, mc):
         elif pd.api.types.is_integer_dtype(expected[column]) and column not in ("n_contigs", "length"):
             expected[column] = expected[column].astype("float64")
     pd.testing.assert_frame_equal(clusters[list(expected.columns)], expected)
-    pd.testing.assert_frame_equal(members, held[2])
+    if without:
+        members, expected = (table.sort_values(list(table.columns), ignore_index=True) for table in (members, held[2]))
+        pd.testing.assert_frame_equal(members, expected)
+    else:
+        pd.testing.assert_frame_equal(members, held[2])
 
 
 def _outside_clusters(path, *entries):
@@ -984,3 +1033,208 @@ def test_a_refused_map_of_new_clusters_drops_no_round(writer, metagenome, mge_ru
             mtmc.write_map(str(metacool), str(outfile), clusters=clusters, force=True)
     assert metacool.read_bytes() == before
     assert not [message for level, message in logged() if level == "WARNING" and "clustering round" in message]
+
+
+def _assignment(mc):
+    """The genome of each contig of the map mc, by name."""
+    names = mc.genomes["name"].astype(str).to_numpy()
+    return dict(zip(mc.contigs["name"].astype(str), names[mc.contigs["genome_id"].to_numpy()], strict=True))
+
+
+def _values(mc):
+    """The values of the genomes of the map mc, indexed by their names: its
+    genomes table without the columns that metacooler computes (their
+    length, contigs, bins and contacts)."""
+    genomes = mc.genomes.set_index(mc.genomes["name"].astype(str).rename(None))
+    computed = [column for column in genomes.columns if column in ("name", "length", "n_contigs", "n_bins")]
+    return genomes.drop(columns=computed + [column for column in genomes.columns if column.startswith("qc_")])
+
+
+def _with_mge_genomes(assignment, summary):
+    """assignment (the genome of each contig, by name), each contig of an MGE
+    cluster of summary in the genome of its cluster."""
+    pairs = zip(summary.BinName, summary.Contigs, strict=True)
+    mges = {contig: name for name, contigs in pairs for contig in contigs.split(",")}
+    return {contig: mges.get(contig, genome) for contig, genome in assignment.items()}
+
+
+def test_mge_reassign_makes_genomes_of_the_mge_clusters(hosted_run, run_cli, logged):
+    """--reassign makes each MGE cluster a genome of the map, named after it,
+    with its GC content, hits and clustering score: its contigs leave the
+    genomes that held them, the final cluster of the host of the phage, which
+    keeps its other contigs and its values, and that of the plasmid, which is
+    no genome then. The column mge says which genomes are MGE genomes (True;
+    False for the others, none for __unbinned__). The clustering rounds, the
+    contigs table and the network are kept, and the map is valid; the log says
+    which genomes lost contigs."""
+    import metacooler
+
+    import metator.metacool as mtmc
+    import metator.network as mtn
+
+    metacool, args = hosted_run
+    before = metacooler.MetaCooler(str(metacool))
+    held, values, contigs = _assignment(before), _values(before), before.contigs.set_index("name")
+    rounds = _binning_rounds(before)
+    network = mtn.stored_network(str(metacool)).digest
+    summary = _expected_summary(metacool, args)
+    run_cli("mge", metacool, *args, "--reassign", "--inplace")
+    metacooler.validate(str(metacool), full=True)
+    mc = metacooler.MetaCooler(str(metacool))
+    assert _assignment(mc) == _with_mge_genomes(held, summary)
+    after = _values(mc)
+    plasmid = held[summary.Contigs[summary.ContigsNumber == 1].iloc[0]]
+    kept = [genome for genome in values.index if genome != plasmid]
+    assert list(after.index) == sorted([*kept, *summary.BinName], key=lambda name: (name != "__unbinned__", name))
+    pd.testing.assert_frame_equal(after.loc[kept, list(values.columns)], values.loc[kept])
+    assert list(after.loc[kept, "mge"]) == ["" if genome == "__unbinned__" else "False" for genome in kept]
+    assert (after.loc[list(summary.BinName), "mge"] == "True").all()
+    for column in ["GC", "Hit", "BinningScore"]:
+        # From a genomes table of text, which metacooler reads with pandas: to
+        # the bit with pandas 3, to about one part in 10^13 with pandas 2.
+        mges = after.loc[list(summary.BinName), column].to_numpy(float)
+        np.testing.assert_allclose(mges, summary[column].to_numpy(float), rtol=1e-12, atol=0)
+        assert after.loc[kept, column].isna().all()
+    missing = after.loc[list(summary.BinName), list(values.columns)].map(lambda value: value == "" or pd.isna(value))
+    assert missing.all().all()
+    _check_mge_round(mc, summary)
+    # The clusters of the rounds are kept, but the genome of each, which
+    # metacooler computes: none for the clusters of the host, whose contigs
+    # are no genome any more, and the MGE genome of the plasmid for its own.
+    _check_binning_rounds(rounds, mc, without=["genome"])
+    binning = _binning_rounds(mc)[1].set_index("name")["genome"]
+    host = held[summary.Contigs[summary.ContigsNumber == 2].iloc[0].split(",")[0]]
+    plasmid_genome = summary.BinName[summary.ContigsNumber == 1].iloc[0]
+    expected = {name: None if name == host else plasmid_genome if name == plasmid else name for name in binning.index}
+    assert {name: None if pd.isna(genome) else genome for name, genome in binning.items()} == expected
+    # Every column of the contigs table, with its values (metacooler puts its
+    # QC columns last).
+    pd.testing.assert_frame_equal(
+        mc.contigs.set_index("name").loc[contigs.index].drop(columns="genome_id"),
+        contigs.drop(columns="genome_id"),
+        check_like=True,
+    )
+    assert mtn.stored_network(str(metacool)).digest == network
+    assert ("INFO", "The 2 MGE clusters of the run are genomes of the map, of 3 contig(s): 3 of them leave 2 "
+            "genome(s), 0 were in none.") in logged()  # fmt: skip
+    assert ("INFO", f"1 genome(s) lose contigs to MGE genomes, and keep the values of their validation, which describe "
+            f"them with those contigs: {host} (2).") in logged()  # fmt: skip
+    assert ("WARNING", f"1 genome(s) of the map are no genome any more, as all their contigs are in MGE genomes: "
+            f"'{plasmid}'. Their values leave the genomes table with them.") in logged()  # fmt: skip
+    assert mtmc.mge_genomes(mc) == list(summary.BinName)
+
+
+def test_mge_reruns_replace_or_undo_the_mge_genomes(hosted_run, tmp_path, run_cli, logged):
+    """A run of mge replaces the MGE genomes of an earlier run with --reassign,
+    with its own (here each MGE contig a cluster of its own), and does not add
+    them; --random leaves them as they are; a run without --reassign undoes
+    them: their contigs go back to their final clusters, the host of the phage
+    with its values, the cluster of the plasmid without the values that it
+    lost with its contig, with a warning, and the columns of the MGE genomes
+    are gone."""
+    import metacooler
+
+    import metator.metacool as mtmc
+
+    metacool, args = hosted_run
+    before = metacooler.MetaCooler(str(metacool))
+    held, values = _assignment(before), _values(before)
+    first = _expected_summary(metacool, args)
+    plasmid = held[first.Contigs[first.ContigsNumber == 1].iloc[0]]
+    run_cli("mge", metacool, *args, "--reassign", "--inplace")
+    second = mtm.mge_binning(str(metacool), mio.import_mges_contigs(args[3]), threshold_bin=100)[0]
+    run_cli("mge", metacool, *args, "-s", "100", "--reassign", "--inplace", "-o", tmp_path / "again")
+    mc = metacooler.MetaCooler(str(metacool))
+    assert len(second) == 3 and _assignment(mc) == _with_mge_genomes(held, second)
+    assert sorted(mtmc.mge_genomes(mc)) == sorted(second.BinName)
+    kept = [genome for genome in values.index if genome in set(_assignment(mc).values())]
+    pd.testing.assert_frame_equal(_values(mc).loc[kept, list(values.columns)], values.loc[kept])
+    reassigned, genomes = _assignment(mc), _values(mc)
+    np.random.seed(7)
+    run_cli("mge", metacool, *args, "--random", "--inplace", "-o", tmp_path / "random")
+    mc = metacooler.MetaCooler(str(metacool))
+    assert _assignment(mc) == reassigned
+    pd.testing.assert_frame_equal(_values(mc), genomes)
+    run_cli("mge", metacool, *args, "--inplace", "-o", tmp_path / "undone")
+    mc = metacooler.MetaCooler(str(metacool))
+    assert _assignment(mc) == held and not mtmc.mge_genomes(mc)
+    after = _values(mc)
+    assert list(after.columns) == list(values.columns)
+    pd.testing.assert_frame_equal(after.drop(index=plasmid), values.drop(index=plasmid))
+    assert after.loc[plasmid].map(lambda value: value == "" or pd.isna(value)).all()
+    assert ("INFO", "The 3 MGE genome(s) of the map are undone (" + ", ".join(f"'{name}'" for name in sorted(second.BinName))
+            + "): of their 3 contig(s), 3 go back to their final cluster, and 0 to none.") in logged()  # fmt: skip
+    assert ("WARNING", f"1 final cluster(s) are genomes of the map again, without values: '{plasmid}'. Their values left "
+            "the genomes table with their last contigs, which an MGE genome took: run metator validation again to "
+            "measure them.") in logged()  # fmt: skip
+
+
+def test_mge_undoes_the_mge_genomes_made_by_hand(hosted_run, tmp_path, run_cli):
+    """Genomes named after the clusters of the round mge of the map, as
+    metacooler reassign --round mge makes them, are MGE genomes too: the next
+    run of mge undoes them, though the column mge does not say so."""
+    import metacooler
+
+    metacool, args = hosted_run
+    held = _assignment(metacooler.MetaCooler(str(metacool)))
+    run_cli("mge", metacool, *args, "--inplace")
+    summary = _expected_summary(metacool, args)
+    metacooler.reassign(str(metacool), round="mge", missing="keep", inplace=True)
+    assert _assignment(metacooler.MetaCooler(str(metacool))) == _with_mge_genomes(held, summary)
+    run_cli("mge", metacool, *args, "--inplace", "-o", tmp_path / "again")
+    assert _assignment(metacooler.MetaCooler(str(metacool))) == held
+
+
+def test_mge_refuses_reassign_with_random(mge_run, tmp_path, run_cli):
+    """--reassign with --random is refused before anything is read or written:
+    a random clustering makes no genome."""
+    metacool, args = mge_run
+    before = metacool.read_bytes()
+    result = run_cli("mge", metacool, *args, "--random", "--reassign", "--inplace", exit_code=2)
+    message = (
+        "Invalid value for '--reassign': --reassign makes genomes of the MGE clusters of the round mge, and --random "
+        "stores a random clustering as the round mge_random, which leaves them as they were: give one or the other."
+    )
+    assert message in " ".join(result.output.replace("│", " ").split())
+    assert metacool.read_bytes() == before
+    assert not (tmp_path / "out").exists() and not list(tmp_path.glob("metator_mge_*.log"))
+
+
+def test_mge_reassign_refuses_an_mge_cluster_named_after_a_genome(mge_run, run_cli):
+    """An MGE cluster named after a genome that the run keeps (here a genome
+    renamed by hand) is refused, and the map is left as it was: their contigs
+    would make one genome."""
+    import metacooler
+
+    import metator.metacool as mtmc
+
+    metacool, args = mge_run
+    summary = _expected_summary(metacool, args)
+    held = _assignment(metacooler.MetaCooler(str(metacool)))
+    taken = next(genome for genome in held.values() if genome != "__unbinned__")
+    renamed = {contig: summary.BinName[0] if genome == taken else genome for contig, genome in held.items()}
+    metacooler.reassign(
+        str(metacool), {contig: genome for contig, genome in renamed.items() if genome != "__unbinned__"}, inplace=True
+    )
+    before = metacool.read_bytes()
+    named = rf"The MGE cluster\(s\) '{summary.BinName[0]}' of the run are named after genome\(s\) of the map that the run keeps"
+    with pytest.raises(mtmc.MetacoolError, match=named):
+        run_cli("mge", metacool, *args, "--reassign", "--inplace")
+    assert metacool.read_bytes() == before
+
+
+def test_mge_undoes_the_mge_genomes_of_a_map_without_values(mge_run, tmp_path, run_cli):
+    """On a map whose genomes have no values (its final clusters, the MGE contigs
+    in none), a run without --reassign undoes the MGE genomes of an earlier run
+    with it: the genomes are the final clusters again, with the columns that
+    they had, none of those of the MGE genomes."""
+    import metacooler
+
+    metacool, args = mge_run
+    before = metacooler.MetaCooler(str(metacool))
+    held, columns = _assignment(before), list(before.genomes.columns)
+    run_cli("mge", metacool, *args, "--reassign", "--inplace")
+    assert _assignment(metacooler.MetaCooler(str(metacool))) != held
+    run_cli("mge", metacool, *args, "--inplace", "-o", tmp_path / "undone")
+    mc = metacooler.MetaCooler(str(metacool))
+    assert _assignment(mc) == held and list(mc.genomes.columns) == columns

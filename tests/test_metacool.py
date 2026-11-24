@@ -227,12 +227,28 @@ def test_a_clustered_contig_that_the_map_lacks_is_refused(metagenome, binning, t
 
 
 def test_write_map_takes_the_rounds_of_a_validation_from_its_clusters(tmp_path):
-    """Clusters given with rounds or round_names are refused before the map is
-    read: the rounds of a validation are those of its clusters."""
+    """Clusters given with rounds, round_names or a round mge are refused before
+    the map is read: the rounds and the genomes of a validation are those of its
+    clusters. reassign without the round mge is refused too: it makes genomes
+    of the clusters of that round."""
     clusters = mtmc.FinalClusters({}, None, None, {})
-    for extra in [{"rounds": ()}, {"round_names": ["core"]}]:
-        with pytest.raises(ValueError, match=r"^write_map takes the clustering rounds of a validation from its clusters"):
-            mtmc.write_map(str(tmp_path / "absent.metacool"), str(tmp_path / "out.metacool"), clusters=clusters, **extra)
+    paths = str(tmp_path / "absent.metacool"), str(tmp_path / "out.metacool")
+    for extra in [{"rounds": ()}, {"round_names": ["core"]}, {"mge": (None, {"name": "mge"})}]:
+        with pytest.raises(ValueError, match=r"^write_map takes the clustering rounds and the genomes of a validation"):
+            mtmc.write_map(*paths, clusters=clusters, **extra)
+    for extra in [{}, {"mge": (None, {"name": "mge_random"})}]:
+        with pytest.raises(ValueError, match=r"^reassign makes genomes of the clusters of the round mge: give them as mge"):
+            mtmc.write_map(*paths, reassign=True, **extra)
+
+
+@pytest.mark.parametrize("value", ["one\ttwo", "one\ntwo"], ids=["a tab", "a line break"])
+def test_a_genomes_table_refuses_a_value_of_two_fields(value, tmp_path):
+    """A value of the genomes table of a map with a tab or a line break, which no
+    field of a table of text holds, is refused, rather than written as two
+    fields (see metator.metacool._write_genomes_table)."""
+    table = pd.DataFrame({"note": [value]}, index=["genome_1"])
+    with pytest.raises(mtmc.MetacoolError, match=r"holds a tab or a line break, which a table of genomes cannot hold"):
+        mtmc._write_genomes_table(table, tmp_path / "genomes.txt")
 
 
 def test_non_ascii_names_shown():
