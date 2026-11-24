@@ -9,13 +9,13 @@ megahit \
     -2 shotgun_R2.fq.gz \
     --min-contig-len 500 \
     --num-cpu-threads 16 \
-    --out-dir megahit
-ln -s megahit/final.contigs.fa sample.fa
+    --out-dir megahit \
+    --out-prefix sample
 
 ## 2. Mapping the Hi-C pairs
 # Align the Hi-C reads on the assembly and make the contact map of its contigs
 hicstuff pipeline \
-    --genome sample.fa \
+    --genome megahit/sample.contigs.fa \
     --enzyme DpnII,HinfI \
     --matrix metacool \
     --threads 16 \
@@ -29,17 +29,13 @@ genomad download-database .
 genomad end-to-end \
     --cleanup \
     --splits 8 \
-    sample.fa genomad genomad_db
-tail \
-    --quiet \
-    --lines +2 \
-    genomad/sample_summary/sample_{virus,plasmid}_summary.tsv \
-    | cut --fields 1 > mges.txt
+    megahit/sample.contigs.fa genomad genomad_db
+tail --quiet --lines +2 genomad/sample.contigs_summary/sample.contigs_{virus,plasmid}_summary.tsv | cut --fields 1 > mges.txt
 
 ## 4. Clustering and assigning hosts with metaTOR
 # Bin the contigs into MAGs, cluster the MGE contigs, and find their hosts.
 metator pipeline \
-    --assembly sample.fa \
+    --assembly megahit/sample.contigs.fa \
     --enzyme DpnII,HinfI \
     --mges mges.txt \
     --threads 16 \
@@ -51,14 +47,15 @@ This takes a metagenome from its reads to MAGs, MGE clusters and their hosts.
 It needs a shotgun library (for the assembly) and a Hi-C library of the same
 sample.
 
-1. **Assembly.** metaTOR does not assemble. Contigs shorter than 500 bp carry
-   too few contacts to be clustered.
+1. **Assembly.** MEGAHIT writes `megahit/sample.contigs.fa`. metaTOR does not
+   assemble. Contigs shorter than 500 bp carry too few contacts to be
+   clustered.
 2. **Contact map.** hicstuff writes the map, `hicstuff/sample.metacool`. Give
    it the enzymes of the library. metaTOR can also make the map itself from
    pairs or BAM files: see [The inputs of a run](cli.md#inputs).
-3. **MGEs.** geNomad writes its tables in `genomad/sample_summary/`; the first
-   column of each lists the contigs. `--mges` takes any list of contig names,
-   one per line, so another annotation tool works too.
+3. **MGEs.** geNomad writes its tables in `genomad/sample.contigs_summary/`;
+   the first column of each lists the contigs. `--mges` takes any list of
+   contig names, one per line, so another annotation tool works too.
 4. **metaTOR.** `metator pipeline` builds the network, partitions it,
    validates the clusters with miComplete, clusters the MGE contigs and finds
    the MAGs that host them. Its outputs, in `metator/`:
