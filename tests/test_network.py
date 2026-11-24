@@ -2,6 +2,7 @@
 
 import gzip
 import io
+import re
 import pandas as pd
 import numpy as np
 import metator.network as mtn
@@ -236,6 +237,37 @@ def test_create_contig_data_from_a_compressed_assembly(tmp_path):
     with open(assembly, "rb") as fasta, gzip.open(compressed, "wb") as gz:
         shutil.copyfileobj(fasta, gz)
     assert mtn.create_contig_data(str(compressed), depth_file, "DpnII") == mtn.create_contig_data(assembly, depth_file, "DpnII")
+
+
+def test_create_contig_data_counts_the_restriction_sites_whatever_the_case(tmp_path):
+    """The restriction sites are counted whatever the case of the bases: a
+    soft-masked assembly, whose repeats are in lower case, gives the contig
+    data of the assembly in upper case, where its lower-case sites were not
+    counted (1198 of the 1219 contigs of the test assembly, in lower case, got
+    no site)."""
+    mixed = tmp_path / "mixed.fa"
+    mixed.write_text(">c1\nGATCgatcGaTcAAAA\n")
+    assert mtn.create_contig_data(str(mixed), enzyme="DpnII")["c1"]["RS"] == 4
+    masked = tmp_path / "masked.fa"
+    with open(assembly) as fasta:
+        masked.write_text("".join(line if line.startswith(">") else line.lower() for line in fasta))
+    expected = mtn.create_contig_data(assembly, depth_file, "DpnII,HinfI")
+    assert mtn.create_contig_data(str(masked), depth_file, "DpnII,HinfI") == expected
+
+
+def test_create_contig_data_refuses_a_contig_named_by_several_records(tmp_path, caplog):
+    """A contig is read by its name, the first word of its header: an assembly
+    that names a contig by several records is refused, each name once, where
+    the last record of the name replaced the others."""
+    fasta = tmp_path / "assembly.fa"
+    fasta.write_text(">c1 first\nACGTACGTAC\n>c2\nACGT\n>c1 second\nGGGGGGGGGG\n>c2\nACGT\n>c1 third\nA\n")
+    what = f"2 contig(s) are named by several records of the assembly {fasta}"
+    with caplog.at_level("INFO", logger="metator_logger"), pytest.raises(ValueError, match=re.escape(f"{what}.")):
+        mtn.create_contig_data(str(fasta))
+    message = (
+        f"{what}: 'c1', 'c2'. A contig is read by its name, the first word of its header: give each record a name of its own."
+    )
+    assert message in caplog.text
 
 
 def test_contig_data_table():

@@ -343,6 +343,10 @@ def test_log_header_lists_the_parameters(stub_pipeline, tmp_path, run_cli):
 # records: the maps that the tests make read them unrecorded.
 CONTIG_CONTACTS = mtcli.mtn.contig_contacts
 
+# What metator.network measures on the assembly, which stub_pipeline replaces:
+# the tests of what it refuses run it.
+CREATE_CONTIG_DATA = mtcli.mtn.create_contig_data
+
 
 def _no_step(calls):
     """No step of the stub pipeline ran (see stub_pipeline): a partition or
@@ -500,6 +504,32 @@ def test_a_run_refuses_an_assembly_that_metacooler_cannot_read(compression, comm
         run_cli(command, metacool, "-a", fasta, *force, "-o", tmp_path / "out", "-T", tmp_path / "tmp")
     assert earlier.exists() and not stub_pipeline
     message = f"{fasta} is compressed with {compression}: give the assembly as a FASTA file, plain or compressed with gzip."
+    assert ("ERROR", message) in logged()
+
+
+@pytest.mark.parametrize("command", ["network", "pipeline"])
+@pytest.mark.parametrize("inputs", ["map", "pairs"])
+def test_a_run_refuses_an_assembly_that_names_a_contig_by_several_records(
+    inputs, command, stub_pipeline, tmp_path, monkeypatch, run_cli, logged
+):
+    """An assembly that names a contig by several records, the last of which gave
+    the contig its length and GC content, is refused before any work: no map
+    is made from the pairs, the map of the output directory is not written,
+    and the clusters of an earlier run stay, even with -F (pipeline)."""
+    monkeypatch.setattr("metator.network.create_contig_data", CREATE_CONTIG_DATA)
+    fasta = tmp_path / "assembly.fa"
+    fasta.write_text(">c1\n" + "A" * 100 + "\n>c2\n" + "C" * 50 + "\n>c1 again\n" + "G" * 100 + "\n")
+    source = _contig_map(tmp_path / "map.metacool") if inputs == "map" else _pairs(tmp_path)
+    out = tmp_path / "out"
+    earlier = out / "final_clusters" / "bin.fa"
+    earlier.parent.mkdir(parents=True)
+    earlier.write_text(">old\nA\n")
+    what = f"1 contig(s) are named by several records of the assembly {fasta}"
+    with pytest.raises(ValueError, match=re.escape(f"{what}.")):
+        force = ["-F"] if command == "pipeline" else []
+        run_cli(command, source, "-a", fasta, *force, "-o", out, "-T", tmp_path / "tmp")
+    assert _no_step(stub_pipeline) and not list(out.glob("*.metacool")) and earlier.exists()
+    message = f"{what}: 'c1'. A contig is read by its name, the first word of its header: give each record a name of its own."
     assert ("ERROR", message) in logged()
 
 

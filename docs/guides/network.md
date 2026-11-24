@@ -37,9 +37,10 @@ Before building the network, metaTOR measures every contig of the map, the
 **contig data**: its size, its GC content, its **hits** (the ends of the
 contacts of the map that lie on it: a contact within the contig counts
 twice), its number of restriction sites plus one, that is of restriction
-fragments (with `--enzyme`), and its shotgun coverage (with `--depth`). The
-restriction sites and the coverage come from the `Restriction_site` and
-`Shotgun_coverage` columns of the map where the options give none (see
+fragments (with `--enzyme`, the bases in upper or lower case), and its
+shotgun coverage (with `--depth`). The restriction sites and the coverage
+come from the `Restriction_site` and `Shotgun_coverage` columns of the map
+where the options give none (see
 [Starting from a contact map](metacool.md#starting-from-a-contact-map)).
 `metator network` stores them in the contigs table of the map: `GC_content`,
 `Hit`, and `Shotgun_coverage` and `Restriction_site` when it has them. The
