@@ -10,6 +10,7 @@ host and dump. The ``metator`` entry point is :func:`cli`.
 import glob
 import logging
 import os
+import random
 import re
 import shlex
 import shutil
@@ -20,6 +21,7 @@ from contextlib import ExitStack, contextmanager
 from os.path import exists, join
 from typing import cast
 
+import numpy as np
 import rich_click as click
 from click.core import ParameterSource
 
@@ -1478,6 +1480,27 @@ def threads_option(help):
     return _option("-t", "--threads", type=click.INT, default=1, show_default=True, metavar="INT", help=help)
 
 
+def seed_option(help, panel="Partition"):
+    """--seed: the seed of the random numbers of a run that clusters at random
+    (see seed_random)."""
+    return _option("--seed", type=click.IntRange(0, 2**32 - 1), metavar="INT", panel=panel, help=help)
+
+
+def seed_random(seed):
+    """Seed the random numbers that a run draws, with --seed (seed): those of
+    Python's random module, which igraph draws from in Louvain and Leiden, and
+    numpy's, which the random clustering of mge --random draws from. None
+    leaves them as they are: the run draws other numbers each time.
+
+    A step is seeded once, before its iterations, which draw from the seeded
+    numbers one after the other: each iteration of Louvain or Leiden gets other
+    numbers, and so another membership, and the step as a whole, all its
+    iterations in their order, is the same from the same seed."""
+    if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
+
+
 def no_clean_up_option(help="Do not remove temporary files."):
     return _option("-N", "--no-clean-up", is_flag=True, help=help)
 
@@ -1664,12 +1687,18 @@ def network(
 @threads_option(help="Number of parallel threads allocated for the partition.")
 @no_clean_up_option(help="Keep the temporary directory of the run: partition leaves nothing in it.")
 @inplace_option(help=INPLACE_HELP)
+@seed_option(
+    "Seed of the random numbers of Louvain or Leiden, set once, before the iterations, which draw other numbers one "
+    "after the other: from the same map, the same seed gives the same partition. By default, each run draws other "
+    "random numbers."
+)
 def partition(
     map,  # the argument MAP
     algorithm,
     iterations,
     overlap,
     res_param,
+    seed,
     outdir,
     prefix,
     force,
@@ -1719,6 +1748,7 @@ def partition(
         )
 
         # Partition the network
+        seed_random(seed)
         clusters = mtp.partition(algorithm, stored.network, iterations, overlap / 100, res_param, threads, bins_prefix)
 
         # The core and overlapping clusters, stored in the map, their
@@ -1764,6 +1794,11 @@ def partition(
 @threads_option(help="Number of parallel threads, for the partition and miComplete.")
 @no_clean_up_option(help=NO_CLEAN_UP_TABLES_HELP)
 @inplace_option(help=INPLACE_HELP)
+@seed_option(
+    "Seed of the random numbers of the recursive partition, set once, before it, its iterations drawing other "
+    "numbers one after the other: from the same map, the same seed gives the same clusters, and partition --seed S "
+    "then validation --seed S give those of pipeline --seed S. By default, each run draws other random numbers."
+)
 def validation(
     map,  # the argument MAP
     assembly,
@@ -1772,6 +1807,7 @@ def validation(
     overlap,
     res_param,
     size,
+    seed,
     outdir,
     prefix,
     force,
@@ -1847,6 +1883,7 @@ def validation(
         # The validation of the partition, in the temporary directory of the
         # run, from the network that metator network stored in the map, by
         # the positions of its contigs, as the partition numbers them.
+        seed_random(seed)
         final = run_validation(
             map,
             assembly,
@@ -1940,6 +1977,12 @@ def validation(
 )
 @no_clean_up_option(help=NO_CLEAN_UP_TABLES_HELP)
 @inplace_option(help=RUN_INPLACE_HELP)
+@seed_option(
+    "Seed of the random numbers of Louvain or Leiden, set once before the partition and again before the recursive "
+    "partition of the validation, their iterations drawing other numbers one after the other: from the same map, the "
+    "same seed gives the same clusters, those of partition --seed S then validation --seed S. By default, each run "
+    "draws other random numbers."
+)
 def pipeline(
     input,  # the arguments INPUT...
     assembly,
@@ -1954,6 +1997,7 @@ def pipeline(
     size,
     rec_iter,
     rec_overlap,
+    seed,
     outdir,
     prefix,
     force,
@@ -2064,6 +2108,7 @@ def pipeline(
 
         # Partition the network, as metator partition does.
         log_stage(step + 2, "partition", "the clusters of the network", stages)
+        seed_random(seed)
         clusters = mtp.partition(algorithm, edges, iterations, overlapping_parameter, res_param, threads, bins_prefix)
 
         # Validate the partition, as metator validation does.
@@ -2073,6 +2118,8 @@ def pipeline(
             "miComplete checks the clusters, and the contaminated ones are partitioned again",
             stages,
         )
+        # Seeded again, as validation --seed seeds its recursive partition.
+        seed_random(seed)
         final = run_validation(
             map,
             assembly,
@@ -2163,6 +2210,11 @@ def pipeline(
     "validation. The column mge of the genomes table says which genomes are MGE genomes (True). Refused with "
     "--random.",
 )
+@seed_option(
+    "Seed of the random clustering of --random: from the same map, the same seed gives the same random clustering. "
+    "By default, each run draws another one.",
+    panel="Clustering",
+)
 @outdir_option(help="The output directory, of the map of the run and of the MGE fasta. Default: current directory.")
 @force_option(
     "Replace the map of an earlier run in the output directory. A summary of the MGE clusters that an earlier version "
@@ -2182,6 +2234,7 @@ def mge(
     threshold_bin,
     random,
     reassign,
+    seed,
     outdir,
     force,
     tmpdir,
@@ -2251,6 +2304,7 @@ def mge(
         # what the map cannot give is refused before anything is written.
         mges_list = mio.import_mges_contigs(mges)
         try:
+            seed_random(seed)
             summary, mge_bins = mtm.mge_binning(map, mges_list, threshold_bin=threshold_bin, random=random)
             # The output directory, and one record per MGE cluster.
             os.makedirs(outdir, exist_ok=True)

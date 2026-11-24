@@ -540,7 +540,7 @@ def test_make_map_from_pairs_files(community, metagenome_files, tmp_path):
 def test_make_map_from_bam_files(layout, community, metagenome_files, tmp_path):
     """The map that a run makes from BAM files is the map of the pairs that
     they were written from: their pairs, written in the temporary directory of
-    the run, each mate at the leftmost base of its alignment."""
+    the run, each mate at the 5' end of its alignment."""
     pairs = community["pairs"]
     half = len(pairs) // 2
     if layout == mti.BOTH_MATES:
@@ -779,8 +779,8 @@ def test_a_map_there_is_replaced_with_force(community, metagenome_files, tmp_pat
 
 def test_pairs_as_an_upper_triangle(tmp_path):
     """Each pair is written with the contig that comes first in the assembly
-    first, or the leftmost mate first on one contig, whichever mate is the
-    first of the read."""
+    first, or the mate at the lower position first on one contig, whichever
+    mate is the first of the read."""
     lengths = {"c1": 1000, "c2": 1000}
     rows = [["a", "c2", 10, "c1", 20, "+", "-"], ["b", "c1", 90, "c1", 30, "-", "+"], ["c", "c1", 5, "c2", 5, "+", "+"]]
     alignments.both_mates(tmp_path / "lib.bam", _pairs_table(rows), lengths)
@@ -864,3 +864,68 @@ def test_bam_files_that_cannot_give_pairs(case, community, tmp_path):
             handle.write(b"BAM\x01" + bytes(range(64)))
         with pytest.raises(mtmc.MetacoolError, match=f"^Cannot read the BAM file {re.escape(str(path))}: "):
             mti.resolve([str(path)])
+
+
+def test_mates_at_their_five_prime_end(tmp_path):
+    """Each mate is at the 5' end of its alignment, soft-clipped bases left out:
+    its first aligned base on the forward strand, its last on the reverse
+    strand, as pairtools and hicstuff's mapping mode 5spm record it (metaTOR
+    1.x recorded the leftmost base)."""
+    lengths = {"c1": 1000, "c2": 1000}
+    bam_header = alignments.header(lengths)
+    path = tmp_path / "lib.bam"
+    with pysam.AlignmentFile(str(path), "wb", header=bam_header) as bam:
+        for name, (contig1, start1, cigar1, reverse1), (contig2, start2, cigar2, reverse2) in [
+            ("a", ("c1", 100, "50M", False), ("c2", 200, "50M", True)),
+            ("b", ("c1", 300, "10S40M", True), ("c1", 600, "5S45M", False)),
+        ]:
+            for flag, contig, start, cigar, reverse in [
+                (0x41, contig1, start1, cigar1, reverse1),
+                (0x81, contig2, start2, cigar2, reverse2),
+            ]:
+                read = pysam.AlignedSegment(bam_header)
+                read.query_name, read.flag = name, flag | (0x10 if reverse else 0)
+                read.reference_id, read.reference_start = bam_header.get_tid(contig), start
+                read.mapping_quality, read.cigarstring, read.query_sequence = 60, cigar, "A" * 50
+                bam.write(read)
+    out = tmp_path / "lib.pairs"
+    mti.bam_pairs((str(path),), str(out), lengths, mti.BOTH_MATES, tmp_dir=str(tmp_path))
+    written = alignments.read_pairs(out)[alignments.PAIRS_COLUMNS[1:]].to_numpy().tolist()
+    # a: 101 (0-based 100, forward), 250 (200 + 50, reverse); b: 340 (300 + 40
+    # aligned bases, reverse), 601 (forward, after its soft clip).
+    assert written == [["c1", 101, "c2", 250, "+", "-"], ["c1", 340, "c1", 601, "-", "+"]]
+
+
+@pytest.mark.parametrize("layout", [mti.BOTH_MATES, mti.ONE_MATE])
+def test_duplicates_and_reads_failing_qc_are_left_out(layout, tmp_path, logged):
+    """A read with a mate flagged as a PCR or optical duplicate (0x400, as
+    Picard MarkDuplicates or samtools markdup flag them) or as failing QC
+    (0x200) gives no pair, and the log counts them."""
+    lengths = {"c1": 1000, "c2": 1000}
+    rows = [[name, "c1", 10 * i + 10, "c2", 10 * i + 500, "+", "-"] for i, name in enumerate(["kept", "dup", "qc"])]
+    pairs = _pairs_table(rows)
+    flags = {("dup", 1): 0x400, ("dup", 2): 0x400, ("qc", 2): 0x200}
+    if layout == mti.BOTH_MATES:
+        paths = [tmp_path / "lib.bam"]
+        alignments.both_mates(paths[0], pairs, lengths)
+    else:
+        paths = [tmp_path / "R1.bam", tmp_path / "R2.bam"]
+        alignments.one_mate(paths, pairs, lengths)
+    for i, path in enumerate(paths, 1):
+        with pysam.AlignmentFile(str(path)) as bam:
+            reads, bam_header = list(bam), bam.header
+        with pysam.AlignmentFile(str(path), "wb", header=bam_header) as bam:
+            for read in reads:
+                mate = 2 if read.is_read2 or i == 2 else 1
+                read.flag |= flags.get((read.query_name, mate), 0)
+                bam.write(read)
+    out = tmp_path / "lib.pairs"
+    library = tuple(str(path) for path in paths)
+    assert mti.bam_pairs(library, str(out), lengths, layout, tmp_dir=str(tmp_path)) == 1
+    assert alignments.contacts(alignments.read_pairs(out)) == alignments.contacts(pairs[:1])
+    what = library[0] if layout == mti.BOTH_MATES else f"{library[0]} and {library[1]}"
+    assert (
+        "INFO",
+        f"1 reads of {what} with a mate flagged as a PCR or optical duplicate, and 1 with a mate flagged as failing "
+        "QC: left out.",
+    ) in logged()

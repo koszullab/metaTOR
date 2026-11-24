@@ -73,10 +73,13 @@ metator pipeline 'L*_R1.bam' 'L*_R2.bam' --enzyme DpnII --threads 16 --assembly 
   clustering.
 - The pairs of a BAM file are those of the primary alignments of the two
   mates of each read, both aligned with a mapping quality of at least
-  `--min-quality` (`-q`, 30 by default), each at the leftmost base of its
-  alignment, as metaTOR 1.x took them; neither PCR duplicates nor 3C events
-  are filtered. The BAM files may be sorted by name or by coordinate, or be
-  as the aligner wrote them: see [The inputs of a run](../cli.md#inputs).
+  `--min-quality` (`-q`, 30 by default), each at the 5' end of its
+  alignment, as pairtools and hicstuff's mapping mode 5spm record it. The
+  reads flagged as PCR or optical duplicates (by Picard MarkDuplicates or
+  samtools markdup) or as failing QC are left out; metaTOR marks none itself,
+  and filters no 3C event. The BAM files may be sorted by name or by
+  coordinate, or be as the aligner wrote them: see
+  [The inputs of a run](../cli.md#inputs).
 - The pairs of the BAM files are written in the temporary directory of the
   run, about 25 bytes per pair plus the names of its two contigs, before
   metacooler reads them: give `--tmpdir`

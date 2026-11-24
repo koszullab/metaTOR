@@ -85,5 +85,6 @@ The alignments that hicstuff keeps with `-n`, its BAM files of each mate
 (`tmp/<prefix>.for.bam` and `tmp/<prefix>.rev.bam`), and those of another
 aligner, of both mates of each read (`bwa mem -5SP`), are inputs too: metaTOR
 takes their pairs (the primary alignments of the two mates of each read, with
-a mapping quality of at least `--min-quality`), with pysam, without a
-samtools program.
+a mapping quality of at least `--min-quality`, neither flagged as a duplicate
+nor as failing QC, each at its 5' end), with pysam, without a samtools
+program.

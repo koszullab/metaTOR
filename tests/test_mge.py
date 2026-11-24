@@ -655,6 +655,44 @@ def test_mge_random_is_a_round_of_its_own(mge_run, tmp_path, monkeypatch, run_cl
     assert sorted(records) == sorted(_round(mc, "mge_random")["name"])
 
 
+def test_mge_random_with_a_seed(mge_run, run_cli):
+    """--seed makes the random clustering of --random the same at each run,
+    whatever numpy's random state before it (np.random.permutation draws it),
+    and is stored with the other parameters of the run."""
+    import metacooler
+
+    metacool, args = mge_run
+    found = []
+    for state in (1, 2):
+        np.random.seed(state)
+        run_cli("mge", metacool, *args, "--random", "--seed", "11", "--inplace")
+        mc = metacooler.MetaCooler(str(metacool))
+        members = mc.cluster_members("mge_random")
+        found.append(sorted(zip(members["cluster"].astype(str), members["contig"].astype(str), strict=True)))
+        assert mc.metadata["metator"]["mge_random"]["parameters"]["seed"] == 11
+    assert found[0] == found[1] and found[0]
+
+
+def test_seed_random_seeds_python_and_numpy():
+    """seed_random seeds both random number generators that a run draws from:
+    Python's (igraph's Louvain and Leiden) and numpy's (mge --random); None
+    seeds neither."""
+    import random
+
+    import metator.cli as mtcli
+
+    draws = []
+    for _ in range(2):
+        mtcli.seed_random(5)
+        draws.append((random.random(), list(np.random.permutation(10))))
+    assert draws[0] == draws[1]
+    random.seed(1)
+    expected = random.random()
+    random.seed(1)
+    mtcli.seed_random(None)
+    assert random.random() == expected
+
+
 @pytest.mark.parametrize("name", ["mges_bin_summary.tsv", "mges_cluster_summary.tsv"])
 @pytest.mark.parametrize("force", [False, True], ids=["refused", "-F"])
 def test_the_summary_of_an_earlier_version(name, force, mge_run, tmp_path, run_cli):

@@ -144,7 +144,8 @@ pattern. A BAM file holds both mates of its reads (paired-end alignments, as
 `bwa mem -5SP` writes them), or one mate each (as bowtie2 aligns them, one mate
 at a time): give the R1 files, then the R2 files. The pairs of a BAM file are
 the primary alignments of the two mates of each read, both aligned with a
-mapping quality of at least `-q` (30 by default). The map goes to the output
+mapping quality of at least `-q` (30 by default), and neither flagged as a PCR
+duplicate nor as failing QC. The map goes to the output
 directory, named after `--prefix` or after the assembly, and becomes the map of
 the clusters.
 

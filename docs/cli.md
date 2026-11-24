@@ -21,6 +21,7 @@ metator --version
 | `-T, --tmpdir` | Each run works in a directory of its own inside it, removed at the end, unless `--no-clean-up` or the run fails: the log says which. |
 | `-N, --no-clean-up` | Keep the temporary directory of the run: that of a `validation` or `pipeline` run holds its tables. |
 | Log files | Each command writes its log, `metator_<command>_<date>.log`, into its output directory; `mge`, into the current directory. The log starts, as hicstuff's does, with the version, the date, the command line (`cmd`) and the value of each option, then a line of dashes; `pipeline` marks its three steps (`[1/3] network`...), four from pairs or BAM files (`[1/4] map`...), the partition counts its iterations as they go, the validation each recursive step (`Recursive step 1/9`); and the log ends with what the run wrote and how long it took. The bookkeeping of a run (the files it writes on the way, metacooler's accounts of its work) is logged at the DEBUG level, which the log does not show. |
+| Random numbers | The partition (Louvain or Leiden, in `partition`, `pipeline` and the recursive partition of `validation`) and the random clustering of `mge --random` draw random numbers, other ones at each run: two runs on the same map give close clusters, but not the same. `--seed S` makes a run give the same clusters each time, from the same map and options (and versions of igraph and metaTOR): a step is seeded once, before its iterations, which still draw other numbers one after the other (each iteration of Louvain or Leiden gives another membership, as the core and overlapping clusters need), so that the step as a whole, all its iterations in their order, is the same. `pipeline --seed S` seeds its partition and its validation alike, and gives the clusters of `partition --seed S`, then `validation --seed S`. The metadata of the map store the seed of the run, with its other parameters. |
 
 New to metaTOR? Start with the [Quickstart](quickstart.md); for hits, core,
 overlapping and recursive clusters, see [Concepts](concepts.md). metaTOR 2.0
@@ -38,7 +39,7 @@ from the pairs files or the BAM files of the run: their arguments,
 |---|---|
 | A `.metacool` map, or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`) | Reads its network from it, and writes it to the output directory, under its name (see [The map of a run](#conventions)). |
 | Pairs files, one per library: plain, or compressed with gzip, bzip2, zstd or LZ4 | Makes the map of the contigs from them first, their contacts summed, as `metacooler create pairs` makes it: one bin per contig of the assembly, every contig in `__unbinned__`, with the contact statistics of the reads, which `mge` reads. |
-| BAM files (or SAM files) of both mates of each read (paired-end alignments, as `bwa mem -5SP` writes them), one per library; or of one mate each (as bowtie2 aligns them, one mate at a time), an R1 file and an R2 file per library | Takes their pairs first: the primary alignments of the two mates of each read, both aligned with a mapping quality of at least `--min-quality` (30) on contigs of the assembly, each at the leftmost base of its alignment, as metaTOR 1.x took them. Then makes the map from them, as from pairs files. |
+| BAM files (or SAM files) of both mates of each read (paired-end alignments, as `bwa mem -5SP` writes them), one per library; or of one mate each (as bowtie2 aligns them, one mate at a time), an R1 file and an R2 file per library | Takes their pairs first: the primary alignments of the two mates of each read, both aligned with a mapping quality of at least `--min-quality` (30) on contigs of the assembly, neither flagged as a PCR or optical duplicate (0x400, as Picard MarkDuplicates and samtools markdup flag them) nor as failing QC (0x200), each at the 5' end of its alignment (its first aligned base on the forward strand, its last on the reverse strand), as pairtools and hicstuff's mapping mode 5spm record it. Then makes the map from them, as from pairs files. |
 
 - **Each argument** is a path, a comma-separated list or a glob pattern, which
   stands for the files it matches, sorted by name, as hicstuff 4.0 reads its
@@ -123,6 +124,7 @@ marks `[1/4] map`.
 | `-s, --size` | `500000` | The size, in bp, that an overlapping cluster must reach to be checked with miComplete, and that a cluster of the recursive partition must exceed. |
 | `-j, --rec-iter` | `10` | The iterations of the recursive partition of the contaminated clusters. |
 | `-P, --rec-overlap` | `90` | The overlap threshold of the recursive partition, in percent. |
+| `--seed` | none | The seed of the random numbers of Louvain or Leiden, set once before the partition and again before the recursive partition of the validation, their iterations drawing other numbers one after the other: from the same map, the same seed gives the same clusters, those of `partition --seed S` then `validation --seed S`. Without it, each run draws other random numbers (see the random numbers, in [Conventions](#conventions)). |
 | `-o, --outdir` | the current directory | The output directory: the map of the clusters, `final_clusters/`, `plot/` (see [`validation`](#validation)) and the log. |
 | `-p, --prefix` | none | Name the clusters `<prefix>_metator_…`, and the map that the run makes from pairs or BAM files `<prefix>.metacool` (by default, named after the assembly). Letters, digits, `_` and `-` only. |
 | `-F, --force` | off | Replace the map, `final_clusters/` and the plots (in `plot/`, whose other files are left as they are) of an earlier run in the output directory. The other results of an earlier run in the output directory (the tables and `recursive_clusters/` of a development build of 2.0, the outputs of 1.x) are refused, with or without `-F`, and never removed. |
@@ -239,6 +241,7 @@ genomes and contigs tables are left as they were.
 | `-i, --iterations` | `100` | The iterations of the partition. |
 | `-O, --overlap` | `80` | The overlap threshold, in percent. |
 | `-r, --res-param` | `1.0` | The resolution of the Leiden algorithm. |
+| `--seed` | none | The seed of the random numbers of Louvain or Leiden, set once before the iterations, which draw other numbers one after the other: from the same map, the same seed gives the same partition. |
 | `-o, --outdir` | `./` | The output directory, of the map of the run and of its log. |
 | `-p, --prefix` | none | Name the overlapping clusters `<prefix>_metator_…`. |
 | `-F, --force` | off | Replace the map of an earlier run in the output directory. |
@@ -313,6 +316,7 @@ already, or with `--inplace`). See
 | `-O, --overlap` | `90` | The overlap threshold of the recursive partition, in percent. |
 | `-r, --res-param` | `1.0` | The resolution of the Leiden algorithm. |
 | `-s, --size` | `500000` | The size, in bp, that an overlapping cluster of the partition must reach to be checked, and that a cluster of the recursive partition must exceed. |
+| `--seed` | none | The seed of the random numbers of the recursive partition, set once before it, its iterations drawing other numbers one after the other: from the same map, the same seed gives the same clusters, and `partition --seed S` then `validation --seed S` give those of `pipeline --seed S`. |
 | `-o, --outdir` | `./` | The output directory: the map of the clusters, `final_clusters/`, `plot/` and the log. |
 | `-p, --prefix` | none | Name the recursive clusters `<prefix>_metator_…`. |
 | `-F, --force` | off | Replace the map, `final_clusters/` and the plots (in `plot/`, whose other files are left as they are) of an earlier run in the output directory. The other results of an earlier run in the output directory (the tables and `recursive_clusters/` of a development build of 2.0, the outputs of 1.x) are refused, with or without `-F`, and never removed. |
@@ -484,6 +488,7 @@ stored in the map, with a warning: run `host` again.
 | `-s, --threshold-bin` | `0.8` | The score above which two contigs, or clusters, are merged. |
 | `-r, --random` | off | Shuffle the contigs between the clusters: a random clustering of the same shape, stored as the round `mge_random` and written to `mges_binned_random.fa`. |
 | `--reassign` | off | Make each MGE cluster a genome of the map, with its GC content, hits and clustering score: its contigs leave the final clusters that held them, which keep their values. The column `mge` of the genomes table says which genomes are MGE genomes. Refused with `--random`. |
+| `--seed` | none | The seed of the random clustering of `--random`: from the same map, the same seed gives the same random clustering. |
 | `-o, --outdir` | the current directory | The output directory: the map of the run and `mges_binned.fa`. |
 | `-F, --force` | off | Replace the map of an earlier run in the output directory. A summary of the MGE clusters that an earlier version wrote in the output directory (`mges_bin_summary.tsv` or `mges_cluster_summary.tsv`) is refused, with or without `-F`, and never removed. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory, where metacooler copies a compressed assembly, plain, while it reads it. `mge` writes no temporary file of its own. |
