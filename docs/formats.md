@@ -60,7 +60,8 @@ their lengths.
 
 From BAM files, a run writes the pairs of each library in its temporary
 directory, `library_<i>.pairs`, as they come: the read name `.` (the map does
-not keep it), each mate at the leftmost base of its alignment (1-based), the
+not keep it), each mate at the 5' end of its alignment (1-based: its first
+aligned base on the forward strand, its last on the reverse strand), the
 contig that comes first in the assembly first, and no `#chromsize` line (the
 contigs of the map are those of the assembly):
 

@@ -229,6 +229,18 @@ each removed command.
   `mge` (`mge`, but `--random`), the clusters (`partition`, `validation`,
   `pipeline`) or the network (`network`, with another one) drops them, with a
   warning. `metator host` of 1.x, gone in 1.4.0, read the tables of a run.
+- **`--seed`** of `partition`, `validation`, `pipeline` and `mge`: the seed of
+  the random numbers of a run, those of Python's `random` module, which
+  igraph draws from in Louvain and Leiden, and numpy's, which the random
+  clustering of `mge --random` draws from. A step is seeded once, before its
+  iterations, which still draw other numbers one after the other: each
+  iteration of Louvain or Leiden gives another membership, and the step as a
+  whole is the same from the same seed. From the same map, the same seed
+  gives the same clusters; `pipeline --seed S` seeds its partition and its
+  validation alike, and gives the clusters of `partition --seed S` then
+  `validation --seed S`. The metadata of the map store the seed with the other
+  parameters of the run. Without it, as before, each run draws other random
+  numbers, so that two runs on the same map give close clusters, not the same.
 - **`network` and `pipeline` from pairs or BAM files.** Their arguments,
   `INPUT...`, are the map of the contigs, or the pairs files or the BAM files
   (or SAM files) of the libraries of the run: each argument a path, a
@@ -247,8 +259,11 @@ each removed command.
   by coordinate), or one mate each (bowtie2's, the R1 files then the R2
   files, matched by read name, sorted by name if they need it). Its pairs are
   the primary alignments of the two mates of each read, both aligned with a
-  mapping quality of at least `-q/--min-quality` (30), each at the leftmost
-  base of its alignment, as metaTOR 1.x took them: read with pysam, a
+  mapping quality of at least `-q/--min-quality` (30), neither flagged as a
+  PCR or optical duplicate (0x400) nor as failing QC (0x200), each at the 5'
+  end of its alignment, as pairtools and hicstuff's mapping mode 5spm record
+  it (metaTOR 1.x recorded the leftmost base, which only moves contacts
+  within contigs; the network is the same): read with pysam, a
   dependency again, whose samtools groups or sorts the files by name (no
   samtools program needed), and written in the temporary directory of the
   run (`library_<i>.pairs`, which `-N` keeps). `network` takes

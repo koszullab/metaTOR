@@ -16,8 +16,9 @@ A BAM file holds both mates of its reads (paired-end alignments, as ``bwa mem
 -5SP`` writes them), or one mate of each (as bowtie2 aligns them, one mate at
 a time, in two files per library). A pair is the primary alignments of the
 two mates of a read, both aligned with a mapping quality of at least
---min-quality, each at the leftmost base of its alignment, as metaTOR 1.x
-wrote them.
+--min-quality, neither flagged as a PCR or optical duplicate nor as failing
+QC (see flagged), each at the 5' end of its alignment, as pairtools and
+hicstuff's mapping mode 5spm record it (see five_prime).
 """
 
 import glob
@@ -405,12 +406,38 @@ def check_references(path, references, lengths, what="reference sequences"):
         )
 
 
+def five_prime(read):
+    """The 1-based position of the 5' end of an alignment (a
+    pysam.AlignedSegment): its first aligned base on the forward strand, its
+    last on the reverse strand, soft-clipped bases left out, as pairtools and
+    hicstuff's mapping mode 5spm record a mate.
+
+    It moves the mates on the reverse strand by the length of their alignment
+    from the leftmost base, which metaTOR 1.x recorded: a contact stays
+    between the same two contigs, which the network counts, and only the
+    contacts within a contig at about 1 kb (the short and long contacts that
+    metator mge reads) may change."""
+    return read.reference_end if read.is_reverse else read.reference_start + 1
+
+
+def flagged(read):
+    """Why a read leaves its pair out for its flags: "duplicate", flagged as a
+    PCR or optical duplicate (0x400, as Picard MarkDuplicates or samtools
+    markdup flag it), or "QC", as failing quality checks (0x200); None for a
+    read that counts."""
+    if read.is_duplicate:
+        return "duplicate"
+    if read.is_qcfail:
+        return "QC"
+    return None
+
+
 class _PairsWriter:
     """The pairs file of a library, made from its alignments: a pair per line,
     with the 7 columns of a pairs file, read name, the contig and position of
-    each read, and their strands (1-based leftmost base of each alignment, the
-    contig first in the order of the assembly, as an upper triangle). The read
-    name is ".": the map does not keep it.
+    each read, and their strands (the 1-based 5' end of each alignment, see
+    five_prime; the contig first in the order of the assembly, as an upper
+    triangle). The read name is ".": the map does not keep it.
 
     The pairs with a read on a sequence that is not a contig of the assembly
     are left out (counted as other).
@@ -441,7 +468,7 @@ class _PairsWriter:
         if rank1 is None or rank2 is None:
             self.other += 1
             return
-        pos1, pos2 = read1.reference_start + 1, read2.reference_start + 1
+        pos1, pos2 = five_prime(read1), five_prime(read2)
         strand1, strand2 = "-" if read1.is_reverse else "+", "-" if read2.is_reverse else "+"
         if (rank1, pos1) > (rank2, pos2):
             contig1, pos1, strand1, contig2, pos2, strand2 = contig2, pos2, strand2, contig1, pos1, strand1
@@ -452,6 +479,18 @@ class _PairsWriter:
 def _passes(read, min_quality):
     """Whether a mate is aligned, with a mapping quality of at least min_quality."""
     return not read.is_unmapped and read.mapping_quality >= min_quality
+
+
+def _count_pair(writer, counts, read1, names1, read2, names2, min_quality):
+    """Write the pair of two mates of a read (see _PairsWriter.write), unless a
+    mate is flagged as a duplicate or as failing QC (see flagged: counted in
+    counts, by reason) or is not aligned with a mapping quality of at least
+    min_quality."""
+    reason = flagged(read1) or flagged(read2)
+    if reason:
+        counts[reason] += 1
+    elif _passes(read1, min_quality) and _passes(read2, min_quality):
+        writer.write(read1, names1, read2, names2)
 
 
 class _GroupingCheck:
@@ -481,11 +520,12 @@ def _both_mates_pass(path, writer, min_quality, threads, check=None):
     -------
     dict
         The number of reads ("reads"), of reads with one mate in the file
-        ("lone"), and of reads with both mates aligned with a mapping
-        quality of at least min_quality on contigs of the assembly
-        ("pairs").
+        ("lone"), of reads with a mate flagged as a duplicate ("duplicate")
+        or as failing QC ("QC"), and of pairs written: reads with both mates
+        aligned with a mapping quality of at least min_quality on contigs of
+        the assembly ("pairs").
     """
-    counts = {"reads": 0, "lone": 0}
+    counts = {"reads": 0, "lone": 0, "duplicate": 0, "QC": 0}
     with _alignments(path, threads) as bam:
         names = list(bam.references)
         current, mates = None, [None, None]
@@ -497,8 +537,8 @@ def _both_mates_pass(path, writer, min_quality, threads, check=None):
                 counts["lone"] += 1
                 if check is not None:
                     check.lone(current)
-            elif _passes(first, min_quality) and _passes(second, min_quality):
-                writer.write(first, names, second, names)
+            else:
+                _count_pair(writer, counts, first, names, second, names, min_quality)
 
         try:
             for read in bam:
@@ -648,9 +688,10 @@ def _one_mate_pass(path1, path2, writer, name_key, min_quality, threads):
     -------
     dict
         The reads of each file ("reads1", "reads2"), the reads with both mates
-        ("matched") and the pairs written ("pairs").
+        ("matched"), those with a mate flagged as a duplicate ("duplicate") or
+        as failing QC ("QC"), and the pairs written ("pairs").
     """
-    matched = 0
+    counts = {"matched": 0, "duplicate": 0, "QC": 0}
     with _alignments(path1, threads) as bam1, _alignments(path2, threads) as bam2:
         try:
             first, second = _Mate(bam1, path1, name_key), _Mate(bam2, path2, name_key)
@@ -660,10 +701,8 @@ def _one_mate_pass(path1, path2, writer, name_key, min_quality, threads):
                 first.key_suffix = second.key_suffix = "/1"
 
             def pair(read1, read2):
-                nonlocal matched
-                matched += 1
-                if _passes(read1, min_quality) and _passes(read2, min_quality):
-                    writer.write(read1, first.names, read2, second.names)
+                counts["matched"] += 1
+                _count_pair(writer, counts, read1, first.names, read2, second.names, min_quality)
 
             while first.read is not None or second.read is not None:
                 if first.name == second.name:
@@ -692,7 +731,7 @@ def _one_mate_pass(path1, path2, writer, name_key, min_quality, threads):
                     second.advance()
         except (OSError, ValueError) as error:
             raise mtmc.MetacoolError(f"Cannot read the BAM files {path1} and {path2}: {error}") from error
-    return {"reads1": first.reads, "reads2": second.reads, "matched": matched, "pairs": writer.pairs}
+    return {"reads1": first.reads, "reads2": second.reads, **counts, "pairs": writer.pairs}
 
 
 def _one_mate_pairs(path1, path2, out, lengths, min_quality, tmp_dir, threads):
@@ -740,7 +779,10 @@ def bam_pairs(library, out, lengths, layout, min_quality=30, tmp_dir=".", thread
     """Write the pairs file of a library of BAM files: the pairs of the reads
     whose two mates are aligned, each with a mapping quality of at least
     min_quality, on contigs of the assembly (their primary alignments; the
-    secondary and supplementary ones are left out).
+    secondary and supplementary ones are left out), each mate at the 5' end of
+    its alignment (see five_prime). A read with a mate flagged as a PCR or
+    optical duplicate, or as failing QC, is left out (see flagged), and the
+    log counts them.
 
     Parameters
     ----------
@@ -788,6 +830,11 @@ def bam_pairs(library, out, lengths, layout, min_quality=30, tmp_dir=".", thread
         raise mtmc.MetacoolError(f"{what} hold no read with both mates: they are not {mates}.")
     if other:
         logger.info(f"{other} pairs of {what} have a read on a sequence that is not a contig of the assembly: left out.")
+    if counts["duplicate"] or counts["QC"]:
+        logger.info(
+            f"{counts['duplicate']} reads of {what} with a mate flagged as a PCR or optical duplicate, and {counts['QC']} "
+            "with a mate flagged as failing QC: left out."
+        )
     share = 100 * counts["pairs"] / with_both
     logger.info(
         f"{what}: {counts['pairs']} pairs of {with_both} reads with both mates ({share:.2f}%), both aligned with a "

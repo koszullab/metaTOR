@@ -214,6 +214,14 @@
       "metavar": "DIR",
       "default": "./tmp",
       "required": false
+     },
+     {
+      "short": null,
+      "long": "--seed",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": null,
+      "required": false
      }
     ]
    },
@@ -328,6 +336,14 @@
       "takes_value": true,
       "metavar": "DIR",
       "default": "./tmp",
+      "required": false
+     },
+     {
+      "short": null,
+      "long": "--seed",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": null,
       "required": false
      }
     ]
@@ -492,6 +508,14 @@
       "metavar": "INT",
       "default": "30",
       "required": false
+     },
+     {
+      "short": null,
+      "long": "--seed",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": null,
+      "required": false
      }
     ]
    },
@@ -582,6 +606,14 @@
       "takes_value": true,
       "metavar": "DIR",
       "default": "./tmp",
+      "required": false
+     },
+     {
+      "short": null,
+      "long": "--seed",
+      "takes_value": true,
+      "metavar": "INT",
+      "default": null,
       "required": false
      }
     ]

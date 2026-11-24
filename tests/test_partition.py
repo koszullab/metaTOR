@@ -310,3 +310,45 @@ def test_partition():
         assert contigs == sorted(contigs, key=lambda contig: (core[contig], contig))
         assert partition.names[number] == f"sample_{number:05d}_00000"
     assert all(contigs == sorted(contigs) for contigs in partition.core.values())
+
+
+def test_a_seed_is_set_once_before_the_iterations(tmp_path, monkeypatch):
+    """--seed seeds a partition once, before its iterations, which draw other
+    numbers one after the other: each iteration of Louvain gives another
+    membership, as the core clusters need, and the same seed gives the same
+    iterations, in their order, so the same partition. On the network of the
+    test library (alignment.pairs), whose iterations differ: those of the
+    mock community all give one membership."""
+    from pathlib import Path
+
+    import metacooler
+
+    import metator.cli as mtcli
+    import metator.metacool as mtmc
+    import metator.network as mtn
+    from tests.maps import contig_map
+
+    tests_data = Path(__file__).resolve().parents[1] / "tests_data"
+    contig_data = mtn.create_contig_data(str(tests_data / "assembly.fa"))
+    metacool = contig_map(tests_data / "alignment.pairs", contig_data, tmp_path / "map.metacool", columns=False)
+    contacts = mtn.contig_contacts(str(metacool))
+    names = metacooler.MetaCooler(str(metacool)).contigs["name"]
+    table = mtn.contig_data_table(contig_data, names, mtn.contig_hits(contacts, len(names)))
+    mtmc.write_map(str(metacool), str(metacool), network=mtmc.Network(table, "empirical_hit"), force=True)
+    network = mtn.map_network(str(metacool))
+    recorded = []
+    iterate = mtp.iterate
+
+    def iterations(*args, **kwargs):
+        recorded.append(iterate(*args, **kwargs))
+        return recorded[-1]
+
+    monkeypatch.setattr(mtp, "iterate", iterations)
+    partitions = []
+    for seed in (13, 13, 14):
+        mtcli.seed_random(seed)
+        partitions.append(mtp.partition("louvain", network, 20, 0.8, 1.0, 1, "metator"))
+    first, again, other = recorded
+    assert len({tuple(membership) for membership in first}) > 10
+    assert first == again and partitions[0] == partitions[1]
+    assert first != other

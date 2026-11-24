@@ -312,9 +312,10 @@ there, and the next ones read it and update it in place, as `pipeline MAP`
 does, and write the map that it writes from the same clusters,
 but for the date the map was written and the command lines and parameters
 that it stores (those of `network`, `partition` and `validation`). Louvain draws
-random numbers: two runs give the same clusters only from the same random
-stream, as the tests check in one process, so steps run as separate commands
-differ from `pipeline` as two `pipeline` runs do. `partition MAP` on a map
+random numbers, other ones at each run: steps run as separate commands differ
+from `pipeline` as two `pipeline` runs do, but with `--seed`, which seeds each
+step once, before its iterations (`partition --seed S`, then `validation
+--seed S`, give the clusters of `pipeline --seed S`). `partition MAP` on a map
 that holds the clusters of an earlier run replaces its clustering rounds with
 its own, and the `partition` entry of the `metator` key of its metadata with
 what the run was (the network it partitioned among it), and leaves its
@@ -541,8 +542,9 @@ metator pipeline L1.bam L2.bam -a assembly.fa -e DpnII -o binning
   the contigs of the assembly leave no map.
 - The pairs of the BAM files are those of the primary alignments of the two
   mates of each read, both aligned with a mapping quality of at least
-  `--min-quality` (30), on contigs of the assembly, each at the leftmost base
-  of its alignment, as metaTOR 1.x took them (see
+  `--min-quality` (30), on contigs of the assembly, neither flagged as a PCR
+  or optical duplicate nor as failing QC, each at the 5' end of its alignment,
+  as pairtools and hicstuff's mapping mode 5spm record it (see
   [File formats](../formats.md#pairs)): a map made from the BAM files of the
   pairs of a pairs file is the map made from that pairs file, its contact
   statistics included.

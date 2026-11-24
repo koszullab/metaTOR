@@ -1134,6 +1134,55 @@ def test_pipeline_from_pairs_or_bam_files(metagenome, metagenome_inputs, tmp_pat
         ]
 
 
+def _clustering(path):
+    """What a map says of its clustering: the contigs of each cluster of each of
+    its rounds, and the genome of each contig."""
+    mc = metacooler.MetaCooler(str(path))
+    members = {}
+    for entry in mc.cluster_rounds:
+        table = mc.cluster_members(entry["name"])
+        members[entry["name"]] = sorted(zip(table["cluster"].astype(str), table["contig"].astype(str), strict=True))
+    genomes = dict(zip(mc.contigs["name"].astype(str), mc.contigs["genome_id"].map(mc.genomes["name"]), strict=True))
+    return members, genomes
+
+
+def test_a_seed_gives_the_same_clusters(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli):
+    """--seed seeds the random numbers that Louvain draws (Python's random
+    module, which igraph draws from) where a run partitions: from the same map,
+    the same seed gives the same clusters, every round of them, whatever the
+    random state before the run; and partition --seed S then validation --seed S,
+    step by step, give the clusters of pipeline --seed S, which seeds its
+    partition and its recursive partition alike. The seed is stored with the
+    other parameters of the run."""
+    monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.first_cluster_contaminated(metagenome))
+    assembly, depth = str(metagenome_inputs["assembly"]), str(metagenome_inputs["depth"])
+    contigs = _contig_map(metagenome_inputs, tmp_path / "contigs.metacool")
+    tmp = ["-T", str(tmp_path / "tmp")]
+    maps = {}
+    for name, state in [("first", 1), ("second", 2)]:
+        out = tmp_path / name
+        random.seed(state)
+        run_cli("pipeline", str(contigs), "-a", assembly, "-d", depth, "-e", "DpnII", "-s", "20000", "-i", "10", "-j", "5",
+                "--seed", "13", "-o", str(out), *tmp)  # fmt: skip
+        maps[name] = out / "contigs.metacool"
+    steps = tmp_path / "steps"
+    random.seed(3)
+    run_cli("network", str(contigs), "-a", assembly, "-d", depth, "-e", "DpnII", "-o", str(steps), *tmp)
+    metacool = steps / "contigs.metacool"
+    random.seed(4)
+    run_cli("partition", str(metacool), "-i", "10", "--seed", "13", "-o", str(steps), *tmp)
+    random.seed(5)
+    run_cli("validation", str(metacool), "-a", assembly, "-s", "20000", "-i", "5", "--seed", "13", "-o", str(steps), *tmp)
+    maps["steps"] = metacool
+    found = {name: _clustering(path) for name, path in maps.items()}
+    rounds = [entry for entry in found["first"][0] if entry.startswith("recursive_")]
+    assert rounds, "no recursive partition: the test checks none of its seed"
+    assert found["first"] == found["second"] == found["steps"]
+    for name, path in maps.items():
+        entries = metacooler.MetaCooler(str(path)).metadata["metator"]
+        assert entries["partition"]["parameters"]["seed"] == 13 and entries["validation"]["parameters"]["seed"] == 13, name
+
+
 def _contig_map(metagenome_inputs, path, pairs=None):
     """The map of the contigs of the mock community at path, in no cluster yet
     (see tests.maps.contig_map): one bin per contig, what metaTOR measures on

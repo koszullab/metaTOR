@@ -1,6 +1,7 @@
 """BAM files of pairs, as aligners write them, for the tests of metator.inputs:
 the alignments of the two mates of each pair, which metaTOR reads back as those
-pairs (each mate at the leftmost base of its alignment, 1-based)."""
+pairs (each mate at the 1-based 5' end of its alignment: its first aligned base
+on the forward strand, its last on the reverse strand)."""
 
 import os
 import tempfile
@@ -45,8 +46,9 @@ def header(lengths, sort_order=None, sub_sort=None):
 
 
 def segment(bam_header, name, contig=None, pos=None, strand="+", flag=0, mapq=60):
-    """The alignment of a mate: at the 1-based leftmost position pos of contig,
-    on strand, READ_LENGTH long (shorter at the end of the contig); unmapped
+    """The alignment of a mate whose 5' end is at the 1-based position pos of
+    contig, on strand: from pos on the forward strand, up to pos on the reverse
+    strand, READ_LENGTH long (shorter at either end of the contig); unmapped
     without a contig."""
     read = pysam.AlignedSegment(bam_header)
     read.query_name = name
@@ -54,10 +56,16 @@ def segment(bam_header, name, contig=None, pos=None, strand="+", flag=0, mapq=60
         read.flag = flag | 0x4
         read.query_sequence = "N" * READ_LENGTH
         return read
-    length = min(READ_LENGTH, bam_header.get_reference_length(contig) - (int(pos) - 1))
+    pos = int(pos)
+    if strand == "-":
+        start = max(0, pos - READ_LENGTH)
+        length = pos - start
+    else:
+        start = pos - 1
+        length = min(READ_LENGTH, bam_header.get_reference_length(contig) - start)
     read.flag = flag | (0x10 if strand == "-" else 0)
     read.reference_id = bam_header.get_tid(contig)
-    read.reference_start = int(pos) - 1
+    read.reference_start = start
     read.mapping_quality = mapq
     read.cigartuples = [(0, length)]
     read.query_sequence = "A" * length

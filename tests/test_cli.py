@@ -48,7 +48,9 @@ mtmc_write_map = mtmc.write_map
 # which finds the hosts of the MGE clusters of a map (1.x's host read tables).
 # network and pipeline then took pairs and BAM files again, as their
 # arguments (INPUT..., the map or the files that the run makes it from), with
-# -q/--min-quality for the BAM files, and network -t/--threads to read them.
+# -q/--min-quality for the BAM files, and network -t/--threads to read them;
+# then partition, validation, pipeline and mge took --seed, the seed of their
+# random numbers.
 INVENTORY = json.loads((TESTS_DATA / "cli_inventory.json").read_text())["metator"]
 
 # Options whose value is one of a list, wherever they appear.
@@ -328,6 +330,7 @@ def test_log_header_lists_the_parameters(stub_pipeline, tmp_path, run_cli):
         "## threads: 1",
         "## no-clean-up: False",
         "## inplace: False",
+        "## seed: None",
     ]
     assert "" not in lines
     assert re.search(r" :: INFO :: Contact map with the partition written after 0h 0m [0-9]s: input\.metacool$", lines[-1])
