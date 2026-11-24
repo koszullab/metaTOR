@@ -1,16 +1,15 @@
 # Concepts
 
-How metaTOR clusters contigs, and the terms the rest of the documentation
-uses. For file layouts, see [File formats](formats.md).
+How metaTOR clusters contigs, and the terms the documentation uses. For
+file layouts, see [File formats](formats.md).
 
 ## The signal
 
-A metaHiC (or meta3C) library cross-links the cells of a community, cuts
-their DNA with a restriction enzyme, ligates ends that lie close in space,
-and sequences the junctions as read pairs. Most ligations join DNA of the same
-cell, so the two mates of a pair land on contigs of the same genome far more
-often than on contigs of different genomes. Grouping contigs that are often
-joined recovers the genomes.
+A metaHiC (or meta3C) library cross-links the cells of a community, then
+digests, ligates and sequences DNA ends that lie close in space, as read
+pairs. Most pairs join DNA of the same cell, so their mates land on contigs
+of the same genome far more often than on contigs of different genomes.
+Grouping contigs that are often joined recovers the genomes.
 
 ## The pipeline
 
@@ -80,15 +79,15 @@ marker genes of each cluster (with Prodigal and HMMER, through pyrodigal and
 pyhmmer): their share is the **completeness**, their copies the
 **redundancy**.
 
-A cluster with a weighted completeness of at least 33% and a contamination,
-(redundancy − 1) / completeness, of at least 5% is partitioned again on its
-own contigs (`--rec-iter` iterations, 10 by default; `--rec-overlap`, 90%). Its parts,
-the **recursive clusters**, replace it if the most complete one keeps enough
-of its completeness. This repeats until no cluster is replaced, at most 9
-times.
+A cluster with a weighted completeness of at least 33% and a relative
+contamination, (weighted redundancy − 1) / weighted completeness, of at least
+5% is partitioned again on its own contigs (`--rec-iter` iterations, 10 by
+default; `--rec-overlap`, 90%). Its parts, the **recursive clusters**,
+replace it if the most complete one keeps enough of its completeness. This
+repeats until no cluster is replaced, at most 9 times.
 
 The **final clusters** are the overlapping clusters not split, and the
-recursive clusters of those split. `metator_00012_00003` is recursive cluster
+recursive clusters of the others. `metator_00012_00003` is recursive cluster
 3 of overlapping cluster 12; `metator_00001_00000` is overlapping cluster 1,
 not split. Contigs in no final cluster are marked `ND` (not determined).
 
@@ -105,9 +104,6 @@ redundancy − 1):
 | LQ (low-quality) MAGs | ≥ 50% | ≤ 10% |
 | Contaminated potential MAGs | ≥ 50% | > 10% |
 | Other clusters | < 50% | |
-
-The recursive partition measures contamination relative to completeness
-instead: (weighted redundancy − 1) / weighted completeness.
 
 ## The contact map of the clusters
 
