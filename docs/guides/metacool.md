@@ -468,6 +468,24 @@ metacooler merge hicstuff_L1/L1.metacool hicstuff_L2/L2.metacool -o sample.metac
 metator pipeline sample.metacool -a assembly.fa -e DpnII -o binning
 ```
 
+hicstuff 4.0.0 makes one bin per fragment only. A later release bins the map
+itself with `--binning`, from the positions of the pairs: at a bin size
+(`-b 1000`, to look at the genomes at their sizes), or from a BED file of
+bins, such as one bin per contig, the map that `metator network` and
+`metator pipeline` make from the pairs files of a run. The map keeps the
+contact statistics of the reads, which `metator mge` reads, and metaTOR
+clusters the contigs alike from any of these maps (see
+[Starting from a contact map](#starting-from-a-contact-map)); `metacooler merge`
+sums the maps of libraries binned alike.
+
+```bash
+# One bin per contig. faidx, of pyfaidx, which metacooler installs, writes the
+# contigs of the assembly as a BED file, and its index (.fai) next to it.
+faidx -i bed assembly.fa > contigs.bed
+hicstuff pipeline -g assembly.fa -e DpnII -M metacool -b contigs.bed -o hicstuff_L1 -P L1 \
+    L1_R1.fq.gz L1_R2.fq.gz
+```
+
 hicstuff also writes the pairs of each library, `<prefix>.valid_idx.pairs.gz`,
 from which `metacooler create pairs` makes a map too, as it does from the
 pairs files of another aligner:
