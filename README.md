@@ -254,7 +254,9 @@ that host each MGE cluster, those that its contigs are in contact with, writes
 them in `tables/mge_hosts.txt`, and stores them in the map. `metator pipeline
 MAP --mges mges.txt` runs both after the validation, as its last two steps
 (`mge --reassign`, which makes each MGE cluster a genome of the map, then
-`host`); without `--mges`, it ends with the validation, and says so. See
+`host`); without `--mges`, it has no steps `mge` and `host`, and says so. Its
+last step, `export`, writes the outputs of the run from its map, as
+`metator export` does. See
 [Clustering mobile genetic elements](https://koszullab.github.io/metator/guides/mge/).
 
 ## Migrating from metaTOR 1.x

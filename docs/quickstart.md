@@ -92,10 +92,11 @@ directory, in `tmp/`, with the tables of the run.
     cluster to check. On a real sample, leave `--size` out.
 
 The log starts with the version, the command line and the value of each
-option, then follows the three steps of the run, says that it ends with the
-validation, without the list of the MGE contigs that `--mges` gives it (see
-[Running the pipeline](guides/pipeline.md#mobile-genetic-elements-and-their-hosts)),
-then where it wrote its outputs, and ends with how long it took (excerpt):
+option, then follows the four steps of the run, says that it has no steps
+`mge` and `host`, without the list of the MGE contigs that `--mges` gives it
+(see [Running the pipeline](guides/pipeline.md#mobile-genetic-elements-and-their-hosts)),
+then where its last step, `export`, wrote its outputs, and ends with how long
+it took (excerpt):
 
 ```console
 INFO :: ## MetaTOR: v1.4.0 log file
@@ -107,13 +108,13 @@ INFO :: ## assembly: assembly.fa
 INFO :: ## inplace: False
 INFO :: ---
 INFO :: The run writes its map to binning/sample.metacool, and leaves sample.metacool as it is (--inplace updates it).
-INFO :: [1/3] network: the contigs of sample.metacool and their contacts
+INFO :: [1/4] network: the contigs of sample.metacool and their contacts
 INFO :: 41563 contacts in sample.metacool, 18632 of them between contigs (3D ratio: 0.4483).
-INFO :: [2/3] partition: the clusters of the network
+INFO :: [2/4] partition: the clusters of the network
 INFO :: 100 iterations of louvain on the network of 1058 contigs and 13415 edges.
 INFO :: louvain: 100/100 iterations, done in 0h 0m 1s.
 INFO :: 420 core clusters, merged into 229 overlapping clusters.
-INFO :: [3/3] validation: miComplete checks the clusters, and the contaminated ones are partitioned again
+INFO :: [3/4] validation: miComplete checks the clusters, and the contaminated ones are partitioned again
 INFO :: 26 of the 229 overlapping clusters reach 20000 bp, 0.764 Mb in all: miComplete checks them.
 INFO :: miComplete checked the 26 clusters in 0h 0m 3s, and found 0 of them contaminated, which the recursive steps partition again.
 INFO :: Recursive step 1/9: no cluster is contaminated, so no recursive step is needed.
@@ -124,7 +125,12 @@ INFO :: LQ MAGs: 0	Total Size: 0
 INFO :: Contaminated potential MAGs: 0	Total Size: 0
 INFO :: Other clusters: 26	Total Size: 764377
 INFO :: Writing binning/sample.metacool from sample.metacool: 1219 contigs, 347 of them in 26 clusters.
-INFO :: No list of MGE contigs (--mges): the run ends with its step 3, the validation, without the steps mge and host, which cluster the MGE contigs and find their hosts: give --mges to run them.
+INFO :: No list of MGE contigs (--mges): the run has no steps mge and host, which cluster the MGE contigs and find their hosts: give --mges to run them.
+INFO :: [4/4] export: the outputs of the run, from its map
+INFO :: The FASTA files of the 26 final cluster(s), with the MGE contigs that they hold: binning/fasta/mags_with-mges
+INFO :: The FASTA files of the 26 MAG(s) of the run, each as its contigs and stitched: binning/fasta/mags
+INFO :: The cool files of the 26 MAG(s) of the run, 0 of them with the MGE clusters that they host, balanced: binning/cool
+INFO :: The tables of binning/sample.metacool are written in binning/tables: 1219 contigs, 27 genomes, 3 clustering rounds and 13415 edges of the network.
 INFO :: The temporary directory of the run, ./tmp/7891e04f, and its files are kept (-N).
 INFO :: Final contact map written after 0h 0m 5s: binning/sample.metacool
 ```

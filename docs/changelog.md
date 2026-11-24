@@ -225,8 +225,9 @@ each removed command.
   the MGE contigs of the list, makes each MGE cluster a genome of the map and
   writes `fasta/mges/`, and `host`, as `metator host`, which finds the MAGs
   that host them and writes `tables/mge_hosts.txt` and `plots/mge_hosts.pdf`;
-  the log marks them last (`[4/5] mge`, `[5/5] host`; `[6/6] host` from pairs
-  or BAM files, whose map the run makes first). `--mge-threshold-bin`,
+  the log marks them after the validation (`[4/6] mge`, `[5/6] host`, before
+  `[6/6] export`; one more step first from pairs or BAM files, whose map the
+  run makes first). `--mge-threshold-bin`,
   `--mge-min-share` and `--mge-min-contigs` are the `--threshold-bin` of
   `mge` and the `--min-share` and `--min-contigs` of `host`. What they would
   refuse is refused before any work: a list that cannot be read, a map
@@ -236,7 +237,7 @@ each removed command.
   earlier version's MGE files in the output directory. A run that stops in
   one of them keeps the map of its clusters (with its MGE clusters, in
   `host`), and its log says what to run on it to complete it. Without
-  `--mges`, the run ends with the validation, and says so.
+  `--mges`, the run has no steps `mge` and `host`, and says so.
 - **The outputs of a run, in folders of its output directory** (see the
   [CLI reference](cli.md#conventions)): `fasta/mags_with-mges/`, the FASTA file
   of each final cluster, as the validation made it, with its MGE contigs
@@ -261,8 +262,17 @@ each removed command.
   the assembly (`mags_with-mges/`, the final clusters, in the order of the map;
   `mags/`; `mges/` and `mges_random/`). The map is read only: a map that
   `metator dump` refuses is refused before anything is written, and so is one
-  that another run writes while it is read. `pipeline` writes the outputs of
-  its end with the same code.
+  that another run writes while it is read. `pipeline` runs it as its last
+  step (`[4/4] export`, or `[6/6]` with `--mges`), in place of the outputs
+  that its steps wrote: a run gives the outputs that its steps one by one
+  give, `export` last.
+- The map of the clusters stores the summary of the validation at full
+  precision (`cluster_summary_full.txt`, beside `cluster_summary.txt` in the
+  temporary directory of the run), where a development build stored it as
+  `cluster_summary.txt` writes it, its floats rounded to 2 decimals: the
+  quality classes that the map gives (the plots of `export`) are those of the
+  values of miComplete, as the log counts them. `cluster_summary.txt`, and
+  the one that `metator dump` writes, are as they were.
 - `metator host MAP` finds the MAGs that host the MGE clusters that
   `metator mge` stored in the map (its round `mge`): its genomes, the final
   clusters of a run or the bins of another binner made its genomes by
@@ -304,7 +314,7 @@ each removed command.
   reads that `mge` reads), in its output directory, as `<prefix>.metacool`
   (`pipeline --prefix`) or `<assembly>.metacool` (named after the FASTA file
   of the assembly), then updates it in place: a `pipeline` run makes it the
-  map of its clusters, and logs the step first (`[1/4] map`). A map there is
+  map of its clusters, and logs the step first (`[1/5] map`). A map there is
   replaced only with `-F`, once the new map is written; `--inplace` is
   refused. A BAM file holds both mates of its reads (paired-end alignments, as
   `bwa mem -5SP` writes them: as the aligner wrote them, or sorted by name or
@@ -432,8 +442,8 @@ each removed command.
   dashes, without the empty lines around it; the log ends with what the run
   wrote and how long it took (`Final contact map written after 0h 8m 31s: <map>`),
   where it ended with a line of dashes and the date. `pipeline`
-  marks its three steps (`[1/3] network`, `[2/3] partition`,
-  `[3/3] validation`), and no longer logs its parameters, which the header
+  marks its steps (`[1/4] network`, `[2/4] partition`, `[3/4] validation`,
+  `[4/4] export`), and no longer logs its parameters, which the header
   gives. The partition counts its iterations as they go, at each tenth of
   them, 10 seconds apart at least, and how long they took; the validation
   says how long miComplete took and how many clusters are contaminated, then

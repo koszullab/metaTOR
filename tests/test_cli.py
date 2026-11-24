@@ -409,13 +409,13 @@ def stub_pipeline(monkeypatch, tmp_path):
         # The input map must still be there.
         calls["write_map"] = (metacool, os.path.exists(metacool), outfile, stores)
 
-    def write_outputs(*args):
-        # The outputs of a pipeline run, written from the map of its clusters,
-        # which the stub validation does not write: recorded.
-        calls["write_outputs"] = args
+    def run_export(*args, **kwargs):
+        # The step export of a pipeline run, its outputs written from the map
+        # of its clusters, which the stub validation does not write: recorded.
+        calls["run_export"] = (args, kwargs)
 
     monkeypatch.setattr("metator.network.create_contig_data", create_contig_data)
-    monkeypatch.setattr("metator.cli.write_outputs", write_outputs)
+    monkeypatch.setattr("metator.cli.run_export", run_export)
     monkeypatch.setattr("metator.network.contig_data_from_map", contig_data_from_map)
     monkeypatch.setattr("metator.network.contig_contacts", recorded_contig_contacts)
     monkeypatch.setattr("metator.partition.partition", partition)
@@ -455,7 +455,10 @@ def _final_tables(monkeypatch, contig, final_bin="metator_00001_00000", summary=
         rows = "" if final_bin == "ND" else f"{final_bin}\t0.9\n"
         if final_bin != "ND":
             Path(args[3], f"{final_bin}.fa").write_text(f">{contig}\nACGT\n")
-        Path(args[7], "cluster_summary.txt").write_text(summary or f"\tCompleteness\n{rows}")
+        # The summary as the run writes it, and at full precision, which the
+        # map stores (the same here).
+        for name in ("cluster_summary.txt", mio.SUMMARY_FULL_FILE):
+            Path(args[7], name).write_text(summary or f"\tCompleteness\n{rows}")
         layout = mio.SummaryLayout([] if final_bin == "ND" else [final_bin], ["Completeness"], {"Completeness": "%.2f"})
         return pd.DataFrame({"Name": [contig, "c2"], "Final_cluster": [final_bin, "ND"]}), layout
 
@@ -674,10 +677,11 @@ def test_pipeline_from_a_metacool(stub_pipeline, tmp_path, run_cli):
     # The plots of the final clusters go to plots/ of the output directory,
     # which the validation makes (the stub validation draws none).
     assert calls["recursive_decontamination_kwargs"]["plot_outdir"] == str(out) and not (out / "plots").exists()
-    # The outputs of the run, written from its map in its output directory,
-    # from the assembly (plain: as it is), in its temporary directory.
-    metacool_file, assembly, outdir, tmp_dir = calls["write_outputs"]
-    assert (metacool_file, assembly, outdir) == (str(metacool), str(tmp_path / "assembly.fa"), str(out))
+    # The outputs of the run, exported from its map in its output directory
+    # (in place of those of its steps), from the assembly (plain: as it is),
+    # in its temporary directory.
+    (metacool_file, assembly, outdir, tmp_dir), options = calls["run_export"]
+    assert (metacool_file, assembly, outdir, options) == (str(metacool), str(tmp_path / "assembly.fa"), str(out), {"force": True})
     assert Path(tmp_dir).parent == tmp_path / "tmp"
     assert not (out / "overlapping_clusters").exists() and not (out / "contig_data_partition.txt").exists()
     assert metacool.read_bytes() == before
@@ -710,7 +714,7 @@ def test_pipeline_from_a_metacool(stub_pipeline, tmp_path, run_cli):
     assert clusters.entry["read"] == {"contigs": ["GC_content", "Hit"], "bins": ["metator_length"],
                                       "rounds": ["core", "overlapping"]}  # fmt: skip
     # The stub validation clusters no contig, and writes no table.
-    assert clusters.assignment == {} and clusters.rounds is None and clusters.summary == str(tables / "cluster_summary.txt")
+    assert clusters.assignment == {} and clusters.rounds is None and clusters.summary == str(tables / mio.SUMMARY_FULL_FILE)
     # No column was read from the map (the stub reads none).
     assert network.entry["read"] == {"contigs": []}
     assert stores["partition"]["read"] == {"contigs": ["GC_content", "Hit"], "bins": ["metator_length"]}
@@ -720,15 +724,15 @@ def test_pipeline_from_a_metacool(stub_pipeline, tmp_path, run_cli):
 
 
 # The steps of a pipeline run, as its log marks them, without --mges.
-STEPS = [("1", "3", "network"), ("2", "3", "partition"), ("3", "3", "validation")]
+STEPS = [("1", "4", "network"), ("2", "4", "partition"), ("3", "4", "validation"), ("4", "4", "export")]
 
 
-def test_pipeline_without_mges_stops_after_the_validation(stub_pipeline, tmp_path, run_cli):
-    """Without --mges, a pipeline run from a map has three steps ([1/3]
-    network...), and says, once it has written the map of its clusters, that
-    it ends with its step 3, the validation, without the steps mge and host,
-    and how to run them: with --mges. It writes no MGE fasta and no hosts, and
-    then its outputs, from the map of its clusters."""
+def test_pipeline_without_mges_has_no_steps_mge_and_host(stub_pipeline, tmp_path, run_cli):
+    """Without --mges, a pipeline run from a map has four steps ([1/4]
+    network... [4/4] export), and says, once it has written the map of its
+    clusters, that it has no steps mge and host, and how to run them: with
+    --mges. It writes no MGE fasta and no hosts, and then exports its outputs,
+    from the map of its clusters."""
     metacool = _contig_map(tmp_path / "input.metacool")
     run_cli("pipeline", *_map_run(metacool, tmp_path))
     out = tmp_path / "out"
@@ -736,11 +740,11 @@ def test_pipeline_without_mges_stops_after_the_validation(stub_pipeline, tmp_pat
     logged = log.read_text()
     assert re.findall(r" :: INFO :: \[([0-9])/([0-9])\] ([a-z]+): ", logged) == STEPS
     stop = (
-        "INFO :: No list of MGE contigs (--mges): the run ends with its step 3, the validation, without the steps mge "
-        "and host, which cluster the MGE contigs and find their hosts: give --mges to run them.\n"
+        "INFO :: No list of MGE contigs (--mges): the run has no steps mge and host, which cluster the MGE contigs and "
+        "find their hosts: give --mges to run them.\n"
     )
-    assert stop in logged and logged.index("[3/3] validation") < logged.index(stop)
-    assert stub_pipeline["write_map"] and stub_pipeline["write_outputs"]
+    assert logged.index("[3/4] validation") < logged.index(stop) < logged.index("[4/4] export")
+    assert stub_pipeline["write_map"] and stub_pipeline["run_export"]
     assert not (out / "fasta" / "mges").exists() and not (out / "tables").exists()
 
 
@@ -2527,7 +2531,7 @@ def test_the_tables_of_an_earlier_run(force, stub_pipeline, tmp_path, run_cli):
     else:
         run_cli("pipeline", *_map_run(metacool, tmp_path, "-F"))
         # Removed, for the run to write them again (its stub outputs write none).
-        assert not os.path.lexists(tables / "binning.txt") and stub_pipeline["write_outputs"]
+        assert not os.path.lexists(tables / "binning.txt") and stub_pipeline["run_export"]
     assert (tables / "notes.txt").read_text() == "the user's\n"
 
 

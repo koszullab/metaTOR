@@ -865,10 +865,10 @@ def log_end(started, what, where=None):
 
 def log_stage(number, name, what, stages=3):
     """The first line of the log of a step of a pipeline run, one of its stages:
-    three (network, partition, validation), one more first from pairs or BAM
-    files (the map), and two more last with --mges (mge, host): which step,
-    its name, and what it does, so that the log of the run reads step by
-    step."""
+    network, partition, validation and export; one more first from pairs or
+    BAM files (the map), and two more after the validation with --mges (mge,
+    host): which step, its name, and what it does, so that the log of the run
+    reads step by step."""
     logger.info(f"[{number}/{stages}] {name}: {what}")
 
 
@@ -1211,7 +1211,7 @@ def run_validation(
     check_final_clusters(assignment, final_fasta_dir)
     return mtmc.FinalClusters(
         assignment=assignment,
-        summary=join(tmp_dir, "cluster_summary.txt"),
+        summary=join(tmp_dir, mio.SUMMARY_FULL_FILE),
         rounds=mtcl.read_rounds(tmp_dir),
         entry=validation_entry(normalization, table, summary),
     )
@@ -1327,8 +1327,9 @@ FORCE_RUN_HELP = (
 )
 NO_CLEAN_UP_TABLES_HELP = (
     "Do not remove the temporary directory of the run, which the log names: it keeps miComplete's results, the FASTA "
-    "files of the clusters it checked and the tables of the validation (contig_data_final.txt, cluster_summary.txt, "
-    "binning.txt, clusters.txt, cluster_members.txt)."
+    "files of the clusters it checked and the tables of the validation (contig_data_final.txt, cluster_summary.txt "
+    "and cluster_summary_full.txt, its values at full precision, which the map stores, binning.txt, clusters.txt, "
+    "cluster_members.txt)."
 )
 SIZE_HELP = (
     "Threshold size to keep clusters in base pair: miComplete checks the overlapping clusters of the partition that "
@@ -2077,7 +2078,7 @@ def validation(
     panel="MGE",
     help="The MGE contigs, one name per line, as metator mge reads them: after the validation, the run goes on with two "
     "more steps, mge, which clusters them as metator mge --reassign does, each MGE cluster a genome of the map, and "
-    "host, which finds their hosts as metator host does. Without it, the run ends with the validation.",
+    "host, which finds their hosts as metator host does. Without it, the run has no steps mge and host.",
 )
 @_option(
     "--mge-threshold-bin",
@@ -2188,8 +2189,8 @@ def pipeline(
     at the end of the validation: the FASTA files of the final clusters, with
     the MGE contigs that they hold, go to fasta/mags_with-mges, and their
     plots to plots (as PDF files); the tables of the validation stay in its
-    temporary directory, which -N keeps. Without --mges, the run ends with
-    the validation, and says so.
+    temporary directory, which -N keeps. Without --mges, the run has no
+    steps mge and host, and says so.
 
     With --mges, the list of the MGE contigs, the run goes on with two more
     steps on the map of its clusters, which it updates in place, as
@@ -2206,13 +2207,15 @@ def pipeline(
     or BAM files, in the assembly, before the run makes its map), and the
     MGE files of an earlier version in the output directory.
 
-    At its end, the run writes its outputs from its map: fasta/mags, the
-    FASTA files of its MAGs (its genomes but the MGE genomes), each as its
-    contigs (MAG.fa) and stitched (MAG.stitched.fa, its contigs joined by 200
-    N); cool, a cool file per MAG, with the MGE clusters that it hosts, as
-    [cyan]metacooler extract[/] writes it, balanced as
-    [cyan]cooler balance[/] balances it; and tables, the tables of
-    [cyan]metator dump[/].
+    Its last step, export, writes the outputs of the run from its map, as
+    [cyan]metator export MAP -a ASSEMBLY[/] does, in place of those that
+    its steps wrote: fasta/mags_with-mges, fasta/mags (the FASTA files of its
+    MAGs, its genomes but the MGE genomes, each as its contigs, MAG.fa, and
+    stitched, MAG.stitched.fa, its contigs joined by 200 N), fasta/mges with
+    --mges; cool, a cool file per MAG, with the MGE clusters that it hosts,
+    as [cyan]metacooler extract[/] writes it, balanced as
+    [cyan]cooler balance[/] balances it; tables, the tables of
+    [cyan]metator dump[/] (and mge_hosts.txt with --mges); and plots.
     """
     # The directories that the run makes anew in its output directory (see
     # metator.outputs): fasta/mges with --mges only.
@@ -2287,11 +2290,11 @@ def pipeline(
         # From pairs or BAM files, a step more, first: the map of the contigs,
         # made in the output directory from the contig data measured on the
         # assembly, which the run then updates in place; with --mges, two
-        # more, last: mge and host. With --mges, the MGE contigs are checked
-        # against the contigs of the assembly, which the map has, before the
-        # run makes it.
+        # more after the validation: mge and host; and export, last. With
+        # --mges, the MGE contigs are checked against the contigs of the
+        # assembly, which the map has, before the run makes it.
         step = 0 if inputs.kind == mti.MAP else 1
-        stages = step + (5 if mges_list is not None else 3)
+        stages = step + (5 if mges_list is not None else 3) + 1
         contig_data = None
         if planned is None:
             log_stage(1, "map", f"the contact map of the contigs, from {inputs.describe()}", stages)
@@ -2366,8 +2369,8 @@ def pipeline(
 
         if mges_list is None:
             logger.info(
-                f"No list of MGE contigs (--mges): the run ends with its step {step + 3}, the validation, without the "
-                "steps mge and host, which cluster the MGE contigs and find their hosts: give --mges to run them."
+                "No list of MGE contigs (--mges): the run has no steps mge and host, which cluster the MGE contigs and "
+                "find their hosts: give --mges to run them."
             )
         else:
             run_mge_steps(
@@ -2384,8 +2387,11 @@ def pipeline(
                 stages,
             )
 
-        # The outputs of the run, from its map as its steps left it.
-        write_outputs(metacool_file, plain, outdir, tmp_dir)
+        # The outputs of the run, from its map as its steps left it, as
+        # metator export writes them: in place of those that its steps wrote,
+        # in the directories that it made anew (force).
+        log_stage(stages, "export", "the outputs of the run, from its map", stages)
+        run_export(metacool_file, plain, outdir, tmp_dir, force=True)
 
     log_end(started, "Final contact map written", metacool_file)
 
@@ -2444,9 +2450,8 @@ def run_mge_steps(metacool, assembly, mges, mges_list, threshold_bin, min_share,
     MGE clusters, as metator host does (see run_host): their outputs go to
     outdir, as theirs (fasta/mges; tables/mge_hosts.txt and
     plots/mge_hosts.pdf). A run that stops in one of them says what the map
-    holds then, which metator mge and metator host complete, and that the
-    outputs of the run, which it writes from its map at its end (see
-    write_outputs), are not written."""
+    holds then, which metator mge and metator host complete, then metator
+    export, the last step of the run (see run_export)."""
     name = "mge"
     try:
         step += 1
@@ -2463,31 +2468,15 @@ def run_mge_steps(metacool, assembly, mges, mges_list, threshold_bin, min_share,
         )
         logger.info(
             f"The run stopped in its step {step}, {name}: {metacool} holds {held}; run {finish} on it to complete the "
-            f"map ({mto.MAGS_DIR}, {mto.COOL_DIR} and {mto.TABLES_DIR} are not written)."
-        )
-        raise
-
-
-def write_outputs(metacool, assembly, outdir, tmp_dir):
-    """Write the outputs of a pipeline run in its output directory, outdir,
-    from the map of its clusters, metacool, as its steps left it (see
-    write_map_outputs). What cannot be written stops the run, the reason
-    logged as an error, and says that the map of the run is complete:
-    metator export writes them from it."""
-    try:
-        write_map_outputs(metacool, assembly, outdir, tmp_dir)
-    except mtmc.MetacoolError as error:
-        logger.error(str(error))
-        logger.info(
-            f"The run stopped as it wrote its outputs: {metacool}, its map, is complete, and metator export writes them from it."
+            "map, then metator export to write the outputs of the run from it."
         )
         raise
 
 
 def write_map_outputs(metacool, assembly, outdir, tmp_dir):
     """Write in the output directory of a run, outdir, from the map of its
-    clusters, metacool (see metator.outputs), what a pipeline run writes from
-    its map at its end, and metator export too: fasta/mags, the FASTA files of
+    clusters, metacool (see metator.outputs), part of what metator export
+    writes (see run_export), and the pipeline in its step export: fasta/mags, the FASTA files of
     its MAGs, each as its contigs and stitched (see
     metator.outputs.write_fasta_files, from the assembly of the run, plain: see
     metator.validation.plain_assembly; none without it); cool, the cool file of
@@ -2987,6 +2976,10 @@ def dump(
 # export
 # ---------------------------------------------------------------------------
 
+#: The results of an earlier version that metator export refuses in its output
+#: directory, with or without -F: those of validation, pipeline, mge and host.
+EXPORT_EARLIER_OUTPUTS = EARLIER_OUTPUTS + MGE_EARLIER_OUTPUTS + HOST_EARLIER_OUTPUTS
+
 #: What to do about a map that another run writes while metator export reads it.
 EXPORT_AGAIN = "Run metator export again, with -F for what it wrote, once the run that writes the map has ended."
 
@@ -3051,6 +3044,108 @@ def write_round_fasta(metacool, assembly, outdir, groups, tmp_dir):
         logger.info(f"The FASTA files of the {len(clusters)} {ROUND_FASTA[name]}: {directory}")
 
 
+def run_export(metacool, assembly, outdir, tmp_dir, force):
+    """Write the outputs of a run in its output directory, outdir, from the map
+    of its clusters, metacool, and its assembly (None: without the FASTA
+    files), as metator export does (see export), and the step export of
+    pipeline, at its end; tmp_dir: the temporary directory of the run. force
+    (-F) replaces the outputs of an earlier run (those that the pipeline made
+    anew, in its step export). The reason of a refusal or of a failure is
+    logged as an error, then raised."""
+    # The map and the assembly, checked before any work.
+    run_input(metacool)
+    if assembly is not None:
+        check_assembly(assembly)
+    state = map_state(metacool)
+    rounds = [entry.get("name") for entry in open_input_map(metacool).cluster_rounds]
+
+    # The folders that the run makes anew (the FASTA files with the
+    # assembly only, those of the MGE clusters when the map holds them),
+    # the tables and the plots of an earlier run: refused now without -F,
+    # which replaces them once the map is read. What an earlier version
+    # wrote in the output directory is refused, with or without it, and so
+    # are the inputs of the run in a folder that it makes anew.
+    fasta = [mto.MAGS_WITH_MGES_DIR, mto.MAGS_DIR]
+    fasta += [
+        name for name, round_name in [(mto.MGES_DIR, mtcl.MGE), (mto.MGES_RANDOM_DIR, mtcl.MGE_RANDOM)] if round_name in rounds
+    ]
+    made = (fasta if assembly is not None else []) + [mto.COOL_DIR]
+    refuse_an_input_in_the_outputs([mtmc.map_file(metacool), assembly], outdir, made)
+    refuse_earlier_outputs(outdir, EXPORT_EARLIER_OUTPUTS, keep=(metacool,))
+    if assembly is not None:
+        refuse_no_directory(join(outdir, mto.FASTA_DIR), "the FASTA files of the run")
+    for name in made:
+        refuse_output_dir(join(outdir, name), force)
+    tables = refuse_earlier_tables(join(outdir, mto.TABLES_DIR), force)
+    plots = refuse_earlier_plots(outdir, force)
+
+    # The map, read once, as metator dump reads it (and refused as dump
+    # refuses it), and what the outputs need of it: the clusters of its
+    # rounds final, mge and mge_random, the parameters of the validation
+    # (the size threshold of the plots, the assembly), and the hosts of its
+    # MGE clusters, found again from its network with the thresholds of
+    # the host run.
+    try:
+        mc, layout, stored = mtd.read_run(metacool, EXPORT_AGAIN)
+        with mtmc._metacooler_logging(), mtmc.read_errors(metacool, EXPORT_AGAIN):
+            groups = {
+                mto.MAGS_WITH_MGES_DIR: mto.round_groups(mc, mtcl.FINAL),
+                mto.MGES_DIR: mto.mge_groups(mc, mtcl.MGE),
+                mto.MGES_RANDOM_DIR: mto.mge_groups(mc, mtcl.MGE_RANDOM),
+            }
+            parameters = mc.metadata["metator"]["validation"].get("parameters", {})
+            contigs, summary = mto.plot_inputs(mc, layout.rows)
+            thresholds = mth.recorded_thresholds(mc)
+            hosts = mth.find_hosts(metacool, mc, stored.network, *thresholds) if mtmc.holds_hosts(mc) else None
+    except mtmc.MetacoolError as error:
+        logger.error(str(error))
+        raise
+    for name in made:
+        make_output_dir(join(outdir, name), force)
+    remove_earlier_tables(tables)
+    remove_earlier_plots(plots)
+
+    # The outputs, from the map, which metacooler reads again by path; the
+    # FASTA files from the assembly, decompressed once for the run when it
+    # is compressed.
+    try:
+        with mtmc.read_errors(metacool, EXPORT_AGAIN):
+            plain = None if assembly is None else mtv.plain_assembly(assembly, tmp_dir)
+            if plain is None:
+                logger.info(
+                    "No assembly (--assembly): the FASTA files of the run (fasta) are not written. Give the "
+                    f"assembly that the map was made from to write them: {parameters.get('assembly')}, as the run "
+                    "recorded it."
+                )
+            else:
+                write_round_fasta(metacool, plain, outdir, groups, tmp_dir)
+            write_map_outputs(metacool, plain, outdir, tmp_dir)
+        mtf.plot_figures(outdir, contigs, summary, parameters.get("size"))
+        if hosts is not None:
+            table, plot = write_hosts_files(hosts, outdir)
+            logger.info(
+                f"The hosts of the MGE clusters, found again from the network of the map with --min-share "
+                f"{thresholds[0]:g} and --min-contigs {thresholds[1]}, as the host run recorded them: {table}, {plot}"
+            )
+    except mtmc.MetacoolError as error:
+        logger.error(str(error))
+        logger.info(
+            f"The run stopped as it wrote the outputs of {metacool}, which is complete: metator export writes them "
+            "from it (with -F, in place of what this run wrote)."
+        )
+        raise
+
+    # What was read of the map, by path, again and again: of one state of
+    # it.
+    if map_state(metacool) != state:
+        message = (
+            f"{metacool} was replaced or written while metator export read it, by a run that updated it: what it wrote "
+            f"may mix two maps. {EXPORT_AGAIN}"
+        )
+        logger.error(message)
+        raise mtmc.MapReplacedError(message)
+
+
 @cli.command(short_help="Write the outputs of a run again from the map of its clusters: fasta, cool, tables and plots.")
 @map_argument(
     required=True,
@@ -3104,8 +3199,8 @@ def export(
       hosts of the MGE clusters, found again from the network of the map with
       the thresholds that the host run recorded;
     - plots: the plots of the final clusters, from the summary that the map
-      holds (rounded to 2 decimals, as cluster_summary.txt, where the
-      validation drew the values of miComplete), and mge_hosts.pdf.
+      holds (the values of miComplete, as the validation drew them), and
+      mge_hosts.pdf.
 
     The FASTA files need the assembly that the map was made from
     (--assembly): without it, they are left out. The MGE clusters and their
@@ -3120,8 +3215,7 @@ def export(
     outdir = outdir or "."
     # A --tmpdir in a folder that the run makes anew, or refuses as the results
     # of an earlier version, refused as a usage error before anything is made.
-    earlier = EARLIER_OUTPUTS + MGE_EARLIER_OUTPUTS + HOST_EARLIER_OUTPUTS
-    refuse_tmpdir_in_the_clusters(tmpdir, outdir, EXPORT_DIRS, earlier)
+    refuse_tmpdir_in_the_clusters(tmpdir, outdir, EXPORT_DIRS, EXPORT_EARLIER_OUTPUTS)
     with private_tmp_dir(tmpdir) as tmp_dir:
         make_outdir(outdir)
 
@@ -3129,96 +3223,6 @@ def export(
         log_file = log_file_name(outdir, "export")
         started = generate_log_header(log_file, outdir=outdir)
 
-        # The map and the assembly, checked before any work.
-        run_input(map)
-        if assembly is not None:
-            check_assembly(assembly)
-        state = map_state(map)
-        rounds = [entry.get("name") for entry in open_input_map(map).cluster_rounds]
-
-        # The folders that the run makes anew (the FASTA files with the
-        # assembly only, those of the MGE clusters when the map holds them),
-        # the tables and the plots of an earlier run: refused now without -F,
-        # which replaces them once the map is read. What an earlier version
-        # wrote in the output directory is refused, with or without it, and so
-        # are the inputs of the run in a folder that it makes anew.
-        fasta = [mto.MAGS_WITH_MGES_DIR, mto.MAGS_DIR]
-        fasta += [
-            name
-            for name, round_name in [(mto.MGES_DIR, mtcl.MGE), (mto.MGES_RANDOM_DIR, mtcl.MGE_RANDOM)]
-            if round_name in rounds
-        ]
-        made = (fasta if assembly is not None else []) + [mto.COOL_DIR]
-        refuse_an_input_in_the_outputs([mtmc.map_file(map), assembly], outdir, made)
-        refuse_earlier_outputs(outdir, earlier, keep=(map,))
-        if assembly is not None:
-            refuse_no_directory(join(outdir, mto.FASTA_DIR), "the FASTA files of the run")
-        for name in made:
-            refuse_output_dir(join(outdir, name), force)
-        tables = refuse_earlier_tables(join(outdir, mto.TABLES_DIR), force)
-        plots = refuse_earlier_plots(outdir, force)
-
-        # The map, read once, as metator dump reads it (and refused as dump
-        # refuses it), and what the outputs need of it: the clusters of its
-        # rounds final, mge and mge_random, the parameters of the validation
-        # (the size threshold of the plots, the assembly), and the hosts of its
-        # MGE clusters, found again from its network with the thresholds of
-        # the host run.
-        try:
-            mc, layout, stored = mtd.read_run(map, EXPORT_AGAIN)
-            with mtmc._metacooler_logging(), mtmc.read_errors(map, EXPORT_AGAIN):
-                groups = {
-                    mto.MAGS_WITH_MGES_DIR: mto.round_groups(mc, mtcl.FINAL),
-                    mto.MGES_DIR: mto.mge_groups(mc, mtcl.MGE),
-                    mto.MGES_RANDOM_DIR: mto.mge_groups(mc, mtcl.MGE_RANDOM),
-                }
-                parameters = mc.metadata["metator"]["validation"].get("parameters", {})
-                contigs, summary = mto.plot_inputs(mc, layout.rows)
-                thresholds = mth.recorded_thresholds(mc)
-                hosts = mth.find_hosts(map, mc, stored.network, *thresholds) if mtmc.holds_hosts(mc) else None
-        except mtmc.MetacoolError as error:
-            logger.error(str(error))
-            raise
-        for name in made:
-            make_output_dir(join(outdir, name), force)
-        remove_earlier_tables(tables)
-        remove_earlier_plots(plots)
-
-        # The outputs, from the map, which metacooler reads again by path; the
-        # FASTA files from the assembly, decompressed once for the run when it
-        # is compressed.
-        try:
-            with mtmc.read_errors(map, EXPORT_AGAIN):
-                plain = None if assembly is None else mtv.plain_assembly(assembly, tmp_dir)
-                if plain is None:
-                    logger.info(
-                        "No assembly (--assembly): the FASTA files of the run (fasta) are not written. Give the "
-                        f"assembly that the map was made from to write them: {parameters.get('assembly')}, as the run "
-                        "recorded it."
-                    )
-                else:
-                    write_round_fasta(map, plain, outdir, groups, tmp_dir)
-                write_map_outputs(map, plain, outdir, tmp_dir)
-            mtf.plot_figures(outdir, contigs, summary, parameters.get("size"))
-            if hosts is not None:
-                table, plot = write_hosts_files(hosts, outdir)
-                logger.info(
-                    f"The hosts of the MGE clusters, found again from the network of the map with --min-share "
-                    f"{thresholds[0]:g} and --min-contigs {thresholds[1]}, as the host run recorded them: {table}, {plot}"
-                )
-        except mtmc.MetacoolError as error:
-            logger.error(str(error))
-            logger.info(f"The run stopped as it wrote the outputs of {map}. {EXPORT_AGAIN}")
-            raise
-
-        # What was read of the map, by path, again and again: of one state of
-        # it.
-        if map_state(map) != state:
-            message = (
-                f"{map} was replaced or written while metator export read it, by a run that updated it: what it wrote "
-                f"may mix two maps. {EXPORT_AGAIN}"
-            )
-            logger.error(message)
-            raise mtmc.MapReplacedError(message)
+        run_export(map, assembly, outdir, tmp_dir, force)
 
     log_end(started, "Outputs written", outdir)

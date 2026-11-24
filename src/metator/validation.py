@@ -983,7 +983,7 @@ def recursive_decontamination(
     rounds.write(outdir, pd.Series(contigs_data["Size"].to_numpy(), index=contigs_data["Name"].astype(str).to_numpy()))
 
     # Save bin information in final file
-    summary = mio.write_bin_summary(bin_summary, join(outdir, "cluster_summary.txt"))
+    summary = mio.write_bin_summary(bin_summary, join(outdir, "cluster_summary.txt"), join(outdir, mio.SUMMARY_FULL_FILE))
 
     # Write the new file
     contigs_data.to_csv(join(outdir, "contig_data_final.txt"), sep="\t", header=True, index=True)

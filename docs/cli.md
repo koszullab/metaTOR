@@ -21,7 +21,7 @@ metator --version
 | Writing a map | Through metacooler: a run holds the lock of the map it writes, `<map>.lock` (that of the output directory, or `MAP` in place), from its checks to its end, and writes the map in an edit session, one staged copy next to it (`.<map>.<uuid>.<n>.d/`), validated, then renamed onto it, so a run that stops leaves the map as it was. `MAP` updated in place through a symbolic link is updated where the link points; a symbolic link in the output directory, where the map of the run goes, is replaced (`-F`), not its target, and a hard link of `MAP` there is refused. A map that another process holds, a map updated in place without write permission, or one whose directory is not writable (with room for a copy of the map and for the new map), is refused before any work. A run killed by SIGTERM (a job scheduler's time limit) or SIGKILL leaves its lock and its staged copy, which the next run that writes the map on the same host takes over and removes; on another host, delete the files that the error names. |
 | `-T, --tmpdir` | Each run works in a directory of its own inside it, removed at the end, unless `--no-clean-up` or the run fails: the log says which. |
 | `-N, --no-clean-up` | Keep the temporary directory of the run: that of a `validation` or `pipeline` run holds its tables. |
-| Log files | Each command writes its log, `metator_<command>_<date>.log`, into its output directory; `mge`, into the current directory. The log starts, as hicstuff's does, with the version, the date, the command line (`cmd`) and the value of each option, then a line of dashes; `pipeline` marks its steps: three (`[1/3] network`...), one more first from pairs or BAM files (`[1/4] map`...), and two more last with `--mges` (... `[5/5] host`, or `[6/6] host` from pairs or BAM files); the partition counts its iterations as they go, the validation each recursive step (`Recursive step 1/9`); and the log ends with what the run wrote and how long it took. The bookkeeping of a run (the files it writes on the way, metacooler's accounts of its work) is logged at the DEBUG level, which the log does not show. |
+| Log files | Each command writes its log, `metator_<command>_<date>.log`, into its output directory; `mge`, into the current directory. The log starts, as hicstuff's does, with the version, the date, the command line (`cmd`) and the value of each option, then a line of dashes; `pipeline` marks its steps: four (`[1/4] network`... `[4/4] export`), one more first from pairs or BAM files (`[1/5] map`...), and two more after the validation with `--mges` (`[4/6] mge`, `[5/6] host`, then `[6/6] export`); the partition counts its iterations as they go, the validation each recursive step (`Recursive step 1/9`); and the log ends with what the run wrote and how long it took. The bookkeeping of a run (the files it writes on the way, metacooler's accounts of its work) is logged at the DEBUG level, which the log does not show. |
 | Random numbers | The partition (Louvain or Leiden, in `partition`, `pipeline` and the recursive partition of `validation`) and the random clustering of `mge --random` draw random numbers, other ones at each run: two runs on the same map give close clusters, but not the same. `--seed S` makes a run give the same clusters each time, from the same map and options (and versions of igraph and metaTOR): a step is seeded once, before its iterations, which still draw other numbers one after the other (each iteration of Louvain or Leiden gives another membership, as the core and overlapping clusters need), so that the step as a whole, all its iterations in their order, is the same. `pipeline --seed S` seeds its partition and its validation alike, and gives the clusters of `partition --seed S`, then `validation --seed S`. The metadata of the map store the seed of the run, with its other parameters. |
 
 New to metaTOR? Start with the [Quickstart](quickstart.md); for hits, core,
@@ -109,12 +109,12 @@ hicstuff 4.0.0), or metacooler from pairs files
 [Other tools](other-tools.md#from-the-reads-to-the-map). Or it makes that map
 first, from the pairs files or the BAM files of the run, in its output
 directory (see [The inputs of a run](#inputs)): a step more, which the log
-marks `[1/4] map`.
+marks `[1/5] map`.
 
 The run writes the map of its clusters at the end of the validation, which
 writes the FASTA files of the final clusters to `fasta/mags_with-mges/` and
-their plots to `plots/`. Without `--mges`, the run ends with the validation,
-and says so in its log. With `--mges`, the list of the MGE contigs of the
+their plots to `plots/`. Without `--mges`, the run has no steps `mge` and
+`host`, and says so in its log. With `--mges`, the list of the MGE contigs of the
 assembly, it goes on with two more steps on the map of the clusters, which it
 updates in place, as the commands do one by one in its output directory:
 `mge`, as [`mge --reassign`](#mge), with `--mge-threshold-bin`, clusters the
@@ -133,15 +133,18 @@ list none of whose contigs is in the map (from pairs or BAM files, in the
 assembly, before the run makes its map), and the MGE files that an earlier
 version wrote in the output directory.
 
-At its end, the run writes its outputs from its map (see
-[Outputs](#conventions)): `fasta/mags/`, each MAG (its genomes but the MGE
-genomes, which took their contigs out of the MAGs with `--mges`) as its
-contigs and stitched, with `metacooler fasta`; `cool/`, a cool file per MAG,
-with the MGE clusters that it hosts, extracted from the map by
-`metacooler extract` and balanced as `cooler balance` balances it, the whole of
-it at once, with its defaults (a cool file whose every bin is masked, too
-small for `cooler balance`, is a warning); and `tables/`, the tables of
-[`dump`](#dump).
+Its last step, `export`, writes the outputs of the run from its map, as
+[`export`](#export) does, in place of those that its steps wrote (see
+[Outputs](#conventions)): `fasta/mags_with-mges/`; `fasta/mags/`, each MAG
+(its genomes but the MGE genomes, which took their contigs out of the MAGs
+with `--mges`) as its contigs and stitched, with `metacooler fasta`;
+`fasta/mges/` with `--mges`; `cool/`, a cool file per MAG, with the MGE
+clusters that it hosts, extracted from the map by `metacooler extract` and
+balanced as `cooler balance` balances it, the whole of it at once, with its
+defaults (a cool file whose every bin is masked, too small for
+`cooler balance`, is a warning); `tables/`, the tables of [`dump`](#dump),
+and `mge_hosts.txt` with `--mges`; and `plots/`. So a run gives the outputs
+that its steps one by one give, `export` last.
 
 | Option | Default | Description |
 |---|---|---|
@@ -159,7 +162,7 @@ small for `cooler balance`, is a warning); and `tables/`, the tables of
 | `-j, --rec-iter` | `10` | The iterations of the recursive partition of the contaminated clusters. |
 | `-P, --rec-overlap` | `90` | The overlap threshold of the recursive partition, in percent. |
 | `--seed` | none | The seed of the random numbers of Louvain or Leiden, set once before the partition and again before the recursive partition of the validation, their iterations drawing other numbers one after the other: from the same map, the same seed gives the same clusters, those of `partition --seed S` then `validation --seed S`. Without it, each run draws other random numbers (see the random numbers, in [Conventions](#conventions)). |
-| `--mges` | none | The MGE contigs, one name per line, as `mge --mges` reads them: after the validation, the run goes on with two more steps, `mge` (as `mge --reassign`) and `host`. Without it, the run ends with the validation. |
+| `--mges` | none | The MGE contigs, one name per line, as `mge --mges` reads them: after the validation, the run goes on with two more steps, `mge` (as `mge --reassign`) and `host`. Without it, the run has no steps `mge` and `host`. |
 | `--mge-threshold-bin` | `0.8` | The step `mge`: the score above which two MGE contigs, or two MGE clusters, are merged, as `--threshold-bin` of `mge`. |
 | `--mge-min-share` | `10` | The step `host`: the share of the signal of an MGE cluster with the MAGs, in percent, from which a MAG is a host, as `--min-share` of `host`. |
 | `--mge-min-contigs` | `5` | The step `host`: the number of contigs of a MAG in contact with an MGE cluster from which the MAG is a host, as `--min-contigs` of `host`. |
@@ -655,7 +658,7 @@ running it again. It writes:
 | `fasta/mges/`, `fasta/mges_random/` | Each MGE cluster of the round `mge` (`mge_random`), its contigs the longest first, as `mge` writes it. | `--assembly`, and the round in the map |
 | `cool/` | A cool file per MAG, with the MGE clusters that it hosts, balanced, as `pipeline` writes it. | |
 | `tables/` | The tables of [`dump`](#dump); and `mge_hosts.txt`, the hosts of the MGE clusters, found again from the network of the map with the thresholds that the host run recorded (`--min-share` and `--min-contigs` of `host`, or `--mge-min-share` and `--mge-min-contigs` of `pipeline --mges`). | `mge_hosts.txt`: hosts in the map |
-| `plots/` | The plots of the final clusters, from the summary that the map holds, rounded to 2 decimals as in `cluster_summary.txt` (the validation drew the values of miComplete: a cluster within 0.005 of a threshold of quality can fall in the next class); and `mge_hosts.pdf`. | `mge_hosts.pdf`: hosts in the map |
+| `plots/` | The plots of the final clusters, from the summary that the map holds: the values of miComplete, as the validation drew them (`cluster_summary.txt` rounds them to 2 decimals); and `mge_hosts.pdf`. | `mge_hosts.pdf`: hosts in the map |
 
 Without `--assembly`, the FASTA files are left out, and the log names the
 assembly that the run recorded. The map is read only, without a lock: a map

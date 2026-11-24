@@ -1,7 +1,6 @@
 """The files of a run beside its map (see metator.outputs): the FASTA files of
 its genomes, as their contigs and stitched, and the cool files of its MAGs;
-and what a pipeline run does when it cannot write them
-(metator.cli.write_outputs)."""
+and what cannot write them (metator.cli.write_map_outputs)."""
 
 import cooler
 import metacooler
@@ -118,19 +117,14 @@ def test_cool_files_that_cooler_balance_cannot_balance(tmp_path, monkeypatch, lo
     assert _logged(logged) == [("WARNING", masked), ("WARNING", unbalanced)]
 
 
-def test_write_outputs_stops_on_what_it_cannot_write(tmp_path, logged):
-    """What a pipeline run cannot write of its outputs (here, the FASTA files of
-    a MAG, from an assembly that lacks one of its contigs) stops the run: the
-    reason is logged as an error, then that its map is complete, and what
-    writes the outputs from it."""
+def test_write_map_outputs_refuses_what_it_cannot_write(tmp_path, logged):
+    """What the outputs of a run that write_map_outputs writes cannot be written
+    from (here, the FASTA files of a MAG, from an assembly that lacks one of its
+    contigs) is raised, naming the reason; the caller (metator export, the
+    step export of pipeline) logs it (see run_export)."""
     metacool, _ = _map(tmp_path)
     assembly = tmp_path / "other.fa"
     assembly.write_text(f">c1\n{SEQUENCES['c1']}\n>c2\n{SEQUENCES['c2']}\n")
     with pytest.raises(mtmc.MetacoolError, match="c3"):
-        mtcli.write_outputs(str(metacool), str(assembly), str(tmp_path / "out"), str(tmp_path))
-    (error, stopped) = _logged(logged)
-    assert error[0] == "ERROR" and "c3" in error[1]
-    assert stopped == (
-        "INFO",
-        f"The run stopped as it wrote its outputs: {metacool}, its map, is complete, and metator export writes them from it.",
-    )
+        mtcli.write_map_outputs(str(metacool), str(assembly), str(tmp_path / "out"), str(tmp_path))
+    assert not [record for record in _logged(logged) if record[0] == "ERROR"]

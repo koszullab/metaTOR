@@ -22,6 +22,7 @@ import metator.clusters as mtcl
 import metator.dump as mtd
 import metator.metacool as mtmc
 import metator.network as mtn
+import metator.outputs as mto
 import metator.partition as mtp
 import metator.validation as mtv
 from metator.version import __version__
@@ -1138,13 +1139,14 @@ def test_pipeline_from_pairs_or_bam_files(metagenome, metagenome_inputs, tmp_pat
         assert sorted(path.name for path in out.iterdir()) == sorted(outputs)
         steps = [line.split(" :: ", 2)[2] for line in log.read_text().splitlines() if " :: INFO :: [" in line]
         assert steps == [
-            f"[1/4] map: the contact map of the contigs, from {what}",
-            f"[2/4] network: the contigs of {written} and their contacts",
-            "[3/4] partition: the clusters of the network",
-            "[4/4] validation: miComplete checks the clusters, and the contaminated ones are partitioned again",
+            f"[1/5] map: the contact map of the contigs, from {what}",
+            f"[2/5] network: the contigs of {written} and their contacts",
+            "[3/5] partition: the clusters of the network",
+            "[4/5] validation: miComplete checks the clusters, and the contaminated ones are partitioned again",
+            "[5/5] export: the outputs of the run, from its map",
         ]
-        # Without --mges, the run ends with the validation, its step 4 here.
-        assert "INFO :: No list of MGE contigs (--mges): the run ends with its step 4, the validation, " in log.read_text()
+        # Without --mges, the run has no steps mge and host, and says so.
+        assert "INFO :: No list of MGE contigs (--mges): the run has no steps mge and host, " in log.read_text()
 
 
 def _clustering(path):
@@ -1489,7 +1491,8 @@ RECURSIVE_LOGS = {
 
 @pytest.mark.parametrize("case", list(RECURSIVE_LOGS))
 def test_the_log_follows_the_steps_of_the_run(case, metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli, logged):
-    """The log of a pipeline run marks its three steps ([1/3] network...), says
+    """The log of a pipeline run marks its four steps ([1/4] network... [4/4]
+    export), says
     how many clusters miComplete found contaminated, then follows each
     recursive step of the validation (Recursive step 1/9...), what it
     partitions again and replaces, and says when no further step is needed:
@@ -1521,7 +1524,7 @@ def test_the_log_follows_the_steps_of_the_run(case, metagenome, metagenome_input
             "-i", "10", "-j", "5")  # fmt: skip
     messages = [message for level, message in logged() if level == "INFO"]
     stages = [message for message in messages if message.startswith("[")]
-    assert [stage[:5] for stage in stages] == ["[1/3]", "[2/3]", "[3/3]"]
+    assert [stage[:5] for stage in stages] == ["[1/4]", "[2/4]", "[3/4]", "[4/4]"]
     assert messages.index(stages[0]) < messages.index(stages[1]) < messages.index(stages[2])
     _, contaminated, expected = RECURSIVE_LOGS[case]
     checked = [message for message in messages if message.startswith("miComplete checked")]
@@ -1552,14 +1555,14 @@ def test_pipeline_with_mges_is_the_steps_one_by_one(metagenome, metagenome_input
     MAP, partition MAP, validation MAP, then mge MAP --reassign and host MAP,
     from copies of the same map of the contigs (see
     test_steps_on_a_map_give_the_map_of_pipeline: but the command lines of the
-    runs), and their files: the FASTA files of the final clusters
-    (fasta/mags_with-mges) and of the MGE clusters (fasta/mges), and the hosts
-    (tables/mge_hosts.txt, plots/mge_hosts.pdf): its steps mge and host, 4
-    and 5 here, are mge --reassign and host, on the map of its clusters. Its
-    log marks its five steps. Each MGE cluster is a genome of the map, and its host is the final
-    cluster of the genome that hosts it. The pipeline also writes its outputs
-    from its map: fasta/mags, the MAGs without their MGE contigs, cool, a cool
-    file per MAG with the MGE clusters that it hosts, balanced, and tables."""
+    runs), and, with export MAP -a ASSEMBLY last, the same outputs (see
+    _assert_same_outputs): its steps mge and host, 4 and 5 here, are mge
+    --reassign and host, on the map of its clusters, and its step export, 6,
+    is export. Its log marks its six steps. Each MGE cluster is a genome of
+    the map, and its host is the final cluster of the genome that hosts it.
+    The outputs: fasta/mags, the MAGs without their MGE contigs, which
+    fasta/mags_with-mges keeps; cool, a cool file per MAG with the MGE
+    clusters that it hosts, balanced; and tables."""
     monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
     assembly = str(metagenome_inputs["assembly"])
     contig_map = _contig_map(metagenome_inputs, tmp_path / "contigs.metacool")
@@ -1581,16 +1584,13 @@ def test_pipeline_with_mges_is_the_steps_one_by_one(metagenome, metagenome_input
     run_cli("validation", "input.metacool", *common, "-i", "5")
     run_cli("mge", "input.metacool", "-a", assembly, "-m", mges, "--reassign", "-o", "out", "-T", "tmp", "--inplace")
     run_cli("host", "input.metacool", "-o", "out", "--inplace")
+    run_cli("export", "input.metacool", "-a", assembly, "-o", "out", "-T", "tmp", "-F")
 
     pipeline, steps = runs["pipeline"] / "out", runs["steps"] / "out"
+    _assert_same_outputs(steps, pipeline)
     for directory in [MAGS_WITH_MGES, os.path.join("fasta", "mges")]:
         files = [{path.name: path.read_bytes() for path in (out / directory).iterdir()} for out in (steps, pipeline)]
         assert files[0] == files[1] and files[1], directory
-    hosts = os.path.join("tables", "mge_hosts.txt")
-    assert (steps / hosts).read_bytes() == (pipeline / hosts).read_bytes()
-    assert all((out / "plots" / "mge_hosts.pdf").read_bytes().startswith(b"%PDF") for out in (steps, pipeline))
-    # The outputs of the pipeline only.
-    assert sorted(path.name for path in steps.iterdir() if path.is_dir()) == ["fasta", "plots", "tables"]
     assert sorted(path.name for path in pipeline.iterdir() if path.is_dir()) == ["cool", "fasta", "plots", "tables"]
     assert sorted(path.name for path in (pipeline / "tables").iterdir()) == sorted([*mtd.TABLES, "mge_hosts.txt"])
     written = {name: directory / "input.metacool" for name, directory in runs.items()}
@@ -1604,12 +1604,12 @@ def test_pipeline_with_mges_is_the_steps_one_by_one(metagenome, metagenome_input
     for step in ["mge", "host"]:
         assert metator["pipeline"][step]["command"].startswith("metator pipeline input.metacool")
         assert metator["steps"][step]["command"].startswith(f"metator {step} input.metacool")
-    # The five steps of the run, in its log, and no word of a stop.
+    # The six steps of the run, in its log, and no word of a stop.
     (log,) = pipeline.glob("metator_pipeline_*.log")
     logged = log.read_text()
-    names = ["network", "partition", "validation", "mge", "host"]
+    names = ["network", "partition", "validation", "mge", "host", "export"]
     assert re.findall(r" :: INFO :: \[([0-9])/([0-9])\] ([a-z]+): ", logged) == [
-        (str(number), "5", name) for number, name in enumerate(names, start=1)
+        (str(number), "6", name) for number, name in enumerate(names, start=1)
     ]
     assert "No list of MGE contigs" not in logged and "The run stopped" not in logged
     # Each MGE cluster, a genome of the map, and its host, the final cluster
@@ -1724,7 +1724,7 @@ def test_pipeline_stopped_in_an_mge_step_keeps_its_clusters(step, metagenome, me
     assert "ERROR :: cannot\n" in logged
     stopped = (
         f"INFO :: The run stopped in its step {step}, {name}: {written} holds {what}; run {finish} on it to complete "
-        f"the map ({os.path.join('fasta', 'mags')}, cool and tables are not written).\n"
+        "the map, then metator export to write the outputs of the run from it.\n"
     )
     assert stopped in logged
 
@@ -1766,9 +1766,9 @@ def test_pipeline_with_mges_from_pairs_files(metagenome, metagenome_inputs, tmp_
     hosts = os.path.join("tables", "mge_hosts.txt")
     assert (tmp_path / "pairs" / hosts).read_bytes() == (tmp_path / "map" / hosts).read_bytes()
     (log,) = (tmp_path / "pairs").glob("metator_pipeline_*.log")
-    names = ["map", "network", "partition", "validation", "mge", "host"]
+    names = ["map", "network", "partition", "validation", "mge", "host", "export"]
     assert re.findall(r" :: INFO :: \[([0-9])/([0-9])\] ([a-z]+): ", log.read_text()) == [
-        (str(number), "6", name) for number, name in enumerate(names, start=1)
+        (str(number), "7", name) for number, name in enumerate(names, start=1)
     ]
 
 
@@ -1866,7 +1866,11 @@ def test_export_writes_the_outputs_of_a_run_again(metagenome, metagenome_inputs,
     lacking.write_text("".join(f">{record}" for record in records if record.split()[0] != missing))
     with pytest.raises(mtmc.MetacoolError, match=missing):
         run_cli("export", written, "-a", lacking, "-o", tmp_path / "lacking", "-T", tmp)
-    assert ("INFO", f"The run stopped as it wrote the outputs of {written}. {mtcli.EXPORT_AGAIN}") in logged()
+    stopped = (
+        f"The run stopped as it wrote the outputs of {written}, which is complete: metator export writes them from it "
+        "(with -F, in place of what this run wrote)."
+    )
+    assert ("INFO", stopped) in logged()
 
     # The map, written as export reads it (here, as it writes its tables).
     write_map_outputs = mtcli.write_map_outputs
@@ -1920,3 +1924,44 @@ def test_export_refusals(case, metagenome_inputs, tmp_path, run_cli):
     (log,) = out.glob("metator_export_*.log")
     assert f"ERROR :: {message}\n" in log.read_text()
     assert sorted(path.name for path in out.iterdir()) == sorted([log.name, *kept]) and Path(assembly).exists()
+
+
+def test_the_map_holds_the_values_of_micomplete(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli, logged):
+    """The map of the clusters holds the summary of the validation at full
+    precision (cluster_summary_full.txt, beside cluster_summary.txt, whose
+    floats have 2 decimals): a cluster of a weighted completeness of 0.8951
+    is an MQ MAG in the log of the run and in what export reads from the map
+    for its plots, not an HQ MAG of 0.90; metator dump writes
+    cluster_summary.txt as the run wrote it, its floats rounded."""
+
+    def just_below(fasta_dir, outfile, threads):
+        synthetic.write_micomplete_summary(fasta_dir, outfile, metagenome)
+        # Three comment lines, the header, then a row per cluster.
+        with open(outfile) as summary:
+            lines = [line.split("\t") for line in summary.read().splitlines()]
+        lines[4][lines[3].index("Weighted completeness")] = "0.8951"
+        with open(outfile, "w") as summary:
+            summary.write("".join("\t".join(line) + "\n" for line in lines))
+
+    monkeypatch.setattr("metator.validation.micomplete_quality", just_below)
+    metacool = _contig_map(metagenome_inputs, tmp_path / "contigs.metacool")
+    out = tmp_path / "out"
+    random.seed(0)
+    run_cli("pipeline", metacool, "-a", metagenome_inputs["assembly"], "-o", out, "-T", tmp_path / "tmp", "-s", "20000",
+            "-i", "10", "-j", "5", "-N")  # fmt: skip
+    messages = [message for level, message in logged() if level == "INFO"]
+    assert any(message.startswith("HQ MAGs: 4\t") for message in messages)
+    assert any(message.startswith("MQ MAGs: 1\t") for message in messages)
+    mc = metacooler.MetaCooler(str(out / metacool.name))
+    genomes = mc.genomes.set_index("name")
+    (name,) = genomes.index[genomes["Weighted completeness"] == 0.8951]
+    assert mtv.bin_quality(0.8951, genomes.at[name, "Weighted redundancy"]) == "MQ"
+    rows = mc.metadata["metator"]["validation"]["summary_rows"]
+    assert mto.final_summary(mc, rows)[name]["Weighted completeness"] == 0.8951
+    # cluster_summary.txt, as the run wrote it and as dump writes it: 0.90.
+    tables = _kept(out)
+    summary = pd.read_csv(tables / "cluster_summary.txt", sep="\t", index_col=0, dtype=str)
+    assert summary.at[name, "Weighted completeness"] == "0.90"
+    assert (out / "tables" / "cluster_summary.txt").read_bytes() == (tables / "cluster_summary.txt").read_bytes()
+    full = pd.read_csv(tables / "cluster_summary_full.txt", sep="\t", index_col=0)
+    assert full.at[name, "Weighted completeness"] == 0.8951

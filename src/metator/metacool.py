@@ -1008,9 +1008,11 @@ class FinalClusters:
         The final cluster of each binned contig, by name: the other contigs of
         the map go to metacooler's __unbinned__ genome.
     summary : str
-        The summary of the final clusters (cluster_summary.txt, in the
-        temporary directory of the run): one row per final cluster, named by
-        its first column, whose other columns go to the genomes table.
+        The summary of the final clusters at full precision
+        (cluster_summary_full.txt, in the temporary directory of the run; see
+        metator.io.SUMMARY_FULL_FILE): one row per final cluster, named by its
+        first column, whose other columns go to the genomes table, with the
+        values of miComplete, where cluster_summary.txt rounds them.
     rounds : tuple of pandas.DataFrame
         The clustering rounds of the run, every cluster and its contigs (see
         metator.clusters.read_rounds), which replace those of the map.
@@ -1328,7 +1330,7 @@ def _reassign(path, metacool, read, assignment, genomes_table, layout, metadata=
             path,
             layout=layout,
             # The genome names are the first column of the table, unnamed in
-            # cluster_summary.txt.
+            # the summary of the validation (cluster_summary_full.txt).
             genomes_table=genomes_table,
             genomes_table_format="1",
             metadata=metadata,
