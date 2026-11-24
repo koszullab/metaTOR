@@ -474,10 +474,8 @@ pairs files of another aligner:
 
 ```bash
 # One map of both libraries, one bin per contig, every contig in __unbinned__.
-python -c 'import sys; from Bio import SeqIO; [print(r.id, 0, len(r), sep="\t") for r in SeqIO.parse(sys.argv[1], "fasta")]' \
-    assembly.fa > contigs.bed
 metacooler create pairs --pairs hicstuff_L1/L1.valid_idx.pairs.gz \
-    --pairs hicstuff_L2/L2.valid_idx.pairs.gz --bins contigs.bed --no-ps \
+    --pairs hicstuff_L2/L2.valid_idx.pairs.gz --no-ps \
     --assembly-name assembly -o sample.metacool
 ```
 
@@ -486,6 +484,18 @@ metacooler create pairs --pairs hicstuff_L1/L1.valid_idx.pairs.gz \
     hicstuff 3.3.0 and earlier write no `.metacool` map and have no mapping
     mode `5spm`: with them, make the map from their pairs files with
     `metacooler create pairs`.
+
+- Without `--bins`, the map has one bin per contig, from 0 to its length,
+  which it takes from the `#chromsize` lines of hicstuff's pairs files, or
+  from `--fasta`: the map that `metator network` and `metator pipeline` make
+  from the pairs files of a run. This needs metacooler 0.5.0 or later.
+  metacooler 0.4.0 needs `--bins`: a BED file of the contigs, read from the
+  `#chromsize` lines, gives it the same map, with `--bins contigs.bed`:
+
+    ```bash
+    zcat hicstuff_L1/L1.valid_idx.pairs.gz \
+        | awk -v OFS='\t' '!/^#/ {exit} /^#chromsize:/ {print $2, 0, $3}' > contigs.bed
+    ```
 
 - `--bins 1000` makes bins of 1 kb instead, taking the lengths of the contigs
   from the `#chromsize` lines of hicstuff's pairs files, or from `--fasta`.

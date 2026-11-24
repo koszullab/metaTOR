@@ -55,14 +55,18 @@ reads of each contig, which `metator mge` reads, at 1001 bp with metacooler
 [Clustering mobile genetic elements](guides/mge.md#running-it)).
 
 From the pairs files of another aligner, `metacooler create pairs` makes the
-map, one bin per contig or of a fixed size (`--bins 1000`), taking the lengths
-of the contigs from the `#chromsize` lines of the pairs files, or from
+map, one bin per contig, or of a fixed size with `--bins 1000`, taking the
+lengths of the contigs from the `#chromsize` lines of the pairs files, or from
 `--fasta`:
 
 ```bash
-metacooler create pairs --pairs L1.pairs.gz --pairs L2.pairs.gz --bins 1000 --no-ps \
+metacooler create pairs --pairs L1.pairs.gz --pairs L2.pairs.gz --no-ps \
     --assembly-name assembly -o sample.metacool
 ```
+
+One bin per contig without `--bins` needs metacooler 0.5.0 or later:
+metacooler 0.4.0 needs a BED file of the contigs, `--bins contigs.bed` (see
+[From the reads to the map](guides/metacool.md#from-the-reads-to-the-map)).
 
 `--no-ps` leaves out the P(s) table that metacooler writes next to the map by
 default, and `--assembly-name` names the assembly of the map, `unknown`
