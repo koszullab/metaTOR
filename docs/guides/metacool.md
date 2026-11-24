@@ -102,10 +102,9 @@ locks, staged copies and links, see
   from it, with `-F`.
 
 **Names.** Contig and cluster names must be ASCII, as `cooler` reads them as
-ASCII. A cluster may not be named `NA`, `NaN`, `N/A`, `N/D`, `-1` or
-`__unbinned__` in any case, nor `nd` in any case but `ND`: these mark a
-contig in no cluster. metaTOR's own names never are (`--prefix` takes
-letters, digits, `_` and `-`).
+ASCII. `ND`, `NA`, `NaN`, `N/A`, `N/D`, `-1` and `__unbinned__`, in any
+case, mark a contig in no cluster: no cluster may be named so. metaTOR's
+own names never are (`--prefix` takes letters, digits, `_` and `-`).
 
 ## The map of a 1.x run
 
@@ -154,7 +153,8 @@ collection rather than one of its entries), is refused before any work.
 - **Missing contigs.** A map may lack contigs of the assembly, as with a
   contig filter (`metacooler create pairs --filter 'contigs.length >= 1kb'`).
   Those are in no table of the run, the log counts them, and the shotgun
-  abundance of a cluster is its share of the contigs of the map.
+  abundance of a cluster is its share of the sequenced bases of the contigs
+  of the map.
 - **Restriction sites and coverage** can come from the map: its
   `Restriction_site` and `Shotgun_coverage` columns, which metaTOR stores
   with `--enzyme` and `--depth`. A run from such a map needs neither option,

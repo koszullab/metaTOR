@@ -51,15 +51,14 @@ H9:1:HGJYYBBXY:8:1102:3792:13693	NODE_100063	161	NODE_100063	402	-	-
 ```
 
 `metacooler create pairs`, `metator network` and `metator pipeline` make a
-map from them (see [The inputs of a run](cli.md#inputs) and
-[Clustering mobile genetic elements](guides/mge.md#running-it)). They read
-columns 2 to 5, in any order, and the `#chromsize` lines, which must give
-the contigs of the assembly their lengths.
+map from them (see [The inputs of a run](cli.md#inputs)). They read columns
+2 to 5, in any order, and the `#chromsize` lines, which must give the
+contigs of the assembly their lengths.
 
 From BAM files, a run writes the pairs of each library in its temporary
 directory, `library_<i>.pairs`: read name `.`, each mate at the 5' end of
-its alignment (1-based), the contig that comes first in the assembly first,
-and no `#chromsize` line.
+its alignment (1-based), the contig first in the assembly first, and no
+`#chromsize` line.
 
 ```text
 ## pairs format v1.0
@@ -161,19 +160,18 @@ column, with miComplete's columns first:
 metator_00001_00000	49021.00	62.03	1.00	0.01	1.00	0.02	1.00	15.00	9019.00	2.00	1390.00	9.00	70.00	False	0		2.4736	2.6314
 ```
 
-- Both marker sets, bacterial (105 markers) and archaeal (131), are tried on
-  every cluster, which keeps the one with the higher weighted completeness.
-- Contamination is the weighted redundancy minus one; the recursive
-  partition divides it by the weighted completeness (see
+- Both marker sets, bacterial (105 markers) and archaeal (131), are tried;
+  the one with the higher weighted completeness is kept.
+- Contamination is the weighted redundancy minus one (see
   [Cluster quality](concepts.md#cluster-quality)).
 - miComplete's numbers have two decimals (whole ones too), the abundances
-  four, and `step` none.
-- The genomes table of the map holds the same values. The `validation`
-  entry of the map's `metator` metadata records how to write the table:
-  `summary_rows` (the clusters in order), `summary_columns` (the columns in
-  order) and `summary_formats` (each column's printf format: `%.2f`,
-  `%.4f`, `%d`, or `%s`; a missing value is an empty field). From them,
-  [`metator dump`](cli.md#dump) writes the table again, byte for byte.
+  four, `step` none.
+- The map's genomes table holds the same values, and the `validation` entry
+  of its `metator` metadata how to write them: `summary_rows` (the clusters
+  in order), `summary_columns` and `summary_formats` (printf formats: `%.2f`,
+  `%.4f`, `%d`, `%s`; a missing value is an empty field).
+  [`metator dump`](cli.md#dump) writes the table again from them, byte for
+  byte.
 - After `metator host`, `n_mges` and `mges` come last (see
   [Hosts of the MGE clusters](#hosts-of-the-mge-clusters)).
 
@@ -253,12 +251,12 @@ assembly is decompressed there once per run. No pyfastx index is made.
 ### Cool files of the MAGs
 
 `cool/` (`pipeline`) has one [cooler](https://github.com/open2c/cooler)
-file per MAG, `<MAG>.cool`, written by `metacooler extract` from the map:
-the contacts of its contigs (and, with `--mges`, of the MGE clusters it
+file per MAG, `<MAG>.cool`, extracted from the map by `metacooler extract`:
+the contacts of its contigs (with `--mges`, also of the MGE clusters it
 hosts), at the bins of the map, each contig a chromosome. `cooler balance`
-balances each file with its defaults, in the `weight` column of its bins
-(`clr.matrix(balance=True)`). A file too small for `cooler balance` keeps
-`NaN` weights, with a warning in the log.
+balances it with its defaults (the `weight` column,
+`clr.matrix(balance=True)`); a file too small to balance keeps `NaN`
+weights, with a warning.
 
 ## The contact map of the clusters
 
@@ -282,9 +280,8 @@ cluster (see
 | `n_hosts`, `hosts`, `host_shares` | After `metator host`: its number of hosts, their names by decreasing share, and their shares in percent with two decimals, each list comma-separated (see [Hosts of the MGE clusters](#hosts-of-the-mge-clusters)) |
 
 Its contigs are the members of the round (`mc.cluster_members("mge")`), in
-map order. `metator dump` writes the round in `clusters.txt` (where
-`n_contigs` and `length` are 1.x's `ContigsNumber` and `BinLength` of
-`mges_bin_summary.tsv`) and `cluster_members.txt`.
+map order. `metator dump` writes the round in `clusters.txt` and
+`cluster_members.txt`.
 
 ## Hosts of the MGE clusters
 
@@ -322,17 +319,16 @@ genomes table, which `metator dump` writes last in `cluster_summary.txt`:
 
 ## The report of a run
 
-`metator report` writes the report of a run from the map of its clusters
-alone, and so do `metator export` and `metator pipeline` (see
-[`report`](cli.md#report)): `<name>.report.txt`, `<name>.report_mqc.yaml`
-and `<name>.report.html`, in the output directory.
+[`metator report`](cli.md#report), `export` and `pipeline` write the report
+of a run from the map of its clusters, in the output directory:
+`<name>.report.txt`, `<name>.report_mqc.yaml` and `<name>.report.html`.
 
-`<name>` is the name of the run's map without `.metacool`: `sample` for
+`<name>` is the run's map without `.metacool`: `sample` for
 `sample.metacool`, `NAME` for an entry `file.mmetacool::entries/NAME`. A map
 made from pairs or BAM files is `<prefix>.metacool` (`pipeline --prefix`) or
-`<assembly>.metacool`. MultiQC names the rows of the runs by these names: name
-the maps after their samples (`-p` of `pipeline` from pairs or BAM files,
-`-P` of `hicstuff pipeline`).
+`<assembly>.metacool`. MultiQC names its rows by `<name>`, so name the maps
+after their samples (`-p` of `pipeline` from pairs or BAM files, `-P` of
+`hicstuff pipeline`).
 
 ### `<name>.report.txt` { #reporttxt }
 
@@ -357,20 +353,20 @@ parses line by line (`metator.report.read_txt` reads it back):
 
 | Section | Keys |
 |---|---|
-| `report` | `format_version`; `sample`, the name of the run; `map`, its map; `metator_version`, the version of metaTOR that wrote the report; `written`, when; `map_written`, when the map was written. |
-| `run` | `steps`, the steps that the map records, in order, comma-separated (`network`, `partition`, `validation`, `mge`, `host`); `input` (the map, or the pairs or BAM files, comma-separated), `assembly`, `enzyme` and `depth`, as the run recorded them (`NA`: the map gave them); `normalization` of the network; `algorithm`, `iterations`, `overlap_pct` and `res_param` of the partition; `size_bp`, `rec_iter` and `rec_overlap_pct` of the validation; `seed` and `rec_seed`, the `--seed` of the partition and of the validation (both from `pipeline --seed`; `NA`: no seed); `mge_threshold_bin` of `mge`; `host_min_share_pct` and `host_min_contigs` of `host`. |
-| `contigs` | `contigs` and `contigs_bp`, the contigs of the map and their length; `contig_n50_bp`, `contig_l50`, `contig_n90_bp`, `contig_max_bp`, `contig_median_bp`; `gc_pct`, their GC content, weighted by length; `coverage_median`, their median shotgun coverage. Where they went, as a number, length and share of the length of the contigs: in a final cluster (`in_final_clusters_contigs`, `_bp`, `_pct`), in a MAG (`in_mags_`...), in an MGE cluster (`in_mges_contigs`, `_bp`), in no genome (`unbinned_contigs`, `_bp`). |
-| `contacts` | The contacts of the reads by where they land, as metacooler counted them with the genomes of the map (its `qc` block): `contacts`; `qc_source` (`pairs`: counted on the reads, `pixels`: on the map); `qc_distance_threshold_bp`; within a contig, less than that apart (`intra_contig_short`) or more (`intra_contig_long`); between two contigs of a genome (`inter_contig_intra_genome`); between two genomes (`inter_genome`); `trans_contig_ratio`, the share of contacts between two contigs (the "3D ratio"); `intra_genome_fraction`, the share within a genome. Then the network: `network_contigs`, `network_edges` and its `normalization`. |
-| `clusters` | `core_clusters`, `overlapping_clusters`, `recursive_steps`, `recursive_clusters`, `final_clusters` and `final_clusters_bp`. The final clusters by quality class (from miComplete's values, as the log counts them), each a number and a length (`_bp`): `hq_mags` (completeness ≥ 90%, contamination ≤ 5%), `mq_mags` (70%, 10%), `lq_mags` (50%, 10%), `contaminated_mags` (completeness ≥ 50%, contamination > 10%) and `other_clusters` (completeness < 50%). `mags`, the MAGs: the genomes of the map but the MGE genomes. |
-| `mges` | `mge_clusters`, `mge_contigs` and `mge_bp`, the MGE clusters of `metator mge`, their contigs and length; `mge_genomes`, the MGE genomes of the map (`--reassign`); `mags_losing_contigs`, the final clusters that held contigs of an MGE genome; `mge_random_clusters`, those of `--random`. |
-| `hosts` | `min_share_pct` and `min_contigs`, the thresholds of `metator host`; `mge_clusters_with_host`, `mge_clusters_with_one_host`, `mge_clusters_with_several_hosts`, `mge_clusters_without_host`; `mags_hosting_mges`. |
+| `report` | `format_version`; `sample` (the name of the run); `map`; `metator_version` (that wrote the report); `written`; `map_written` (when the map was written). |
+| `run` | `steps`, the steps the map records, in order, comma-separated (`network`, `partition`, `validation`, `mge`, `host`); `input` (the map, or the pairs or BAM files, comma-separated), `assembly`, `enzyme`, `depth` (`NA`: the map gave them); `normalization` (network); `algorithm`, `iterations`, `overlap_pct`, `res_param` (partition); `size_bp`, `rec_iter`, `rec_overlap_pct` (validation); `seed`, `rec_seed`, the `--seed` of the partition and of the validation (`NA`: none); `mge_threshold_bin` (`mge`); `host_min_share_pct`, `host_min_contigs` (`host`). |
+| `contigs` | `contigs`, `contigs_bp` (the contigs of the map and their length); `contig_n50_bp`, `contig_l50`, `contig_n90_bp`, `contig_max_bp`, `contig_median_bp`; `gc_pct` (weighted by length); `coverage_median` (shotgun). Where the contigs went, as a number, length and share of the total length: in a final cluster (`in_final_clusters_contigs`, `_bp`, `_pct`), in a MAG (`in_mags_`...), in an MGE cluster (`in_mges_contigs`, `_bp`), in no genome (`unbinned_contigs`, `_bp`). |
+| `contacts` | The contacts of the reads by where they land, from metacooler's `qc` block: `contacts`; `qc_source` (`pairs`: counted on the reads, `pixels`: on the map); `qc_distance_threshold_bp`; within a contig, closer than that (`intra_contig_short`) or not (`intra_contig_long`); between two contigs of a genome (`inter_contig_intra_genome`); between two genomes (`inter_genome`); `trans_contig_ratio`, the share between two contigs (the "3D ratio"); `intra_genome_fraction`, the share within a genome. The network: `network_contigs`, `network_edges`, `normalization`. |
+| `clusters` | `core_clusters`, `overlapping_clusters`, `recursive_steps`, `recursive_clusters`, `final_clusters`, `final_clusters_bp`. The final clusters by quality class, each a number and a length (`_bp`): `hq_mags` (completeness ≥ 90%, contamination ≤ 5%), `mq_mags` (70%, 10%), `lq_mags` (50%, 10%), `contaminated_mags` (completeness ≥ 50%, contamination > 10%), `other_clusters` (completeness < 50%). `mags`: the genomes of the map but the MGE genomes. |
+| `mges` | `mge_clusters`, `mge_contigs`, `mge_bp` (the MGE clusters, their contigs and length); `mge_genomes` (`--reassign`); `mags_losing_contigs`, the final clusters that held contigs of an MGE genome; `mge_random_clusters` (`--random`). |
+| `hosts` | `min_share_pct`, `min_contigs` (the thresholds of `metator host`); `mge_clusters_with_host`, `mge_clusters_with_one_host`, `mge_clusters_with_several_hosts`, `mge_clusters_without_host`; `mags_hosting_mges`. |
 | `commands` | The command line of each step, by step. |
 
 | Table | Columns |
 |---|---|
 | `rounds` | One row per clustering round of the map, in order: `round`, `step` (the command that stored it), `clusters`, `contigs`, `length_bp`. |
-| `mags` | One row per MAG, by quality class, then longest first: `name`, `quality` (`HQ`, `MQ`, `LQ`, `Contaminated`, `Other`), `length_bp`, `contigs`, `completeness_pct`, `contamination_pct` (miComplete's weighted completeness, and its weighted redundancy minus 1, in percent), `gc_pct`, `n50_bp`, `hic_abundance`, `sg_abundance`, `intra_genome_ratio` (the share of the MAG's contacts within it), `n_mges` and `mges`, the MGE clusters it hosts, comma-separated. |
-| `mge_clusters` | One row per MGE cluster: `name`, `contigs`, `length_bp`, `gc_pct`, `n_hosts`, `hosts` and `host_shares_pct`, its hosts and the share of its signal with each, comma-separated. |
+| `mags` | One row per MAG, by quality class, then longest first: `name`, `quality` (`HQ`, `MQ`, `LQ`, `Contaminated`, `Other`), `length_bp`, `contigs`, `completeness_pct`, `contamination_pct` (weighted completeness, and weighted redundancy minus 1, in percent), `gc_pct`, `n50_bp`, `hic_abundance`, `sg_abundance`, `intra_genome_ratio` (the share of its contacts within it), `n_mges`, `mges` (comma-separated). |
+| `mge_clusters` | One row per MGE cluster: `name`, `contigs`, `length_bp`, `gc_pct`, `n_hosts`, `hosts`, `host_shares_pct` (the share of its signal with each host; lists comma-separated). |
 | `hosts` | One row per MGE cluster and host: `mge`, `mag`, `share_pct`. |
 
 ```text
@@ -398,14 +394,13 @@ metator_00001_00000  HQ       140000     11       100.00            0.00        
 
 ### `<name>.report_mqc.yaml` { #report_mqcyaml }
 
-[MultiQC](https://multiqc.info) custom content: a row of its General
-Statistics table for the run (`id: metator`), with the numbers that compare
-across runs: the length of the contigs and their N50, the 3D ratio
-(`trans_contig_ratio`), the share of the contigs in a MAG (`in_mags_pct`),
-the HQ, MQ, LQ and contaminated MAGs, and, after `metator mge` and
-`metator host`, the MGE clusters and those with a host, named as in
-`<name>.report.txt`. MultiQC finds files ending in `_mqc.yaml`: `multiqc` on
-a directory of output directories gathers the runs in one table.
+[MultiQC](https://multiqc.info) custom content (`id: metator`): one row of
+its General Statistics table, with the numbers that compare across runs,
+named as in `<name>.report.txt`: contig length and N50,
+`trans_contig_ratio`, `in_mags_pct`, the HQ, MQ, LQ and contaminated MAGs,
+and, after `metator mge` and `metator host`, the MGE clusters and those with
+a host. `multiqc` finds the files ending in `_mqc.yaml` and gathers the runs
+in one table.
 
 ```yaml
 id: metator
@@ -428,13 +423,12 @@ data:
 
 ### `<name>.report.html` { #reporthtml }
 
-A page to read the run in a browser, from the output directory: its numbers
-and tables, and links to the FASTA and cool files of the MAGs, the tables,
-the plots and the other two report files, when they are beside it (as
-`export` and `pipeline` write them). Its interactive plots are drawn by
-[plotly.js](https://plotly.com/javascript/), a pinned version loaded from its
-CDN: offline, the page shows its numbers and tables, and says its plots need
-a connection.
+A page to open in a browser: the numbers and tables of the run, with links
+to the FASTA and cool files of the MAGs, the tables, the plots and the other
+two report files, when they are beside it (as `export` and `pipeline` write
+them). Its plots are drawn by [plotly.js](https://plotly.com/javascript/),
+loaded from its CDN (a pinned version): offline, the page shows only its
+numbers and tables.
 
 ## Logs
 
