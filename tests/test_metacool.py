@@ -241,6 +241,16 @@ def test_write_map_takes_the_rounds_of_a_validation_from_its_clusters(tmp_path):
             mtmc.write_map(*paths, reassign=True, **extra)
 
 
+@pytest.mark.parametrize("value", ["one\ttwo", "one\ntwo"], ids=["a tab", "a line break"])
+def test_a_genomes_table_refuses_a_value_of_two_fields(value, tmp_path):
+    """A value of the genomes table of a map with a tab or a line break, which no
+    field of a table of text holds, is refused, rather than written as two
+    fields (see metator.metacool._write_genomes_table)."""
+    table = pd.DataFrame({"note": [value]}, index=["genome_1"])
+    with pytest.raises(mtmc.MetacoolError, match=r"holds a tab or a line break, which a table of genomes cannot hold"):
+        mtmc._write_genomes_table(table, tmp_path / "genomes.txt")
+
+
 def test_non_ascii_names_shown():
     """The first names, then how many more: the message ends with one period."""
     names = r"'é0', 'é1', 'é2', 'é3', 'é4', \.\.\. \(\+2 more\)"

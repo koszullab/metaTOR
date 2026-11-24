@@ -1221,3 +1221,20 @@ def test_mge_reassign_refuses_an_mge_cluster_named_after_a_genome(mge_run, run_c
     with pytest.raises(mtmc.MetacoolError, match=named):
         run_cli("mge", metacool, *args, "--reassign", "--inplace")
     assert metacool.read_bytes() == before
+
+
+def test_mge_undoes_the_mge_genomes_of_a_map_without_values(mge_run, tmp_path, run_cli):
+    """On a map whose genomes have no values (its final clusters, the MGE contigs
+    in none), a run without --reassign undoes the MGE genomes of an earlier run
+    with it: the genomes are the final clusters again, with the columns that
+    they had, none of those of the MGE genomes."""
+    import metacooler
+
+    metacool, args = mge_run
+    before = metacooler.MetaCooler(str(metacool))
+    held, columns = _assignment(before), list(before.genomes.columns)
+    run_cli("mge", metacool, *args, "--reassign", "--inplace")
+    assert _assignment(metacooler.MetaCooler(str(metacool))) != held
+    run_cli("mge", metacool, *args, "--inplace", "-o", tmp_path / "undone")
+    mc = metacooler.MetaCooler(str(metacool))
+    assert _assignment(mc) == held and list(mc.genomes.columns) == columns
