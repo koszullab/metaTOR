@@ -13,6 +13,7 @@ import metator.report as mtr
 import metacooler
 import pytest
 from tests.maps import contig_map
+from tests.logs import logs
 import re
 import shutil
 import os
@@ -233,7 +234,7 @@ def test_pipeline(a_map, tmp_path, run_cli):
     # file is the report of the run.
     (summary,) = Path(tmp_path, "tmp").glob("*/cluster_summary.txt")
     assert set(genomes.name) - {"__unbinned__"} == {line.split("\t")[0] for line in summary.read_text().splitlines()[1:]}
-    assert [path.name for path in Path(tmp_path, "out_test").glob("*.txt")] == [mtr.REPORT_TXT]
+    assert [path.name for path in Path(tmp_path, "out_test").glob("*.txt")] == [f"{metacool.stem}.{mtr.REPORT_TXT}"]
     # The outputs of the run: the FASTA files of its final clusters and of its
     # MAGs (each as its contigs and stitched), a cool file per MAG, balanced
     # (weights in its bins), its tables (metator dump), its plots (PDF) and
@@ -248,9 +249,10 @@ def test_pipeline(a_map, tmp_path, run_cli):
     assert all("weight" in cooler.Cooler(str(path)).bins().columns for path in (out / "cool").iterdir())
     assert sorted(path.name for path in (out / "tables").iterdir()) == sorted(mtd.TABLES)
     assert sorted(path.name for path in (out / "plots").iterdir()) == ["bins_distribution.pdf", "bins_size_distribution.pdf"]
-    sections, tables = mtr.read_txt(out / mtr.REPORT_TXT)
+    txt, html, mqc = mtr.report_files(metacool.stem)
+    sections, tables = mtr.read_txt(out / txt)
     assert sections["clusters"]["final_clusters"] == str(len(mags)) and sorted(tables["mags"]["name"]) == mags
-    assert (out / mtr.REPORT_HTML).is_file() and (out / mtr.REPORT_MQC).is_file()
+    assert (out / html).is_file() and (out / mqc).is_file()
     # The contig columns but Shotgun_coverage, which is - without a depth
     # file.
     contigs = metacooler.MetaCooler(str(metacool)).contigs
@@ -285,7 +287,7 @@ def test_network_from_a_metacool(a_map, tmp_path, run_cli):
     for pair, weight in networks["1kb"].items():
         assert weight == pytest.approx(networks["contig"][pair], rel=1e-12)
     pd.testing.assert_frame_equal(tables["1kb"], tables["contig"])
-    (log,) = (tmp_path / "1kb").glob("metator_network_*.log")
+    (log,) = logs(tmp_path / "1kb", "network")
     assert re.search(rf"INFO :: [0-9]+ contacts in {re.escape(str(metacool))}, [0-9]+ of them between contigs", log.read_text())
 
 
@@ -308,7 +310,7 @@ def test_network_from_the_columns_of_a_metacool(tmp_path, run_cli):
     for path in maps.values():
         stored = metacooler.MetaCooler(str(path)).metadata["metator"]["network"]
         assert stored["read"] == {"contigs": ["Restriction_site", "Shotgun_coverage"] if path == maps["map"] else []}
-    (log,) = (tmp_path / "map").glob("metator_network_*.log")
+    (log,) = logs(tmp_path / "map", "network")
     logged = log.read_text()
     for what, column in [("restriction sites", "Restriction_site"), ("shotgun coverage", "Shotgun_coverage")]:
         assert f"INFO :: The {what} of the contigs: the {column} column of {inputs['map']}." in logged
@@ -354,7 +356,7 @@ def test_metacool_of_other_contigs(command, tmp_path, run_cli):
     message = f"{metacool} is not a contact map of the contigs of the assembly: "
     with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}") as error:
         run_cli(command, metacool, "-a", assembly, "-o", out, "-T", tmp_path / "tmp")
-    (log,) = out.glob(f"metator_{command}_*.log")
+    (log,) = logs(out, command)
     assert f"ERROR :: {error.value}\n" in log.read_text()
     assert not (out / "network.txt").exists()
 
@@ -409,7 +411,7 @@ def test_network_default_outdir(a_map, tmp_path, monkeypatch, run_cli):
     assert mtn.network_normalization(str(tmp_path / "subset.metacool")) == "empirical_hit"
     assert Path(args[0]).read_bytes() == before
     assert not list(tmp_path.rglob("*network*.txt"))
-    (log,) = tmp_path.glob("metator_network_*.log")
+    (log,) = logs(tmp_path, "network")
     assert f"## cmd: metator network {args[0]} -a {args[2]}\n" in log.read_text()
 
 

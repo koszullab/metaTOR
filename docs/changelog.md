@@ -4,553 +4,231 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
-metaTOR 2.0 clusters contigs, and nothing else. It starts from a `.metacool`
-contact map of the contigs, which hicstuff makes from the reads and metacooler
-from pairs files, or which `network` and `pipeline` make from the pairs files
-or the BAM files of a run, and every step reads that map and stores what it
-finds in it:
-the map is what the steps share, and it becomes the contact map of the
-clusters. The commands that did what hicstuff, metacooler, instaGRAAL or pairix
-do are gone. [Migrating to metaTOR 2.0](migration.md) lists every change to the
-command line and the outputs; [Other tools](other-tools.md) says what replaces
-each removed command.
+metaTOR 2.0 clusters contigs, and nothing else: every step reads a
+`.metacool` contact map of the contigs and stores its results in it.
+[Migrating to metaTOR 2.0](migration.md) details every change; [Other
+tools](other-tools.md) says what replaces each removed command. Below,
+`<name>` is the name of the map without `.metacool`.
 
 ### Breaking changes
-- **A contact map is the input of every step.** `network`, `partition`,
-  `validation`, `pipeline` and `mge` take a `.metacool` contact map of the
-  contigs, `MAP`, as their first argument, which they require: a file, or an
-  entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`), at
-  any bin size. hicstuff makes it from the reads (`hicstuff pipeline -M
-  metacool`, from hicstuff 4.0.0), metacooler from pairs files (`metacooler
-  create pairs`) or a `.cool` file (`create cool`), and `metacooler merge`
-  sums the maps of several libraries; `network` and `pipeline` make it from
-  the pairs files or the BAM files of a run, their arguments (see Added).
-  Gone with the reads inputs, and the options of the alignments and pairs
-  inputs: `-1/--forward`, `-2/--reverse`, `-S/--start`, `-b/--aligner`,
-  `-B/--aligner-mode` and `-E/--edge`; the alignments, pairs files and
-  per-library networks a run wrote (`alignment_<i>*.bam`,
-  `alignment_<i>_sorted.pairs.gz`, `network_<i>.txt`,
-  `hit_data_alignment.txt`); `--assembly` as the basename of an aligner's
-  index (it is the FASTA file of the assembly, plain or compressed with
-  gzip); and the dependencies on hicstuff, and on bowtie2, bwa and
-  samtools. A removed option is an unknown option, a usage error (exit
-  status 2).
+- **A contact map is the input.** `network`, `partition`, `validation`,
+  `pipeline` and `mge` require a `.metacool` map of the contigs, `MAP`, as
+  first argument: a file or a collection entry
+  (`file.mmetacool::entries/<name>`), at any bin size. hicstuff
+  (`pipeline -M metacool`, 4.0.0+) or metacooler (`create pairs`, `create
+  cool`, `merge`) makes it; so do `network` and `pipeline` from pairs or BAM
+  files.
+- **Removed options:** `-1/--forward`, `-2/--reverse`, `-S/--start`,
+  `-b/--aligner`, `-B/--aligner-mode` and `-E/--edge`, now usage errors (exit
+  status 2). `--assembly` is the FASTA file (plain or gzip), not an index.
+- **Removed outputs:** `alignment_<i>*.bam`, `alignment_<i>_sorted.pairs.gz`,
+  `network_<i>.txt` and `hit_data_alignment.txt`. Dropped dependencies:
+  hicstuff, bowtie2, bwa, samtools, pypairix and pyfastx.
 - **The map is the interface between the steps.**
-  - `network MAP` stores the network in the map: what it measured on each
-    contig in the contigs table (`GC_content`, `Hit`, and `Shotgun_coverage`
-    and `Restriction_site` when it has them), the normalization of the
-    network as the weights `metator_<normalization>` of the bins (none for
-    `None`), and its run under the `network` entry of the `metator` key of
-    the metadata. It writes no `network.txt`, and writes
-    `contig_data_network.txt` in its temporary directory, which `-N` keeps,
-    not in the output directory; it loses `-t/--threads`: the network is in
-    memory, and the external `sort` is no longer run.
-  - `partition MAP` reads the network from the map, and stores its
-    partition there: every core cluster (`core_00001`...) and every
-    overlapping cluster, whatever its size, with their contigs, as the
-    clustering rounds `core` and `overlapping`, and its run under the
-    `partition` entry, with the identity of the network it partitioned
-    (`network_digest`). It writes no `contig_data_partition.txt` and no
-    `overlapping_bin/`, and loses `-a/--assembly`, `-c/--contigs`,
-    `-n/--network` and `-s/--size`.
-  - `validation MAP` reads the network and the partition from the map, and
-    refuses a partition made on another network than the one stored there.
-    Its `--size` chooses the overlapping clusters that miComplete checks. It
-    writes the FASTA files of the final clusters in the output directory,
-    `fasta/mags_with-mges/`, with the plots of their quality, as PDF files,
-    `plots/` (see Fixed),
-    and stores the rest in the map: the final cluster of
-    each contig, as its genome, the summary of the clusters in the genomes
-    table, every clustering round, and its run under the `validation` entry,
-    with how the summary is written from the map (`summary_rows`,
-    `summary_columns`, `summary_formats`). It loses `-c/--contigs`,
-    `-f/--fasta` and `-n/--network`.
-  - The tables of the validation (`contig_data_final.txt`,
-    `cluster_summary.txt`, `binning.txt`, `clusters.txt`,
-    `cluster_members.txt` and miComplete's results) and `recursive_clusters/`
-    are written in the temporary directory of the run, which
-    `-N/--no-clean-up` keeps and the log names: `metator dump` writes them
-    from the map (see Added).
-  - **The results of an earlier run in the output directory are refused,
-    with or without `-F`, and never removed**: the tables, recursive
-    clusters, `final_clusters/`, `plot/`, `mges_binned.fa` and
-    `mge_hosts.txt` of a development build of 2.0, and the outputs of 1.x (its
-    tables and networks, `bin_summary.txt`, `network.txt`, the clustering
-    matrices, `recursive_bin/`, `final_bin/`, `final_bin_unscaffold/`,
-    `overlapping_bin/`, `scaffold_bin/`, and the plots of `plot/` that 2.0
-    no longer draws). Left there, they would pass
-    for the results of the run; a file of one of these names, a user's own
-    too, is refused and left as it is. `-F` replaces only what a run writes
-    itself: the folders that it makes anew (`fasta/mags_with-mges/`,
-    `fasta/mags/`, `fasta/mges/`, `cool/`), the plots of the clusters in
-    `plots/` (whose other files it leaves as they are), the tables of
-    `tables/` and the map of the output directory.
-    The plots of an earlier run are refused without `-F`, where 1.4.0 wrote
-    over them.
-  - `pipeline MAP` runs the three steps on the map, and writes the map of
-    the clusters once, at its end: the steps run one by one in one output
-    directory give the map of `pipeline`. It goes to the output directory,
-    under the name of `MAP` (`<outdir>/sample.metacool` from
-    `sample.metacool`), where 1.4.0 wrote `<outdir>/metator.metacool`.
-- **The map of a run goes to its output directory, and `MAP` is left as it
-  was.** A run writes its map to its output directory, under the name of
-  `MAP` (`NAME.metacool` for an entry of a collection): metacooler copies
-  `MAP` there, the run edits the copy, and metacooler renames it into place.
-  `--inplace`, on every command that writes the map, updates `MAP` itself
-  instead, and so does a run whose output directory holds `MAP` already: the
-  steps of a run, one by one, in one output directory (`network MAP -o DIR`,
-  then `partition DIR/MAP -o DIR`...). A run writes the map through
-  metacooler, in an edit session: every edit of a step goes into one copy of
-  the input map, staged next to the map that the run writes
-  (`.<map>.<uuid>.<n>.d/`), validated in full, then renamed onto it, so a
-  run that stops for any reason leaves the map as it was, and a map updated
-  run after run does not grow. A run holds metacooler's lock of the map it
-  writes (`<map>.lock`) from its checks to its end. A map of an earlier run
-  in the output directory is replaced only with `-F`. Refused before any
-  work: a map that another process holds, a map updated in place without
-  write permission, a directory that is not writable, a hard link of `MAP`
-  in the output directory, an entry of a collection with `--inplace`. A map
-  updated in place through a symbolic link is updated where the link points;
-  a symbolic link in the output directory is replaced, not its target. A map that changed since the
-  run read it is refused when the run writes its map, and a read of a map
-  that another run replaces is refused. Neither metaTOR nor metacooler
-  handles signals: a run killed by SIGTERM (a job scheduler's time limit) or
-  SIGKILL leaves its lock and its staged copy, which the next writer on the
-  same host takes over and removes; on another host, delete the files that
-  the error names. miComplete runs in the process group of the run, so a
-  Ctrl-C, or a scheduler's signal to the job, reaches it. A map of the
-  clusters that cannot be written stops the run with the reason, where 1.4.0
-  warned and exited 0.
-- **Clusters, not bins.** The outputs and columns of a run are named after
-  clusters: `bin_summary.txt` is `cluster_summary.txt`, `final_bin/`
-  (`validation`) and `final_bin_unscaffold/` (`pipeline`) are
-  `fasta/mags_with-mges/`, `recursive_bin/` is `recursive_clusters/`, and in the
-  contig data tables `Core_bin_ID`, `Core_bin_contigs`, `Core_bin_size`,
-  their overlapping and recursive equivalents and `Final_bin` are
-  `Core_cluster_ID`... and `Final_cluster`. `binning.txt`, the names of the
-  clusters and those of the plots are kept, and the texts of the plots name
-  clusters (`Contaminated clusters`, `Other clusters`, `Clusters
-  threshold`). `metator.io.rename_1x_columns` renames the columns of a table
-  of 1.x.
-- **The contigs of a run are those of its map, in its order.** The ID of a
-  contig is its position in the map, and the rows of the tables, the numbers
-  of the clusters and the records of their FASTA files follow that order
-  (the longest first, as hicstuff and metacooler make a map), where they
-  followed the assembly. The contigs of the assembly that the map lacks are
-  in no table, and the shotgun abundance of a cluster is its share of the
-  contigs of the map.
-- **The network.** It counts every pair, as the map does: a pair with a read
-  on the last base of a contig, or at position 0, is a contact, which
-  `--edge 0` left out (on `tests_data/alignment.pairs`, 360 of 13,415 edges
-  change), and a pair with a read past the end of its contig is none. Each
-  edge weighs the contacts of two contigs times the weights of each,
-  `n × w_i × w_j`, which differ from 1.x's `n / √(h_i × h_j)` in their last
-  bits; the edges of weight 0 are left out.
-- **`mge` reads the map.** `metator mge MAP -m MGES -a ASSEMBLY` takes the
-  contacts between the MGE contigs from the map, and those within each
-  contig, between reads more than 1 kb apart, from its contact statistics
-  (metacooler's QC block, counted from the pairs at 1001 bp, with metacooler
-  0.4.0 or later); the size, GC content and hits of each contig are those
-  that `metator network` stored. A map without those statistics, or without
-  the network, is refused before anything is written, and an MGE contig that
-  the map lacks is left out, with a warning. Gone: its pairs files, `-c` and
-  `-b`, and the dependencies on pypairix and pyfastx. It takes
-  the MGE contigs the longest first, ties by name, whatever the order of the
-  map, which numbers some clusters otherwise and may break a tie of scores
-  otherwise. It stores the MGE clusters in the map, as the round `mge` (and
-  `--random`, the round `mge_random`), where it wrote
-  `mges_bin_summary.tsv`, which is refused in the output directory, with or
-  without `-F`, and never removed; `fasta/mges/` replaces `mges_binned.fa`,
-  which is refused too: two FASTA files per MGE cluster, written by
-  metacooler, its contigs, and stitched, joined by 200 `N`, in lines of 80
-  bases.
-- **Removed commands and features**, with what replaces them in
-  [Other tools](other-tools.md): `metator qc`, `contactmap`, `metacool`,
-  `scaffold` and `pairs`; `pipeline -v/--scaffold` and `-J/--junctions`; the
-  heatmap of the clusters and the plots of the GC content and coverage of
-  their contigs, of `validation` and `pipeline` (`plot/network_heatmap.png`,
-  `MAGs_GC_distribution.png`, `MAGs_HiC_cov_distribution.png`,
-  `MAGs_SG_cov_distribution.png`), which still draw the plots of the
-  quality of the clusters; `-C/--cluster-matrix` of
-  `partition`, `validation` and `pipeline`, and the clustering matrices it
-  wrote; `-s/--self-contacts` of `network`; `pipeline --no-metacool` of
-  1.4.0, as the map of the clusters is what a run writes (to its output
-  directory, or over `MAP` with `--inplace`); and the module `metator.main` (`python -m metator.main`):
-  run `metator`, or `python -m metator`.
-- **Seeded runs.** The temporary directory of a command is named from the
-  random numbers of the system, not from Python's `random` module, which the
-  partition draws from: a run seeded as before gives other clusters.
-- **Python API.** Removed: the modules `metator.align`, `metator.contact_map`,
-  `metator.main`, `metator.quality_check`, `metator.regions` and
-  `metator.scaffold`; of `metator.figures`, all but the plots of the quality
-  of the clusters (`bin_quality` is now `metator.validation.bin_quality`):
-  `figures_bins_distribution` and `figures_bins_size_distribution`, which
-  take any table of clusters (the latter returns a copy of it, with its
-  `MAG_quality`), and `plot_figures`, which draws them in `plots/` of its
-  `out_dir`, as PDF files (1.4.0: PNG files in `plot/`), and takes no map
-  (`metacool`); the readers and
-  writers of the files 2.0 no longer reads
-  or writes (`metator.io.sort_pairs`, `write_contigs`, `import_anvio_binning`,
-  `read_contig_data`...; `metator.network.normalize_pair`, `write_edge`,
-  `alignment_to_contacts`...; `metator.partition.read_network`,
-  `generate_fasta`, `update_contigs_data`...;
-  `metator.validation.update_contigs_data_recursive`, `write_bins_contigs`...;
-  `metator.mge.build_matrix`, `generate_mges_fasta`...); the map writers of
-  the development builds (`reassign_metacool`, `store_network`,
-  `write_rounds`, `write_round`), now `metator.metacool.write_map`; and the
-  unused CheckM functions and `metator.partition.spinglass_partition`.
-  `metator.partition.partition` returns the partition, a
-  `metator.clusters.Partition`, and writes nothing;
-  `metator.validation.recursive_decontamination` takes the partition and the
-  map, and draws the plots in `plots/` of `plot_outdir`, when given;
-  `metator.mge.mge_binning` takes the map.
-- **`metator.host` reads the map.** It finds the hosts of the MGE clusters
-  of a map (`find_hosts`), as `metator host` does, where it read the tables
-  of a 1.x run: removed, the classes `Bin`, `Mag` and `MgeMag`, and
-  `create_bins`, `map_contigs_to_mags`, `build_contig_graph`,
-  `compute_mge_mag_interactions` and `annotate_hosts`, which took the contig
-  data, the network and the summary of a run as tables, joined by the IDs of
-  the contigs, and found MAGs only under names that started with `metator_`
-  (none with `--prefix`), and MGE clusters only in a `Final_cluster` column
-  edited by hand; and the estimate of the noise of the library, which no
-  host call used (`estimate_noise`, `plot_mag_noise`, `classify_mags`, and
-  `background_noise.png`). The rule is the same: a MAG hosts an MGE cluster
-  with at least 10% of its signal with the MAGs, and at least 5 of its
-  contigs in contact with it.
+  - `network MAP` stores the contig values (`GC_content`, `Hit`,
+    `Shotgun_coverage`, `Restriction_site`), the normalization (bin weights
+    `metator_<normalization>`) and its run. No `network.txt`;
+    `contig_data_network.txt` goes to the temporary directory. The network is
+    summed in memory: `-t/--threads` no longer sorts it.
+  - `partition MAP` stores every core and overlapping cluster (rounds `core`,
+    `overlapping`); no `contig_data_partition.txt` or `overlapping_bin/`.
+    Removed: `-a/--assembly`, `-c/--contigs`, `-n/--network`, `-s/--size`.
+  - `validation MAP` reads the partition from the map (refused if made on
+    another network), stores the final clusters as its genomes, and writes
+    `fasta/mags_with-mges/` and `plots/`. `--size` picks the overlapping
+    clusters miComplete checks. Removed: `-c/--contigs`, `-f/--fasta`,
+    `-n/--network`.
+  - The tables (`contig_data_final.txt`, `cluster_summary.txt`,
+    `binning.txt`, `clusters.txt`, `cluster_members.txt`, miComplete's) and
+    `recursive_clusters/` go to the temporary directory (`-N` keeps it);
+    `metator dump` writes them from the map.
+  - `pipeline MAP` writes the map of the clusters once, at its end, as
+    `<outdir>/<name>.metacool` (1.4.0: `<outdir>/metator.metacool`): the map
+    that the steps give when run one by one in one output directory.
+- **Where the map goes.** A run writes its map to its output directory under
+  the name of `MAP`, leaving `MAP` as it was; `--inplace`, or an output
+  directory that holds `MAP`, updates `MAP` itself. A run that stops leaves
+  the map as it was (see [Conventions](cli.md#conventions)); one that cannot
+  write it fails (1.4.0 warned and exited 0).
+- **Earlier outputs.** The outputs of 1.x left in the output directory
+  (tables, networks, `*_bin/` folders, clustering matrices, old plots) are
+  refused, with or without `-F`, and never removed. `-F` replaces only what
+  the run writes: its folders, cluster plots, tables, report and map. Earlier
+  plots are refused without `-F` (1.4.0 overwrote them).
+- **Renamed outputs: clusters, not bins.** `bin_summary.txt` →
+  `cluster_summary.txt`; `final_bin/`, `final_bin_unscaffold/` →
+  `fasta/mags_with-mges/`; `recursive_bin/` → `recursive_clusters/`;
+  `plot/*.png` → `plots/*.pdf`; columns `Core_bin_ID`... `Final_bin` →
+  `Core_cluster_ID`... `Final_cluster` (`metator.io.rename_1x_columns`
+  converts a 1.x table). Plot labels say clusters.
+- **Renamed log:** `<name>.metator_<date>.log` (1.x:
+  `metator_<command>_<date>.log`).
+- **Contigs follow the map.** A contig's ID is its position in the map
+  (longest first), which orders the table rows, cluster numbers and FASTA
+  records. Contigs missing from the map are in no table; shotgun abundance is
+  a share of the map's contigs.
+- **The network counts every pair**, as the map does: a read at position 0
+  or on a contig's last base counts (360 of 13,415 edges change on
+  `tests_data/alignment.pairs`); one past the contig end does not. Edges
+  weigh `n × w_i × w_j` (1.x: `n / √(h_i × h_j)`, different in the last
+  bits); edges of weight 0 are dropped.
+- **`mge` reads the map:** `metator mge MAP -m MGES -a ASSEMBLY` needs the
+  network of `metator network` and metacooler's contact statistics (0.4.0+)
+  in the map. Removed: the pairs inputs, `-c` and `-b`. MGE contigs missing
+  from the map are skipped with a warning; the others are taken longest
+  first, which can renumber clusters. The MGE clusters go to the map (rounds
+  `mge`, `mge_random`), not `mges_bin_summary.tsv`, and `fasta/mges/`
+  replaces `mges_binned.fa`; both old files are refused in the output
+  directory.
+- **Removed commands and features** (replacements in [Other
+  tools](other-tools.md)): `metator qc`, `contactmap`, `metacool`, `scaffold`
+  and `pairs`; `pipeline -v/--scaffold`, `-J/--junctions` and `--no-metacool`;
+  `-C/--cluster-matrix` and its matrices; `network -s/--self-contacts`; the
+  plots `network_heatmap.png`, `MAGs_GC_distribution.png`,
+  `MAGs_HiC_cov_distribution.png` and `MAGs_SG_cov_distribution.png`;
+  `python -m metator.main` (use `metator` or `python -m metator`).
+- **Seeded runs** give other clusters than before: the temporary directory
+  name no longer draws from Python's `random` module.
+- **Python API.**
+  - Removed: the modules `metator.align`, `contact_map`, `main`,
+    `quality_check`, `regions` and `scaffold`; the readers and writers of
+    files 2.0 no longer handles (`metator.io.sort_pairs`...);
+    the unused CheckM functions and `metator.partition.spinglass_partition`.
+    The development map writers (`reassign_metacool`, `store_network`,
+    `write_rounds`, `write_round`) are now `metator.metacool.write_map`.
+  - `metator.figures` keeps the quality plots only:
+    `figures_bins_distribution`, `figures_bins_size_distribution` and
+    `plot_figures` (PDF files in `plots/`); `bin_quality` moved to
+    `metator.validation`.
+  - `metator.partition.partition` returns a `metator.clusters.Partition` and
+    writes nothing; `metator.validation.recursive_decontamination` and
+    `metator.mge.mge_binning` take the map.
+  - `metator.host` reads the map (`find_hosts`). Removed: `Bin`, `Mag`,
+    `MgeMag`, `create_bins`, `map_contigs_to_mags`, `build_contig_graph`,
+    `compute_mge_mag_interactions`, `annotate_hosts`, and the unused noise
+    estimate (`estimate_noise`, `plot_mag_noise`, `classify_mags`,
+    `background_noise.png`).
 
 ### Added
-- `metator pipeline --mges FILE` goes on after the validation with two more
-  steps on the map of its clusters, which they update in place, as the
-  commands do one by one: `mge`, as `metator mge --reassign`, which clusters
-  the MGE contigs of the list, makes each MGE cluster a genome of the map and
-  writes `fasta/mges/`, and `host`, as `metator host`, which finds the MAGs
-  that host them and writes `tables/mge_hosts.txt` and `plots/mge_hosts.pdf`;
-  the log marks them after the validation (`[4/6] mge`, `[5/6] host`, before
-  `[6/6] export`; one more step first from pairs or BAM files, whose map the
-  run makes first). `--mge-threshold-bin`,
-  `--mge-min-share` and `--mge-min-contigs` are the `--threshold-bin` of
-  `mge` and the `--min-share` and `--min-contigs` of `host`. What they would
-  refuse is refused before any work: a list that cannot be read, a map
-  without the contact statistics of the reads of its contigs at 1001 bp or
-  that holds none of the MGE contigs (from pairs or BAM files, a list none of
-  whose contigs is in the assembly, before the run makes its map), and an
-  earlier version's MGE files in the output directory. A run that stops in
-  one of them keeps the map of its clusters (with its MGE clusters, in
-  `host`), and its log says what to run on it to complete it. Without
-  `--mges`, the run has no steps `mge` and `host`, and says so.
-- **The outputs of a run, in folders of its output directory** (see the
-  [CLI reference](cli.md#conventions)): `fasta/mags_with-mges/`, the FASTA file
-  of each final cluster, as the validation made it, with its MGE contigs
-  (`validation`, `pipeline`; `final_clusters/` in a development build);
-  `fasta/mags/`, each MAG of the map of the run (its genomes but the MGE
-  genomes) as its contigs (`<MAG>.fa`) and stitched (`<MAG>.stitched.fa`, one
-  record, its contigs joined by 200 `N`), with `metacooler fasta`
-  (`pipeline`); `fasta/mges/`, each MGE cluster the same two ways (`mge`,
-  `pipeline --mges`; `fasta/mges_random/` with `--random`; `mges_binned.fa`
-  in 1.x and a development build); `cool/`, a cool file per MAG, with the MGE
-  clusters that it hosts, extracted by `metacooler extract` and balanced by
-  `cooler balance` (`pipeline`); `tables/`, the tables of `metator dump`
-  (`pipeline`) and `mge_hosts.txt` (`host`, `pipeline --mges`); `plots/`, every
-  plot, as a PDF file (`plot/`, PNG files, in 1.x and a development build). A
-  folder of an earlier run that a run makes anew is refused without `-F`,
-  which replaces it.
-- `metator export MAP [-a ASSEMBLY] -o DIR` writes the outputs of a run again
-  from the map of its clusters (see the
-  [CLI reference](cli.md#export)): `cool/`, `tables/` (with `mge_hosts.txt`,
-  the hosts found again from the network of the map with the thresholds that
-  the host run recorded) and `plots/` from the map alone; `fasta/` too with
-  the assembly (`mags_with-mges/`, the final clusters, in the order of the map;
-  `mags/`; `mges/` and `mges_random/`). The map is read only: a map that
-  `metator dump` refuses is refused before anything is written, and so is one
-  that another run writes while it is read. `pipeline` runs it as its last
-  step (`[4/4] export`, or `[6/6]` with `--mges`), in place of the outputs
-  that its steps wrote: a run gives the outputs that its steps one by one
-  give, `export` last.
-- `metator report MAP -o DIR` writes the report of a run from the map of its
-  clusters (see the [CLI reference](cli.md#report)), and so do `export` and
-  `pipeline`, in its step `export`: `report.html`, a page to read the run
-  with (its numbers at a glance; its MAGs, in a table that sorts, filters and
-  downloads as CSV, with links to their files; its MGE clusters and their
-  hosts; its parameters and command lines; and interactive plots, which
-  plotly.js draws, loaded from its CDN), from a Jinja2 template;
-  `report.txt`, the same as text, in sections and tables of a versioned
-  format that a script or a MultiQC module parses; and `report_mqc.yaml`, a
-  row of the General Statistics table of MultiQC, which `multiqc` gathers
-  over the runs of a project (see
-  [The report of a run](formats.md#the-report-of-a-run)). The quality classes
-  of the final clusters are those of the values of miComplete, as the log of
-  the run counts them. The report of an earlier run in the output directory
-  is refused without `-F`. New dependencies: `jinja2` and `pyyaml`.
-- The map of the clusters stores the summary of the validation at full
-  precision (`cluster_summary_full.txt`, beside `cluster_summary.txt` in the
-  temporary directory of the run), where a development build stored it as
-  `cluster_summary.txt` writes it, its floats rounded to 2 decimals: the
-  quality classes that the map gives (the plots of `export`) are those of the
-  values of miComplete, as the log counts them. `cluster_summary.txt`, and
-  the one that `metator dump` writes, are as they were.
-- `metator host MAP` finds the MAGs that host the MGE clusters that
-  `metator mge` stored in the map (its round `mge`): its genomes, the final
-  clusters of a run or the bins of another binner made its genomes by
-  `metacooler reassign`, but `__unbinned__` and the MGE clusters made
-  genomes, each taken without the MGE contigs that it holds. A MAG hosts an
-  MGE cluster with at least `--min-share` percent (10) of its signal with the
-  MAGs, the weights of the network between their contigs, and at least
-  `--min-contigs` (5) of its contigs in contact with it. The run writes
-  `tables/mge_hosts.txt`, every MGE cluster and MAG in contact, with their
-  signal, shares and contigs in contact, and `plots/mge_hosts.pdf`, and stores
-  the hosts in
-  the map: in the round `mge` (`n_hosts`, `hosts`, `host_shares`), in the
-  genomes table (`n_mges`, `mges`), which `metator dump` writes in
-  `clusters.txt` and `cluster_summary.txt`, and under the `host` entry of its
-  metadata, with the digest of its network. A run that replaces the round
-  `mge` (`mge`, but `--random`), the clusters (`partition`, `validation`,
-  `pipeline`) or the network (`network`, with another one) drops them, with a
-  warning. `metator host` of 1.x, gone in 1.4.0, read the tables of a run.
-- **`--seed`** of `partition`, `validation`, `pipeline` and `mge`: the seed of
-  the random numbers of a run, those of Python's `random` module, which
-  igraph draws from in Louvain and Leiden, and numpy's, which the random
-  clustering of `mge --random` draws from. A step is seeded once, before its
-  iterations, which still draw other numbers one after the other: each
-  iteration of Louvain or Leiden gives another membership, and the step as a
-  whole is the same from the same seed. From the same map, the same seed
-  gives the same clusters; `pipeline --seed S` seeds its partition and its
-  validation alike, and gives the clusters of `partition --seed S` then
-  `validation --seed S`. The metadata of the map store the seed with the other
-  parameters of the run. Without it, as before, each run draws other random
-  numbers, so that two runs on the same map give close clusters, not the same.
-- **`network` and `pipeline` from pairs or BAM files.** Their arguments,
-  `INPUT...`, are the map of the contigs, or the pairs files or the BAM files
-  (or SAM files) of the libraries of the run: each argument a path, a
-  comma-separated list or a glob pattern, as hicstuff 4.0 reads its inputs,
-  and what each file holds found from its first bytes, whatever its name.
-  The run makes the map of the contigs from them first, as `metacooler create
-  pairs` makes it (one bin per contig of the assembly, every contig in
-  `__unbinned__`, the libraries summed, with the contact statistics of the
-  reads that `mge` reads), in its output directory, as `<prefix>.metacool`
-  (`pipeline --prefix`) or `<assembly>.metacool` (named after the FASTA file
-  of the assembly), then updates it in place: a `pipeline` run makes it the
-  map of its clusters, and logs the step first (`[1/5] map`). A map there is
-  replaced only with `-F`, once the new map is written; `--inplace` is
-  refused. A BAM file holds both mates of its reads (paired-end alignments, as
-  `bwa mem -5SP` writes them: as the aligner wrote them, or sorted by name or
-  by coordinate), or one mate each (bowtie2's, the R1 files then the R2
-  files, matched by read name, sorted by name if they need it). Its pairs are
-  the primary alignments of the two mates of each read, both aligned with a
-  mapping quality of at least `-q/--min-quality` (30), neither flagged as a
-  PCR or optical duplicate (0x400) nor as failing QC (0x200), each at the 5'
-  end of its alignment, as pairtools and hicstuff's mapping mode 5spm record
-  it (metaTOR 1.x recorded the leftmost base, which only moves contacts
-  within contigs; the network is the same): read with pysam, a
-  dependency again, whose samtools groups or sorts the files by name (no
-  samtools program needed), and written in the temporary directory of the
-  run (`library_<i>.pairs`, which `-N` keeps). `network` takes
-  `-t/--threads` again, to read them. The sequences of the BAM and pairs
-  files must be contigs of the assembly, with their lengths (others are left
-  out, with a warning); reads, an assembly or CRAM files given as inputs, a
-  map given with other inputs, pairs files with BAM files, and
-  `--min-quality` with a map or pairs files are refused before any work. The
-  metadata of the map store the inputs as given (`input`), and the map that
-  the run started from or made (`map`). See
-  [The inputs of a run](cli.md#inputs).
-- `metator dump MAP -o DIR` writes the tables of a run from the map of its
-  clusters, read only: `contig_data_final.txt` (without its `ID` column),
-  `cluster_summary.txt`, `binning.txt`, `clusters.txt` and
-  `cluster_members.txt` (every clustering round, `mge` included) and
-  `network.txt` (by contig names, where 1.x wrote IDs). The values are those
-  of the tables that the run kept in its temporary directory; the rows of
-  `contig_data_final.txt`, `binning.txt` and `cluster_members.txt` follow
-  the map of the clusters, and its genomes give `Final_cluster`,
-  `binning.txt` and the rows of `cluster_summary.txt`: the final clusters, and
-  the MGE genomes of `metator mge --reassign` or the genomes of a curation by
-  hand (`metacooler reassign`). A map without the clusters of a validation,
-  whose network is not the one its clusters were made from, or that changes
-  while it is read, is refused, and the tables are replaced all at once.
-- `metator mge --reassign` makes each MGE cluster a genome of the map, named
-  after it, with its GC content, hits and clustering score: its contigs leave
-  the final clusters that held them, which keep the values of their
-  validation, and the column `mge` of the genomes table is `True` for the MGE
-  genomes, `False` for the others. A run that replaces the round `mge`
-  undoes the MGE genomes of an earlier run first, so a run with `--reassign`
-  replaces them, and one without leaves the final clusters alone; `--random`
-  leaves them as they are, and is refused with `--reassign`. `binning.txt` of
-  `metator dump` then lists the MAGs and the MGE genomes, which 1.x kept
-  apart, in `mges_bin_summary.tsv`.
-- The clustering rounds of a run: every cluster of every round (`core`,
-  `overlapping`, `recursive_<k>`, `final`, `mge`, `mge_random`), with its
-  parent and miComplete's columns, and the contigs of each, in the
-  `/clusters` group of the map, which `clusters.txt` and
-  `cluster_members.txt` write out; `clusters.txt` gives each cluster its
-  number of contigs and their length (`n_contigs`, `length`, as the map
-  computes them), which `mges_bin_summary.tsv` gave the MGE clusters
-  (`ContigsNumber`, `BinLength`).
-- The normalization of the network is stored in the map, as the weights
-  `metator_<normalization>` of its bins, the way cooler stores balancing
-  weights: `cooler` (`matrix(balance="metator_empirical_hit")`) and
-  `metacooler show`, `dump` and `network` (`--balance`) read them. They record
-  the columns they are computed from, so that metacooler drops them when an
-  edit changes one.
-- A run reads the restriction sites and the shotgun coverage of the contigs
-  from the `Restriction_site` and `Shotgun_coverage` columns of the map when
-  `--enzyme` and `--depth` are not given; given, they replace them, with a
-  warning that counts the contigs whose value differs.
-- The metadata of the map record, under the `metator` key, one entry per
-  step (`network`, `partition`, `validation`, `mge`, `host`): the version of
-  metaTOR, the command line and parameters of the run, and what it read of
-  the map (`read`).
-- `partition` and `validation` refuse a map whose network an edit changed
-  since `network` stored it, with the step to run again: a column, a value or
-  the weights dropped, or contacts whose hits are no longer its `Hit` column
-  (as after `metacooler merge`, which keeps the contigs table of its first
-  map).
-- `--inplace` on every command that writes the map (`network`, `partition`,
-  `validation`, `pipeline`, `mge`): the run updates `MAP` in place, rather
-  than write its map to the output directory; and `-F` on `network` and
-  `mge`, to replace the map of an earlier run in the output directory.
-  `partition -F`, which replaced the outputs of an earlier partition (it
-  writes none now), replaces the map of the output directory.
-- Python API: `metator.dump`; `metator.metacool.write_map`, the one writer of
-  the maps of the steps, and `map_rounds`, `read_partition`; `metator.network`
-  `map_network`, `stored_network`, `contig_contacts`, `contig_hits`,
-  `normalization_weights` and `relabel_network`; `metator.clusters`
-  (`Partition`, `Rounds`, `write_round_tables`); `metator.mge.check_mge_map`,
-  `map_matrix` and `write_mges_fasta`; `metator.validation.contaminated_bins`;
-  `metator.partition.iterate`, and the `progress` argument of
-  `algo_partition`, `louvain_iterations` and `leiden_iterations`, which logs
-  the iterations as they go; `metator.log.duration`; `metator.host`
-  (`find_hosts`, `map_bins`, `contact_pairs`, `write_hosts`, `plot_hosts`,
-  `Hosts`), the `hosts` and `drop_hosts` arguments of
-  `metator.metacool.write_map`, and `metator.metacool.holds_hosts` and
-  `hosts_network`.
+- **`network` and `pipeline` from pairs or BAM files:** `INPUT...` is the
+  map, or the pairs or BAM/SAM files of the libraries (paths, comma-separated
+  lists or globs). The run first makes the map in its output directory
+  (`<prefix>.metacool` with `pipeline --prefix`, else `<assembly>.metacool`;
+  `[1/5] map` in the log). BAM pairs: primary alignments of both mates, MAPQ
+  ≥ `-q/--min-quality` (30), no duplicates or QC failures, at their 5' ends.
+  pysam is a dependency again; `network -t` reads the files. See [The inputs
+  of a run](cli.md#inputs).
+- **`pipeline --mges FILE`** runs `mge --reassign` and `host` after the
+  validation (`[4/6] mge`, `[5/6] host`, `[6/6] export`), with
+  `--mge-threshold-bin`, `--mge-min-share` and `--mge-min-contigs`.
+- **`metator host MAP`** finds the MAGs that host the MGE clusters stored by
+  `mge`: at least `--min-share` (10%) of the MGE cluster's signal with the
+  MAGs, and `--min-contigs` (5) contigs in contact. It writes
+  `tables/mge_hosts.txt` and `plots/mge_hosts.pdf`, and stores the hosts in
+  the map. Bins of another binner work once `metacooler reassign` makes them
+  genomes.
+- **`metator dump MAP -o DIR`** writes the tables of a run from its map,
+  `network.txt` included (by contig name). See [`dump`](cli.md#dump).
+- **`metator export MAP [-a ASSEMBLY] -o DIR`** writes every output of a run
+  again from its map: `cool/`, `tables/`, `plots/`, the report, and `fasta/`
+  with the assembly. `pipeline` runs it last. See [`export`](cli.md#export).
+- **`metator report MAP -o DIR`** writes the report of a run:
+  `<name>.report.html` (a page with its MAGs, MGE hosts, parameters and
+  plots), `<name>.report.txt` (a versioned text format) and
+  `<name>.report_mqc.yaml` (a MultiQC General Statistics row). `export` and
+  `pipeline` write it too. New dependencies: `jinja2`, `pyyaml`. See [The
+  report of a run](formats.md#the-report-of-a-run).
+- **Output folders** (see [Conventions](cli.md#conventions)):
+  `fasta/mags_with-mges/`, `fasta/mags/` (each MAG as contigs and stitched),
+  `fasta/mges/`, `fasta/mges_random/`, `cool/` (a balanced cool file per
+  MAG, with its MGE clusters), `tables/` and `plots/`.
+- **`mge --reassign`** makes each MGE cluster a genome of the map;
+  `binning.txt` then lists the MAGs and the MGE genomes.
+- **`--seed`** on `partition`, `validation`, `pipeline` and `mge`: the same
+  map and seed give the same clusters.
+- **`--inplace`** on `network`, `partition`, `validation`, `pipeline` and
+  `mge`; **`-F`** on `network` and `mge` (and `partition -F`) replaces the
+  map in the output directory.
+- **The map stores** every clustering round (`core`, `overlapping`,
+  `recursive_<k>`, `final`, `mge`, `mge_random`) with its contigs, the
+  network normalization as bin weights that `cooler` and `metacooler
+  --balance` read, the cluster summary at full precision, and one metadata
+  entry per step (version, command line, parameters, what it read).
+- Without `--enzyme` and `--depth`, a run reads the map's `Restriction_site`
+  and `Shotgun_coverage` columns.
+- `partition` and `validation` refuse a map whose network changed since
+  `network` stored it (e.g. after `metacooler merge`).
+- Python API: `metator.dump`; `metator.clusters`; `metator.host`
+  (`find_hosts`...); `metator.metacool.write_map`, `map_rounds`,
+  `read_partition`, `holds_hosts`, `hosts_network`;
+  `metator.network.map_network`, `stored_network`, `contig_contacts`,
+  `contig_hits`, `normalization_weights`, `relabel_network`;
+  `metator.mge.check_mge_map`, `map_matrix`, `write_mges_fasta`;
+  `metator.validation.contaminated_bins`; `metator.partition.iterate`, and
+  `progress` on its iteration functions; `metator.log.duration`.
+- The documentation page [The end-to-end pipeline](end-to-end.md): from the
+  reads to MAGs and MGE hosts, with MEGAHIT, hicstuff, geNomad and metaTOR.
 
 ### Changed
-- Validation runs Prodigal and HMMER through pyrodigal and pyhmmer, their
-  Python bindings, which pip installs with metaTOR, in place of the
-  prodigal and hmmsearch programs that miComplete runs
-  (`metator._micomplete`): metaTOR runs no program that pip does not
-  install, with pip, with conda (`metator.yaml`) or in the Docker image.
-  miComplete gives the clusters of the tests the rows that prodigal 2.6.3
-  and HMMER 3.4 gave them, and a cluster of less than 20 kb still gets no
-  gene, as prodigal finds none in it.
-- metaTOR requires metacooler 0.4.0: its contact statistics of each contig
-  (`qc_intra_contig_short`, `qc_intra_contig_long`, split at 1001 bp), its
-  clustering rounds, its locked edit sessions and its FASTA writer.
-- The FASTA files of the clusters are written by metacooler
-  (`metacooler.write_fasta`), the records as they are in the assembly; a
-  gzip-compressed assembly is decompressed once per run, in its temporary
-  directory, which needs room for it. No pyfastx index is made.
-- metaTOR reads back the numbers of the tables it wrote exactly, under
-  pandas 2 as under pandas 3: the map stores the run's numbers.
-- The partition computes the distances between the core clusters in
-  `--threads` threads, where it forked as many processes: Python warned that a
-  fork of the run, which runs threads, may deadlock. SciPy computes the
-  distances without holding the GIL, so the threads run in parallel.
-- Python's warnings (cooler gives the problems of a map with them) are shown
-  and written to the log of a run, as metaTOR's own messages.
-- The plots of the quality of the clusters (`plots/bins_distribution.pdf`,
-  `plots/bins_size_distribution.pdf`) are drawn with matplotlib's `Figure`,
-  without pyplot: no window, whatever the backend of matplotlib. A plot that
-  cannot be drawn is a warning, with its error, and the run goes on to write
-  the map of its clusters, where 1.4.0 stopped.
-- **The log of a run.** Its header gives, as hicstuff's does, the version,
-  the date, the command line (`## cmd:`, where it said `## Command used:`)
-  and the value of each option (`## <option>: <value>`), then a line of
-  dashes, without the empty lines around it; the log ends with what the run
-  wrote and how long it took (`Final contact map written after 0h 8m 31s: <map>`),
-  where it ended with a line of dashes and the date. `pipeline`
-  marks its steps (`[1/4] network`, `[2/4] partition`, `[3/4] validation`,
-  `[4/4] export`), and no longer logs its parameters, which the header
-  gives. The partition counts its iterations as they go, at each tenth of
-  them, 10 seconds apart at least, and how long they took; the validation
-  says how long miComplete took and how many clusters are contaminated, then
-  logs each recursive step (`Recursive step 2/9: ...`), how many clusters it
-  partitions again and replaces, and when no further step is needed, where
-  it printed each step in a banner of dashes. The counts of the contacts, of
-  the core and overlapping clusters, and of the clusters checked are one
-  line each. The bookkeeping of a run (the tables written in its temporary
-  directory, the temporary directory removed, the staged copy of the map,
-  and metacooler's accounts of what it reads and writes) is logged at the
-  DEBUG level, which the log does not show.
-- The documentation moves from Read the Docs to GitHub Pages, at
-  <https://koszullab.github.io/metator/>: Markdown pages built with Zensical,
-  a guide per step and command, the CLI reference (which `tests/test_docs.py`
-  checks against the CLI), the file formats and the Python API reference.
-  The Sphinx sources and the scripts of the curation tutorial
-  (`docs/example/scripts/`, which ran CheckM) are gone: the curation guide
-  checks the curated clusters with miComplete.
-- The docstrings of the Python API are shorter: a summary, then numpy
-  sections (Parameters, Returns, Raises), which the API reference renders as
-  tables.
+- The validation runs Prodigal and HMMER through pyrodigal and pyhmmer:
+  metaTOR needs no program that pip does not install.
+- metaTOR requires metacooler 0.4.0, which writes the FASTA files of the
+  clusters. A gzip assembly is decompressed once per run.
+- Numbers read back from the tables are exact, under pandas 2 and 3.
+- The partition computes core-cluster distances in threads, not processes.
+- Python warnings are shown and logged.
+- The quality plots are drawn without pyplot; one that fails is a warning
+  (1.4.0 stopped).
+- **The log:** a hicstuff-style header (`## cmd:`, `## <option>: <value>`)
+  and a last line with what the run wrote and how long it took. `pipeline`
+  numbers its steps (`[1/4] network`...); the partition logs its iterations
+  as they go, the validation each recursive step; bookkeeping is at DEBUG
+  level.
+- `metator --help` lists the commands in three panels: Pipeline, Steps and
+  Outputs.
+- The documentation moves from Read the Docs to GitHub Pages
+  (<https://koszullab.github.io/metator/>), in Markdown built with Zensical,
+  with a CLI reference that `tests/test_docs.py` checks. The Sphinx sources
+  and the CheckM curation scripts (`docs/example/scripts/`) are gone.
+- The documentation was trimmed: shorter pages, each fact said once.
+- Shorter numpy-style docstrings.
 
 ### Fixed
-- `mge` refuses a list of MGE contigs (`--mges`) that cannot be read, not
-  there or a directory, before any work, with the reason in its log, where it
-  stopped with a traceback; and it skips the blank lines of the list, which
-  stopped it with an `IndexError`.
-- The depth file (`--depth`) is read by contig name: read line by line, a
-  file in another order than the assembly gave the contigs the values of
-  others. A file that lacks a contig, or gives it another length, is refused.
-- The depth file of a contig of a million bases or more, whose length
-  `jgi_summarize_bam_contig_depths` writes in scientific notation, to 6
-  significant digits (`1.21754e+06`), stopped `network` and `pipeline` with
-  a `ValueError` (#26): such a length is that of the contig rounded so.
-- `network` and `pipeline` read an assembly compressed with gzip, which they
-  refused as no FASTA file.
-- `network` and `pipeline` count the restriction sites of `--enzyme` whatever
-  the case of the bases: those in lower case, where a soft-masked assembly
-  holds its repeats, were not counted. The contigs had too few restriction
-  sites (`Restriction_site`), and the `RS` and `theoritical_hit`
-  normalizations wrong weights.
-- `network` and `pipeline` refuse an assembly that names a contig by several
-  records: they kept the last record of the name, its length and GC content.
-  metacooler refused it only when it wrote the FASTA file of such a contig
-  (`validation`, `mge`).
-- `validation` reads the contig names of its tables as text: contigs named
-  by numbers (`000017`, `1e5`), or `NA`, kept their clusters, where they lost
-  them or the map was not written. A clustered contig that the map lacks, and
-  final clusters that are not those of their FASTA files, are refused.
-- `binning.txt` holds every contig of the final clusters: those of a cluster
-  partitioned again but kept whole were left out.
-- The log of the validation counts the clusters in the quality classes of
-  `metator.validation.bin_quality`, as the plot of their sizes does
-  (`plots/bins_size_distribution.pdf`), the contamination being the weighted
-  redundancy − 1; it divided it by the completeness, where the plot does not,
-  and, from 1.2.0 to 1.4.0, its test of the HQ class was inverted: a cluster
-  of at least 90% completeness was counted HQ when its contamination was over
-  5%, and MQ when it was 5% or less. Only the sum of the HQ and MQ counts of a
-  1.x log was right: on a mock community, the 31 HQ and MQ clusters of a
-  1.3.10 run, 7 HQ and 24 MQ in its log, are 24 HQ and 7 MQ for
-  `bin_quality`. From 1.2.3, the plot counted them right.
-- The plot of the completeness and the contamination of the clusters
-  (`plots/bins_distribution.pdf`) draws the contamination from 0 to 105%, as
-  it meant to: it compared the weighted redundancy, a ratio, with 105, which
-  no cluster reaches, so a contamination above 105% stretched its axis, and
-  a cluster in which miComplete finds no marker gene, of a redundancy of 0,
-  was drawn at −100%. Its axis reads `Completeness/Contamination (%)`
-  (`Completness`), and the pie chart of the sizes of the clusters `Other
-  contigs` (`Others contigs`) and `Total size of the contigs`, where it read
-  `Total size of the assembly`: the pie counts the contigs of the map, the
-  whole assembly only for a map of all its contigs.
-- The `recursive` column of `cluster_summary.txt` says whether the cluster
+- `mge` refuses an unreadable `--mges` list before any work (it stopped with
+  a traceback), and skips blank lines (`IndexError`).
+- `--depth` is read by contig name: a file in another order than the
+  assembly gave contigs wrong values. Missing contigs or wrong lengths are
+  refused.
+- `--depth` lengths in scientific notation (contigs of 1 Mb or more) stopped
+  `network` and `pipeline` (#26).
+- `network` and `pipeline` read a gzip-compressed assembly.
+- `--enzyme` counts sites in lower-case (soft-masked) bases too:
+  `Restriction_site`, and the `RS` and `theoritical_hit` weights, were wrong.
+- An assembly naming a contig in several records is refused (the last one was
+  kept).
+- `validation` keeps the clusters of contigs named like numbers (`000017`,
+  `1e5`) or `NA`.
+- `binning.txt` lists the contigs of a cluster partitioned again but kept
+  whole.
+- The validation log counts the quality classes as
+  `metator.validation.bin_quality` does: from 1.2.0 to 1.4.0 it swapped HQ
+  and MQ, and divided the contamination by the completeness.
+- `plots/bins_distribution.pdf` draws the contamination from 0 to 105%
+  (a cluster without marker genes was at −100%); typos fixed in the labels
+  of the quality plots.
+- The `recursive` column of `cluster_summary.txt` says whether a cluster
   comes from the recursive partition.
-- `metator validation --help` gives the rule of the recursive partition: a
-  weighted completeness of 33%, not 50%.
-- `pipeline` and `validation` check their arguments and their assembly before
-  `-F` replaces the clusters of an earlier run; `-F` replaces a directory of
-  clusters that is a symbolic link, not its target; a `--tmpdir` in a folder
-  that the run makes anew (`fasta/mags_with-mges/`...), which `-F` replaces,
-  or in a directory of the results of
-  an earlier run, which the run refuses, is refused as a usage error.
-- `pipeline` and `validation` stop with a clear error when no cluster of the
-  partition reaches `--size`, where miComplete failed.
-- An output path that holds `::`, which metacooler reads as `file::group`, is
-  refused; a map given as `file::/` is the file.
-- The validation leaves no pyfastx index (`.fxi`) next to the assembly or the
-  FASTA files of the clusters.
-- The FASTA files of the recursive and final clusters (`validation`,
-  `pipeline`) and of the MGE clusters (`mge`) were written by the `pyfastx`
-  command through the shell (`pyfastx extract … >`): without `pyfastx` on the
-  `PATH` (a virtual environment used without activating it), every file came
-  out empty, without an error. metacooler writes them now.
+- `metator validation --help` gives the recursive partition threshold as
+  33% weighted completeness, not 50%.
+- `pipeline` and `validation` check their arguments before `-F` removes
+  anything, and refuse a `--tmpdir` inside a folder they replace.
+- `pipeline` and `validation` stop with a clear error when no cluster
+  reaches `--size` (miComplete failed).
+- An output path containing `::` is refused; a map given as `file::/` is the
+  file.
+- No pyfastx index (`.fxi`) is left next to the assembly or the FASTA files.
+- The FASTA files of the clusters were empty, without error, when `pyfastx`
+  was not on the `PATH`.
 
 ## [1.4.0] - 2026-11-17
 

@@ -23,6 +23,7 @@ import metator.metacool as mtmc
 import metator.report as mtr
 from metator.version import __version__
 from tests.locks import described, held_lock, killed_lock, lock_file, refusal
+from tests.logs import logs
 
 TESTS_DATA = Path(__file__).resolve().parents[1] / "tests_data"
 
@@ -174,10 +175,17 @@ def test_help_of_a_run_from_a_map(command, run_cli):
 
 
 def test_group_help(run_cli):
+    """The help lists the commands in three panels after the options: the
+    pipeline, its steps and the outputs."""
     output = run_cli("-h").output
-    for command in INVENTORY["commands"]:
-        assert command in output
-    assert "Clustering" in output
+    panels = {"Pipeline": ["pipeline"], "Steps": ["network", "partition", "validation", "mge", "host"],
+              "Outputs": ["dump", "export", "report"]}  # fmt: skip
+    assert sorted(command for commands in panels.values() for command in commands) == sorted(INVENTORY["commands"])
+    starts = [output.index(f"─ {panel} ─") for panel in ["Options", *panels]]
+    assert starts == sorted(starts)
+    for (panel, commands), end in zip(panels.items(), [*starts[2:], len(output)], strict=True):
+        listed = re.findall(r"^│ (\w+) ", output[output.index(f"─ {panel} ─") : end], re.MULTILINE)
+        assert listed == commands
 
 
 def test_version(run_cli):
@@ -318,7 +326,7 @@ def test_log_header_lists_the_parameters(stub_pipeline, tmp_path, run_cli):
     directory)."""
     metacool = _contig_map(tmp_path / "input.metacool", network=True, partition=True)
     run_cli("partition", metacool, "-i", "4", "-T", tmp_path / "tmp")
-    (log,) = tmp_path.glob("metator_partition_*.log")
+    (log,) = logs(tmp_path, "partition")
     lines = log.read_text().splitlines()
     assert lines[2] == f"## cmd: metator partition {metacool} -i 4 -T {tmp_path / 'tmp'}"
     assert lines[3 : lines.index("---")] == [
@@ -570,7 +578,7 @@ def test_pipeline_from_a_map_leaves_another_map_of_its_output_directory(stub_pip
     metacool = _contig_map(tmp_path / "input.metacool")
     run_cli("pipeline", metacool, "-a", _assembly(tmp_path), "-o", out, "-T", tmp_path / "tmp")
     assert stub_pipeline["write_map"][2] == str(out / "input.metacool") and earlier.read_text() == "earlier run"
-    (log,) = out.glob("metator_pipeline_*.log")
+    (log,) = logs(out, "pipeline")
     logged = log.read_text()
     assert "Removing" not in logged
     message = (
@@ -591,7 +599,7 @@ def test_pipeline_map_stores_the_normalization_of_the_network(stub_pipeline, tmp
     metacool = _contig_map(tmp_path / "map.metacool")
     out = tmp_path / "out"
     run_cli("pipeline", *_map_run(metacool, tmp_path))
-    (log,) = out.glob("metator_pipeline_*.log")
+    (log,) = logs(out, "pipeline")
     assert "WARNING" not in log.read_text()
     import metacooler
 
@@ -626,7 +634,7 @@ def test_pipeline_network_of_the_pairs_of_its_map(case, network_from_a_map, tmp_
         message = f"{metacool} holds no contact: there is no network to build."
         with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
             run_cli("pipeline", *args)
-        (log,) = out.glob("metator_pipeline_*.log")
+        (log,) = logs(out, "pipeline")
         assert f"ERROR :: {message}\n" in log.read_text()
         return
     with pytest.raises(RuntimeError, match=r"^network built$"):
@@ -689,7 +697,7 @@ def test_pipeline_from_a_metacool(stub_pipeline, tmp_path, run_cli):
     assert metacool.read_bytes() == before
     # No table of the network: it is in the map.
     assert not list(out.glob("*network*"))
-    (log,) = out.glob("metator_pipeline_*.log")
+    (log,) = logs(out, "pipeline")
     logged = log.read_text()
     assert "Removing" not in logged
     source, existed, outfile, stores = calls["write_map"]
@@ -738,7 +746,7 @@ def test_pipeline_without_mges_has_no_steps_mge_and_host(stub_pipeline, tmp_path
     metacool = _contig_map(tmp_path / "input.metacool")
     run_cli("pipeline", *_map_run(metacool, tmp_path))
     out = tmp_path / "out"
-    (log,) = out.glob("metator_pipeline_*.log")
+    (log,) = logs(out, "pipeline")
     logged = log.read_text()
     assert re.findall(r" :: INFO :: \[([0-9])/([0-9])\] ([a-z]+): ", logged) == STEPS
     stop = (
@@ -842,7 +850,7 @@ def test_pipeline_with_mges_refused_before_any_work(case, stub_pipeline, tmp_pat
         run_cli("pipeline", *_map_run(metacool, tmp_path, "--mges", given, "-F"))
     assert _no_step(stub_pipeline) and metacool.read_bytes() == before
     assert not (out / "fasta").exists()
-    (log,) = out.glob("metator_pipeline_*.log")
+    (log,) = logs(out, "pipeline")
     assert f"ERROR :: {message}" in log.read_text()
 
 
@@ -1007,7 +1015,7 @@ def test_normalization_refused_before_any_work_from_a_map(command, stub_pipeline
         run_cli(command, metacool, "-a", _assembly(tmp_path), "-n" if command == "network" else "-m",
                 "abundance", "-o", out, "-T", tmp_path / "tmp")  # fmt: skip
     assert "create_contig_data" not in stub_pipeline
-    (log,) = out.glob(f"metator_{command}_*.log")
+    (log,) = logs(out, command)
     message = f"{DEPTH_ERROR}, as {metacool} gives no shotgun coverage (no Shotgun_coverage column with a valid value)."
     assert f"ERROR :: {message}\n" in log.read_text()
 
@@ -1054,7 +1062,7 @@ def test_run_refused_for_a_column_that_lacks_contigs(command, stub_pipeline, tmp
         run_cli(command, metacool, "-a", _assembly(tmp_path), "-n" if command == "network" else "-m",
                 "RS", "-o", out, "-T", tmp_path / "tmp")  # fmt: skip
     assert "contig_contacts" not in stub_pipeline
-    (log,) = out.glob(f"metator_{command}_*.log")
+    (log,) = logs(out, command)
     logged = log.read_text()
     assert "WARNING :: The Restriction_site column of" in logged and "contig(s) of the assembly" in logged
     message = f"{RS_ERROR}, as the Restriction_site column of {metacool} does not give every contig of the assembly its "
@@ -1082,7 +1090,7 @@ def test_pipeline_refused_for_a_column_that_lacks_contigs_keeps_the_clusters(stu
         run_cli("pipeline", metacool, "-a", _assembly(tmp_path), "-m", "RS", "-o", out, "-F",
                 "-T", tmp_path / "tmp")  # fmt: skip
     assert all(path.exists() for path in clusters)
-    (log,) = out.glob("metator_pipeline_*.log")
+    (log,) = logs(out, "pipeline")
     assert "does not give every contig of the assembly its restriction sites." in log.read_text()
 
 
@@ -1099,7 +1107,7 @@ def test_run_from_a_map_unreadable_for_its_columns(command, stub_pipeline, tmp_p
     out = tmp_path / "out"
     with pytest.raises(mtmc.MetacoolError):
         run_cli(command, metacool, "-a", _assembly(tmp_path), "-o", out, "-T", tmp_path / "tmp")
-    (log,) = out.glob(f"metator_{command}_*.log")
+    (log,) = logs(out, command)
     assert f"ERROR :: Cannot read the contact map {metacool}: gone.\n" in log.read_text()
 
 
@@ -1164,7 +1172,7 @@ def test_pipeline_metacool_written_from_a_map(where, stub_pipeline, tmp_path, mo
     expected = [] if where == "--inplace" else ["metator.metacool"]
     assert sorted(path.name for path in out.iterdir() if "metacool" in path.name) == expected
     assert not list(tmp_path.rglob("*.lock"))
-    (log,) = out.glob("metator_pipeline_*.log")
+    (log,) = logs(out, "pipeline")
     assert "is not written" not in log.read_text()
 
 
@@ -1189,7 +1197,7 @@ def test_pipeline_metacool_from_a_map_failure_keeps_it(stub_pipeline, tmp_path, 
     assert metacool.read_bytes() == before
     assert sorted(path.name for path in out.iterdir() if "metacool" in path.name) == ["metator.metacool"]
     assert len(list((tmp_path / "tmp").rglob("cluster_summary.txt"))) == 1
-    (log,) = out.glob("metator_pipeline_*.log")
+    (log,) = logs(out, "pipeline")
     logged = log.read_text()
     assert f"ERROR :: {message}" in logged
     assert "Traceback" not in logged
@@ -1220,7 +1228,7 @@ def test_pipeline_metacool_from_a_map_metacooler_failure(error, stub_pipeline, t
     assert metacool.read_bytes() == before
     # Staged by metacooler in a private directory next to the map, removed.
     assert sorted(path.name for path in out.iterdir() if "metacool" in path.name) == ["metator.metacool"]
-    (log,) = out.glob("metator_pipeline_*.log")
+    (log,) = logs(out, "pipeline")
     logged = log.read_text()
     assert "for inspection" not in logged
     kept = "It is still the input map of the run, as it was. The other outputs of the run are kept."
@@ -1300,7 +1308,7 @@ def test_pipeline_from_a_map_stores_its_rounds(stub_pipeline, tmp_path, monkeypa
         ("overlapping", "c1"),
         ("overlapping", "c2"),
     ]
-    (log,) = (tmp_path / "out").glob("metator_pipeline_*.log")
+    (log,) = logs(tmp_path / "out", "pipeline")
     assert "1 contig(s) of the clusters of the run are not in" in log.read_text()
 
 
@@ -1396,7 +1404,7 @@ def test_pipeline_from_a_map_warns_of_what_it_replaces(output, stub_pipeline, tm
     metacool = _map_of_an_earlier_run(tmp_path / "input.metacool")
     options = ["--inplace"] if output == "--inplace" else []
     run_cli("pipeline", *_map_run(metacool, tmp_path, *options))
-    (log,) = (tmp_path / "out").glob("metator_pipeline_*.log")
+    (log,) = logs(tmp_path / "out", "pipeline")
     replaced = (
         f"WARNING :: {metacool} holds 1 cluster(s) and the clustering round(s) overlapping, final, which this run "
         f"replaces, in place: leave out --inplace to write the map of this run to another file, and leave {metacool} "
@@ -1544,7 +1552,7 @@ def test_pipeline_from_a_map_refused_while_another_run_holds_it(stub_pipeline, t
             run_cli("pipeline", *_map_run(metacool, tmp_path, "--inplace"))
         assert "contig_contacts" not in stub_pipeline
         assert json.loads(lock_file(metacool).read_text()) == holder
-    (log,) = (tmp_path / "out").glob("metator_pipeline_*.log")
+    (log,) = logs(tmp_path / "out", "pipeline")
     assert f"ERROR :: {message}" in log.read_text()
 
 
@@ -1596,7 +1604,7 @@ def test_pipeline_from_a_map_whose_lock_cannot_be_created(stub_pipeline, tmp_pat
     with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
         run_cli("pipeline", *_map_run(metacool, tmp_path, "--inplace"))
     assert "contig_contacts" not in stub_pipeline
-    (log,) = (tmp_path / "out").glob("metator_pipeline_*.log")
+    (log,) = logs(tmp_path / "out", "pipeline")
     assert f"ERROR :: {message}" in log.read_text()
 
 
@@ -1988,7 +1996,7 @@ def test_a_map_replaced_as_the_run_checks_it(reader, command, options, stub_pipe
         run_cli(command, *arguments)
     assert "partition" not in stub_pipeline and "recursive_decontamination" not in stub_pipeline
     # mge writes its log in the current directory.
-    (log,) = (Path.cwd() if command == "mge" else tmp_path / "out").glob(f"metator_{command}_*.log")
+    (log,) = logs((Path.cwd() if command == "mge" else tmp_path / "out"), command)
     assert f"ERROR :: {message}" in log.read_text()
 
 
@@ -2010,7 +2018,7 @@ def test_a_map_replaced_as_validation_reads_its_partition(stub_pipeline, tmp_pat
     with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
         run_cli("validation", *_step_run("validation", metacool, tmp_path))
     assert "recursive_decontamination" not in stub_pipeline
-    (log,) = (tmp_path / "out").glob("metator_validation_*.log")
+    (log,) = logs(tmp_path / "out", "validation")
     assert f"ERROR :: {message}" in log.read_text()
 
 
@@ -2048,7 +2056,7 @@ def test_the_map_of_the_output_directory_held_by_another_run_is_refused_without_
         with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
             run_cli("pipeline", *_map_run(metacool, tmp_path))
     assert "contig_contacts" not in stub_pipeline
-    (log,) = (tmp_path / "out").glob("metator_pipeline_*.log")
+    (log,) = logs(tmp_path / "out", "pipeline")
     assert f"ERROR :: {message}\n" in log.read_text()
 
 
@@ -2067,7 +2075,7 @@ def test_pipeline_from_a_map_takes_a_stale_lock(stub_pipeline, tmp_path, monkeyp
     (staged / "input.metacool").write_text("the copy that the killed run staged")
     run_cli("pipeline", *_map_run(metacool, tmp_path, "--inplace"))
     assert not lock_file(metacool).exists() and not staged.exists()
-    (log,) = (tmp_path / "out").glob("metator_pipeline_*.log")
+    (log,) = logs(tmp_path / "out", "pipeline")
     logged = log.read_text()
     assert f"WARNING :: Took over {lock_file(metacool)}: the process that held it ({described(holder)}) is gone." in logged
     assert f"WARNING :: Removed {staged.name}, left beside {metacool} by a writer that no longer holds its lock." in logged
@@ -2119,7 +2127,7 @@ def test_network_from_a_metacool(monkeypatch, tmp_path, run_cli):
     assert entry["command"].startswith("metator network maps.mmetacool::entries/lib1 -a")
     assert entry["parameters"]["inplace"] is False
     assert mc.cluster_rounds == [] and list(mc.genomes.name) == ["__unbinned__"]
-    (log,) = out.glob("metator_network_*.log")
+    (log,) = logs(out, "network")
     assert sorted(path.name for path in out.iterdir()) == sorted([log.name, "lib1.metacool"])
     assert not list(tmp_path.glob("*.lock")) and not list(out.glob("*.lock")) and not (tmp_path / "tmp").exists()
 
@@ -2185,7 +2193,7 @@ def test_network_keeps_the_partition_of_the_map(stub_pipeline, tmp_path, run_cli
         mc = metacooler.MetaCooler(str(metacool))
         assert mc.cluster_rounds == rounds and mc.cluster_members().equals(members)
         assert mc.metadata["metator"]["partition"] == entry
-        (log,) = (tmp_path / normalization).glob("metator_network_*.log")
+        (log,) = logs(tmp_path / normalization, "network")
         assert (warning in log.read_text()) == stale
         digest = mtcli.mtn.stored_network(str(metacool)).digest
         assert (digest != entry[mtmc.NETWORK_DIGEST]) == stale
@@ -2245,7 +2253,7 @@ def test_run_input_refused(command, case, stub_pipeline, tmp_path, run_cli):
     with pytest.raises(ValueError):
         run_cli(command, *args, "-a", _assembly(tmp_path), "-o", out, "-T", tmp_path / "tmp")
     assert not stub_pipeline
-    (log,) = out.glob(f"metator_{command}_*.log")
+    (log,) = logs(out, command)
     assert f"ERROR :: {message.format(**names)}\n" in log.read_text()
 
 
@@ -2270,7 +2278,7 @@ def test_a_collection_is_no_map(command, stub_pipeline, tmp_path, run_cli):
     with pytest.raises(mtmc.MetacoolError, match=f"^Cannot read the contact map {re.escape(str(collection))}: .*entries/lib1"):
         run_cli(command, collection, "-a", _assembly(tmp_path), "-o", out, "-T", tmp_path / "tmp")
     assert not stub_pipeline
-    (log,) = out.glob(f"metator_{command}_*.log")
+    (log,) = logs(out, command)
     assert f"ERROR :: Cannot read the contact map {collection}: " in log.read_text()
 
 
@@ -2285,7 +2293,7 @@ def test_a_map_is_the_one_input(command, stub_pipeline, tmp_path, run_cli):
     with pytest.raises(mtmc.MetacoolError):
         run_cli(command, metacool, pairs, "-a", _assembly(tmp_path), "-o", out, "-T", tmp_path / "tmp")
     assert not stub_pipeline
-    (log,) = out.glob(f"metator_{command}_*.log")
+    (log,) = logs(out, command)
     assert (
         f"ERROR :: A .metacool map is the one input of a run, given alone, and this run has 2: {metacool}, {pairs}.\n"
         in log.read_text()
@@ -2456,7 +2464,7 @@ def test_the_outputs_of_an_earlier_version(command, force, stub_pipeline, tmp_pa
     assert sorted(path.relative_to(out) for path in out.rglob("*") if not path.name.endswith(".log")) == before
     assert (tmp_path / "kept.txt").read_text() == "the target of a link\n"
     assert _no_step(stub_pipeline)
-    (log,) = out.glob(f"metator_{command}_*.log")
+    (log,) = logs(out, command)
     shown = ", ".join(repr(name) for name in EARLIER_OUTPUTS[:5])
     assert (
         f"ERROR :: {out} holds results of an earlier run, which this run does not write and does not replace: "
@@ -2493,7 +2501,7 @@ def test_the_plots_of_an_earlier_run(command, force, stub_pipeline, tmp_path, ru
             run_cli(command, *args)
         assert all(os.path.lexists(plot / name) for name in ["bins_distribution.pdf", "bins_size_distribution.pdf"])
         assert _no_step(stub_pipeline) and not (out / "fasta").exists()
-        (log,) = out.glob(f"metator_{command}_*.log")
+        (log,) = logs(out, command)
         assert (
             f"ERROR :: {plot} holds the plots of an earlier run ('bins_distribution.pdf', 'bins_size_distribution.pdf'), "
             "which this run draws again: give -F to replace them, or give the run another output directory with -o."
@@ -2525,7 +2533,7 @@ def test_the_tables_of_an_earlier_run(force, stub_pipeline, tmp_path, run_cli):
             run_cli("pipeline", *_map_run(metacool, tmp_path))
         assert (tables / "binning.txt").read_text() == "an earlier run's\n"
         assert _no_step(stub_pipeline) and not (out / "fasta").exists()
-        (log,) = out.glob("metator_pipeline_*.log")
+        (log,) = logs(out, "pipeline")
         assert (
             f"ERROR :: {tables} holds the tables of an earlier run ('binning.txt'), which this run writes again: give -F "
             "to replace them, or give the run another output directory with -o."
@@ -2546,33 +2554,34 @@ def test_the_report_of_an_earlier_run(force, stub_pipeline, tmp_path, run_cli):
     A directory where a file of the report goes is refused with or without
     -F."""
     metacool = _contig_map(tmp_path / "input.metacool")
+    txt, html, mqc = mtr.report_files("input")
     out = tmp_path / "out"
     out.mkdir()
-    (out / mtr.REPORT_TXT).write_text("an earlier run's\n")
+    (out / txt).write_text("an earlier run's\n")
     (tmp_path / "kept.html").write_text("the target of a link\n")
-    (out / mtr.REPORT_HTML).symlink_to(tmp_path / "kept.html")
+    (out / html).symlink_to(tmp_path / "kept.html")
     if not force:
         with pytest.raises(ValueError):
             run_cli("pipeline", *_map_run(metacool, tmp_path))
-        assert (out / mtr.REPORT_TXT).read_text() == "an earlier run's\n" and (out / mtr.REPORT_HTML).is_symlink()
+        assert (out / txt).read_text() == "an earlier run's\n" and (out / html).is_symlink()
         assert _no_step(stub_pipeline) and not (out / "fasta").exists()
-        (log,) = out.glob("metator_pipeline_*.log")
+        (log,) = logs(out, "pipeline")
         assert (
-            f"ERROR :: {out} holds the report of an earlier run ('report.txt', 'report.html'), which this run writes "
+            f"ERROR :: {out} holds the report of an earlier run ('input.report.txt', 'input.report.html'), which this run writes "
             "again: give -F to replace it, or give the run another output directory with -o."
         ) in log.read_text()
     else:
         run_cli("pipeline", *_map_run(metacool, tmp_path, "-F"))
         # Removed, for the run to write it again (its stub export writes none).
-        assert not any(os.path.lexists(out / name) for name in mtr.REPORT_FILES) and stub_pipeline["run_export"]
+        assert not any(os.path.lexists(out / name) for name in (txt, html, mqc)) and stub_pipeline["run_export"]
     assert (tmp_path / "kept.html").read_text() == "the target of a link\n"
     # A directory where a file of the report goes, with or without -F.
-    (out / mtr.REPORT_MQC).mkdir()
+    (out / mqc).mkdir()
     with pytest.raises(ValueError):
         run_cli("pipeline", *_map_run(metacool, tmp_path, "-F"))
-    (log,) = sorted(out.glob("metator_pipeline_*.log"))[-1:]
+    (log,) = sorted(logs(out, "pipeline"))[-1:]
     assert (
-        f"ERROR :: {out / mtr.REPORT_MQC} is a directory, where the run writes its report: move it away, or give the run "
+        f"ERROR :: {out / mqc} is a directory, where the run writes its report: move it away, or give the run "
         "another output directory with -o."
     ) in log.read_text()
 
@@ -2599,7 +2608,7 @@ def test_where_the_run_draws_no_plot(command, what, stub_pipeline, tmp_path, run
         run_cli(command, *args)
     assert where.is_file() if what == "plots, a file" else where.is_dir()
     assert _no_step(stub_pipeline) and not (out / "fasta").exists()
-    (log,) = out.glob(f"metator_{command}_*.log")
+    (log,) = logs(out, command)
     assert f"ERROR :: {message}: move it away, or give the run another output directory with -o." in log.read_text()
 
 
@@ -2874,7 +2883,7 @@ def test_step_on_a_map_refused(command, case, stub_pipeline, tmp_path, run_cli):
         if case == "a lock held by another run":
             assert json.loads(lock_file(names["map"]).read_text()) == holder
     assert _no_step(stub_pipeline) and all(path.exists() for path in earlier)
-    (log,) = (tmp_path / "out").glob(f"metator_{command}_*.log")
+    (log,) = logs(tmp_path / "out", command)
     assert f"ERROR :: {message}" in log.read_text()
     # No map is written.
     if "the map of the output directory" not in case:
@@ -2893,7 +2902,7 @@ def test_step_on_a_map_refuses_an_existing_map_of_its_output_directory(command, 
     with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
         run_cli(command, *_step_run(command, metacool, tmp_path))
     assert not stub_pipeline and output_map.read_text() == "an older map"
-    (log,) = (tmp_path / "out").glob(f"metator_{command}_*.log")
+    (log,) = logs(tmp_path / "out", command)
     assert f"ERROR :: {message}" in log.read_text()
 
 
@@ -2963,7 +2972,7 @@ def test_partition_on_a_map_stores_its_partition(output, stub_pipeline, tmp_path
     # No table, no FASTA file: the partition is in the map.
     maps = [] if output == "--inplace" else ["input.metacool"]
     assert sorted(path.name for path in out.iterdir() if not path.name.endswith(".log")) == maps
-    (log,) = out.glob("metator_partition_*.log")
+    (log,) = logs(out, "partition")
     logged = log.read_text()
     assert re.search(rf"INFO :: Contact map with the partition written after 0h 0m [0-9]+s: {re.escape(str(written))}\n", logged)
     assert ("Removing" in logged) == output.startswith("-F")
@@ -3026,7 +3035,7 @@ def test_partition_on_a_map_that_cannot_be_written(error, stub_pipeline, tmp_pat
     if isinstance(error, ValueError):
         with pytest.raises(mtmc.MetacoolError, match=f"^{re.escape(message)}$"):
             run_cli("partition", *args)
-        (log,) = (tmp_path / "out").glob("metator_partition_*.log")
+        (log,) = logs(tmp_path / "out", "partition")
         assert f"ERROR :: {message}\n" in log.read_text()
     else:
         assert "Aborted" in run_cli("partition", *args, exit_code=1).output
@@ -3269,7 +3278,7 @@ def test_pipeline_refuses_earlier_bins_before_reading_the_assembly(tmp_path, mon
     shutil.copyfile(TESTS_DATA / "subset.assembly.fa", assembly)
     with pytest.raises(ValueError):
         run_cli("pipeline", _contig_map(tmp_path / "map.metacool"), "-a", assembly, "-o", out, "-T", tmp_path / "tmp")
-    (log,) = out.glob("metator_pipeline_*.log")
+    (log,) = logs(out, "pipeline")
     assert f"ERROR :: {out / MAGS_WITH_MGES} already existed." in log.read_text()
 
 
@@ -3378,6 +3387,6 @@ def test_a_step_that_cannot_read_what_the_map_stores(command, reader, stub_pipel
     monkeypatch.setattr(reader, unreadable)
     with pytest.raises(mtmc.MetacoolError, match=r"^unreadable$"):
         run_cli(command, *_step_run(command, metacool, tmp_path))
-    (log,) = (tmp_path / "out").glob(f"metator_{command}_*.log")
+    (log,) = logs(tmp_path / "out", command)
     assert "ERROR :: unreadable\n" in log.read_text()
     assert metacool.read_bytes() == before and "partition" not in stub_pipeline

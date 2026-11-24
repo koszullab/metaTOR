@@ -19,6 +19,7 @@ import metator.mge as mtm
 import metator.network as mtn
 from metator.version import __version__
 from tests.hdf5 import walk
+from tests.logs import logs
 
 # The community: two MAGs of six contigs (any names: those of another binner
 # here), a contig in none, and four MGE clusters. P1, a contig of the first
@@ -370,7 +371,7 @@ def test_host_stores_its_hosts_in_the_map(output, host_run, tmp_path, run_cli):
     pairs = pd.read_csv(out / "tables" / mth.HOSTS_FILE, sep="\t", **mtcl.EXACT_FLOATS)
     pd.testing.assert_frame_equal(pairs, PAIRS)
     assert (out / "plots" / mth.PLOT_FILE).read_bytes().startswith(b"%PDF")
-    (log,) = out.glob("metator_host_*.log")
+    (log,) = logs(out, "host")
     logged = log.read_text()
     assert "4 MGE clusters and 2 MAGs: 2 MGE clusters with one host, 1 with several, 1 with none" in logged
     ended = rf"INFO :: Contact map with the hosts of the MGE clusters written after 0h 0m [0-9]+s: {re.escape(str(written))}\n"
@@ -413,7 +414,7 @@ def test_host_refuses_a_map(case, tmp_path, run_cli, logged):
     }[case]
     assert any(level == "ERROR" and expected in message for level, message in logged())
     assert metacool.read_bytes() == before
-    assert sorted(path.name for path in (tmp_path / "out").iterdir())[0].startswith("metator_host_")
+    assert logs(tmp_path / "out", "host")[0].name.startswith(f"{metacool.stem}.metator_")
     assert [path.name for path in (tmp_path / "out").iterdir() if not path.name.endswith(".log")] == []
 
 
@@ -434,7 +435,7 @@ def test_host_refuses_an_earlier_version_s_outputs(case, force, host_run, tmp_pa
         run_cli("host", metacool, "-o", out, "--inplace", *(["-F"] if force else []))
     assert metacool.read_bytes() == before and blocking.read_text() == "an earlier run's\n"
     assert not (out / "plots").exists() and (case == "tables, a file" or not (out / "tables").exists())
-    (log,) = out.glob("metator_host_*.log")
+    (log,) = logs(out, "host")
     message = (
         f"{blocking} is not a directory, where the run writes the table of the hosts"
         if case == "tables, a file"

@@ -1,91 +1,74 @@
 # Building the network
 
-The first step of metaTOR, `metator network` (run by `metator pipeline`),
-builds the network of contigs from a `.metacool` contact map of the contigs,
-its first argument, and stores it in the map, where `metator partition` and
-`metator validation` read it. This page covers the contig data, the network
-and its normalisation.
+`metator network`, the first step of the pipeline, builds the network of
+contigs from a `.metacool` contact map and stores it in the map, where
+`metator partition` and `metator validation` read it.
 
 ## The contact map
 
-The map is made before any clustering: hicstuff makes it from the reads of a
-library (`hicstuff pipeline -M metacool`), and metacooler from pairs files
-(`metacooler create pairs`), or from the maps of several libraries, which
-`metacooler merge` sums (see
-[Other tools](../other-tools.md#from-the-reads-to-the-map)). `metator network`
-and `metator pipeline` make it too, from the pairs files or the BAM files of
-the run, their arguments, one bin per contig, several libraries summed, in
-their output directory (see [The inputs of a run](../cli.md#inputs)):
+The map comes from hicstuff (`hicstuff pipeline -M metacool`) or metacooler
+(see [Other tools](../other-tools.md#from-the-reads-to-the-map)).
+`metator network` can also make it from pairs or BAM files, in its output
+directory (see [The inputs of a run](../cli.md#inputs)):
 
 ```bash
-# binning/assembly.metacool, made from the BAM files of both mates of two libraries, with its network
+# binning/assembly.metacool, from the BAM files of two libraries, with its network
 metator network L1.bam L2.bam -a assembly.fa -e DpnII -o binning
 ```
 
-The aligner, the mapping mode and the minimum mapping quality are those of
-hicstuff (`--aligner`, `--mapping` and `--quality-min` of `hicstuff
-pipeline`), which metaTOR 1.x ran with its own options; from BAM files,
-`--min-quality` (`-q`, 30 by default) is the mapping quality that both mates
-of a read must reach for its pair to count. Cutting the reads at their ligation
-sites recovers the reads that span a junction, which neither part of aligns
-well: it is worth it with long reads (2×100 bp or more) and an enzyme that
-cuts often (`hicstuff pipeline -m cutsite`).
+With hicstuff, the alignment options are its own (`--aligner`, `--mapping`,
+`--quality-min`). With long reads (2×100 bp or more) and an enzyme that cuts
+often, `hicstuff pipeline -m cutsite` recovers the reads that span a
+ligation junction.
 
 ## Contig data and hits
 
-Before building the network, metaTOR measures every contig of the map, the
-**contig data**: its size, its GC content, its **hits** (the ends of the
-contacts of the map that lie on it: a contact within the contig counts
-twice), its number of restriction sites plus one, that is of restriction
-fragments (with `--enzyme`, the bases in upper or lower case), and its
-shotgun coverage (with `--depth`). The restriction sites and the coverage
-come from the `Restriction_site` and `Shotgun_coverage` columns of the map
-where the options give none (see
+`metator network` first measures every contig of the map, the **contig
+data**, and stores it in the contigs table of the map:
+
+| Column | What it is |
+|---|---|
+| `GC_content` | Its GC content |
+| `Hit` | Its **hits**: the ends of contacts that lie on it (a contact within the contig counts twice) |
+| `Restriction_site` | Its restriction fragments (sites + 1), with `--enzyme` |
+| `Shotgun_coverage` | Its shotgun coverage, with `--depth` |
+
+Without `--enzyme` or `--depth`, the `Restriction_site` and
+`Shotgun_coverage` columns already in the map are used (see
 [Starting from a contact map](metacool.md#starting-from-a-contact-map)).
-`metator network` stores them in the contigs table of the map: `GC_content`,
-`Hit`, and `Shotgun_coverage` and `Restriction_site` when it has them. The
-contigs of the assembly that the map lacks (a map made with a contig filter)
-have no contact: they are in no table of the run.
+Contigs of the assembly missing from the map have no contacts and appear in
+no table.
 
 ## Building the network
 
-The contacts of the map between two different contigs, summed over their
-bins, are the edge between them: every pair counts (metaTOR 2.0 removed
-`--edge`, which left out the pairs with a mate near the end of its contig).
-The contacts of a contig with itself are no edge (metaTOR 2.0 removed
-`--self-contacts`, which added them).
+The edge between two contigs is the sum of their contacts in the map. There
+is no edge from a contig to itself.
 
-The network is the map itself: its contacts, summed by pair of contigs, and
-the weights of its normalisation (below), which `metator network` stores in
-the map as the weights `metator_<normalization>` of its bins. The contacts of
-several libraries are those of their map, summed. The nodes of the network are
-the contigs of the map, by their position in it (the `ID` column of
-`contig_data_final.txt`, from 1): a run that regroups the map
-(`validation`, `pipeline`) moves them, so join a table to the network of
-another map by contig name, not by ID. `metator network` writes no table of
-it. `metator dump` writes it from the map of the clusters of a run, as
-`network.txt`; metacooler exports it from any map that holds it, by contig
-names, once the contacts within each contig, which metacooler writes too and
-are no edge, are dropped (see [The network](../formats.md#the-network)):
+`metator network` stores the network in the map: its contacts, and the
+normalisation weights (below) as the bin weights `metator_<normalization>`.
+It writes no table. Its nodes are the contigs, by their position in the map
+(the `ID` column of `contig_data_final.txt`, from 1). `validation` and
+`pipeline` reorder the map, so join tables from different maps by contig
+name, not by ID.
+
+To get the network as a table, `metator dump` writes `network.txt` from the
+map of the clusters, and metacooler exports it from any map that holds it
+(see [The network](../formats.md#the-network)):
 
 ```bash
-# From the map of the clusters of a run (metator pipeline sample.metacool -o binning):
-# network.txt, among its tables
 metator dump binning/sample.metacool -o tables
-# From any map that holds it: node1, node2, value (the raw counts without --balance)
 metacooler network binning/sample.metacool --level contig --balance metator_empirical_hit --header \
     | awk -F '\t' '$1 != $2 && $3 != 0' > network.tsv
 ```
 
 ## Normalising the network
 
-Contigs differ in size, abundance and number of restriction sites, and the
-number of contacts between two contigs grows with all three. `--normalization`
-(`-n` in `network`, `-m` in `pipeline`) divides the contacts between two
-contigs by a factor of the two, the product of one weight per contig: the map
-stores the weights, and an edge weighs its contacts times the weights of its
-two contigs, as cooler applies balancing weights. A contig whose weight is
-infinite (no hit, or no coverage) has none, and its contacts are no edge.
+The contacts between two contigs grow with their size, abundance and number
+of restriction sites. `--normalization` (`-n` in `network`, `-m` in
+`pipeline`) divides them by a factor of the two contigs: the product of one
+weight per contig, which the map stores, as cooler applies balancing
+weights. A contig with no hits (or no coverage, when the normalisation uses
+it) gets no weight, and so no edges.
 
 | `--normalization` | The contacts of contigs A and B are divided by | Needs |
 |---|---|---|
@@ -93,11 +76,9 @@ infinite (no hit, or no coverage) has none, and its contacts are no edge.
 | `None` | Nothing: the raw contacts | |
 | `length` | √(hits<sub>A</sub>/length<sub>A</sub> × hits<sub>B</sub>/length<sub>B</sub>) | |
 | `abundance` | √(coverage<sub>A</sub> × coverage<sub>B</sub>) | `--depth` |
-| `RS` | 0.01 × √(hits<sub>A</sub>/RS<sub>A</sub> × hits<sub>B</sub>/RS<sub>B</sub>), RS being the restriction fragments (sites + 1) | `--enzyme` |
+| `RS` | 0.01 × √(hits<sub>A</sub>/RS<sub>A</sub> × hits<sub>B</sub>/RS<sub>B</sub>), RS being the restriction fragments | `--enzyme` |
 | `theoritical_hit` | The geometric mean of the hits expected from coverage, length and restriction sites | `--depth`, `--enzyme` |
 
-The `Shotgun_coverage` and `Restriction_site` columns of the map stand for
-`--depth` and `--enzyme`.
-
-`empirical_hit` needs no model of the library and works best in our
-benchmarks.
+The `Shotgun_coverage` and `Restriction_site` columns of the map can stand
+for `--depth` and `--enzyme`. `empirical_hit` needs no model of the library
+and works best in our benchmarks.
