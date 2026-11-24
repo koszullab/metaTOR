@@ -442,6 +442,7 @@ def _hosts_held(metacool):
     [
         ("mge", "its round mge"),
         ("mge --random", None),
+        ("mge --reassign", "its round mge"),
         ("partition", "its clustering rounds"),
         ("validation", "its genomes"),
         ("network", None),
@@ -461,7 +462,7 @@ def test_runs_that_replace_what_the_hosts_describe_drop_them(writer, why, host_r
         mges = metacool.parent / "mges.txt"
         mges.write_text("".join(f"{contig}\n" for contigs in MGES.values() for contig in contigs))
         run_cli("mge", metacool, "-a", assembly, "-m", mges, "--inplace", "-T", metacool.parent / "tmp",
-                *(["--random"] if writer.endswith("--random") else []))  # fmt: skip
+                *writer.split()[1:])  # fmt: skip
     elif writer == "partition":
         mtmc.write_map(str(metacool), str(metacool), rounds=mtcl.Rounds().tables(), round_names=[mtcl.OVERLAPPING], force=True)
     elif writer == "validation":
@@ -534,6 +535,33 @@ def test_mge_then_host_find_each_mge_its_host(metagenome, mock_map, metagenome_i
     pairs = pd.read_csv(tmp_path / "out" / mth.HOSTS_FILE, sep="\t")
     assert (pairs.loc[pairs["host"], "share"] > 80).all()
     assert sorted(genomes.loc[genomes["n_mges"] > 0, "name"]) == sorted(clusters[mge.host] for mge in metagenome.mges)
+
+
+def test_mge_genomes_change_no_host(mock_map, metagenome_inputs, tmp_path, run_cli):
+    """metator mge --reassign makes the MGE clusters genomes of the map: metator
+    host takes them for no MAG, gives them no column of the MAGs, and finds
+    the hosts that it finds without --reassign (the contigs of an MGE cluster
+    count for it only either way)."""
+    source, mges, _ = mock_map
+    found = {}
+    for reassign in (False, True):
+        directory = tmp_path / ("reassign" if reassign else "plain")
+        directory.mkdir()
+        metacool = directory / "clusters.metacool"
+        shutil.copyfile(source, metacool)
+        run_cli("mge", metacool, "-a", metagenome_inputs["assembly"], "-m", mges, "--inplace", "-T", directory / "tmp",
+                *(["--reassign"] if reassign else []))  # fmt: skip
+        run_cli("host", metacool, "--inplace", "-o", directory / "out")
+        found[reassign] = pd.read_csv(directory / "out" / mth.HOSTS_FILE, sep="\t")
+        if reassign:
+            mc = metacooler.MetaCooler(str(metacool))
+            genomes = mc.genomes
+            mge_genomes = (genomes["mge"] == "True").to_numpy()
+            assert sorted(genomes.loc[mge_genomes, "name"]) == sorted(set(mc.cluster_members(mtcl.MGE)["cluster"]))
+            assert genomes.loc[mge_genomes, "n_mges"].isna().all()
+            assert not set(found[reassign]["mag"]) & set(genomes.loc[mge_genomes, "name"])
+    assert len(found[True]) and found[True]["host"].any()
+    pd.testing.assert_frame_equal(found[True], found[False], check_exact=False, rtol=1e-12)
 
 
 def test_host_of_the_mge_contigs_of_a_validation(mock_map, metagenome_inputs, tmp_path):

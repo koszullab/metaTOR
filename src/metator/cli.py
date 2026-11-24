@@ -1863,7 +1863,17 @@ def pipeline(
     is_flag=True,
     panel="Clustering",
     help="Make a random clustering of the same shape, to compare the MGE clusters with: stored as the round "
-    "mge_random, which leaves the round mge as it was, and written to mges_binned_random.fa.",
+    "mge_random, which leaves the round mge and the genomes of the map as they were, and written to "
+    "mges_binned_random.fa.",
+)
+@_option(
+    "--reassign",
+    is_flag=True,
+    panel="Clustering",
+    help="Make each MGE cluster a genome of the map, named after it, with its GC content, hits and clustering score: "
+    "its contigs leave the genomes that held them (the final clusters, MAGs, or none), which keep the values of their "
+    "validation. The column mge of the genomes table says which genomes are MGE genomes (True). Refused with "
+    "--random.",
 )
 @outdir_option(help="The output directory, of the map of the run and of the MGE fasta. Default: current directory.")
 @force_option(
@@ -1883,6 +1893,7 @@ def mge(
     mges,
     threshold_bin,
     random,
+    reassign,
     outdir,
     force,
     tmpdir,
@@ -1906,15 +1917,30 @@ def mge(
     length, GC content, hits and clustering score, in place of an earlier
     round mge, after the other rounds, which are kept (--random stores the
     round mge_random, and leaves the round mge as it was). Its genomes and
-    contigs tables are left as they were. The run writes the map to the
-    output directory, under the name of MAP, which it leaves as it was
-    (--inplace updates MAP in place, and so does a run in the directory of
-    MAP), and locks it while it writes it. A run that replaces the clusters
-    of the map (partition, validation, pipeline) drops the rounds of mge,
-    with a warning: run mge again then. A run that replaces the round mge
-    (not --random) drops the hosts that metator host stored in the map, with
-    a warning.
+    contigs tables are left as they were, but with --reassign: each MGE
+    cluster is a genome of the map then, named after it, with its GC content,
+    hits and clustering score, and its contigs leave the genomes that held
+    them (MAGs, or none), which keep the values of their validation; the
+    column mge of the genomes table says which genomes are MGE genomes. A run
+    that replaces the round mge undoes the MGE genomes of an earlier run
+    first: their contigs go back to their final clusters, or to none. The
+    run writes the map to the output directory, under the name of MAP, which
+    it leaves as it was (--inplace updates MAP in place, and so does a run in
+    the directory of MAP), and locks it while it writes it. A run that
+    replaces the clusters of the map (partition, validation, pipeline) drops
+    the rounds of mge, with a warning: run mge again then (validation and
+    pipeline replace the MGE genomes with their final clusters). A run that
+    replaces the round mge (not --random) drops the hosts that metator host
+    stored in the map, with a warning.
     """
+    # MGE genomes are made of the clusters of the round mge, not of a random
+    # clustering.
+    if random and reassign:
+        raise click.BadParameter(
+            "--reassign makes genomes of the MGE clusters of the round mge, and --random stores a random clustering "
+            "as the round mge_random, which leaves them as they were: give one or the other.",
+            param_hint="'--reassign'",
+        )
     # Generate log
     log_file = log_file_name("", "mge")
     outdir = outdir or "."
@@ -1949,10 +1975,17 @@ def mge(
         # The MGE clusters, stored in the map: the round mge (or mge_random),
         # in place of the round of that name that the map held, after the
         # other rounds, which are kept as they were, and so is everything
-        # else; the run is recorded with the round, and under its name in the
-        # metator metadata of the map (see metator.metacool.write_map).
+        # else but the MGE genomes (made of the round mge with --reassign,
+        # undone without); the run is recorded with the round, and under its
+        # name in the metator metadata of the map (see
+        # metator.metacool.write_map).
         write_map(
-            map, metacool_file, planned, "the map with its MGE clusters", mge=(mtcl.mge_round(summary, name), mge_entry(name))
+            map,
+            metacool_file,
+            planned,
+            "the map with its MGE clusters",
+            mge=(mtcl.mge_round(summary, name), mge_entry(name)),
+            reassign=reassign,
         )
 
     log_end(started, "Contact map with the MGE clusters written", metacool_file)

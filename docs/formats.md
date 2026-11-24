@@ -179,10 +179,27 @@ them, the map alone writes the table again, byte for byte, as
 MGE clusters that each cluster hosts and their names last (`n_mges`, `mges`:
 see [Hosts of the MGE clusters](#hosts-of-the-mge-clusters)).
 
+`metator dump` writes the genomes of the map: after
+[`metator mge --reassign`](guides/mge.md#mge-genomes), the final clusters,
+without those whose contigs all went to MGE genomes, then the MGE genomes,
+with four more columns:
+
+| Column | What it holds |
+|---|---|
+| `GC` | The GC content of an MGE genome, in percent, empty for a final cluster |
+| `Hit` | Its hits, the sum of those of its contigs |
+| `BinningScore` | Its clustering score: the lowest score at which its contigs were merged, empty for a single contig |
+| `mge` | `True` for an MGE genome, `False` for a final cluster, as in the column `mge` of the genomes table |
+
+The final clusters keep the values of their validation, which describe them
+with the MGE contigs that they lost.
+
 ### binning.txt
 
-Each contig of a final cluster and its cluster, without header: the collection
-that anvi'o imports (see [Curating MAGs with anvi'o](guides/curation.md)).
+Each contig of a genome of the map and its genome, without header: the
+collection that anvi'o imports (see
+[Curating MAGs with anvi'o](guides/curation.md)). Its genomes are the final
+clusters, and the MGE genomes after `metator mge --reassign`.
 
 ```text
 NODE_522	metator_00001_00000
@@ -303,7 +320,8 @@ each MAG in its genomes table:
 | `mges` | Their names, in the order of the round `mge`, separated by commas |
 
 `metator dump` writes them last in `cluster_summary.txt`, after the columns
-of the validation.
+of the validation (and those of the MGE genomes, after `metator mge
+--reassign`, whose `n_mges` and `mges` are empty).
 
 ## Logs
 

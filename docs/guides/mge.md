@@ -61,6 +61,7 @@ metator mge binning/sample.metacool -a assembly.fa -m mges.txt -o binning
 | `--threshold-bin` (`-s`) | 0.8 | The score above which two contigs, or clusters, are merged. A lower threshold merges more |
 | `--random` (`-r`) | off | Shuffle the contigs between the clusters, keeping the number of contigs of each: a random clustering of the same shape, to compare the real one with. Stored as the round `mge_random`, and written to `mges_binned_random.fa` |
 | `--outdir` (`-o`) | current directory | Where `mges_binned.fa` and the map of the run go: `MAP` itself, updated in place, when it is there already |
+| `--reassign` | off | Make each MGE cluster a genome of the map, its contigs out of the final clusters that held them (see [MGE genomes](#mge-genomes)). Refused with `--random` |
 | `--inplace` | off | Store the MGE clusters in `MAP` itself, in place, rather than in the map of the output directory (see [In the contact map of the run](#in-the-contact-map-of-the-run)) |
 
 A map that `mge` cannot cluster the MGE contigs of is refused before anything
@@ -114,8 +115,8 @@ lacks is missing in its rows: so a column of whole numbers, or of booleans,
 of the rounds of the clustering run, which the round `mge` lacks, is stored
 as decimals, or as text (`True`, `False`), from then on. The genomes and
 contigs tables of the map, the final MAGs if it has any, are left as they
-were, and so is the rest of the map: its contacts, contact statistics and
-metadata.
+were, but with `--reassign` (see [MGE genomes](#mge-genomes)), and so is the
+rest of the map: its contacts, contact statistics and metadata.
 
 ```python
 import metacooler
@@ -155,6 +156,63 @@ entries, with a warning that says so, as it drops every round that it does
 not make: `partition MAP`, `validation MAP` and `pipeline MAP`. Run `mge`
 again on the map that they write to store the MGE clusters there.
 
+## MGE genomes
+
+With `--reassign`, each MGE cluster of the run is a genome of the map too,
+named after it (`MetaTOR_MGE_00001`), with its values in the genomes table:
+its GC content, hits and clustering score (`GC`, `Hit`, `BinningScore`). Its
+contigs leave the genomes that held them: final clusters (MAGs), or
+`__unbinned__`. The other genomes are kept, with their other contigs and the
+values of their validation (miComplete's completeness and contamination,
+among them), which describe them with the contigs that they lose: the log
+names each final cluster that loses contigs, and how many. A final cluster
+whose contigs are all MGE contigs is no genome any more, and its values leave
+the genomes table with it, with a warning (the round `final` keeps its
+contigs and the values of miComplete). The column `mge` of the genomes table
+says which genomes are MGE genomes: `True` for them, `False` for the final
+clusters, as text, as the column `recursive` of the summary of the clusters.
+
+```bash
+metator mge binning/sample.metacool -a assembly.fa -m mges.txt -o binning --reassign
+metator dump binning/sample.metacool -o tables
+```
+
+`metator dump` follows the genomes of the map (see [`dump`](../cli.md#dump)):
+`binning.txt` lists the MAGs and the MGE genomes, each contig in its genome;
+the `Final_cluster` of an MGE contig in `contig_data_final.txt` is its MGE
+genome; `cluster_summary.txt` writes the final clusters, with the values of
+their validation, then the MGE genomes, with theirs, and the column `mge`.
+The clustering rounds keep the history: the round `final` holds the final
+clusters as the run made them, with their MGE contigs, and the round `mge`
+the MGE clusters.
+
+```python
+import metacooler
+
+mc = metacooler.MetaCooler("binning/sample.metacool")
+mc.genomes[mc.genomes["mge"] == "True"]  # the MGE genomes, with GC, Hit and BinningScore
+```
+
+A run that replaces the round `mge` (a run without `--random`) undoes the MGE
+genomes of the map first: those that the column `mge` names, and those named
+after a cluster of its round `mge`, as `metacooler reassign --round mge`
+makes them. Their contigs go back to their final cluster, or to
+`__unbinned__`. So a second run with `--reassign` replaces the MGE genomes
+with its own, rather than adding them, and a run without `--reassign` leaves
+the map with its final clusters alone; a final cluster that had lost all its
+contigs comes back without values, with a warning (run `validation` again to
+measure them). `--random` leaves the genomes as they are, and is refused with
+`--reassign`: a random clustering makes no genome. `validation MAP` and
+`pipeline MAP` make their final clusters the genomes of the map, without MGE
+genomes. An MGE cluster named after a genome that the run keeps (a genome
+renamed by hand) is refused: their contigs would make one genome.
+
+`metacooler reassign` writes the map anew from `MAP`, as for the map of the
+clusters of a validation: its contigs are grouped by genome again when they
+were (the map of a validation), its contacts and the columns of its contigs
+table are kept, and metacooler counts the contacts within and between its
+genomes again, in its contact statistics.
+
 ## The hosts
 
 `metator host` finds the MAGs that host the MGE clusters: those that their
@@ -173,7 +231,8 @@ metator host binning/sample.metacool -o binning
    genomes of the map by `metacooler reassign` (on a map that `metator
    network` stored the network in). `__unbinned__` is no MAG, and neither is
    a genome named after an MGE cluster: an MGE cluster made a genome of the
-   map (`metacooler reassign --round mge`).
+   map (see [MGE genomes](#mge-genomes), or `metacooler reassign --round
+   mge`).
 2. **The MGE contigs.** A contig of an MGE cluster counts for its MGE
    cluster only. A validation clusters the MGE contigs with the other
    contigs, and a final cluster often holds some (a plasmid with its host):

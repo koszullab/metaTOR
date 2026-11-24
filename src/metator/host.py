@@ -8,11 +8,11 @@ mge`` stores, and the MAGs are the genomes of the map, whatever made them:
 the final clusters of a metaTOR run, or the bins of another binner that
 ``metacooler reassign`` made the genomes of the map. ``__unbinned__`` is no
 MAG, and neither is a genome named after an MGE cluster (an MGE cluster made
-a genome of the map, by ``metacooler reassign --round mge``). A contig of an
-MGE cluster counts for its MGE cluster only: a MAG that holds it too (a
-validation clusters the MGE contigs with the other contigs) is taken without
-it, or the contacts of the MGE cluster within itself would count as contacts
-with that MAG.
+a genome of the map, by ``metator mge --reassign`` or ``metacooler reassign
+--round mge``). A contig of an MGE cluster counts for its MGE cluster only:
+a MAG that holds it too (a validation clusters the MGE contigs with the
+other contigs) is taken without it, or the contacts of the MGE cluster
+within itself would count as contacts with that MAG.
 
 The signal of an MGE cluster with a MAG is the sum of the weights of the
 edges of the network between their contigs: the network that ``metator

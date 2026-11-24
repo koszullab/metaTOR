@@ -537,6 +537,14 @@
       "required": false
      },
      {
+      "short": null,
+      "long": "--reassign",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
       "short": "-s",
       "long": "--threshold-bin",
       "takes_value": true,

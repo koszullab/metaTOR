@@ -430,7 +430,9 @@ store with metacooler 0.4.0 or later). It reads no cluster of the map. It
 stores its MGE clusters in the map, as the round `mge` of its clustering
 rounds, after the others, and the run in the `mge` entry of its metadata
 (`mge_random` for both with `--random`); the genomes and contigs tables are
-left as they were. A run that replaces the clusters of the map drops the
+left as they were, but with `--reassign`, which makes each MGE cluster a
+genome of the map, its contigs out of the final clusters that held them (see
+[Clustering mobile genetic elements](mge.md#mge-genomes)). A run that replaces the clusters of the map drops the
 rounds `mge` and `mge_random`, and their entries, with a warning: run `mge`
 again on its map. The map is written as `partition MAP` writes it: to the
 output directory, or in place (see

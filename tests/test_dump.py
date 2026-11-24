@@ -235,46 +235,112 @@ def _genomes(mc):
     return dict(zip(mc.contigs["name"].astype(str), names[mc.contigs["genome_id"].to_numpy()], strict=True))
 
 
-def test_dump_refuses_clusters_edited_after_the_run(copied, tmp_path):
+def _summary(path):
+    """A summary of the clusters (cluster_summary.txt), as text, indexed by the
+    names of its rows."""
+    return pd.read_csv(path, sep="\t", index_col=0, dtype=str, keep_default_na=False)
+
+
+def _binning(path):
+    """The cluster of each contig of binning.txt, by name."""
+    return dict(line.split("\t") for line in _lines(path))
+
+
+def test_dump_follows_clusters_edited_after_the_run(copied, run, tmp_path):
     """A map whose contigs were moved between clusters by hand (metacooler
-    reassign) is refused before any table is written: its summary and its
-    rounds no longer describe its genomes."""
+    reassign) is dumped as its genomes are: the moved contig in its new
+    cluster in contig_data_final.txt and binning.txt, every other column as
+    the run wrote it; the summary is the run's, the values that the genomes
+    table carried over."""
     genomes = _genomes(metacooler.MetaCooler(str(copied)))
     binned = sorted(name for name, genome in genomes.items() if genome != "__unbinned__")
-    moved = binned[0]
+    moved = next(name for name in binned if list(genomes.values()).count(genomes[name]) > 1)
     other = next(genome for genome in genomes.values() if genome not in ("__unbinned__", genomes[moved]))
     assignment = {name: genome for name, genome in genomes.items() if genome != "__unbinned__"}
     assignment[moved] = other
     metacooler.reassign(str(copied), assignment, inplace=True)
-    with pytest.raises(mtmc.MetacoolError, match=r"were edited after the run that wrote it") as refused:
-        mtd.dump(str(copied), str(tmp_path / "out"))
-    named = str(refused.value).split("no longer a genome of the map: ")[1].split(". ")[0]
-    assert sorted(named.replace("'", "").split(", ")) == sorted([genomes[moved], other])
-    assert "Run metator validation on the map again, or write the edited assignment with metacooler dump" in str(refused.value)
-    assert not (tmp_path / "out").exists()
+    mtd.dump(str(copied), str(tmp_path / "out"))
+    kept = run["kept"]
+    assert (tmp_path / "out" / "cluster_summary.txt").read_bytes() == (kept / "cluster_summary.txt").read_bytes()
+    assert _binning(tmp_path / "out" / "binning.txt") == assignment
+    dumped = _table(tmp_path / "out" / "contig_data_final.txt").set_index("Name")
+    expected = _table(kept / "contig_data_final.txt").set_index("Name")[list(dumped.columns)].loc[dumped.index]
+    expected.loc[moved, "Final_cluster"] = other
+    pd.testing.assert_frame_equal(dumped, expected)
 
 
-def test_dump_refuses_a_genome_that_is_no_final_cluster(copied, tmp_path):
+def test_dump_follows_genomes_that_are_no_final_cluster(copied, run, tmp_path):
     """A cluster made by hand from contigs in no final cluster (the isolated
-    contigs, in __unbinned__) is a genome that is no final cluster, though
-    every final cluster is still a genome: it is named."""
+    contigs, in __unbinned__) is a genome that is no final cluster: the tables
+    put its contigs in it, and the summary writes it after the final clusters,
+    without values (the genomes table has none for it). A final cluster whose
+    contigs all leave it is no genome, nor a row of the summary; a map without
+    genomes writes the header of the summary alone, and an empty binning.txt."""
     genomes = _genomes(metacooler.MetaCooler(str(copied)))
     assignment = {name: genome for name, genome in genomes.items() if genome != "__unbinned__"}
-    metacooler.reassign(str(copied), {**assignment, **dict.fromkeys(ISOLATED, "my_bin")}, inplace=True)
-    with pytest.raises(
-        mtmc.MetacoolError, match=r"edited after the run that wrote it .*: genome\(s\) that are no final cluster: 'my_bin'\. "
-    ):
-        mtd.dump(str(copied), str(tmp_path / "out"))
-    taken = sorted(assignment)[0]
-    metacooler.reassign(str(copied), {**assignment, taken: "my_bin"}, inplace=True)
-    with pytest.raises(
-        mtmc.MetacoolError,
-        match=rf"no longer a genome of the map: '{assignment[taken]}'; and genome\(s\) that are no final cluster: 'my_bin'",
-    ):
-        mtd.dump(str(copied), str(tmp_path / "out"))
+    made = {**assignment, **dict.fromkeys(ISOLATED, "my_bin")}
+    metacooler.reassign(str(copied), made, inplace=True)
+    mtd.dump(str(copied), str(tmp_path / "out"))
+    kept = _lines(run["kept"] / "cluster_summary.txt")
+    empty = "my_bin" + "\t" * (len(kept[0].split("\t")) - 1)
+    assert _lines(tmp_path / "out" / "cluster_summary.txt") == [*kept, empty]
+    assert _binning(tmp_path / "out" / "binning.txt") == made
+    gone = assignment[sorted(assignment)[0]]
+    metacooler.reassign(str(copied), {name: "my_bin" for name, genome in assignment.items() if genome == gone}, inplace=True)
+    mtd.dump(str(copied), str(tmp_path / "out"), force=True)
+    left = [line for line in kept if not line.startswith(f"{gone}\t")]
+    assert _lines(tmp_path / "out" / "cluster_summary.txt") == [*left, empty]
     metacooler.reassign(str(copied), {name: "ND" for name in genomes}, inplace=True)
-    with pytest.raises(mtmc.MetacoolError, match=r"final cluster\(s\) whose contigs are no longer a genome of the map"):
-        mtd.dump(str(copied), str(tmp_path / "out"))
+    mtd.dump(str(copied), str(tmp_path / "out"), force=True)
+    assert _lines(tmp_path / "out" / "cluster_summary.txt") == kept[:1]
+    assert _lines(tmp_path / "out" / "binning.txt") == []
+
+
+def test_dump_follows_the_mge_genomes(copied, run, metagenome, tmp_path, run_cli):
+    """After metator mge --reassign, the tables follow the genomes of the map:
+    each MGE contig in its MGE genome, in contig_data_final.txt (every other
+    column as the run wrote it) and in binning.txt, which lists the final
+    clusters and the MGE genomes; the summary writes the final clusters, with
+    the values of the validation, then the MGE genomes, with theirs (GC, Hit,
+    BinningScore), and the column mge; the clustering rounds keep the history:
+    the final clusters of the run, and the MGE clusters."""
+    truth = metagenome.truth
+    mges = tmp_path / "mges.txt"
+    mge_contigs = list(truth.Name[truth.Kind == "mge"])
+    mges.write_text("".join(f"{name}\n" for name in mge_contigs))
+    held = _genomes(metacooler.MetaCooler(str(copied)))
+    assert {held[name] for name in mge_contigs} - {"__unbinned__"}, "no MGE contig is in a final cluster"
+    run_cli("mge", copied, "-a", run["assembly"], "-m", mges, "-o", tmp_path / "mge", "-T", tmp_path / "tmp", "--inplace",
+            "--reassign")  # fmt: skip
+    run_cli("dump", copied, "-o", tmp_path / "dump")
+    mc = metacooler.MetaCooler(str(copied))
+    members = mc.cluster_members("mge")
+    in_mge = dict(zip(members.contig.astype(str), members.cluster.astype(str), strict=True))
+    expected = {name: in_mge.get(name, genome) for name, genome in held.items()}
+    binned = {name: genome for name, genome in expected.items() if genome != "__unbinned__"}
+    assert _binning(tmp_path / "dump" / "binning.txt") == binned
+    kept = run["kept"]
+    dumped = _table(tmp_path / "dump" / "contig_data_final.txt").set_index("Name")
+    data = _table(kept / "contig_data_final.txt").set_index("Name")[list(dumped.columns)].loc[dumped.index]
+    data["Final_cluster"] = ["ND" if expected[name] == "__unbinned__" else expected[name] for name in dumped.index]
+    pd.testing.assert_frame_equal(dumped, data)
+    summary, written = _summary(tmp_path / "dump" / "cluster_summary.txt"), _summary(kept / "cluster_summary.txt")
+    clusters = mc.clusters
+    round_mge = clusters[(clusters["round"] == "mge").to_numpy()].set_index("name")
+    mags = [name for name in written.index if name in set(expected.values())]
+    assert list(summary.index) == [*mags, *sorted(round_mge.index)]
+    assert list(summary.columns) == [*written.columns, "GC", "Hit", "BinningScore", "mge"]
+    pd.testing.assert_frame_equal(summary.loc[mags, list(written.columns)], written.loc[mags])
+    assert (summary.loc[mags, ["GC", "Hit", "BinningScore"]] == "").all().all() and (summary.loc[mags, "mge"] == "False").all()
+    genomes = summary.loc[sorted(round_mge.index)]
+    assert (genomes[list(written.columns)] == "").all().all() and (genomes["mge"] == "True").all()
+    for column, format in {"GC": "%.2f", "Hit": "%d", "BinningScore": "%.4f"}.items():
+        values = round_mge.loc[genomes.index, column]
+        assert list(genomes[column]) == ["" if pd.isna(value) else format % value for value in values], column
+    dumped_members = _lines(tmp_path / "dump" / "cluster_members.txt")
+    assert sorted(line for line in dumped_members if not line.startswith("mge\t")) == sorted(_lines(kept / "cluster_members.txt"))
+    assert {line.split("\t")[0] for line in _lines(tmp_path / "dump" / "clusters.txt")[1:]} == {
+        "core", "overlapping", "recursive_1", "recursive_2", "final", "mge"}  # fmt: skip
 
 
 def test_dump_refuses_the_tables_of_an_earlier_dump(run, tmp_path, run_cli):
@@ -406,10 +472,6 @@ def _unknown_format(validation):
     validation["summary_formats"]["step"] = "%5.1f"
 
 
-def _unknown_row(validation):
-    validation["summary_rows"].append("metator_99999_00000")
-
-
 @pytest.mark.parametrize(
     "edit, message",
     [
@@ -421,7 +483,6 @@ def _unknown_row(validation):
         (_rows_as_text, "summary_rows, which must be the names of the clusters"),
         (_columns_as_text, "summary_columns, which must be the names of the columns"),
         (_unknown_format, "summary_formats, which must give each column one of the formats %.2f, %.4f, %d, %s"),
-        (_unknown_row, r"lacks the cluster\(s\) 'metator_99999_00000' of the summary of its clusters \(summary_rows\)"),
     ],
 )
 def test_dump_refuses_a_summary_that_the_validation_did_not_record(copied, tmp_path, edit, message):
