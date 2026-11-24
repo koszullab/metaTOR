@@ -93,11 +93,13 @@ def _micomplete(fastas, directory):
     return tables
 
 
-def marker_map(directory):
+def marker_map(directory, contig_ordering="genome-then-length"):
     """A map of the contigs of tests_data/micomplete (one bin per contig), with its
     assembly: the genomes of MAP_GENOMES, each of the contigs of its bin;
     binC, the contigs SMALL (under 20 kb); and the contigs UNBINNED in no
-    genome. Returns the map and the assembly."""
+    genome. The contigs of a genome come longest first, as in a map that
+    metaTOR writes; with contig_ordering fasta, in the order of the FASTA file
+    of their bin. Returns the map and the assembly."""
     genome_of, records = {}, []
     for genome, name in MAP_GENOMES.items():
         for record in _records(name):
@@ -112,13 +114,24 @@ def marker_map(directory):
     assembly = _write(records[::-1], directory / "assembly.fa")
     names = [record.id for record in records]
     pairs = directory / "contigs.pairs"
+    # The order of the contigs, in the header, for contig_ordering fasta.
+    sizes = "".join(f"#chromsize: {record.id} {len(record)}\n" for record in records) if contig_ordering == "fasta" else ""
     pairs.write_text(
         "## pairs format v1.0\n"
+        + sizes
         + "".join(f"r{i}\t{first}\t10\t{second}\t20\t+\t-\n" for i, (first, second) in enumerate(itertools.pairwise(names)))
     )
     path = directory / "contigs.metacool"
     bins = pd.DataFrame({"chrom": names, "start": 0, "end": [len(record) for record in records]})
-    metacooler.from_pairs(str(path), pairs=str(pairs), bins=bins, contig_genome_map=genome_of, ps=False, keep_partial=False)
+    metacooler.from_pairs(
+        str(path),
+        pairs=str(pairs),
+        bins=bins,
+        contig_genome_map=genome_of,
+        contig_ordering=contig_ordering,
+        ps=False,
+        keep_partial=False,
+    )
     pairs.unlink()
     return path, assembly
 
@@ -461,6 +474,91 @@ def test_markers_stores_the_markers_of_the_contigs(output, marker_run, oracle, t
     assert "Contact map with the marker genes of its contigs written after" in logged
     assert not list(tmp_path.glob("*.lock")) and not list(out.glob("*.lock"))
     assert not (tmp_path / "tmp").exists()
+
+
+def _map_contigs(marker_run):
+    """The map of the tests, opened, the genome of each of its contigs (by name,
+    in the order of the map) and their sequences, from its assembly."""
+    metacool, assembly, _ = marker_run
+    mc = metacooler.MetaCooler(str(metacool))
+    names, genomes = mtmc.map_assignment(mc)
+    return mc, dict(zip(names, genomes, strict=True)), mtmk.read_contigs(str(metacool), mc, str(assembly))
+
+
+@pytest.mark.parametrize("threads", [1, 3])
+def test_a_genome_is_trained_on_in_the_order_of_the_map(threads, tmp_path, monkeypatch):
+    """pyrodigal is trained on the contigs of each genome in the order of the
+    map, the order of the FASTA file of the genome that metaTOR writes, not in
+    that of the assembly (here the reverse), nor of their names, nor of their
+    lengths (on a map whose contigs come in the order of the FASTA files of
+    their bins): find_proteins gets them so, a genome at a time, in single
+    genome mode; and the contigs in metagenome mode (of binC, under 20 kb, and
+    of no genome) in the order of the map too."""
+    metacool, assembly = marker_map(tmp_path, contig_ordering="fasta")
+    mc, genome_of, sequences = _map_contigs((metacool, assembly, None))
+    received = []
+    find_proteins = mtmk.find_proteins
+
+    def recorded(contigs, meta=False):
+        received.append(([name for name, _ in contigs], meta))
+        return find_proteins(contigs, meta=meta)
+
+    monkeypatch.setattr(mtmk, "find_proteins", recorded)
+    mtmk.contig_markers(str(metacool), mc, sequences, threads=threads)
+    in_map = {genome: [name for name, of in genome_of.items() if of == genome] for genome in ("binA", "binB", "binC")}
+    trained = [contigs for contigs, meta in received if not meta]
+    assert sorted(trained) == sorted(in_map.values())
+    # The order of the map is none of the others: the test tells them apart.
+    in_assembly = [record.id for record in SeqIO.parse(assembly, "fasta")]
+    for contigs in (in_map["binA"], in_map["binB"]):
+        assert contigs != [name for name in in_assembly if name in contigs] and contigs != sorted(contigs)
+        assert contigs != sorted(contigs, key=lambda name: -len(sequences[name]))
+    # In metagenome mode, groups of contigs in the order of the map, searched
+    # side by side.
+    position = {name: index for index, name in enumerate(genome_of)}
+    parts = [contigs for contigs, meta in received if meta]
+    assert all(part == sorted(part, key=position.__getitem__) for part in parts)
+    meta = sorted((name for part in parts for name in part), key=position.__getitem__)
+    assert meta == [name for name, genome in genome_of.items() if genome in ("binC", mtmc.UNBINNED_GENOME)]
+
+
+def test_a_genome_is_searched_over_its_own_proteins(marker_run, monkeypatch):
+    """The E-values of the hits of a genome trained on in single mode are counted
+    over its own proteins, as miComplete counts those of a bin over its
+    proteins: search_table gets the proteins of the genome, as find_proteins
+    finds them, and no z, which hmmsearch takes as the number of proteins
+    searched (the table is that of z, their number); the E-values of the
+    contigs in metagenome mode are counted over metagenome_z, the median
+    number of proteins of the genomes trained on."""
+    mc, genome_of, sequences = _map_contigs(marker_run)
+    searched = []
+    search_table = mtmk.search_table
+
+    def recorded(proteins, markers, evalue=mtmk.EVALUE, z=None):
+        searched.append((proteins.fasta, z))
+        return search_table(proteins, markers, evalue, z)
+
+    monkeypatch.setattr(mtmk, "search_table", recorded)
+    found = mtmk.contig_markers(str(marker_run[0]), mc, sequences, threads=1)
+    own = {
+        genome: mtmk.find_proteins([(name, sequences[name]) for name, of in genome_of.items() if of == genome])
+        for genome in ("binA", "binB")
+    }
+    # Each set searched in each genome, over its own proteins, and no z.
+    single = sorted(fasta for fasta, z in searched if z is None)
+    assert single == sorted(proteins.fasta for proteins in own.values() for _ in mtmk.MARKER_SETS)
+    assert found.trained == {genome: len(proteins) for genome, proteins in own.items()}
+    # No z: the E-values counted over the proteins searched, those of the genome.
+    for proteins in own.values():
+        for name in mtmk.MARKER_SETS:
+            table = search_table(proteins, mtmk.marker_set(name))
+            assert table == search_table(proteins, mtmk.marker_set(name), z=len(proteins))
+    assert search_table(own["binA"], mtmk.marker_set("Bact105"), z=10 * len(own["binA"])) != search_table(
+        own["binA"], mtmk.marker_set("Bact105")
+    )
+    # Metagenome mode: over the median number of proteins of the genomes trained on.
+    meta = [z for fasta, z in searched if z is not None]
+    assert meta and set(meta) == {found.z} and found.z == (len(own["binA"]) + len(own["binB"])) / 2
 
 
 def test_markers_in_threads_or_not(marker_run, tmp_path):
