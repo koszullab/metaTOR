@@ -1,10 +1,10 @@
 # Partition and validation
 
-The second and third steps of metaTOR turn the network into clusters:
-`metator partition` finds groups of contigs in the network that
-`metator network` stored in the map, and `metator validation` checks them with
-miComplete and splits the contaminated ones. `metator pipeline` runs both. [Concepts](../concepts.md) explains the
-principle; this page covers the parameters and the outputs.
+The second and third steps of metaTOR turn the network into clusters.
+`metator partition` finds groups of contigs in the network stored in the map,
+and `metator validation` checks them with miComplete and splits the
+contaminated ones. `metator pipeline` runs both. [Concepts](../concepts.md)
+explains the principle; this page covers the parameters and the outputs.
 
 ![The steps and parameters of metaTOR's clustering](../images/metator_figures_param.png)
 
@@ -17,16 +17,15 @@ metator partition binning/sample.metacool -t 16 -o binning
 
 | Option | Default | Effect |
 |---|---|---|
-| `--algorithm` (`-A`) | `louvain` | The community detection algorithm: `louvain` or `leiden`. Louvain is faster, and gave better clusters in our benchmarks on gut and seawater samples |
-| `--iterations` (`-i`) | 100 | How many times the network is partitioned. More iterations split the contigs into more, smaller core clusters; 100 is enough to find every cluster in our benchmarks |
-| `--overlap` (`-O`) | 80 | Two core clusters are merged into one overlapping cluster when they fall in the same community in at least this percentage of the iterations. A higher threshold gives less contaminated, but less complete, clusters |
-| `--res-param` (`-r`) | 1.0 | The resolution of the modularity that the Leiden algorithm optimises (1 is plain modularity, as in Louvain): the higher, the more, smaller communities |
+| `--algorithm` (`-A`) | `louvain` | `louvain` or `leiden`. Louvain is faster, and gave better clusters in our benchmarks on gut and seawater samples |
+| `--iterations` (`-i`) | 100 | How many times the network is partitioned. More iterations give more, smaller core clusters; 100 found every cluster in our benchmarks |
+| `--overlap` (`-O`) | 80 | Two core clusters merge into one overlapping cluster when they fall together in at least this percentage of the iterations. Higher gives less contaminated but less complete clusters |
+| `--res-param` (`-r`) | 1.0 | The resolution of Leiden (1 is plain modularity, as in Louvain): higher gives more, smaller communities |
 | `--prefix` (`-p`) | none | Names the overlapping clusters `<prefix>_metator_…` |
 
-`partition` stores every core cluster (`core_00001`…) and every overlapping
-cluster (`metator_00001_00000`…) in the map, with their contigs, as the rounds
-`core` and `overlapping` of its clustering rounds: it writes no table and no
-FASTA file. The validation reads them there.
+`partition` stores the core clusters (`core_00001`…) and the overlapping
+clusters (`metator_00001_00000`…) in the map, as the rounds `core` and
+`overlapping`. It writes no table and no FASTA file.
 
 ## Validation
 
@@ -34,96 +33,76 @@ FASTA file. The validation reads them there.
 metator validation binning/sample.metacool -a assembly.fa -t 16 -o binning
 ```
 
-The clusters to validate are the overlapping clusters of the partition of the
-map of at least `--size` base pairs (500 kb by default): the validation writes
-them from the assembly as FASTA files, one each, in its temporary directory
-(`-N` keeps them), with the contig data table of the partition. Give the
-temporary directory room for them, at most the size of the assembly, and,
-from a gzip-compressed assembly, for its decompressed copy, which metacooler
-writes there while it writes them. When no cluster reaches `--size`, there
-is nothing to validate: the run stops there with an error.
+The validation checks the overlapping clusters of at least `--size` bp
+(500 kb). It writes them as FASTA files in its temporary directory: give it
+room for up to the size of the assembly, plus the decompressed copy of a
+gzipped assembly. If no cluster reaches `--size`, the run stops with an
+error. If the network was rebuilt since the partition, run `partition` again
+first.
 
-The partition is that of the network stored in the map: a validation refuses
-one made on another network (`metator network MAP` run again since, which
-warns of it), and `metator partition MAP` partitions the network again.
+[miComplete](https://pypi.org/project/micomplete/) checks each cluster: it
+predicts genes with Prodigal and finds the single-copy marker genes of
+bacteria (105) and archaea (131) with HMMER (through pyrodigal and pyhmmer).
+Each cluster keeps the marker set that gives it the higher weighted
+completeness.
 
-Validation runs [miComplete](https://pypi.org/project/micomplete/) on every
-cluster: Prodigal predicts its genes, and HMMER finds among them the
-single-copy marker genes of bacteria (105 markers) and of archaea
-(131 markers), through pyrodigal and pyhmmer, their Python bindings. Each
-cluster keeps the set that gives it the higher weighted completeness.
-
-A cluster is **contaminated** when its weighted completeness reaches 33% and its
-contamination, (weighted redundancy − 1) / weighted completeness, reaches 5%.
-Each contaminated cluster is partitioned again, on the network of its own
-contigs:
+A cluster is **contaminated** when its weighted completeness is at least 33%
+and its contamination, (weighted redundancy − 1) / weighted completeness, is
+at least 5%. Each contaminated cluster is partitioned again, on the network
+of its own contigs:
 
 | Option | Default | Effect |
 |---|---|---|
 | `--iterations` (`-i`) of `validation`, `--rec-iter` (`-j`) of `pipeline` | 10 | How many times each contaminated cluster is partitioned |
 | `--overlap` (`-O`) of `validation`, `--rec-overlap` (`-P`) of `pipeline` | 90 | The overlap threshold of the recursive partition |
 | `--algorithm`, `--res-param`, `--prefix` | | As in the partition |
-| `--size` (`-s`) | 500000 | The size, in base pairs, an overlapping cluster must reach to be checked, and a recursive cluster must exceed |
+| `--size` (`-s`) | 500000 | The size, in bp, an overlapping cluster must reach to be checked, and a recursive cluster must exceed |
 
-The parts of a cluster, its **recursive clusters**, are checked with
-miComplete in turn. They replace the cluster when the most complete of them
-keeps enough of its completeness: more than 0.4 + (c − 0.4) / 1.6, for a
-cluster of completeness c. Otherwise the cluster is kept whole. The step
-repeats on the recursive clusters that are still contaminated, until none is
-replaced, for 9 steps at most.
-
-A part is a recursive cluster only when it is larger than `--size`: when a
-cluster is replaced by its recursive clusters, the contigs of its smaller
-parts are left out of the final clusters (`ND`).
+The parts larger than `--size`, the **recursive clusters**, are checked in
+turn. They replace the cluster when the most complete of them keeps enough
+of its completeness: more than 0.4 + (c − 0.4) / 1.6 for a cluster of
+completeness c. Otherwise the cluster is kept whole. This repeats on the
+recursive clusters that are still contaminated, for at most 9 steps. When a
+cluster is replaced, the contigs of its smaller parts are left out of the
+final clusters (`ND`).
 
 ## Outputs
 
-`validation` and `pipeline` write the FASTA files of the final clusters and
-their plots in the output directory, and store the clusters in the map of
-the clusters, which they write there too (see
-[The contact map of the clusters](metacool.md)). The other files
-below are written in the temporary directory of the run (`-T`, in a
-directory of its own, which the log names), which `-N` keeps; `metator dump`
-writes the tables from the map (see [`dump`](../cli.md#dump)). An earlier
-version wrote them in the output directory: a run refuses them there, with or
-without `-F`, and never removes them.
+`validation` and `pipeline` write into the output directory:
 
-| File | What it holds |
-|---|---|
-| `fasta/mags_with-mges/` | One FASTA file per final cluster, in the output directory: its contigs, the MGE contigs that it holds included |
-| `plots/` | The plots of the final clusters, as PDF files, in the output directory (see [Viewing the clusters](#viewing-the-clusters)) |
-| `recursive_clusters/` | One FASTA file per recursive cluster, in `step_<n>/` for step `n` |
-| `cluster_summary.txt` | One row per final cluster, with miComplete's measures and the cluster's abundance |
-| `contig_data_final.txt` | The contig data table, with the recursive and final cluster of each contig |
-| `binning.txt` | The contigs of the final clusters and their cluster, without header |
-| `overlapping_micomplete_results.txt` | miComplete's results on the overlapping clusters |
-| `recursive_micomplete_step_<n>.txt` | miComplete's results on the recursive clusters of step `n` |
+- `fasta/mags_with-mges/`: one FASTA file per final cluster, MGE contigs
+  included;
+- `plots/`: the plots of the final clusters (see
+  [Viewing the clusters](#viewing-the-clusters));
+- the map of the clusters (see [The contact map of the clusters](metacool.md)),
+  and the log, `sample.metator_<date>.log`.
 
-A final cluster is named after its overlapping cluster and its recursive
-cluster: `metator_00012_00003` is recursive cluster 3 of overlapping
-cluster 12, and `metator_00001_00000` an overlapping cluster kept whole.
-`cluster_summary.txt` and `contig_data_final.txt` are described in
-[File formats](../formats.md).
+Their other files go to the temporary directory of the run (`-T`), deleted
+at the end unless `-N`: `recursive_clusters/` (FASTA files, in `step_<n>/`),
+`cluster_summary.txt`, `contig_data_final.txt`, `binning.txt`, and
+miComplete's results (`overlapping_micomplete_results.txt`,
+`recursive_micomplete_step_<n>.txt`). [`metator dump`](../cli.md#dump)
+writes the tables from the map at any time; [File formats](../formats.md)
+describes them.
+
+A final cluster is named after its overlapping and recursive clusters:
+`metator_00012_00003` is recursive cluster 3 of overlapping cluster 12, and
+`metator_00001_00000` an overlapping cluster kept whole.
 
 ### Viewing the clusters
 
-The log of the validation counts the final clusters in each quality class
-(HQ, MQ and LQ MAGs, contaminated clusters and the others: see
+The log counts the final clusters in each quality class (HQ, MQ and LQ MAGs,
+contaminated clusters and others: see
 [Cluster quality](../concepts.md#cluster-quality)), and the run draws two
-plots of them in `plots/`, in the output directory, as PDF files:
+plots in `plots/`:
 
 | Plot | Shows |
 |---|---|
-| `bins_distribution.pdf` | The completeness (red) and the contamination (black) of each final cluster, in percent, the clusters by decreasing completeness, with dashed lines at the thresholds of the quality classes. The contamination, the weighted redundancy − 1, is drawn from 0 to 105%: a cluster in which miComplete finds no marker gene at 0, and a contamination of more than 105% at 105% |
-| `bins_size_distribution.pdf` | The share of the contigs of the run in each quality class, and in no cluster: the number and the size of the clusters of each class, the total size of the contigs (those of the map: the whole assembly, for a map of all its contigs) and the share of the MAGs (HQ, MQ and LQ) in it |
+| `bins_distribution.pdf` | The completeness (red) and contamination (black) of each final cluster, by decreasing completeness, with dashed lines at the class thresholds. Contamination is capped at 105% |
+| `bins_size_distribution.pdf` | The share of the contigs of the run in each quality class and in no cluster, with the number and size of the clusters of each class |
 
-The plots count the clusters as the log does, from miComplete's numbers,
-which `cluster_summary.txt` gives at two decimals. A plot that cannot be
-drawn is a warning: the run goes on, and writes the map of its clusters. A
-run replaces the plots of an earlier one with `-F` only, and leaves the
-other files of `plots/` as they are.
-`metacooler show` draws the contacts between the final clusters from the
-contact map of the run (see [Other tools](../other-tools.md)):
+`metacooler show` draws the contacts between the final clusters (see
+[Other tools](../other-tools.md)):
 
 ```bash
 metacooler show binning/sample.metacool -o clusters.png
@@ -131,8 +110,8 @@ metacooler show binning/sample.metacool -o clusters.png
 
 ## What comes next
 
-- [Curating MAGs with anvi'o](curation.md): remove what contamination is left,
-  by hand.
+- [Curating MAGs with anvi'o](curation.md): remove the contamination that is
+  left, by hand.
 - [Other tools](../other-tools.md): the contact map of a cluster, and its
   scaffold, with metacooler, hicstuff and instaGRAAL.
 - [Clustering mobile genetic elements](mge.md): the plasmids and phages, and
