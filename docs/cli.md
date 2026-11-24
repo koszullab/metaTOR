@@ -16,8 +16,8 @@ metator --version
 | Several libraries | One map, which sums them: give the pairs files or the BAM files of every library to `network` or `pipeline`, which sum them in the map that they make (see [The inputs of a run](#inputs)); or make the map of each library, then merge them with `metacooler merge` (see [Other tools](other-tools.md)). |
 | Several enzymes | Separated by commas: `DpnII,HinfI`. |
 | The map of a run | A run writes its map to its output directory (`-o`), under the name of `MAP` (`NAME.metacool` for an entry of a collection), and leaves `MAP` as it was: metacooler copies `MAP` next to that map, the run writes what it stores into the copy, and metacooler renames it into place once it is validated. `--inplace` updates `MAP` itself instead, and so does a run whose output directory holds `MAP` already: the steps of a run, one by one, in one output directory (`network MAP -o DIR`, then `partition DIR/MAP -o DIR`...). |
-| Outputs | Beside its map and its log, a run writes its files in folders of its output directory: `fasta/mags_with-mges/`, the FASTA file of each final cluster, as the validation made it, with the MGE contigs that it holds (`validation`, `pipeline`); `fasta/mags/`, each MAG, a genome of the map but the MGE genomes, as its contigs (`<MAG>.fa`) and stitched (`<MAG>.stitched.fa`: one record, its contigs joined by 200 `N`) (`pipeline`); `fasta/mges/`, each MGE cluster, the same two ways (`mge`, `pipeline --mges`; `fasta/mges_random/` for `mge --random`); `cool/`, a cool file per MAG, with the MGE clusters that it hosts, balanced (`pipeline`); `tables/`, the tables of `dump` (`pipeline`) and `mge_hosts.txt` (`host`, `pipeline --mges`); `plots/`, the plots, as PDF files (`validation`, `host`, `pipeline`). [`export`](#export) writes them all again from the map of a run. |
-| `-F, --force` | Replace what the command writes itself, when an earlier run left it: the map of the output directory, the folders that it makes anew (`fasta/mags_with-mges/`, `fasta/mags/`, `fasta/mges/`, `cool/`), the plots of the clusters (in `plots/`, whose other files are left as they are), the tables of a dump. Without it, a command refuses to overwrite them. The other results of an earlier run in the output directory (the tables, `final_clusters/`, `plot/`, `mges_binned.fa` and `mge_hosts.txt` of a development build of 2.0, the outputs of 1.x, an earlier summary of `mge`) are refused, with or without it, and never removed. A run that updates its map in place warns, before any work, of the clusters and clustering rounds that it replaces there. |
+| Outputs | Beside its map and its log, a run writes its files in folders of its output directory: `fasta/mags_with-mges/`, the FASTA file of each final cluster, as the validation made it, with the MGE contigs that it holds (`validation`, `pipeline`); `fasta/mags/`, each MAG, a genome of the map but the MGE genomes, as its contigs (`<MAG>.fa`) and stitched (`<MAG>.stitched.fa`: one record, its contigs joined by 200 `N`) (`pipeline`); `fasta/mges/`, each MGE cluster, the same two ways (`mge`, `pipeline --mges`; `fasta/mges_random/` for `mge --random`); `cool/`, a cool file per MAG, with the MGE clusters that it hosts, balanced (`pipeline`); `tables/`, the tables of `dump` (`pipeline`) and `mge_hosts.txt` (`host`, `pipeline --mges`); `plots/`, the plots, as PDF files (`validation`, `host`, `pipeline`); and the report of the run, `report.txt`, `report.html` and `report_mqc.yaml` (`pipeline`). [`export`](#export) writes them all again from the map of a run, and [`report`](#report) the report alone. |
+| `-F, --force` | Replace what the command writes itself, when an earlier run left it: the map of the output directory, the folders that it makes anew (`fasta/mags_with-mges/`, `fasta/mags/`, `fasta/mges/`, `cool/`), the plots of the clusters (in `plots/`, whose other files are left as they are), the tables of a dump, the report of a run. Without it, a command refuses to overwrite them. The other results of an earlier run in the output directory (the tables, `final_clusters/`, `plot/`, `mges_binned.fa` and `mge_hosts.txt` of a development build of 2.0, the outputs of 1.x, an earlier summary of `mge`) are refused, with or without it, and never removed. A run that updates its map in place warns, before any work, of the clusters and clustering rounds that it replaces there. |
 | Writing a map | Through metacooler: a run holds the lock of the map it writes, `<map>.lock` (that of the output directory, or `MAP` in place), from its checks to its end, and writes the map in an edit session, one staged copy next to it (`.<map>.<uuid>.<n>.d/`), validated, then renamed onto it, so a run that stops leaves the map as it was. `MAP` updated in place through a symbolic link is updated where the link points; a symbolic link in the output directory, where the map of the run goes, is replaced (`-F`), not its target, and a hard link of `MAP` there is refused. A map that another process holds, a map updated in place without write permission, or one whose directory is not writable (with room for a copy of the map and for the new map), is refused before any work. A run killed by SIGTERM (a job scheduler's time limit) or SIGKILL leaves its lock and its staged copy, which the next run that writes the map on the same host takes over and removes; on another host, delete the files that the error names. |
 | `-T, --tmpdir` | Each run works in a directory of its own inside it, removed at the end, unless `--no-clean-up` or the run fails: the log says which. |
 | `-N, --no-clean-up` | Keep the temporary directory of the run: that of a `validation` or `pipeline` run holds its tables. |
@@ -143,8 +143,10 @@ clusters that it hosts, extracted from the map by `metacooler extract` and
 balanced as `cooler balance` balances it, the whole of it at once, with its
 defaults (a cool file whose every bin is masked, too small for
 `cooler balance`, is a warning); `tables/`, the tables of [`dump`](#dump),
-and `mge_hosts.txt` with `--mges`; and `plots/`. So a run gives the outputs
-that its steps one by one give, `export` last.
+and `mge_hosts.txt` with `--mges`; `plots/`; and, last, the report of the run,
+`report.txt`, `report.html` and `report_mqc.yaml`, as [`report`](#report)
+writes it. So a run gives the outputs that its steps one by one give,
+`export` last.
 
 | Option | Default | Description |
 |---|---|---|
@@ -166,9 +168,9 @@ that its steps one by one give, `export` last.
 | `--mge-threshold-bin` | `0.8` | The step `mge`: the score above which two MGE contigs, or two MGE clusters, are merged, as `--threshold-bin` of `mge`. |
 | `--mge-min-share` | `10` | The step `host`: the share of the signal of an MGE cluster with the MAGs, in percent, from which a MAG is a host, as `--min-share` of `host`. |
 | `--mge-min-contigs` | `5` | The step `host`: the number of contigs of a MAG in contact with an MGE cluster from which the MAG is a host, as `--min-contigs` of `host`. |
-| `-o, --outdir` | the current directory | The output directory: the map of the clusters, the log, and the outputs of the run: `fasta/` (`mags_with-mges/`, `mags/`, and `mges/` with `--mges`), `cool/`, `tables/` and `plots/` (see [Outputs](#conventions)). |
+| `-o, --outdir` | the current directory | The output directory: the map of the clusters, the log, and the outputs of the run: `fasta/` (`mags_with-mges/`, `mags/`, and `mges/` with `--mges`), `cool/`, `tables/`, `plots/` and the report (see [Outputs](#conventions)). |
 | `-p, --prefix` | none | Name the clusters `<prefix>_metator_…`, and the map that the run makes from pairs or BAM files `<prefix>.metacool` (by default, named after the assembly). Letters, digits, `_` and `-` only. |
-| `-F, --force` | off | Replace the map, the folders that the run makes anew (`fasta/mags_with-mges/`, `fasta/mags/`, `cool/`, and `fasta/mges/` with `--mges`), the tables of `tables/` and the plots of the clusters (in `plots/`, whose other files are left as they are) of an earlier run in the output directory. `tables/mge_hosts.txt` and `plots/mge_hosts.pdf` are replaced without it, as `host` replaces them. The other results of an earlier run in the output directory (the tables, `final_clusters/`, `plot/`, `mges_binned.fa` and `mge_hosts.txt` of a development build of 2.0, the outputs of 1.x) are refused, with or without `-F`, and never removed. |
+| `-F, --force` | off | Replace the map, the folders that the run makes anew (`fasta/mags_with-mges/`, `fasta/mags/`, `cool/`, and `fasta/mges/` with `--mges`), the tables of `tables/`, the plots of the clusters (in `plots/`, whose other files are left as they are) and the report (`report.txt`, `report.html`, `report_mqc.yaml`) of an earlier run in the output directory. `tables/mge_hosts.txt` and `plots/mge_hosts.pdf` are replaced without it, as `host` replaces them. The other results of an earlier run in the output directory (the tables, `final_clusters/`, `plot/`, `mges_binned.fa` and `mge_hosts.txt` of a development build of 2.0, the outputs of 1.x) are refused, with or without `-F`, and never removed. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory, where the run works in a directory of its own: the FASTA files of the clusters that miComplete checks (at most the size of the assembly), miComplete's results, the tables of the validation, and, from a compressed assembly, its decompressed copy; from BAM files, their pairs too (about 25 bytes per pair, plus the names of its two contigs). Not in a folder that the run makes anew (`fasta/mags_with-mges/`...), nor in a directory of the results of an earlier run (`recursive_clusters/`, `final_clusters/`...), which the run refuses. |
 | `-t, --threads` | `1` | Threads for the partition and the validation (miComplete), and to read the BAM files and bin the pairs that the run makes its map from. |
 | `-N, --no-clean-up` | off | Keep the temporary directory of the run, which the log names: the tables of the validation (`cluster_summary.txt`, `contig_data_final.txt`, `binning.txt`, `clusters.txt`, `cluster_members.txt`), miComplete's results and the FASTA files of the clusters that it checked. |
@@ -659,6 +661,7 @@ running it again. It writes:
 | `cool/` | A cool file per MAG, with the MGE clusters that it hosts, balanced, as `pipeline` writes it. | |
 | `tables/` | The tables of [`dump`](#dump); and `mge_hosts.txt`, the hosts of the MGE clusters, found again from the network of the map with the thresholds that the host run recorded (`--min-share` and `--min-contigs` of `host`, or `--mge-min-share` and `--mge-min-contigs` of `pipeline --mges`). | `mge_hosts.txt`: hosts in the map |
 | `plots/` | The plots of the final clusters, from the summary that the map holds: the values of miComplete, as the validation drew them (`cluster_summary.txt` rounds them to 2 decimals); and `mge_hosts.pdf`. | `mge_hosts.pdf`: hosts in the map |
+| `report.txt`, `report.html`, `report_mqc.yaml` | The report of the run, as [`report`](#report) writes it, last: `report.html` links to the outputs beside it. | |
 
 Without `--assembly`, the FASTA files are left out, and the log names the
 assembly that the run recorded. The map is read only, without a lock: a map
@@ -668,8 +671,9 @@ then). What cannot be rebuilt from the map is not written: the log of the
 run, and the temporary files of its validation (miComplete's results, the
 FASTA files of the clusters that it checked: `metacooler fasta MAP --round
 overlapping` writes those of a round). The folders that the run makes anew,
-the tables of `tables/` and the plots of the clusters of an earlier run in the
-output directory are refused without `-F`, and replaced with it;
+the tables of `tables/`, the plots of the clusters and the report of an
+earlier run in the output directory are refused without `-F`, and replaced
+with it;
 `tables/mge_hosts.txt` and `plots/mge_hosts.pdf` are replaced without it, as
 `host` replaces them; the outputs of an earlier version are refused, with or
 without `-F`. The map and the assembly may not be in a folder that the run
@@ -679,8 +683,8 @@ makes anew.
 |---|---|---|
 | `MAP` | *required* | The map of the clusters of a run, which `pipeline` or `validation` wrote, and `mge` and `host` updated, or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`). Read only. |
 | `-a, --assembly` | none | The assembly that the map was made from: a FASTA file, plain or compressed with gzip. With it, the run writes the FASTA files too (`fasta/`). |
-| `-o, --outdir` | the current directory | The output directory: `fasta/` (with `--assembly`), `cool/`, `tables/`, `plots/` and the log. |
-| `-F, --force` | off | Replace the folders that the run makes anew (`fasta/mags_with-mges/`, `fasta/mags/`, `fasta/mges/`, `fasta/mges_random/`, `cool/`), the tables of `tables/` and the plots of the clusters (in `plots/`, whose other files are left as they are) of an earlier run in the output directory. |
+| `-o, --outdir` | the current directory | The output directory: `fasta/` (with `--assembly`), `cool/`, `tables/`, `plots/`, the report and the log. |
+| `-F, --force` | off | Replace the folders that the run makes anew (`fasta/mags_with-mges/`, `fasta/mags/`, `fasta/mges/`, `fasta/mges_random/`, `cool/`), the tables of `tables/`, the plots of the clusters (in `plots/`, whose other files are left as they are) and the report (`report.txt`, `report.html`, `report_mqc.yaml`) of an earlier run in the output directory. |
 | `-T, --tmpdir` | `./tmp` | The temporary directory, where the run writes, in a directory of its own, the decompressed copy of a compressed assembly. Not in a folder that the run makes anew, nor in a directory of the results of an earlier version, which the run refuses. |
 
 ```bash
@@ -692,4 +696,71 @@ metator export binning/sample.metacool -o outputs
 
 # The outputs of the run in its own output directory, written again
 metator export binning/sample.metacool -a assembly.fa -o binning -F
+```
+
+### `report` { #report }
+
+Write the report of a run from the map of its clusters: what the map holds,
+digested, for a person to read (`report.html`), and for MultiQC or a script
+to gather over runs (`report.txt`, `report_mqc.yaml`). `pipeline` writes it
+in its step `export`, and `export` with the other outputs; `report` writes it
+alone. **API:** `metator.report`.
+
+```console
+metator report [OPTIONS] MAP
+```
+
+The map is the one that `pipeline` wrote, or `validation`, then `mge` and
+`host`. The report holds, from the map alone:
+
+| Part | What it holds |
+|---|---|
+| The run | Its steps, its input and its assembly, the parameters of each step as the map recorded them, and their command lines. |
+| The contigs | Their number and length, N50, L50, N90, the longest and the median contig, their GC content and median coverage; and where they went: in a final cluster, in a MAG, in an MGE cluster, or in no cluster. |
+| The contacts | The contacts of the reads, as metacooler counted them (the `qc` block of the map: within a contig, between the contigs of a genome, between genomes, and their ratios), and the network of the contigs. |
+| The clusters | The clusters of each clustering round, and the final clusters by quality class, HQ, MQ, LQ, Contaminated and Other, with their length: classes of the values of miComplete, which the map holds at full precision, as the log of the run counts them. |
+| The MAGs | One row per MAG: its quality class, length, contigs, completeness, contamination, GC content, N50, abundances, the share of its contacts within it, and the MGE clusters that it hosts. |
+| The MGE clusters and their hosts | After `mge` and `host`: one row per MGE cluster, its contigs, length, GC content and hosts, with the share of its signal with each. |
+
+It writes three files in the output directory (see
+[The report of a run](formats.md#the-report-of-a-run)):
+
+- `report.txt`, the report as text, in a fixed format: sections of keys and
+  values, then tables, which a script or a MultiQC module parses;
+- `report_mqc.yaml`, the custom content of [MultiQC](https://multiqc.info): a
+  row of its General Statistics table for the run, named after its map
+  (`sample` for `sample.metacool`, `NAME` for an entry of a collection), which
+  `multiqc` finds, so that `multiqc` on a directory of runs gathers them in
+  one table;
+- `report.html`, a page to read the run with: its numbers at a glance; its
+  MAGs, in a table that sorts, filters and downloads as CSV, with links to
+  their FASTA and cool files when they are beside it; its MGE clusters and
+  their hosts; the run and its command lines; and interactive plots: the
+  completeness and contamination of the MAGs, the final clusters by class,
+  the clusters of each round, their lengths, the GC content and coverage of
+  the contigs, the contacts of the reads, those between the MAGs, and the MGE
+  clusters and their hosts. plotly.js draws them, which the page loads from
+  its CDN when it is opened: without an internet connection, the page shows
+  its numbers and tables, and says that the plots need it.
+
+The map is read only, without a lock: a map that [`dump`](#dump) refuses is
+refused, before anything is written, and so is a map that another run writes
+while `report` reads it (run it again then). The report of an earlier run in
+the output directory is refused without `-F`, and replaced with it; a
+directory where a file of the report goes is refused, with or without `-F`.
+
+| Option | Default | Description |
+|---|---|---|
+| `MAP` | *required* | The map of the clusters of a run, which `pipeline` or `validation` wrote, and `mge` and `host` updated, or an entry of a `.mmetacool` collection (`file.mmetacool::entries/<name>`). Read only. |
+| `-o, --outdir` | the current directory | The output directory of the report, made if it is not there: `report.txt`, `report.html`, `report_mqc.yaml` and the log. |
+| `-F, --force` | off | Replace the report of an earlier run in the output directory. |
+
+```bash
+# The report of a run, from the map of its clusters
+metator report binning/sample.metacool -o report
+
+# The reports of the runs of a project, gathered in one table by MultiQC
+metator pipeline sample_1.metacool -a sample_1.fa -o runs/sample_1
+metator pipeline sample_2.metacool -a sample_2.fa -o runs/sample_2
+multiqc runs
 ```

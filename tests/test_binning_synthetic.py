@@ -16,6 +16,7 @@ import metacooler
 import numpy as np
 import pandas as pd
 import pytest
+import yaml
 
 import metator.cli as mtcli
 import metator.clusters as mtcl
@@ -24,6 +25,7 @@ import metator.metacool as mtmc
 import metator.network as mtn
 import metator.outputs as mto
 import metator.partition as mtp
+import metator.report as mtr
 import metator.validation as mtv
 from metator.version import __version__
 from tests import alignments, synthetic
@@ -683,11 +685,11 @@ def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, tmp_path, 
     # directory (the tables of the validation stay in the temporary
     # directory, kept here as -N keeps it: see _keep_the_tables, and metator
     # dump writes them in tables/); the FASTA files of the final clusters,
-    # with their MGE contigs, and of the MAGs, the cool files of the MAGs and
-    # the plots of the clusters, as PDF files, in plots/.
+    # with their MGE contigs, and of the MAGs, the cool files of the MAGs,
+    # the plots of the clusters, as PDF files, in plots/, and the report.
     assert not os.path.exists(f"{metagenome_inputs['assembly']}.fxi")
     outputs = sorted(path.name for path in out.iterdir() if not path.name.endswith(".log"))
-    assert outputs == sorted([metacool.name, "cool", "fasta", "plots", "tables"])
+    assert outputs == sorted([metacool.name, "cool", "fasta", "plots", "tables", *mtr.REPORT_FILES])
     assert sorted(path.name for path in (out / "fasta").iterdir()) == ["mags", "mags_with-mges"]
     assert sorted(path.name for path in (out / "plots").iterdir()) == ["bins_distribution.pdf", "bins_size_distribution.pdf"]
     assert sorted(path.name for path in (out / "tables").iterdir()) == sorted(mtd.TABLES)
@@ -1133,9 +1135,9 @@ def test_pipeline_from_pairs_or_bam_files(metagenome, metagenome_inputs, tmp_pat
         assert parameters["input"] == arguments and parameters["map"] == str(written)
         # The output directory: the map, the log and the outputs of the run
         # (the FASTA files of its clusters and of its MAGs, their cool files,
-        # the tables and the plots).
+        # the tables, the plots and the report).
         (log,) = out.glob("metator_pipeline_*.log")
-        outputs = ["cool", "fasta", log.name, "plots", "sample.metacool", "tables"]
+        outputs = ["cool", "fasta", log.name, "plots", "sample.metacool", "tables", *mtr.REPORT_FILES]
         assert sorted(path.name for path in out.iterdir()) == sorted(outputs)
         steps = [line.split(" :: ", 2)[2] for line in log.read_text().splitlines() if " :: INFO :: [" in line]
         assert steps == [
@@ -1793,7 +1795,8 @@ def _assert_same_outputs(out, ref, without=None):
     ref under without): the same files, of the same bytes, but the FASTA files
     of the final clusters, the same records (metator export writes them in the
     order of the map), the plots, PDF files (which record when they were
-    drawn), and the cool files, the same bins (weights included) and pixels."""
+    drawn), the cool files, the same bins (weights included) and pixels, and
+    the report, the same run (see _assert_same_report)."""
     files = _output_files(out)
     expected = {name: path for name, path in _output_files(ref).items() if without is None or not name.startswith(without)}
     assert sorted(files) == sorted(expected)
@@ -1806,8 +1809,45 @@ def _assert_same_outputs(out, ref, without=None):
             assert path.read_bytes().startswith(b"%PDF"), name
         elif name.startswith(MAGS_WITH_MGES):
             assert _records(path) == _records(expected[name]), name
+        elif name in mtr.REPORT_FILES:
+            _assert_same_report(name, path, expected[name], without)
         else:
             assert path.read_bytes() == expected[name].read_bytes(), name
+
+
+def _report_page(path, without=None):
+    """What report.html shows of a run: its figures, and the outputs of the run
+    that it links to (but those under without)."""
+    page = Path(path).read_text()
+    (figures,) = re.findall(r'<script id="metator-figures" type="application/json">(.*?)</script>', page, re.S)
+    links = [link for link in re.findall(r'href="([^"#][^"]*)"', page) if not link.startswith("https://")]
+    return json.loads(figures), sorted(link for link in links if without is None or not link.startswith(without))
+
+
+def _assert_same_report(name, path, ref, without=None):
+    """A file of the report of two runs (path, and ref, its file in the other
+    run): the same run, but when each was written, its map, and the command
+    lines of its steps (report.txt: its sections report and commands; and
+    report.html, which shows them): report.txt, the same values in its other
+    sections, and the same tables; report_mqc.yaml, the same; report.html, the
+    same figures, and the same links to the outputs of the run (those of ref
+    but under without)."""
+    if name == mtr.REPORT_TXT:
+        (sections, tables), (ref_sections, ref_tables) = mtr.read_txt(path), mtr.read_txt(ref)
+        assert list(sections) == list(ref_sections) and list(tables) == list(ref_tables)
+        for section, values in sections.items():
+            if section == "report":
+                volatile = {"map", "written", "map_written"}
+                values = {key: value for key, value in values.items() if key not in volatile}
+                assert values == {key: value for key, value in ref_sections[section].items() if key not in volatile}
+            elif section != "commands":
+                assert values == ref_sections[section], section
+        for table, rows in tables.items():
+            pd.testing.assert_frame_equal(rows, ref_tables[table], obj=table)
+    elif name == mtr.REPORT_MQC:
+        assert yaml.safe_load(path.read_text()) == yaml.safe_load(ref.read_text())
+    else:
+        assert _report_page(path) == _report_page(ref, without)
 
 
 def test_export_writes_the_outputs_of_a_run_again(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli, logged):

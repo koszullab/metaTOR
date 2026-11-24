@@ -365,6 +365,125 @@ each MAG in its genomes table:
 of the validation (and those of the MGE genomes, after `metator mge
 --reassign`, whose `n_mges` and `mges` are empty).
 
+## The report of a run
+
+`metator report` writes the report of a run in its output directory, from the
+map of its clusters alone, and so do `metator export` and `metator pipeline`,
+in its step `export` (see [`report`](cli.md#report)): `report.txt`,
+`report_mqc.yaml` and `report.html`. The run is named after its map, its
+`sample`: `sample` for `sample.metacool`, `NAME` for the entry
+`file.mmetacool::entries/NAME` of a collection. Give the maps of the runs of a
+project the names of their samples (`-p` of `pipeline` from pairs or BAM
+files, `-P` of `hicstuff pipeline`): MultiQC gathers the reports of the runs
+by these names.
+
+### report.txt
+
+A text file, in sections, then tables, which a script, or a MultiQC module,
+parses line by line (`metator.report.read_txt` reads it back):
+
+- a line that starts with `#` is a comment; the first one,
+  `# metaTOR report of <sample>`, tells the file;
+- `[name]` starts a section: each of its lines is a key, spaces, and its
+  value, the rest of the line;
+- `[table: name]` starts a table: its first line is its header, then a row
+  per line, each field of a row in a column of the header, separated by
+  spaces (no field holds a space);
+- `NA` is a missing value; an integer is written as such; a value in percent
+  (a key or a column that ends in `_pct`) with 2 decimals, a ratio or a
+  fraction (`_ratio`, `_fraction`), from 0 to 1, with 4; a length in bp ends
+  in `_bp`; other numbers are written in full.
+
+The keys, the columns and their units are those of the version of the
+format, the `format_version` of the section `report`, 1 here: a key, a column
+or a unit that changes, or goes, changes it, and one that comes does not, so
+a parser skips the keys and the columns that it does not know. A section, a
+key or a table that does not apply to a run is left out: the sections `mges`
+and `hosts` and their tables before `metator mge` and `metator host`.
+
+| Section | Keys |
+|---|---|
+| `report` | `format_version`; `sample`, the name of the run; `map`, its map; `metator_version`, the version of metaTOR that wrote the report; `written`, when; `map_written`, when the map was written. |
+| `run` | `steps`, the steps that the map records, in order, separated by commas (`network`, `partition`, `validation`, `mge`, `host`); `input`, the input of the run (its map, or its pairs or BAM files, separated by commas), `assembly`, `enzyme` and `depth`, as the run recorded them (`NA`: the map gave them); `normalization` of the network; `algorithm`, `iterations`, `overlap_pct` and `res_param` of the partition; `size_bp`, `rec_iter` and `rec_overlap_pct` of the validation; `seed` and `rec_seed`, the `--seed` of the partition and of the validation (both that of `pipeline --seed`; `NA`: no seed); `mge_threshold_bin` of `mge`; `host_min_share_pct` and `host_min_contigs` of `host`. |
+| `contigs` | `contigs` and `contigs_bp`, the contigs of the map and their length; `contig_n50_bp`, `contig_l50`, `contig_n90_bp`, `contig_max_bp`, `contig_median_bp`; `gc_pct`, their GC content, weighted by their length; `coverage_median`, their median shotgun coverage; where they went, their number, length and share of the length of the contigs: in a final cluster (`in_final_clusters_contigs`, `_bp`, `_pct`), in a MAG (`in_mags_`...), in an MGE cluster (`in_mges_contigs`, `_bp`), in no genome of the map (`unbinned_contigs`, `_bp`). |
+| `contacts` | The contacts of the reads by where they land, as metacooler counted them, with the genomes of the map (its `qc` block): `contacts`; `qc_source` (`pairs`: counted on the reads, `pixels`: on the map); `qc_distance_threshold_bp`; within a contig, less than that apart (`intra_contig_short`) or more (`intra_contig_long`); between two contigs of a genome (`inter_contig_intra_genome`); between two genomes (`inter_genome`); `trans_contig_ratio`, the share of the contacts between two contigs, the "3D ratio"; `intra_genome_fraction`, the share within a genome. Then the network of the contigs: `network_contigs`, `network_edges` and its `normalization`. |
+| `clusters` | The clusters of the rounds: `core_clusters`, `overlapping_clusters`, `recursive_steps`, `recursive_clusters`, `final_clusters` and `final_clusters_bp`. The final clusters by quality class, each its number and length (`_bp`): `hq_mags` (completeness of at least 90% and contamination of at most 5%), `mq_mags` (70%, 10%), `lq_mags` (50%, 10%), `contaminated_mags` (completeness of at least 50%, contamination above 10%) and `other_clusters` (completeness below 50%), classes of the values of miComplete, as the log of the run counts them. `mags`, the MAGs: the genomes of the map but the MGE genomes. |
+| `mges` | `mge_clusters`, `mge_contigs` and `mge_bp`, the MGE clusters of `metator mge`, their contigs and length; `mge_genomes`, the MGE genomes of the map (`--reassign`); `mags_losing_contigs`, the final clusters that held contigs of an MGE genome; `mge_random_clusters`, those of `--random`. |
+| `hosts` | `min_share_pct` and `min_contigs`, the thresholds of `metator host`; `mge_clusters_with_host`, `mge_clusters_with_one_host`, `mge_clusters_with_several_hosts`, `mge_clusters_without_host`; `mags_hosting_mges`. |
+| `commands` | The command line of each step, by step. |
+
+| Table | Columns |
+|---|---|
+| `rounds` | One row per clustering round of the map, in order: `round`, `step` (the command that stored it), `clusters`, `contigs`, `length_bp`. |
+| `mags` | One row per MAG, by quality class, then the longest first: `name`, `quality` (`HQ`, `MQ`, `LQ`, `Contaminated`, `Other`), `length_bp`, `contigs`, `completeness_pct`, `contamination_pct` (miComplete's weighted completeness, and its weighted redundancy minus 1, in percent), `gc_pct`, `n50_bp`, `hic_abundance`, `sg_abundance`, `intra_genome_ratio` (the share of the contacts of the MAG within it), `n_mges` and `mges`, the MGE clusters that it hosts, separated by commas. |
+| `mge_clusters` | One row per MGE cluster: `name`, `contigs`, `length_bp`, `gc_pct`, `n_hosts`, `hosts` and `host_shares_pct`, its hosts and the share of its signal with each, separated by commas. |
+| `hosts` | One row per MGE cluster and host: `mge`, `mag`, `share_pct`. |
+
+```text
+# metaTOR report of sample
+# format 1: [section] then a key and its value per line; [table: name] then a header and a row
+# per line, on spaces; NA: missing. See https://koszullab.github.io/metator/formats/#the-report-of-a-run
+
+[report]
+format_version   1
+sample           sample
+...
+
+[clusters]
+core_clusters         5
+...
+hq_mags               4
+hq_mags_bp            468000
+mq_mags               1
+...
+
+[table: mags]
+name                 quality  length_bp  contigs  completeness_pct  contamination_pct  gc_pct  n50_bp  ...
+metator_00001_00000  HQ       140000     11       100.00            0.00               49.87   22978   ...
+```
+
+### report_mqc.yaml
+
+The custom content of [MultiQC](https://multiqc.info): a row of its General
+Statistics table for the run, `id: metator`, with the numbers of the run that
+compare across runs: the length of its contigs and their N50, its 3D ratio
+(`trans_contig_ratio`), the share of the contigs in a MAG (`in_mags_pct`), its
+HQ, MQ, LQ and contaminated MAGs, and, after `metator mge` and `metator host`,
+its MGE clusters and those with a host, named as in `report.txt`. MultiQC
+finds the files whose names end in `_mqc.yaml`: `multiqc` on a directory
+that holds the output directories of the runs gathers their reports in one
+table, a row per run.
+
+```yaml
+id: metator
+section_name: metaTOR
+plot_type: generalstats
+pconfig:
+- contigs_bp:
+    title: Assembly
+    ...
+data:
+  sample:
+    contigs_bp: 578000
+    contig_n50_bp: 13074
+    trans_contig_ratio: 0.526217
+    in_mags_pct: 96.88581314878893
+    hq_mags: 4
+    mq_mags: 1
+    ...
+```
+
+### report.html
+
+A page to read the run with, which a browser opens from the output directory:
+its numbers and tables are in the page, and its links to the FASTA files and
+the cool files of the MAGs, the tables and the plots of the run, which it
+links to when they are beside it, as `export` and `pipeline` write them. Its
+interactive plots are drawn by [plotly.js](https://plotly.com/javascript/),
+which the page loads from its CDN when it is opened, a pinned version: without
+an internet connection, the page shows its numbers and tables, and says that
+its plots need it.
+
 ## Logs
 
 Each command writes its log, `metator_<command>_<date>.log`: the version of

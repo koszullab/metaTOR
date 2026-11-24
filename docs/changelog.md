@@ -266,6 +266,21 @@ each removed command.
   step (`[4/4] export`, or `[6/6]` with `--mges`), in place of the outputs
   that its steps wrote: a run gives the outputs that its steps one by one
   give, `export` last.
+- `metator report MAP -o DIR` writes the report of a run from the map of its
+  clusters (see the [CLI reference](cli.md#report)), and so do `export` and
+  `pipeline`, in its step `export`: `report.html`, a page to read the run
+  with (its numbers at a glance; its MAGs, in a table that sorts, filters and
+  downloads as CSV, with links to their files; its MGE clusters and their
+  hosts; its parameters and command lines; and interactive plots, which
+  plotly.js draws, loaded from its CDN), from a Jinja2 template;
+  `report.txt`, the same as text, in sections and tables of a versioned
+  format that a script or a MultiQC module parses; and `report_mqc.yaml`, a
+  row of the General Statistics table of MultiQC, which `multiqc` gathers
+  over the runs of a project (see
+  [The report of a run](formats.md#the-report-of-a-run)). The quality classes
+  of the final clusters are those of the values of miComplete, as the log of
+  the run counts them. The report of an earlier run in the output directory
+  is refused without `-F`. New dependencies: `jinja2` and `pyyaml`.
 - The map of the clusters stores the summary of the validation at full
   precision (`cluster_summary_full.txt`, beside `cluster_summary.txt` in the
   temporary directory of the run), where a development build stored it as

@@ -20,6 +20,7 @@ from click.testing import CliRunner
 import metator.cli as mtcli
 import metator.io as mio
 import metator.metacool as mtmc
+import metator.report as mtr
 from metator.version import __version__
 from tests.locks import described, held_lock, killed_lock, lock_file, refusal
 
@@ -52,7 +53,8 @@ mtmc_write_map = mtmc.write_map
 # and pipeline the --mges, --mge-threshold-bin, --mge-min-share and
 # --mge-min-contigs options, with which it runs mge and host after the
 # validation; then partition, validation, pipeline and mge took --seed,
-# the seed of their random numbers.
+# the seed of their random numbers. export writes the outputs of a run
+# again from its map, and report its report.
 INVENTORY = json.loads((TESTS_DATA / "cli_inventory.json").read_text())["metator"]
 
 # Options whose value is one of a list, wherever they appear.
@@ -2533,6 +2535,46 @@ def test_the_tables_of_an_earlier_run(force, stub_pipeline, tmp_path, run_cli):
         # Removed, for the run to write them again (its stub outputs write none).
         assert not os.path.lexists(tables / "binning.txt") and stub_pipeline["run_export"]
     assert (tables / "notes.txt").read_text() == "the user's\n"
+
+
+@pytest.mark.parametrize("force", [False, True], ids=["refused", "-F"])
+def test_the_report_of_an_earlier_run(force, stub_pipeline, tmp_path, run_cli):
+    """The report of an earlier run in the output directory, which a pipeline run
+    writes again in its step export, is refused without -F, before any work,
+    and removed with -F once the run is checked, as its tables are (see
+    test_the_tables_of_an_earlier_run): a symbolic link too, not its target.
+    A directory where a file of the report goes is refused with or without
+    -F."""
+    metacool = _contig_map(tmp_path / "input.metacool")
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / mtr.REPORT_TXT).write_text("an earlier run's\n")
+    (tmp_path / "kept.html").write_text("the target of a link\n")
+    (out / mtr.REPORT_HTML).symlink_to(tmp_path / "kept.html")
+    if not force:
+        with pytest.raises(ValueError):
+            run_cli("pipeline", *_map_run(metacool, tmp_path))
+        assert (out / mtr.REPORT_TXT).read_text() == "an earlier run's\n" and (out / mtr.REPORT_HTML).is_symlink()
+        assert _no_step(stub_pipeline) and not (out / "fasta").exists()
+        (log,) = out.glob("metator_pipeline_*.log")
+        assert (
+            f"ERROR :: {out} holds the report of an earlier run ('report.txt', 'report.html'), which this run writes "
+            "again: give -F to replace it, or give the run another output directory with -o."
+        ) in log.read_text()
+    else:
+        run_cli("pipeline", *_map_run(metacool, tmp_path, "-F"))
+        # Removed, for the run to write it again (its stub export writes none).
+        assert not any(os.path.lexists(out / name) for name in mtr.REPORT_FILES) and stub_pipeline["run_export"]
+    assert (tmp_path / "kept.html").read_text() == "the target of a link\n"
+    # A directory where a file of the report goes, with or without -F.
+    (out / mtr.REPORT_MQC).mkdir()
+    with pytest.raises(ValueError):
+        run_cli("pipeline", *_map_run(metacool, tmp_path, "-F"))
+    (log,) = sorted(out.glob("metator_pipeline_*.log"))[-1:]
+    assert (
+        f"ERROR :: {out / mtr.REPORT_MQC} is a directory, where the run writes its report: move it away, or give the run "
+        "another output directory with -o."
+    ) in log.read_text()
 
 
 @pytest.mark.parametrize("command", ["validation", "pipeline"])
