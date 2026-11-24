@@ -362,7 +362,8 @@ NODE_2487	Cons_hypoth95*0,Ribosomal_S9	Ribosomal_S9
   bytes a character: on that map, the two columns make each take about 0.3 s
   and 150 MB more, and `metator export`, which reads the map once per MAG,
   70 s in place of 47 s. The cost grows with the number of contigs (some 3 s
-  and 1.5 GB a read for 200,000 contigs).
+  and 1.5 GB a read for 200,000 contigs). `pipeline --no-markers` leaves the
+  markers out.
 - `metacooler dump -t contigs -H MAP` writes both columns with the rest of
   the contigs table; the run writes them in its temporary directory too
   (`contig_markers.txt`, which `-N` keeps).

@@ -537,6 +537,14 @@
       "required": false
      },
      {
+      "short": null,
+      "long": "--no-markers",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
       "short": "-m",
       "long": "--normalization",
       "takes_value": true,

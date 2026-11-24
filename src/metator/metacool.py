@@ -1367,7 +1367,8 @@ def write_map(
         Whether the run says later what becomes of the marker genes of the
         contigs that the map holds, which this write does not say then: it
         finds them again once the map is written (pipeline, in its step
-        markers).
+        markers), or regroups the contigs again (pipeline --no-markers --mges,
+        in its step mge, which says it).
 
     Raises
     ------

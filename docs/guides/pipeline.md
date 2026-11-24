@@ -119,6 +119,7 @@ A run does not overwrite the outputs of an earlier run without `--force`
 | `--iterations`, `--overlap` | 100, 80 | See [Partition](binning.md#partition) |
 | `--rec-iter`, `--rec-overlap` | 10, 90 | See [Validation](binning.md#validation) |
 | `--size` | 500000 | The size, in bp, an overlapping cluster must reach to be checked with miComplete, and a recursive cluster must exceed |
+| `--no-markers` | off | Leaves out the step `markers`: the map of the clusters gets no marker genes, and costs less to read (see [below](#the-marker-genes-of-the-contigs)) |
 | `--mges` | none | The MGE contigs, one name per line: adds the steps `mge` and `host` (see [below](#mobile-genetic-elements-and-their-hosts)) |
 | `--mge-threshold-bin` | 0.8 | Step `mge`: the score above which MGE contigs are merged (see [How it works](mge.md#how-it-works)) |
 | `--mge-min-share`, `--mge-min-contigs` | 10, 5 | Step `host`: the share of signal (%) and the number of contacting contigs a MAG needs to be a host (see [The hosts](mge.md#the-hosts)) |
@@ -142,6 +143,16 @@ viewer, or a script, recomputes them as a curation moves contigs between
 MAGs, without finding a gene again; miComplete's own run on a new MAG, which
 finds its genes anew, can give other numbers (see
 [Marker genes of the contigs](../formats.md#marker-genes-of-the-contigs)).
+
+A map with the marker genes costs more to read: their two columns of the
+contigs table are decoded each time cooler opens the map or metacooler reads
+its contigs table, about 0.3 s and 150 MB more on a map of 20,566 contigs, in
+proportion to the number of contigs, and the step `export` reads the map
+once per MAG (70 s in place of 47 s on that map). `--no-markers` leaves the
+step out, and the markers with it: the map of the clusters holds none (but
+those of an earlier run that the input map held, which every run keeps), and
+`metator markers` stores them later. The log then numbers the steps without
+it (`[1/4] network` … `[4/4] export`).
 
 ## Mobile genetic elements and their hosts
 
@@ -218,7 +229,8 @@ The log, `sample.metator_<date>.log` in the output directory, starts with
 the version, the date, the command line and the options. It then marks each
 step: `[1/5] network`, `[2/5] partition`, `[3/5] validation`, `[4/5] markers`,
 `[5/5] export` (`[1/6] map` first from pairs or BAM files; `[5/7] mge` and
-`[6/7] host` with `--mges`). It reports the contacts, the progress of the partition, each
+`[6/7] host` with `--mges`; no `markers` with `--no-markers`). It reports the
+contacts, the progress of the partition, each
 recursive step of the validation, the number of clusters in each
 [quality class](../concepts.md#cluster-quality), and with `--mges` the MGE
 clusters and their hosts.

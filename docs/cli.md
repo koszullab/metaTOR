@@ -31,7 +31,7 @@ heatmap, GC and coverage plots.
 | Several enzymes | Comma-separated: `DpnII,HinfI`. |
 | `-F, --force` | Replace what an earlier run of the command wrote in the output directory (map, folders, cluster plots, tables, report); without it, the command refuses. Outputs of earlier versions (1.x, development builds of 2.0: `final_clusters/`, `plot/`, `mges_binned.fa`…) are always refused and never removed. A run that updates its map in place first warns of the clusters it replaces. |
 | `-T, --tmpdir`, `-N, --no-clean-up` | Each run works in its own directory inside `-T`, removed at the end unless `-N` is given or the run fails; the log names it. |
-| Log files | `<name>.metator_<date>.log`, the date as `%Y%m%d%H%M%S` (`sample.metator_20261123225838.log`), in the output directory (`mge`: in the current directory). It opens with the version, command line and options, and ends with the files written and the run time. `pipeline` numbers its steps: `[1/5] network` … `[4/5] markers`, `[5/5] export`, plus `map` first from pairs or BAM files, and `mge` and `host` before `export` with `--mges`. |
+| Log files | `<name>.metator_<date>.log`, the date as `%Y%m%d%H%M%S` (`sample.metator_20261123225838.log`), in the output directory (`mge`: in the current directory). It opens with the version, command line and options, and ends with the files written and the run time. `pipeline` numbers its steps: `[1/5] network` … `[4/5] markers`, `[5/5] export`, plus `map` first from pairs or BAM files, and `mge` and `host` before `export` with `--mges`; no `markers` with `--no-markers`. |
 | Random numbers | Louvain and Leiden (`partition`, `pipeline`, the recursive partition of `validation`) and `mge --random` draw new random numbers at each run, so two runs give close but not identical clusters. `--seed S` makes a run reproducible for the same map, options, igraph and metaTOR; `pipeline --seed S` gives the clusters of `partition --seed S` then `validation --seed S`. The map records the seed. |
 
 ### Files of a run { #files }
@@ -111,7 +111,9 @@ metator pipeline [OPTIONS] INPUT...
   Prodigal and HMMER (pyrodigal, pyhmmer) on every cluster.
 - **Markers**: as [`markers`](#markers), finds miComplete's marker genes on
   each contig, in its final cluster, and stores them in the map of the
-  clusters, with miComplete's default thresholds.
+  clusters, with miComplete's default thresholds. A map with the markers
+  costs more to read (see [`markers`](#markers)): `--no-markers` leaves the
+  step out, and `markers` stores them later.
 - **With `--mges`**: the step `mge` (as [`mge --reassign`](#mge)) clusters the
   MGE contigs, makes each MGE cluster a genome of the map and writes
   `fasta/mges/`; the step `host` (as [`host`](#host)) finds their host MAGs
@@ -140,6 +142,7 @@ metator pipeline [OPTIONS] INPUT...
 | `-j, --rec-iter` | `10` | Iterations of the recursive partition. |
 | `-P, --rec-overlap` | `90` | Overlap threshold (%) of the recursive partition. |
 | `--seed` | none | Seed of the partition and the recursive partition (see [Conventions](#conventions)). |
+| `--no-markers` | off | Leave out the step `markers`: the map of the clusters gets no marker genes of its contigs, and costs less to read; a map that held those of an earlier run keeps them. |
 | `--mges` | none | The MGE contigs, one name per line: adds the steps `mge` and `host`. |
 | `--mge-threshold-bin` | `0.8` | `--threshold-bin` of the step `mge`. |
 | `--mge-min-share` | `10` | `--min-share` of the step `host`. |
@@ -382,7 +385,8 @@ metator markers [OPTIONS] MAP
 - **On a map of many contigs**, the two columns cost time and memory each
   time cooler opens the map, or metacooler reads its contigs table: about
   0.3 s and 150 MB on a map of 20,566 contigs, in proportion to their number,
-  and `export` reads the map once per MAG (see
+  and `export` reads the map once per MAG; `pipeline --no-markers` leaves
+  them out (see
   [Marker genes of the contigs](formats.md#marker-genes-of-the-contigs)).
 
 | Option | Default | Description |

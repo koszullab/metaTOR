@@ -139,8 +139,9 @@ tools](other-tools.md) says what replaces each removed command. Below,
   run on the group can differ from (23 of 28 curated groups of a mock
   community exact; the merge of the MAGs of two organisms, a redundancy of
   1.6667 against miComplete's 1.1827).
-  `pipeline` runs it after the validation (`[4/5] markers`); every other run
-  keeps them. The entry records the binning that the genes were found in
+  `pipeline` runs it after the validation (`[4/5] markers`), but with
+  `--no-markers`, which leaves the markers, and the cost of reading them, out
+  of the map; every other run keeps them. The entry records the binning that the genes were found in
   (`assignment_digest`, and the genomes trained on, `trained_genomes`): a
   run that keeps the markers while it regroups the contigs into other
   genomes (`validation`, `mge --reassign`) says once that they predate its

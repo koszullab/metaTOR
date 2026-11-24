@@ -524,7 +524,22 @@ def made_map_path(inputs, name, outdir=".", inplace=False, force=False):
     return outfile
 
 
-def run_map(command, inputs, held, name, assembly, depth, enzyme, normalization, outdir, inplace, force, others=(), rounds=None):
+def run_map(
+    command,
+    inputs,
+    held,
+    name,
+    assembly,
+    depth,
+    enzyme,
+    normalization,
+    outdir,
+    inplace,
+    force,
+    others=(),
+    rounds=None,
+    keeps_markers=False,
+):
     """The map of a network or pipeline run (command), checked before any work,
     as (map, outfile, planned): the map that the run starts from, the map that
     it writes (see run_map_path), and its map as the run read it, under the
@@ -541,7 +556,9 @@ def run_map(command, inputs, held, name, assembly, depth, enzyme, normalization,
     pipeline --mges), which the map that it writes is refused to be, as its
     inputs; rounds: the clustering rounds that the run replaces in the map
     that it updates in place, which it warns of (see
-    warn_of_what_is_replaced)."""
+    warn_of_what_is_replaced); keeps_markers: whether the run keeps the
+    marker genes of the contigs that the map holds (pipeline --no-markers),
+    which it does not warn of then."""
     if inputs.kind == mti.MAP:
         input_map = inputs.map
         run_input(input_map)
@@ -549,7 +566,8 @@ def run_map(command, inputs, held, name, assembly, depth, enzyme, normalization,
         refuse_an_input_as_the_map(outfile, in_place, [assembly, depth, *others])
         check_normalization(normalization, enzyme, depth, input_map)
         resolved_parameters(map=input_map)
-        return input_map, outfile, hold_map(held, command, input_map, outfile, in_place, rounds=rounds, inplace=inplace)
+        planned = hold_map(held, command, input_map, outfile, in_place, rounds, inplace, keeps_markers)
+        return input_map, outfile, planned
     outfile = made_map_path(inputs, name, outdir, inplace, force)
     refuse_an_input_as_the_map(outfile, False, [assembly, depth, *inputs.files, *others])
     check_normalization(normalization, enzyme, depth, None)
@@ -671,7 +689,7 @@ REPLACES_HOSTS = ("host", "partition", "validation", "pipeline")
 REPLACES_MARKERS = ("markers", "pipeline")
 
 
-def warn_of_what_is_replaced(command, metacool, rounds=None, inplace=False):
+def warn_of_what_is_replaced(command, metacool, rounds=None, inplace=False, keeps_markers=False):
     """Warn, before any work, that a run (command) that updates the map metacool
     in place (with --inplace: inplace, or as the map of its output directory)
     replaces what the map holds already: its clusters (the genomes other than
@@ -685,7 +703,8 @@ def warn_of_what_is_replaced(command, metacool, rounds=None, inplace=False):
     of its MGE clusters that metator host stored in it, which the run replaces
     too (see REPLACES_HOSTS), nor the marker genes of its contigs that metator
     markers stored in it, which markers and pipeline replace (see
-    REPLACES_MARKERS)."""
+    REPLACES_MARKERS), but pipeline --no-markers, which keeps them
+    (keeps_markers)."""
     clusters, steps, names = REPLACED_IN_PLACE[command]
     replaces_hosts = command in REPLACES_HOSTS or (command == "mge" and mtcl.MGE in (rounds or ()))
     names = names if rounds is None else tuple(rounds)
@@ -697,7 +716,7 @@ def warn_of_what_is_replaced(command, metacool, rounds=None, inplace=False):
                 str(entry["name"]) for entry in mc.cluster_rounds if entry.get("step") in steps or entry.get("name") in names
             ]
             hosts = replaces_hosts and mtmc.holds_hosts(mc)
-            markers = command in REPLACES_MARKERS and mtmc.holds_markers(mc)
+            markers = command in REPLACES_MARKERS and not keeps_markers and mtmc.holds_markers(mc)
     except mtmc.MetacoolError as error:
         logger.error(str(error))
         raise
@@ -1005,17 +1024,19 @@ def hold_lock(held, path, in_place, inplace=False):
         raise mtmc.MetacoolError(message) from error
 
 
-def hold_map(held, command, input_map, outfile, in_place, rounds=None, inplace=False):
+def hold_map(held, command, input_map, outfile, in_place, rounds=None, inplace=False, keeps_markers=False):
     """Hold the lock of the map that a run (command) writes, outfile, until the
     end of the run (see hold_lock), then open its input map: the map as the run
     reads it, under that lock when the run updates it in place (in_place; by
     --inplace: inplace), which the map of the run is refused to be written
-    from if it changed since (see metator.metacool.write_map's planned)."""
+    from if it changed since (see metator.metacool.write_map's planned). A
+    run that updates it in place warns first of what it replaces there (see
+    warn_of_what_is_replaced; rounds, keeps_markers)."""
     hold_lock(held, outfile, in_place, inplace)
     planned = open_input_map(input_map)
     if in_place:
         refuse_a_read_only_map(outfile, inplace)
-        warn_of_what_is_replaced(command, input_map, rounds, inplace)
+        warn_of_what_is_replaced(command, input_map, rounds, inplace, keeps_markers)
     return planned
 
 
@@ -2147,6 +2168,16 @@ def validation(
     help="Hamming distance threshold to use to merge clusters for the recursive step (percentage).",
 )
 @_option(
+    "--no-markers",
+    is_flag=True,
+    panel="Markers",
+    help="Leave out the step markers, which finds the marker genes of the contigs as metator markers does: the map of "
+    "the clusters gets none, whose two columns of its contigs table cost time and memory each time the map is read "
+    "(about 0.3 s and 150 MB for 20,566 contigs, in proportion to their number; metator export reads the map once per "
+    "MAG). A map that holds the markers of an earlier run keeps them, as every other run keeps them. metator markers "
+    "MAP -a ASSEMBLY stores them later.",
+)
+@_option(
     "--mges",
     metavar="FILE",
     panel="MGE",
@@ -2224,6 +2255,7 @@ def pipeline(
     rec_iter,
     rec_overlap,
     seed,
+    no_markers,
     mges,
     mge_threshold_bin,
     mge_min_share,
@@ -2268,8 +2300,10 @@ def pipeline(
     temporary directory, which -N keeps. Then, as [cyan]metator markers MAP
     -a ASSEMBLY[/] does, it finds the marker genes of miComplete on each
     contig, in the final clusters as miComplete finds them, and stores them
-    in the map of the clusters, which it updates in place. Without --mges,
-    the run has no steps mge and host, and says so.
+    in the map of the clusters, which it updates in place; --no-markers
+    leaves this step out, and the map costs less to read (see metator
+    markers). Without --mges, the run has no steps mge and host, and says
+    so.
 
     With --mges, the list of the MGE contigs, the run goes on with two more
     steps on the map of its clusters, which it updates in place, as
@@ -2344,6 +2378,7 @@ def pipeline(
             force,
             others=[mges],
             rounds=[mtcl.MGE] if mges is not None else None,
+            keeps_markers=no_markers,
         )
 
         # The outputs of an earlier run (the directories that the run makes
@@ -2373,11 +2408,13 @@ def pipeline(
         # From pairs or BAM files, a step more, first: the map of the contigs,
         # made in the output directory from the contig data measured on the
         # assembly, which the run then updates in place; markers after the
-        # validation; with --mges, two more after it: mge and host; and
-        # export, last. With --mges, the MGE contigs are checked against the
-        # contigs of the assembly, which the map has, before the run makes it.
+        # validation, but with --no-markers; with --mges, two more after it:
+        # mge and host; and export, last. With --mges, the MGE contigs are
+        # checked against the contigs of the assembly, which the map has,
+        # before the run makes it.
         step = 0 if inputs.kind == mti.MAP else 1
-        stages = step + (6 if mges_list is not None else 4) + 1
+        markers_step = 0 if no_markers else 1
+        stages = step + 3 + markers_step + (2 if mges_list is not None else 0) + 1
         contig_data = None
         if planned is None:
             log_stage(1, "map", f"the contact map of the contigs, from {inputs.describe()}", stages)
@@ -2449,13 +2486,21 @@ def pipeline(
             ),
             clusters=final,
             mge_follows=mges_list is not None,
-            # The step markers finds the marker genes of the contigs again.
-            markers_follow=True,
+            # The step markers finds the marker genes of the contigs again;
+            # with --no-markers, the map keeps those that it held, which the
+            # step mge, the last to regroup the contigs, says predate them.
+            markers_follow=not no_markers or mges_list is not None,
         )
 
         # The marker genes of the contigs, as metator markers finds them, in
         # the final clusters: stored in the map of the clusters, in place.
-        run_markers_step(metacool_file, plain, threads, tmp_dir, step + 4, stages, mges=mges_list is not None)
+        if no_markers:
+            logger.info(
+                "--no-markers: the run has no step markers, which finds the marker genes of the contigs: metator "
+                f"markers {metacool_file} -a ASSEMBLY stores them in the map of the clusters."
+            )
+        else:
+            run_markers_step(metacool_file, plain, threads, tmp_dir, step + 4, stages, mges=mges_list is not None)
 
         if mges_list is None:
             logger.info(
@@ -2473,8 +2518,9 @@ def pipeline(
                 mge_min_contigs,
                 outdir,
                 tmp_dir,
-                step + 4,
+                step + 3 + markers_step,
                 stages,
+                markers=not no_markers,
             )
 
         # The outputs of the run, from its map as its steps left it, as
@@ -2552,9 +2598,12 @@ def run_markers_step(metacool, assembly, threads, tmp_dir, step=4, stages=5, mge
         raise
 
 
-def run_mge_steps(metacool, assembly, mges, mges_list, threshold_bin, min_share, min_contigs, outdir, tmp_dir, step=4, stages=7):
+def run_mge_steps(
+    metacool, assembly, mges, mges_list, threshold_bin, min_share, min_contigs, outdir, tmp_dir, step=4, stages=7, markers=True
+):
     """The steps mge and host of a pipeline run with --mges, the last two of its
-    stages before export, after its step step (markers), on the map of its clusters,
+    stages before export, after its step step (markers; the validation with
+    --no-markers: markers False), on the map of its clusters,
     metacool, which they update in place, each as the run reads it once the
     step before wrote it: mge clusters the MGE contigs (mges_list, the
     contigs of the list mges) of the map, as metator mge --reassign does (see
@@ -2574,11 +2623,16 @@ def run_mge_steps(metacool, assembly, mges, mges_list, threshold_bin, min_share,
         log_stage(step, name, "the MAGs that host the MGE clusters, from the network of the map", stages)
         run_host(metacool, metacool, open_input_map(metacool), min_share, min_contigs, outdir)
     except BaseException:
-        held, finish = (
-            ("the clusters of the run and the marker genes of its contigs", "metator mge --reassign then metator host")
-            if name == "mge"
-            else ("the clusters of the run, the marker genes of its contigs and their MGE clusters", "metator host")
-        )
+        # What the map holds then: the clusters of the run, the marker genes of
+        # its contigs (but with --no-markers), and the MGE clusters once the
+        # step mge stored them.
+        held = {
+            ("mge", True): "the clusters of the run and the marker genes of its contigs",
+            ("mge", False): "the clusters of the run",
+            ("host", True): "the clusters of the run, the marker genes of its contigs and their MGE clusters",
+            ("host", False): "the clusters of the run and their MGE clusters",
+        }[name, markers]
+        finish = "metator mge --reassign then metator host" if name == "mge" else "metator host"
         logger.info(
             f"The run stopped in its step {step}, {name}: {metacool} holds {held}; run {finish} on it to complete the "
             "map, then metator export to write the outputs of the run from it."
