@@ -238,3 +238,52 @@ def test_a_report_without_mges(run, tmp_path):
     mtr.write_report(report, str(tmp_path / "out"))
     page = (tmp_path / "out" / mtr.REPORT_HTML).read_text()
     assert 'id="mges"' not in page and "plot-hosts" not in page
+
+
+def test_a_report_before_host(run, tmp_path, run_cli):
+    """A map whose MGE clusters have no hosts yet (metator mge ran on it again,
+    which drops the hosts of the round mge that it replaces, and metator host
+    did not): its report has the section mges but not hosts, no table of the
+    hosts, its MGE clusters NA hosts, and the run no thresholds of host."""
+    metacool = tmp_path / "mges.metacool"
+    shutil.copyfile(run["map"], metacool)
+    mges = run["out"].parent / "mges.txt"
+    run_cli("mge", metacool, "-a", run["assembly"], "-m", mges, "--reassign", "--inplace", "-o", tmp_path / "out",
+            "-T", tmp_path / "tmp")  # fmt: skip
+    mc, layout, stored = mtd.read_run(str(metacool))
+    assert not mtmc.holds_hosts(mc)
+    report = mtr.collect(str(metacool), mc, layout, stored)
+    assert "mges" in report.sections and "hosts" not in report.sections and "hosts" not in report.tables
+    assert report.sections["mges"]["mge_clusters"] == len(report.tables["mge_clusters"]) > 0
+    assert report.tables["mge_clusters"]["n_hosts"].isna().all()
+    assert "host_min_share_pct" not in report.sections["run"]
+    assert "plot-hosts" not in mtr.figures(report)
+
+
+def test_write_report_replaces_a_link(run, tmp_path):
+    """write_report replaces a symbolic link where a file of the report goes, not
+    its target."""
+    mc, layout, stored = _read(run)
+    report = mtr.collect(str(run["map"]), mc, layout, stored)
+    out = tmp_path / "out"
+    out.mkdir()
+    target = tmp_path / "kept.txt"
+    target.write_text("the target of a link\n")
+    (out / mtr.REPORT_TXT).symlink_to(target)
+    mtr.write_report(report, str(out))
+    assert not (out / mtr.REPORT_TXT).is_symlink() and (out / mtr.REPORT_TXT).read_text().startswith("# metaTOR report")
+    assert target.read_text() == "the target of a link\n"
+
+
+def test_the_values_of_the_report():
+    """How the report writes its values: the N50 and L50 of no contig, a value of
+    the map that is no number, the names of a missing list, a boolean in
+    report.txt, and numpy's types in the figures of report.html (JSON)."""
+    assert mtr._n50([]) == (0, 0) and mtr._n50([5, 3, 2]) == (5, 1)
+    assert mtr._number("abc") is None and mtr._number(None) is None and mtr._number(" ") is None
+    assert mtr._number(float("nan")) is None and mtr._number("0.5") == 0.5
+    assert mtr._names(float("nan")) == [] and mtr._names("a,b") == ["a", "b"]
+    assert mtr._text("key", True) == "true" and mtr._text("key", np.bool_(False)) == "false"
+    assert mtr._text("share_pct", 12.345) == "12.35" and mtr._text("trans_contig_ratio", 1.0) == "1.0000"
+    figures = {"a": np.array([1, 2]), "b": np.int64(3), "c": np.bool_(True), "d": float("inf"), "e": (np.float64(0.5),)}
+    assert mtr._json_ready(figures) == {"a": [1, 2], "b": 3, "c": True, "d": None, "e": [0.5]}
