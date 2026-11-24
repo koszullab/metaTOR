@@ -111,9 +111,10 @@ metator pipeline [OPTIONS] INPUT...
   Prodigal and HMMER (pyrodigal, pyhmmer) on every cluster.
 - **Markers**: as [`markers`](#markers), finds miComplete's marker genes on
   each contig, in its final cluster, and stores them in the map of the
-  clusters, with miComplete's default thresholds. A map with the markers
-  costs more to read (see [`markers`](#markers)): `--no-markers` leaves the
-  step out, and `markers` stores them later.
+  clusters, with miComplete's default thresholds; with `--mges`, before the
+  step `mge` regroups the contigs, as its log and the report say. A map with
+  the markers costs more to read (see [`markers`](#markers)): `--no-markers`
+  leaves the step out, and `markers` stores them later.
 - **With `--mges`**: the step `mge` (as [`mge --reassign`](#mge)) clusters the
   MGE contigs, makes each MGE cluster a genome of the map and writes
   `fasta/mges/`; the step `host` (as [`host`](#host)) finds their host MAGs

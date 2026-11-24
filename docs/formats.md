@@ -383,9 +383,10 @@ and:
 
 Every other run keeps the markers, those that regroup the contigs too
 (`validation`, `mge --reassign`, `metacooler reassign`). A metaTOR run that
-regroups them into other genomes than those of `assignment_digest` says once,
-in its log, that the markers predate its new genomes, and `metator report`
-says so too (`markers_predate_genomes`, in the section `run` of
+regroups the contigs into other genomes than those that `assignment_digest`
+records says once, in its log, that the markers predate its new genomes, and
+`metator report` says so too, whatever regrouped them
+(`markers_predate_genomes`, in the section `run` of
 [the report](#the-report-of-a-run); `metator.metacool.markers_predate`): each
 contig keeps its markers, but summed over a genome whose contigs changed,
 they give an estimate. `metator markers`, run again, finds them in the

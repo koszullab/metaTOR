@@ -143,6 +143,11 @@ viewer, or a script, recomputes them as a curation moves contigs between
 MAGs, without finding a gene again; miComplete's own run on a new MAG, which
 finds its genes anew, can give other numbers (see
 [Marker genes of the contigs](../formats.md#marker-genes-of-the-contigs)).
+With `--mges`, the step `mge` then makes a genome of each MGE cluster, its
+contigs out of the MAGs that held them: the markers predate these genomes,
+as the log of the step and the report say, and summed over a MAG that lost
+contigs they give an estimate; `metator markers` on the map of the run finds
+them in the genomes as they are.
 
 A map with the marker genes costs more to read: their two columns of the
 contigs table are decoded each time cooler opens the map or metacooler reads
