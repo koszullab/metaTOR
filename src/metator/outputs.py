@@ -22,6 +22,11 @@ Every command writes into its output directory (-o), under these names:
   (host, pipeline --mges);
 - ``plots/``: the plots, as PDF files (see metator.figures and
   metator.host).
+
+``metator export`` writes them all again from the map of a run (the FASTA
+files with the assembly): the clusters of its rounds final and mge (see
+round_groups and mge_groups), its MAGs (see map_mags and hosted_mges), the
+summary of its final clusters (see final_summary).
 """
 
 import os
@@ -30,8 +35,10 @@ import tempfile
 from os.path import join
 
 import numpy as np
+import pandas as pd
 
 import metator.clusters as mtcl
+import metator.figures as mtf
 import metator.metacool as mtmc
 from metator.log import logger
 
@@ -52,9 +59,11 @@ STITCHED = ".stitched.fa"
 SPACER = 200
 
 
-def write_fasta_files(metacool, assembly, outdir, genomes=None, groups=None, temp_dir=None):
+def write_fasta_files(metacool, assembly, outdir, genomes=None, groups=None, temp_dir=None, stitched=True):
     """Write the FASTA files of genomes of a map, or of groups of its contigs, in
-    outdir (made if missing), two for each, side by side:
+    outdir (made if missing), two for each, side by side (the first only,
+    without stitched: the final clusters of fasta/mags_with-mges, as the
+    validation writes them):
 
     - ``<name>.fa``: its contigs, the records of the assembly as they are
       (headers and lines), in the order of the map for a genome, in the order
@@ -86,6 +95,8 @@ def write_fasta_files(metacool, assembly, outdir, genomes=None, groups=None, tem
     temp_dir : str, optional
         Where a compressed assembly is copied, plain, as it is read: the
         temporary directory of the run.
+    stitched : bool
+        Whether to write ``<name>.stitched.fa`` too.
 
     Returns
     -------
@@ -108,12 +119,14 @@ def write_fasta_files(metacool, assembly, outdir, genomes=None, groups=None, tem
     os.makedirs(outdir, exist_ok=True)
     with mtmc._metacooler_logging(), mtmc._as_metacool_errors(), mtmc.read_errors(metacool):
         written = metacooler.write_fasta(metacool, assembly, outdir, genomes=names, groups=groups, force=True, temp_dir=temp_dir)
-        stitched = tempfile.mkdtemp(prefix=".stitched.", dir=outdir)
+        if not stitched:
+            return list(written)
+        staged = tempfile.mkdtemp(prefix=".stitched.", dir=outdir)
         try:
             files = metacooler.write_fasta(
                 metacool,
                 assembly,
-                stitched,
+                staged,
                 genomes=names,
                 groups=groups,
                 stitch=True,
@@ -124,8 +137,49 @@ def write_fasta_files(metacool, assembly, outdir, genomes=None, groups=None, tem
             for name, path in files.items():
                 os.replace(path, join(outdir, f"{name}{STITCHED}"))
         finally:
-            shutil.rmtree(stitched, ignore_errors=True)
+            shutil.rmtree(staged, ignore_errors=True)
     return list(written)
+
+
+def round_groups(mc, name):
+    """The clusters of the clustering round name of a map (mc, opened), by name,
+    in the order of the round: the names of their contigs, in the order of the
+    map, as the round stores them. None for a map without that round."""
+    if name not in [entry.get("name") for entry in mc.cluster_rounds]:
+        return None
+    members = mc.cluster_members(name)
+    groups = {}
+    for cluster, contig in zip(members["cluster"].astype(str), members["contig"].astype(str), strict=True):
+        groups.setdefault(cluster, []).append(contig)
+    return groups
+
+
+def mge_groups(mc, name=mtcl.MGE):
+    """The MGE clusters of the round name of a map (mc, opened: mge, or
+    mge_random), by name (see round_groups): their contigs the longest first,
+    ties by name, as metator mge writes them (see metator.mge.mge_binning).
+    None for a map without that round."""
+    groups = round_groups(mc, name)
+    if groups is None:
+        return None
+    lengths = dict(zip(mc.contigs["name"].astype(str), mc.contigs["length"].astype(int), strict=True))
+    return {cluster: sorted(contigs, key=lambda contig: (-lengths[contig], contig)) for cluster, contigs in groups.items()}
+
+
+def final_summary(mc, rows):
+    """The final clusters of a map (mc, opened) as the plots of the validation
+    read them (see metator.figures.plot_figures): by name, those of the summary
+    of the run (rows, see metator.dump.summary_layout) that are genomes of the
+    map, in its order, with their Length, Weighted completeness and Weighted
+    redundancy, as its genomes table holds them: the values of the summary,
+    which cluster_summary.txt rounds to 2 decimals, where the validation drew
+    the values of miComplete."""
+    genomes = mc.genomes.set_index(mc.genomes["name"].astype(str))
+    return {
+        name: {column: float(genomes.at[name, column]) for column in mtf.PLOTTED_COLUMNS}
+        for name in rows
+        if name in genomes.index
+    }
 
 
 def map_mags(mc):
@@ -152,6 +206,14 @@ def hosted_mges(mc):
         for name, mges in zip(genomes["name"], genomes["mges"], strict=True)
         if isinstance(mges, str) and mges
     }
+
+
+def plot_inputs(mc, rows):
+    """What the plots of the final clusters of a map (mc, opened) are drawn from,
+    as the validation draws them (see metator.figures.plot_figures): the length
+    of its contigs, as a Size column, and the summary of its final clusters
+    (rows: their names, see final_summary)."""
+    return pd.DataFrame({"Size": mc.contigs["length"].to_numpy()}), final_summary(mc, rows)
 
 
 def write_cool_files(metacool, outdir, mags, hosted=None):

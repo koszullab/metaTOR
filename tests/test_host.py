@@ -605,3 +605,26 @@ def test_host_of_the_mge_contigs_of_a_validation(mock_map, metagenome_inputs, tm
     positions = members["position"].to_numpy()
     assert (mag[positions] == "").all()
     assert mags == list(clusters.values())
+
+
+@pytest.mark.parametrize(
+    "parameters, expected",
+    [
+        ({"min_share": 20.0, "min_contigs": 3}, (20.0, 3)),
+        ({"mge_min_share": 15.0, "mge_min_contigs": 2}, (15.0, 2)),
+        ({}, (mth.MIN_SHARE, mth.MIN_CONTIGS)),
+        (None, (mth.MIN_SHARE, mth.MIN_CONTIGS)),
+    ],
+    ids=["host", "pipeline --mges", "none recorded", "no host entry"],
+)
+def test_recorded_thresholds(parameters, expected):
+    """The thresholds with which the hosts that a map holds were found, as the
+    host entry of its metator metadata records the parameters of the run:
+    those of metator host, or of pipeline --mges (--mge-min-share,
+    --mge-min-contigs); the defaults of metator host for those it does not
+    record, or for a map without hosts."""
+    import types
+
+    metator = {} if parameters is None else {"host": {"command": "metator host", "parameters": parameters}}
+    mc = types.SimpleNamespace(metadata={"metator": metator})
+    assert mth.recorded_thresholds(mc) == expected

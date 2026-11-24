@@ -253,6 +253,16 @@ each removed command.
   plot, as a PDF file (`plot/`, PNG files, in 1.x and a development build). A
   folder of an earlier run that a run makes anew is refused without `-F`,
   which replaces it.
+- `metator export MAP [-a ASSEMBLY] -o DIR` writes the outputs of a run again
+  from the map of its clusters (see the
+  [CLI reference](cli.md#export)): `cool/`, `tables/` (with `mge_hosts.txt`,
+  the hosts found again from the network of the map with the thresholds that
+  the host run recorded) and `plots/` from the map alone; `fasta/` too with
+  the assembly (`mags_with-mges/`, the final clusters, in the order of the map;
+  `mags/`; `mges/` and `mges_random/`). The map is read only: a map that
+  `metator dump` refuses is refused before anything is written, and so is one
+  that another run writes while it is read. `pipeline` writes the outputs of
+  its end with the same code.
 - `metator host MAP` finds the MAGs that host the MGE clusters that
   `metator mge` stored in the map (its round `mge`): its genomes, the final
   clusters of a run or the bins of another binner made its genomes by

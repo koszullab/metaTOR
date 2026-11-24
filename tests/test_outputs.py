@@ -14,8 +14,8 @@ import metator.outputs as mto
 from tests import synthetic
 
 # The contigs of the map of these tests, and their sequences: c1 and c3 in the
-# genome mag_1, c2 in none.
-SEQUENCES = {"c1": "A" * 100, "c2": "C" * 50, "c3": "G" * 80}
+# genome mag_1, c2 and c4 in none.
+SEQUENCES = {"c1": "A" * 100, "c2": "C" * 50, "c3": "G" * 80, "c4": "T" * 80}
 
 
 def _map(directory):
@@ -25,7 +25,7 @@ def _map(directory):
     pairs.write_text("## pairs format v1.0\nr1\tc1\t10\tc3\t20\t+\t-\nr2\tc1\t10\tc1\t90\t+\t-\nr3\tc2\t5\tc3\t60\t+\t-\n")
     bins = pd.DataFrame({"chrom": list(SEQUENCES), "start": 0, "end": [len(sequence) for sequence in SEQUENCES.values()]})
     metacool = directory / "map.metacool"
-    assignment = {"c1": "mag_1", "c2": "ND", "c3": "mag_1"}
+    assignment = {"c1": "mag_1", "c2": "ND", "c3": "mag_1", "c4": "ND"}
     metacooler.from_pairs(str(metacool), pairs=str(pairs), bins=bins, contig_genome_map=assignment, ps=False)
     assembly = directory / "assembly.fa"
     assembly.write_text("".join(f">{name} a contig\n{sequence}\n" for name, sequence in SEQUENCES.items()))
@@ -47,6 +47,39 @@ def test_write_fasta_files(tmp_path):
     assert sorted(path.name for path in out.iterdir()) == ["mag_1.fa", "mag_1.stitched.fa"]
     assert (out / "mag_1.fa").read_text() == f">c1 a contig\n{SEQUENCES['c1']}\n>c3 a contig\n{SEQUENCES['c3']}\n"
     assert synthetic.read_fasta(out / "mag_1.stitched.fa") == {"mag_1": SEQUENCES["c1"] + "N" * 200 + SEQUENCES["c3"]}
+
+
+def test_write_fasta_files_as_contigs_only(tmp_path):
+    """Without stitched, the FASTA file of each group as its contigs only, as the
+    validation writes the final clusters (fasta/mags_with-mges): in the order
+    given."""
+    metacool, assembly = _map(tmp_path)
+    out = tmp_path / "final"
+    written = mto.write_fasta_files(str(metacool), str(assembly), str(out), groups={"f1": ["c3", "c2"]}, stitched=False)
+    assert written == ["f1"] and [path.name for path in out.iterdir()] == ["f1.fa"]
+    assert (out / "f1.fa").read_text() == f">c3 a contig\n{SEQUENCES['c3']}\n>c2 a contig\n{SEQUENCES['c2']}\n"
+
+
+def test_round_and_mge_groups(tmp_path):
+    """The clusters of a round of a map, by name, their contigs in the order of
+    the map; those of an MGE round, the longest first, ties by name, as
+    metator mge writes them; None for a round that the map lacks."""
+    metacool, _ = _map(tmp_path)
+    rounds = [("final", "mag_1", ["c1", "c3"]), ("mge", "MetaTOR_MGE_00001", ["c4", "c2", "c3"])]
+    metacooler.write_clusters(
+        str(metacool),
+        [{"name": name, "tool": "metaTOR", "step": name} for name, _, _ in rounds],
+        pd.DataFrame({"round": [name for name, _, _ in rounds], "name": [cluster for _, cluster, _ in rounds]}),
+        pd.DataFrame(
+            [(name, cluster, contig) for name, cluster, contigs in rounds for contig in contigs],
+            columns=["round", "cluster", "contig"],
+        ),
+    )
+    mc = mtmc.open_map(str(metacool))
+    order = [str(name) for name in mc.contigs["name"]]
+    assert mto.round_groups(mc, "final") == {"mag_1": sorted(["c1", "c3"], key=order.index)}
+    assert mto.mge_groups(mc, "mge") == {"MetaTOR_MGE_00001": ["c3", "c4", "c2"]}
+    assert mto.round_groups(mc, "mge_random") is None and mto.mge_groups(mc, "mge_random") is None
 
 
 def test_write_fasta_files_of_nothing(tmp_path):
@@ -99,6 +132,5 @@ def test_write_outputs_stops_on_what_it_cannot_write(tmp_path, logged):
     assert error[0] == "ERROR" and "c3" in error[1]
     assert stopped == (
         "INFO",
-        f"The run stopped as it wrote its outputs: {metacool}, its map, is complete, and metacooler fasta, metacooler "
-        "extract and metator dump write them from it.",
+        f"The run stopped as it wrote its outputs: {metacool}, its map, is complete, and metator export writes them from it.",
     )

@@ -131,7 +131,9 @@ writes its outputs from its map: `fasta/mags/` (with `metacooler fasta`),
 `cool/` (with `metacooler extract`, then `cooler balance`, on the whole of each
 cool file at once, with its defaults: a cool file whose every bin is masked,
 too small for `cooler balance`, is a warning) and `tables/` (with
-`metator dump`).
+`metator dump`). [`metator export`](../cli.md#export) writes them all again
+from the map, and the FASTA files from the assembly: the outputs of a run
+that stopped as it wrote them, or that were removed since.
 
 The validation writes its tables in the temporary directory of the run
 (`--tmpdir`, in a directory of its own, which the log names), which
@@ -260,8 +262,15 @@ metator host binning/sample.metacool -o binning
 
 Run step by step, the final clusters go to `fasta/mags_with-mges/`, and their
 plots to `plots/`; `fasta/mags/`, `cool/` and `tables/`, the outputs that
-`pipeline` writes from its map at its end, are written by `metacooler fasta`,
-`metacooler extract` (then `cooler balance`) and `metator dump`. The map is
+`pipeline` writes from its map at its end, are written by
+[`metator export`](../cli.md#export), which writes every output of a run from
+the map of its clusters (the FASTA files with `--assembly`):
+
+```bash
+metator export binning/sample.metacool -a assembly.fa -o binning -F
+```
+
+The map is
 what the steps share: `metator network` stores the network in the map of its
 output directory, which `partition` and `validation` read and update in
 place (it is the map of their output directory too), `partition` stores its

@@ -77,10 +77,10 @@ reads (`hicstuff pipeline -M metacool`) and
 from the pairs files or the BAM files of the run. Every command takes the map
 as its first argument: the clustering steps, `mge` and `host` store what they
 find in it, so that the map is what the steps share, and it becomes the
-contact map of the clusters; `dump` only reads it.
+contact map of the clusters; `dump` and `export` only read it.
 
 ```sh
-metator {network|partition|validation|pipeline|mge|host|dump} MAP [OPTIONS]
+metator {network|partition|validation|pipeline|mge|host|dump|export} MAP [OPTIONS]
 metator {network|pipeline} PAIRS_OR_BAM... [OPTIONS]
 ```
 
@@ -93,6 +93,7 @@ metator {network|pipeline} PAIRS_OR_BAM... [OPTIONS]
 | `mge` | Clusters the contigs of mobile genetic elements (MGEs) from their contacts, and stores the MGE clusters in the map. |
 | `host` | Finds the MAGs that host the MGE clusters, from their contacts, and stores them in the map. |
 | `dump` | Writes the tables of a run (contig data, cluster summary, binning, clustering rounds, network) from the map of its clusters. |
+| `export` | Writes the outputs of a run again (`fasta/`, `cool/`, `tables/`, `plots/`) from the map of its clusters, and its assembly for the FASTA files. |
 
 `metator --help` lists the commands, `metator <command> --help` their options,
 and `metator --version` prints the version. A run writes its map to its output
@@ -120,6 +121,9 @@ metator pipeline sample.metacool -a assembly.fa -e DpnII -d depth.txt -o binning
 
 # 4. The tables of the run, from the map.
 metator dump binning/sample.metacool -o tables
+
+# Or every output of the run again, from the map and the assembly.
+metator export binning/sample.metacool -a assembly.fa -o outputs
 ```
 
 `hicstuff pipeline -M metacool` needs hicstuff 4.0.0 or later; with an

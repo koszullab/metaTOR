@@ -1770,3 +1770,153 @@ def test_pipeline_with_mges_from_pairs_files(metagenome, metagenome_inputs, tmp_
     assert re.findall(r" :: INFO :: \[([0-9])/([0-9])\] ([a-z]+): ", log.read_text()) == [
         (str(number), "6", name) for number, name in enumerate(names, start=1)
     ]
+
+
+def _output_files(directory):
+    """The outputs of a run in its output directory, by path relative to it: its
+    files but its logs and its map."""
+    return {
+        str(path.relative_to(directory)): path
+        for path in sorted(Path(directory).rglob("*"))
+        if path.is_file() and not path.name.endswith((".log", ".metacool"))
+    }
+
+
+def _records(path):
+    """The records of a FASTA file, as (header, sequence), in no order."""
+    blocks = [block.split("\n", 1) for block in Path(path).read_text().split(">")[1:]]
+    return sorted((header, sequence.replace("\n", "")) for header, sequence in blocks)
+
+
+def _assert_same_outputs(out, ref, without=None):
+    """The outputs of two runs (out, ref: their output directories; but those of
+    ref under without): the same files, of the same bytes, but the FASTA files
+    of the final clusters, the same records (metator export writes them in the
+    order of the map), the plots, PDF files (which record when they were
+    drawn), and the cool files, the same bins (weights included) and pixels."""
+    files = _output_files(out)
+    expected = {name: path for name, path in _output_files(ref).items() if without is None or not name.startswith(without)}
+    assert sorted(files) == sorted(expected)
+    for name, path in files.items():
+        if name.endswith(".cool"):
+            clr, ref_clr = cooler.Cooler(str(path)), cooler.Cooler(str(expected[name]))
+            pd.testing.assert_frame_equal(clr.bins()[:], ref_clr.bins()[:])
+            pd.testing.assert_frame_equal(clr.pixels()[:], ref_clr.pixels()[:])
+        elif name.endswith(".pdf"):
+            assert path.read_bytes().startswith(b"%PDF"), name
+        elif name.startswith(MAGS_WITH_MGES):
+            assert _records(path) == _records(expected[name]), name
+        else:
+            assert path.read_bytes() == expected[name].read_bytes(), name
+
+
+def test_export_writes_the_outputs_of_a_run_again(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli, logged):
+    """metator export MAP -a ASSEMBLY writes the outputs of a run again from the
+    map that pipeline --mges wrote, which it leaves as it was: the same files
+    (see _assert_same_outputs), the hosts found again with the thresholds of
+    the run. Without --assembly, the same but the FASTA files, which the log
+    says how to write. In an output directory that holds them, refused without
+    -F, before anything is written, and replaced with it. A map written while
+    export reads it is refused, at its end."""
+    monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
+    assembly = str(metagenome_inputs["assembly"])
+    metacool = _contig_map(metagenome_inputs, tmp_path / "contigs.metacool")
+    mges = _mge_list(metagenome, tmp_path / "mges.txt")
+    out, tmp = tmp_path / "out", tmp_path / "tmp"
+    random.seed(0)
+    run_cli("pipeline", metacool, "-a", assembly, "-o", out, "-T", tmp, "-s", "20000", "-i", "10", "-j", "5", "--mges", mges)
+    written = out / metacool.name
+    before = written.read_bytes()
+
+    exported = tmp_path / "exported"
+    run_cli("export", written, "-a", assembly, "-o", exported, "-T", tmp)
+    _assert_same_outputs(exported, out)
+    assert _output_files(exported) and written.read_bytes() == before
+    (log,) = exported.glob("metator_export_*.log")
+    assert (
+        "INFO :: The hosts of the MGE clusters, found again from the network of the map with --min-share 10 and "
+        f"--min-contigs 5, as the host run recorded them: {exported / 'tables' / 'mge_hosts.txt'}, "
+        f"{exported / 'plots' / 'mge_hosts.pdf'}\n"
+    ) in log.read_text()
+
+    partial = tmp_path / "partial"
+    run_cli("export", written, "-o", partial, "-T", tmp)
+    _assert_same_outputs(partial, out, without="fasta")
+    (log,) = partial.glob("metator_export_*.log")
+    assert (
+        "INFO :: No assembly (--assembly): the FASTA files of the run (fasta) are not written. Give the assembly that "
+        f"the map was made from to write them: {assembly}, as the run recorded it.\n"
+    ) in log.read_text()
+
+    # Again, in the same output directory: refused without -F, then replaced.
+    (exported / "cool" / "mine.txt").write_text("an earlier run's\n")
+    with pytest.raises(ValueError):
+        run_cli("export", written, "-a", assembly, "-o", exported, "-T", tmp)
+    refused = f"{exported / MAGS_WITH_MGES} already existed. Remove directory or use -F argument to overwrite it."
+    assert ("ERROR", refused) in logged()
+    assert (exported / "cool" / "mine.txt").exists()
+    run_cli("export", written, "-a", assembly, "-o", exported, "-T", tmp, "-F")
+    _assert_same_outputs(exported, out)
+
+    # An assembly that lacks a contig of a final cluster: the run stops as it
+    # writes the FASTA files, and says so.
+    missing = str(metacooler.MetaCooler(str(written)).cluster_members(mtcl.FINAL)["contig"].iloc[0])
+    lacking = tmp_path / "lacking.fa"
+    records = Path(assembly).read_text().split(">")[1:]
+    lacking.write_text("".join(f">{record}" for record in records if record.split()[0] != missing))
+    with pytest.raises(mtmc.MetacoolError, match=missing):
+        run_cli("export", written, "-a", lacking, "-o", tmp_path / "lacking", "-T", tmp)
+    assert ("INFO", f"The run stopped as it wrote the outputs of {written}. {mtcli.EXPORT_AGAIN}") in logged()
+
+    # The map, written as export reads it (here, as it writes its tables).
+    write_map_outputs = mtcli.write_map_outputs
+
+    def writes_the_map(metacool, *args):
+        write_map_outputs(metacool, *args)
+        status = os.stat(metacool)
+        os.utime(metacool, ns=(status.st_atime_ns, status.st_mtime_ns + 10**9))
+
+    monkeypatch.setattr("metator.cli.write_map_outputs", writes_the_map)
+    with pytest.raises(mtmc.MapReplacedError):
+        run_cli("export", written, "-o", tmp_path / "replaced", "-T", tmp)
+    message = (
+        f"{written} was replaced or written while metator export read it, by a run that updated it: what it wrote may "
+        "mix two maps. Run metator export again, with -F for what it wrote, once the run that writes the map has ended."
+    )
+    assert ("ERROR", message) in logged()
+
+
+@pytest.mark.parametrize("case", ["no clusters", "the assembly in cool", "a tmpdir in cool"])
+def test_export_refusals(case, metagenome_inputs, tmp_path, run_cli):
+    """What metator export refuses before it writes anything: a map without the
+    clusters of a validation, as metator dump refuses it; an input of the run
+    in a folder that it makes anew, which -F would replace with it (with -F
+    here); and a --tmpdir there, as a usage error."""
+    metacool = _contig_map(metagenome_inputs, tmp_path / "contigs.metacool")
+    out = tmp_path / "out"
+    assembly = metagenome_inputs["assembly"]
+    if case == "a tmpdir in cool":
+        result = run_cli("export", metacool, "-o", out, "-T", out / "cool" / "tmp", exit_code=2)
+        assert f"is in {out / 'cool'}, which the run makes anew" in " ".join(result.output.replace("│", " ").split())
+        assert not out.exists()
+        return
+    kept = []
+    if case == "the assembly in cool":
+        (out / "cool").mkdir(parents=True)
+        assembly = shutil.copyfile(assembly, out / "cool" / "assembly.fa")
+        kept = ["cool"]
+        message = (
+            f"{assembly}, an input of the run, is in {out / 'cool'}, which the run makes anew: move it away, or give "
+            "the run another output directory with -o."
+        )
+    else:
+        message = (
+            f"{metacool} holds no clusters of a validation: it lacks the validation entry of its metator metadata and "
+            "the clustering round final. Run metator validation (or metator pipeline) on it first, which writes the "
+            "map of the clusters."
+        )
+    with pytest.raises(ValueError):
+        run_cli("export", metacool, "-a", assembly, "-o", out, "-T", tmp_path / "tmp", "-F")
+    (log,) = out.glob("metator_export_*.log")
+    assert f"ERROR :: {message}\n" in log.read_text()
+    assert sorted(path.name for path in out.iterdir()) == sorted([log.name, *kept]) and Path(assembly).exists()

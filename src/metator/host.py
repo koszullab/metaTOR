@@ -294,6 +294,19 @@ def find_hosts(metacool, mc, network, min_share=MIN_SHARE, min_contigs=MIN_CONTI
     return Hosts(pairs[PAIRS_COLUMNS], clusters, genomes)
 
 
+def recorded_thresholds(mc):
+    """The thresholds with which the hosts of the MGE clusters of a map (mc,
+    opened) were found, as (min_share, min_contigs): the --min-share and
+    --min-contigs of metator host, or the --mge-min-share and --mge-min-contigs
+    of pipeline --mges, as the host entry of the metator metadata of the map
+    records the parameters of the run (see metator.metacool.host_entry);
+    MIN_SHARE and MIN_CONTIGS for one that it does not record."""
+    parameters = (mtmc.host_entry(mc) or {}).get("parameters") or {}
+    min_share = parameters.get("min_share", parameters.get("mge_min_share", MIN_SHARE))
+    min_contigs = parameters.get("min_contigs", parameters.get("mge_min_contigs", MIN_CONTIGS))
+    return float(min_share), int(min_contigs)
+
+
 def write_hosts(pairs, path):
     """Write the MGE clusters and MAGs in contact (pairs, see Hosts.pairs) at path,
     tab-separated, with a header: PAIRS_COLUMNS, host True or False. The file is

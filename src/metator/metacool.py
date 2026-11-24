@@ -729,6 +729,14 @@ def holds_hosts(mc):
     return isinstance(_metator_metadata(mc).get(HOST_ENTRY), dict)
 
 
+def host_entry(mc):
+    """The host entry of the metator metadata of the map mc (see HOST_ENTRY): what
+    the run that found the hosts of its MGE clusters recorded, its command line
+    and its parameters among them; None when the map holds no hosts."""
+    entry = _metator_metadata(mc).get(HOST_ENTRY)
+    return entry if isinstance(entry, dict) else None
+
+
 def hosts_network(mc):
     """The digest of the network that metator host read to find the hosts that
     the map mc holds (see holds_hosts), as its host entry records it: None when

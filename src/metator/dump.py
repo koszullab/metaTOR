@@ -95,7 +95,7 @@ def check_dumpable(metacool, mc):
         missing.append(f"the clustering round {mtcl.FINAL}")
     if missing:
         raise mtmc.MetacoolError(
-            f"{metacool} holds no clusters of a validation to dump: it lacks {' and '.join(missing)}. Run metator "
+            f"{metacool} holds no clusters of a validation: it lacks {' and '.join(missing)}. Run metator "
             "validation (or metator pipeline) on it first, which writes the map of the clusters."
         )
     return validation
@@ -359,6 +359,41 @@ def existing_tables(outdir):
 DUMP_AGAIN = "No table was written: run metator dump again once the run that writes the map has ended."
 
 
+def read_run(metacool, remedy=DUMP_AGAIN):
+    """The map of the clusters of a run, opened once, as metator dump and metator
+    export read it, once refused what they refuse: a map without the clusters
+    of a validation, or whose clusters were edited since (see check_dumpable),
+    without the summary that metaTOR 2.0 records (see summary_layout), or
+    whose network is not the one that its clusters were made from (see
+    check_network). A read that spans a replacement of the map raises a
+    MapReplacedError, whose message ends with remedy.
+
+    Returns
+    -------
+    tuple
+        The map, opened (a metacooler.MetaCooler); the layout of the summary
+        of its final clusters (see summary_layout); and its network, read
+        through it (see metator.network.stored_network): the contig data of
+        its contigs, and the network weighed with the stored normalization
+        (whose Hit column must be that of its contacts), which must be the one
+        that the clusters were made from."""
+    with mtmc._metacooler_logging(), mtmc.read_errors(metacool, remedy):
+        mc = mtmc.open_map(metacool)
+        layout = summary_layout(metacool, check_dumpable(metacool, mc))
+    try:
+        stored = mtn.stored_network(metacool, mc)
+    except mtmc.MapReplacedError as error:
+        # A replacement found by a read of stored_network, which names another
+        # remedy.
+        raise mtmc.MapReplacedError(
+            f"{metacool} was replaced or written while it was read, by a run that updated it: what was read of it "
+            f"would mix two maps. {remedy}"
+        ) from error
+    with mtmc._metacooler_logging(), mtmc.read_errors(metacool, remedy):
+        check_network(metacool, mc, stored)
+    return mc, layout, stored
+
+
 def dump(metacool, outdir, force=False):
     """Write the tables of the run that wrote the map metacool (see the module's
     docstring) in outdir, made if it is not there. The map is read only: every
@@ -406,16 +441,8 @@ def dump(metacool, outdir, force=False):
             "another output directory."
         )
     try:
+        mc, layout, stored = read_run(metacool)
         with mtmc._metacooler_logging(), mtmc.read_errors(metacool, DUMP_AGAIN):
-            mc = mtmc.open_map(metacool)
-            layout = summary_layout(metacool, check_dumpable(metacool, mc))
-        # The network, read once, through mc: the contig data of the contigs of
-        # the map, and the network weighed with the stored normalization
-        # (whose Hit column must be that of its contacts), which must be the
-        # one that the clusters were made from.
-        stored = mtn.stored_network(metacool, mc)
-        with mtmc._metacooler_logging(), mtmc.read_errors(metacool, DUMP_AGAIN):
-            check_network(metacool, mc, stored)
             data = contig_data_final(metacool, mc, stored.table)
             summary = cluster_summary(metacool, mc, layout)
             clusters, members = mtmc.map_rounds(mc)
@@ -427,8 +454,6 @@ def dump(metacool, outdir, force=False):
             lengths = pd.Series(contigs["length"].to_numpy(), index=contigs["name"].astype(str).to_numpy())
             clusters = mtcl.with_sizes(clusters, members, lengths)
     except mtmc.MapReplacedError as error:
-        # A replacement found by a read of stored_network, which names
-        # another remedy.
         raise mtmc.MapReplacedError(
             f"{metacool} was replaced or written while metator dump read it, by a run that updated it: what was "
             f"read of it would mix two maps. {DUMP_AGAIN}"
