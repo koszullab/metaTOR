@@ -77,10 +77,10 @@ reads (`hicstuff pipeline -M metacool`) and
 from the pairs files or the BAM files of the run. Every command takes the map
 as its first argument: the clustering steps, `mge` and `host` store what they
 find in it, so that the map is what the steps share, and it becomes the
-contact map of the clusters; `dump` and `export` only read it.
+contact map of the clusters; `dump`, `export` and `report` only read it.
 
 ```sh
-metator {network|partition|validation|pipeline|mge|host|dump|export} MAP [OPTIONS]
+metator {network|partition|validation|pipeline|mge|host|dump|export|report} MAP [OPTIONS]
 metator {network|pipeline} PAIRS_OR_BAM... [OPTIONS]
 ```
 
@@ -93,7 +93,8 @@ metator {network|pipeline} PAIRS_OR_BAM... [OPTIONS]
 | `mge` | Clusters the contigs of mobile genetic elements (MGEs) from their contacts, and stores the MGE clusters in the map. |
 | `host` | Finds the MAGs that host the MGE clusters, from their contacts, and stores them in the map. |
 | `dump` | Writes the tables of a run (contig data, cluster summary, binning, clustering rounds, network) from the map of its clusters. |
-| `export` | Writes the outputs of a run again (`fasta/`, `cool/`, `tables/`, `plots/`) from the map of its clusters, and its assembly for the FASTA files. |
+| `export` | Writes the outputs of a run again (`fasta/`, `cool/`, `tables/`, `plots/`, the report) from the map of its clusters, and its assembly for the FASTA files. |
+| `report` | Writes the report of a run from the map of its clusters: `report.html`, a page with its numbers, tables and interactive plots; `report.txt`, the same as text; `report_mqc.yaml`, for MultiQC. |
 
 `metator --help` lists the commands, `metator <command> --help` their options,
 and `metator --version` prints the version. A run writes its map to its output
@@ -191,8 +192,11 @@ of the quality of the clusters, as PDF files (their completeness and
 contamination, and the size of each quality class); from `pipeline`,
 `fasta/mags/`, each MAG as its contigs and stitched (one record, its contigs
 joined by 200 `N`), `cool/`, a balanced cool file per MAG (with the MGE
-clusters that it hosts), and `tables/`, the tables of `metator dump`; and the
-log of the run,
+clusters that it hosts), `tables/`, the tables of `metator dump`, and the
+report of the run: `report.html`, a page to read it with, its numbers, its
+MAGs and their files, and interactive plots; `report.txt`, the same as text;
+and `report_mqc.yaml`, which [MultiQC](https://multiqc.info) gathers over the
+runs of a project; and the log of the run,
 `metator_<command>_<date>.log`, which starts with the version, the command line
 and the value of each option, and ends with what the run wrote and how long it
 took.

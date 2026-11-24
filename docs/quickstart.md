@@ -131,6 +131,7 @@ INFO :: The FASTA files of the 26 final cluster(s), with the MGE contigs that th
 INFO :: The FASTA files of the 26 MAG(s) of the run, each as its contigs and stitched: binning/fasta/mags
 INFO :: The cool files of the 26 MAG(s) of the run, 0 of them with the MGE clusters that they host, balanced: binning/cool
 INFO :: The tables of binning/sample.metacool are written in binning/tables: 1219 contigs, 27 genomes, 3 clustering rounds and 13415 edges of the network.
+INFO :: The report of the run, from its map: binning/report.txt, binning/report.html, binning/report_mqc.yaml
 INFO :: The temporary directory of the run, ./tmp/7891e04f, and its files are kept (-N).
 INFO :: Final contact map written after 0h 0m 5s: binning/sample.metacool
 ```
@@ -174,6 +175,8 @@ the tables of its validation, the same, are in its temporary directory, which
 | `fasta/mags_with-mges/` | One FASTA file per final cluster, as the validation made it (the same contigs as `fasta/mags/`, without `--mges`) |
 | `cool/` | A cool file per MAG, balanced: its contacts, at the bins of the map |
 | `plots/` | The plots of the clusters, as PDF files: their completeness and contamination (`bins_distribution.pdf`), and the size of each quality class (`bins_size_distribution.pdf`) |
+| `report.html` | The report of the run, to open in a browser: its numbers at a glance, its MAGs in a table, with links to their files, and interactive plots |
+| `report.txt`, `report_mqc.yaml` | The same report as text, and for [MultiQC](https://multiqc.info), which gathers the reports of several runs |
 | `metator_pipeline_<date>.log` | The log of the run |
 | `tables/cluster_summary.txt` | One row per final cluster: size, GC content, completeness, redundancy, N50, Hi-C abundance… |
 | `tables/clusters.txt`, `tables/cluster_members.txt` | Every cluster of every round (core, overlapping, recursive, final), with its parent, its number of contigs and their length, and miComplete's columns, and the contigs of each |
@@ -203,6 +206,10 @@ clusters of this test library hold a few marker genes at most (a completeness
 under 10%), so they are classed as *Other clusters*; on a real sample, the log
 counts the high-, medium- and low-quality MAGs, and
 `binning/plots/bins_size_distribution.pdf` shows their share of the assembly.
+`binning/report.html`, which a browser opens, shows the run at a glance: its
+clusters by quality class, its MAGs in a table that sorts and filters, and
+interactive plots; `binning/report.txt` holds the same numbers as text (see
+[The report of a run](formats.md#the-report-of-a-run)).
 
 ## Step 5: open the contact map
 

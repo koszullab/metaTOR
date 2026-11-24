@@ -9,6 +9,7 @@ import metator.cli as mtc
 import metator.dump as mtd
 import metator.metacool as mtmc
 import metator.network as mtn
+import metator.report as mtr
 import metacooler
 import pytest
 from tests.maps import contig_map
@@ -228,13 +229,15 @@ def test_pipeline(a_map, tmp_path, run_cli):
     metacooler.validate(str(metacool))
     genomes = metacooler.MetaCooler(str(metacool)).genomes
     # The tables of the validation, in the temporary directory of the run,
-    # which --no-clean-up keeps; none in the output directory.
+    # which --no-clean-up keeps; none in the output directory, whose one text
+    # file is the report of the run.
     (summary,) = Path(tmp_path, "tmp").glob("*/cluster_summary.txt")
     assert set(genomes.name) - {"__unbinned__"} == {line.split("\t")[0] for line in summary.read_text().splitlines()[1:]}
-    assert not list(Path(tmp_path, "out_test").glob("*.txt"))
+    assert [path.name for path in Path(tmp_path, "out_test").glob("*.txt")] == [mtr.REPORT_TXT]
     # The outputs of the run: the FASTA files of its final clusters and of its
     # MAGs (each as its contigs and stitched), a cool file per MAG, balanced
-    # (weights in its bins), its tables (metator dump) and its plots (PDF).
+    # (weights in its bins), its tables (metator dump), its plots (PDF) and
+    # its report (see test_report).
     out = Path(tmp_path, "out_test")
     mags = sorted(set(genomes.name) - {"__unbinned__"})
     assert sorted(path.stem for path in (out / "fasta" / "mags_with-mges").iterdir()) == mags
@@ -245,6 +248,9 @@ def test_pipeline(a_map, tmp_path, run_cli):
     assert all("weight" in cooler.Cooler(str(path)).bins().columns for path in (out / "cool").iterdir())
     assert sorted(path.name for path in (out / "tables").iterdir()) == sorted(mtd.TABLES)
     assert sorted(path.name for path in (out / "plots").iterdir()) == ["bins_distribution.pdf", "bins_size_distribution.pdf"]
+    sections, tables = mtr.read_txt(out / mtr.REPORT_TXT)
+    assert sections["clusters"]["final_clusters"] == str(len(mags)) and sorted(tables["mags"]["name"]) == mags
+    assert (out / mtr.REPORT_HTML).is_file() and (out / mtr.REPORT_MQC).is_file()
     # The contig columns but Shotgun_coverage, which is - without a depth
     # file.
     contigs = metacooler.MetaCooler(str(metacool)).contigs

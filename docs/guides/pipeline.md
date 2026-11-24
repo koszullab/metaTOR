@@ -110,6 +110,8 @@ The pipeline writes into `--outdir` (`-o`, the current directory by default):
 | `cool/` | A cool file per MAG, `<MAG>.cool`: its contigs and those of the MGE clusters that it hosts (with `--mges`), at the bins of the map, balanced (the `weight` column of its bins, which cooler, cooltools and HiGlass read) |
 | `tables/` | The tables of the run, as `metator dump` writes them from its map (see [`dump`](../cli.md#dump)); with `--mges`, `mge_hosts.txt`, every MGE cluster and MAG in contact (see [What host writes](mge.md#what-host-writes)) |
 | `plots/` | The plots, as PDF files: the completeness and contamination of the final clusters (`bins_distribution.pdf`), the size of each quality class (`bins_size_distribution.pdf`), see [Viewing the clusters](binning.md#viewing-the-clusters); with `--mges`, the signal and share of the hosts (`mge_hosts.pdf`) |
+| `report.html` | The report of the run, a page to read it with: its numbers at a glance, its MAGs in a table that sorts and filters, with links to their files, its MGE clusters and their hosts, and interactive plots (see [`report`](../cli.md#report)) |
+| `report.txt`, `report_mqc.yaml` | The same report, as text, in sections and tables that a script parses, and as a row of the General Statistics table of [MultiQC](https://multiqc.info), which gathers the runs of a project (see [The report of a run](../formats.md#the-report-of-a-run)) |
 | `metator_pipeline_<date>.log` | The log of the run |
 
 What the run finds is in the map. At the end of the validation, the run
@@ -133,9 +135,11 @@ wrote: `fasta/mags_with-mges/`, `fasta/mags/` (with `metacooler fasta`),
 `fasta/mges/` with `--mges`, `cool/` (with `metacooler extract`, then
 `cooler balance`, on the whole of each cool file at once, with its defaults:
 a cool file whose every bin is masked, too small for `cooler balance`, is a
-warning), `tables/` (with `metator dump`) and `plots/`. `metator export`
-writes them all again from the map, and the FASTA files from the assembly:
-the outputs of a run that stopped before, or that were removed since.
+warning), `tables/` (with `metator dump`), `plots/`, and, last, the report
+of the run (as [`metator report`](../cli.md#report) writes it). `metator
+export` writes them all again from the map, and the FASTA files from the
+assembly: the outputs of a run that stopped before, or that were removed
+since.
 
 The validation writes its tables in the temporary directory of the run
 (`--tmpdir`, in a directory of its own, which the log names), which
@@ -160,7 +164,7 @@ without the `ID`. [File formats](../formats.md) describes each table.
 
 A run refuses to overwrite the outputs of an earlier one (`fasta/mags_with-mges/`,
 `fasta/mags/`, `fasta/mges/`, `cool/`, the tables of `tables/`, the plots of
-the clusters) unless given `--force` (`-F`), which leaves the other files of
+the clusters, the report) unless given `--force` (`-F`), which leaves the other files of
 `plots/` and `tables/` as they are. The other results of an earlier run in the
 output directory (the tables, `recursive_clusters/`, `final_clusters/`,
 `plot/`, `mges_binned.fa` and `mge_hosts.txt` of a development build of 2.0,

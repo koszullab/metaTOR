@@ -1,0 +1,390 @@
+{#- The report of a metaTOR run (see metator.report.write_html): its sections,
+    tables and plots, from the map of the clusters of the run. -#}
+{% set meta = report.report %}
+{% set clusters = report.clusters %}
+{% set contigs = report.contigs %}
+{% set contacts = report.contacts %}
+{% macro number(value, digits=0) -%}
+{%- if value is none -%}NA{%- elif digits == 0 -%}{{ "{:,.0f}".format(value) }}{%- else -%}{{ ("{:,.%df}" % digits).format(value) }}{%- endif -%}
+{%- endmacro %}
+{% macro mbp(value) -%}{%- if value is none -%}NA{%- else -%}{{ "{:,.2f}".format(value / 1000000) }} Mbp{%- endif -%}{%- endmacro %}
+{% macro badge(quality) -%}
+{%- if quality -%}<span class="badge" style="background: {{ colours[quality] }}">{{ quality }}</span>{%- else -%}NA{%- endif -%}
+{%- endmacro %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="metaTOR {{ meta.metator_version }}">
+<title>metaTOR report · {{ meta.sample }}</title>
+<script src="{{ plotly_js }}" charset="utf-8" defer></script>
+<style>
+  :root {
+    --ink: #1f2933; --muted: #616e7c; --line: #e4e7eb; --paper: #ffffff; --shade: #f5f7fa;
+    --accent: #3e5c8a; --hq: {{ colours.HQ }}; --mq: {{ colours.MQ }}; --lq: {{ colours.LQ }};
+    --contaminated: {{ colours.Contaminated }}; --other: {{ colours.Other }};
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Inter, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); background: var(--shade); line-height: 1.5; }
+  header { background: linear-gradient(120deg, #24324a, #3e5c8a); color: #fff; padding: 28px 40px 22px; }
+  header h1 { margin: 0 0 4px; font-size: 26px; font-weight: 650; letter-spacing: .2px; }
+  header .meta { opacity: .85; font-size: 13px; }
+  header .meta code { color: #fff; background: rgba(255,255,255,.12); padding: 1px 6px; border-radius: 4px; }
+  nav { position: sticky; top: 0; z-index: 10; background: var(--paper); border-bottom: 1px solid var(--line); padding: 0 40px; display: flex; gap: 4px; flex-wrap: wrap; }
+  nav a { color: var(--muted); text-decoration: none; padding: 12px 12px; font-size: 14px; border-bottom: 2px solid transparent; }
+  nav a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+  main { max-width: 1280px; margin: 0 auto; padding: 24px 40px 40px; }
+  section { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 22px 26px; margin-bottom: 22px; }
+  section h2 { margin: 0 0 4px; font-size: 20px; }
+  section > p.lead { margin: 0 0 16px; color: var(--muted); font-size: 14px; }
+  h3 { font-size: 15px; margin: 22px 0 8px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin: 8px 0 18px; }
+  .card { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; background: var(--paper); cursor: default; }
+  .card .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+  .card .value { font-size: 26px; font-weight: 650; line-height: 1.2; }
+  .card .detail { font-size: 12px; color: var(--muted); }
+  .card.quality { border-left: 6px solid var(--other); cursor: pointer; }
+  .card.quality:hover { box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 18px; }
+  .plot { min-height: 260px; }
+  .offline { color: var(--muted); font-style: italic; padding: 30px; text-align: center; border: 1px dashed var(--line); border-radius: 8px; }
+  .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 2px 24px; margin: 6px 0 14px; font-size: 14px; }
+  .facts div { display: flex; justify-content: space-between; border-bottom: 1px dotted var(--line); padding: 3px 0; }
+  .facts span:first-child { color: var(--muted); }
+  .tools { display: flex; gap: 10px; align-items: center; margin: 10px 0; flex-wrap: wrap; }
+  .tools input { padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 14px; min-width: 240px; }
+  .tools button { padding: 6px 12px; border: 1px solid var(--line); background: var(--shade); border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .tools button:hover { background: #e9eef5; }
+  .tools .count { color: var(--muted); font-size: 13px; }
+  .scroll { overflow: auto; max-height: 620px; border: 1px solid var(--line); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { padding: 6px 10px; text-align: left; white-space: nowrap; border-bottom: 1px solid var(--line); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  thead th { position: sticky; top: 0; background: #eef2f7; cursor: pointer; user-select: none; }
+  thead th[data-order="asc"]::after { content: " ▲"; font-size: 10px; }
+  thead th[data-order="desc"]::after { content: " ▼"; font-size: 10px; }
+  tbody tr:hover { background: #f7f9fc; }
+  .badge { display: inline-block; color: #fff; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; text-shadow: 0 0 2px rgba(0,0,0,.35); }
+  a { color: var(--accent); }
+  pre { background: var(--shade); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; overflow-x: auto; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+  details summary { cursor: pointer; color: var(--accent); margin: 6px 0; }
+  .note { font-size: 13px; color: var(--muted); }
+  table.keys { width: auto; max-width: 100%; margin-bottom: 8px; }
+  table.keys th { position: static; background: none; cursor: default; color: var(--muted); font-weight: 500; padding-right: 24px; }
+  table.keys td { white-space: normal; word-break: break-all; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  footer { text-align: center; color: var(--muted); font-size: 12px; padding: 0 0 30px; }
+  @media print { nav { display: none; } section { break-inside: avoid; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>metaTOR report · {{ meta.sample }}</h1>
+  <div class="meta">Map <code>{{ meta.map }}</code> · written {{ meta.written }} by metaTOR {{ meta.metator_version }}{% if report.run.assembly %} · assembly <code>{{ report.run.assembly }}</code>{% endif %}</div>
+</header>
+<nav>
+  <a href="#overview">Overview</a>
+  <a href="#mags">MAGs</a>
+  <a href="#contigs">Contigs</a>
+  <a href="#contacts">Contacts</a>
+  {% if "mges" in report %}<a href="#mges">MGEs and hosts</a>{% endif %}
+  <a href="#run">Run</a>
+  <a href="#files">Files</a>
+</nav>
+<main>
+
+<section id="overview">
+  <h2>Overview</h2>
+  <p class="lead">The final clusters of the run, by quality class (miComplete's completeness and contamination: HQ &ge; 90% and &le; 5%, MQ &ge; 70% and &le; 10%, LQ &ge; 50% and &le; 10%, contaminated &ge; 50% and &gt; 10%, other &lt; 50%). Click a class to list its MAGs.</p>
+  <div class="cards">
+    {% for quality, key, label in [("HQ", "hq_mags", "HQ MAGs"), ("MQ", "mq_mags", "MQ MAGs"), ("LQ", "lq_mags", "LQ MAGs"), ("Contaminated", "contaminated_mags", "Contaminated"), ("Other", "other_clusters", "Other clusters")] %}
+    <div class="card quality" style="border-left-color: {{ colours[quality] }}" data-quality="{{ quality }}" title="List the {{ label }}">
+      <div class="label">{{ label }}</div>
+      <div class="value">{{ number(clusters[key]) }}</div>
+      <div class="detail">{{ mbp(clusters[key ~ "_bp"]) }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="cards">
+    <div class="card"><div class="label">Binned</div><div class="value">{{ number(contigs.in_mags_pct, 1) }}%</div><div class="detail">of the assembly in a MAG ({{ mbp(contigs.in_mags_bp) }})</div></div>
+    <div class="card"><div class="label">Contigs</div><div class="value">{{ number(contigs.contigs) }}</div><div class="detail">{{ mbp(contigs.contigs_bp) }}, N50 {{ number(contigs.contig_n50_bp) }} bp</div></div>
+    <div class="card"><div class="label">3D ratio</div><div class="value">{{ number(contacts.trans_contig_ratio, 3) }}</div><div class="detail">of {{ number(contacts.contacts) }} contacts join two contigs</div></div>
+    <div class="card"><div class="label">Final clusters</div><div class="value">{{ number(clusters.final_clusters) }}</div><div class="detail">{{ mbp(clusters.final_clusters_bp) }}</div></div>
+    {% if "mges" in report %}
+    <div class="card"><div class="label">MGE clusters</div><div class="value">{{ number(report.mges.mge_clusters) }}</div><div class="detail">{% if "hosts" in report %}{{ number(report.hosts.mge_clusters_with_host) }} with a host MAG{% else %}hosts not found yet{% endif %}</div></div>
+    {% endif %}
+  </div>
+  <div class="grid">
+    <div><h3>Final clusters by quality class</h3><div class="plot" id="plot-classes" data-figure></div></div>
+    <div><h3>Clusters of each round of the clustering</h3><div class="plot" id="plot-rounds" data-figure></div></div>
+  </div>
+</section>
+
+<section id="mags">
+  <h2>MAGs</h2>
+  <p class="lead">Each MAG, a dot: its completeness against its contamination, its size its length. Hover for its details; the dotted lines are the thresholds of the classes.</p>
+  <div class="plot" id="plot-quality" data-figure></div>
+  <h3>The MAGs</h3>
+  <p class="note">The MAGs of the map: its genomes but the MGE genomes, with the values of their validation (completeness, contamination, N50…), the length and the contigs that they have now; <em>intra-genome ratio</em>: the share of the contacts of their contigs that stay within the MAG. Click a column to sort it.</p>
+  <div class="tools">
+    <input type="search" class="filter" data-table="table-mags" placeholder="Filter the MAGs (name, class, MGE…)">
+    <button type="button" class="download" data-table="table-mags" data-file="{{ meta.sample }}_mags.csv">Download CSV</button>
+    <span class="count" id="table-mags-count"></span>
+  </div>
+  <div class="scroll">
+  <table class="sortable" id="table-mags">
+    <thead><tr>
+      <th>MAG</th><th>Class</th><th class="num">Length (bp)</th><th class="num">Contigs</th><th class="num">Completeness (%)</th><th class="num">Contamination (%)</th>
+      <th class="num">GC (%)</th><th class="num">N50 (bp)</th><th class="num">Hi-C abundance</th><th class="num">Shotgun abundance</th><th class="num">Intra-genome ratio</th><th>MGE clusters</th><th>Files</th>
+    </tr></thead>
+    <tbody>
+    {% for row in tables.mags %}
+    {% set link = links.mags[row.name] %}
+    <tr data-quality="{{ row.quality or '' }}">
+      <td>{{ row.name }}</td>
+      <td data-sort="{{ loop.index0 }}">{{ badge(row.quality) }}</td>
+      <td class="num" data-sort="{{ row.length_bp }}">{{ number(row.length_bp) }}</td>
+      <td class="num">{{ row.contigs }}</td>
+      <td class="num" data-sort="{{ row.completeness_pct if row.completeness_pct is not none else '' }}">{{ number(row.completeness_pct, 1) }}</td>
+      <td class="num" data-sort="{{ row.contamination_pct if row.contamination_pct is not none else '' }}">{{ number(row.contamination_pct, 1) }}</td>
+      <td class="num">{{ number(row.gc_pct, 1) }}</td>
+      <td class="num" data-sort="{{ row.n50_bp if row.n50_bp is not none else '' }}">{{ number(row.n50_bp) }}</td>
+      <td class="num">{{ number(row.hic_abundance, 3) }}</td>
+      <td class="num">{{ number(row.sg_abundance, 3) }}</td>
+      <td class="num">{{ number(row.intra_genome_ratio, 3) }}</td>
+      <td>{{ row.mges or "" }}</td>
+      <td>{% if link.fasta %}<a href="{{ link.fasta }}">fasta</a>{% endif %}{% if link.stitched %} · <a href="{{ link.stitched }}">stitched</a>{% endif %}{% if link.cool %} · <a href="{{ link.cool }}">cool</a>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="contigs">
+  <h2>Contigs</h2>
+  <p class="lead">The contigs of the assembly in the map, and where they went: in a MAG, in an MGE cluster, or in none.</p>
+  <div class="facts">
+    <div><span>Contigs</span><span>{{ number(contigs.contigs) }}</span></div>
+    <div><span>Length</span><span>{{ mbp(contigs.contigs_bp) }}</span></div>
+    <div><span>N50 / L50</span><span>{{ number(contigs.contig_n50_bp) }} bp / {{ number(contigs.contig_l50) }}</span></div>
+    <div><span>N90</span><span>{{ number(contigs.contig_n90_bp) }} bp</span></div>
+    <div><span>Longest</span><span>{{ number(contigs.contig_max_bp) }} bp</span></div>
+    <div><span>GC content</span><span>{{ number(contigs.gc_pct, 2) }}%</span></div>
+    <div><span>Median shotgun coverage</span><span>{{ number(contigs.coverage_median, 2) }}</span></div>
+    <div><span>In final clusters</span><span>{{ number(contigs.in_final_clusters_contigs) }} ({{ number(contigs.in_final_clusters_pct, 1) }}% of bp)</span></div>
+    <div><span>In MAGs</span><span>{{ number(contigs.in_mags_contigs) }} ({{ number(contigs.in_mags_pct, 1) }}% of bp)</span></div>
+    <div><span>In MGE clusters</span><span>{{ number(contigs.in_mges_contigs) }} ({{ mbp(contigs.in_mges_bp) }})</span></div>
+    <div><span>In none</span><span>{{ number(contigs.unbinned_contigs) }} ({{ mbp(contigs.unbinned_bp) }})</span></div>
+  </div>
+  <div class="grid">
+    <div><h3>Length of the contigs</h3><div class="plot" id="plot-lengths" data-figure></div></div>
+    <div><h3>GC content and coverage</h3><div class="plot" id="plot-contigs" data-figure></div></div>
+  </div>
+</section>
+
+<section id="contacts">
+  <h2>Contacts</h2>
+  <p class="lead">The Hi-C contacts of the map, as metacooler counted them on the reads ({{ contacts.qc_source or "NA" }}, at {{ number(contacts.qc_distance_threshold_bp) }} bp): the <em>3D ratio</em>, the share of the contacts that join two contigs, is the signal that the clustering uses.</p>
+  <div class="facts">
+    <div><span>Contacts</span><span>{{ number(contacts.contacts) }}</span></div>
+    <div><span>3D ratio</span><span>{{ number(contacts.trans_contig_ratio, 4) }}</span></div>
+    <div><span>Within the genomes</span><span>{{ number(contacts.intra_genome_fraction * 100 if contacts.intra_genome_fraction is not none else none, 1) }}%</span></div>
+    <div><span>Network</span><span>{{ number(contacts.network_contigs) }} contigs, {{ number(contacts.network_edges) }} edges</span></div>
+    <div><span>Normalization</span><span>{{ contacts.normalization }}</span></div>
+  </div>
+  <div class="grid">
+    <div><h3>The contacts of the reads</h3><div class="plot" id="plot-contacts" data-figure></div></div>
+    <div><h3>Contacts between the MAGs</h3><div class="plot" id="plot-heatmap" data-figure></div></div>
+  </div>
+</section>
+
+{% if "mges" in report %}
+<section id="mges">
+  <h2>MGEs and their hosts</h2>
+  <p class="lead">The clusters of the contigs of mobile genetic elements (metator mge), and the MAGs that host them (metator host{% if "hosts" in report %}: a share of the signal of an MGE cluster with the MAGs of at least {{ number(report.hosts.min_share_pct, 1) }}%, and {{ report.hosts.min_contigs }} contigs in contact{% endif %}).</p>
+  <div class="facts">
+    <div><span>MGE clusters</span><span>{{ number(report.mges.mge_clusters) }}</span></div>
+    <div><span>MGE contigs</span><span>{{ number(report.mges.mge_contigs) }} ({{ mbp(report.mges.mge_bp) }})</span></div>
+    <div><span>MGE genomes in the map</span><span>{{ number(report.mges.mge_genomes) }}</span></div>
+    <div><span>MAGs that lost contigs to them</span><span>{{ number(report.mges.mags_losing_contigs) }}</span></div>
+    {% if "hosts" in report %}
+    <div><span>With one host</span><span>{{ number(report.hosts.mge_clusters_with_one_host) }}</span></div>
+    <div><span>With several hosts</span><span>{{ number(report.hosts.mge_clusters_with_several_hosts) }}</span></div>
+    <div><span>Without host</span><span>{{ number(report.hosts.mge_clusters_without_host) }}</span></div>
+    <div><span>MAGs hosting MGEs</span><span>{{ number(report.hosts.mags_hosting_mges) }}</span></div>
+    {% endif %}
+  </div>
+  {% if "hosts" in tables and tables.hosts %}
+  <h3>From each MGE cluster to its hosts</h3>
+  <div class="plot" id="plot-hosts" data-figure></div>
+  {% endif %}
+  <h3>The MGE clusters</h3>
+  <div class="tools">
+    <input type="search" class="filter" data-table="table-mges" placeholder="Filter the MGE clusters (name, host…)">
+    <button type="button" class="download" data-table="table-mges" data-file="{{ meta.sample }}_mge_clusters.csv">Download CSV</button>
+    <span class="count" id="table-mges-count"></span>
+  </div>
+  <div class="scroll">
+  <table class="sortable" id="table-mges">
+    <thead><tr><th>MGE cluster</th><th class="num">Contigs</th><th class="num">Length (bp)</th><th class="num">GC (%)</th><th class="num">Hosts</th><th>Host MAGs</th><th>Shares (%)</th></tr></thead>
+    <tbody>
+    {% for row in tables.mge_clusters %}
+    <tr>
+      <td>{{ row.name }}</td><td class="num">{{ row.contigs }}</td><td class="num" data-sort="{{ row.length_bp }}">{{ number(row.length_bp) }}</td>
+      <td class="num">{{ number(row.gc_pct, 1) }}</td><td class="num">{{ row.n_hosts if row.n_hosts is not none else "NA" }}</td>
+      <td>{{ row.hosts or "" }}</td><td>{{ row.host_shares_pct or "" }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
+
+<section id="run">
+  <h2>Run</h2>
+  <p class="lead">How the map was made and clustered, as it records its steps.</p>
+  <table class="keys">
+    <tbody>
+    {% for key, value in report.run.items() %}
+    <tr><th>{{ key }}</th><td>{{ value | value(key) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <h3>Clustering rounds</h3>
+  <div class="scroll">
+  <table class="sortable" id="table-rounds">
+    <thead><tr><th>Round</th><th>Step</th><th class="num">Clusters</th><th class="num">Contigs</th><th class="num">Length (bp)</th></tr></thead>
+    <tbody>
+    {% for row in tables.rounds %}
+    <tr><td>{{ row.round }}</td><td>{{ row.step or "" }}</td><td class="num">{{ row.clusters }}</td><td class="num">{{ row.contigs }}</td><td class="num" data-sort="{{ row.length_bp }}">{{ number(row.length_bp) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <details>
+    <summary>The command lines of the steps</summary>
+    {% for step, command in report.commands.items() %}
+    <p class="note">{{ step }}</p>
+    <pre>{{ command or "NA" }}</pre>
+    {% endfor %}
+  </details>
+</section>
+
+<section id="files">
+  <h2>Files</h2>
+  <p class="lead">The outputs of the run in its output directory, beside this page (the FASTA and cool files of each MAG are linked from its row).</p>
+  {% if links.files %}
+  <ul>
+    {% for path in links.files %}<li><a href="{{ path }}">{{ path }}</a></li>{% endfor %}
+  </ul>
+  {% else %}
+  <p class="note">No output of the run is beside this page: <code>metator export MAP -a ASSEMBLY -o DIR</code> writes them, and this report with them.</p>
+  {% endif %}
+</section>
+
+</main>
+<footer>
+  Written by metaTOR {{ meta.metator_version }} · report format {{ format_version }} · the plots are drawn by plotly.js, which this page loads from cdn.plot.ly
+</footer>
+<script id="metator-figures" type="application/json">{{ figures | tojson }}</script>
+<script>
+(function () {
+  "use strict";
+  var figures = JSON.parse(document.getElementById("metator-figures").textContent);
+
+  function draw() {
+    document.querySelectorAll("[data-figure]").forEach(function (element) {
+      var figure = figures[element.id];
+      if (!figure) {
+        element.innerHTML = '<p class="offline">Nothing to plot for this run.</p>';
+        return;
+      }
+      if (typeof Plotly === "undefined") {
+        element.innerHTML = '<p class="offline">This plot needs plotly.js, which the page loads from cdn.plot.ly: open it with an internet connection.</p>';
+        return;
+      }
+      Plotly.newPlot(element, figure.data, figure.layout, {responsive: true, displaylogo: false, toImageButtonOptions: {format: "svg", filename: element.id}});
+    });
+  }
+  window.addEventListener("load", draw);
+
+  function count(table) {
+    var label = document.getElementById(table.id + "-count");
+    if (!label) return;
+    var rows = Array.prototype.slice.call(table.tBodies[0].rows);
+    var shown = rows.filter(function (row) { return row.style.display !== "none"; }).length;
+    label.textContent = shown + " of " + rows.length;
+  }
+
+  document.querySelectorAll("table.sortable").forEach(function (table) {
+    var body = table.tBodies[0];
+    count(table);
+    table.querySelectorAll("thead th").forEach(function (header, column) {
+      header.addEventListener("click", function () {
+        var ascending = header.dataset.order !== "asc";
+        table.querySelectorAll("thead th").forEach(function (other) { delete other.dataset.order; });
+        header.dataset.order = ascending ? "asc" : "desc";
+        var rows = Array.prototype.slice.call(body.rows);
+        rows.sort(function (a, b) {
+          var x = a.cells[column].dataset.sort !== undefined ? a.cells[column].dataset.sort : a.cells[column].textContent.trim();
+          var y = b.cells[column].dataset.sort !== undefined ? b.cells[column].dataset.sort : b.cells[column].textContent.trim();
+          var nx = parseFloat(String(x).replace(/,/g, "")), ny = parseFloat(String(y).replace(/,/g, ""));
+          var order = (!isNaN(nx) && !isNaN(ny)) ? nx - ny : String(x).localeCompare(String(y));
+          return ascending ? order : -order;
+        });
+        rows.forEach(function (row) { body.appendChild(row); });
+      });
+    });
+  });
+
+  function filter(table, test) {
+    Array.prototype.forEach.call(table.tBodies[0].rows, function (row) { row.style.display = test(row) ? "" : "none"; });
+    count(table);
+  }
+
+  document.querySelectorAll("input.filter").forEach(function (input) {
+    var table = document.getElementById(input.dataset.table);
+    input.addEventListener("input", function () {
+      var text = input.value.toLowerCase();
+      filter(table, function (row) { return row.textContent.toLowerCase().indexOf(text) >= 0; });
+    });
+  });
+
+  document.querySelectorAll(".card.quality").forEach(function (card) {
+    card.addEventListener("click", function () {
+      var table = document.getElementById("table-mags");
+      var input = document.querySelector('input.filter[data-table="table-mags"]');
+      if (input) input.value = "";
+      filter(table, function (row) { return row.dataset.quality === card.dataset.quality; });
+      document.getElementById("mags").scrollIntoView({behavior: "smooth"});
+    });
+  });
+
+  document.querySelectorAll("button.download").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var table = document.getElementById(button.dataset.table);
+      var lines = [];
+      var raw = function (cell) {
+        if (!cell.classList.contains("num")) return cell.textContent.trim();
+        return cell.dataset.sort ? cell.dataset.sort : cell.textContent.trim().replace(/,/g, "");
+      };
+      var quote = function (cell) { var text = raw(cell).replace(/"/g, '""'); return /[",\n]/.test(text) ? '"' + text + '"' : text; };
+      lines.push(Array.prototype.map.call(table.tHead.rows[0].cells, quote).join(","));
+      Array.prototype.forEach.call(table.tBodies[0].rows, function (row) {
+        if (row.style.display !== "none") lines.push(Array.prototype.map.call(row.cells, quote).join(","));
+      });
+      var link = document.createElement("a");
+      link.href = URL.createObjectURL(new Blob([lines.join("\n") + "\n"], {type: "text/csv"}));
+      link.download = button.dataset.file;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    });
+  });
+})();
+</script>
+</body>
+</html>

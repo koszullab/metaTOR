@@ -770,6 +770,33 @@
       "required": false
      }
     ]
+   },
+   "report": {
+    "positional": [
+     {
+      "name": "map",
+      "required": true,
+      "repeatable": false
+     }
+    ],
+    "options": [
+     {
+      "short": "-F",
+      "long": "--force",
+      "takes_value": false,
+      "metavar": null,
+      "default": false,
+      "required": false
+     },
+     {
+      "short": "-o",
+      "long": "--outdir",
+      "takes_value": true,
+      "metavar": "DIR",
+      "default": null,
+      "required": false
+     }
+    ]
    }
   }
  }

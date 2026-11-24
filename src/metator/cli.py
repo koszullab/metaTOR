@@ -37,6 +37,7 @@ import metator.mge as mtm
 import metator.network as mtn
 import metator.outputs as mto
 import metator.partition as mtp
+import metator.report as mtr
 import metator.validation as mtv
 from metator.log import logger
 from metator.version import __version__
@@ -304,6 +305,47 @@ def remove_earlier_tables(tables):
     replaces: a symbolic link, not its target."""
     for path in tables:
         logger.debug(f"Removing {path}, a table of an earlier run.")
+        os.remove(path)
+
+
+def refuse_earlier_report(outdir, force):
+    """Refuse, before any work, the report of an earlier run in the output
+    directory, outdir, of a pipeline, export or report run, which it writes
+    again (see metator.report.REPORT_FILES), without force, which replaces it:
+    a symbolic link too, even one to nothing. A directory where a file of the
+    report goes is refused with or without force: the run could write nothing
+    there. The reason is logged as an error, then ValueError is raised.
+
+    Returns
+    -------
+    list of str
+        The files of the report of an earlier run, which the run removes once
+        it is checked (see remove_earlier_report): they would describe another
+        map than the one that it writes, should it stop before it writes its
+        own."""
+    paths = [join(outdir, name) for name in mtr.REPORT_FILES]
+    for path in paths:
+        if os.path.isdir(path) and not os.path.islink(path):
+            logger.error(
+                f"{path} is a directory, where the run writes its report: move it away, or give the run another output "
+                "directory with -o."
+            )
+            raise ValueError
+    found = [path for path in paths if os.path.lexists(path)]
+    if found and not force:
+        logger.error(
+            f"{outdir} holds the report of an earlier run ({mtmc._shown([os.path.basename(path) for path in found])}), "
+            "which this run writes again: give -F to replace it, or give the run another output directory with -o."
+        )
+        raise ValueError
+    return found
+
+
+def remove_earlier_report(reports):
+    """Remove the report of an earlier run (see refuse_earlier_report), which -F
+    replaces: a symbolic link, not its target."""
+    for path in reports:
+        logger.debug(f"Removing {path}, the report of an earlier run.")
         os.remove(path)
 
 
@@ -1619,7 +1661,7 @@ def no_clean_up_option(help="Do not remove temporary files."):
 @click.group("metator", context_settings={"help_option_names": ["-h", "--help"]})
 @click.rich_config(help_config=click.RichHelpConfiguration(text_markup="rich", show_arguments=True, max_width=100))
 @click.command_panel("Clustering", commands=["network", "partition", "validation", "pipeline"])
-@click.command_panel("Other commands", commands=["mge", "host", "dump", "export"])
+@click.command_panel("Other commands", commands=["mge", "host", "dump", "export", "report"])
 @click.version_option(__version__, "-v", "--version", prog_name="metator", message="%(version)s")
 def cli():
     """MetaHiC pipeline for generating and manipulating MAGs.
@@ -1628,7 +1670,7 @@ def cli():
     [cyan]partition[/] and [cyan]validation[/]; [cyan]pipeline[/] runs them
     all in one command line, and, with --mges, [cyan]mge[/] and
     [cyan]host[/] after them. [cyan]export[/] writes the outputs of a run
-    again from the map of its clusters.
+    again from the map of its clusters, and [cyan]report[/] its report.
     """
 
 
@@ -2215,7 +2257,9 @@ def pipeline(
     --mges; cool, a cool file per MAG, with the MGE clusters that it hosts,
     as [cyan]metacooler extract[/] writes it, balanced as
     [cyan]cooler balance[/] balances it; tables, the tables of
-    [cyan]metator dump[/] (and mge_hosts.txt with --mges); and plots.
+    [cyan]metator dump[/] (and mge_hosts.txt with --mges); plots; and, last,
+    the report of the run, report.txt, report.html and report_mqc.yaml, as
+    [cyan]metator report[/] writes it.
     """
     # The directories that the run makes anew in its output directory (see
     # metator.outputs): fasta/mges with --mges only.
@@ -2265,10 +2309,10 @@ def pipeline(
         )
 
         # The outputs of an earlier run (the directories that the run makes
-        # anew, its tables and its plots): refused now without --force, before
-        # the assembly is read, and replaced only once it is checked. What a
-        # run of an earlier version wrote in the output directory is refused,
-        # with or without it.
+        # anew, its tables, its plots and its report): refused now without
+        # --force, before the assembly is read, and replaced only once it is
+        # checked. What a run of an earlier version wrote in the output
+        # directory is refused, with or without it.
         final_fasta_dir = join(outdir, mto.MAGS_WITH_MGES_DIR)
         out_dirs = [join(outdir, name) for name in out_names]
         refuse_no_directory(join(outdir, mto.FASTA_DIR), "the FASTA files of its clusters")
@@ -2277,6 +2321,7 @@ def pipeline(
         tables = refuse_earlier_tables(join(outdir, mto.TABLES_DIR), force)
         refuse_earlier_outputs(outdir, keep=(map, metacool_file))
         plots = refuse_earlier_plots(outdir, force)
+        reports = refuse_earlier_report(outdir, force)
         # With --mges, what the steps mge and host would refuse, refused now
         # too, before hours of work (see check_mges); the MGE contigs.
         mges_list = check_mges(map, planned, mges, outdir, keep=(map, metacool_file)) if mges is not None else None
@@ -2308,6 +2353,7 @@ def pipeline(
             make_output_dir(path, force)
         remove_earlier_plots(plots)
         remove_earlier_tables(tables)
+        remove_earlier_report(reports)
         edges = mtn.map_network(map, mtn.network_weights(network.table, normalization), contacts)
 
         # Partition the network, as metator partition does.
@@ -2985,8 +3031,8 @@ EXPORT_AGAIN = "Run metator export again, with -F for what it wrote, once the ru
 
 FORCE_EXPORT_HELP = (
     "Replace the folders that the run makes anew (fasta/mags_with-mges, fasta/mags, fasta/mges, fasta/mges_random, "
-    "cool), the tables of tables/ and the plots of the clusters of plots/ (whose other files are left as they are) "
-    f"that an earlier run wrote in the output directory; {mto.TABLES_DIR}/{mth.HOSTS_FILE} and "
+    "cool), the tables of tables/, the plots of the clusters of plots/ (whose other files are left as they are) and "
+    f"the report ({', '.join(mtr.REPORT_FILES)}) that an earlier run wrote in the output directory; {mto.TABLES_DIR}/{mth.HOSTS_FILE} and "
     f"{mtf.PLOT_DIR}/{mth.PLOT_FILE} are replaced without it, as metator host replaces them. The outputs of an earlier "
     "version (final_clusters, plot, mges_binned.fa, mge_hosts.txt...) are refused, with or without it."
 )
@@ -3078,13 +3124,14 @@ def run_export(metacool, assembly, outdir, tmp_dir, force):
         refuse_output_dir(join(outdir, name), force)
     tables = refuse_earlier_tables(join(outdir, mto.TABLES_DIR), force)
     plots = refuse_earlier_plots(outdir, force)
+    reports = refuse_earlier_report(outdir, force)
 
     # The map, read once, as metator dump reads it (and refused as dump
     # refuses it), and what the outputs need of it: the clusters of its
     # rounds final, mge and mge_random, the parameters of the validation
-    # (the size threshold of the plots, the assembly), and the hosts of its
-    # MGE clusters, found again from its network with the thresholds of
-    # the host run.
+    # (the size threshold of the plots, the assembly), the hosts of its MGE
+    # clusters, found again from its network with the thresholds of the host
+    # run, and the report of the run.
     try:
         mc, layout, stored = mtd.read_run(metacool, EXPORT_AGAIN)
         with mtmc._metacooler_logging(), mtmc.read_errors(metacool, EXPORT_AGAIN):
@@ -3097,6 +3144,7 @@ def run_export(metacool, assembly, outdir, tmp_dir, force):
             contigs, summary = mto.plot_inputs(mc, layout.rows)
             thresholds = mth.recorded_thresholds(mc)
             hosts = mth.find_hosts(metacool, mc, stored.network, *thresholds) if mtmc.holds_hosts(mc) else None
+            report = mtr.collect(metacool, mc, layout, stored)
     except mtmc.MetacoolError as error:
         logger.error(str(error))
         raise
@@ -3104,6 +3152,7 @@ def run_export(metacool, assembly, outdir, tmp_dir, force):
         make_output_dir(join(outdir, name), force)
     remove_earlier_tables(tables)
     remove_earlier_plots(plots)
+    remove_earlier_report(reports)
 
     # The outputs, from the map, which metacooler reads again by path; the
     # FASTA files from the assembly, decompressed once for the run when it
@@ -3127,6 +3176,8 @@ def run_export(metacool, assembly, outdir, tmp_dir, force):
                 f"The hosts of the MGE clusters, found again from the network of the map with --min-share "
                 f"{thresholds[0]:g} and --min-contigs {thresholds[1]}, as the host run recorded them: {table}, {plot}"
             )
+        # The report last, which links to the other outputs.
+        write_report(report, outdir)
     except mtmc.MetacoolError as error:
         logger.error(str(error))
         logger.info(
@@ -3146,7 +3197,7 @@ def run_export(metacool, assembly, outdir, tmp_dir, force):
         raise mtmc.MapReplacedError(message)
 
 
-@cli.command(short_help="Write the outputs of a run again from the map of its clusters: fasta, cool, tables and plots.")
+@cli.command(short_help="Write the outputs of a run again from the map of its clusters: fasta, cool, tables, plots and report.")
 @map_argument(
     required=True,
     help="The map of the clusters of a run, which metator pipeline or metator validation wrote, and metator mge and "
@@ -3200,17 +3251,19 @@ def export(
       the thresholds that the host run recorded;
     - plots: the plots of the final clusters, from the summary that the map
       holds (the values of miComplete, as the validation drew them), and
-      mge_hosts.pdf.
+      mge_hosts.pdf;
+    - report.txt, report.html, report_mqc.yaml: the report of the run, as
+      [cyan]metator report[/] writes it, last.
 
     The FASTA files need the assembly that the map was made from
     (--assembly): without it, they are left out. The MGE clusters and their
     hosts are written when the map holds them. The map is read only: what
     [cyan]metator dump[/] refuses is refused before anything is written, and
     a map that another run writes while it is read is refused (run the export
-    again). The folders that the run makes anew, the tables and the plots of
-    an earlier run in the output directory are refused without -F, and
-    replaced with it; the map and the assembly may not be in a folder that the
-    run makes anew.
+    again). The folders that the run makes anew, the tables, the plots and
+    the report of an earlier run in the output directory are refused without
+    -F, and replaced with it; the map and the assembly may not be in a folder
+    that the run makes anew.
     """
     outdir = outdir or "."
     # A --tmpdir in a folder that the run makes anew, or refuses as the results
@@ -3226,3 +3279,92 @@ def export(
         run_export(map, assembly, outdir, tmp_dir, force)
 
     log_end(started, "Outputs written", outdir)
+
+
+# ---------------------------------------------------------------------------
+# report
+# ---------------------------------------------------------------------------
+
+#: What to do about a map that another run writes while metator report reads
+#: it.
+REPORT_AGAIN = "Run metator report again once the run that writes the map has ended."
+
+
+def write_report(report, outdir):
+    """Write the report of a run (see metator.report.collect) in its output
+    directory, outdir (see metator.report.write_report), and log it. Returns
+    the paths of the report."""
+    paths = mtr.write_report(report, outdir)
+    logger.info(f"The report of the run, from its map: {', '.join(paths)}")
+    return paths
+
+
+@cli.command(short_help="Write the report of a run from the map of its clusters: report.txt, report.html, report_mqc.yaml.")
+@map_argument(
+    required=True,
+    help="The map of the clusters of a run, which metator pipeline or metator validation wrote, and metator mge and "
+    "metator host updated: a .metacool file, or an entry of a .mmetacool collection (file.mmetacool::entries/NAME). "
+    "It is read only.",
+)
+@outdir_option(
+    help="The output directory of the report, made if it is not there: report.txt, report.html, report_mqc.yaml and "
+    "the log. Default: current directory."
+)
+@force_option(f"Replace the report of an earlier run ({', '.join(mtr.REPORT_FILES)}) in the output directory.")
+def report(
+    map,  # the argument MAP
+    outdir,
+    force,
+):
+    """Write the report of a run from the map of its clusters.
+
+    [cyan]metator report MAP -o DIR[/] digests what the map of the clusters
+    of a run holds ([cyan]metator pipeline[/], or [cyan]metator
+    validation[/], then [cyan]metator mge[/] and [cyan]metator host[/]): the
+    run and its parameters, the contigs and where they went, the contacts of
+    the reads, the clustering rounds, the final clusters by quality class
+    (from the values of miComplete, as the log of the run counts them), the
+    MAGs, the MGE clusters and their hosts. It writes:
+
+    - report.txt: a text file, in sections, a key and its value per line,
+      then tables, a row per line, in a format that MultiQC, or a script,
+      parses (its version, format_version, in its section report);
+    - report.html: a page to read the run with, its numbers, its tables,
+      which sort and filter, and interactive plots, which plotly.js draws
+      once the page has loaded it from cdn.plot.ly (it needs an internet
+      connection for them), with links to the outputs of the run beside it;
+    - report_mqc.yaml: the custom content of MultiQC, a row of its General
+      Statistics table for the run, named after its map, which
+      [cyan]multiqc[/] aggregates over the runs whose reports it finds.
+
+    [cyan]metator export[/] writes it with the other outputs of the run, and
+    so does [cyan]metator pipeline[/], in its step export. The map is read
+    only: what [cyan]metator dump[/] refuses is refused, before anything is
+    written, and so is a map that another run writes while it is read (run
+    the report again). The report of an earlier run in the output directory
+    is refused without -F, and replaced with it.
+    """
+    outdir = outdir or "."
+    make_outdir(outdir)
+
+    # Enable file logging
+    log_file = log_file_name(outdir, "report")
+    started = generate_log_header(log_file, outdir=outdir)
+
+    # The map, checked before anything is read, and the report of an earlier
+    # run, refused without -F; then the map, read as metator dump reads it
+    # (and refused as dump refuses it), before the report of an earlier run
+    # is replaced.
+    run_input(map)
+    reports = refuse_earlier_report(outdir, force)
+    try:
+        mc, layout, stored = mtd.read_run(map, REPORT_AGAIN)
+        with mtmc._metacooler_logging(), mtmc.read_errors(map, REPORT_AGAIN):
+            collected = mtr.collect(map, mc, layout, stored)
+    except mtmc.MetacoolError as error:
+        logger.error(str(error))
+        raise
+    remove_earlier_report(reports)
+    write_report(collected, outdir)
+
+    log_end(started, "Report written", outdir)

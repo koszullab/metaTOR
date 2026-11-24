@@ -60,6 +60,10 @@ dependencies = [
     # from (metator.inputs): pysam reads them, and groups or sorts them by
     # read name with the samtools it carries (no samtools program needed).
     "pysam>=0.22",
+    # metator report: report.html, from its Jinja2 template, and
+    # report_mqc.yaml, the custom content that MultiQC aggregates.
+    "jinja2>=3.1",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]

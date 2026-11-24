@@ -1877,6 +1877,7 @@ source = { editable = "." }
 dependencies = [
     { name = "biopython" },
     { name = "igraph" },
+    { name = "jinja2" },
     { name = "matplotlib", version = "3.10.9", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "matplotlib", version = "3.11.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "metacooler" },
@@ -1889,6 +1890,7 @@ dependencies = [
     { name = "pyhmmer" },
     { name = "pyrodigal" },
     { name = "pysam" },
+    { name = "pyyaml" },
     { name = "rich-click" },
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
@@ -1919,6 +1921,7 @@ dev = [
 requires-dist = [
     { name = "biopython", specifier = ">=1.80" },
     { name = "igraph", specifier = ">=0.10.3" },
+    { name = "jinja2", specifier = ">=3.1" },
     { name = "matplotlib", specifier = ">=3.9" },
     { name = "metacooler", specifier = ">=0.4.0" },
     { name = "micomplete" },
@@ -1928,6 +1931,7 @@ requires-dist = [
     { name = "pyhmmer", specifier = ">=0.10.11" },
     { name = "pyrodigal", specifier = ">=3.0" },
     { name = "pysam", specifier = ">=0.22" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "rich-click", specifier = ">=1.9" },
     { name = "scipy" },
     { name = "zensical", marker = "extra == 'docs'", specifier = ">=0.0.43" },
