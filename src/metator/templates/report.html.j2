@@ -253,6 +253,9 @@
     {% endfor %}
     </tbody>
   </table>
+  {% if report.run.get("markers_predate_genomes") %}
+  <p class="note">The marker genes of the contigs (metator markers) predate the genomes of the map: they were found in another binning of its contigs, which a run changed since. Each contig keeps its own, but summed over a genome whose contigs changed, they give an estimate of miComplete's numbers. <code>metator markers MAP -a ASSEMBLY</code> finds them again in the genomes as they are.</p>
+  {% endif %}
   <h3>Clustering rounds</h3>
   <div class="scroll">
   <table class="sortable" id="table-rounds">

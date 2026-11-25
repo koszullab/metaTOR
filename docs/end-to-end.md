@@ -57,12 +57,13 @@ sample.
    the first column of each lists the contigs. `--mges` takes any list of
    contig names, one per line, so another annotation tool works too.
 4. **metaTOR.** `metator pipeline` builds the network, partitions it,
-   validates the clusters with miComplete, clusters the MGE contigs and finds
-   the MAGs that host them. Its outputs, in `metator/`:
+   validates the clusters with miComplete, finds the marker genes of each
+   contig, clusters the MGE contigs and finds the MAGs that host them. Its
+   outputs, in `metator/`:
 
     | Output | What it holds |
     |---|---|
-    | `sample.metacool` | The contact map of the clusters |
+    | `sample.metacool` | The contact map of the clusters, with the marker genes of each contig |
     | `fasta/` | The MAGs and the MGE clusters, as FASTA files |
     | `cool/` | A cool file per MAG, with the MGE clusters it hosts |
     | `tables/`, `plots/` | The tables and plots of the run, among them `tables/mge_hosts.txt` |

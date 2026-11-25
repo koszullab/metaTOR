@@ -676,9 +676,10 @@ def test_pipeline_recovers_the_genomes(metagenome, metagenome_inputs, tmp_path, 
     assert sorted(mc.genomes.name) == sorted(summary.index)
     assert mc.genomes.set_index("name").Completeness[summary.index].to_numpy() == pytest.approx(summary.Completeness.to_numpy())
     # What metaTOR measured on each contig (with a depth file and an
-    # enzyme: the four columns), not its bins.
+    # enzyme: the four columns), not its bins, then its marker genes.
     columns = ["GC_content", "Hit", "Shotgun_coverage", "Restriction_site"]
-    assert [column for column in mc.contigs.columns if not column.startswith("qc_")] == ["name", "length", "genome_id", *columns]
+    stored = [column for column in mc.contigs.columns if not column.startswith("qc_")]
+    assert stored == ["name", "length", "genome_id", *columns, *mtmc.MARKER_COLUMNS]
     measured = final.set_index("Name").loc[mc.contigs.name, columns]
     for column in columns:
         assert mc.contigs[column].tolist() == measured[column].tolist(), column
@@ -735,13 +736,17 @@ def test_pipeline_map_is_the_map_of_the_pairs(metagenome, metagenome_inputs, tmp
     )
 
     ref = cooler.Cooler(str(expected))
-    bins = clr.bins()[:]
+    bins = _whole(clr.bins())
     # The run's map also stores the normalization of its network, which the
     # map of the pairs does not hold.
     assert "metator_empirical_hit" in bins.columns
-    pd.testing.assert_frame_equal(bins.drop(columns="metator_empirical_hit", errors="ignore"), ref.bins()[:])
-    for table in ["pixels", "chroms"]:
-        pd.testing.assert_frame_equal(getattr(clr, table)()[:], getattr(ref, table)()[:])
+    pd.testing.assert_frame_equal(bins.drop(columns="metator_empirical_hit", errors="ignore"), _whole(ref.bins()))
+    pd.testing.assert_frame_equal(_whole(clr.pixels()), _whole(ref.pixels()))
+    # The run's map also stores the marker genes of its contigs, last, which
+    # the map of the pairs does not hold.
+    chroms = _whole(clr.chroms())
+    assert list(chroms.columns[-2:]) == list(mtmc.MARKER_COLUMNS)
+    pd.testing.assert_frame_equal(chroms.drop(columns=list(mtmc.MARKER_COLUMNS)), _whole(ref.chroms()))
     _assert_normalized_as_the_network(written, tmp_path)
     genomes = metacooler.MetaCooler(str(written)).genomes
     pd.testing.assert_frame_equal(genomes, metacooler.MetaCooler(str(expected)).genomes)
@@ -755,8 +760,17 @@ def test_pipeline_map_is_the_map_of_the_pairs(metagenome, metagenome_inputs, tmp
     assert [entry["source"] for entry in metadata["reassign"]] == [str(metacool)]
     # The columns of the input map (tests.maps.contig_map), then those that
     # the run stores, once, as metator network stores them (dropped, then
-    # added).
-    assert len(metadata["annotate"]) == 3 and len(ref_metadata["annotate"]) == 1
+    # added), then the marker genes of the contigs.
+    assert len(metadata["annotate"]) == 4 and len(ref_metadata["annotate"]) == 1
+    assert metadata["annotate"][-1]["added"] == [f"contigs.{column}" for column in mtmc.MARKER_COLUMNS]
+
+
+def _whole(selector) -> pd.DataFrame:
+    """The whole table of a selector of a cooler (its bins, pixels or chroms): a
+    DataFrame, which the annotations of cooler leave a DataFrame or a Series."""
+    table = selector[:]
+    assert isinstance(table, pd.DataFrame)
+    return table
 
 
 def _assert_normalized_as_the_network(written, tmp_path):
@@ -914,9 +928,11 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, tmp_path, monke
     # The contigs table of the input map: metacooler reassign relabels its
     # contigs in place (the same bins), and writes genome_id again, after the
     # other columns; metaTOR then stores its own columns last, as in the map
-    # of the first run.
-    chroms, ref_chroms = clr.chroms()[:], ref.chroms()[:]
-    columns = ["name", "length", "genome_id", "GC_content", "Hit", "Shotgun_coverage", "Restriction_site"]
+    # of the first run: those of the network, then the marker genes, which
+    # the second run finds again in the same clusters.
+    chroms, ref_chroms = _whole(clr.chroms()), _whole(ref.chroms())
+    columns = ["name", "length", "genome_id", "GC_content", "Hit", "Shotgun_coverage", "Restriction_site",
+               *mtmc.MARKER_COLUMNS]  # fmt: skip
     for table in [chroms, ref_chroms]:
         assert [column for column in table.columns if not column.startswith("qc_")] == columns
     pd.testing.assert_frame_equal(chroms[ref_chroms.columns], ref_chroms)
@@ -970,9 +986,16 @@ def test_pipeline_from_a_metacool(metagenome, metagenome_inputs, tmp_path, monke
     clr = cooler.Cooler(str(command))
     run_map = cooler.Cooler(str(written))
     # But the normalization of the network, which the run stores in its map.
-    pd.testing.assert_frame_equal(clr.bins()[:], run_map.bins()[:].drop(columns="metator_empirical_hit", errors="ignore"))
-    for table in ["pixels", "chroms"]:
-        pd.testing.assert_frame_equal(getattr(clr, table)()[:], getattr(run_map, table)()[:])
+    pd.testing.assert_frame_equal(
+        _whole(clr.bins()), _whole(run_map.bins()).drop(columns="metator_empirical_hit", errors="ignore")
+    )
+    pd.testing.assert_frame_equal(_whole(clr.pixels()), _whole(run_map.pixels()))
+    # The marker genes of the contigs, which the map of the first run holds:
+    # kept where metacooler reassign carries them, the run stores them again,
+    # last, the same, found in the same clusters.
+    chroms, run_chroms = _whole(clr.chroms()), _whole(run_map.chroms())
+    assert list(run_chroms.columns[-2:]) == list(mtmc.MARKER_COLUMNS)
+    pd.testing.assert_frame_equal(chroms, run_chroms[chroms.columns])
     pd.testing.assert_frame_equal(metacooler.MetaCooler(str(command)).genomes, genomes)
     assert clr.info["metadata"]["qc"] == metadata["qc"]
 
@@ -1072,14 +1095,16 @@ def test_pipeline_from_a_filtered_metacool(metagenome, metagenome_inputs, tmp_pa
     assert cooler.Cooler(str(written)).pixels()[:]["count"].sum() == contacts
     # What metaTOR measured on the contigs of the map, which
     # contig_data_final.txt lists: metacooler annotate read the network's
-    # table, as the history of the map says.
+    # table, as the history of the map says, then the marker genes.
     columns = ["GC_content", "Hit", "Shotgun_coverage", "Restriction_site"]
-    assert [column for column in mc.contigs.columns if not column.startswith("qc_")] == ["name", "length", "genome_id", *columns]
+    stored = [column for column in mc.contigs.columns if not column.startswith("qc_")]
+    assert stored == ["name", "length", "genome_id", *columns, *mtmc.MARKER_COLUMNS]
     measured = final.set_index("Name").loc[mc.contigs.name, columns]
     for column in columns:
         assert mc.contigs[column].tolist() == measured[column].tolist(), column
     assert "Contigs table" not in log.read_text()
-    assert mc.metadata["annotate"][-1]["contigs_table"].endswith("contig_data_network.txt")
+    assert mc.metadata["annotate"][-2]["contigs_table"].endswith("contig_data_network.txt")
+    assert mc.metadata["annotate"][-1]["contigs_table"].endswith(mtmc.MARKERS_FILE)
     assert not [path.name for path in mcool.iterdir() if path.name.startswith(".")]
 
 
@@ -1146,11 +1171,12 @@ def test_pipeline_from_pairs_or_bam_files(metagenome, metagenome_inputs, tmp_pat
         assert sorted(path.name for path in out.iterdir()) == sorted(outputs)
         steps = [line.split(" :: ", 2)[2] for line in log.read_text().splitlines() if " :: INFO :: [" in line]
         assert steps == [
-            f"[1/5] map: the contact map of the contigs, from {what}",
-            f"[2/5] network: the contigs of {written} and their contacts",
-            "[3/5] partition: the clusters of the network",
-            "[4/5] validation: miComplete checks the clusters, and the contaminated ones are partitioned again",
-            "[5/5] export: the outputs of the run, from its map",
+            f"[1/6] map: the contact map of the contigs, from {what}",
+            f"[2/6] network: the contigs of {written} and their contacts",
+            "[3/6] partition: the clusters of the network",
+            "[4/6] validation: miComplete checks the clusters, and the contaminated ones are partitioned again",
+            "[5/6] markers: the marker genes of the contigs, as miComplete finds them in their clusters",
+            "[6/6] export: the outputs of the run, from its map",
         ]
         # Without --mges, the run has no steps mge and host, and says so.
         assert "INFO :: No list of MGE contigs (--mges): the run has no steps mge and host, " in log.read_text()
@@ -1224,6 +1250,8 @@ def _annotated(objects):
     for entry in entries:
         if str(entry.get("contigs_table")).endswith("/contig_data_network.txt"):
             entry["contigs_table"] = "<the temporary contig data of the network>"
+        if str(entry.get("contigs_table")).endswith(f"/{mtmc.MARKERS_FILE}"):
+            entry["contigs_table"] = "<the temporary table of the markers>"
     return entries
 
 
@@ -1298,7 +1326,7 @@ def test_a_cluster_partitioned_again_but_kept_whole(metagenome, metagenome_input
 
 def test_steps_on_a_map_give_the_map_of_pipeline(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli):
     """The steps run one by one on a map (network MAP, partition MAP, validation
-    MAP) give the map that pipeline MAP gives, from copies of the same map of
+    MAP, markers MAP) give the map that pipeline MAP gives, from copies of the same map of
     the contigs, and the same tables: every group, soft link, dataset (its
     dtype, shape, chunks, compression and values) and attribute of the HDF5
     file, the network that both store included (the columns of the contigs
@@ -1308,7 +1336,8 @@ def test_steps_on_a_map_give_the_map_of_pipeline(metagenome, metagenome_inputs, 
     entries network and partition: pipeline's, network's, partition's and
     validation's), and the history of its metacooler annotate edits (see
     _without_run), in which the steps store the network twice, network MAP then
-    validation MAP, which stores it again after its regroup, and pipeline once."""
+    validation MAP, which stores it again after its regroup, and pipeline once;
+    both store the markers of the contigs last."""
     monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.first_cluster_contaminated(metagenome))
     assembly = str(metagenome_inputs["assembly"])
     contig_map = _contig_map(metagenome_inputs, tmp_path / "contigs.metacool")
@@ -1375,6 +1404,7 @@ def test_steps_on_a_map_give_the_map_of_pipeline(metagenome, metagenome_inputs, 
     assert metadata == before_metadata
     assert {name: value for name, value in after.items() if not name.startswith("/clusters")} == before
     run_cli("validation", "input.metacool", *common, "-i", "5")
+    run_cli("markers", "input.metacool", "-a", assembly, "-o", "out", "-T", "tmp", "--inplace")
 
     pipeline, steps = runs["pipeline"] / "out", runs["steps"] / "out"
     for name in ["cluster_summary.txt", "contig_data_final.txt", "binning.txt", "clusters.txt", "cluster_members.txt"]:
@@ -1391,14 +1421,20 @@ def test_steps_on_a_map_give_the_map_of_pipeline(metagenome, metagenome_inputs, 
     # stores it once, after its regroup. The network comes last in both.
     network = [f"contigs.{column}" for column in ["GC_content", "Hit", "Shotgun_coverage", "Restriction_site"]]
     annotated = {name: _annotated(objects) for name, objects in found.items()}
-    assert annotated["steps"][:-2] == annotated["pipeline"]
-    assert [(entry["dropped"], entry["added"]) for entry in annotated["steps"][-2:]] == [(network, []), ([], network)]
-    assert annotated["pipeline"][-1]["added"] == network
-    assert list(metacooler.MetaCooler(str(written["steps"])).contigs.columns)[-4:] == [name[8:] for name in network]
+    markers = [f"contigs.{column}" for column in mtmc.MARKER_COLUMNS]
+    assert annotated["steps"][:-3] == annotated["pipeline"][:-1] and annotated["steps"][-1] == annotated["pipeline"][-1]
+    assert [(entry["dropped"], entry["added"]) for entry in annotated["steps"][-3:]] == [
+        (network, []),
+        ([], network),
+        ([], markers),
+    ]
+    assert annotated["pipeline"][-2]["added"] == network and annotated["pipeline"][-1]["added"] == markers
+    columns = list(metacooler.MetaCooler(str(written["steps"])).contigs.columns)
+    assert columns[-6:] == [name[8:] for name in network + markers]
     # What differs: the command lines and their parameters, those of
     # pipeline, and of network and validation.
     metator = {name: _metator_metadata(objects) for name, objects in found.items()}
-    for step in ["network", "partition", "validation"]:
+    for step in ["network", "partition", "validation", "markers"]:
         assert metator["pipeline"][step]["command"].startswith("metator pipeline input.metacool")
         assert metator["steps"][step]["command"].startswith(f"metator {step} input.metacool")
     validation = {name: entries["validation"] for name, entries in metator.items()}
@@ -1498,7 +1534,7 @@ RECURSIVE_LOGS = {
 
 @pytest.mark.parametrize("case", list(RECURSIVE_LOGS))
 def test_the_log_follows_the_steps_of_the_run(case, metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli, logged):
-    """The log of a pipeline run marks its four steps ([1/4] network... [4/4]
+    """The log of a pipeline run marks its five steps ([1/5] network... [5/5]
     export), says
     how many clusters miComplete found contaminated, then follows each
     recursive step of the validation (Recursive step 1/9...), what it
@@ -1531,7 +1567,7 @@ def test_the_log_follows_the_steps_of_the_run(case, metagenome, metagenome_input
             "-i", "10", "-j", "5")  # fmt: skip
     messages = [message for level, message in logged() if level == "INFO"]
     stages = [message for message in messages if message.startswith("[")]
-    assert [stage[:5] for stage in stages] == ["[1/4]", "[2/4]", "[3/4]", "[4/4]"]
+    assert [stage[:5] for stage in stages] == ["[1/5]", "[2/5]", "[3/5]", "[4/5]", "[5/5]"]
     assert messages.index(stages[0]) < messages.index(stages[1]) < messages.index(stages[2])
     _, contaminated, expected = RECURSIVE_LOGS[case]
     checked = [message for message in messages if message.startswith("miComplete checked")]
@@ -1559,13 +1595,13 @@ def _mge_list(metagenome, path):
 
 def test_pipeline_with_mges_is_the_steps_one_by_one(metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli):
     """pipeline MAP --mges gives the map that the steps give one by one, network
-    MAP, partition MAP, validation MAP, then mge MAP --reassign and host MAP,
+    MAP, partition MAP, validation MAP, markers MAP, then mge MAP --reassign and host MAP,
     from copies of the same map of the contigs (see
     test_steps_on_a_map_give_the_map_of_pipeline: but the command lines of the
     runs), and, with export MAP -a ASSEMBLY last, the same outputs (see
-    _assert_same_outputs): its steps mge and host, 4 and 5 here, are mge
-    --reassign and host, on the map of its clusters, and its step export, 6,
-    is export. Its log marks its six steps. Each MGE cluster is a genome of
+    _assert_same_outputs): its steps markers, mge and host, 4 to 6 here, are
+    markers, mge --reassign and host, on the map of its clusters, and its step
+    export, 7, is export. Its log marks its seven steps. Each MGE cluster is a genome of
     the map, and its host is the final cluster of the genome that hosts it.
     The outputs: fasta/mags, the MAGs without their MGE contigs, which
     fasta/mags_with-mges keeps; cool, a cool file per MAG with the MGE
@@ -1589,6 +1625,7 @@ def test_pipeline_with_mges_is_the_steps_one_by_one(metagenome, metagenome_input
     run_cli("network", "input.metacool", "-a", assembly, "-o", "out", "-T", "tmp", "--inplace")
     run_cli("partition", "input.metacool", "-o", "out", "-T", "tmp", "--inplace", "-i", "10")
     run_cli("validation", "input.metacool", *common, "-i", "5")
+    run_cli("markers", "input.metacool", "-a", assembly, "-o", "out", "-T", "tmp", "--inplace")
     run_cli("mge", "input.metacool", "-a", assembly, "-m", mges, "--reassign", "-o", "out", "-T", "tmp", "--inplace")
     run_cli("host", "input.metacool", "-o", "out", "--inplace")
     run_cli("export", "input.metacool", "-a", assembly, "-o", "out", "-T", "tmp", "-F")
@@ -1607,16 +1644,16 @@ def test_pipeline_with_mges_is_the_steps_one_by_one(metagenome, metagenome_input
     assert _without_run(found["steps"]) == _without_run(found["pipeline"])
     # What differs: the command lines of the runs, and their parameters.
     metator = {name: _metator_metadata(objects) for name, objects in found.items()}
-    assert set(metator["pipeline"]) == set(metator["steps"]) == {"network", "partition", "validation", "mge", "host"}
-    for step in ["mge", "host"]:
+    assert set(metator["pipeline"]) == set(metator["steps"]) == {"network", "partition", "validation", "markers", "mge", "host"}
+    for step in ["markers", "mge", "host"]:
         assert metator["pipeline"][step]["command"].startswith("metator pipeline input.metacool")
         assert metator["steps"][step]["command"].startswith(f"metator {step} input.metacool")
-    # The six steps of the run, in its log, and no word of a stop.
+    # The seven steps of the run, in its log, and no word of a stop.
     (log,) = logs(pipeline, "pipeline")
     logged = log.read_text()
-    names = ["network", "partition", "validation", "mge", "host", "export"]
+    names = ["network", "partition", "validation", "markers", "mge", "host", "export"]
     assert re.findall(r" :: INFO :: \[([0-9])/([0-9])\] ([a-z]+): ", logged) == [
-        (str(number), "6", name) for number, name in enumerate(names, start=1)
+        (str(number), "7", name) for number, name in enumerate(names, start=1)
     ]
     assert "No list of MGE contigs" not in logged and "The run stopped" not in logged
     # Each MGE cluster, a genome of the map, and its host, the final cluster
@@ -1665,7 +1702,8 @@ def test_pipeline_with_mges_again_on_the_map_it_wrote(metagenome, metagenome_inp
     any work that it replaces the clusters, the rounds, the round mge among
     them, and the hosts of the MGE clusters that the map holds; but not, once
     it has written the map of its clusters, that the map no longer holds the
-    round mge and the hosts, which its steps mge and host store again."""
+    round mge and the hosts, which its steps mge and host store again (nor the
+    marker genes of its contigs, which its step markers stores again)."""
     monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
     metacool = _contig_map(metagenome_inputs, tmp_path / "contigs.metacool")
     mges = _mge_list(metagenome, tmp_path / "mges.txt")
@@ -1682,28 +1720,32 @@ def test_pipeline_with_mges_again_on_the_map_it_wrote(metagenome, metagenome_inp
     warnings = [message for level, message in logged()[first:] if level == "WARNING" and not message.startswith("Every bin of ")]
     replaced = (
         rf"{re.escape(str(metacool))} holds [0-9]+ cluster\(s\) and the clustering round\(s\) core, overlapping, "
-        r"(recursive_[0-9]+, )*final, mge and the hosts of its MGE clusters \(metator host\), which this run replaces, "
-        r"in place: leave out --inplace to write the map of this run to another file, and leave .* as it is\."
+        r"(recursive_[0-9]+, )*final, mge and the hosts of its MGE clusters \(metator host\) and the marker genes of its "
+        r"contigs \(metator markers\), which this run replaces, in place: leave out --inplace to write the map of this "
+        r"run to another file, and leave .* as it is\."
     )
     assert len(warnings) == 1 and re.fullmatch(replaced, warnings[0]), warnings
     mc = metacooler.MetaCooler(str(metacool))
     assert [entry["name"] for entry in mc.cluster_rounds][-1] == mtcl.MGE
-    assert set(mc.metadata["metator"]) == {"network", "partition", "validation", "mge", "host"}
+    assert set(mc.metadata["metator"]) == {"network", "partition", "validation", "markers", "mge", "host"}
     assert (mc.genomes.mge == "True").any() and mc.genomes.n_mges.notna().any()
 
 
-@pytest.mark.parametrize("step", [4, 5], ids=["mge", "host"])
+@pytest.mark.parametrize("step", [4, 5, 6], ids=["markers", "mge", "host"])
 def test_pipeline_stopped_in_an_mge_step_keeps_its_clusters(step, metagenome, metagenome_inputs, tmp_path, monkeypatch, run_cli):
-    """A pipeline run with --mges that stops in its step 4, mge, leaves the map of
-    its clusters that step 3, the validation, wrote, and one that stops in its
-    step 5, host, the map with its MGE clusters too, which mge wrote; the log
-    says so, and what to run on the map to complete the run."""
+    """A pipeline run with --mges that stops in its step 4, markers, leaves the
+    map of its clusters that step 3, the validation, wrote; one that stops in
+    its step 5, mge, the map with the marker genes of its contigs too, which
+    markers wrote; and one that stops in its step 6, host, the map with its MGE
+    clusters too, which mge wrote; the log says so, and what to run on the map
+    to complete the run."""
     monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
 
     def fails(*args, **kwargs):
         raise mtmc.MetacoolError("cannot")
 
-    monkeypatch.setattr("metator.mge.mge_binning" if step == 4 else "metator.host.find_hosts", fails)
+    failing = {4: "metator.markers.contig_markers", 5: "metator.mge.mge_binning", 6: "metator.host.find_hosts"}[step]
+    monkeypatch.setattr(failing, fails)
     metacool = _contig_map(metagenome_inputs, tmp_path / "contigs.metacool")
     mges = _mge_list(metagenome, tmp_path / "mges.txt")
     out = tmp_path / "out"
@@ -1714,18 +1756,20 @@ def test_pipeline_stopped_in_an_mge_step_keeps_its_clusters(step, metagenome, me
     written = out / metacool.name
     metacooler.validate(str(written), full=True)
     mc = metacooler.MetaCooler(str(written))
-    held = ["network", "partition", "validation", *(["mge"] if step == 5 else [])]
+    held = ["network", "partition", "validation", *(["markers"] if step > 4 else []), *(["mge"] if step == 6 else [])]
     assert set(mc.metadata["metator"]) == set(held)
-    assert (mtcl.MGE in [entry["name"] for entry in mc.cluster_rounds]) == (step == 5)
+    assert (mtcl.MGE in [entry["name"] for entry in mc.cluster_rounds]) == (step == 6)
+    assert all(column in mc.contigs.columns for column in mtmc.MARKER_COLUMNS) == (step > 4)
     # fasta/mges, made anew, holds the MGE clusters of mge; the hosts and
     # the outputs of the run (fasta/mags, cool, tables) are not written.
-    assert bool(list((out / "fasta" / "mges").iterdir())) == (step == 5)
+    assert bool(list((out / "fasta" / "mges").iterdir())) == (step == 6)
     assert not (out / "tables").exists() and not list((out / "fasta" / "mags").iterdir())
     assert not list((out / "cool").iterdir())
     (log,) = logs(out, "pipeline")
     name, what, finish = {
-        4: ("mge", "the clusters of the run", "metator mge --reassign then metator host"),
-        5: ("host", "the clusters of the run and their MGE clusters", "metator host"),
+        4: ("markers", "the clusters of the run", "metator markers, metator mge --reassign then metator host"),
+        5: ("mge", "the clusters of the run and the marker genes of its contigs", "metator mge --reassign then metator host"),
+        6: ("host", "the clusters of the run, the marker genes of its contigs and their MGE clusters", "metator host"),
     }[step]
     logged = log.read_text()
     assert "ERROR :: cannot\n" in logged
@@ -1741,8 +1785,9 @@ def test_pipeline_with_mges_from_pairs_files(metagenome, metagenome_inputs, tmp_
     first, in a step more, then gives what it gives from that map, as
     metacooler create pairs makes it: the same clusters, MGE clusters and
     hosts, and the same files (the FASTA files of the clusters, of the MAGs and
-    of the MGE clusters, and the hosts). Its log marks its six steps: map, the
-    three of the binning, then mge and host, 5 and 6 here."""
+    of the MGE clusters, and the hosts). Its log marks its eight steps: map, the
+    three of the binning, markers, then mge and host, 6 and 7 here, and
+    export."""
     monkeypatch.setattr("metator.validation.micomplete_quality", synthetic.fake_micomplete(metagenome))
     assembly, depth = str(metagenome_inputs["assembly"]), str(metagenome_inputs["depth"])
     mges = _mge_list(metagenome, tmp_path / "mges.txt")
@@ -1773,9 +1818,9 @@ def test_pipeline_with_mges_from_pairs_files(metagenome, metagenome_inputs, tmp_
     hosts = os.path.join("tables", "mge_hosts.txt")
     assert (tmp_path / "pairs" / hosts).read_bytes() == (tmp_path / "map" / hosts).read_bytes()
     (log,) = logs(tmp_path / "pairs", "pipeline")
-    names = ["map", "network", "partition", "validation", "mge", "host", "export"]
+    names = ["map", "network", "partition", "validation", "markers", "mge", "host", "export"]
     assert re.findall(r" :: INFO :: \[([0-9])/([0-9])\] ([a-z]+): ", log.read_text()) == [
-        (str(number), "7", name) for number, name in enumerate(names, start=1)
+        (str(number), "8", name) for number, name in enumerate(names, start=1)
     ]
 
 

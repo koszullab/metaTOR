@@ -317,6 +317,161 @@ genomes table, which `metator dump` writes last in `cluster_summary.txt`:
 | `n_mges` | The number of MGE clusters that the MAG hosts; missing for a genome that is not a MAG (empty for the MGE genomes of `--reassign`) |
 | `mges` | Their names, in the order of the round `mge`, comma-separated |
 
+## Marker genes of the contigs
+
+[`metator markers`](cli.md#markers), and the step `markers` of `pipeline`,
+store in the map the marker genes of miComplete that each contig carries, as
+miComplete finds them in its genome (see
+[Concepts](concepts.md#marker-genes-of-the-contigs)): two columns of the
+contigs table, and an entry of the metadata. Summed over the contigs of a
+genome of the map, as the run found their genes, they give the four numbers
+of miComplete that the [cluster summary](#cluster-summary) holds for the
+final clusters: completeness, redundancy, weighted completeness and weighted
+redundancy. Summed over any other group of contigs, they give an estimate of
+them (see *Recomputing miComplete's numbers*, below).
+
+| Column | What it holds |
+|---|---|
+| `markers_Bact105` | The markers of the contig in miComplete's bacterial set (105 markers) |
+| `markers_Arch131` | Those in its archaeal set (131 markers, 35 of them in both sets) |
+
+Each holds ASCII text: the markers of the contig sorted by name, in byte
+order (upper case first), comma-separated, each followed by `*` and its
+count when that is not 1. The count is the number of proteins of the contig
+that miComplete keeps as hits of the marker. An empty text is no marker.
+
+```text
+name	markers_Bact105	markers_Arch131
+NODE_522	Ribosomal_L14,Ribosomal_L22,SecY*2	Ribosomal_L14,Ribosomal_L22,SecY*2
+NODE_1404
+NODE_2487	Cons_hypoth95*0,Ribosomal_S9	Ribosomal_S9
+```
+
+- A marker name matches `[A-Za-z0-9_-]+`, of at most 15 characters.
+- `*0`: miComplete sees a hit of the marker on the contig (a line of the
+  table of hmmsearch, `--tblout`) but drops every one, its bias too high for
+  its score or its best domain too weak. The marker counts in the weighted
+  completeness of a bin, as miComplete counts every marker it sees, and
+  nowhere else.
+- Both columns hold text, a fixed-length ASCII string dataset, even when no
+  contig of the map has a marker of a set: an empty text on every contig.
+- Each column is as wide as its longest text, that of the contig with the
+  most markers (852 and 547 bytes on a map of 20,566 contigs; 105 KB and
+  73 KB on disk, compressed). cooler, when it opens a map, and metacooler,
+  when it reads its contigs table, decode every column of the table at 4
+  bytes a character: on that map, the two columns make each take about 0.3 s
+  and 150 MB more, and `metator export`, which reads the map once per MAG,
+  70 s in place of 47 s. The cost grows with the number of contigs (some 3 s
+  and 1.5 GB a read for 200,000 contigs). `pipeline --no-markers` leaves the
+  markers out.
+- `metacooler dump -t contigs -H MAP` writes both columns with the rest of
+  the contigs table; the run writes them in its temporary directory too
+  (`contig_markers.txt`, which `-N` keeps).
+
+The entry `metator` → `markers` of the metadata records the run, as the
+entries of the other steps do (`version`, `command`, `parameters`, `read`),
+and:
+
+| Key | What it holds |
+|---|---|
+| `micomplete` | The version of miComplete whose marker sets and rules the run applied |
+| `thresholds` | `evalue`, `bias` and `domain_cutoff`: miComplete's `--evalue`, `--bias` and `--domain-cutoff` |
+| `genes` | How the genes were found: the versions of `pyrodigal` and `pyhmmer`; `single` and `metagenome`, the rule of each of pyrodigal's two modes, in words (see [`metator markers`](cli.md#markers)); `trained_genomes`, the genomes pyrodigal was trained on, by name, in the order of the genomes table (single mode: those of `min_training` bp, 20000, or more, with the linkers between their contigs); `metagenome_contigs`, the number of contigs in metagenome mode (in no genome, or in a shorter one); `metagenome_z`, the number of proteins their E-values were counted over: the median number of proteins of the genomes trained in single mode, every one of them, MGE genomes included (2,111 on a map of the mock community MM133 whose 66 trained genomes are 50 MAGs and 16 MGE genomes, where the median of the MAGs is 2,974.5; without a trained genome, the proteins of these contigs, as one bin; `null` without such contigs) |
+| `sets` | By set (`Bact105`, `Arch131`): its `column`, its `markers` in the order of its HMMs, and their `weights`, in the same order, as miComplete reads them |
+| `kept` | The set that metaTOR keeps for a bin: `by` the higher `weighted_completeness`, `ties` to `Bact105` |
+| `assignment_digest` | The binning that the genes were found in: the SHA-256, in hexadecimal, of the name of each contig of the map and of its genome then (`__unbinned__` for none), the contigs sorted by name, each name followed by a NUL byte (`metator.metacool.assignment_digest`). The same whatever the order of the contigs; another once a contig is in another genome, or a genome is renamed |
+
+Every other run keeps the markers, those that regroup the contigs too
+(`validation`, `mge --reassign`, `metacooler reassign`). A metaTOR run that
+regroups the contigs into other genomes than those that `assignment_digest`
+records says once, in its log, that the markers predate its new genomes, and
+`metator report` says so too, whatever regrouped them
+(`markers_predate_genomes`, in the section `run` of
+[the report](#the-report-of-a-run); `metator.metacool.markers_predate`): each
+contig keeps its markers, but summed over a genome whose contigs changed,
+they give an estimate. `metator markers`, run again, finds them in the
+genomes as they are.
+
+### Recomputing miComplete's numbers
+
+For a group of contigs (a genome of the map, or any curated bin, whose numbers
+are an estimate: see below), in each set (`metator.markers.marker_quality`):
+
+1. Sum the counts of each marker over the contigs. A marker written without
+   `*` counts 1; one at `*0` counts 0 but is seen.
+2. P is the number of markers of a sum of 1 or more, N the number of markers
+   of the set. Without such a marker (P = 0), all four numbers are 0.
+3. Completeness = P / N, and redundancy = the sum of the counts / P, each
+   rounded to 4 decimals as Python's `round` does: to the nearest, an exact
+   tie to the even digit (33 / 32 = 1.03125 gives 1.0312, where JavaScript's
+   `toFixed(4)` gives 1.0313).
+4. WC is the sum of the weights of the markers seen (those of a sum of 0
+   too). The weighted redundancy is (the sum of the weights of the markers of
+   a sum above 1, each once, + WC) / WC, rounded to 4 decimals; the weighted
+   completeness is WC rounded to 4 decimals, 0.0001 if that is 0.
+
+metaTOR keeps the numbers of Bact105, unless those of Arch131 have the higher
+weighted completeness (`Bacteria` or `Archaea` in the column `Markers` of
+miComplete's results; `metator.markers.kept_quality`).
+
+The markers, their weights and the columns are those that the entry records
+(`sets`): those of the miComplete that found the markers, not the files of
+the miComplete installed now, which may weigh its markers otherwise.
+`metator.markers.stored_quality` does it all from the map, with the sets of
+its entry (`metator.markers.map_sets`; `quality_of` counts the texts of a
+group with them):
+
+```python
+import metacooler
+import metator.markers as mtmk
+
+mc = metacooler.MetaCooler("binning/sample.metacool")
+group = ["NODE_522", "NODE_2487"]
+print(mtmk.stored_quality(mc, group))
+
+# The same, set by set, from the entry of the map:
+sets = mc.metadata["metator"]["markers"]["sets"]
+contigs = mc.contigs.set_index("name")
+for name, spec in sets.items():
+    counts = mtmk.sum_markers(mtmk.decode_markers(text) for text in contigs.loc[group, spec["column"]])
+    print(name, mtmk.marker_quality(counts, spec["markers"], spec["weights"]))
+```
+
+Over a genome whose genes the run found in single mode (trained on its
+contigs, in map order), the numbers are exactly those that miComplete gives
+the FASTA file of the genome in map order, as `fasta/mags/` and
+`metacooler fasta` write it. The cluster summary holds those of the clusters
+as the validation checked them, with their contigs in the order of its
+partition, on which pyrodigal's training depends a little: the numbers are
+the same but for a rare gene, and for a final cluster that `mge --reassign`
+took contigs from, which the summary still counts (sum the markers over the
+contigs of the cluster, the round `final`, for those).
+
+Over any other group of contigs (a curated bin: two MAGs merged, a contig
+moved from one MAG to another, contigs recruited from `__unbinned__`), the
+numbers are an estimate, from the genes found in the genomes of the map, and
+not those that miComplete gives the FASTA file of the group: miComplete
+trains pyrodigal on the group itself, which finds other genes, and counts
+the E-values of the hits over the proteins of the group. On the mock
+community MM133 (20,566 contigs), of 28 curated groups (the first half of
+the contigs of 12 MAGs, 8 merges of two MAGs, 8 MAGs with the 30 longest
+contigs of `__unbinned__`), 23 came out exact, and 5 differed (the four
+numbers, in the set that metaTOR keeps, Bact105 for all five):
+
+| Curated group | From the stored markers | From miComplete |
+|---|---|---|
+| Two MAGs of two organisms merged (GC 66.5% and 39.0%) | 1.0, 1.6667, 1.0, 1.5427 | 0.9905, 1.1827, 0.9915, 1.1059 |
+| Two other MAGs merged | 0.9905, 1.375, 0.9918, 1.4454 | 0.9905, 1.3654, 0.9918, 1.4454 |
+| The first half of the contigs of a MAG | 0.981, 1.0291, 0.9767, 1.0228 | 0.981, 1.0194, 0.9767, 1.0228 |
+| A MAG with 30 contigs of `__unbinned__` | 0.9905, 1.4135, 0.9814, 1.3415 | 0.9905, 1.4038, 0.9814, 1.3214 |
+| Another MAG with 30 contigs of `__unbinned__` | 0.9905, 1.3654, 0.9918, 1.299 | 1.0, 1.3619, 1.0, 1.2966 |
+
+The merge of two organisms parts the most: the markers stored on its
+contigs count 175 copies of the 105 markers of Bact105, those of the two
+genomes, where miComplete, trained on the two organisms together, finds 123
+copies of 104 of them. Its redundancy says less of the contamination than
+the markers do.
+
 ## The report of a run
 
 [`metator report`](cli.md#report), `export` and `pipeline` write the report
@@ -354,7 +509,7 @@ parses line by line (`metator.report.read_txt` reads it back):
 | Section | Keys |
 |---|---|
 | `report` | `format_version`; `sample` (the name of the run); `map`; `metator_version` (that wrote the report); `written`; `map_written` (when the map was written). |
-| `run` | `steps`, the steps the map records, in order, comma-separated (`network`, `partition`, `validation`, `mge`, `host`); `input` (the map, or the pairs or BAM files, comma-separated), `assembly`, `enzyme`, `depth` (`NA`: the map gave them); `normalization` (network); `algorithm`, `iterations`, `overlap_pct`, `res_param` (partition); `size_bp`, `rec_iter`, `rec_overlap_pct` (validation); `seed`, `rec_seed`, the `--seed` of the partition and of the validation (`NA`: none); `mge_threshold_bin` (`mge`); `host_min_share_pct`, `host_min_contigs` (`host`). |
+| `run` | `steps`, the steps the map records, in order, comma-separated (`network`, `partition`, `validation`, `markers`, `mge`, `host`); `input` (the map, or the pairs or BAM files, comma-separated), `assembly`, `enzyme`, `depth` (`NA`: the map gave them); `normalization` (network); `algorithm`, `iterations`, `overlap_pct`, `res_param` (partition); `size_bp`, `rec_iter`, `rec_overlap_pct` (validation); `seed`, `rec_seed`, the `--seed` of the partition and of the validation (`NA`: none); `mge_threshold_bin` (`mge`); `host_min_share_pct`, `host_min_contigs` (`host`); `markers_predate_genomes` (`markers`): `true` when the marker genes of the contigs were found in another binning than that of the map (see [Marker genes of the contigs](#marker-genes-of-the-contigs)), `false` when in its own, `NA` when the map does not record it. |
 | `contigs` | `contigs`, `contigs_bp` (the contigs of the map and their length); `contig_n50_bp`, `contig_l50`, `contig_n90_bp`, `contig_max_bp`, `contig_median_bp`; `gc_pct` (weighted by length); `coverage_median` (shotgun). Where the contigs went, as a number, length and share of the total length: in a final cluster (`in_final_clusters_contigs`, `_bp`, `_pct`), in a MAG (`in_mags_`...), in an MGE cluster (`in_mges_contigs`, `_bp`), in no genome (`unbinned_contigs`, `_bp`). |
 | `contacts` | The contacts of the reads by where they land, from metacooler's `qc` block: `contacts`; `qc_source` (`pairs`: counted on the reads, `pixels`: on the map); `qc_distance_threshold_bp`; within a contig, closer than that (`intra_contig_short`) or not (`intra_contig_long`); between two contigs of a genome (`inter_contig_intra_genome`); between two genomes (`inter_genome`); `trans_contig_ratio`, the share between two contigs (the "3D ratio"); `intra_genome_fraction`, the share within a genome. The network: `network_contigs`, `network_edges`, `normalization`. |
 | `clusters` | `core_clusters`, `overlapping_clusters`, `recursive_steps`, `recursive_clusters`, `final_clusters`, `final_clusters_bp`. The final clusters by quality class, each a number and a length (`_bp`): `hq_mags` (completeness ≥ 90%, contamination ≤ 5%), `mq_mags` (70%, 10%), `lq_mags` (50%, 10%), `contaminated_mags` (completeness ≥ 50%, contamination > 10%), `other_clusters` (completeness < 50%). `mags`: the genomes of the map but the MGE genomes. |

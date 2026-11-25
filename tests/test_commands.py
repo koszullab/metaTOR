@@ -254,10 +254,11 @@ def test_pipeline(a_map, tmp_path, run_cli):
     assert sections["clusters"]["final_clusters"] == str(len(mags)) and sorted(tables["mags"]["name"]) == mags
     assert (out / html).is_file() and (out / mqc).is_file()
     # The contig columns but Shotgun_coverage, which is - without a depth
-    # file.
+    # file, then the marker genes of the contigs.
     contigs = metacooler.MetaCooler(str(metacool)).contigs
     assert [column for column in contigs.columns if not column.startswith("qc_")] == [
-        "name", "length", "genome_id", "GC_content", "Hit", "Restriction_site"]  # fmt: skip
+        "name", "length", "genome_id", "GC_content", "Hit", "Restriction_site", "markers_Bact105",
+        "markers_Arch131"]  # fmt: skip
 
 
 def test_network_from_a_metacool(a_map, tmp_path, run_cli):

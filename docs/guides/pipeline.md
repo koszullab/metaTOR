@@ -2,8 +2,9 @@
 
 `metator pipeline` bins the contigs of an assembly from a Hi-C contact map in
 one command: it builds the network of contigs, partitions it, validates the
-clusters and writes the contact map of the clusters. With `--mges`, it also
-clusters the mobile genetic elements and finds their hosts. The
+clusters, writes the contact map of the clusters and stores in it the marker
+genes of each contig. With `--mges`, it also clusters the mobile genetic
+elements and finds their hosts. The
 [CLI reference](../cli.md#pipeline) lists every option, and
 [Concepts](../concepts.md) explains the steps.
 
@@ -118,15 +119,45 @@ A run does not overwrite the outputs of an earlier run without `--force`
 | `--iterations`, `--overlap` | 100, 80 | See [Partition](binning.md#partition) |
 | `--rec-iter`, `--rec-overlap` | 10, 90 | See [Validation](binning.md#validation) |
 | `--size` | 500000 | The size, in bp, an overlapping cluster must reach to be checked with miComplete, and a recursive cluster must exceed |
+| `--no-markers` | off | Leaves out the step `markers`: the map of the clusters gets no marker genes, and costs less to read (see [below](#the-marker-genes-of-the-contigs)) |
 | `--mges` | none | The MGE contigs, one name per line: adds the steps `mge` and `host` (see [below](#mobile-genetic-elements-and-their-hosts)) |
 | `--mge-threshold-bin` | 0.8 | Step `mge`: the score above which MGE contigs are merged (see [How it works](mge.md#how-it-works)) |
 | `--mge-min-share`, `--mge-min-contigs` | 10, 5 | Step `host`: the share of signal (%) and the number of contacting contigs a MAG needs to be a host (see [The hosts](mge.md#the-hosts)) |
 | `--prefix` | none | Names the clusters `<prefix>_metator_…` |
-| `--threads` | 1 | Threads for the partition and the validation |
+| `--threads` | 1 | Threads for the partition, the validation and the markers |
 | `--tmpdir` | `./tmp` | Temporary files. Give it room for the FASTA files of the checked clusters (at most the size of the assembly) and the decompressed copy of a gzipped assembly |
 
 The validation needs the most memory and time: miComplete runs Prodigal and
 HMMER on every cluster.
+
+## The marker genes of the contigs
+
+After the validation, the step `markers` (as
+[`metator markers`](../cli.md#markers)) finds miComplete's marker genes on
+each contig, in its final cluster, as miComplete finds them, and stores them
+in the map of the clusters. Summed over a final cluster, as the step found
+its genes (trained on its contigs, in map order), they give the completeness
+and redundancy that miComplete gives it; summed over any other group of
+contigs, an estimate of them, from the genes found in the clusters. A
+viewer, or a script, recomputes them as a curation moves contigs between
+MAGs, without finding a gene again; miComplete's own run on a new MAG, which
+finds its genes anew, can give other numbers (see
+[Marker genes of the contigs](../formats.md#marker-genes-of-the-contigs)).
+With `--mges`, the step `mge` then makes a genome of each MGE cluster, its
+contigs out of the MAGs that held them: the markers predate these genomes,
+as the log of the step and the report say, and summed over a MAG that lost
+contigs they give an estimate; `metator markers` on the map of the run finds
+them in the genomes as they are.
+
+A map with the marker genes costs more to read: their two columns of the
+contigs table are decoded each time cooler opens the map or metacooler reads
+its contigs table, about 0.3 s and 150 MB more on a map of 20,566 contigs, in
+proportion to the number of contigs, and the step `export` reads the map
+once per MAG (70 s in place of 47 s on that map). `--no-markers` leaves the
+step out, and the markers with it: the map of the clusters holds none (but
+those of an earlier run that the input map held, which every run keeps), and
+`metator markers` stores them later. The log then numbers the steps without
+it (`[1/4] network` … `[4/4] export`).
 
 ## Mobile genetic elements and their hosts
 
@@ -150,8 +181,8 @@ contact statistics that `mge` needs (`hicstuff pipeline -M metacool`,
 `metacooler create pairs` from metacooler 0.4.0, and a run from pairs or BAM
 files write them).
 
-If the run stops in `mge` or `host`, its log says what to run to finish
-without redoing the validation. The same commands add the MGE steps to a run
+If the run stops in `markers`, `mge` or `host`, its log says what to run to
+finish without redoing the validation. The same commands add the MGE steps to a run
 made without `--mges`:
 
 ```bash
@@ -175,13 +206,16 @@ metator partition binning/sample.metacool -t 16 -o binning
 # 3. Validate the clusters: fasta/mags_with-mges/, plots/, and the map of the clusters
 metator validation binning/sample.metacool -a assembly.fa -t 16 -o binning
 
-# 4. (MGEs) Cluster the MGE contigs: fasta/mges/
+# 4. Find the marker genes of the contigs, stored in the map
+metator markers binning/sample.metacool -a assembly.fa -t 16 -o binning
+
+# 5. (MGEs) Cluster the MGE contigs: fasta/mges/
 metator mge binning/sample.metacool -a assembly.fa -m mges.txt --reassign -o binning
 
-# 5. (MGEs) Find their hosts: tables/mge_hosts.txt, plots/mge_hosts.pdf
+# 6. (MGEs) Find their hosts: tables/mge_hosts.txt, plots/mge_hosts.pdf
 metator host binning/sample.metacool -o binning
 
-# 6. Write the other outputs: fasta/mags/, cool/, tables/ and the report
+# 7. Write the other outputs: fasta/mags/, cool/, tables/ and the report
 metator export binning/sample.metacool -a assembly.fa -o binning -F
 ```
 
@@ -198,18 +232,19 @@ them as FASTA files.
 
 The log, `sample.metator_<date>.log` in the output directory, starts with
 the version, the date, the command line and the options. It then marks each
-step: `[1/4] network`, `[2/4] partition`, `[3/4] validation`, `[4/4] export`
-(`[1/5] map` first from pairs or BAM files; `[4/6] mge` and `[5/6] host` with
-`--mges`). It reports the contacts, the progress of the partition, each
+step: `[1/5] network`, `[2/5] partition`, `[3/5] validation`, `[4/5] markers`,
+`[5/5] export` (`[1/6] map` first from pairs or BAM files; `[5/7] mge` and
+`[6/7] host` with `--mges`; no `markers` with `--no-markers`). It reports the
+contacts, the progress of the partition, each
 recursive step of the validation, the number of clusters in each
 [quality class](../concepts.md#cluster-quality), and with `--mges` the MGE
 clusters and their hosts.
 
 ```console
-INFO :: [1/4] network: the contigs of sample.metacool and their contacts
+INFO :: [1/5] network: the contigs of sample.metacool and their contacts
 INFO :: 41563 contacts in sample.metacool, 18632 of them between contigs (3D ratio: 0.4483).
 ...
-INFO :: [4/4] export: the outputs of the run, from its map
+INFO :: [5/5] export: the outputs of the run, from its map
 ...
 INFO :: Final contact map written after 0h 0m 9s: binning/sample.metacool
 ```

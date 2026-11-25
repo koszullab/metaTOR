@@ -24,7 +24,7 @@ the genomes.
 | Bins and contacts | Those of the input map, at its bin size: the raw contacts, without the filters and the normalization of the network |
 | Genomes | One per final cluster, and `__unbinned__` for the other contigs (all of them, for a run with no final cluster). The contigs come genome by genome, the longest first |
 | Genomes table | The columns of `cluster_summary.txt` (completeness, redundancy, abundances...), the length, contig and bin counts of each genome, and its contact statistics (`qc_*`) |
-| Contigs table | The network columns `GC_content`, `Hit`, `Shotgun_coverage` and `Restriction_site` (the last two when the run had them), and the contact statistics within each contig (`qc_intra_contig_short`, `qc_intra_contig_long`). The genome of a contig is its final cluster |
+| Contigs table | The network columns `GC_content`, `Hit`, `Shotgun_coverage` and `Restriction_site` (the last two when the run had them), the contact statistics within each contig (`qc_intra_contig_short`, `qc_intra_contig_long`), and miComplete's marker genes on each contig (`markers_Bact105`, `markers_Arch131`: see [Marker genes of the contigs](../formats.md#marker-genes-of-the-contigs)). The genome of a contig is its final cluster |
 | Bins table | The weights of the normalization, `metator_<normalization>` (`--normalization`, `empirical_hit` by default; none for `None`), stored as `cooler` stores balancing weights |
 | Clustering rounds | Every cluster of every round: see [Clustering rounds](#clustering-rounds) |
 | Metadata | Under the `metator` key, one entry per step (see below), and the assembly name and command history of the input map |
@@ -49,6 +49,9 @@ or `pipeline`), and what it read of the map (`read`).
 - `validation`: how `cluster_summary.txt` is written from the genomes table
   (`summary_rows`, `summary_columns`, `summary_formats`: see
   [Cluster summary](../formats.md#cluster-summary)).
+- `markers`: miComplete's version and thresholds, how the genes were found,
+  and the markers and weights of both marker sets (see
+  [Marker genes of the contigs](../formats.md#marker-genes-of-the-contigs)).
 
 **Contact statistics.** Those of the input map (the `qc` block of the
 metadata, the `qc_*` columns) are carried over: the counts within each
@@ -172,8 +175,8 @@ collection rather than one of its entries), is refused before any work.
 
 ## Step by step
 
-The three steps of `pipeline MAP` are commands of their own, which take the
-map as their first argument: the map is what they share. Run in one output
+The steps of `pipeline MAP` are commands of their own, which take the map as
+their first argument: the map is what they share. Run in one output
 directory, `network` writes the map there, and `partition` and `validation`
 update it in place. The result is the map that `pipeline MAP` writes from
 the same clusters, but for the dates and command lines it stores.
@@ -189,6 +192,9 @@ metator partition binning/sample.metacool -o binning
 
 # 3. The validation: the final clusters. The map becomes the map of the clusters.
 metator validation binning/sample.metacool -a assembly.fa -o binning
+
+# 4. The marker genes of the contigs, found in their clusters, in place.
+metator markers binning/sample.metacool -a assembly.fa -o binning
 ```
 
 | Step | What it stores in the map |
@@ -196,6 +202,7 @@ metator validation binning/sample.metacool -a assembly.fa -o binning
 | `network MAP` | The network: the `GC_content`, `Hit`, `Shotgun_coverage` and `Restriction_site` columns, the weights of its normalization, and the `network` metadata entry, replacing those of an earlier network. Clusters and genomes are left as they were |
 | `partition MAP` | The rounds `core` and `overlapping`, replacing the rounds the map held, and the `partition` metadata entry. No miComplete columns, no table, no FASTA file. Genomes and contigs are left as they were until `validation` |
 | `validation MAP` | The map of the clusters, as `pipeline MAP` writes it: the final clusters as genomes, every round, the miComplete columns of the overlapping clusters it checked, and the network again, with the contigs grouped by cluster. The FASTA files of the overlapping clusters that reach `--size` go to its temporary directory, for miComplete |
+| `markers MAP` | The marker genes of each contig, found in its final cluster: the columns `markers_Bact105` and `markers_Arch131` and the `markers` metadata entry, with the binning they were found in, which every later run keeps but `markers` and `pipeline`, which find them again (one that regroups the contigs says that they predate its genomes) |
 | `mge MAP --reassign`, then `host MAP` | The MGE clusters, as genomes, and their hosts, as `pipeline MAP --mges` does (see [mge on the map](#mge-on-the-map)) |
 
 - **Seeds.** Louvain and Leiden draw other random numbers at each run, so

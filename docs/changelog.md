@@ -114,13 +114,39 @@ tools](other-tools.md) says what replaces each removed command. Below,
   map, or the pairs or BAM/SAM files of the libraries (paths, comma-separated
   lists or globs). The run first makes the map in its output directory
   (`<prefix>.metacool` with `pipeline --prefix`, else `<assembly>.metacool`;
-  `[1/5] map` in the log). BAM pairs: primary alignments of both mates, MAPQ
+  `[1/6] map` in the log). BAM pairs: primary alignments of both mates, MAPQ
   ≥ `-q/--min-quality` (30), no duplicates or QC failures, at their 5' ends.
   pysam is a dependency again; `network -t` reads the files. See [The inputs
   of a run](cli.md#inputs).
 - **`pipeline --mges FILE`** runs `mge --reassign` and `host` after the
-  validation (`[4/6] mge`, `[5/6] host`, `[6/6] export`), with
+  step `markers` (`[5/7] mge`, `[6/7] host`, `[7/7] export`), with
   `--mge-threshold-bin`, `--mge-min-share` and `--mge-min-contigs`.
+- **`metator markers MAP -a ASSEMBLY`** finds miComplete's marker genes on
+  each contig, as miComplete finds them in its genome (pyrodigal trained on
+  the contigs of the genome in map order, pyhmmer with miComplete's
+  `--evalue`, `--bias` and `--domain-cutoff`; metagenome mode for the contigs
+  of `__unbinned__` and of genomes under 20 kb), and stores them in the map:
+  the contigs columns `markers_Bact105` and `markers_Arch131` (text,
+  `Ribosomal_L22,SecY*2`; `*0` for a marker miComplete sees but drops, which
+  counts in the weighted completeness only) and the `markers` metadata entry,
+  with how the genes were found and the markers and weights of both sets.
+  Summed over the contigs of a genome as `markers` found its genes (trained
+  on its contigs, in map order), they give miComplete's completeness,
+  redundancy, weighted completeness and weighted redundancy exactly
+  (`metator.markers.stored_quality`, with the marker sets that the map
+  records, not those of the installed miComplete); over any other group of
+  contigs (a curation's merge or move), an estimate, which miComplete's own
+  run on the group can differ from (23 of 28 curated groups of a mock
+  community exact; the merge of the MAGs of two organisms, a redundancy of
+  1.6667 against miComplete's 1.1827).
+  `pipeline` runs it after the validation (`[4/5] markers`), but with
+  `--no-markers`, which leaves the markers, and the cost of reading them, out
+  of the map; every other run keeps them. The entry records the binning that the genes were found in
+  (`assignment_digest`, and the genomes trained on, `trained_genomes`): a
+  run that keeps the markers while it regroups the contigs into other
+  genomes (`validation`, `mge --reassign`) says once that they predate its
+  new genomes, and `report` says so too (`markers_predate_genomes` in its
+  section `run`). See [Marker genes of the contigs](formats.md#marker-genes-of-the-contigs).
 - **`metator host MAP`** finds the MAGs that host the MGE clusters stored by
   `mge`: at least `--min-share` (10%) of the MGE cluster's signal with the
   MAGs, and `--min-contigs` (5) contigs in contact. It writes
@@ -159,8 +185,12 @@ tools](other-tools.md) says what replaces each removed command. Below,
 - `partition` and `validation` refuse a map whose network changed since
   `network` stored it (e.g. after `metacooler merge`).
 - Python API: `metator.dump`; `metator.clusters`; `metator.host`
-  (`find_hosts`...); `metator.metacool.write_map`, `map_rounds`,
-  `read_partition`, `holds_hosts`, `hosts_network`;
+  (`find_hosts`...); `metator.markers` (`contig_markers`, `group_markers`,
+  `marker_quality`, `quality_of`, `stored_quality`, `map_sets`,
+  `encode_markers`, `decode_markers`...);
+  `metator.metacool.write_map`, `map_rounds`, `read_partition`,
+  `holds_hosts`, `hosts_network`, `holds_markers`, `markers_entry`,
+  `markers_predate`, `assignment_digest`, `map_assignment`;
   `metator.network.map_network`, `stored_network`, `contig_contacts`,
   `contig_hits`, `normalization_weights`, `relabel_network`;
   `metator.mge.check_mge_map`, `map_matrix`, `write_mges_fasta`;
@@ -181,7 +211,7 @@ tools](other-tools.md) says what replaces each removed command. Below,
   (1.4.0 stopped).
 - **The log:** a hicstuff-style header (`## cmd:`, `## <option>: <value>`)
   and a last line with what the run wrote and how long it took. `pipeline`
-  numbers its steps (`[1/4] network`...); the partition logs its iterations
+  numbers its steps (`[1/5] network`...); the partition logs its iterations
   as they go, the validation each recursive step; bookkeeping is at DEBUG
   level.
 - `metator --help` lists the commands in three panels: Pipeline, Steps and
